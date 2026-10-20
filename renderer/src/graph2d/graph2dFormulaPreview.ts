@@ -3,7 +3,7 @@ import { evaluateGraph2DExpression, parseGraph2DExpression, sampleGraph2DImplici
   sampleGraph2DTimeOde } from "@math3d/core";
 
 export type FormulaRange = Readonly<{ min: number; max: number }>;
-export type FormulaPreview =
+export type FormulaPreview = (
   | Readonly<{ kind: "error"; message: string; start: number; end: number; source: "parser" | "sampling" }>
   | Readonly<{ kind: "curve"; axis: string; range: FormulaRange; points: readonly (number | null)[];
       midpoint: number | null; min: number; max: number; invalidSamples: number }>
@@ -11,7 +11,9 @@ export type FormulaPreview =
       cells: readonly (readonly (number | null)[])[]; midpoint: number | null; maxAbs: number; invalidSamples: number }>
   | Readonly<{ kind: "contour"; axes: readonly [string, string]; ranges: readonly [FormulaRange, FormulaRange];
       segments: readonly (readonly Readonly<{ x: number; y: number }>[])[]; invalidSamples: number;
-      incomplete: boolean; samplesEvaluated: number }>
+      incomplete: boolean; samplesEvaluated: number; cellsVisited: number; refinedCells: number;
+      ambiguousCells: number; unresolvedCells: number; resolutionPx: number; zeroCandidates: number;
+      closedBranches: number; openBranches: number; clippedBranches: number }>
   | Readonly<{ kind: "diagram"; mode: "slope-field" | "inequality" | "time-ode" | "phase-portrait";
       axes: readonly [string, string]; ranges: readonly [FormulaRange, FormulaRange];
       segments: readonly (readonly Readonly<{ x: number; y: number }>[])[];
@@ -19,7 +21,8 @@ export type FormulaPreview =
       strictSegments: readonly (readonly Readonly<{ x: number; y: number }>[])[];
       fills: readonly Readonly<{ xMin: number; xMax: number; yMin: number; yMax: number }>[];
       seeds: readonly Readonly<{ x: number; y: number }>[];
-      invalidSamples: number; incomplete: boolean; samplesEvaluated: number; note?: string }>;
+      invalidSamples: number; incomplete: boolean; samplesEvaluated: number; note?: string }>) &
+  Readonly<{ durationMs?: number }>;
 export type FormulaPreviewMode = "values" | "implicit" | "slope-field" | "inequality" | "time-ode" | "phase-portrait";
 export type FormulaPreviewContext = Readonly<{
   region?: Readonly<{ clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
@@ -35,7 +38,7 @@ const invalidRange = (range?: FormulaRange) => range !== undefined &&
 const sample = (range: FormulaRange, index: number, count: number) => range.min + (range.max - range.min) * index / (count - 1);
 
 /** A bounded local preview. Sampling failures become gaps; only parse errors block the preview. */
-export function previewGraph2DFormula(source: string, variables: readonly string[],
+function computeGraph2DFormulaPreview(source: string, variables: readonly string[],
   axes: readonly [string] | readonly [string, string], parameterValues: Readonly<Record<string, number>> = {},
   ranges: readonly [FormulaRange, FormulaRange?] = [defaultRange], mode: FormulaPreviewMode = "values",
   context: FormulaPreviewContext = {}): FormulaPreview {
@@ -107,13 +110,30 @@ export function previewGraph2DFormula(source: string, variables: readonly string
       deadlineMs: Date.now() + 80,
     });
     const invalid = count(contour.diagnostics, "invalid-sample");
-    const incomplete = limited(contour.diagnostics);
+    const incomplete = !contour.converged;
     if (contour.samplesEvaluated > 0 && invalid === contour.samplesEvaluated)
       return { kind: "error", source: "sampling", start: 0, end: 0,
         message: "The formula parses, but is undefined throughout this preview range." };
+    const edgeTolerance = Math.max(first.max - first.min, second.max - second.min) * 1e-7;
+    const onBoundary = (point: Readonly<{ x: number; y: number }>) =>
+      Math.abs(point.x - first.min) <= edgeTolerance || Math.abs(point.x - first.max) <= edgeTolerance ||
+      Math.abs(point.y - second.min) <= edgeTolerance || Math.abs(point.y - second.max) <= edgeTolerance;
+    const closedBranches = contour.segments.filter(segment => {
+      const start = segment.points[0], end = segment.points.at(-1);
+      return start && end && Math.hypot(start.x - end.x, start.y - end.y) <= edgeTolerance;
+    }).length;
+    const clippedBranches = contour.segments.filter(segment => {
+      const start = segment.points[0], end = segment.points.at(-1);
+      return start && end && Math.hypot(start.x - end.x, start.y - end.y) > edgeTolerance &&
+        (onBoundary(start) || onBoundary(end));
+    }).length;
     return { kind: "contour", axes: [horizontal, vertical], ranges: [first, second],
       segments: contour.segments.map(segment => segment.points), invalidSamples: invalid,
-      incomplete, samplesEvaluated: contour.samplesEvaluated };
+      incomplete, samplesEvaluated: contour.samplesEvaluated, cellsVisited: contour.cellsVisited,
+      refinedCells: contour.refinedCells, ambiguousCells: contour.ambiguousCells,
+      unresolvedCells: contour.unresolvedCells, resolutionPx: contour.resolutionPx,
+      zeroCandidates: contour.zeroCandidates.length, closedBranches, clippedBranches,
+      openBranches: contour.segments.length - closedBranches - clippedBranches };
   }
   if (mode === "slope-field") {
     const artifact = sampleGraph2DSlopeField({ object: { id: "formula-preview", kind: "slope-field", label: "Preview",
@@ -187,4 +207,13 @@ export function previewGraph2DFormula(source: string, variables: readonly string
   const midpoint = evaluate({ [horizontal]: sample(first, 1, 3), [vertical]: sample(second, 1, 3) });
   return { kind: "field", axes: [horizontal, vertical], ranges: [first, second], cells,
     midpoint, maxAbs: Math.max(...finite.map(Math.abs)), invalidSamples };
+}
+
+export function previewGraph2DFormula(source: string, variables: readonly string[],
+  axes: readonly [string] | readonly [string, string], parameterValues: Readonly<Record<string, number>> = {},
+  ranges: readonly [FormulaRange, FormulaRange?] = [defaultRange], mode: FormulaPreviewMode = "values",
+  context: FormulaPreviewContext = {}): FormulaPreview {
+  const started = performance.now();
+  const result = computeGraph2DFormulaPreview(source, variables, axes, parameterValues, ranges, mode, context);
+  return { ...result, durationMs: performance.now() - started };
 }

@@ -10,16 +10,19 @@ import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParam
   type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
   type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft, type Graph2DSlopeFieldDraft,
   type Graph2DTrajectoryDraft, type Graph2DPhasePortraitDraft, type Graph2DTimeOdeDraft } from "@math3d/core";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { pointTableStore } from "./pointTableStore";
 import { graph2DAuthoringPresets, type Graph2DAuthoringPresetMode, type PointDraftState } from "./graph2dAuthoringPresets";
 import { Graph2DFormulaInput } from "./Graph2DFormulaInput";
 import { Graph2DAuthoringPresetDialog } from "./Graph2DAuthoringPresetDialog";
+import { buildGraph2DDraftPlotPreview, Graph2DDraftPlotPreview } from "./Graph2DDraftPlotPreview";
 
 export type Graph2DLeftPalette = "classic" | "geometry";
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
   onSelect?: (objectId: string) => void; palette: Graph2DLeftPalette;
-  onPaletteChange: (palette: Graph2DLeftPalette) => void; onBrowsePhasePortraits?: (opener: HTMLButtonElement) => void };
+  onPaletteChange: (palette: Graph2DLeftPalette) => void; onBrowsePhasePortraits?: (opener: HTMLButtonElement) => void;
+  editRequest?: Readonly<{ objectId: string; sequence: number }> | null; placement?: "desktop" | "compact" | "modal-only" };
 const initialDraft = () => graph2DAuthoringPresets.explicit[0]!.draft();
 const initialParametricDraft = () => graph2DAuthoringPresets.parametric[0]!.draft();
 const initialPolarDraft = () => graph2DAuthoringPresets.polar[0]!.draft();
@@ -35,8 +38,12 @@ const initialInequalityDraft = () => graph2DAuthoringPresets.inequality[0]!.draf
 const initialPointDraft = () => graph2DAuthoringPresets["point-series"][0]!.draft();
 const initialPiecewiseDraft = () => graph2DAuthoringPresets.piecewise[0]!.draft();
 
-export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange, onBrowsePhasePortraits }: Props) {
-  const authoringRef = useRef<HTMLDivElement>(null);
+export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange, onBrowsePhasePortraits,
+  editRequest, placement = "desktop" }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const chooserRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const pendingCreateCount = useRef<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
@@ -51,7 +58,9 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
   const [piecewiseDraft, setPiecewiseDraft] = useState<Graph2DPiecewiseDraft>(initialPiecewiseDraft);
   const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise" | "slope-field" | "trajectory" | "phase-portrait" | "time-ode">("explicit");
   const [open, setOpen] = useState(false);
-  const [editorOpenVersion, setEditorOpenVersion] = useState(0);
+  const [choosing, setChoosing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewPlot, setPreviewPlot] = useState<ReturnType<typeof buildGraph2DDraftPlotPreview> | null>(null);
   const [message, setMessage] = useState("");
   const [presetId, setPresetId] = useState("");
   const [presetBrowserMode, setPresetBrowserMode] = useState<Graph2DAuthoringPresetMode | null>(null);
@@ -60,16 +69,34 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     setPresetBrowserMode(null);
     requestAnimationFrame(() => presetBrowserOpener.current?.focus());
   };
-  const showEditor = () => { setOpen(true); setEditorOpenVersion(version => version + 1); };
+  const closeEditor = () => { setOpen(false); setChoosing(false); setPreviewing(false); setPreviewPlot(null); setMessage("");
+    requestAnimationFrame(() => openerRef.current?.isConnected && openerRef.current.focus()); };
+  const showEditor = () => { setChoosing(false); setPreviewing(false); setPreviewPlot(null); setOpen(true); };
   useLayoutEffect(() => {
     if (!open) return;
-    const panel = authoringRef.current?.closest<HTMLElement>(".graph2d-left, .graph2d-compact-panels details");
-    const editor = authoringRef.current?.querySelector<HTMLElement>(".graph2d-function-editor");
-    if (panel && editor) panel.scrollTop += editor.getBoundingClientRect().top - panel.getBoundingClientRect().top - 12;
-  }, [open, mode, editorOpenVersion]);
+    dialogRef.current?.querySelector<HTMLElement>(previewing ? ".graph2d-editor-preview button" : ".graph2d-function-editor input, .graph2d-function-editor textarea, .graph2d-function-editor select")?.focus();
+  }, [open, choosing, previewing, mode]);
+  useLayoutEffect(() => { if (choosing) chooserRef.current?.querySelector<HTMLElement>(".graph2d-type-grid button")?.focus(); }, [choosing]);
+  const handleDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest(".graph2d-formula-dialog, .graph2d-preset-dialog")) return;
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeEditor(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]'));
+    const first = focusable[0], last = focusable.at(-1);
+    if (!first || !last) return;
+    if (event.shiftKey && window.document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && window.document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
   const parameterValues = Object.fromEntries(document.source.variables.map(entry => [entry.name, entry.value]));
   const parameters = document.source.variables.map(entry => entry.name);
+  useLayoutEffect(() => {
+    if (pendingCreateCount.current === null || document.source.objects.length <= pendingCreateCount.current) return;
+    pendingCreateCount.current = null;
+    const created = document.source.objects.at(-1);
+    if (created) onSelect?.(created.id);
+  }, [document.source.objects, onSelect]);
   const pointPreview = mode === "point-series" ? previewGraph2DPointImport(pointDraft.text) : null;
   const errors = mode === "explicit" ? validateGraph2DFunctionDraft(draft, variables) :
     mode === "point-series" ? [...(pointPreview?.errors ?? []),
@@ -91,8 +118,11 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       ["t", ...document.source.variables.map((entry) => entry.name)]) :
       validateGraph2DPolarDraft(polarDraft, ["theta", ...document.source.variables.map((entry) => entry.name)]);
   const commit = (action: Graph2DAuthoringAction) => {
-    try { onCommit?.(action); setMessage(""); return true; }
-    catch (error) { setMessage(String((error as Error).message ?? error)); return false; }
+    try {
+      if (!onCommit) throw new Error("Graph editing is unavailable.");
+      if (action.type.startsWith("create")) pendingCreateCount.current = document.source.objects.length;
+      onCommit(action); setMessage(""); return true;
+    } catch (error) { pendingCreateCount.current = null; setMessage(String((error as Error).message ?? error)); return false; }
   };
   const beginCreate = () => { setMode("explicit"); setEditingId(null); setDraft(initialDraft()); setPresetId(graph2DAuthoringPresets.explicit[0]!.id); setMessage(""); showEditor(); };
   const beginCreateParametric = () => { setMode("parametric"); setEditingId(null);
@@ -197,6 +227,65 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     }
     setMessage(""); showEditor();
   };
+  useLayoutEffect(() => {
+    if (!editRequest) return;
+    const compact = window.matchMedia("(max-width: 700px)").matches;
+    if ((placement === "desktop" && compact) || (placement === "compact" && !compact)) return;
+    openerRef.current = null;
+    beginEdit(editRequest.objectId);
+  // A new sequence represents a distinct Inspector edit request.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editRequest?.sequence]);
+  const draftAction = (): Graph2DAuthoringAction => mode === "explicit" ?
+    editingId ? { type: "edit", objectId: editingId, draft } : { type: "create", draft } :
+    mode === "piecewise" ? editingId ? { type: "edit-piecewise", objectId: editingId, draft: piecewiseDraft } :
+      { type: "create-piecewise", draft: piecewiseDraft } :
+    mode === "inequality" ? editingId ? { type: "edit-inequality", objectId: editingId, draft: inequalityDraft } :
+      { type: "create-inequality", draft: inequalityDraft } :
+    mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
+      { type: "create-implicit", draft: implicitDraft } :
+    mode === "slope-field" ? editingId ? { type: "edit-slope-field", objectId: editingId, draft: slopeFieldDraft } :
+      { type: "create-slope-field", draft: slopeFieldDraft } :
+    mode === "trajectory" ? editingId ? { type: "edit-trajectory", objectId: editingId, draft: trajectoryDraft } :
+      { type: "create-trajectory", draft: trajectoryDraft } :
+    mode === "phase-portrait" ? editingId ? { type: "edit-phase-portrait", objectId: editingId, draft: phaseDraft } :
+      { type: "create-phase-portrait", draft: phaseDraft } :
+    mode === "time-ode" ? editingId ? { type: "edit-time-ode", objectId: editingId, draft: timeOdeDraft } :
+      { type: "create-time-ode", draft: timeOdeDraft } :
+    mode === "parametric" ? editingId ? { type: "edit-parametric", objectId: editingId, draft: parametricDraft } :
+      { type: "create-parametric", draft: parametricDraft } :
+      editingId ? { type: "edit-polar", objectId: editingId, draft: polarDraft } :
+        { type: "create-polar", draft: polarDraft };
+  const preview = () => {
+    if (errors.length) return;
+    try {
+      setPreviewPlot(mode === "point-series" ? buildGraph2DDraftPlotPreview(document, null, pointPreview!.rows,
+        { ...pointDraft.style, objectId: "draft-point-series" }) :
+        buildGraph2DDraftPlotPreview(document, draftAction()));
+      setMessage(""); setPreviewing(true);
+    } catch (error) { setMessage(String((error as Error).message ?? error)); }
+  };
+  const previewLabel = mode === "explicit" ? draft.label : mode === "parametric" ? parametricDraft.label :
+    mode === "polar" ? polarDraft.label : mode === "implicit" ? implicitDraft.label :
+    mode === "slope-field" ? slopeFieldDraft.label : mode === "trajectory" ? trajectoryDraft.label :
+    mode === "phase-portrait" ? phaseDraft.label : mode === "time-ode" ? timeOdeDraft.label :
+    mode === "inequality" ? inequalityDraft.label : mode === "piecewise" ? piecewiseDraft.label : pointDraft.label;
+  const previewExpressions = mode === "explicit" ? [`y = ${draft.expression}`] :
+    mode === "parametric" ? [`x(t) = ${parametricDraft.xExpression}`, `y(t) = ${parametricDraft.yExpression}`] :
+    mode === "polar" ? [`r(θ) = ${polarDraft.rExpression}`] :
+    mode === "implicit" ? [`F(x,y) = ${implicitDraft.expression} = 0`] :
+    mode === "slope-field" ? [`dy/dx = ${slopeFieldDraft.expression}`] :
+    mode === "trajectory" ? [`Initial point (${trajectoryDraft.seed.x}, ${trajectoryDraft.seed.y})`] :
+    mode === "phase-portrait" ? [`x′ = ${phaseDraft.xDerivative}`, `y′ = ${phaseDraft.yDerivative}`] :
+    mode === "time-ode" ? [`x′ = ${timeOdeDraft.expression}`] :
+    mode === "inequality" ? inequalityDraft.clauses.map(item => `${item.expression} ${item.comparator} 0`) :
+    mode === "piecewise" ? piecewiseDraft.pieces.map(item => `${item.expression} on [${item.domain.min}, ${item.domain.max}]`) :
+      [`${pointPreview?.rows.length ?? 0} data rows`];
+  const previewDraft = mode === "explicit" ? draft : mode === "parametric" ? parametricDraft :
+    mode === "polar" ? polarDraft : mode === "implicit" ? implicitDraft :
+    mode === "slope-field" ? slopeFieldDraft : mode === "trajectory" ? trajectoryDraft :
+    mode === "phase-portrait" ? phaseDraft : mode === "time-ode" ? timeOdeDraft :
+    mode === "inequality" ? inequalityDraft : mode === "piecewise" ? piecewiseDraft : pointDraft;
   const save = () => {
     if (errors.length) return;
     if (mode === "point-series") {
@@ -208,32 +297,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         const action: Graph2DAuthoringAction = editingId ?
           { type: "edit-point-series", objectId: editingId, draft: pointSeries } :
           { type: "create-point-series", draft: pointSeries };
-        if (commit(action)) { setOpen(false); setEditingId(null); setPointDraft(initialPointDraft()); }
+        if (commit(action)) { closeEditor(); setEditingId(null); setPointDraft(initialPointDraft()); }
       } catch (error) { setMessage(String((error as Error).message ?? error)); }
       return;
     }
-    const action: Graph2DAuthoringAction = mode === "explicit" ?
-      editingId ? { type: "edit", objectId: editingId, draft } : { type: "create", draft } :
-      mode === "piecewise" ? editingId ? { type: "edit-piecewise", objectId: editingId, draft: piecewiseDraft } :
-        { type: "create-piecewise", draft: piecewiseDraft } :
-      mode === "inequality" ? editingId ? { type: "edit-inequality", objectId: editingId, draft: inequalityDraft } :
-        { type: "create-inequality", draft: inequalityDraft } :
-      mode === "implicit" ? editingId ? { type: "edit-implicit", objectId: editingId, draft: implicitDraft } :
-        { type: "create-implicit", draft: implicitDraft } :
-      mode === "slope-field" ? editingId ? { type: "edit-slope-field", objectId: editingId, draft: slopeFieldDraft } :
-        { type: "create-slope-field", draft: slopeFieldDraft } :
-      mode === "trajectory" ? editingId ? { type: "edit-trajectory", objectId: editingId, draft: trajectoryDraft } :
-        { type: "create-trajectory", draft: trajectoryDraft } :
-      mode === "phase-portrait" ? editingId ? { type: "edit-phase-portrait", objectId: editingId, draft: phaseDraft } :
-        { type: "create-phase-portrait", draft: phaseDraft } :
-      mode === "time-ode" ? editingId ? { type: "edit-time-ode", objectId: editingId, draft: timeOdeDraft } :
-        { type: "create-time-ode", draft: timeOdeDraft } :
-      mode === "parametric" ? editingId ? { type: "edit-parametric", objectId: editingId, draft: parametricDraft } :
-        { type: "create-parametric", draft: parametricDraft } :
-        editingId ? { type: "edit-polar", objectId: editingId, draft: polarDraft } :
-          { type: "create-polar", draft: polarDraft };
-    if (commit(action)) {
-      setOpen(false); setEditingId(null); setDraft(initialDraft()); setParametricDraft(initialParametricDraft());
+    if (commit(draftAction())) {
+      closeEditor(); setEditingId(null); setDraft(initialDraft()); setParametricDraft(initialParametricDraft());
       setPolarDraft(initialPolarDraft());
       setImplicitDraft(initialImplicitDraft());
       setSlopeFieldDraft(initialSlopeFieldDraft());
@@ -245,7 +314,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       setPiecewiseDraft(initialPiecewiseDraft());
     }
   };
-  return <div ref={authoringRef} className="graph2d-authoring" data-palette={palette}>
+  const chooseType = (event: MouseEvent<HTMLButtonElement>, begin: () => void) => {
+    if (!openerRef.current) openerRef.current = event.currentTarget;
+    begin();
+  };
+  return <div className="graph2d-authoring" data-palette={palette} data-modal-only={placement === "modal-only"}>
+    {placement !== "modal-only" && <>
     <div className="graph2d-left-palette" role="group" aria-label="Graph left panel palette">
       <span>Panel palette</span>
       {(["classic", "geometry"] as const).map((option) => (
@@ -255,17 +329,9 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         </button>
       ))}
     </div>
-    <div className="graph2d-authoring-header"><h2>Functions</h2>
-      <button type="button" onClick={beginCreate} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add function</button>
-      <button type="button" onClick={beginCreateParametric} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add parametric</button>
-      <button type="button" onClick={beginCreatePolar} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add polar</button>
-      <button type="button" onClick={beginCreateImplicit} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add implicit</button>
-      <button type="button" onClick={beginCreateSlopeField} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add slope field</button>
-      <button type="button" onClick={beginCreatePhasePortrait} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add phase portrait</button>
-      <button type="button" onClick={beginCreateTimeOde} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add time-dependent ODE</button>
-      <button type="button" onClick={beginCreateInequality} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add inequality</button>
-      <button type="button" onClick={beginCreatePiecewise} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add piecewise</button>
-      <button type="button" onClick={beginCreatePointSeries} disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add data series</button></div>
+    <div className="graph2d-authoring-header"><h2>Graph objects</h2>
+      <button type="button" onClick={event => { openerRef.current = event.currentTarget; setChoosing(true); }}
+        disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS}>Add Graph</button></div>
     {document.source.objects.length ? <ol className="graph2d-function-list">
       {document.source.objects.map((object, index) => {
         const style = document.display.objects[index]!;
@@ -288,9 +354,6 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
           <div className="graph2d-function-actions">
             <button type="button" aria-label={"Select " + object.label} aria-pressed={document.selection.objectId === object.id}
               onClick={() => onSelect?.(object.id)}>Select</button>
-            <button type="button" aria-label={"Edit " + object.label} onClick={() => beginEdit(object.id)}>Edit</button>
-            {object.kind === "slope-field" && <button type="button" aria-label={`Add trajectory for ${object.label}`}
-              disabled={document.source.objects.length >= GRAPH2D_MAX_OBJECTS} onClick={() => beginCreateTrajectory(object.id)}>Add trajectory</button>}
             <button type="button" aria-label={(style.visible ? "Hide " : "Show ") + object.label}
               onClick={() => commit({ type: "visibility", objectId: object.id })}>{style.visible ? "Hide" : "Show"}</button>
             <details className="graph2d-function-more" onKeyDown={(event) => {
@@ -319,9 +382,50 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
           </div>
         </li>;
       })}
-    </ol> : <p className="graph2d-muted">No functions in this graph.</p>}
+    </ol> : <p className="graph2d-muted">No graph objects yet. Choose Add Graph to begin.</p>}
+    </>}
+    {choosing && createPortal(<div className="graph2d-authoring-overlay" onMouseDown={event => {
+      if (event.target === event.currentTarget) closeEditor();
+    }}><div ref={chooserRef} className="graph2d-authoring-dialog graph2d-type-dialog" role="dialog" aria-modal="true" aria-label="Choose graph type"
+      onKeyDown={handleDialogKeyDown}>
+      <header><div><h2>Add Graph</h2><p>Choose a type, then select a preset or edit its expression.</p></div>
+        <button type="button" aria-label="Close Add Graph" onClick={closeEditor}>×</button></header>
+      <div className="graph2d-type-grid">
+        {([ ["Function", beginCreate], ["Parametric", beginCreateParametric], ["Polar", beginCreatePolar],
+          ["Implicit contour", beginCreateImplicit], ["Slope field", beginCreateSlopeField],
+          ["Phase portrait", beginCreatePhasePortrait], ["Time-dependent ODE", beginCreateTimeOde],
+          ["Inequality", beginCreateInequality], ["Piecewise", beginCreatePiecewise],
+          ["Data series", beginCreatePointSeries] ] as const).map(([label, begin]) =>
+          <button key={label} type="button" onClick={event => chooseType(event, begin)}>{label}</button>)}
+        {document.source.objects.some(object => object.kind === "slope-field") && <button type="button" onClick={event => {
+          const selected = document.source.objects.find(object => object.id === document.selection.objectId && object.kind === "slope-field");
+          const source = selected ?? document.source.objects.find(object => object.kind === "slope-field")!;
+          chooseType(event, () => beginCreateTrajectory(source.id));
+        }}>Trajectory</button>}
+      </div>
+    </div></div>, window.document.body)}
+    {open && createPortal(<div className="graph2d-authoring-overlay" onMouseDown={event => {
+      if (event.target === event.currentTarget) closeEditor();
+    }}><div ref={dialogRef} className="graph2d-authoring-dialog" role="dialog" aria-modal="true"
+      aria-label={editingId ? `Edit ${previewLabel}` : "Create graph"} onKeyDown={handleDialogKeyDown}>
+      <header><div><h2>{editingId ? `Edit ${previewLabel}` : "Add Graph"}</h2>
+        <p>{previewing ? "Review the graph before saving." : "Edit the expression and properties. Formula fields include a live preview."}</p></div>
+        <button type="button" aria-label="Close graph editor" onClick={closeEditor}>×</button></header>
+      {previewing ? <div className="graph2d-editor-preview" aria-label="Graph preview">
+        <h3>{previewLabel}</h3><p>{mode.replaceAll("-", " ")}</p><pre>{previewExpressions.join("\n")}</pre>
+        {previewPlot && <Graph2DDraftPlotPreview preview={previewPlot} />}
+        <dl><dt>Color</dt><dd><span className="graph2d-inspector-swatch" style={{ background: previewDraft.style.color }} />{previewDraft.style.color}</dd>
+          <dt>Visible</dt><dd>{previewDraft.style.visible ? "Yes" : "No"}</dd>
+          {"domain" in previewDraft && <><dt>Domain</dt><dd>{previewDraft.domain.min} to {previewDraft.domain.max}</dd></>}
+        </dl>
+        {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
+        {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
+        <div className="graph2d-function-actions"><button type="button" onClick={() => setPreviewing(false)}>Back to editor</button>
+          <button type="button" disabled={errors.length > 0} onClick={save}>{editingId ? "Save changes" : "Create graph"}</button>
+          <button type="button" onClick={closeEditor}>Cancel</button></div>
+      </div> : <>
     {open && mode === "explicit" && <form className="graph2d-function-editor" aria-label={editingId ? "Edit function" : "New function"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit function" : "New function"}</h3>
       {presetPicker("explicit")}
       <label>Name <input aria-label="Function name" value={draft.label} maxLength={160}
@@ -355,12 +459,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={(event) => setDraft({ ...draft, style: { ...draft.style, visible: event.target.checked } })} /> Visible</label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save function</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "parametric" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit parametric" : "New parametric"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit parametric" : "New parametric"}</h3>
       {presetPicker("parametric")}
       <label>Name <input aria-label="Parametric name" value={parametricDraft.label} maxLength={160}
@@ -398,12 +502,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={(event) => setParametricDraft({ ...parametricDraft, style: { ...parametricDraft.style, visible: event.target.checked } })} /> Visible</label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save parametric</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "polar" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit polar" : "New polar"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit polar" : "New polar"}</h3>
       {presetPicker("polar")}
       <label>Name <input aria-label="Polar name" value={polarDraft.label} maxLength={160}
@@ -438,12 +542,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={(event) => setPolarDraft({ ...polarDraft, style: { ...polarDraft.style, visible: event.target.checked } })} /> Visible</label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save polar</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "slope-field" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit slope field" : "New slope field"}
-      onSubmit={event => { event.preventDefault(); save(); }}>
+      onSubmit={event => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit slope field" : "New slope field"}</h3>
       {presetPicker("slope-field")}
       <p>Direction segments for dy/dx = f(x,y). This field shows local slopes, not solution curves. Linear axes only.</p>
@@ -474,12 +578,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
           style: { ...slopeFieldDraft.style, color: event.target.value } })} /></label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save slope field</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "time-ode" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit time-dependent ODE" : "New time-dependent ODE"}
-      onSubmit={event => { event.preventDefault(); save(); }}>
+      onSubmit={event => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit time-dependent ODE" : "New time-dependent ODE"}</h3>
       {presetPicker("time-ode")}
       <p>Approximate x(t) forward and backward from an initial value. Horizontal axis: time t; vertical axis: state x. Linear axes only.</p>
@@ -512,12 +616,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={event => setTimeOdeDraft({ ...timeOdeDraft, style: { ...timeOdeDraft.style, color: event.target.value } })} /></label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save time-dependent ODE</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "phase-portrait" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit phase portrait" : "New phase portrait"}
-      onSubmit={event => { event.preventDefault(); save(); }}>
+      onSubmit={event => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit phase portrait" : "New phase portrait"}</h3>
       {presetPicker("phase-portrait")}
       <p>Planar system with direction arrows and solution orbits. Linear axes only; each seed integrates forward and backward in time.</p>
@@ -561,12 +665,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={event => setPhaseDraft({ ...phaseDraft, style: { ...phaseDraft.style, color: event.target.value } })} /></label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save phase portrait</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "trajectory" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit trajectory" : "New trajectory"}
-      onSubmit={event => { event.preventDefault(); save(); }}>
+      onSubmit={event => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit trajectory" : "New trajectory"}</h3>
       <p>Numerical solution of the linked slope field in both x directions. Integration stops at field bounds, a singularity, or a work limit.</p>
       <label>Name <input aria-label="Trajectory name" value={trajectoryDraft.label} maxLength={160}
@@ -585,12 +689,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={event => setTrajectoryDraft({ ...trajectoryDraft, style: { ...trajectoryDraft.style, color: event.target.value } })} /></label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save trajectory</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "implicit" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit implicit" : "New implicit"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit implicit contour" : "New implicit contour"}</h3>
       {presetPicker("implicit")}
       <label>Name <input aria-label="Implicit name" value={implicitDraft.label} maxLength={160}
@@ -627,12 +731,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={(event) => setImplicitDraft({ ...implicitDraft, style: { ...implicitDraft.style, visible: event.target.checked } })} /> Visible</label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save implicit</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "inequality" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit inequality" : "New inequality"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit filled region" : "New filled region"}</h3>
       {presetPicker("inequality")}
       <label>Name <input aria-label="Inequality name" value={inequalityDraft.label} maxLength={160}
@@ -686,12 +790,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
           style: { ...inequalityDraft.style, color: event.target.value } })} /></label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save inequality</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "piecewise" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit piecewise function" : "New piecewise function"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit piecewise function" : "New piecewise function"}</h3>
       {presetPicker("piecewise")}
       <label>Name <input aria-label="Piecewise name" value={piecewiseDraft.label} maxLength={160}
@@ -732,12 +836,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
           style: { ...piecewiseDraft.style, color: event.target.value } })} /></label>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save piecewise</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
     {open && mode === "point-series" && <form className="graph2d-function-editor"
       aria-label={editingId ? "Edit data series" : "New data series"}
-      onSubmit={(event) => { event.preventDefault(); save(); }}>
+      onSubmit={(event) => { event.preventDefault(); preview(); }}>
       <h3>{editingId ? "Edit data series" : "New data series"}</h3>
       {presetPicker("point-series")}
       <label>Name <input aria-label="Data series name" value={pointDraft.label} maxLength={160}
@@ -760,9 +864,11 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       </div>
       {errors.length > 0 && <p className="graph2d-draft-error" role="alert">{errors[0]}</p>}
       {message && <p className="graph2d-draft-error" role="alert">{message}</p>}
-      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save data series</button>
-        <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
+      <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Preview</button>
+        <button type="button" onClick={() => { closeEditor(); }}>Cancel</button></div>
     </form>}
+      </>}
+    </div></div>, window.document.body)}
     {presetBrowserMode && <Graph2DAuthoringPresetDialog mode={presetBrowserMode} selectedId={presetId}
       onApply={id => { applyPreset(presetBrowserMode, id); closePresetBrowser(); }} onClose={closePresetBrowser} />}
   </div>;

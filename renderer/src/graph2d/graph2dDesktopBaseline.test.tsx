@@ -50,9 +50,9 @@ describe("Graph2D desktop acceptance baseline", () => {
     const narrow = resolveGraph2DViewport(document.display.viewport, { width: 620, height: 800 });
     expect(wide.xMax - wide.xMin).toBeGreaterThan(narrow.xMax - narrow.xMin);
     const markup = renderToStaticMarkup(<Graph2DAuthoringPanel document={document} />);
-    expect(markup).toContain("<h2>Functions</h2>");
-    for (const label of ["Add function", "Add parametric", "Add polar", "Add implicit", "Add inequality", "Add piecewise", "Add data series"])
-      expect(markup).toContain(`>${label}</button>`);
+    expect(markup).toContain("<h2>Graph objects</h2>");
+    expect(markup).toContain(">Add Graph</button>");
+    expect(markup).not.toContain("graph2d-function-editor");
     expect(markup).not.toContain('tabindex="-1"');
   });
 });

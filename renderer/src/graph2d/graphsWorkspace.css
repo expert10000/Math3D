@@ -95,6 +95,7 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-authoring .graph2d-left-palette button[aria-pressed="true"] { border-color:var(--workspace-control-active-border); background:var(--workspace-control-active-bg); }
 .graph2d-left-palette button:focus-visible { outline:2px solid var(--workspace-control-active-border); outline-offset:2px; }
 .graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.graph2d-authoring[data-modal-only="true"] { display:none; }
 .graph2d-authoring button { border: 1px solid var(--workspace-control-border); border-radius: 7px; background: var(--workspace-control-bg); color:var(--workspace-control-text); padding: 4px 8px; font-weight:600; cursor: pointer; }
 .graph2d-authoring button:hover:not(:disabled) { background: var(--workspace-control-hover-bg); border-color:var(--gallery-card-border-active); }
 .graph2d-authoring button:disabled { cursor: default; opacity: .45; }
@@ -129,9 +130,36 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-function-more:not([open]) .graph2d-function-more-actions { display: none; }
 .graph2d-function-list strong, .graph2d-function-list code { display: block; }
 .graph2d-function-list code { margin-top: 3px; }
+.graph2d-function-summary > div { min-width:0; }
+.graph2d-function-list code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .graph2d-function-list small { display: block; opacity: .7; }
 .graph2d-function-editor { display: grid; gap: 8px; margin-top: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-function-editor h3 { margin: 0; font-size: 15px; }
+.graph2d-authoring-overlay { position:fixed; inset:0; z-index:3900; display:grid; place-items:center; box-sizing:border-box; padding:16px; background:#0f172a99; }
+.graph2d-authoring-dialog { box-sizing:border-box; width:min(820px,100%); max-height:calc(100vh - 32px); overflow:auto; padding:22px; border:1px solid var(--workspace-control-border); border-radius:14px; background:var(--panel-strong); color:var(--text); box-shadow:0 18px 56px #0005; }
+.graph2d-authoring-dialog > header { display:flex; justify-content:space-between; align-items:start; gap:12px; padding-bottom:12px; border-bottom:1px solid var(--workspace-control-border); }
+.graph2d-authoring-dialog > header h2 { margin:0; font-size:20px; }
+.graph2d-authoring-dialog > header p { margin:4px 0 0; color:var(--muted); font-size:13px; }
+.graph2d-authoring-dialog button { border:1px solid var(--workspace-control-border); border-radius:7px; background:var(--workspace-control-bg); color:var(--workspace-control-text); padding:6px 10px; font-weight:600; cursor:pointer; }
+.graph2d-authoring-dialog button:disabled { opacity:.5; cursor:default; }
+.graph2d-authoring-dialog button:focus-visible { outline:2px solid var(--workspace-control-active-border); outline-offset:2px; }
+.graph2d-authoring-dialog .graph2d-function-editor { margin-top:12px; border:0; padding:0; }
+.graph2d-type-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-top:18px; }
+.graph2d-type-grid button { min-height:60px; text-align:left; }
+.graph2d-editor-preview { display:grid; gap:10px; margin-top:16px; }
+.graph2d-editor-preview h3, .graph2d-editor-preview p { margin:0; }
+.graph2d-editor-preview pre { margin:0; padding:14px; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--workspace-section-bg); white-space:pre-wrap; overflow-wrap:anywhere; }
+.graph2d-draft-plot-preview { --graph2d-chart-bg:#f8fbff; --graph2d-grid-minor:#dfe9f5; --graph2d-grid-major:#c8d9eb; --graph2d-axis-color:#647b94; position:relative; height:320px; overflow:hidden; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--graph2d-chart-bg); }
+html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231; --graph2d-grid-minor:#35465a; --graph2d-grid-major:#4a6179; --graph2d-axis-color:#adc2db; }
+.graph2d-draft-plot-preview .graph2d-plot { position:absolute; inset:0; }
+.graph2d-draft-plot-preview > p { position:absolute; inset:auto 12px 12px; margin:0; padding:8px 10px; border-radius:6px; background:var(--panel-strong); }
+.graph2d-draft-preview-diagnostics { padding:10px 12px; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--workspace-section-bg); }
+.graph2d-draft-preview-diagnostics h4 { margin:0 0 7px; }
+.graph2d-editor-preview .graph2d-draft-preview-diagnostics dl { grid-template-columns:minmax(100px,max-content) minmax(0,1fr); }
+.graph2d-editor-preview dl { display:grid; grid-template-columns:max-content 1fr; gap:5px 16px; margin:0; font-size:13px; }
+.graph2d-editor-preview dt { font-weight:700; }
+.graph2d-editor-preview dd { margin:0; }
+.graph2d-editor-preview .graph2d-function-actions { justify-content:flex-end; }
 .graph2d-preset-picker { display:grid; gap:3px; padding:9px; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--workspace-section-bg); }
 .graph2d-preset-picker label { margin:0; font-weight:700; color:var(--workspace-control-text); }
 .graph2d-preset-picker select { min-height:34px; padding:5px 8px; }
@@ -217,6 +245,12 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-formula-preview-seed { fill:var(--workspace-control-active-border); stroke:var(--workspace-control-bg); stroke-width:1.5; }
 .graph2d-formula-preview-axis { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; font:11px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .graph2d-formula-preview small { color:var(--muted); line-height:1.4; }
+.graph2d-preview-inspector { min-width:0; padding:10px 12px; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--panel-strong); }
+.graph2d-preview-inspector h4 { margin:0 0 8px; font-size:13px; }
+.graph2d-preview-inspector dl { display:grid; grid-template-columns:minmax(90px,max-content) minmax(0,1fr); gap:5px 12px; margin:0; font-size:12px; }
+.graph2d-preview-inspector dt { font-weight:700; }
+.graph2d-preview-inspector dd { margin:0; overflow-wrap:anywhere; }
+.graph2d-preview-inspector small { display:block; margin-top:8px; }
 .graph2d-formula-field-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; }
 .graph2d-formula-field-grid span { display:grid; place-items:center; min-height:39px; padding:2px; border:1px solid var(--workspace-control-border); border-radius:4px; font:10px ui-monospace, SFMono-Regular, Consolas, monospace; color:var(--text); overflow:hidden; }
 .graph2d-formula-dialog-actions { position:sticky; bottom:0; z-index:1; display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--workspace-control-border); padding-top:12px; background:var(--panel-strong); }

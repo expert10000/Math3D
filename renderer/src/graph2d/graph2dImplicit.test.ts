@@ -48,4 +48,23 @@ describe("Graph2D implicit contours", () => {
     expect(singular.diagnostics.some((entry) => entry.code === "invalid-sample")).toBe(true);
     expect(singular.segments).toHaveLength(0);
   });
+
+  it("adaptively finds a small loop inside same-sign coarse cells", () => {
+    const object = create("(x-0.031)^2+(y-0.031)^2-0.0001").source.objects[0]!;
+    if (object.kind !== "implicit") throw new Error("Expected implicit contour.");
+    const artifact = sampleGraph2DImplicit({ object, viewport, ...size, policy });
+    expect(artifact.samplesEvaluated).toBeLessThanOrEqual(policy.maxSamples);
+    expect(artifact.refinedCells).toBeGreaterThan(0);
+    expect(artifact.segments.length).toBeGreaterThan(0);
+    expect(artifact.segments.flatMap(segment => segment.points).some(point => Math.hypot(point.x - .031, point.y - .031) < .03)).toBe(true);
+  });
+
+  it("reports unresolved tangencies without inventing a contour", () => {
+    const object = create("(x-0.03)^2+(y-0.03)^2").source.objects[0]!;
+    if (object.kind !== "implicit") throw new Error("Expected implicit contour.");
+    const artifact = sampleGraph2DImplicit({ object, viewport, ...size, policy });
+    expect(artifact.refinedCells).toBeGreaterThan(0);
+    expect(artifact.unresolvedCells).toBeGreaterThan(0);
+    expect(artifact.converged).toBe(false);
+  });
 });

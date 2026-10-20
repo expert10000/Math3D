@@ -52,6 +52,38 @@ export function insertGraph2DFormulaFunction(value: string, start: number, end: 
 const formatValue = (value: number | null) => value === null ? "undefined" :
   Math.abs(value) < 1e-10 ? "0" : Number(value.toPrecision(4)).toString();
 
+function FormulaPreviewInspector({ preview }: { preview: FormulaPreview }) {
+  const status = preview.kind === "error" ? preview.source === "parser" ? "Invalid expression" : "Domain or sampling error" :
+    "incomplete" in preview && preview.incomplete ? "Incomplete" : "Valid in sampled domain";
+  const sampling = preview.kind === "contour" ? `${preview.samplesEvaluated} evaluations · ${preview.refinedCells} refined cells` :
+    preview.kind === "diagram" ? `${preview.samplesEvaluated} evaluations` :
+      preview.kind === "curve" ? `${preview.points.length} evaluations` :
+        preview.kind === "field" ? `${preview.cells.length * preview.cells[0]!.length} evaluations` : "Unavailable";
+  const viewport = preview.kind === "curve" ? `${preview.axis}: ${formatValue(preview.range.min)} to ${formatValue(preview.range.max)}` :
+    "ranges" in preview ? preview.axes.map((axis, index) =>
+      `${axis}: ${formatValue(preview.ranges[index]!.min)} to ${formatValue(preview.ranges[index]!.max)}`).join(" · ") : "Unavailable";
+  return <section className="graph2d-preview-inspector" aria-label="Preview diagnostics">
+    <h4>Preview Inspector</h4>
+    <dl>
+      <dt>Expression</dt><dd>{status}</dd>
+      {preview.kind === "contour" && <>
+        <dt>Contour</dt><dd>{preview.closedBranches} closed · {preview.openBranches} open · {preview.clippedBranches} clipped
+          {preview.unresolvedCells > 0 ? ` · ${preview.unresolvedCells} uncertain cells` : ""}</dd>
+        <dt>Components</dt><dd>{preview.segments.length} sampled {preview.segments.length === 1 ? "branch" : "branches"}</dd>
+        <dt>Ambiguity</dt><dd>{preview.ambiguousCells} ambiguous cells · {preview.zeroCandidates} possible zero/tangency points</dd>
+      </>}
+      <dt>Sampling</dt><dd>{sampling}</dd>
+      <dt>Error estimate</dt><dd>{preview.kind === "contour" && preview.resolutionPx > 0 ?
+        `Cell resolution ≤ ${formatValue(preview.resolutionPx)} px; numerical error unbounded` : "Not estimated"}</dd>
+      <dt>Viewport</dt><dd>{viewport}</dd>
+      <dt>Performance</dt><dd>{preview.durationMs === undefined ? "Unavailable" :
+        `${Math.max(0.1, Number(preview.durationMs.toFixed(1)))} ms`}</dd>
+    </dl>
+    {preview.kind === "contour" && <small>Contour topology is sampled. The interval screen covers supported algebraic expressions;
+      unresolved cells and singularities need closer inspection.</small>}
+  </section>;
+}
+
 function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: FormulaPreview; source: string;
   onLocateError: (start: number, end: number) => void }) {
   if (preview.kind === "error") return <section className="graph2d-formula-preview" aria-label="Formula preview">
@@ -61,6 +93,7 @@ function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: Form
       <button type="button" onClick={() => onLocateError(preview.start, preview.end)}>Go to error</button>
       <small>Correct the formula to see a preview and enable Apply.</small></> :
       <small>The expression can still be applied; review its domain before saving.</small>}
+    <FormulaPreviewInspector preview={preview} />
   </section>;
   if (preview.kind === "curve") {
     const span = preview.max - preview.min || 2;
@@ -83,7 +116,8 @@ function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: Form
         <span>{preview.axis} = {formatValue(preview.range.max)}</span></div>
       <small>At midpoint: {formatValue(preview.midpoint)} · sampled range {formatValue(preview.min)} to {formatValue(preview.max)}</small>
       {preview.invalidSamples > 0 && <small className="graph2d-formula-preview-warning">{preview.invalidSamples} sampled value(s) are undefined; gaps are omitted.</small>}
-      <small>Preview samples this formula only; Save in the Graph panel creates the object.</small>
+      <small>Preview samples this formula only; Review the graph editor before saving.</small>
+      <FormulaPreviewInspector preview={preview} />
     </section>;
   }
   if (preview.kind === "contour") {
@@ -107,7 +141,8 @@ function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: Form
       {!preview.segments.length && !preview.incomplete && <small>No zero contour found in this preview domain.</small>}
       {preview.incomplete && <small className="graph2d-formula-preview-warning">Preview reached its work limit; the contour may be incomplete.</small>}
       {preview.invalidSamples > 0 && <small className="graph2d-formula-preview-warning">{preview.invalidSamples} sampled value(s) are undefined; affected contour cells are omitted.</small>}
-      <small>{preview.samplesEvaluated} bounded samples · Save in the Graph panel creates the object.</small>
+      <small>{preview.samplesEvaluated} bounded samples · Review the graph editor before saving.</small>
+      <FormulaPreviewInspector preview={preview} />
     </section>;
   }
   if (preview.kind === "diagram") {
@@ -145,7 +180,8 @@ function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: Form
         <small>No visible result in this preview domain.</small>}
       {preview.incomplete && <small className="graph2d-formula-preview-warning">Preview is incomplete; check work limits and undefined samples.</small>}
       {preview.invalidSamples > 0 && <small className="graph2d-formula-preview-warning">{preview.invalidSamples} sampled value(s) are undefined.</small>}
-      <small>{preview.samplesEvaluated} bounded samples · Save in the Graph panel creates the object.</small>
+      <small>{preview.samplesEvaluated} bounded samples · Review the graph editor before saving.</small>
+      <FormulaPreviewInspector preview={preview} />
     </section>;
   }
   const [horizontal, vertical] = preview.axes;
@@ -168,7 +204,8 @@ function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: Form
       <span>{vertical}: {formatValue(preview.ranges[1].min)} to {formatValue(preview.ranges[1].max)}</span></div>
     <small>Blue: positive · rose: negative · gray: zero. At midpoint: {formatValue(preview.midpoint)}</small>
     {preview.invalidSamples > 0 && <small className="graph2d-formula-preview-warning">{preview.invalidSamples} sampled value(s) are undefined.</small>}
-    <small>Preview samples this formula only; Save in the Graph panel creates the object.</small>
+    <small>Preview samples this formula only; Review the graph editor before saving.</small>
+    <FormulaPreviewInspector preview={preview} />
   </section>;
 }
 

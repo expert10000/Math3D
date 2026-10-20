@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 
 test("GRA-11.1 authors a slope field and renders bounded direction glyphs", async ({ page }) => {
   await page.route("**/api/worker/**", route => route.fulfill({ status: 503,
@@ -36,16 +37,16 @@ test("GRA-11.2 links an initial-value trajectory and exposes its stop status", a
   await functions.getByRole("button", { name: "Save slope field", exact: true }).click();
   await functions.getByRole("button", { name: "Add trajectory for dy/dx", exact: true }).click();
   await functions.getByLabel("Trajectory initial x", { exact: true }).fill("0");
-  await functions.getByLabel("Trajectory initial y", { exact: true }).fill("1");
-  await functions.getByRole("button", { name: "Save trajectory", exact: true }).click();
+  await graphEditor(page).getByLabel("Trajectory initial y", { exact: true }).fill("1");
+  await saveGraphEditor(page);
   await expect(functions).toContainText("from slope_field_1: y(0) = 1");
   const path = page.locator('[data-graph2d-path="trajectory_1"]');
   await expect.poll(async () => (await path.getAttribute("d") ?? "").match(/L/g)?.length ?? 0).toBeGreaterThan(5);
   await expect(page.locator('[data-graph2d-trajectory-seed="trajectory_1"]')).toHaveCount(1);
   await expect(page.getByRole("complementary", { name: "Graph inspector" }).getByTestId("graph2d-trajectory-stops"))
     .toContainText("Backward: domain-boundary");
-  await functions.getByRole("button", { name: "Edit Solution", exact: true }).click();
-  await functions.getByLabel("Trajectory initial y", { exact: true }).fill("2");
-  await functions.getByRole("button", { name: "Save trajectory", exact: true }).click();
+  await editGraph(page, "Solution");
+  await graphEditor(page).getByLabel("Trajectory initial y", { exact: true }).fill("2");
+  await saveGraphEditor(page);
   await expect(functions).toContainText("y(0) = 2");
 });

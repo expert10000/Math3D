@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 import { resolve } from "node:path";
 const { getGraph2DPresetCatalog, getGraph2DInteractivePreset, getGraph2DInteractivePresetGuidance } = require(resolve("packages/core/src/index.ts"));
 
@@ -58,13 +59,13 @@ test("Gallery Open returns to current/preserved edited copies; fresh copies stay
   await page.getByTestId("graph-gallery-open").click(); await gallery.getByLabel("Search graphs").fill("Two slopes");
   await gallery.getByRole("button", { name: "Open Two slopes", exact: true }).click();
   const id = (await checkpoint(page)).identity.id, functions = page.getByLabel("Graph functions");
-  await functions.getByRole("button", { name: "Edit Unit slope", exact: true }).click();
-  await functions.getByLabel("Function expression").fill("3*x"); await functions.getByRole("button", { name: "Save function", exact: true }).click();
+  await editGraph(page, "Unit slope");
+  await graphEditor(page).getByLabel("Function expression").fill("3*x"); await saveGraphEditor(page);
   for (let i = 0; i < 3; i++) {
     await page.getByTestId("graph-gallery-open").click(); await gallery.getByLabel("Search graphs").fill("Two slopes");
     await gallery.getByRole("button", { name: "Open Two slopes", exact: true }).click();
-    await functions.getByRole("button", { name: "Edit Unit slope", exact: true }).click(); await expect(functions.getByLabel("Function expression")).toHaveValue("3*x");
-    await functions.getByRole("button", { name: "Cancel", exact: true }).click();
+    await editGraph(page, "Unit slope"); await expect(graphEditor(page).getByLabel("Function expression")).toHaveValue("3*x");
+    await graphEditor(page).getByRole("button", { name: "Cancel", exact: true }).click();
   }
   await page.getByTestId("graph-gallery-open").click(); await gallery.getByRole("button", { name: "Open Lissajous loops", exact: true }).click();
   await page.getByTestId("graph-gallery-open").click(); await gallery.getByLabel("Search graphs").fill("Two slopes");

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
 test("Fit selection frames the unit circle and Fit all includes the ellipse without toolbar scrolling", async () => {
   const app = await launchSurfaceApp();
@@ -52,12 +53,12 @@ test("Graph worker replacement, settled rendering and unmount leave no live work
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function", exact: true }).click();
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
     for (const expression of ["sin(1000*x)", "1/x", "x^3", "7*x"]) {
-      await functions.getByRole("button", { name: "Edit f", exact: true }).click();
-      await functions.getByLabel("Function expression").fill(expression);
-      await functions.getByRole("button", { name: "Save function", exact: true }).click();
+      await editGraph(app.page, "f");
+      await graphEditor(app.page).getByLabel("Function expression").fill(expression);
+      await saveGraphEditor(app.page);
     }
     const path = app.page.locator('[data-graph2d-path="function_1"]');
     await expect(path).toHaveAttribute("d", /[ML]/);
@@ -83,8 +84,8 @@ test("Graph promotions preview, create, locate, protect edits, fork, and reopen 
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function", exact: true }).click();
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
     const panel = app.page.getByLabel("Graph inspector").getByTestId("graph2d-promotions");
     await panel.getByRole("button", { name: "Preview promotion" }).click();
     await expect(panel.getByTestId("promotion-geometry").locator("canvas")).toBeVisible();
@@ -105,9 +106,9 @@ test("Graph promotions preview, create, locate, protect edits, fork, and reopen 
     await expect(target.getByTestId("promoted-document-status")).toContainText("target edited");
     await expect(target.getByRole("button", { name: "Regenerate target" })).toBeDisabled();
     await target.getByRole("button", { name: "Locate graph source" }).click();
-    await functions.getByRole("button", { name: "Edit f", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("2*x");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(app.page, "f");
+    await graphEditor(app.page).getByLabel("Function expression").fill("2*x");
+    await saveGraphEditor(app.page);
     await expect(panel.getByTestId("promotion-source-status")).toHaveText("stale");
     await panel.getByRole("button", { name: "Locate target" }).click();
     await expect(target.getByLabel("Target y expression")).toHaveValue("3*x");
@@ -193,8 +194,8 @@ test("Graphs left panel palette matches Geometry controls and persists without c
     const classic = functions.getByTestId("graph2d-left-palette-classic");
     const geometry = functions.getByTestId("graph2d-left-palette-geometry");
     await expect(classic).toHaveAttribute("aria-pressed", "true");
-    await functions.getByRole("button", { name: "Add function", exact: true }).click();
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
     const curve = app.page.locator('[data-graph2d-path="function_1"]');
     await expect(curve).toHaveAttribute("stroke", /#[0-9a-f]{6}/i);
     const stroke = await curve.getAttribute("stroke");
@@ -224,8 +225,8 @@ test("Graphs uses desktop side panels and compact controls on narrow windows", a
     await app.page.setViewportSize({ width: 620, height: 800 });
     await expect(app.page.getByLabel("Graph functions")).toBeHidden();
     await expect(app.page.getByLabel("Graph inspector")).toBeHidden();
-    await expect(app.page.getByText("Functions (0)")).toBeVisible();
-    await app.page.getByText("Functions (0)").click();
+    await expect(app.page.getByText("Graph objects (0)")).toBeVisible();
+    await app.page.getByText("Graph objects (0)").click();
     await expect(app.page.getByLabel("Empty graph scene")).toBeVisible();
   } finally {
     await closeSurfaceApp(app);
@@ -269,20 +270,20 @@ test("Graphs authors, validates, styles, reorders, hides, and undoes functions",
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const panel = app.page.getByLabel("Graph functions");
-    await panel.getByRole("button", { name: "Add function" }).click();
-    await panel.getByLabel("Function name").fill("Parabola");
-    await panel.getByLabel("Function expression").fill("sin(");
-    await expect(panel.getByRole("button", { name: "Save function" })).toBeDisabled();
-    await expect(panel.getByRole("alert")).toBeVisible();
-    await panel.getByLabel("Function expression").fill("x^2");
-    await panel.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function name").fill("Parabola");
+    await graphEditor(app.page).getByLabel("Function expression").fill("sin(");
+    await expect(graphEditor(app.page).getByRole("button", { name: "Preview" })).toBeDisabled();
+    await expect(graphEditor(app.page).getByRole("alert")).toBeVisible();
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(app.page);
     await expect(panel.locator('[data-graph2d-id="function_1"]')).toContainText("Parabola");
     await expect(app.page.locator('[data-graph2d-path="function_1"]')).toBeVisible();
-    await panel.getByRole("button", { name: "Edit Parabola" }).click();
-    await panel.getByLabel("Function name").fill("Quadratic");
-    await panel.getByLabel("Line style").selectOption("dotted");
-    await panel.getByLabel("Line width").fill("4");
-    await panel.getByRole("button", { name: "Save function" }).click();
+    await editGraph(app.page, "Parabola");
+    await graphEditor(app.page).getByLabel("Function name").fill("Quadratic");
+    await graphEditor(app.page).getByLabel("Line style").selectOption("dotted");
+    await graphEditor(app.page).getByLabel("Line width").fill("4");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("stroke-dasharray", "2 4");
     await panel.getByLabel("More actions for Quadratic").click();
     await panel.getByRole("button", { name: "Duplicate Quadratic" }).click();
@@ -314,8 +315,8 @@ test("Graphs selects a curve by click, locates its probe, and clears selection",
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const panel = app.page.getByLabel("Graph functions");
-    await panel.getByRole("button", { name: "Add function" }).click();
-    await panel.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
     const viewer = app.page.getByTestId("main-viewer");
     const point = await app.page.locator('[data-graph2d-path="function_1"]').evaluate((path) => {
       const curve = path as SVGPathElement;
@@ -363,9 +364,9 @@ test("Graphs selects source-linked zeros and refreshes extrema after editing", a
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function expression").fill("x^2");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(app.page);
     const inspector = app.page.getByLabel("Graph inspector");
     const results = inspector.getByTestId("graph2d-critical-points");
     await expect(results.getByRole("button", { name: /Select zero at x/ }).first()).toBeVisible();
@@ -373,9 +374,9 @@ test("Graphs selects source-linked zeros and refreshes extrema after editing", a
     await expect(results.getByRole("button", { name: /Select inflection at x/ })).toHaveCount(0);
     await results.getByRole("button", { name: /Select zero at x/ }).first().click();
     await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("0.00000");
-    await functions.getByRole("button", { name: "Edit f" }).click();
-    await functions.getByLabel("Function expression").fill("x^3");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await editGraph(app.page, "f");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^3");
+    await saveGraphEditor(app.page);
     await expect(results.getByRole("button", { name: /Select inflection at x/ }).first()).toBeVisible();
     await expect(results.getByRole("button", { name: /Select minimum at x/ })).toHaveCount(0);
   } finally {
@@ -390,9 +391,9 @@ test("Graphs interval table and plot markers share the same analysis result", as
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function expression").fill("x^2");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(app.page);
     const inspector = app.page.getByLabel("Graph inspector");
     const table = inspector.getByTestId("graph2d-intervals");
     await expect(table).toContainText("decreasing");
@@ -413,9 +414,9 @@ test("Graphs integrates a selected interval and omits fill across a singularity"
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function expression").fill("x");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x");
+    await saveGraphEditor(app.page);
     const area = app.page.getByLabel("Graph inspector").getByTestId("graph2d-area");
     await area.getByRole("button", { name: "Integrate interval" }).click();
     await expect(area.getByTestId("graph2d-area-result")).toContainText("signed area: 0.00000000");
@@ -425,9 +426,9 @@ test("Graphs integrates a selected interval and omits fill across a singularity"
     await expect(result).toContainText("absolute area: 1.00000000");
     await expect(app.page.getByTestId("graph2d-area-overlay")).toHaveAttribute("data-result-id",
       (await result.getAttribute("data-result-id"))!);
-    await functions.getByRole("button", { name: "Edit f" }).click();
-    await functions.getByLabel("Function expression").fill("1/x");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await editGraph(app.page, "f");
+    await graphEditor(app.page).getByLabel("Function expression").fill("1/x");
+    await saveGraphEditor(app.page);
     await expect(result).toContainText("Unavailable over full interval");
     await expect(result).toContainText("skipped");
   } finally {
@@ -442,13 +443,13 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function expression").fill("x^2");
-    await functions.getByRole("button", { name: "Save function" }).click();
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function name").fill("g");
-    await functions.getByLabel("Function expression").fill("1");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(app.page);
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function name").fill("g");
+    await graphEditor(app.page).getByLabel("Function expression").fill("1");
+    await saveGraphEditor(app.page);
     await functions.getByRole("button", { name: "Select f" }).click();
     const inspector = app.page.getByLabel("Graph inspector");
     const section = inspector.getByTestId("graph2d-intersections");
@@ -477,15 +478,15 @@ test("Graphs measures arc length and withholds a singular full-interval value", 
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function expression").fill("x");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x");
+    await saveGraphEditor(app.page);
     const length = app.page.getByLabel("Graph inspector").getByTestId("graph2d-arc-length");
     await length.getByRole("button", { name: "Measure arc length" }).click();
     await expect(length.getByTestId("graph2d-arc-length-result")).toContainText("2.82842712");
-    await functions.getByRole("button", { name: "Edit f" }).click();
-    await functions.getByLabel("Function expression").fill("1/x");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await editGraph(app.page, "f");
+    await graphEditor(app.page).getByLabel("Function expression").fill("1/x");
+    await saveGraphEditor(app.page);
     await expect(length.getByTestId("graph2d-arc-length-result")).toContainText("Unavailable over full interval");
   } finally {
     await closeSurfaceApp(app);
@@ -499,19 +500,19 @@ test("Graphs authors a parametric curve and keeps its parameter in the probe", a
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add parametric" }).click();
-    await functions.getByLabel("Parametric name").fill("loop");
-    await functions.getByLabel("Parametric x expression").fill("sin(t)");
-    await functions.getByLabel("Parametric y expression").fill("sin(2*t)");
-    await functions.getByRole("button", { name: "Save parametric" }).click();
+    await openGraphType(app.page, "Parametric");
+    await graphEditor(app.page).getByLabel("Parametric name").fill("loop");
+    await graphEditor(app.page).getByLabel("Parametric x expression").fill("sin(t)");
+    await graphEditor(app.page).getByLabel("Parametric y expression").fill("sin(2*t)");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-path="parametric_1"]')).toHaveAttribute("d", /[ML]/);
     await functions.getByRole("button", { name: "Select loop" }).click();
     const inspector = app.page.getByLabel("Graph inspector");
     await expect(inspector.getByTestId("graph2d-probe-parameter")).toBeVisible();
     await expect(inspector).toContainText("x(t) = sin(t)");
-    await functions.getByRole("button", { name: "Edit loop" }).click();
-    await functions.getByLabel("Parametric y expression").fill("2*sin(2*t)");
-    await functions.getByRole("button", { name: "Save parametric" }).click();
+    await editGraph(app.page, "loop");
+    await graphEditor(app.page).getByLabel("Parametric y expression").fill("2*sin(2*t)");
+    await saveGraphEditor(app.page);
     await expect(inspector).toContainText("y(t) = 2*sin(2*t)");
   } finally {
     await closeSurfaceApp(app);
@@ -525,9 +526,9 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add polar" }).click();
-    await functions.getByLabel("Polar radius expression").fill("-2");
-    await functions.getByRole("button", { name: "Save polar" }).click();
+    await openGraphType(app.page, "Polar");
+    await graphEditor(app.page).getByLabel("Polar radius expression").fill("-2");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-path="polar_1"]')).toHaveAttribute("d", /[ML]/);
     await expect(app.page.getByTestId("app-status-bar")).toContainText("Polar curve · Cartesian grid");
     await expect(app.page.getByLabel("Empty graph scene")).toHaveCount(0);
@@ -552,9 +553,9 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await expect(inspector.getByTestId("graph2d-probe-parameter")).toBeVisible();
     await expect(inspector.getByTestId("graph2d-probe-radius")).toContainText("-2.0000000");
     await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("-2.00000");
-    await functions.getByRole("button", { name: "Edit r" }).click();
-    await functions.getByLabel("Polar radius expression").fill("1+cos(theta)");
-    await functions.getByRole("button", { name: "Save polar" }).click();
+    await editGraph(app.page, "r");
+    await graphEditor(app.page).getByLabel("Polar radius expression").fill("1+cos(theta)");
+    await saveGraphEditor(app.page);
     await expect(inspector).toContainText("r(θ) = 1+cos(theta)");
     if (await app.page.locator("details.graph2d-toolbar-menu").getAttribute("open") === null)
       await app.page.locator("details.graph2d-toolbar-menu summary").click();
@@ -572,17 +573,17 @@ test("Graphs authors and probes an implicit contour", async () => {
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add implicit" }).click();
-    await functions.getByLabel("Implicit expression").fill("x^2+y^2-1");
-    await functions.getByRole("button", { name: "Save implicit" }).click();
+    await openGraphType(app.page, "Implicit contour");
+    await graphEditor(app.page).getByLabel("Implicit expression").fill("x^2+y^2-1");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-path="implicit_1"]')).toHaveAttribute("d", /[ML]/);
     await functions.getByRole("button", { name: "Select contour" }).click();
     const inspector = app.page.getByLabel("Graph inspector");
     await expect(inspector).toContainText("F(x,y) = x^2+y^2-1 = 0");
     await expect(inspector.getByTestId("graph2d-probe-coordinates")).toBeVisible();
-    await functions.getByRole("button", { name: "Edit contour" }).click();
-    await functions.getByLabel("Implicit expression").fill("x^2+y^2-4");
-    await functions.getByRole("button", { name: "Save implicit" }).click();
+    await editGraph(app.page, "contour");
+    await graphEditor(app.page).getByLabel("Implicit expression").fill("x^2+y^2-4");
+    await saveGraphEditor(app.page);
     await expect(inspector).toContainText("F(x,y) = x^2+y^2-4 = 0");
   } finally { await closeSurfaceApp(app); }
 });
@@ -594,13 +595,13 @@ test("Graphs fills an inequality and distinguishes strict from inclusive boundar
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add inequality" }).click();
-    await functions.getByLabel("Region expression 1").fill("x");
-    await functions.getByLabel("Region comparison 1").selectOption(">");
-    await functions.getByRole("button", { name: "Add condition" }).click();
-    await functions.getByLabel("Region expression 2").fill("y");
-    await functions.getByLabel("Region comparison 2").selectOption(">=");
-    await functions.getByRole("button", { name: "Save inequality" }).click();
+    await openGraphType(app.page, "Inequality");
+    await graphEditor(app.page).getByLabel("Region expression 1").fill("x");
+    await graphEditor(app.page).getByLabel("Region comparison 1").selectOption(">");
+    await graphEditor(app.page).getByRole("button", { name: "Add condition" }).click();
+    await graphEditor(app.page).getByLabel("Region expression 2").fill("y");
+    await graphEditor(app.page).getByLabel("Region comparison 2").selectOption(">=");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-region="inequality_1"]')).toHaveAttribute("d", /M/);
     await expect(app.page.locator('[data-graph2d-path="inequality_1"][data-boundary-strict="true"]'))
       .toHaveAttribute("stroke-dasharray", "6 5");
@@ -618,22 +619,22 @@ test("Graphs previews a point table and plots it alongside a function", async ()
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByRole("button", { name: "Save function" }).click();
-    await functions.getByRole("button", { name: "Add data series" }).click();
-    await functions.getByLabel("Data series import").fill("x,y\n0,0\n1,1\n2,NA\n3,4");
-    await expect(functions.getByTestId("graph2d-import-preview")).toContainText("4 rows · 1 missing y");
-    await functions.getByLabel("Data series mode").selectOption("line");
-    await functions.getByRole("button", { name: "Save data series" }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
+    await openGraphType(app.page, "Data series");
+    await graphEditor(app.page).getByLabel("Data series import").fill("x,y\n0,0\n1,1\n2,NA\n3,4");
+    await expect(graphEditor(app.page).getByTestId("graph2d-import-preview")).toContainText("4 rows · 1 missing y");
+    await graphEditor(app.page).getByLabel("Data series mode").selectOption("line");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("d", /[ML]/);
     await expect(app.page.locator('[data-graph2d-series-markers="series_1"] circle')).toHaveCount(3);
     await functions.getByRole("button", { name: "Select data" }).click();
     const inspector = app.page.getByLabel("Graph inspector");
     await expect(inspector.getByTestId("graph2d-table-status")).toContainText("ready");
     await expect(inspector.getByTestId("graph2d-probe-row")).toContainText("row_");
-    await functions.getByRole("button", { name: "Edit data" }).click();
-    await functions.getByLabel("Data series mode").selectOption("points");
-    await functions.getByRole("button", { name: "Save data series" }).click();
+    await editGraph(app.page, "data");
+    await graphEditor(app.page).getByLabel("Data series mode").selectOption("points");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-series-markers="series_1"] circle')).toHaveCount(3);
   } finally { await closeSurfaceApp(app); }
 });
@@ -645,17 +646,17 @@ test("Graphs authors, edits, and probes piecewise domains without joining bounda
     await app.page.setViewportSize({ width: 1440, height: 850 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add piecewise" }).click();
-    await expect(functions.getByLabel("Piece 1 expression")).toHaveValue("-x");
-    await expect(functions.getByLabel("Piece 2 expression")).toHaveValue("x");
-    await functions.getByRole("button", { name: "Save piecewise" }).click();
+    await openGraphType(app.page, "Piecewise");
+    await expect(graphEditor(app.page).getByLabel("Piece 1 expression")).toHaveValue("-x");
+    await expect(graphEditor(app.page).getByLabel("Piece 2 expression")).toHaveValue("x");
+    await saveGraphEditor(app.page);
     await expect(app.page.locator('[data-graph2d-path="piecewise_1"]')).toHaveAttribute("d", /M.*M/);
     await expect(app.page.locator('[data-graph2d-endpoint="piecewise_1"][data-endpoint-open="true"]')).toHaveCount(1);
     await functions.getByRole("button", { name: "Select piecewise" }).click();
     await expect(app.page.getByLabel("Graph inspector")).toContainText("-x on [-10, 0)");
-    await functions.getByRole("button", { name: "Edit piecewise" }).click();
-    await functions.getByLabel("Piece 2 expression").fill("2*x");
-    await functions.getByRole("button", { name: "Save piecewise" }).click();
+    await editGraph(app.page, "piecewise");
+    await graphEditor(app.page).getByLabel("Piece 2 expression").fill("2*x");
+    await saveGraphEditor(app.page);
     await expect(app.page.getByLabel("Graph inspector")).toContainText("2*x on [0, 10]");
   } finally { await closeSurfaceApp(app); }
 });

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 // Playwright's source transformer loads these workspace packages; their types are checked by the renderer/mobile gates.
 const { parseWorkspaceProjectHandoff } = require(resolve("packages/core/src/index.ts"));
 const { importMobileGraph, readMobileGraph, updateStoredMobileGraph } = require(resolve("apps/mobile/src/models/mobileGraphProject.ts"));
@@ -16,10 +17,10 @@ test("G2D33 desktop file handoff returns mobile h and rejects later desktop dive
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
     for (const [label, expression] of [["f", "x^2"], ["g", "2*x+1"]]) {
-      await functions.getByRole("button", { name: "Add function", exact: true }).click();
-      await functions.getByLabel("Function name").fill(label);
-      await functions.getByLabel("Function expression").fill(expression);
-      await functions.getByRole("button", { name: "Save function", exact: true }).click();
+      await openGraphType(app.page, "Function");
+      await graphEditor(app.page).getByLabel("Function name").fill(label);
+      await graphEditor(app.page).getByLabel("Function expression").fill(expression);
+      await saveGraphEditor(app.page);
     }
     await app.page.getByTestId("kernel-workspace-toggle").click();
     const exportedPath = resolve(`output/graph2d-g33-desktop-${Date.now()}.handoff.json`);
@@ -39,11 +40,11 @@ test("G2D33 desktop file handoff returns mobile h and rejects later desktop dive
     await app.page.getByTestId("graph2d-handoff-import").setInputFiles({ name: "mobile.handoff.json", mimeType: "application/json", buffer: Buffer.from(returned) });
     await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Opened Graph handoff");
     await app.page.getByTestId("kernel-workspace-toggle").click();
-    await expect(functions.getByRole("button", { name: "Edit h", exact: true })).toBeVisible();
+    await expect(functions.getByRole("button", { name: "Select h", exact: true })).toBeVisible();
     await expect(app.page.locator('[data-graph2d-path="function_3"]')).toHaveAttribute("d", /[ML]/);
-    await functions.getByRole("button", { name: "Edit f", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("3*x");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(app.page, "f");
+    await graphEditor(app.page).getByLabel("Function expression").fill("3*x");
+    await saveGraphEditor(app.page);
     await app.page.getByTestId("kernel-workspace-toggle").click();
     await app.page.getByTestId("graph2d-handoff-import").setInputFiles({ name: "stale.handoff.json", mimeType: "application/json", buffer: Buffer.from(returned) });
     await expect(app.page.getByTestId("kernel-workspace-message")).toContainText("Handoff conflict");

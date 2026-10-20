@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
+import { editGraph, graphEditor, saveGraphEditor } from "./graphAuthoring";
 const core = require(resolve("packages/core/src/index.ts"));
 
 const show = async (page: Page) => {
@@ -16,9 +17,10 @@ const select = async (page: Page, id: string) => {
 const expression = (page: Page) => page.getByLabel("Graph functions").locator(".graph2d-function-summary code").first();
 const edit = async (page: Page, source: string) => {
   const functions = page.getByLabel("Graph functions");
-  await functions.getByRole("button", { name: /^Edit / }).first().click();
-  await functions.getByLabel("Function expression").fill(source);
-  await functions.getByRole("button", { name: "Save function", exact: true }).click();
+  const label = await functions.locator(".graph2d-function-summary strong").first().innerText();
+  await editGraph(page, label);
+  await graphEditor(page).getByLabel("Function expression").fill(source);
+  await saveGraphEditor(page);
 };
 const history = async (page: Page, key: string) => {
   await page.getByTestId("graphs-workspace").getByTestId("main-viewer").focus();

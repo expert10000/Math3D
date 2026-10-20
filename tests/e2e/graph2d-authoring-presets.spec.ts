@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { graphEditor, openGraphType } from "./helpers/graphAuthoring";
 
 test("every Graph Add editor can load a distinct editable preset", async () => {
   test.setTimeout(90_000);
@@ -22,8 +23,8 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
       ["Add data series", "New data series", "gaps", "With gap"],
     ] as const;
     for (const [add, formName, preset, label] of cases) {
-      await panel.getByRole("button", { name: add, exact: true }).click();
-      const form = panel.getByRole("form", { name: formName });
+      await openGraphType(page, add === "Add implicit" ? "Implicit contour" : add.slice(4).replace(/^./, letter => letter.toUpperCase()));
+      const form = graphEditor(page).getByRole("form", { name: formName });
       await expect(form).toBeVisible();
       await expect(form.locator(".graph2d-preset-picker")).toBeInViewport();
       await form.getByLabel("Start from preset").selectOption(preset);
@@ -37,6 +38,11 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
         await expect(dialog.getByLabel("Formula preview")).toContainText("Valid expression");
         await expect(dialog.getByRole("img", { name: /Zero contour preview across x, y/ })).toBeVisible();
         await expect(dialog).toContainText("bounded samples");
+        const diagnostics = dialog.getByLabel("Preview diagnostics");
+        await expect(diagnostics).toContainText("Contour");
+        await expect(diagnostics).toContainText("Components");
+        await expect(diagnostics).toContainText("refined cells");
+        await expect(diagnostics).toContainText("Performance");
         await expect(dialog).toContainText("Caret ready");
         expect(await expanded.evaluate(element => getComputedStyle(element).caretColor)).not.toBe("transparent");
         const caret = dialog.locator(".graph2d-formula-visible-caret");
@@ -56,7 +62,7 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
         await dialog.getByRole("button", { name: "Cancel" }).click();
       } else if (["Add slope field", "Add time-dependent ODE", "Add phase portrait", "Add inequality"].includes(add)) {
         await form.getByRole("button", { name: "Expand formula" }).first().click();
-        const diagram = page.getByRole("dialog");
+        const diagram = page.locator(".graph2d-formula-dialog");
         const title = add === "Add slope field" ? "Local slope directions" :
           add === "Add time-dependent ODE" ? "Solution from initial value" :
           add === "Add phase portrait" ? "Phase directions and orbits" : "Combined inequality region";
@@ -66,9 +72,9 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
       }
       await form.getByRole("button", { name: "Cancel" }).click();
     }
-    await expect(panel.getByText("No functions in this graph.")).toBeVisible();
-    await panel.getByRole("button", { name: "Add function", exact: true }).click();
-    const form = panel.getByRole("form", { name: "New function" });
+    await expect(panel.getByText("No graph objects yet.", { exact: false })).toBeVisible();
+    await openGraphType(page, "Function");
+    const form = graphEditor(page).getByRole("form", { name: "New function" });
     const expression = form.getByLabel("Function expression", { exact: true });
     await expression.fill("x");
     await expression.selectText();
@@ -101,6 +107,7 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
     await expect(expression).toHaveValue("x+ 1");
     await form.getByLabel("Start from preset").selectOption("parabola");
     await form.locator('button[type="submit"]').click();
+    await graphEditor(page).getByRole("button", { name: "Create graph" }).click();
     await expect(panel.getByRole("button", { name: "Select Parabola" })).toBeVisible();
   } finally { await closeSurfaceApp(app); }
 });
@@ -112,8 +119,8 @@ test("Graph Add preset browser searches, previews, applies, and preserves the fo
     await resetSurfaceAppState(page);
     await page.getByTestId("workspace-nav-graphs").click();
     const panel = page.getByLabel("Graph functions", { exact: true });
-    await panel.getByRole("button", { name: "Add function", exact: true }).click();
-    const form = panel.getByRole("form", { name: "New function" });
+    await openGraphType(page, "Function");
+    const form = graphEditor(page).getByRole("form", { name: "New function" });
     const browse = form.getByRole("button", { name: "Browse presets" });
     await browse.click();
     const dialog = page.getByRole("dialog", { name: "Function presets" });
@@ -134,7 +141,7 @@ test("Graph Add preset browser searches, previews, applies, and preserves the fo
     await expect(dialog).toBeHidden();
     await expect(browse).toBeFocused();
     await expect(form.getByLabel("Function expression", { exact: true })).toHaveValue("exp(-x^2/2)");
-    await expect(panel.getByText("No functions in this graph.")).toBeVisible();
+    await expect(panel.getByText("No graph objects yet.", { exact: false })).toBeVisible();
   } finally {
     await closeSurfaceApp(app);
   }

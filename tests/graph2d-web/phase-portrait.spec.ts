@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 
 test("GRA-11.3 authors and edits a planar phase portrait with directions and orbits", async ({ page }) => {
   await page.route("**/api/worker/**", route => route.fulfill({ status: 503,
@@ -12,8 +13,8 @@ test("GRA-11.3 authors and edits a planar phase portrait with directions and orb
   const functions = page.getByLabel("Graph functions", { exact: true });
   await functions.getByRole("button", { name: "Add phase portrait", exact: true }).click();
   await expect(functions.getByLabel("Phase portrait x derivative")).toHaveValue("y");
-  await expect(functions.getByLabel("Phase portrait y derivative")).toHaveValue("-x");
-  await functions.getByRole("button", { name: "Save phase portrait", exact: true }).click();
+  await expect(graphEditor(page).getByLabel("Phase portrait y derivative")).toHaveValue("-x");
+  await saveGraphEditor(page);
   await expect(functions).toContainText("x' = y; y' = -x");
   const inspector = page.getByRole("complementary", { name: "Graph inspector" });
   await expect(inspector).toContainText("Adaptive phase portrait");
@@ -26,9 +27,9 @@ test("GRA-11.3 authors and edits a planar phase portrait with directions and orb
   await expect(page.locator('[data-graph2d-nullclines="phase_portrait_1"] path[data-nullcline="y"]')).toHaveAttribute("d", /M/);
   await expect(page.locator('[data-graph2d-equilibrium="phase_portrait_1"]')).toHaveCount(1);
   await expect(page.locator('[data-graph2d-phase-seed^="phase_portrait_1-"]')).toHaveCount(1);
-  await functions.getByRole("button", { name: "Edit Phase portrait", exact: true }).click();
-  await functions.getByLabel("Phase portrait y derivative").fill("x");
-  await functions.getByRole("button", { name: "Save phase portrait", exact: true }).click();
+  await editGraph(page, "Phase portrait");
+  await graphEditor(page).getByLabel("Phase portrait y derivative").fill("x");
+  await saveGraphEditor(page);
   await expect(functions).toContainText("y' = x");
 });
 

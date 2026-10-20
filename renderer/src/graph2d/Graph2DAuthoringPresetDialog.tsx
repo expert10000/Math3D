@@ -80,7 +80,7 @@ export function Graph2DAuthoringPresetDialog({ mode, selectedId, onApply, onClos
             {"domain" in draft && <small>Domain: {draft.domain.min} to {draft.domain.max}</small>}
             {"yDomain" in draft && <small>Y: {draft.yDomain.min} to {draft.yDomain.max}</small>}
             <small>Color <i className="graph2d-preset-swatch" style={{ backgroundColor: draft.style.color }} /> {draft.style.color}</small>
-            <small>This preview fills the Add form; Save creates the graph object.</small>
+            <small>This preset fills the editor. Review the graph before creating it.</small>
           </> : <p>Select a preset to preview its fields.</p>}
         </section>
       </div>

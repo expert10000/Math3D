@@ -7,6 +7,7 @@ import {
   type Graph2DIntegralAnalysis,
   type Graph2DIntersectionAnalysis,
   type Graph2DRegionArtifact,
+  type Graph2DContourArtifact,
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
   type Graph2DTrajectoryArtifact,
@@ -124,6 +125,13 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
+        {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "implicit-contour")
+          .flatMap(item => (item.artifact as Graph2DContourArtifact).zeroCandidates.map((point, index) => {
+            const screen = graph2DWorldToScreen(display.viewport, size, point);
+            return <circle key={`zero-${item.objectId}-${index}`} data-graph2d-zero-candidate={item.objectId}
+              cx={screen.x} cy={screen.y} r={3.5} fill={item.style.color} stroke="white" strokeWidth={1.5}
+              pointerEvents="none"><title>Possible isolated zero or tangency; refine the domain to inspect.</title></circle>;
+          }))}
         {regression?.model !== "spline" && regression && <g aria-hidden="true">
           {regression.curve.slice(1).map((p, i) => {
             const a = regression.curve[i], corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { editGraph, graphEditor, saveGraphEditor } from "./helpers/graphAuthoring";
 
 test("GRA-N08 drags a saved point on its curve, previews dependents, and undoes one release", async () => {
   const app = await launchSurfaceApp();
@@ -80,9 +81,9 @@ test("G2D48 promotes a probe, recomputes a dependent tangent, and undoes source 
     const tangent = page.locator('[data-graph2d-construction="construction_2"]');
     await expect(tangent).toBeVisible();
     const before = await point.getAttribute("cy");
-    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("2*x^2");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(page, "Parabola");
+    await graphEditor(page).getByLabel("Function expression").fill("2*x^2");
+    await saveGraphEditor(page);
     await expect.poll(() => point.getAttribute("cy")).not.toBe(before);
     await expect(tangent).toBeVisible();
     await page.getByTestId("main-viewer").focus();
@@ -144,9 +145,9 @@ test("G2D56 saves curvature at a point and recomputes after source edits", async
     const saved = panel.getByTestId("graph2d-saved-curvature");
     await expect(saved).toContainText("0.70710678");
     await expect(saved).toContainText("increasing-x");
-    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("-x^2");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(page, "Parabola");
+    await graphEditor(page).getByLabel("Function expression").fill("-x^2");
+    await saveGraphEditor(page);
     await expect(saved).toContainText("-0.70710678");
     await page.getByTestId("main-viewer").focus();
     await page.keyboard.press("Control+z");
@@ -178,9 +179,9 @@ test("G2D57 saves an osculating circle and updates its geometry after source edi
     await expect(page.locator('[data-graph2d-construction-center="construction_2"]')).toHaveCount(1);
     await expect(page.locator('[data-graph2d-construction-radius="construction_2"]')).toHaveCount(1);
     const before = await saved.textContent();
-    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("-x^2");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(page, "Parabola");
+    await graphEditor(page).getByLabel("Function expression").fill("-x^2");
+    await saveGraphEditor(page);
     await expect(saved).not.toHaveText(before ?? "");
     await page.getByTestId("main-viewer").focus();
     await page.keyboard.press("Control+z");
@@ -210,21 +211,21 @@ test("G2D49 saves a root candidate and keeps its local identity across source ed
     await page.getByRole("button", { name: "Open A tangent at x = 1", exact: true }).click();
     const functions = page.getByLabel("Graph functions", { exact: true });
     await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
-    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("x^2-1");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(page, "Parabola");
+    await graphEditor(page).getByLabel("Function expression").fill("x^2-1");
+    await saveGraphEditor(page);
     const inspector = page.getByLabel("Graph inspector", { exact: true });
     await inspector.getByRole("button", { name: /Save zero at x -1.* as construction/ }).click();
     const marker = page.locator('[data-graph2d-construction="construction_1"]');
     await expect(marker).toBeVisible();
     const before = await marker.getAttribute("cx");
-    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("x^2-1.21");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(page, "Parabola");
+    await graphEditor(page).getByLabel("Function expression").fill("x^2-1.21");
+    await saveGraphEditor(page);
     await expect.poll(() => marker.getAttribute("cx")).not.toBe(before);
-    await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-    await functions.getByLabel("Function expression").fill("x^2+1");
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await editGraph(page, "Parabola");
+    await graphEditor(page).getByLabel("Function expression").fill("x^2+1");
+    await saveGraphEditor(page);
     await expect(marker).toHaveCount(0);
     await expect(inspector.getByTestId("graph2d-constructions")).toContainText("unavailable");
     await page.getByTestId("main-viewer").focus();

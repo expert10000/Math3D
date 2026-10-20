@@ -271,6 +271,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     } catch (error) { setScientificImportError((error as Error).message); }
   };
   const toolsOpener = useRef<HTMLButtonElement>(null);
+  const [editRequest, setEditRequest] = useState<{ objectId: string; sequence: number } | null>(null);
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
@@ -726,7 +727,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     const screen = graph2DWorldToScreen(viewport, size, document.selection.probe);
     onViewportCommit?.(panGraph2DViewport(viewport, size, { x: size.width / 2 - screen.x, y: size.height / 2 - screen.y }));
   };
-  const functionList = <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
+  const functionList = (placement: "desktop" | "compact" | "modal-only") => <Graph2DAuthoringPanel document={document} onCommit={onAuthoringCommit}
+    placement={placement} editRequest={editRequest}
     palette={leftPalette} onPaletteChange={changeLeftPalette}
     onBrowsePhasePortraits={opener => { galleryOpener.current = opener; setGalleryStartCategory("Differential equations"); setGalleryError(null); setGalleryOpen(true); }}
     onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
@@ -757,6 +759,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       <strong>{inspected.label}</strong>
       <span>{inspected.probe ? `Probe (${inspected.probe.x.toPrecision(5)}, ${inspected.probe.y.toPrecision(5)})` :
         "Select a point or run an analysis below."}</span>
+      <button type="button" disabled={!selectedObject || !onAuthoringCommit} onClick={() => {
+        if (selectedObject) setEditRequest(previous => ({ objectId: selectedObject.id, sequence: (previous?.sequence ?? 0) + 1 }));
+      }}>Edit graph</button>
     </header>
     {constructions}
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
@@ -1151,8 +1156,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       style={{ "--graph2d-left-width": showLeft ? `${dockLayout.left}px` : "0px",
         "--graph2d-right-width": showRight ? `${dockLayout.right}px` : "0px" } as CSSProperties}>
       {showLeft && <aside className="graph2d-panel graph2d-left" data-palette={leftPalette} aria-label="Graph functions">
-        {functionList}
+        {functionList("desktop")}
       </aside>}
+      {!showLeft && functionList("modal-only")}
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}
         data-point-dragging={!!pointDragPreview} data-phase-seed-dragging={!!phaseSeedPreview}
         tabIndex={0} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
@@ -1352,7 +1358,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </div>}
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">
-          {showLeft && <details><summary>Functions ({document.source.objects.length})</summary>{functionList}</details>}
+          {showLeft && <details><summary>Graph objects ({document.source.objects.length})</summary>{functionList("compact")}</details>}
           {showRight && <details><summary>Inspector</summary>{inspector}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}

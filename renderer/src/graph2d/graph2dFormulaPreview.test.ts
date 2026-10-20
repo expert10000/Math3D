@@ -38,6 +38,9 @@ describe("Graph formula preview", () => {
     expect(preview.segments.length).toBeGreaterThan(0);
     expect(preview.segments.flat().some(point => Math.abs(point.x - 2) < .2)).toBe(true);
     expect(preview.samplesEvaluated).toBeLessThanOrEqual(2400);
+    expect(preview.cellsVisited).toBeGreaterThan(0);
+    expect(preview.closedBranches).toBeGreaterThan(0);
+    expect(preview.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it("distinguishes no contour from an undefined formula", () => {
