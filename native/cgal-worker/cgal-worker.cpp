@@ -1,6 +1,7 @@
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Surface_mesh.h>
 #include <CGAL/Polygon_mesh_processing/corefinement.h>
+#include <CGAL/Polygon_mesh_processing/orientation.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_faces.h>
 #include <CGAL/boost/graph/helpers.h>
 #include <CGAL/number_utils.h>
@@ -85,6 +86,7 @@ Mesh decode_mesh(const unsigned char* data, size_t size) {
       throw std::runtime_error("Invalid or non-manifold mesh face");
   }
   if (faces == 0 || !CGAL::is_closed(mesh)) throw std::runtime_error("Boolean inputs must be closed triangle meshes");
+  if (!PMP::is_outward_oriented(mesh)) throw std::runtime_error("Boolean inputs must have outward-oriented faces");
   return mesh;
 }
 std::vector<unsigned char> encode_mesh(Mesh& mesh) {
@@ -125,7 +127,16 @@ std::vector<unsigned char> encode_mesh(Mesh& mesh) {
 }
 std::vector<unsigned char> boolean_mesh(const unsigned char* a_data, size_t a_size,
                                         const unsigned char* b_data, size_t b_size, uint32_t operation) {
-  Mesh a = decode_mesh(a_data, a_size), b = decode_mesh(b_data, b_size), result;
+  const auto decode_operand = [](const unsigned char* data, size_t size, const char* label) -> Mesh {
+    try {
+      return decode_mesh(data, size);
+    } catch (const std::exception& e) {
+      throw std::runtime_error(std::string(label) + ": " + e.what());
+    }
+  };
+  Mesh a = decode_operand(a_data, a_size, "Operand A");
+  Mesh b = decode_operand(b_data, b_size, "Operand B");
+  Mesh result;
   bool ok = false;
   if (operation == 1) ok = PMP::corefine_and_compute_union(a, b, result);
   else if (operation == 2) ok = PMP::corefine_and_compute_difference(a, b, result);
