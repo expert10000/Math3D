@@ -1,0 +1,8 @@
+{
+  "schema": "scientific-scene-bundle/v1",
+  "manifest": {
+    "path": "manifest.json",
+    "bytes": 2060,
+    "sha256": "e117c3692fd2da6d549c7c93981e1a39b4c73609ae9e40ca9e3a63557bfc264c"
+  }
+}

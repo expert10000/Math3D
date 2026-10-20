@@ -594,7 +594,8 @@ declare global {
           datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
             { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
-      openGraphDatasetPreset: (id: "sincos" | "thermal") => ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>;
+      openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "vortexFlow" | "vortexVolume") =>
+        ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>;
       previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
         Promise<{ fingerprint: string; datasetId: string; component: string; varyingAxis: 0 | 1; fixedIndex: number;
           shape: [number, number]; resourceSha256: string; sliceSha256: string; values: number[] }>;

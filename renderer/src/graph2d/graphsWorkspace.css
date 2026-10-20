@@ -193,6 +193,9 @@
 .graph2d-scientific-import small { display: block; font-size: 11px; }
 .graph2d-scientific-import button { min-height: 36px; margin-right: 8px; }
 .graph2d-scientific-import button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.graph2d-scientific-preset-option { padding: 8px 0; border-top: 1px solid var(--border); }
+.graph2d-scientific-preset-option button { width: 100%; text-align: left; }
+.graph2d-scientific-preset-option small { margin-top: 2px; }
 .graph2d-scientific-field, .graph2d-scientific-volume { margin: 12px 0; padding: 10px;
   border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-scientific-field figcaption, .graph2d-scientific-volume figcaption { font-weight: 700; margin-bottom: 8px; }

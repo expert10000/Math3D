@@ -64,6 +64,14 @@ import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
 const SCIENTIFIC_GRID_LINE_COLORS = ["#2563eb", "#ea580c", "#059669", "#9333ea", "#e11d48", "#0d9488"] as const;
+const SCIENTIFIC_FIELD_PRESETS = [
+  { id: "sincos", title: "Sine–cosine grid", detail: "2D scalar · compare lines and inspect the full field" },
+  { id: "thermal", title: "Thermal gradient", detail: "2D scalar · temperature in kelvin across time and distance" },
+  { id: "complexWave", title: "Complex wave packet", detail: "2D complex · real and imaginary wave components" },
+  { id: "vortexFlow", title: "Planar vortex", detail: "2D vector · east and north velocity components" },
+  { id: "vortexVolume", title: "Swirling flow volume", detail: "3D vector · rotate volume and inspect exact planes" },
+] as const;
+type ScientificFieldPresetId = typeof SCIENTIFIC_FIELD_PRESETS[number]["id"];
 
 function readGraph2DLeftPalette(): Graph2DLeftPalette {
   if (typeof window === "undefined") return "classic";
@@ -139,6 +147,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const scientificPreviewEpoch = useRef(0);
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
+  const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
   const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
   const scientificSelected = scientificImport?.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
   const scientificManifest = useMemo(() => scientificImport ? parseScientificSceneManifest(scientificImport.manifestJson) : null,
@@ -213,8 +222,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
-  const openScientificDataset = async (preset?: "sincos" | "thermal") => {
+  const openScientificDataset = async (preset?: ScientificFieldPresetId) => {
     if (!window.scientificScenes?.openGraphDataset) return;
+    setScientificPresetOpen(false);
     resetScientificSlice();
     setScientificImport(null);
     setScientificImportBusy(true); setScientificImportError("");
@@ -1191,10 +1201,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset(); }}>Import scientific dataset</button>
                 <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}
                   title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
-                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset("sincos"); }}>Sine–cosine grid preset</button>
-                <button type="button" disabled={!scientificImportAvailable || !onAuthoringCommit || scientificImportBusy}
-                  title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
-                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open"); void openScientificDataset("thermal"); }}>Thermal gradient grid preset</button>
+                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open");
+                    setScientificPresetOpen(true); }}>Scientific field presets</button>
                 <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
                   parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
                   setScalesOpen(false); closeGrid(true, false);
@@ -1232,6 +1240,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </div>
         {scientificImportBusy && <p className="graph2d-tool-hint" role="status">Verifying scientific dataset…</p>}
         {scientificImportError && !scientificImport && <p className="graph2d-tool-hint" role="alert">{scientificImportError}</p>}
+        {scientificPresetOpen && <div className="graph2d-scientific-import graph2d-scientific-presets" role="dialog"
+          aria-label="Scientific field presets" onPointerDown={event => event.stopPropagation()}>
+          <h3>Scientific field presets</h3>
+          <p>Choose a verified sample dataset. You can preview its components before importing a line.</p>
+          {SCIENTIFIC_FIELD_PRESETS.map(preset => <div key={preset.id} className="graph2d-scientific-preset-option">
+            <button type="button" disabled={scientificImportBusy} onClick={() => void openScientificDataset(preset.id)}>
+              {preset.title}</button><small>{preset.detail}</small>
+          </div>)}
+          <button type="button" onClick={() => setScientificPresetOpen(false)}>Cancel</button>
+        </div>}
         {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>

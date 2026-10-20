@@ -451,7 +451,7 @@ test("Graphs views reverified 3D vector planes and rejects changed source bytes"
   }
 });
 
-test("GRA-10 opens bundled 2D grid presets without a folder picker", async () => {
+test("Graphs opens bundled scalar, complex and vector field presets without a folder picker", async () => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();
   try {
@@ -462,10 +462,13 @@ test("GRA-10 opens bundled 2D grid presets without a folder picker", async () =>
     await app.app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => { throw new Error("Preset must not open a folder picker"); }; });
     const openPreset = async (name: string) => {
       await page.locator(".graph2d-toolbar-menu > summary").click();
-      await page.getByRole("button", { name }).click();
+      await page.getByRole("button", { name: "Scientific field presets" }).click();
+      const chooser = page.getByRole("dialog", { name: "Scientific field presets" });
+      await expect(chooser).toBeVisible();
+      await chooser.getByRole("button", { name, exact: true }).click();
       return page.getByRole("dialog", { name: "Import verified scientific dataset" });
     };
-    let dialog = await openPreset("Thermal gradient grid preset");
+    let dialog = await openPreset("Thermal gradient");
     await expect(dialog).toContainText("Thermal gradient · sample scalar grid");
     await expect(dialog).toContainText("shape [5, 7]");
     await expect(dialog.getByLabel("Varying axis")).toHaveValue("0");
@@ -488,12 +491,44 @@ test("GRA-10 opens bundled 2D grid presets without a folder picker", async () =>
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Temperature · distance = 4 m");
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Temperature · time = 3 s");
     await dialog.getByRole("button", { name: "Cancel" }).click();
-    dialog = await openPreset("Sine–cosine grid preset");
+    dialog = await openPreset("Sine–cosine grid");
     await expect(dialog).toContainText("shape [17, 17]");
     await dialog.getByLabel("Varying axis").selectOption("1");
     await dialog.getByLabel("Fixed index").selectOption("12");
     await dialog.getByRole("button", { name: "Preview line" }).click();
     await expect(dialog).toContainText("17 checked samples");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    dialog = await openPreset("Complex wave packet");
+    await expect(dialog).toContainText("Complex wave packet · 2D");
+    await expect(dialog).toContainText("shape [41, 41]");
+    await dialog.getByLabel("Dataset component").selectOption("field:imaginary");
+    await dialog.getByRole("button", { name: "View verified field" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Wave amplitude imaginary/ }))
+      .toContainText("41 × 41 samples");
+    await dialog.getByLabel("Fixed index").selectOption("24");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("41 checked samples");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Wave amplitude imaginary");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    dialog = await openPreset("Planar vortex");
+    await expect(dialog).toContainText("Planar vortex · 2D vector field");
+    await dialog.getByLabel("Dataset component").selectOption("field:north");
+    await dialog.getByRole("button", { name: "View verified field" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Velocity north/ }))
+      .toContainText("33 × 33 samples");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("33 checked samples");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    dialog = await openPreset("Swirling flow volume");
+    await expect(dialog).toContainText("Swirling flow · 3D vector field");
+    await dialog.getByLabel("Dataset component").selectOption("field:up");
+    await dialog.getByRole("button", { name: "View verified plane" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Velocity up/ }))
+      .toContainText("21 × 21 samples");
+    await dialog.getByRole("button", { name: "View verified volume" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified volume for Velocity up/ }))
+      .toContainText("21 × 21 × 17 displayed samples");
     await dialog.getByRole("button", { name: "Cancel" }).click();
     const invalid = await page.evaluate(async () => {
       const scenes = (window as unknown as { scientificScenes: { openGraphDatasetPreset: (id: string) => Promise<{

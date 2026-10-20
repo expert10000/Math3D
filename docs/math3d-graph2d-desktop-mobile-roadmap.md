@@ -371,6 +371,8 @@ The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](g
 
 **2026-10-20 field follow-on:** [GRA-13.1–13.2](graph2d-fields-fitting-fourier-complex-roadmap.md) adds checked 2D complex/vector line extraction, whole-grid 2D component heatmaps, bounded rotatable 3D volume overviews and verified 3D component plane navigation on desktop. These are read-only field views; saved field references, simultaneous vector arrows and mobile viewing remain open. The same roadmap scopes GRA-13.3 saved field references, GRA-14 general vector fields, GRA-15 nonlinear fitting, GRA-16 Fourier analysis and GRA-17 Graphs → Complex Analysis mapping. Graph → Geometry remains delivered under GRA-N10.
 
+**GRA-13.2a preset follow-up:** Graphs → More → Author → Scientific field presets offers five deterministic, hash-pinned desktop examples: sine–cosine, thermal gradient, a 2D complex wave packet, a 2D planar vortex and a 3D swirling flow. They exercise component lines, whole-field heatmaps, plane navigation and the bounded volume overview. The [field roadmap](graph2d-fields-fitting-fourier-complex-roadmap.md) records the delivered preset scope and remaining work.
+
 ## 7. Dependency graph and parallel work
 
 ```text

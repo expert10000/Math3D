@@ -24,6 +24,9 @@ const PINNED_SINCOS_MANIFEST = "6666afe57ad2876575b77c341bb8e8c6959d4a6cee14cc23
 const GRAPH_DATASET_PRESETS = {
   sincos: { directory: "sincos.sscene", fingerprint: PINNED_SINCOS_MANIFEST },
   thermal: { directory: "thermal-gradient.sscene", fingerprint: "bbcc6be51d2194a5e81498f0ad6bd7556c11a87c9d764d8c84a32be497a7320a" },
+  complexWave: { directory: "complex-wave.sscene", fingerprint: "30861be84fbb0d762d55b21e2554fcd60c7bf543fb9689aeae5d3e9df9682135" },
+  vortexFlow: { directory: "vortex-flow.sscene", fingerprint: "f06c249796ccd55de39ca3d27ce401e46ac1d34a6c469207613423383961fd01" },
+  vortexVolume: { directory: "vortex-volume.sscene", fingerprint: "e117c3692fd2da6d549c7c93981e1a39b4c73609ae9e40ca9e3a63557bfc264c" },
 } as const;
 const PINNED_REFERENCE_PUBLISHER = "86b39c33be4551e2ab1a3c12299e7418e16ab1a79866e6881dd703a90952a974";
 const bundledExampleDirectory = () => app.isPackaged ? join(process.resourcesPath, "scientific-scenes", "sincos.sscene") :

@@ -1,0 +1,104 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "vortex-volume",
+  "title": "Swirling flow · 3D vector field",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "vortex-volume-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "0f0279fd143af09181e39acc850ec4fac6ed9e59d3ab2032a314bc48d5864c8a"
+  },
+  "resources": [
+    {
+      "id": "east",
+      "path": "east.f64",
+      "format": "f64le",
+      "count": 7497,
+      "bytes": 59976,
+      "sha256": "bd0da7033dac1ff56a309401679d87752a7b6693f7574ceefe9db455fffc6be6"
+    },
+    {
+      "id": "north",
+      "path": "north.f64",
+      "format": "f64le",
+      "count": 7497,
+      "bytes": 59976,
+      "sha256": "d6b7bca2280e34f652a24d8c29546c2c99df633459688d70041e6c93c29b41a1"
+    },
+    {
+      "id": "up",
+      "path": "up.f64",
+      "format": "f64le",
+      "count": 7497,
+      "bytes": 59976,
+      "sha256": "6c4efa2db3dc2bcc251ad3106c90d9a453ce3a8c10fdaf79e972af0fd74ff944"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "space",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        },
+        {
+          "name": "z",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4,
+        -3
+      ],
+      "spacing": [
+        0.4,
+        0.4,
+        0.375
+      ],
+      "periodic": [
+        false,
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "vector-field",
+      "coordinateSystem": "space",
+      "shape": [
+        21,
+        21,
+        17
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Velocity",
+        "unit": "m/s"
+      },
+      "components": [
+        {
+          "name": "east",
+          "resource": "east"
+        },
+        {
+          "name": "north",
+          "resource": "north"
+        },
+        {
+          "name": "up",
+          "resource": "up"
+        }
+      ]
+    }
+  ],
+  "views": []
+}
