@@ -8,11 +8,11 @@ import {
 import { graph2DAuthoringPresets } from "./graph2dAuthoringPresets";
 
 describe("Graph Add presets", () => {
-  it("offers three distinct, valid starting drafts for every Add editor", () => {
+  it("offers five distinct, valid starting drafts for every Add editor", () => {
     const check = <T>(kind: string, entries: readonly { id: string; title: string; detail: string; draft: () => T }[],
       validate: (draft: T) => readonly string[]) => {
-      expect(entries, kind).toHaveLength(3);
-      expect(new Set(entries.map(entry => entry.id)).size, kind).toBe(3);
+      expect(entries, kind).toHaveLength(5);
+      expect(new Set(entries.map(entry => entry.id)).size, kind).toBe(5);
       expect(entries.every(entry => entry.title.trim() && entry.detail.trim()), kind).toBe(true);
       for (const entry of entries) expect(validate(entry.draft()), `${kind}: ${entry.title}`).toEqual([]);
     };

@@ -34,6 +34,11 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
     await expect(panel.getByText("No functions in this graph.")).toBeVisible();
     await panel.getByRole("button", { name: "Add function", exact: true }).click();
     const form = panel.getByRole("form", { name: "New function" });
+    const expression = form.getByLabel("Function expression", { exact: true });
+    await expression.fill("x");
+    await expression.selectText();
+    await form.getByRole("group", { name: "Formula functions" }).getByRole("button", { name: "tg" }).click();
+    await expect(expression).toHaveValue("tan(x)");
     await form.getByLabel("Start from preset").selectOption("parabola");
     await form.locator('button[type="submit"]').click();
     await expect(panel.getByRole("button", { name: "Select Parabola" })).toBeVisible();
