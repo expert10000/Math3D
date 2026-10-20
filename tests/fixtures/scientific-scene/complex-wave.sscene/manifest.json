@@ -1,0 +1,76 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "complex-wave",
+  "title": "Complex wave packet · 2D",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "complex-wave-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "9eb7954af10bbfee972d0705fa993d63602d4272553c20af64e4936a6ef49c2a"
+  },
+  "resources": [
+    {
+      "id": "real",
+      "path": "real.f64",
+      "format": "f64le",
+      "count": 1681,
+      "bytes": 13448,
+      "sha256": "eed8a5dc2e5191496e0c6aefc1c9565e57ec8c70c069cb4552de3a88a0fa85a0"
+    },
+    {
+      "id": "imaginary",
+      "path": "imaginary.f64",
+      "format": "f64le",
+      "count": 1681,
+      "bytes": 13448,
+      "sha256": "9e8bd17bad7c5ed9cc2789d2a0228edc9a789ca7b11e19c88f8b430dba429c10"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "plane",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4
+      ],
+      "spacing": [
+        0.2,
+        0.2
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "complex-scalar-field",
+      "coordinateSystem": "plane",
+      "shape": [
+        41,
+        41
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Wave amplitude",
+        "unit": "1"
+      },
+      "real": "real",
+      "imaginary": "imaginary"
+    }
+  ],
+  "views": []
+}

@@ -324,7 +324,134 @@ test("GRA-10 keeps a verified 256² grid outside the renderer and previews one 2
   }
 });
 
-test("GRA-10 opens bundled 2D grid presets without a folder picker", async () => {
+test("GRA-10 imports selected complex and vector lines from one verified 2D scene", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-graph-dataset-"));
+  const directory = join(root, "components.sscene");
+  await mkdir(directory);
+  const parts = ["real", "imaginary", "east", "north"].map((id, part) => {
+    const bytes = Buffer.alloc(12 * 8);
+    for (let index = 0; index < 12; index += 1) bytes.writeDoubleLE(part * 100 + index, index * 8);
+    return { id, bytes };
+  });
+  const manifest = JSON.stringify({
+    schema: "scientific-scene/v1", sceneId: "components", title: "Complex and vector grids",
+    source: { producer: "theory-lab", sourceId: "components-2d", sourceSchema: "theory-data/v1", sha256: "a".repeat(64) },
+    resources: parts.map(part => ({ id: part.id, path: `${part.id}.f64`, format: "f64le",
+      count: 12, bytes: part.bytes.length, sha256: hash(part.bytes) })),
+    coordinates: [{ id: "plane", kind: "cartesian", axes: [{ name: "time", unit: "s" }, { name: "distance", unit: "m" }],
+      origin: [2, 10], spacing: [.5, 2], periodic: [false, false] }],
+    datasets: [
+      { id: "wave", semanticType: "complex-scalar-field", coordinateSystem: "plane", shape: [3, 4],
+        order: "last-axis-fastest", quantity: { name: "Wave", unit: "V" }, real: "real", imaginary: "imaginary" },
+      { id: "velocity", semanticType: "vector-field", coordinateSystem: "plane", shape: [3, 4],
+        order: "last-axis-fastest", quantity: { name: "Velocity", unit: "m/s" },
+        components: [{ name: "east", resource: "east" }, { name: "north", resource: "north" }] },
+    ], views: [],
+  });
+  for (const part of parts) await writeFile(join(directory, `${part.id}.f64`), part.bytes);
+  await writeFile(join(directory, "manifest.json"), manifest);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "scientific-scene-bundle/v1",
+    manifest: { path: "manifest.json", bytes: Buffer.byteLength(manifest), sha256: hash(manifest) } }));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await dialog.getByLabel("Dataset component").selectOption("wave:imaginary");
+    await dialog.getByRole("button", { name: "View verified field" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Wave imaginary/ })).toContainText("3 × 4 samples");
+    await dialog.getByLabel("Fixed index").selectOption("1");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("first (2, 101)");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Wave imaginary · distance = 12 m");
+    await dialog.getByLabel("Dataset component").selectOption("velocity:north");
+    await dialog.getByLabel("Varying axis").selectOption("1");
+    await dialog.getByLabel("Fixed index").selectOption("2");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("first (10, 308)");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Velocity north · time = 3 s");
+    await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("Velocity north (m/s)");
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-graph-dataset-")) throw new Error("Unsafe scientific fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Graphs views reverified 3D vector planes and rejects changed source bytes", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-graph-dataset-"));
+  const directory = join(root, "volume.sscene");
+  await mkdir(directory);
+  const parts = ["east", "north"].map((id, component) => {
+    const bytes = Buffer.alloc(24 * 8);
+    for (let index = 0; index < 24; index++) bytes.writeDoubleLE(component * 100 + index, index * 8);
+    return { id, bytes };
+  });
+  const manifest = JSON.stringify({
+    schema: "scientific-scene/v1", sceneId: "wind", title: "Wind volume",
+    source: { producer: "lab", sourceId: "wind-3d", sourceSchema: "lab/v1", sha256: "a".repeat(64) },
+    resources: parts.map(part => ({ id: part.id, path: `${part.id}.f64`, format: "f64le",
+      count: 24, bytes: part.bytes.length, sha256: hash(part.bytes) })),
+    coordinates: [{ id: "space", kind: "cartesian", axes: [{ name: "x", unit: "m" },
+      { name: "y", unit: "m" }, { name: "z", unit: "m" }],
+      origin: [1, 2, 3], spacing: [1, 2, 3], periodic: [false, false, false] }],
+    datasets: [{ id: "wind", semanticType: "vector-field", coordinateSystem: "space", shape: [2, 3, 4],
+      order: "last-axis-fastest", quantity: { name: "Wind", unit: "m/s" },
+      components: [{ name: "east", resource: "east" }, { name: "north", resource: "north" }] }], views: [],
+  });
+  for (const part of parts) await writeFile(join(directory, `${part.id}.f64`), part.bytes);
+  await writeFile(join(directory, "manifest.json"), manifest);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "scientific-scene-bundle/v1",
+    manifest: { path: "manifest.json", bytes: Buffer.byteLength(manifest), sha256: hash(manifest) } }));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await dialog.getByLabel("Dataset component").selectOption("wind:north");
+    await expect(dialog.getByLabel("Plane normal axis")).toHaveValue("2");
+    await dialog.getByLabel("Plane fixed index").selectOption("3");
+    await dialog.getByRole("button", { name: "View verified plane" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Wind north/ }))
+      .toContainText("z = 12 m · 2 × 3 samples");
+    await dialog.getByLabel("Plane normal axis").selectOption("0");
+    await dialog.getByLabel("Plane fixed index").selectOption("1");
+    await dialog.getByRole("button", { name: "View verified plane" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Wind north/ }))
+      .toContainText("x = 2 m · 3 × 4 samples");
+    await dialog.getByRole("button", { name: "View verified volume" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified volume for Wind north/ }))
+      .toContainText("2 × 3 × 4 displayed samples");
+    await expect(dialog.locator(".graph2d-scientific-volume canvas")).toHaveCount(1);
+    const changed = Buffer.from(parts[1]!.bytes);
+    changed[0] ^= 1;
+    await writeFile(join(directory, "north.f64"), changed);
+    await dialog.getByRole("button", { name: "View verified plane" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(dialog.getByRole("figure", { name: /Verified field plane/ })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "View verified volume" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(dialog.getByRole("figure", { name: /Verified volume/ })).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-graph-dataset-")) throw new Error("Unsafe scientific fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Graphs opens bundled scalar, complex and vector field presets without a folder picker", async () => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();
   try {
@@ -335,10 +462,13 @@ test("GRA-10 opens bundled 2D grid presets without a folder picker", async () =>
     await app.app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => { throw new Error("Preset must not open a folder picker"); }; });
     const openPreset = async (name: string) => {
       await page.locator(".graph2d-toolbar-menu > summary").click();
-      await page.getByRole("button", { name }).click();
+      await page.getByRole("button", { name: "Scientific field presets" }).click();
+      const chooser = page.getByRole("dialog", { name: "Scientific field presets" });
+      await expect(chooser).toBeVisible();
+      await chooser.getByRole("button", { name, exact: true }).click();
       return page.getByRole("dialog", { name: "Import verified scientific dataset" });
     };
-    let dialog = await openPreset("Thermal gradient grid preset");
+    let dialog = await openPreset("Thermal gradient");
     await expect(dialog).toContainText("Thermal gradient · sample scalar grid");
     await expect(dialog).toContainText("shape [5, 7]");
     await expect(dialog.getByLabel("Varying axis")).toHaveValue("0");
@@ -361,12 +491,44 @@ test("GRA-10 opens bundled 2D grid presets without a folder picker", async () =>
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Temperature · distance = 4 m");
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Temperature · time = 3 s");
     await dialog.getByRole("button", { name: "Cancel" }).click();
-    dialog = await openPreset("Sine–cosine grid preset");
+    dialog = await openPreset("Sine–cosine grid");
     await expect(dialog).toContainText("shape [17, 17]");
     await dialog.getByLabel("Varying axis").selectOption("1");
     await dialog.getByLabel("Fixed index").selectOption("12");
     await dialog.getByRole("button", { name: "Preview line" }).click();
     await expect(dialog).toContainText("17 checked samples");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    dialog = await openPreset("Complex wave packet");
+    await expect(dialog).toContainText("Complex wave packet · 2D");
+    await expect(dialog).toContainText("shape [41, 41]");
+    await dialog.getByLabel("Dataset component").selectOption("field:imaginary");
+    await dialog.getByRole("button", { name: "View verified field" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Wave amplitude imaginary/ }))
+      .toContainText("41 × 41 samples");
+    await dialog.getByLabel("Fixed index").selectOption("24");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("41 checked samples");
+    await dialog.getByRole("button", { name: "Import as point series" }).click();
+    await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Wave amplitude imaginary");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    dialog = await openPreset("Planar vortex");
+    await expect(dialog).toContainText("Planar vortex · 2D vector field");
+    await dialog.getByLabel("Dataset component").selectOption("field:north");
+    await dialog.getByRole("button", { name: "View verified field" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Velocity north/ }))
+      .toContainText("33 × 33 samples");
+    await dialog.getByRole("button", { name: "Preview line" }).click();
+    await expect(dialog).toContainText("33 checked samples");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    dialog = await openPreset("Swirling flow volume");
+    await expect(dialog).toContainText("Swirling flow · 3D vector field");
+    await dialog.getByLabel("Dataset component").selectOption("field:up");
+    await dialog.getByRole("button", { name: "View verified plane" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Velocity up/ }))
+      .toContainText("21 × 21 samples");
+    await dialog.getByRole("button", { name: "View verified volume" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified volume for Velocity up/ }))
+      .toContainText("21 × 21 × 17 displayed samples");
     await dialog.getByRole("button", { name: "Cancel" }).click();
     const invalid = await page.evaluate(async () => {
       const scenes = (window as unknown as { scientificScenes: { openGraphDatasetPreset: (id: string) => Promise<{

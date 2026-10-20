@@ -67,6 +67,18 @@ const config = {
       to: "scientific-scenes/thermal-gradient.sscene",
     },
     {
+      from: "tests/fixtures/scientific-scene/complex-wave.sscene",
+      to: "scientific-scenes/complex-wave.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/vortex-flow.sscene",
+      to: "scientific-scenes/vortex-flow.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/vortex-volume.sscene",
+      to: "scientific-scenes/vortex-volume.sscene",
+    },
+    {
       from: "integrations/python/scientific_scene_publisher.py",
       to: "scientific-publisher/scientific_scene_publisher.py",
     },

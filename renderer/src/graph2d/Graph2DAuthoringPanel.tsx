@@ -10,60 +10,31 @@ import { GRAPH2D_MAX_OBJECTS, validateGraph2DFunctionDraft, validateGraph2DParam
   type Graph2DParametricDraft, type Graph2DPolarDraft, type Graph2DImplicitDraft,
   type Graph2DInequalityDraft, type Graph2DPointSeriesDraft, type Graph2DPiecewiseDraft, type Graph2DSlopeFieldDraft,
   type Graph2DTrajectoryDraft, type Graph2DPhasePortraitDraft, type Graph2DTimeOdeDraft } from "@math3d/core";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { pointTableStore } from "./pointTableStore";
+import { graph2DAuthoringPresets, type Graph2DAuthoringPresetMode, type PointDraftState } from "./graph2dAuthoringPresets";
 
 export type Graph2DLeftPalette = "classic" | "geometry";
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
   onSelect?: (objectId: string) => void; palette: Graph2DLeftPalette;
   onPaletteChange: (palette: Graph2DLeftPalette) => void; onBrowsePhasePortraits?: (opener: HTMLButtonElement) => void };
-const initialDraft = (): Graph2DFunctionDraft => ({ label: "f", expression: "x",
-  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } });
-const initialParametricDraft = (): Graph2DParametricDraft => ({ label: "p", xExpression: "cos(t)",
-  yExpression: "sin(t)", domain: { min: 0, max: 6.283185307179586, includeMin: true, includeMax: true },
-  style: { visible: true, color: "#e11d48", lineWidth: 2, lineStyle: "solid" } });
-const initialPolarDraft = (): Graph2DPolarDraft => ({ label: "r", rExpression: "2*cos(theta)",
-  domain: { min: 0, max: 2 * Math.PI, includeMin: true, includeMax: true },
-  style: { visible: true, color: "#7c3aed", lineWidth: 2, lineStyle: "solid" } });
-const initialImplicitDraft = (): Graph2DImplicitDraft => ({ label: "contour", expression: "x^2+y^2-4",
-  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  style: { visible: true, color: "#059669", lineWidth: 2, lineStyle: "solid" } });
-const initialSlopeFieldDraft = (): Graph2DSlopeFieldDraft => ({ label: "dy/dx", expression: "x-y",
-  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  style: { visible: true, color: "#0d9488", lineWidth: 1.5, lineStyle: "solid" } });
+const initialDraft = () => graph2DAuthoringPresets.explicit[0]!.draft();
+const initialParametricDraft = () => graph2DAuthoringPresets.parametric[0]!.draft();
+const initialPolarDraft = () => graph2DAuthoringPresets.polar[0]!.draft();
+const initialImplicitDraft = () => graph2DAuthoringPresets.implicit[0]!.draft();
+const initialSlopeFieldDraft = () => graph2DAuthoringPresets["slope-field"][0]!.draft();
 const initialTrajectoryDraft = (sourceFieldId: string): Graph2DTrajectoryDraft => ({
   label: "Solution", sourceFieldId, seed: { x: 0, y: 0 },
   style: { visible: true, color: "#e11d48", lineWidth: 2.5, lineStyle: "solid" },
 });
-const initialPhasePortraitDraft = (): Graph2DPhasePortraitDraft => ({ label: "Phase portrait",
-  xDerivative: "y", yDerivative: "-x", domain: { min: -4, max: 4, includeMin: true, includeMax: true },
-  yDomain: { min: -4, max: 4, includeMin: true, includeMax: true }, timeSpan: 2 * Math.PI,
-  seeds: [{ x: 1, y: 0 }],
-  style: { visible: true, color: "#7c3aed", lineWidth: 2, lineStyle: "solid" } });
-const initialTimeOdeDraft = (): Graph2DTimeOdeDraft => ({ label: "Driven trajectory",
-  expression: "t-x", domain: { min: -2, max: 4, includeMin: true, includeMax: true },
-  stateDomain: { min: -1, max: 8, includeMin: true, includeMax: true }, seed: { t: 0, x: 1 },
-  style: { visible: true, color: "#7c3aed", lineWidth: 2.5, lineStyle: "solid" } });
-const initialInequalityDraft = (): Graph2DInequalityDraft => ({ label: "region",
-  clauses: [{ expression: "x^2+y^2-4", comparator: "<=" }], operator: "all",
-  domain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  yDomain: { min: -10, max: 10, includeMin: true, includeMax: true },
-  style: { visible: true, color: "#0d9488", lineWidth: 2, lineStyle: "solid" } });
-type PointDraftState = { label: string; mode: "points" | "line";
-  style: Graph2DPointSeriesDraft["style"]; text: string };
-const initialPointDraft = (): PointDraftState => ({ label: "data", mode: "points",
-  style: { visible: true, color: "#ea580c", lineWidth: 2, lineStyle: "solid" },
-  text: "x,y\n0,0\n1,1\n2,4" });
-const initialPiecewiseDraft = (): Graph2DPiecewiseDraft => ({ label: "piecewise",
-  pieces: [
-    { expression: "-x", domain: { min: -10, max: 0, includeMin: true, includeMax: false } },
-    { expression: "x", domain: { min: 0, max: 10, includeMin: true, includeMax: true } },
-  ], style: { visible: true, color: "#9333ea", lineWidth: 2, lineStyle: "solid" } });
+const initialPhasePortraitDraft = () => graph2DAuthoringPresets["phase-portrait"][0]!.draft();
+const initialTimeOdeDraft = () => graph2DAuthoringPresets["time-ode"][0]!.draft();
+const initialInequalityDraft = () => graph2DAuthoringPresets.inequality[0]!.draft();
+const initialPointDraft = () => graph2DAuthoringPresets["point-series"][0]!.draft();
+const initialPiecewiseDraft = () => graph2DAuthoringPresets.piecewise[0]!.draft();
 
 export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, onPaletteChange, onBrowsePhasePortraits }: Props) {
+  const authoringRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Graph2DFunctionDraft>(initialDraft);
   const [parametricDraft, setParametricDraft] = useState<Graph2DParametricDraft>(initialParametricDraft);
@@ -74,11 +45,20 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
   const [phaseDraft, setPhaseDraft] = useState<Graph2DPhasePortraitDraft>(initialPhasePortraitDraft);
   const [timeOdeDraft, setTimeOdeDraft] = useState<Graph2DTimeOdeDraft>(initialTimeOdeDraft);
   const [inequalityDraft, setInequalityDraft] = useState<Graph2DInequalityDraft>(initialInequalityDraft);
-  const [pointDraft, setPointDraft] = useState(initialPointDraft);
+  const [pointDraft, setPointDraft] = useState<PointDraftState>(initialPointDraft);
   const [piecewiseDraft, setPiecewiseDraft] = useState<Graph2DPiecewiseDraft>(initialPiecewiseDraft);
   const [mode, setMode] = useState<"explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point-series" | "piecewise" | "slope-field" | "trajectory" | "phase-portrait" | "time-ode">("explicit");
   const [open, setOpen] = useState(false);
+  const [editorOpenVersion, setEditorOpenVersion] = useState(0);
   const [message, setMessage] = useState("");
+  const [presetId, setPresetId] = useState("");
+  const showEditor = () => { setOpen(true); setEditorOpenVersion(version => version + 1); };
+  useLayoutEffect(() => {
+    if (!open) return;
+    const panel = authoringRef.current?.closest<HTMLElement>(".graph2d-left, .graph2d-compact-panels details");
+    const editor = authoringRef.current?.querySelector<HTMLElement>(".graph2d-function-editor");
+    if (panel && editor) panel.scrollTop += editor.getBoundingClientRect().top - panel.getBoundingClientRect().top - 12;
+  }, [open, mode, editorOpenVersion]);
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
   const pointPreview = mode === "point-series" ? previewGraph2DPointImport(pointDraft.text) : null;
   const errors = mode === "explicit" ? validateGraph2DFunctionDraft(draft, variables) :
@@ -104,32 +84,56 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     try { onCommit?.(action); setMessage(""); return true; }
     catch (error) { setMessage(String((error as Error).message ?? error)); return false; }
   };
-  const beginCreate = () => { setMode("explicit"); setEditingId(null); setDraft(initialDraft()); setMessage(""); setOpen(true); };
+  const beginCreate = () => { setMode("explicit"); setEditingId(null); setDraft(initialDraft()); setPresetId(graph2DAuthoringPresets.explicit[0]!.id); setMessage(""); showEditor(); };
   const beginCreateParametric = () => { setMode("parametric"); setEditingId(null);
-    setParametricDraft(initialParametricDraft()); setMessage(""); setOpen(true); };
+    setParametricDraft(initialParametricDraft()); setPresetId(graph2DAuthoringPresets.parametric[0]!.id); setMessage(""); showEditor(); };
   const beginCreatePolar = () => { setMode("polar"); setEditingId(null);
-    setPolarDraft(initialPolarDraft()); setMessage(""); setOpen(true); };
+    setPolarDraft(initialPolarDraft()); setPresetId(graph2DAuthoringPresets.polar[0]!.id); setMessage(""); showEditor(); };
   const beginCreateImplicit = () => { setMode("implicit"); setEditingId(null);
-    setImplicitDraft(initialImplicitDraft()); setMessage(""); setOpen(true); };
+    setImplicitDraft(initialImplicitDraft()); setPresetId(graph2DAuthoringPresets.implicit[0]!.id); setMessage(""); showEditor(); };
   const beginCreateSlopeField = () => { setMode("slope-field"); setEditingId(null);
-    setSlopeFieldDraft(initialSlopeFieldDraft()); setMessage(""); setOpen(true); };
+    setSlopeFieldDraft(initialSlopeFieldDraft()); setPresetId(graph2DAuthoringPresets["slope-field"][0]!.id); setMessage(""); showEditor(); };
   const beginCreateTrajectory = (sourceFieldId: string) => { setMode("trajectory"); setEditingId(null);
-    setTrajectoryDraft(initialTrajectoryDraft(sourceFieldId)); setMessage(""); setOpen(true); };
+    setTrajectoryDraft(initialTrajectoryDraft(sourceFieldId)); setMessage(""); showEditor(); };
   const beginCreatePhasePortrait = () => { setMode("phase-portrait"); setEditingId(null);
-    setPhaseDraft(initialPhasePortraitDraft()); setMessage(""); setOpen(true); };
+    setPhaseDraft(initialPhasePortraitDraft()); setPresetId(graph2DAuthoringPresets["phase-portrait"][0]!.id); setMessage(""); showEditor(); };
   const beginCreateTimeOde = () => { setMode("time-ode"); setEditingId(null);
-    setTimeOdeDraft(initialTimeOdeDraft()); setMessage(""); setOpen(true); };
+    setTimeOdeDraft(initialTimeOdeDraft()); setPresetId(graph2DAuthoringPresets["time-ode"][0]!.id); setMessage(""); showEditor(); };
   const beginCreateInequality = () => { setMode("inequality"); setEditingId(null);
-    setInequalityDraft(initialInequalityDraft()); setMessage(""); setOpen(true); };
+    setInequalityDraft(initialInequalityDraft()); setPresetId(graph2DAuthoringPresets.inequality[0]!.id); setMessage(""); showEditor(); };
   const beginCreatePointSeries = () => { setMode("point-series"); setEditingId(null);
-    setPointDraft(initialPointDraft()); setMessage(""); setOpen(true); };
+    setPointDraft(initialPointDraft()); setPresetId(graph2DAuthoringPresets["point-series"][0]!.id); setMessage(""); showEditor(); };
   const beginCreatePiecewise = () => { setMode("piecewise"); setEditingId(null);
-    setPiecewiseDraft(initialPiecewiseDraft()); setMessage(""); setOpen(true); };
+    setPiecewiseDraft(initialPiecewiseDraft()); setPresetId(graph2DAuthoringPresets.piecewise[0]!.id); setMessage(""); showEditor(); };
+  const applyPreset = (kind: Graph2DAuthoringPresetMode, id: string) => {
+    setPresetId(id);
+    setMessage("");
+    switch (kind) {
+      case "explicit": setDraft(graph2DAuthoringPresets.explicit.find(item => item.id === id)!.draft()); break;
+      case "parametric": setParametricDraft(graph2DAuthoringPresets.parametric.find(item => item.id === id)!.draft()); break;
+      case "polar": setPolarDraft(graph2DAuthoringPresets.polar.find(item => item.id === id)!.draft()); break;
+      case "implicit": setImplicitDraft(graph2DAuthoringPresets.implicit.find(item => item.id === id)!.draft()); break;
+      case "slope-field": setSlopeFieldDraft(graph2DAuthoringPresets["slope-field"].find(item => item.id === id)!.draft()); break;
+      case "phase-portrait": setPhaseDraft(graph2DAuthoringPresets["phase-portrait"].find(item => item.id === id)!.draft()); break;
+      case "time-ode": setTimeOdeDraft(graph2DAuthoringPresets["time-ode"].find(item => item.id === id)!.draft()); break;
+      case "inequality": setInequalityDraft(graph2DAuthoringPresets.inequality.find(item => item.id === id)!.draft()); break;
+      case "piecewise": setPiecewiseDraft(graph2DAuthoringPresets.piecewise.find(item => item.id === id)!.draft()); break;
+      case "point-series": setPointDraft(graph2DAuthoringPresets["point-series"].find(item => item.id === id)!.draft()); break;
+    }
+  };
+  const presetPicker = (kind: Graph2DAuthoringPresetMode) => !editingId && <div className="graph2d-preset-picker">
+    <label>Start from preset <select value={presetId}
+      onChange={event => applyPreset(kind, event.target.value)}>
+      {graph2DAuthoringPresets[kind].map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+    </select></label>
+    <small>{graph2DAuthoringPresets[kind].find(item => item.id === presetId)?.detail}</small>
+  </div>;
   const beginEdit = (id: string) => {
     const object = document.source.objects.find((entry) => entry.id === id);
     const style = document.display.objects.find((entry) => entry.objectId === id);
     if (!object || !style) return;
     setEditingId(id);
+    setPresetId("");
     if (object.kind === "explicit-cartesian") {
       setMode("explicit"); setDraft({ label: object.label, expression: object.expression.source, domain: object.domain,
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
@@ -177,7 +181,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         pieces: object.pieces.map((piece) => ({ expression: piece.expression.source, domain: piece.domain })),
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     }
-    setMessage(""); setOpen(true);
+    setMessage(""); showEditor();
   };
   const save = () => {
     if (errors.length) return;
@@ -227,7 +231,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       setPiecewiseDraft(initialPiecewiseDraft());
     }
   };
-  return <div className="graph2d-authoring" data-palette={palette}>
+  return <div ref={authoringRef} className="graph2d-authoring" data-palette={palette}>
     <div className="graph2d-left-palette" role="group" aria-label="Graph left panel palette">
       <span>Panel palette</span>
       {(["classic", "geometry"] as const).map((option) => (
@@ -305,6 +309,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     {open && mode === "explicit" && <form className="graph2d-function-editor" aria-label={editingId ? "Edit function" : "New function"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit function" : "New function"}</h3>
+      {presetPicker("explicit")}
       <label>Name <input aria-label="Function name" value={draft.label} maxLength={160}
         onChange={(event) => setDraft({ ...draft, label: event.target.value })} /></label>
       <label>y = <input aria-label="Function expression" value={draft.expression} spellCheck={false}
@@ -342,6 +347,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit parametric" : "New parametric"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit parametric" : "New parametric"}</h3>
+      {presetPicker("parametric")}
       <label>Name <input aria-label="Parametric name" value={parametricDraft.label} maxLength={160}
         onChange={(event) => setParametricDraft({ ...parametricDraft, label: event.target.value })} /></label>
       <label>x(t) = <input aria-label="Parametric x expression" value={parametricDraft.xExpression} spellCheck={false}
@@ -382,6 +388,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit polar" : "New polar"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit polar" : "New polar"}</h3>
+      {presetPicker("polar")}
       <label>Name <input aria-label="Polar name" value={polarDraft.label} maxLength={160}
         onChange={(event) => setPolarDraft({ ...polarDraft, label: event.target.value })} /></label>
       <label>r(θ) = <input aria-label="Polar radius expression" value={polarDraft.rExpression} spellCheck={false}
@@ -420,6 +427,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit slope field" : "New slope field"}
       onSubmit={event => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit slope field" : "New slope field"}</h3>
+      {presetPicker("slope-field")}
       <p>Direction segments for dy/dx = f(x,y). This field shows local slopes, not solution curves. Linear axes only.</p>
       <label>Name <input aria-label="Slope field name" value={slopeFieldDraft.label} maxLength={160}
         onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft, label: event.target.value })} /></label>
@@ -453,6 +461,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit time-dependent ODE" : "New time-dependent ODE"}
       onSubmit={event => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit time-dependent ODE" : "New time-dependent ODE"}</h3>
+      {presetPicker("time-ode")}
       <p>Approximate x(t) forward and backward from an initial value. Horizontal axis: time t; vertical axis: state x. Linear axes only.</p>
       <label>Name <input aria-label="ODE name" value={timeOdeDraft.label} maxLength={160}
         onChange={event => setTimeOdeDraft({ ...timeOdeDraft, label: event.target.value })} /></label>
@@ -487,6 +496,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit phase portrait" : "New phase portrait"}
       onSubmit={event => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit phase portrait" : "New phase portrait"}</h3>
+      {presetPicker("phase-portrait")}
       <p>Planar system with direction arrows and solution orbits. Linear axes only; each seed integrates forward and backward in time.</p>
       {onBrowsePhasePortraits && <button type="button" onClick={event => onBrowsePhasePortraits(event.currentTarget)}>Browse phase portrait examples</button>}
       <label>Name <input aria-label="Phase portrait name" value={phaseDraft.label} maxLength={160}
@@ -551,6 +561,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit implicit" : "New implicit"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit implicit contour" : "New implicit contour"}</h3>
+      {presetPicker("implicit")}
       <label>Name <input aria-label="Implicit name" value={implicitDraft.label} maxLength={160}
         onChange={(event) => setImplicitDraft({ ...implicitDraft, label: event.target.value })} /></label>
       <label>F(x,y) = <input aria-label="Implicit expression" value={implicitDraft.expression} spellCheck={false}
@@ -590,6 +601,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit inequality" : "New inequality"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit filled region" : "New filled region"}</h3>
+      {presetPicker("inequality")}
       <label>Name <input aria-label="Inequality name" value={inequalityDraft.label} maxLength={160}
         onChange={(event) => setInequalityDraft({ ...inequalityDraft, label: event.target.value })} /></label>
       {inequalityDraft.clauses.map((clause, index) => <div className="graph2d-domain-row" key={index}>
@@ -645,6 +657,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit piecewise function" : "New piecewise function"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit piecewise function" : "New piecewise function"}</h3>
+      {presetPicker("piecewise")}
       <label>Name <input aria-label="Piecewise name" value={piecewiseDraft.label} maxLength={160}
         onChange={(event) => setPiecewiseDraft({ ...piecewiseDraft, label: event.target.value })} /></label>
       {piecewiseDraft.pieces.map((piece, index) => <fieldset key={index}>
@@ -689,6 +702,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       aria-label={editingId ? "Edit data series" : "New data series"}
       onSubmit={(event) => { event.preventDefault(); save(); }}>
       <h3>{editingId ? "Edit data series" : "New data series"}</h3>
+      {presetPicker("point-series")}
       <label>Name <input aria-label="Data series name" value={pointDraft.label} maxLength={160}
         onChange={(event) => setPointDraft({ ...pointDraft, label: event.target.value })} /></label>
       <label>CSV or TSV (x,y) <textarea aria-label="Data series import" value={pointDraft.text}

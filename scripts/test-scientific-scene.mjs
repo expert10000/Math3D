@@ -7,7 +7,8 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { readScientificSceneBundle } = require("../dist/main/scientificScene/bundle.js");
-const { openScientificGraphDatasets, previewScientificGraphSlice } = require("../dist/main/scientificScene/graphDataset.js");
+const { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane,
+  previewScientificGraphVolume } = require("../dist/main/scientificScene/graphDataset.js");
 const { adaptVerifiedHeightSurface, openScientificHeightSurface, inspectScientificHeightSample } = require("../dist/main/scientificScene/heightSurface.js");
 const { importQuantumFieldScientificManifest } = require("../dist/main/quantumScene/scientificManifest.js");
 const { normalizeScientificSceneManifest } = require("../dist/shared/scientificSceneManifest.js");
@@ -24,6 +25,34 @@ const acrossDistance = await previewScientificGraphSlice(thermalFixture, thermal
 assert.deepEqual(acrossDistance.values, [282.25, 285.25, 288.25, 291.25, 294.25, 297.25, 300.25]);
 await assert.rejects(previewScientificGraphSlice(thermalFixture, "0".repeat(64), "temperature", 0, 2), /fingerprint/);
 await assert.rejects(previewScientificGraphSlice(thermalFixture, thermalSource.fingerprint, "temperature", 0, 7), /valid line/);
+
+const graphPreset = name => resolve("tests/fixtures/scientific-scene", `${name}.sscene`);
+const waveSource = await openScientificGraphDatasets(graphPreset("complex-wave"));
+assert.deepEqual(waveSource.datasets.map(item => item.component), ["real", "imaginary"]);
+const waveReal = await previewScientificGraphPlane(graphPreset("complex-wave"), waveSource.fingerprint,
+  "field", "real", null, null);
+assert.deepEqual(waveReal.shape, [41, 41]);
+assert.equal(waveReal.values[20 * 41 + 20], 1);
+const waveImaginary = await previewScientificGraphSlice(graphPreset("complex-wave"), waveSource.fingerprint,
+  "field", 0, 24, "imaginary");
+assert.equal(waveImaginary.values.length, 41);
+assert.notEqual(waveImaginary.values[20], 0);
+const vortexSource = await openScientificGraphDatasets(graphPreset("vortex-flow"));
+assert.deepEqual(vortexSource.datasets.map(item => item.component), ["east", "north"]);
+const vortexNorth = await previewScientificGraphSlice(graphPreset("vortex-flow"), vortexSource.fingerprint,
+  "field", 0, 16, "north");
+assert.equal(vortexNorth.values[16], 0);
+assert.equal(vortexNorth.values[8], -vortexNorth.values[24]);
+const volumeSource = await openScientificGraphDatasets(graphPreset("vortex-volume"));
+assert.deepEqual(volumeSource.datasets.map(item => item.component), ["east", "north", "up"]);
+const upPlane = await previewScientificGraphPlane(graphPreset("vortex-volume"), volumeSource.fingerprint,
+  "field", "up", 2, 12);
+assert.deepEqual(upPlane.shape, [21, 21]);
+assert.equal(upPlane.values[10 * 21 + 10], 0.8);
+const upVolume = await previewScientificGraphVolume(graphPreset("vortex-volume"), volumeSource.fingerprint,
+  "field", "up");
+assert.deepEqual(upVolume.sampleShape, [21, 21, 17]);
+assert.equal(upVolume.values[(10 * 21 + 10) * 17 + 12], 0.8);
 
 const scalar = await openScientificHeightSurface(fixture);
 assert.equal(normalizeScientificSceneManifest(scalar.manifest).ok, true);

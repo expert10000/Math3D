@@ -151,13 +151,13 @@ export function normalizeScientificSceneManifest(value: unknown): ValidationResu
       (dataset.quantity.symbol !== undefined && !cleanText(dataset.quantity.symbol, 32))) return fail("Invalid scientific dataset.");
     const count = dataset.shape.reduce((product: number, size: number) => product * size, 1);
     if (dataset.semanticType === "vector-field") {
-      if (dataset.shape.length !== 1 || !Array.isArray(dataset.components) ||
+      if (!Array.isArray(dataset.components) ||
           dataset.components.length < 2 || dataset.components.length > 3 ||
           !dataset.components.every((part: unknown) => record(part) && exact(part, ["name", "resource"]) &&
             id(part.name) && id(part.resource) && resourceById.get(part.resource)?.count === count) ||
           !unique(dataset.components.map((part: { name: string }) => part.name)) ||
           !unique(dataset.components.map((part: { resource: string }) => part.resource)))
-        return fail("Vector field requires two or three distinct matching components on a one-dimensional coordinate.");
+        return fail("Vector field requires two or three distinct components matching its coordinate shape.");
       for (const part of dataset.components) usedResources.add(part.resource);
     } else {
       if (!id(dataset.real) || resourceById.get(dataset.real)?.count !== count)

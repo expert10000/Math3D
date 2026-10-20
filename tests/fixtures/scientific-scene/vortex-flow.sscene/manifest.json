@@ -1,0 +1,84 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "vortex-flow",
+  "title": "Planar vortex · 2D vector field",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "vortex-flow-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "99a8c49002768cde8265981c78da456a89d272c7bfa52b5810d9ad5dbddbd8d4"
+  },
+  "resources": [
+    {
+      "id": "east",
+      "path": "east.f64",
+      "format": "f64le",
+      "count": 1089,
+      "bytes": 8712,
+      "sha256": "93684f233c05f478826d964598004949b5e9e4f81134d636cba0836d6c87a74e"
+    },
+    {
+      "id": "north",
+      "path": "north.f64",
+      "format": "f64le",
+      "count": 1089,
+      "bytes": 8712,
+      "sha256": "40bb176964f7a6ce8ffef37f5524d54f679a9a22de2ced74471d5e29372286ae"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "plane",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4
+      ],
+      "spacing": [
+        0.25,
+        0.25
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "vector-field",
+      "coordinateSystem": "plane",
+      "shape": [
+        33,
+        33
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Velocity",
+        "unit": "m/s"
+      },
+      "components": [
+        {
+          "name": "east",
+          "resource": "east"
+        },
+        {
+          "name": "north",
+          "resource": "north"
+        }
+      ]
+    }
+  ],
+  "views": []
+}
