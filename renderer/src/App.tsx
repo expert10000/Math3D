@@ -80328,7 +80328,7 @@ case "mobius":
                               setDatasetKind("surface");
                               handleChangeViewerKind("mesh");
                             }}
-                            style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "mesh")}
+                            style={headerFamilyButtonStyle(false)}
                           >
                             Mesh
                           </button>
