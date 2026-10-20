@@ -1,4 +1,14 @@
 .graph2d-workspace {
+  /* Match the cool slate/blue surfaces used by the Project Gallery. */
+  --panel-strong: #ffffff;
+  --panel: #f8fbff;
+  --border: #d6deea;
+  --text: #183a5c;
+  --muted: #64748b;
+  --graph2d-chart-bg: #f8fbff;
+  --graph2d-grid-minor: #dfe9f5;
+  --graph2d-grid-major: #c8d9eb;
+  --graph2d-axis-color: #647b94;
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -6,6 +16,19 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
+  color: var(--text);
+  font: 14px/1.45 system-ui, sans-serif;
+}
+html[data-theme="dark"] .graph2d-workspace {
+  --panel-strong: #1f2835;
+  --panel: #1b2838;
+  --border: #41566d;
+  --text: #e8eef7;
+  --muted: #a2b0c2;
+  --graph2d-chart-bg: #182231;
+  --graph2d-grid-minor: #35465a;
+  --graph2d-grid-major: #4a6179;
+  --graph2d-axis-color: #adc2db;
 }
 .graph2d-update-status { position: absolute; bottom: 28px; left: 12px; max-width: calc(100% - 24px); padding: 6px 9px; border-radius: 6px; background: var(--panel-strong); font-size: 12px; pointer-events: none; }
 .graph2d-parameters-panel { position:absolute; z-index:7; right:12px; top:60px; width:min(380px,calc(100% - 24px)); max-height:calc(100% - 76px); box-sizing:border-box; overflow:auto; padding:16px; background:var(--panel-strong); border:1px solid var(--border); border-radius:12px; box-shadow:0 6px 24px #0003; }
@@ -36,6 +59,24 @@
   background: var(--panel-strong);
 }
 
+.graph2d-panel h2, .graph2d-panel h3, .graph2d-viewer-message h2,
+.graph2d-parameters-panel h2, .graph2d-tools-panel h2,
+.graph2d-scientific-import h3 { font-family: Georgia, serif; color: var(--text); }
+.graph2d-panel { box-shadow: 0 2px 8px #0f172a0a; }
+.graph2d-viewer { border-color: var(--workspace-control-border); }
+.graph2d-workspace :is(button, input, select, textarea) { font-family: system-ui, sans-serif; }
+.graph2d-workspace :is(input:not([type]), input[type="text"], input[type="number"], input[type="search"], select, textarea) {
+  border: 1px solid var(--workspace-control-border);
+  border-radius: 7px;
+  background: var(--panel-strong);
+  color: var(--text);
+}
+.graph2d-workspace :is(button, summary):focus-visible,
+.graph2d-workspace :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--workspace-control-active-border);
+  outline-offset: 2px;
+}
+
 .graph2d-panel { padding: 16px; overflow: auto; }
 .graph2d-guided-panel { margin-bottom: 14px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-guided-panel summary { cursor: pointer; font-weight: 650; }
@@ -54,7 +95,8 @@
 .graph2d-authoring .graph2d-left-palette button[aria-pressed="true"] { border-color:var(--workspace-control-active-border); background:var(--workspace-control-active-bg); }
 .graph2d-left-palette button:focus-visible { outline:2px solid var(--workspace-control-active-border); outline-offset:2px; }
 .graph2d-authoring-header { display: flex; align-items: start; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.graph2d-authoring button { border: 1px solid var(--border); border-radius: 5px; background: var(--panel-strong); padding: 3px 6px; cursor: pointer; }
+.graph2d-authoring button { border: 1px solid var(--workspace-control-border); border-radius: 7px; background: var(--workspace-control-bg); color:var(--workspace-control-text); padding: 4px 8px; font-weight:600; cursor: pointer; }
+.graph2d-authoring button:hover:not(:disabled) { background: var(--workspace-control-hover-bg); border-color:var(--gallery-card-border-active); }
 .graph2d-authoring button:disabled { cursor: default; opacity: .45; }
 .graph2d-left[data-palette="geometry"] { background:var(--panel); }
 .graph2d-authoring[data-palette="geometry"] .graph2d-authoring-header,
@@ -173,10 +215,12 @@
 .graph2d-viewer:active { cursor: grabbing; }
 .graph2d-viewer:focus-visible { outline: 2px solid #2563eb; outline-offset: -3px; }
 .graph2d-toolbar { position: absolute; top: 8px; left: 8px; z-index: 2; display: flex; flex-direction: column; align-items: flex-start; max-width: calc(100% - 16px); gap: 4px; }
-.graph2d-toolbar-primary, .graph2d-toolbar-secondary { display: flex; align-items: center; gap: 4px; box-sizing: border-box; max-width: 100%; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
+.graph2d-toolbar-primary, .graph2d-toolbar-secondary { display: flex; align-items: center; gap: 4px; box-sizing: border-box; max-width: 100%; padding: 4px; border: 1px solid var(--workspace-control-border); border-radius: 9px; background: var(--panel-strong); box-shadow:0 3px 12px #0f172a12; }
 .graph2d-toolbar-group { display: flex; align-items: center; gap: 4px; }
 .graph2d-toolbar-group > span { color: var(--muted); font-size: 11px; font-weight: 700; }
-.graph2d-toolbar button, .graph2d-toolbar summary { border: 1px solid var(--border); border-radius: 6px; background: var(--panel-strong); padding: 5px 8px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.graph2d-toolbar button, .graph2d-toolbar summary { border: 1px solid var(--workspace-control-border); border-radius: 7px; background: var(--workspace-control-bg); color:var(--workspace-control-text); padding: 5px 9px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.graph2d-toolbar :is(button, summary):hover { background:var(--workspace-control-hover-bg); border-color:var(--gallery-card-border-active); }
+.graph2d-toolbar-menu[open] > summary { background:var(--workspace-control-active-bg); border-color:var(--workspace-control-active-border); }
 .graph2d-toolbar summary { list-style: none; }
 .graph2d-toolbar summary::-webkit-details-marker { display: none; }
 .graph2d-toolbar-menu { position: relative; }
@@ -203,20 +247,20 @@
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot [data-graph2d-draggable-point] { cursor: grab; touch-action: none; }
 .graph2d-viewer[data-point-dragging="true"] .graph2d-plot [data-graph2d-draggable-point] { cursor: grabbing; }
-.graph2d-plot-background { fill: var(--panel-strong); }
-.graph2d-grid-minor { stroke: var(--grid-minor-color, var(--border)); stroke-width: .55; opacity: var(--grid-minor-opacity, .45); }
-.graph2d-grid-major { stroke: var(--grid-major-color, var(--border)); stroke-width: 1; opacity: var(--grid-major-opacity, .85); }
+.graph2d-plot-background { fill: var(--graph2d-chart-bg); }
+.graph2d-grid-minor { stroke: var(--grid-minor-color, var(--graph2d-grid-minor)); stroke-width: .55; opacity: var(--grid-minor-opacity, .6); }
+.graph2d-grid-major { stroke: var(--grid-major-color, var(--graph2d-grid-major)); stroke-width: 1; opacity: var(--grid-major-opacity, .85); }
 .graph2d-polar-grid ellipse, .graph2d-polar-grid line { fill: none; stroke: var(--border); stroke-width: 1; opacity: .75; }
 .graph2d-polar-grid text { fill: var(--muted); stroke: none; font-size: 10px; }
-.graph2d-axis { stroke: currentColor; stroke-width: 1.5; opacity: .75; }
-.graph2d-tick-labels { fill: currentColor; font-size: 10px; opacity: .7; }
+.graph2d-axis { stroke: var(--graph2d-axis-color); stroke-width: 1.5; }
+.graph2d-tick-labels { fill: var(--graph2d-axis-color); font: 10px system-ui,sans-serif; }
 .graph2d-probe-marker { pointer-events: none; }
 .graph2d-plot [data-graph2d-phase-seed] { cursor: grab; }
 .graph2d-viewer[data-phase-seed-dragging="true"] .graph2d-plot [data-graph2d-phase-seed] { cursor: grabbing; }
 .graph2d-probe-marker circle:first-child { fill: var(--panel-strong); stroke: #f59e0b; stroke-width: 2; }
 .graph2d-probe-marker circle:last-child { fill: #f59e0b; }
 .graph2d-probe-hover { opacity: .65; }
-.graph2d-viewer-message { text-align: center; padding: 24px; max-width: 400px; position: relative; z-index: 1; border-radius: 10px; background: var(--panel-strong); box-shadow: 0 4px 24px #0001; }
+.graph2d-viewer-message { text-align: center; padding: 24px; max-width: 400px; position: relative; z-index: 1; border:1px solid var(--border); border-radius: 12px; background: var(--panel-strong); box-shadow: 0 8px 28px #0f172a16; }
 .graph2d-viewer-message h2 { margin: 0 0 8px; }
 .graph2d-viewer-message p { margin: 0 0 8px; }
 .graph2d-viewer-message small { opacity: .7; }
