@@ -464,13 +464,13 @@ type BooleanMeshPreflight = {
 
 function booleanMeshPreflight(mesh: MeshOperationMeshInput, role: "A" | "B"): BooleanMeshPreflight {
   const vertexCount = Math.floor(mesh.positions.length / 3);
-  if (vertexCount <= 0 || !mesh.indices.length) {
+  if (vertexCount <= 0 || !mesh.indices.length || mesh.positions.length % 3 !== 0 || mesh.indices.length % 3 !== 0) {
     return {
       ok: false,
       boundaryEdges: 0,
       nonManifoldEdges: 0,
       invalidFaces: 0,
-      message: `Operand ${role} (${mesh.label}) is empty.`,
+      message: `Operand ${role} (${mesh.label}) is empty or has malformed triangle buffers.`,
     };
   }
 
@@ -511,6 +511,7 @@ function booleanMeshPreflight(mesh: MeshOperationMeshInput, role: "A" | "B"): Bo
   });
 
   const issues: string[] = [];
+  if (mesh.positions.some((coordinate) => !Number.isFinite(coordinate))) issues.push("non-finite coordinates");
   if (boundaryEdges > 0) issues.push(`${boundaryEdges.toLocaleString()} boundary edges`);
   if (nonManifoldEdges > 0) issues.push(`${nonManifoldEdges.toLocaleString()} non-manifold edges`);
   if (invalidFaces > 0) issues.push(`${invalidFaces.toLocaleString()} invalid faces`);
@@ -520,7 +521,7 @@ function booleanMeshPreflight(mesh: MeshOperationMeshInput, role: "A" | "B"): Bo
     nonManifoldEdges,
     invalidFaces,
     message: issues.length
-      ? `Operand ${role} (${mesh.label}) is not a closed watertight manifold mesh: ${issues.join(", ")}. Fast boolean is skipped to avoid a native worker crash. Use closed solid operands, or click "Use demo operands" for the safe cube example.`
+      ? `Operand ${role} (${mesh.label}) is not a closed watertight manifold mesh: ${issues.join(", ")}. Boolean execution was skipped; repair or replace this operand before running.`
       : undefined,
   };
 }
@@ -737,6 +738,14 @@ export async function runMeshOperation(
     if (!operation) return operationError(request, engine, before, startedAt, `${request.operation} is not registered.`, "unsupported-operation");
     const validationBlockers = stringArrayParam(request.parameters, "validationBlockers");
     if (engine === "cgal") {
+      const preflightA = booleanMeshPreflight(meshA, "A");
+      if (!preflightA.ok) {
+        return operationError(request, engine, before, startedAt, preflightA.message ?? "Operand A failed native Boolean preflight.", "unsafe-boolean-input");
+      }
+      const preflightB = booleanMeshPreflight(meshB, "B");
+      if (!preflightB.ok) {
+        return operationError(request, engine, before, startedAt, preflightB.message ?? "Operand B failed native Boolean preflight.", "unsafe-boolean-input");
+      }
       if (!CGAL_BOOLEAN_OPERATIONS.has(request.operation) || operation === "imprint") {
         return operationError(request, engine, before, startedAt, "Robust imprint is not connected yet; use Fast imprint.", "unsupported-cgal-boolean");
       }

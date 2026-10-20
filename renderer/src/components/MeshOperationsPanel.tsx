@@ -1,3 +1,4 @@
+import type { BooleanResultEvidence } from '../services/booleanResultEvidence';
 import React, { useEffect, useRef, useState } from "react";
 import {
   MESH_OPERATION_CAPABILITIES,
@@ -195,6 +196,8 @@ export type MeshOperationsPanelProps = {
   onChangeBooleanCurveRadius: (value: number) => void;
   booleanStatus: string | null;
   onRunBoolean: () => void | Promise<void>;
+  onCancelBoolean?: () => void;
+  booleanEvidence?: BooleanResultEvidence | null;
   onPrepareBooleanDemo: () => void;
   onDuplicateActiveMeshForBoolean?: () => void;
   onAutoUnionWithOffsetCopy?: () => void | Promise<void>;
@@ -960,6 +963,8 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
   onChangeBooleanCurveRadius,
   booleanStatus,
   onRunBoolean,
+  onCancelBoolean,
+  booleanEvidence,
   onPrepareBooleanDemo,
   onDuplicateActiveMeshForBoolean,
   onAutoUnionWithOffsetCopy,
@@ -2086,6 +2091,7 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
                         </label>
                       </div>
                       {booleanStatus && <div style={{ color: "#0a66c2" }}>{booleanStatus}</div>}
+                      {operationBusy && booleanStatus?.startsWith("Running") && onCancelBoolean && <button type="button" onClick={onCancelBoolean} data-testid={`${testId}-cancel-boolean`}>Stop Boolean</button>}
                       </div>
                       <div style={booleanStageStyle("next")}>
                         {booleanStageHeader(5, "Result", "next")}
@@ -2390,13 +2396,29 @@ export const MeshOperationsPanel: React.FC<MeshOperationsPanelProps> = ({
             {lastResult.repairValidation && <MeshRepairValidationComparisonCard comparison={lastResult.repairValidation} />}
             {lastResult.remesh && <MeshRemeshCard remesh={lastResult.remesh} />}
             {lastResult.boolean && (
-              <MeshBooleanCard
+              <>
+                {booleanEvidence && (
+  <section aria-label="Boolean result evidence" style={{ border: "1px solid #a7bfd6", borderRadius: 8, padding: 10, marginTop: 10, marginBottom: 10 }}>
+    <strong>Measured Boolean result</strong>
+    <div>Volume: {booleanEvidence.volume === null ? "unavailable (open or non-manifold)" : `${booleanEvidence.volume.toPrecision(8)} coordinate units^3`}</div>
+    <div>Bounds (X min/max, Y min/max, Z min/max): {booleanEvidence.bounds ? booleanEvidence.bounds.map((value) => Number(value.toPrecision(7))).join(", ") : "not applicable"}</div>
+    <div>Topology: {booleanEvidence.empty ? "empty" : booleanEvidence.closed ? "edge-closed" : "open or invalid"}; {booleanEvidence.components} component(s); {booleanEvidence.points} used vertices; {booleanEvidence.triangles} triangles; {booleanEvidence.boundaryEdges} boundary edge(s); {booleanEvidence.nonManifoldEdges} non-manifold edge(s); {booleanEvidence.invalidTriangles} invalid triangle(s); Euler characteristic {booleanEvidence.eulerCharacteristic}.</div>
+    <details><summary>Saved input/output provenance</summary>
+      <div>A SHA-256: {booleanEvidence.inputASha256}</div>
+      <div>B SHA-256: {booleanEvidence.inputBSha256}</div>
+      <div>Output SHA-256: {booleanEvidence.outputSha256}</div>
+    </details>
+    <small>Volume is measured only for an empty or edge-closed output. Edge closure is not a self-intersection proof. Worker warnings and errors remain in the result details.</small>
+  </section>
+)}
+                <MeshBooleanCard
                 booleanSummary={lastResult.boolean}
                 sourceIds={lastResult.sourceIds}
                 resultLabel={lastResult.afterFaces == null ? lastResult.label : `${lastResult.label} (${lastResult.afterFaces.toLocaleString()} triangles)`}
                 review={lastResult.booleanReview}
                 entityControls={booleanReviewEntityControls}
               />
+              </>
             )}
             {!!lastResult.diagnostics?.length && <div>Details: {lastResult.diagnostics.join("; ")}</div>}
             {lastResult.warnings.length > 0 && <div style={{ color: "#b45309" }}>Warnings: {lastResult.warnings.join("; ")}</div>}

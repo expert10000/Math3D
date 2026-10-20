@@ -1,3 +1,4 @@
+import { measureBooleanResult, type BooleanResultEvidence } from './services/booleanResultEvidence';
 import { type SurfaceViewerKind, type BBox3, type MeshPromotionTraceState, type MeshPromotionOperationEntry, type MeshBenchmarkModel, type SurfaceMeshAssetPreset, type SurfaceMeshTopologySavedPreset, type TopologySerializedSurfaceMeshData, type StoredSurfaceMeshTopologyHistoryEntry, type SurfaceMeshTopologyHistoryEntry, type SurfaceMeshTopologyPickMode, type UnifiedSelectionKindFilterState, type UnifiedSelectionTopologyFilterMode, type SurfaceMeshTopologyOperation, type ImplicitBakeBounds, type MeshOperationLastValidation, type GenerateSurfaceStatus, type CgalHealthState, type Vec3, type ComplexMapLine, type ComplexPreimageMode, type ComplexDistortionMode, type ComplexMapProbe, type ComplexMapProbePin, type ParamDomain, type ChartMode, type GeodesicPathMethod, type GeodesicPathSourceMode, type GeodesicPathEndpoint, type GeodesicHeatEndpoint, type GeodesicDiskCenter, type SurfaceInspectMetrics, type AnalysisFocusedSection, MESH_BENCHMARK_CATEGORY_ORDER, MESH_BENCHMARK_CATEGORY_LABELS, findSurfaceMeshTopologyDemoPresetByOperation, type SurfaceMeshTopologyDemoPreset, SURFACE_MESH_TOPOLOGY_DEMO_PRESETS, buildTopologyDemoCubeMesh, applySurfaceMeshOps, surfaceMeshTriangleCount, LARGE_MESH_FAST_LOAD_TRIANGLE_THRESHOLD, benchmarkNowMs, SURFACES_EQ_META, PARAM_SURFACES_META, isGraphSurface, isImplicitSurface, type SurfacesLeftTab, detectPrincipalAxisDirection, vLen, vNormalize, vScale, normalizeParamDomain, WEIERSTRASS_DEFAULTS, colorModesForSurfaceViewer, isComplexMapSurfaceLabel, COMPLEX_MAP_OUTPUT_LABELS, COMPLEX_MAP_LABEL, DEFAULT_VOLUME_PRESET_ID, COMPLEX_GRID_COLORS, cardStyle, pill, formatBenchmarkBytes, pillRow, COMPLEX_MAP_CUSTOM_ID, COMPLEX_MAP_PRESETS, estimateTargetEdgeFromBudget, clampNumber, SURFACE_MESH_TOPOLOGY_PICK_MODES, SURFACE_MESH_TOPOLOGY_OPERATION_OPTIONS, fmt, fmt3, COLOR_MODE_LABELS, IMPLICIT_EXPR_PRESETS, DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT, ROTATIONAL_AXIS_DIRECTIONS, vDot, vSub, vCross, type MeshWorkspaceInspectorSummary, type InspectorPanelTab, type SurfaceWorkflowStepId, type SurfaceWorkflowStepState, type MeshPerfBenchmarkId, type MeshPipelineProfileRun, type MeshPipelineProfilePhase, type MeshDebugMonitorState, type MeshDebugEvent, type MeshDebugMemorySnapshot, type MeshBenchmarkPerformanceSuiteState, type MeshBenchmarkPerformanceResult, type DeferredSurfaceSampleSetInfo, type MeshBenchmarkVerificationContext, type GeometryProbeSelectionMode, type GeometryProbeSelectionDetails, type GeometryProbePoint, type MeshAnalyzeProbeHistoryEntry, type GraphDomain, type ImplicitDomain, type GraphDomainPreset, type ParamDomainPreset, type ImplicitDomainPreset, getParamDomainPreviewBounds, normalizeGraphDomain, getDefaultGraphSpan, normalizeImplicitDomain, getDefaultImplicitDomain, getEditableImplicitCustomExpr, MESH_PERF_BENCHMARK_PRESETS, type MeshPerfBenchmarkPreset, serializeMeshPipelineProfileRun, serializeMeshDebugMonitorState, buildTangentBasis } from "./surfacePanelShared";
 import { type SurfacesLeftPanelProps, type SurfacesRightPanelProps } from "./surfacePanels";
 import { MeshProjectEditor } from "./projects/MeshProjectEditor";
@@ -35930,6 +35931,8 @@ const App: React.FC = () => {
   );
   const [meshOperationBooleanCurveRadius, setMeshOperationBooleanCurveRadius] = useState(0);
   const [meshOperationBooleanStatus, setMeshOperationBooleanStatus] = useState<string | null>(null);
+  const meshBooleanCancelRequestedRef = useRef(false);
+  const [meshBooleanEvidence, setMeshBooleanEvidence] = useState<BooleanResultEvidence | null>(null);
   const [meshOperationOutputMode, setMeshOperationOutputMode] = useState<"replace" | "derived">("derived");
   const [meshLastOperation, setMeshLastOperation] = useState<MeshOperationResultSummary | null>(null);
   const [meshOperationLastValidation, setMeshOperationLastValidation] = useState<MeshOperationLastValidation | null>(null);
@@ -62614,6 +62617,15 @@ case "mobius":
     surfaceSampleSet,
   ]);
 
+  const handleCancelMeshOperationBoolean = useCallback(() => {
+    if (!meshOperationBusy) return;
+    meshBooleanCancelRequestedRef.current = true;
+    setMeshOperationBooleanStatus("Cancelling Boolean...");
+    if (meshOperationBooleanStrategy !== "fast") {
+      void stopCgalWorker().catch((error) => setMeshOperationError(error instanceof Error ? error.message : "Could not stop the CGAL worker."));
+    }
+  }, [meshOperationBusy, meshOperationBooleanStrategy]);
+
   const handleMeshOperationBoolean = useCallback(async () => {
     if (meshOperationBusy) return;
     setMeshOperationBooleanStatus(null);
@@ -62649,12 +62661,14 @@ case "mobius":
           return seq;
         })();
 
+    meshBooleanCancelRequestedRef.current = false;
+    setMeshBooleanEvidence(null);
     setMeshOperationBusy(true);
     setMeshOperationError(null);
     setMeshOperationBooleanStatus(`Running ${meshOperationBooleanOperation}...`);
     try {
       const beforeFaces = Math.round(meshA.indices.length / 3);
-      const options = {
+      const options: Record<string, unknown> = {
         computeNormals: true,
         booleanStrategy: meshOperationBooleanStrategy,
         validationPass,
@@ -62673,6 +62687,21 @@ case "mobius":
         },
       };
 
+      const fingerprint = async (positions: Float32Array, indices: Uint32Array) => {
+        if (!globalThis.crypto?.subtle) return "unavailable";
+        try {
+          const bytes = new Uint8Array(positions.byteLength + indices.byteLength);
+          bytes.set(new Uint8Array(positions.buffer, positions.byteOffset, positions.byteLength));
+          bytes.set(new Uint8Array(indices.buffer, indices.byteOffset, indices.byteLength), positions.byteLength);
+          const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+          return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        } catch { return "unavailable"; }
+      };
+      options.inputA = { label: meshA.label, sha256: await fingerprint(meshA.positions, meshA.indices) };
+      options.inputB = { label: meshB.label, objectId: resolvedB.object.id, sha256: await fingerprint(meshB.positions, meshB.indices) };
+      options.workerContract = "native-cgal-v1";
+      if (meshBooleanCancelRequestedRef.current) { setMeshOperationBooleanStatus("Boolean cancelled."); return; }
+
       if (meshOperationBooleanOperation === "split") {
         const aMinusBRequest: MeshOperationRequest = {
           operation: "boolean-difference",
@@ -62683,6 +62712,7 @@ case "mobius":
           quality: "robust",
         };
         const aMinusB = await runMeshOperation(aMinusBRequest, { primaryMesh: meshA, secondaryMesh: meshB });
+        if (meshBooleanCancelRequestedRef.current) { setMeshOperationBooleanStatus("Boolean cancelled."); return; }
         if (aMinusB.status === "error" || !aMinusB.resultMesh?.indices) {
           publishMeshOperationResult(summarizeMeshOperationResult(aMinusB, outputMode), aMinusBRequest);
           setMeshOperationError(aMinusB.errors[0]?.message ?? "Boolean split failed.");
@@ -62698,6 +62728,7 @@ case "mobius":
           quality: "robust",
         };
         const aIntersectB = await runMeshOperation(aIntersectBRequest, { primaryMesh: meshA, secondaryMesh: meshB });
+        if (meshBooleanCancelRequestedRef.current) { setMeshOperationBooleanStatus("Boolean cancelled."); return; }
         if (aIntersectB.status === "error" || !aIntersectB.resultMesh?.indices) {
           publishMeshOperationResult(summarizeMeshOperationResult(aIntersectB, outputMode), aIntersectBRequest);
           setMeshOperationError(aIntersectB.errors[0]?.message ?? "Boolean split failed.");
@@ -62713,6 +62744,7 @@ case "mobius":
           quality: "robust",
         };
         const bMinusA = await runMeshOperation(bMinusARequest, { primaryMesh: meshB, secondaryMesh: meshA });
+        if (meshBooleanCancelRequestedRef.current) { setMeshOperationBooleanStatus("Boolean cancelled."); return; }
         if (bMinusA.status === "error" || !bMinusA.resultMesh?.indices) {
           publishMeshOperationResult(summarizeMeshOperationResult(bMinusA, outputMode), bMinusARequest);
           setMeshOperationError(bMinusA.errors[0]?.message ?? "Boolean split failed.");
@@ -62812,6 +62844,7 @@ case "mobius":
         quality: "robust",
       };
       const result = await runMeshOperation(request, { primaryMesh: meshA, secondaryMesh: meshB });
+      if (meshBooleanCancelRequestedRef.current) { setMeshOperationBooleanStatus("Boolean cancelled."); return; }
       const resultSummary = summarizeMeshOperationResult(result, meshOperationOutputModeForRequest);
       if (result.status === "error" || !result.resultMesh) {
         publishMeshOperationResult(resultSummary, request);
@@ -62828,6 +62861,15 @@ case "mobius":
         operandB: meshB.label,
         result: booleanResultLabel,
       };
+      const resultEvidence: BooleanResultEvidence = {
+        ...measureBooleanResult({ positions: result.resultMesh.positions, indices: result.resultMesh.indices ?? new Uint32Array() }),
+        inputASha256: (options.inputA as { sha256: string }).sha256,
+        inputBSha256: (options.inputB as { sha256: string }).sha256,
+        outputSha256: await fingerprint(result.resultMesh.positions, result.resultMesh.indices ?? new Uint32Array()),
+      };
+      if (meshBooleanCancelRequestedRef.current) { setMeshOperationBooleanStatus("Boolean cancelled."); return; }
+      options.resultEvidence = resultEvidence;
+      setMeshBooleanEvidence(resultEvidence);
       startMeshBooleanReview(
         meshOperationBooleanOperation,
         meshOperationBooleanStrategy,
@@ -62857,9 +62899,13 @@ case "mobius":
       );
       setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} completed.`);
     } catch (err: any) {
-      setMeshOperationError(err?.message ?? "Boolean failed.");
-      setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} failed.`);
+      if (meshBooleanCancelRequestedRef.current) setMeshOperationBooleanStatus("Boolean cancelled.");
+      else {
+        setMeshOperationError(err?.message ?? "Boolean failed.");
+        setMeshOperationBooleanStatus(`${meshOperationBooleanOperation} failed.`);
+      }
     } finally {
+      meshBooleanCancelRequestedRef.current = false;
       setMeshOperationBusy(false);
       refreshCgalHealthAfterWorkerAction();
     }
@@ -80328,7 +80374,7 @@ case "mobius":
                               setDatasetKind("surface");
                               handleChangeViewerKind("mesh");
                             }}
-                            style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "mesh")}
+                            style={headerFamilyButtonStyle(false)}
                           >
                             Mesh
                           </button>
@@ -83003,6 +83049,8 @@ case "mobius":
                           onChangeBooleanCurveRadius={setMeshOperationBooleanCurveRadius}
                           booleanStatus={meshOperationBooleanStatus}
                           onRunBoolean={handleMeshOperationBoolean}
+                          onCancelBoolean={handleCancelMeshOperationBoolean}
+                  booleanEvidence={meshBooleanEvidence}
                           onPrepareBooleanDemo={handlePrepareMeshOperationBooleanDemo}
                           onDuplicateActiveMeshForBoolean={handleDuplicateActiveMeshForBoolean}
                           onAutoUnionWithOffsetCopy={handleAutoUnionWithOffsetCopy}
