@@ -19,6 +19,15 @@ named entry under **Saved composition**.
 | Same starter | Choose **C · mismatched cm box** as source B while in Overlay mode | The viewer refuses the `mm`/`cm` mismatch instead of drawing it as aligned. |
 | **Surface Generation Comparison** | **Before / after · linked u,v** | A is the retained bowl checkpoint (r1); B is the current saddle (r2). Select a Surface point to link its stored parameter coordinate across panes. |
 
+For a compatible side-by-side pair, turn on **Synchronize cameras** and choose
+**A → B** or **B → A**. The leader's orbit, pan, and zoom pose is applied to the
+other viewer; either pane can remain independent when the switch is off. The
+control is disabled for unmatched or undeclared coordinate frames and for
+Surfaces without the same saved parameter domain, x/y axes, and length unit.
+Saving the composition retains the camera-link preference and leader, but not a
+transient camera pose. Reopening rechecks source compatibility before linking;
+it never uses a saved preference as proof that two frames match.
+
 Save the Project, restart Math3D, and reopen the comparison to check that the
 same source revisions still verify. The test starters add no worker, derived
 physics, or editable copy of a source inside a composition. An overlay banner
@@ -62,7 +71,8 @@ an invented rendering.
 PC03 remains partial for legacy sources lacking coordinate metadata. PC05
 supports exact retained checkpoints and same-chart Surface selection; arbitrary
 historical generations and unrelated-model selection mapping remain partial.
-Compatible camera synchronization is a separate PC06 task. No physics worker or
+PC06 provides opt-in, one-way camera-pose linking only for compatible pairs; no
+arbitrary cross-frame camera transform is inferred. No physics worker or
 scientific recomputation is involved.
 
 An optional source declaration uses the exact object

@@ -1327,7 +1327,12 @@ source-declared coordinate frames when present and refuses mismatches, but remai
 labels are explicitly operator assertions. PC05 can compare an exact retained
 checkpoint with the current Surface and link the same stored `(u,v)` chart
 coordinate across those two panes when domains match. It remains **Partial** for
-unretained history and unrelated-model selection mapping. PC06–PC10 remain planned.
+unretained history and unrelated-model selection mapping. PC06 is delivered for
+compatible side-by-side pairs: camera linking is opt-in, A or B may lead, and
+saved preference is requalified on reopening. It is disabled without matching
+declared 3D frames or the same Surface's parameter axes/domain/unit; camera
+poses are not persisted or transformed between unrelated frames. PC07–PC10
+remain planned.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

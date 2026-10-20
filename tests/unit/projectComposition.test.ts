@@ -9,7 +9,7 @@ import {
 } from "@math3d/core";
 import { mobileMixedProjectFixture } from "../fixtures/unified-projects/mobileProjects";
 import { mobileSurfaceProjectFixture } from "../fixtures/unified-projects/mobileSurfaces";
-import { compatibleCompositionParameterChart, resolveProjectCompositionMember } from "../../renderer/src/components/ProjectCompositionView";
+import { compatibleCompositionParameterChart, qualifyProjectCameraPair, resolveProjectCompositionMember } from "../../renderer/src/components/ProjectCompositionView";
 import { projectResourceInventory } from "../../renderer/src/projects/projectResources";
 import { SurfaceDocumentAdapter } from "../../renderer/src/surfaceAnalysis/surfaceDocumentAdapter";
 import { MIXED_REPLAY_FORMATS } from "../../renderer/src/kernel/mixedWorkspaceReplay";
@@ -106,15 +106,21 @@ describe("PC01–PC05 non-owning Project composition", () => {
     expect(oldView.param?.z).toBe("0");
     expect(currentView.param?.z).toBe("u*v");
     expect(compatibleCompositionParameterChart([oldView, currentView])).toBe(true);
+    expect(qualifyProjectCameraPair([oldView, currentView])).toBe("shared-surface-axes");
     expect(compatibleCompositionParameterChart([oldView, { ...currentView, id: "unrelated-surface" }])).toBe(false);
+    expect(qualifyProjectCameraPair([oldView, { ...currentView, param: { ...currentView.param!, x: "u+1" } }])).toBeNull();
     expect(compatibleCompositionParameterChart([oldView, { ...currentView, param: { ...currentView.param!, domain: { ...currentView.param!.domain!, uMax: 2 } } }])).toBe(false);
+    const linkedCamera: ProjectComposition = { ...comparison, camera: { mode: "linked", leader: "A" } };
+    expect(parseMath3DProject(serializeMath3DProject(upsertMath3DProjectComposition(project, linkedCamera))).compositions).toEqual([linkedCamera]);
+    expect(validProjectComposition({ ...linkedCamera, mode: "overlay", alignment: { frame: "test", unit: "unitless" } })).toBe(false);
+    expect(validProjectComposition({ ...linkedCamera, camera: { mode: "linked", leader: "C" } })).toBe(false);
     const unavailable = { ...old, expected: { ...old.expected, revision: old.expected.revision + 17 } };
     expect(inspectProjectCompositionAvailability({ ...comparison, members: [unavailable, current] }, workspace)).toEqual(["unavailable-generation", "current"]);
     expect(() => resolveProjectCompositionMember(project, unavailable, () => null)).toThrow(/no matching retained checkpoint/i);
   });
 
   it("checks independently stored Mesh and Geometry coordinate declarations without inferring missing metadata", () => {
-    const { project } = setup();
+    const { project, composition, resources } = setup();
     const mesh = project.workspace.entries.find(entry => entry.module === "mesh")!.checkpoint as MeshDocument;
     const geometry = project.workspace.entries.find(entry => entry.module === "geometry")!.checkpoint as GeometryDocument;
     const frame = { format: "math3d.coordinate-frame/v1", frame: "laboratory xyz", unit: "mm",
@@ -126,6 +132,11 @@ describe("PC01–PC05 non-owning Project composition", () => {
     expect(sameProjectCoordinateFrame(first.value!, second.value!)).toBe(true);
     expect(sameProjectCoordinateFrame(first.value!, { ...second.value!, unit: "cm" })).toBe(false);
     expect(qualifyProjectOverlayCoordinates(first, second, { frame: "laboratory xyz", unit: "mm" })).toBe("verified");
+    const meshView = resolveProjectCompositionMember(project, composition.members[0], item => resources.bytes(item));
+    const geometryView = resolveProjectCompositionMember(project, composition.members[1], item => resources.bytes(item));
+    expect(qualifyProjectCameraPair([meshView, geometryView])).toBeNull();
+    expect(qualifyProjectCameraPair([{ ...meshView, coordinates: first }, { ...geometryView, coordinates: second }])).toBe("declared-3d-frame");
+    expect(qualifyProjectCameraPair([{ ...meshView, coordinates: first }, { ...geometryView, coordinates: { status: "missing" } }])).toBeNull();
     expect(qualifyProjectOverlayCoordinates(first, { status: "declared", value: { ...second.value!, unit: "cm" } },
       { frame: "laboratory xyz", unit: "mm" })).toBe("mismatch");
     expect(qualifyProjectOverlayCoordinates(first, second, { frame: "laboratory xyz", unit: "cm" })).toBe("mismatch");

@@ -17,6 +17,8 @@ export type ProjectComposition = Readonly<{
   members: readonly [ProjectCompositionMember, ProjectCompositionMember];
   /** User assertion, not metadata inferred from a scientific source. Required for overlay. */
   alignment?: Readonly<{ frame: string; unit: string }>;
+  /** Optional view preference; the pose itself is transient and source compatibility is checked on open. */
+  camera?: Readonly<{ mode: "linked"; leader: "A" | "B" }>;
 }>;
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -54,9 +56,12 @@ export const qualifyProjectOverlayCoordinates = (a: ProjectCoordinateFrameRead, 
 };
 
 export const validProjectComposition = (value: unknown): value is ProjectComposition => {
-  if (!record(value) || !exact(value, ["id", "title", "mode", "members", ...(value.alignment === undefined ? [] : ["alignment"])]) ||
+  if (!record(value) || !exact(value, ["id", "title", "mode", "members", ...(value.alignment === undefined ? [] : ["alignment"]),
+    ...(value.camera === undefined ? [] : ["camera"])]) ||
     !label(value.id, 120) || !label(value.title, 160) || !["overlay", "side-by-side"].includes(String(value.mode)) ||
     !Array.isArray(value.members) || value.members.length !== 2) return false;
+  if (value.camera !== undefined && (value.mode !== "side-by-side" || !record(value.camera) ||
+    !exact(value.camera, ["mode", "leader"]) || value.camera.mode !== "linked" || !["A", "B"].includes(String(value.camera.leader)))) return false;
   if (!value.members.every((member: unknown) => record(member) && exact(member, ["documentId", "expected", "visible", "color", "opacity"]) &&
     label(member.documentId, 160) && isDocumentIdentity(member.expected) && member.expected.id === member.documentId &&
     typeof member.visible === "boolean" && typeof member.color === "string" && /^#[a-fA-F0-9]{6}$/.test(member.color) &&

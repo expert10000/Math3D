@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates,
+  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, sameProjectCoordinateFrame,
   type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember,
 } from "@math3d/core";
@@ -14,7 +14,7 @@ import { buildGeometryRenderData } from "../geometry/render";
 import { GeometryViewer } from "./GeometryViewer";
 import { ParamSurfaceViewer } from "./ParamSurfaceViewer";
 import { surfaceDocumentBinding, type SurfaceDocumentBinding } from "../workspace/surfaceDocumentBinding";
-import type { OverlayPointSet, OverlayPolylineGroup } from "./SurfaceViewer";
+import type { CameraSyncState, OverlayPointSet, OverlayPolylineGroup } from "./SurfaceViewer";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -103,8 +103,22 @@ export const compatibleCompositionParameterChart = (members: readonly RenderMemb
   members.length === 2 && members[0]!.id === members[1]!.id && !!members[0]!.param?.domain && !!members[1]!.param?.domain &&
   JSON.stringify(members[0]!.param.domain) === JSON.stringify(members[1]!.param.domain);
 
+export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "shared-surface-axes" | "declared-3d-frame" | null => {
+  if (members.length !== 2) return null;
+  const [a, b] = members;
+  if (a!.param && b!.param && compatibleCompositionParameterChart(members) && a!.param.unit === b!.param.unit &&
+    !!a!.param.x && a!.param.x === b!.param.x && !!a!.param.y && a!.param.y === b!.param.y)
+    return "shared-surface-axes";
+  if (!a!.param && !b!.param && a!.coordinates.status === "declared" && b!.coordinates.status === "declared" &&
+    a!.coordinates.value && b!.coordinates.value && sameProjectCoordinateFrame(a!.coordinates.value, b!.coordinates.value))
+    return "declared-3d-frame";
+  return null;
+};
+
 const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void;
-  linkedUV?: { u: number; v: number } | null; linkedToken?: number }> = ({ members, label, onPick, linkedUV, linkedToken }) => {
+  linkedUV?: { u: number; v: number } | null; linkedToken?: number;
+  onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
+  ({ members, label, onPick, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => members.flatMap(member => member.points), [members]);
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
@@ -115,10 +129,12 @@ const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick:
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
       paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
+      isCameraLeader={!!onCameraSync} onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       paramProbeUV={linkedUV} paramProbeToken={linkedToken}
       onInspectPick={hit => onPick({ memberId: members[0]!.id,
         revision: members[0]!.revision, hash: members[0]!.hash, point: hit.point, ...(hit.uv ? { uv: hit.uv } : {}) })} /> :
     <GeometryViewer scene={{} as GeometryScene} meshOverrides={meshes} extraOverlayPointSets={points} extraOverlayPolylineGroups={lines}
+      onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       pickEnabled onPick={hit => { const key = hit.meshKey ?? ""; const member = members.find(item => key === item.id || key.startsWith(`${item.id}/`));
         if (member) onPick({ memberId: member.id, revision: member.revision, hash: member.hash,
           meshKey: hit.meshKey, faceIndex: hit.faceIndex, point: hit.point }); }} />}
@@ -147,11 +163,17 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
   const [pick, setPick] = useState<Pick | null>(null), [message, setMessage] = useState("");
   const [linked, setLinked] = useState<{ uv: { u: number; v: number }; token: number } | null>(null);
+  const [cameraMode, setCameraMode] = useState<"independent" | "linked">("independent");
+  const [cameraLeader, setCameraLeader] = useState<0 | 1>(0);
+  const [cameraPose, setCameraPose] = useState<{ state: CameraSyncState; token: number } | null>(null);
+  const onLeaderCamera = useCallback((state: CameraSyncState) =>
+    setCameraPose(previous => ({ state, token: (previous?.token ?? 0) + 1 })), []);
   const chooseSaved = (id: string) => {
-    setSavedId(id); setPick(null); setLinked(null); setMessage("");
+    setSavedId(id); setPick(null); setLinked(null); setCameraPose(null); setMessage("");
     const choice = project.compositions?.find(item => item.id === id);
-    if (!choice) return;
+    if (!choice) { setCameraMode("independent"); return; }
     setFirstId(choice.members[0].documentId); setSecondId(choice.members[1].documentId); setMode(choice.mode);
+    setCameraMode(choice.camera?.mode ?? "independent"); setCameraLeader(choice.camera?.leader === "B" ? 1 : 0);
     setCheckpoint(choice.members.map(member => {
       const entry = candidates.find(item => item.expected.id === member.documentId);
       return !!entry && (entry.expected.revision !== member.expected.revision || entry.expected.structuralHash !== member.expected.structuralHash);
@@ -165,13 +187,14 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
     const entries = [firstId, secondId].map(id => candidates.find(item => item.expected.id === id));
     if (entries.some(entry => !entry)) return null;
-    return { id: saved?.id ?? `composition:${crypto.randomUUID()}`, title: `${titleOf(project, firstId)} / ${titleOf(project, secondId)}`, mode,
+    return { id: saved?.id ?? `composition:${crypto.randomUUID()}`, title: saved?.title ?? `${titleOf(project, firstId)} / ${titleOf(project, secondId)}`, mode,
       members: entries.map((entry, index) => ({ documentId: entry!.expected.id,
         expected: saved?.members[index].documentId === entry!.expected.id ? saved.members[index].expected :
           checkpoint[index] && entry!.replay ? entry!.checkpoint.identity : entry!.expected,
         visible: visible[index]!, color: palette[index]!, opacity: opacity[index]! })) as unknown as ProjectComposition["members"],
-      ...(mode === "overlay" ? { alignment: { frame: frame.trim(), unit: unit.trim() } } : {}) };
-  }, [firstId, secondId, checkpoint, mode, frame, unit, visible, palette, opacity, savedId, project]);
+      ...(mode === "overlay" ? { alignment: { frame: frame.trim(), unit: unit.trim() } } : {}),
+      ...(mode === "side-by-side" && cameraMode === "linked" ? { camera: { mode: "linked", leader: cameraLeader === 0 ? "A" : "B" } } : {}) };
+  }, [firstId, secondId, checkpoint, mode, frame, unit, visible, palette, opacity, cameraMode, cameraLeader, savedId, project]);
   const resolved = useMemo(() => {
     if (!composition) return { members: [] as RenderMember[], error: "Choose two different saved documents, or two retained generations of one document. Overlay also requires a declared frame and unit." };
     const statuses = inspectProjectCompositionAvailability(composition, project.workspace);
@@ -197,21 +220,36 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     catch (error) { return { members: [] as RenderMember[], error: (error as Error).message }; }
   }, [composition, project, readResource]);
   const linkable = mode === "side-by-side" && compatibleCompositionParameterChart(resolved.members);
+  const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
+  const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
-  const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); setLinked(null); setCheckpoint(current => current.map((value, i) => i === index ? false : value) as [boolean, boolean]); if (index === 0) setFirstId(id); else setSecondId(id); };
+  const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null);
+    setCheckpoint(current => current.map((value, i) => i === index ? false : value) as [boolean, boolean]); if (index === 0) setFirstId(id); else setSecondId(id); };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Project comparison and composition" data-testid="project-composition-view"
     style={{ position: "fixed", inset: 16, zIndex: 10000, background: "#f8fafc", color: "#18243a", border: "1px solid #94a3b8", borderRadius: 12,
       boxShadow: "0 24px 80px #0008", overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><small>PROJECT / PC01–PC05</small><h2 style={{ margin: "4px 0" }}>Compare saved documents</h2>
+    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><small>PROJECT / PC01–PC06</small><h2 style={{ margin: "4px 0" }}>Compare saved documents</h2>
       <p style={{ margin: 0 }}>Read-only composition; sources and scientific buffers stay in their owning documents.</p></div><button onClick={onClose}>Close</button></header>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
       <label>Saved composition <select value={savedId} onChange={event => chooseSaved(event.target.value)}><option value="">New comparison</option>{project.compositions?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label>View <select data-testid="project-composition-mode" value={mode} onChange={event => { setSavedId(""); setMode(event.target.value as typeof mode); setPick(null); setLinked(null); }}><option value="side-by-side">Side by side</option><option value="overlay">Overlay</option></select></label>
+      <label>View <select data-testid="project-composition-mode" value={mode} onChange={event => { setSavedId(""); setMode(event.target.value as typeof mode);
+        setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null); }}><option value="side-by-side">Side by side</option><option value="overlay">Overlay</option></select></label>
       {mode === "overlay" && <><label>Shared frame (your assertion) <input aria-label="Shared frame" value={frame} onChange={event => setFrame(event.target.value)} placeholder="e.g. laboratory xyz" maxLength={80} /></label>
         <label>Shared unit (your assertion) <input aria-label="Shared unit" value={unit} onChange={event => setUnit(event.target.value)} placeholder="e.g. mm" maxLength={40} /></label>
-        <small>Mesh/Geometry sources do not supply a comparable frame-and-unit declaration; this alignment is your explicit assertion, not a verified scientific match.</small></>}
-      <button disabled={!composition || !!resolved.error} onClick={() => { if (composition) void onSave(composition).then(ok => { if (ok) { setSavedId(composition.id); setMessage("Composition saved; source documents were not changed."); } else setMessage("Composition could not be saved."); }); }}>Save composition</button>
+        <small>Source declarations are compared when both exist; otherwise this frame and unit remain your explicit alignment assertion.</small></>}
+      <button disabled={!composition || !!resolved.error || cameraMode === "linked" && !cameraQualification} onClick={() => { if (composition) void onSave(composition).then(ok => { if (ok) { setSavedId(composition.id); setMessage("Composition saved; source documents were not changed."); } else setMessage("Composition could not be saved."); }); }}>Save composition</button>
     </div>
+    {mode === "side-by-side" && <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <label><input data-testid="project-composition-camera-link" type="checkbox" checked={cameraLinked} disabled={!cameraQualification}
+        onChange={event => { setCameraMode(event.target.checked ? "linked" : "independent"); setCameraPose(null); }} />Synchronize cameras</label>
+      {cameraQualification ? <><label>Camera lead <select data-testid="project-composition-camera-leader" value={cameraLeader}
+        disabled={!cameraLinked} onChange={event => { setCameraLeader(Number(event.target.value) as 0 | 1); setCameraPose(null); }}>
+        <option value={0}>A → B</option><option value={1}>B → A</option></select></label>
+        <small>{cameraQualification === "shared-surface-axes" ? "Same Surface parameter axes and units." : "Matching source-declared 3D frames and units."}</small></> :
+        <small>Independent cameras: source frames or Surface axes are not demonstrably compatible.</small>}
+      {cameraLinked && <small role="status">Camera linked from {cameraLeader === 0 ? "A" : "B"} · {cameraPose?.token ?? 0} updates</small>}
+      {cameraMode === "linked" && !cameraQualification && <small role="alert">Saved camera link unavailable for these sources; choose independent cameras.</small>}
+    </div>}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
       {([0, 1] as const).map(index => <div key={index} style={{ border: "1px solid #cbd5e1", padding: 8, borderRadius: 8 }}>
         <label>Source {index === 0 ? "A" : "B"} <select data-testid={`project-composition-source-${index}`} value={index === 0 ? firstId : secondId} onChange={event => onSelect(index, event.target.value)}>
@@ -222,13 +260,14 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
             entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash);
           if (!entry || !retained) return null;
           return <label style={{ marginLeft: 10 }}>Generation <select data-testid={`project-composition-generation-${index}`}
-            value={checkpoint[index] ? "checkpoint" : "current"} onChange={event => { setSavedId(""); setPick(null);
+            value={checkpoint[index] ? "checkpoint" : "current"} onChange={event => { setSavedId(""); setPick(null); setCameraMode("independent"); setCameraPose(null);
               setCheckpoint(current => current.map((value, i) => i === index ? event.target.value === "checkpoint" : value) as [boolean, boolean]); }}>
             <option value="current">Current r{entry.expected.revision}</option>
             <option value="checkpoint">Retained checkpoint r{entry.checkpoint.identity.revision}</option>
           </select></label>;
         })()}
-        <label style={{ marginLeft: 10 }}><input type="checkbox" checked={visible[index]} onChange={event => setVisible(current => current.map((value, i) => i === index ? event.target.checked : value) as [boolean, boolean])} />Visible</label>
+        <label style={{ marginLeft: 10 }}><input type="checkbox" checked={visible[index]} onChange={event => { setCameraMode("independent"); setCameraPose(null);
+          setVisible(current => current.map((value, i) => i === index ? event.target.checked : value) as [boolean, boolean]); }} />Visible</label>
         {candidates.find(entry => entry.expected.id === (index === 0 ? firstId : secondId))?.module === "surface" ?
           <small style={{ marginLeft: 10 }}>Surface uses its viewer palette</small> :
           <label style={{ marginLeft: 10 }}>Color <input type="color" value={palette[index]} onChange={event => setPalette(current => current.map((value, i) => i === index ? event.target.value : value) as [string, string])} /></label>}
@@ -240,7 +279,10 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       {mode === "overlay" ? <ComparisonPane members={resolved.members} label={`Overlay · ${frame} · ${unit}`} onPick={onPick} /> :
         composition?.members.map((member, index) => <ComparisonPane key={`${index}:${member.documentId}`} members={resolved.members.filter(item => item.slot === index)}
           label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
-          linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token} />)}
+          linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token}
+          onCameraSync={cameraLinked && index === cameraLeader ? onLeaderCamera : undefined}
+          cameraOverride={cameraLinked && index !== cameraLeader ? cameraPose?.state : null}
+          cameraOverrideToken={cameraLinked && index !== cameraLeader ? cameraPose?.token : undefined} />)}
     </div>}
     {mode === "overlay" && !resolved.error && <p role="status" style={{ margin: 0 }}>
       {resolved.verifiedOverlay ?
