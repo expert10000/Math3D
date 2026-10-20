@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  inspectProjectComposition, type GeometryDocument, type GeometryScene, type Math3DProject,
+  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates,
+  type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -18,9 +19,11 @@ import type { OverlayPointSet, OverlayPolylineGroup } from "./SurfaceViewer";
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
 } };
-type RenderMember = { id: string; title: string; revision: number; hash: string; meshes: RenderMesh[]; points: OverlayPointSet[]; lines: OverlayPolylineGroup[];
+type RenderMember = { id: string; title: string; revision: number; hash: string; generation: "current" | "retained checkpoint"; slot?: 0 | 1;
+  coordinates: ProjectCoordinateFrameRead; meshes: RenderMesh[]; points: OverlayPointSet[]; lines: OverlayPolylineGroup[];
   param?: { binding?: SurfaceDocumentBinding; x?: string; y?: string; z?: string; domain?: { uMin: number; uMax: number; vMin: number; vMax: number }; unit: string; opacity: number } };
-type Pick = { memberId: string; meshKey?: string; faceIndex?: number; point: { x: number; y: number; z: number } };
+type Pick = { memberId: string; revision: number; hash: string; meshKey?: string; faceIndex?: number; uv?: { u: number; v: number };
+  point: { x: number; y: number; z: number } };
 const colors = ["#3976d7", "#e8793a"] as const;
 const supported = (project: Math3DProject) => project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module));
 const titleOf = (project: Math3DProject, id: string): string => {
@@ -35,11 +38,16 @@ const titleOf = (project: Math3DProject, id: string): string => {
 
 export const resolveProjectCompositionMember = (project: Math3DProject, member: ProjectCompositionMember, read: ProjectResourceReader): RenderMember => {
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
-  if (!entry || entry.expected.revision !== member.expected.revision || entry.expected.structuralHash !== member.expected.structuralHash)
-    throw new TypeError("The selected source is missing or has a different saved revision. Recreate the composition from current documents.");
-  const document = verifyMixedWorkspaceReplay(project.workspace).get(member.documentId);
-  if (!document || document.identity.revision !== member.expected.revision || document.identity.structuralHash !== member.expected.structuralHash)
-    throw new TypeError("The selected source did not pass replay verification.");
+  if (!entry) throw new TypeError("The selected source document is missing.");
+  const current = verifyMixedWorkspaceReplay(project.workspace).get(member.documentId);
+  if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
+    throw new TypeError("The current source did not pass replay verification.");
+  const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
+  const checkpointSelected = !!entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
+    entry.checkpoint.identity.structuralHash === member.expected.structuralHash;
+  if (!currentSelected && !checkpointSelected)
+    throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint.");
+  const document = currentSelected ? current : entry.checkpoint;
   const color = Number.parseInt(member.color.slice(1), 16), meshes: RenderMesh[] = [];
   const points: OverlayPointSet[] = [], lines: OverlayPolylineGroup[] = [];
   let param: RenderMember["param"];
@@ -87,23 +95,33 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
   const vertices = meshes.reduce((total, mesh) => total + mesh.positions.length / 3, 0);
   if (vertices > 500_000) throw new TypeError("This composition exceeds the 500,000-vertex preview limit; the source remains unchanged.");
   return { id: member.documentId, title: titleOf(project, member.documentId), revision: document.identity.revision,
-    hash: document.identity.structuralHash, meshes, points, lines, ...(param ? { param } : {}) };
+    generation: currentSelected ? "current" : "retained checkpoint",
+    coordinates: readProjectCoordinateFrame(document), hash: document.identity.structuralHash, meshes, points, lines, ...(param ? { param } : {}) };
 };
 
-const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void }> = ({ members, label, onPick }) => {
+export const compatibleCompositionParameterChart = (members: readonly RenderMember[]): boolean =>
+  members.length === 2 && members[0]!.id === members[1]!.id && !!members[0]!.param?.domain && !!members[1]!.param?.domain &&
+  JSON.stringify(members[0]!.param.domain) === JSON.stringify(members[1]!.param.domain);
+
+const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void;
+  linkedUV?: { u: number; v: number } | null; linkedToken?: number }> = ({ members, label, onPick, linkedUV, linkedToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => members.flatMap(member => member.points), [members]);
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
   return <section aria-label={label} style={{ minWidth: 0, height: 520, position: "relative", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
     <div style={{ position: "absolute", zIndex: 30, top: 58, left: 10, background: "#fff", padding: "4px 8px", borderRadius: 4, maxWidth: "min(80%, 450px)" }}>
-      <strong>{label}</strong><br /><small>{members.map(member => `r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? "unit not recorded"}`).join(" / ")}</small>
+      <strong>{label}</strong><br /><small>{members.map(member => `${member.generation} r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? "unit not recorded"}`).join(" / ")}</small>
     </div>
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
-      paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled onInspectPick={hit => onPick({ memberId: members[0]!.id, point: hit.point })} /> :
+      paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
+      paramProbeUV={linkedUV} paramProbeToken={linkedToken}
+      onInspectPick={hit => onPick({ memberId: members[0]!.id,
+        revision: members[0]!.revision, hash: members[0]!.hash, point: hit.point, ...(hit.uv ? { uv: hit.uv } : {}) })} /> :
     <GeometryViewer scene={{} as GeometryScene} meshOverrides={meshes} extraOverlayPointSets={points} extraOverlayPolylineGroups={lines}
       pickEnabled onPick={hit => { const key = hit.meshKey ?? ""; const member = members.find(item => key === item.id || key.startsWith(`${item.id}/`));
-        if (member) onPick({ memberId: member.id, meshKey: hit.meshKey, faceIndex: hit.faceIndex, point: hit.point }); }} />}
+        if (member) onPick({ memberId: member.id, revision: member.revision, hash: member.hash,
+          meshKey: hit.meshKey, faceIndex: hit.faceIndex, point: hit.point }); }} />}
   </section>;
 };
 
@@ -117,47 +135,70 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const candidates = supported(project);
   const [savedId, setSavedId] = useState("");
   const saved = project.compositions?.find(item => item.id === savedId);
-  const [firstId, setFirstId] = useState<string>(candidates[0]?.expected.id ?? ""), [secondId, setSecondId] = useState<string>(candidates[1]?.expected.id ?? "");
+  const [firstId, setFirstId] = useState<string>(candidates[0]?.expected.id ?? ""),
+    [secondId, setSecondId] = useState<string>(candidates[1]?.expected.id ?? candidates[0]?.expected.id ?? "");
+  const [checkpoint, setCheckpoint] = useState<[boolean, boolean]>([candidates.length === 1 && !!candidates[0]?.replay &&
+    (candidates[0].checkpoint.identity.revision !== candidates[0].expected.revision ||
+      candidates[0].checkpoint.identity.structuralHash !== candidates[0].expected.structuralHash), false]);
   const [mode, setMode] = useState<"overlay" | "side-by-side">("side-by-side");
   const [frame, setFrame] = useState(""), [unit, setUnit] = useState("");
   const [visible, setVisible] = useState<[boolean, boolean]>([true, true]);
   const [palette, setPalette] = useState<[string, string]>([...colors]);
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
   const [pick, setPick] = useState<Pick | null>(null), [message, setMessage] = useState("");
+  const [linked, setLinked] = useState<{ uv: { u: number; v: number }; token: number } | null>(null);
   const chooseSaved = (id: string) => {
-    setSavedId(id); setPick(null); setMessage("");
+    setSavedId(id); setPick(null); setLinked(null); setMessage("");
     const choice = project.compositions?.find(item => item.id === id);
     if (!choice) return;
     setFirstId(choice.members[0].documentId); setSecondId(choice.members[1].documentId); setMode(choice.mode);
+    setCheckpoint(choice.members.map(member => {
+      const entry = candidates.find(item => item.expected.id === member.documentId);
+      return !!entry && (entry.expected.revision !== member.expected.revision || entry.expected.structuralHash !== member.expected.structuralHash);
+    }) as [boolean, boolean]);
     setFrame(choice.alignment?.frame ?? ""); setUnit(choice.alignment?.unit ?? "");
     setVisible([choice.members[0].visible, choice.members[1].visible]);
     setPalette([choice.members[0].color, choice.members[1].color]); setOpacity([choice.members[0].opacity, choice.members[1].opacity]);
   };
   const composition = useMemo((): ProjectComposition | null => {
-    if (!firstId || !secondId || firstId === secondId || mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
+    if (!firstId || !secondId || firstId === secondId && (mode !== "side-by-side" || checkpoint[0] === checkpoint[1]) ||
+      mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
     const entries = [firstId, secondId].map(id => candidates.find(item => item.expected.id === id));
     if (entries.some(entry => !entry)) return null;
     return { id: saved?.id ?? `composition:${crypto.randomUUID()}`, title: `${titleOf(project, firstId)} / ${titleOf(project, secondId)}`, mode,
       members: entries.map((entry, index) => ({ documentId: entry!.expected.id,
-        expected: saved?.members[index].documentId === entry!.expected.id ? saved.members[index].expected : entry!.expected,
+        expected: saved?.members[index].documentId === entry!.expected.id ? saved.members[index].expected :
+          checkpoint[index] && entry!.replay ? entry!.checkpoint.identity : entry!.expected,
         visible: visible[index]!, color: palette[index]!, opacity: opacity[index]! })) as unknown as ProjectComposition["members"],
       ...(mode === "overlay" ? { alignment: { frame: frame.trim(), unit: unit.trim() } } : {}) };
-  }, [firstId, secondId, mode, frame, unit, visible, palette, opacity, savedId, project]);
+  }, [firstId, secondId, checkpoint, mode, frame, unit, visible, palette, opacity, savedId, project]);
   const resolved = useMemo(() => {
-    if (!composition) return { members: [] as RenderMember[], error: "Choose two different saved Mesh, Geometry or bounded Surface documents. Overlay also requires a declared frame and unit." };
-    const statuses = inspectProjectComposition(composition, project.workspace);
-    if (statuses.some(status => status !== "current")) return { members: [] as RenderMember[], error: `Source status: ${statuses.join(" / ")}. Historical bytes are not substituted.` };
+    if (!composition) return { members: [] as RenderMember[], error: "Choose two different saved documents, or two retained generations of one document. Overlay also requires a declared frame and unit." };
+    const statuses = inspectProjectCompositionAvailability(composition, project.workspace);
+    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint"))
+      return { members: [] as RenderMember[], error: `Source status: ${statuses.join(" / ")}. Unavailable historical bytes are not reconstructed.` };
     if (composition.mode === "overlay" && composition.members.some(member => project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface"))
       return { members: [] as RenderMember[], error: "Overlay currently accepts Mesh and Geometry sources only. Use side-by-side for a Surface." };
     try {
-      const members = composition.members.filter(member => member.visible).map(member => resolveProjectCompositionMember(project, member, readResource));
+      const sources = composition.members.map((member, index) =>
+        ({ ...resolveProjectCompositionMember(project, member, readResource), slot: index as 0 | 1 }));
+      let overlayQualification: ReturnType<typeof qualifyProjectOverlayCoordinates> | null = null;
+      if (composition.mode === "overlay") {
+        const [first, second] = sources;
+        overlayQualification = qualifyProjectOverlayCoordinates(first!.coordinates, second!.coordinates, composition.alignment!);
+        if (overlayQualification === "invalid") throw new TypeError("A source has invalid coordinate-frame metadata; overlay refused.");
+        if (overlayQualification === "mismatch") throw new TypeError("Source coordinate frames, axes, handedness, or units disagree with this overlay; overlay refused.");
+      }
+      const members = sources.filter((_, index) => composition.members[index]!.visible);
       if (members.reduce((total, member) => total + member.meshes.reduce((count, mesh) => count + mesh.positions.length / 3, 0), 0) > 500_000)
         throw new TypeError("This comparison exceeds the 500,000-vertex preview limit; the sources remain unchanged.");
-      return { members, error: "" };
+      return { members, error: "", verifiedOverlay: overlayQualification === "verified" };
     }
     catch (error) { return { members: [] as RenderMember[], error: (error as Error).message }; }
   }, [composition, project, readResource]);
-  const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); if (index === 0) setFirstId(id); else setSecondId(id); };
+  const linkable = mode === "side-by-side" && compatibleCompositionParameterChart(resolved.members);
+  const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
+  const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); setLinked(null); setCheckpoint(current => current.map((value, i) => i === index ? false : value) as [boolean, boolean]); if (index === 0) setFirstId(id); else setSecondId(id); };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Project comparison and composition" data-testid="project-composition-view"
     style={{ position: "fixed", inset: 16, zIndex: 10000, background: "#f8fafc", color: "#18243a", border: "1px solid #94a3b8", borderRadius: 12,
       boxShadow: "0 24px 80px #0008", overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -165,7 +206,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       <p style={{ margin: 0 }}>Read-only composition; sources and scientific buffers stay in their owning documents.</p></div><button onClick={onClose}>Close</button></header>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
       <label>Saved composition <select value={savedId} onChange={event => chooseSaved(event.target.value)}><option value="">New comparison</option>{project.compositions?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
-      <label>View <select data-testid="project-composition-mode" value={mode} onChange={event => { setSavedId(""); setMode(event.target.value as typeof mode); setPick(null); }}><option value="side-by-side">Side by side</option><option value="overlay">Overlay</option></select></label>
+      <label>View <select data-testid="project-composition-mode" value={mode} onChange={event => { setSavedId(""); setMode(event.target.value as typeof mode); setPick(null); setLinked(null); }}><option value="side-by-side">Side by side</option><option value="overlay">Overlay</option></select></label>
       {mode === "overlay" && <><label>Shared frame (your assertion) <input aria-label="Shared frame" value={frame} onChange={event => setFrame(event.target.value)} placeholder="e.g. laboratory xyz" maxLength={80} /></label>
         <label>Shared unit (your assertion) <input aria-label="Shared unit" value={unit} onChange={event => setUnit(event.target.value)} placeholder="e.g. mm" maxLength={40} /></label>
         <small>Mesh/Geometry sources do not supply a comparable frame-and-unit declaration; this alignment is your explicit assertion, not a verified scientific match.</small></>}
@@ -175,6 +216,18 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       {([0, 1] as const).map(index => <div key={index} style={{ border: "1px solid #cbd5e1", padding: 8, borderRadius: 8 }}>
         <label>Source {index === 0 ? "A" : "B"} <select data-testid={`project-composition-source-${index}`} value={index === 0 ? firstId : secondId} onChange={event => onSelect(index, event.target.value)}>
           <option value="">Choose document</option>{candidates.map(entry => <option key={entry.expected.id} value={entry.expected.id}>{titleOf(project, entry.expected.id)} · {entry.module} r{entry.expected.revision}</option>)}</select></label>
+        {(() => {
+          const entry = candidates.find(item => item.expected.id === (index === 0 ? firstId : secondId));
+          const retained = !!entry?.replay && (entry.checkpoint.identity.revision !== entry.expected.revision ||
+            entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash);
+          if (!entry || !retained) return null;
+          return <label style={{ marginLeft: 10 }}>Generation <select data-testid={`project-composition-generation-${index}`}
+            value={checkpoint[index] ? "checkpoint" : "current"} onChange={event => { setSavedId(""); setPick(null);
+              setCheckpoint(current => current.map((value, i) => i === index ? event.target.value === "checkpoint" : value) as [boolean, boolean]); }}>
+            <option value="current">Current r{entry.expected.revision}</option>
+            <option value="checkpoint">Retained checkpoint r{entry.checkpoint.identity.revision}</option>
+          </select></label>;
+        })()}
         <label style={{ marginLeft: 10 }}><input type="checkbox" checked={visible[index]} onChange={event => setVisible(current => current.map((value, i) => i === index ? event.target.checked : value) as [boolean, boolean])} />Visible</label>
         {candidates.find(entry => entry.expected.id === (index === 0 ? firstId : secondId))?.module === "surface" ?
           <small style={{ marginLeft: 10 }}>Surface uses its viewer palette</small> :
@@ -184,14 +237,23 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       </div>)}
     </div>
     {resolved.error ? <p role="alert">{resolved.error}</p> : <div style={{ display: "grid", gridTemplateColumns: mode === "overlay" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 12, flex: 1 }}>
-      {mode === "overlay" ? <ComparisonPane members={resolved.members} label={`Overlay · ${frame} · ${unit}`} onPick={setPick} /> :
-        composition?.members.map((member, index) => <ComparisonPane key={member.documentId} members={resolved.members.filter(item => item.id === member.documentId)}
-          label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)}`} onPick={setPick} />)}
+      {mode === "overlay" ? <ComparisonPane members={resolved.members} label={`Overlay · ${frame} · ${unit}`} onPick={onPick} /> :
+        composition?.members.map((member, index) => <ComparisonPane key={`${index}:${member.documentId}`} members={resolved.members.filter(item => item.slot === index)}
+          label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
+          linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token} />)}
     </div>}
+    {mode === "overlay" && !resolved.error && <p role="status" style={{ margin: 0 }}>
+      {resolved.verifiedOverlay ?
+        "Source-declared coordinate frames, axes, handedness, and units match this overlay." :
+        "Unverified overlay: at least one source has no coordinate-frame declaration. The frame and unit above are operator assertions."}
+    </p>}
     <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}><strong>Selection</strong> {pick ?
-      `${titleOf(project, pick.memberId)} · ${pick.meshKey ?? "mesh"} · face ${pick.faceIndex ?? "—"} · (${pick.point.x.toPrecision(5)}, ${pick.point.y.toPrecision(5)}, ${pick.point.z.toPrecision(5)})` :
+      `${titleOf(project, pick.memberId)} · r${pick.revision} · ${pick.hash.slice(0, 20)}… · ${pick.meshKey ?? "mesh"} · face ${pick.faceIndex ?? "—"} · (${pick.point.x.toPrecision(5)}, ${pick.point.y.toPrecision(5)}, ${pick.point.z.toPrecision(5)})` :
       "Click a rendered mesh to inspect its exact member and local coordinate; point and line overlays are not pickable here."}
-      {saved && <span style={{ marginLeft: 16 }}>Saved source status: {inspectProjectComposition(saved, project.workspace).join(" / ")}</span>}
+      {saved && <span style={{ marginLeft: 16 }}>Saved source status: {inspectProjectCompositionAvailability(saved, project.workspace).join(" / ")}</span>}
+      {mode === "side-by-side" && (linkable ? <p>Linked selection uses the same stored parameter ‘u,v’ in both generations, not an inferred physical-point match.
+        {linked && ` Selected u=${linked.uv.u.toPrecision(5)}, v=${linked.uv.v.toPrecision(5)}.`}</p> :
+        <p>Linked selection unavailable: these panes do not share a verified parameter chart. Each selection remains source-specific.</p>)}
       {message && <p role="status">{message}</p>}
     </footer>
   </div>, document.body);

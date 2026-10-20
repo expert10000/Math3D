@@ -13,10 +13,13 @@ Current saved Mesh and Geometry documents can also share an overlay after the
 user explicitly declares a common frame and unit. Bounded parametric Surfaces
 use their existing viewer in an independent pane. Member visibility and supported
 appearance settings are stored in the composition, never in either source.
-The initial implementation does not resolve retained historical generations,
-automatically verify Mesh/Geometry units, synchronize cameras, or import
-unsupported Surface families. Those remain acceptance/extension work rather
-than implied capabilities. See
+The continuation can resolve exact retained replay checkpoints and link a
+parameter pick across two generations of the same Surface when their stored
+domains match. Mesh/Geometry overlays now check matching coordinate declarations
+when both structural sources supply them. Legacy sources without declarations
+remain operator-asserted, and arbitrary unretained generations, unrelated-model
+selection mapping, camera sync, and unsupported Surface families remain outside
+this bounded implementation. See
 [Project comparison and composition](docs/project-comparison-and-composition.md).
 
 ## Current delivery
@@ -1318,14 +1321,13 @@ budgets must be explicit before members can be combined.
 | PC09 | `feat(notes): allow observations spanning multiple source documents` | Extend checked Note references with compatibility/migration acceptance; do not silently broaden existing anchor semantics. |
 | PC10 | `test(projects): qualify multi-document composition and comparison` | Prove ownership, generation, units, missing-data, selection, capture, restart and renderer-lifetime parity for the declared supported modes. |
 
-PC01, PC02, and PC04 are delivered for the bounded current-revision adapters.
-PC03 has a usable Mesh/Geometry overlay but remains **Partial** until source
-coordinate compatibility can be independently checked. PC05 has a usable
-heterogeneous side-by-side view with independent source-specific picks; its
-retained-historical-generation comparison and synchronized cross-pane selection
-remain **Partial**. PC06–PC10 remain planned. Overlay frame/unit
-labels are explicitly user assertions because the existing Mesh/Geometry
-documents do not both carry independently comparable coordinate metadata.
+PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
+source-declared coordinate frames when present and refuses mismatches, but remains
+**Partial** for legacy sources that lack declarations; their overlay frame/unit
+labels are explicitly operator assertions. PC05 can compare an exact retained
+checkpoint with the current Surface and link the same stored `(u,v)` chart
+coordinate across those two panes when domains match. It remains **Partial** for
+unretained history and unrelated-model selection mapping. PC06–PC10 remain planned.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

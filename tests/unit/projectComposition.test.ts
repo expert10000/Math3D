@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  inspectProjectComposition, parseMath3DProject, replaceMath3DProjectWorkspace,
+  createMath3DProject, createMixedWorkspaceDocument, createSurfaceDocument,
+  inspectProjectComposition, inspectProjectCompositionAvailability, qualifyProjectOverlayCoordinates,
+  readProjectCoordinateFrame, sameProjectCoordinateFrame,
+  parseMath3DProject, replaceMath3DProjectWorkspace,
   serializeMath3DProject, upsertMath3DProjectComposition, validProjectComposition,
-  type ProjectComposition,
+  type ProjectComposition, type MeshDocument, type GeometryDocument,
 } from "@math3d/core";
 import { mobileMixedProjectFixture } from "../fixtures/unified-projects/mobileProjects";
 import { mobileSurfaceProjectFixture } from "../fixtures/unified-projects/mobileSurfaces";
-import { resolveProjectCompositionMember } from "../../renderer/src/components/ProjectCompositionView";
+import { compatibleCompositionParameterChart, resolveProjectCompositionMember } from "../../renderer/src/components/ProjectCompositionView";
 import { projectResourceInventory } from "../../renderer/src/projects/projectResources";
+import { SurfaceDocumentAdapter } from "../../renderer/src/surfaceAnalysis/surfaceDocumentAdapter";
+import { MIXED_REPLAY_FORMATS } from "../../renderer/src/kernel/mixedWorkspaceReplay";
 
 const setup = () => {
   const fixture = mobileMixedProjectFixture(), { project } = fixture;
@@ -75,5 +80,57 @@ describe("PC01–PC05 non-owning Project composition", () => {
     expect(resolveProjectCompositionMember(project, member, item => resources.bytes(item)).param).toMatchObject({
       x: "u", y: "v", z: "u*u-v*v", unit: "unitless", domain: { uMin: -1, uMax: 1, vMin: -1, vMax: 1 },
     });
+  });
+
+  it("compares an exact retained Surface checkpoint with its replay-verified current generation", () => {
+    const source = { representation: "parametric" as const,
+      domain: { kind: "parameter", u: { min: -1, max: 1, periodic: false }, v: { min: -1, max: 1, periodic: false } },
+      units: { length: "unitless" }, orientation: {}, parameters: {}, branchPolicy: null,
+      definition: { familyId: "history-test", expressions: { x: "u", y: "v", z: "0" } } };
+    const original = createSurfaceDocument({ stableKey: "pc-retained", metadata: { title: "Edited Surface" }, source });
+    const adapter = new SurfaceDocumentAdapter(original);
+    adapter.commitSource({ ...source, definition: { ...source.definition, expressions: { ...source.definition.expressions, z: "u*v" } } });
+    const replay = adapter.replayBundle();
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: replay.checkpoint,
+      expected: adapter.document().identity, replay: { format: MIXED_REPLAY_FORMATS.surface, payload: replay as never } }],
+      activeDocumentIds: [original.identity.id], constructions: [], relations: [], results: [], artifacts: [], committedSelection: null });
+    const project = createMath3DProject(workspace, { stableKey: "pc-history", title: "Retained generation" });
+    const old = { documentId: original.identity.id, expected: replay.checkpoint.identity, visible: true, color: "#3976d7", opacity: 1 };
+    const current = { ...old, expected: adapter.document().identity };
+    const comparison: ProjectComposition = { id: "pc-history", title: "Before and after", mode: "side-by-side", members: [old, current] };
+    expect(validProjectComposition(comparison)).toBe(true);
+    expect(parseMath3DProject(serializeMath3DProject(upsertMath3DProjectComposition(project, comparison))).compositions).toEqual([comparison]);
+    expect(inspectProjectCompositionAvailability(comparison, workspace)).toEqual(["retained-checkpoint", "current"]);
+    const oldView = resolveProjectCompositionMember(project, old, () => null);
+    const currentView = resolveProjectCompositionMember(project, current, () => null);
+    expect(oldView.param?.z).toBe("0");
+    expect(currentView.param?.z).toBe("u*v");
+    expect(compatibleCompositionParameterChart([oldView, currentView])).toBe(true);
+    expect(compatibleCompositionParameterChart([oldView, { ...currentView, id: "unrelated-surface" }])).toBe(false);
+    expect(compatibleCompositionParameterChart([oldView, { ...currentView, param: { ...currentView.param!, domain: { ...currentView.param!.domain!, uMax: 2 } } }])).toBe(false);
+    const unavailable = { ...old, expected: { ...old.expected, revision: old.expected.revision + 17 } };
+    expect(inspectProjectCompositionAvailability({ ...comparison, members: [unavailable, current] }, workspace)).toEqual(["unavailable-generation", "current"]);
+    expect(() => resolveProjectCompositionMember(project, unavailable, () => null)).toThrow(/no matching retained checkpoint/i);
+  });
+
+  it("checks independently stored Mesh and Geometry coordinate declarations without inferring missing metadata", () => {
+    const { project } = setup();
+    const mesh = project.workspace.entries.find(entry => entry.module === "mesh")!.checkpoint as MeshDocument;
+    const geometry = project.workspace.entries.find(entry => entry.module === "geometry")!.checkpoint as GeometryDocument;
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "laboratory xyz", unit: "mm",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const meshWith = { ...mesh, source: { ...mesh.source, origin: { math3dCoordinateFrame: frame } } } as MeshDocument;
+    const geometryWith = { ...geometry, source: { ...geometry.source, extensions: { math3dCoordinateFrame: frame } } } as GeometryDocument;
+    const first = readProjectCoordinateFrame(meshWith), second = readProjectCoordinateFrame(geometryWith);
+    expect(first.status).toBe("declared"); expect(second.status).toBe("declared");
+    expect(sameProjectCoordinateFrame(first.value!, second.value!)).toBe(true);
+    expect(sameProjectCoordinateFrame(first.value!, { ...second.value!, unit: "cm" })).toBe(false);
+    expect(qualifyProjectOverlayCoordinates(first, second, { frame: "laboratory xyz", unit: "mm" })).toBe("verified");
+    expect(qualifyProjectOverlayCoordinates(first, { status: "declared", value: { ...second.value!, unit: "cm" } },
+      { frame: "laboratory xyz", unit: "mm" })).toBe("mismatch");
+    expect(qualifyProjectOverlayCoordinates(first, second, { frame: "laboratory xyz", unit: "cm" })).toBe("mismatch");
+    expect(qualifyProjectOverlayCoordinates(first, { status: "missing" }, { frame: "laboratory xyz", unit: "mm" })).toBe("asserted");
+    expect(readProjectCoordinateFrame(mesh).status).toBe("missing");
+    expect(readProjectCoordinateFrame({ ...meshWith, source: { ...meshWith.source, origin: { math3dCoordinateFrame: { ...frame, axes: ["x", "x", "z"] } } } }).status).toBe("invalid");
   });
 });

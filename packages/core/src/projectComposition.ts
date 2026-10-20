@@ -1,5 +1,5 @@
 import { isDocumentIdentity, type DocumentIdentity } from "./documentIdentity";
-import type { MixedWorkspaceDocument } from "./mixedWorkspace";
+import type { MixedWorkspaceDocument, KernelWorkspaceDocument } from "./mixedWorkspace";
 
 /** A view of existing Project documents. No source bytes or edited document state live here. */
 export type ProjectCompositionMember = Readonly<{
@@ -23,14 +23,47 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const exact = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).sort().join("|") === keys.sort().join("|");
 const label = (value: unknown, max: number) => typeof value === "string" && value.trim() === value && value.length > 0 && value.length <= max;
 
+/** Optional structural source metadata. It is checked, not synthesized for legacy documents. */
+export type ProjectCoordinateFrame = Readonly<{
+  format: "math3d.coordinate-frame/v1";
+  frame: string;
+  unit: string;
+  axes: readonly [string, string, string];
+  handedness: "right" | "left";
+}>;
+export type ProjectCoordinateFrameRead = Readonly<{ status: "missing" | "invalid" | "declared"; value?: ProjectCoordinateFrame }>;
+export const readProjectCoordinateFrame = (document: KernelWorkspaceDocument): ProjectCoordinateFrameRead => {
+  const marker = document.format === "math3d.mesh-document" ?
+    (record(document.source.origin) ? document.source.origin.math3dCoordinateFrame : undefined) :
+    document.format === "math3d.geometry-document" ? document.source.extensions.math3dCoordinateFrame : undefined;
+  if (marker === undefined) return { status: "missing" };
+  if (!record(marker) || !exact(marker, ["format", "frame", "unit", "axes", "handedness"]) ||
+    marker.format !== "math3d.coordinate-frame/v1" || !label(marker.frame, 80) || !label(marker.unit, 40) ||
+    !Array.isArray(marker.axes) || marker.axes.length !== 3 || !marker.axes.every(axis => label(axis, 32)) ||
+    new Set(marker.axes).size !== 3 || !["right", "left"].includes(String(marker.handedness))) return { status: "invalid" };
+  return { status: "declared", value: marker as ProjectCoordinateFrame };
+};
+export const sameProjectCoordinateFrame = (a: ProjectCoordinateFrame, b: ProjectCoordinateFrame): boolean =>
+  a.frame === b.frame && a.unit === b.unit && a.handedness === b.handedness && a.axes.every((axis, index) => axis === b.axes[index]);
+export const qualifyProjectOverlayCoordinates = (a: ProjectCoordinateFrameRead, b: ProjectCoordinateFrameRead,
+  alignment: Readonly<{ frame: string; unit: string }>): "verified" | "asserted" | "invalid" | "mismatch" => {
+  if (a.status === "invalid" || b.status === "invalid") return "invalid";
+  if (a.value && b.value) return sameProjectCoordinateFrame(a.value, b.value) &&
+    a.value.frame === alignment.frame && a.value.unit === alignment.unit ? "verified" : "mismatch";
+  return "asserted";
+};
+
 export const validProjectComposition = (value: unknown): value is ProjectComposition => {
   if (!record(value) || !exact(value, ["id", "title", "mode", "members", ...(value.alignment === undefined ? [] : ["alignment"])]) ||
     !label(value.id, 120) || !label(value.title, 160) || !["overlay", "side-by-side"].includes(String(value.mode)) ||
-    !Array.isArray(value.members) || value.members.length !== 2 || value.members[0]?.documentId === value.members[1]?.documentId) return false;
+    !Array.isArray(value.members) || value.members.length !== 2) return false;
   if (!value.members.every((member: unknown) => record(member) && exact(member, ["documentId", "expected", "visible", "color", "opacity"]) &&
     label(member.documentId, 160) && isDocumentIdentity(member.expected) && member.expected.id === member.documentId &&
     typeof member.visible === "boolean" && typeof member.color === "string" && /^#[a-fA-F0-9]{6}$/.test(member.color) &&
     typeof member.opacity === "number" && Number.isFinite(member.opacity) && member.opacity >= 0 && member.opacity <= 1)) return false;
+  if (value.members[0].documentId === value.members[1].documentId && (value.mode !== "side-by-side" ||
+    value.members[0].expected.revision === value.members[1].expected.revision &&
+    value.members[0].expected.structuralHash === value.members[1].expected.structuralHash)) return false;
   if (value.mode === "overlay") return record(value.alignment) && exact(value.alignment, ["frame", "unit"]) &&
     label(value.alignment.frame, 80) && label(value.alignment.unit, 40);
   return value.alignment === undefined;
@@ -42,4 +75,16 @@ export const inspectProjectComposition = (composition: ProjectComposition, works
     const entry = workspace.entries.find(item => item.expected.id === member.documentId);
     if (!entry) return "missing";
     return entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash ? "current" : "historical";
+  });
+
+export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "unavailable-generation" | "missing";
+/** Metadata availability only; callers must still replay-verify and check resource sidecars. */
+export const inspectProjectCompositionAvailability = (composition: ProjectComposition, workspace: MixedWorkspaceDocument): readonly ProjectCompositionAvailability[] =>
+  composition.members.map(member => {
+    const entry = workspace.entries.find(item => item.expected.id === member.documentId);
+    if (!entry) return "missing";
+    if (entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash) return "current";
+    if (entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
+      entry.checkpoint.identity.structuralHash === member.expected.structuralHash) return "retained-checkpoint";
+    return "unavailable-generation";
   });

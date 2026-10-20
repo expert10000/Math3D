@@ -7,7 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
-  upsertMath3DProjectComposition, inspectProjectComposition, type ProjectComposition,
+  upsertMath3DProjectComposition, inspectProjectCompositionAvailability, type ProjectComposition,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -1237,7 +1237,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         {project && !preview && !managed && <section aria-label="Project comparison" data-testid="project-composition-entry" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, margin: "12px 0" }}>
           <h4 style={{ margin: "0 0 4px" }}>Compare saved documents</h4>
           <p style={{ margin: "0 0 8px" }}>View two saved Mesh, Geometry or bounded Surface documents without copying their sources. {project.compositions?.length ?? 0} saved compositions.</p>
-          <button type="button" data-testid="project-open-composition" disabled={busy || project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2}
+          <button type="button" data-testid="project-open-composition" disabled={busy ||
+            project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2 &&
+            !project.workspace.entries.some(entry => ["mesh", "geometry", "surface"].includes(entry.module) && !!entry.replay &&
+              (entry.checkpoint.identity.revision !== entry.expected.revision || entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash))}
             onClick={() => setCompositionOpen(true)}>Open comparison</button>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
@@ -1576,8 +1579,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} onClose={() => setCompositionOpen(false)}
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
-            const statuses = inspectProjectComposition(composition, saved.workspace);
-            if (statuses.some(status => status !== "current")) throw new Error("Source changed since this comparison opened. Reopen the saved Project.");
+            const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
+            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint"))
+              throw new Error("A comparison source generation is unavailable. Reopen the saved Project.");
             return upsertMath3DProjectComposition(saved, composition);
           }, `Saved composition “${composition.title}”.`);
           if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");

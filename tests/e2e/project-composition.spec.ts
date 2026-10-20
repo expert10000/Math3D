@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { projectFreezeFixture, freezeControls } from "./helpers/projectFreeze";
+import { SurfaceDocumentAdapter } from "../../renderer/src/surfaceAnalysis/surfaceDocumentAdapter";
 
 const core = require(resolve("packages/core/src/index.ts"));
 
@@ -36,7 +37,7 @@ test("PC01–PC05 compares two saved Surfaces, retains their sources, and reopen
     await expect(view.getByRole("region", { name: /A: Saddle A/ }).locator("canvas").first()).toBeVisible();
     await expect(view.getByRole("region", { name: /B: Plane B/ }).locator("canvas").first()).toBeVisible();
     await view.getByRole("button", { name: "Save composition" }).click();
-    await expect(view.getByRole("status")).toContainText("Composition saved");
+    await expect(view.getByText("Composition saved; source documents were not changed.")).toBeVisible();
     const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(persisted.compositions).toHaveLength(1);
     expect(persisted.workspace).toEqual(project.workspace);
@@ -71,9 +72,46 @@ test("PC03–PC04 overlays verified Mesh and Geometry without altering their sou
     await expect(view.getByRole("region", { name: /Overlay/ })).toBeVisible();
     await expect(view.getByRole("region", { name: /Overlay/ }).locator("canvas").first()).toBeVisible();
     await view.getByRole("button", { name: "Save composition" }).click();
-    await expect(view.getByRole("status")).toContainText("Composition saved");
+    await expect(view.getByText("Composition saved; source documents were not changed.")).toBeVisible();
     const after = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(after.workspace).toEqual(before.workspace);
     expect(after.compositions[0].alignment).toEqual({ frame: "local xyz", unit: "unitless" });
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC05 compares a retained Surface checkpoint with its current generation", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const source = { representation: "parametric", domain: { kind: "parameter", u: { min: -1, max: 1, periodic: false },
+      v: { min: -1, max: 1, periodic: false } }, units: { length: "unitless" }, orientation: {}, parameters: {}, branchPolicy: null,
+      definition: { familyId: "pc-history", expressions: { x: "u", y: "v", z: "0" } } };
+    const original = core.createSurfaceDocument({ stableKey: "pc-history-e2e", metadata: { title: "Before / after" }, source });
+    const adapter = new SurfaceDocumentAdapter(original);
+    adapter.commitSource({ ...source, definition: { ...source.definition, expressions: { ...source.definition.expressions, z: "u*v" } } });
+    const replay = adapter.replayBundle();
+    const workspace = core.createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: replay.checkpoint,
+      expected: adapter.document().identity, replay: { format: "math3d.surface-replay.v1", payload: replay } }],
+      activeDocumentIds: [original.identity.id], constructions: [], relations: [], results: [], artifacts: [], committedSelection: null });
+    const project = core.createMath3DProject(workspace, { stableKey: "pc-history-e2e", title: "Historical Surface comparison" });
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "pc-history.json", mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    await panel.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await expect(view.getByTestId("project-composition-generation-0")).toBeVisible();
+    await view.getByTestId("project-composition-generation-0").selectOption("checkpoint");
+    await expect(view.getByRole("region", { name: /A: Before \/ after/ })).toContainText("retained checkpoint r1");
+    await expect(view.getByRole("region", { name: /B: Before \/ after/ })).toContainText("current r2");
+    await expect(view.getByText(/Linked selection uses the same stored parameter/)).toBeVisible();
+    await view.getByRole("button", { name: "Save composition" }).click();
+    await expect(view.getByText("Composition saved; source documents were not changed.")).toBeVisible();
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.workspace).toEqual(project.workspace);
+    expect(saved.compositions[0].members.map((member: any) => member.expected.revision)).toEqual([1, 2]);
   } finally { await closeSurfaceApp(ctx); }
 });
