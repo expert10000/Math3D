@@ -132,6 +132,10 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-function-list small { display: block; opacity: .7; }
 .graph2d-function-editor { display: grid; gap: 8px; margin-top: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-function-editor h3 { margin: 0; font-size: 15px; }
+.graph2d-preset-picker { display:grid; gap:3px; padding:9px; border:1px solid var(--workspace-control-border); border-radius:8px; background:var(--workspace-section-bg); }
+.graph2d-preset-picker label { margin:0; font-weight:700; color:var(--workspace-control-text); }
+.graph2d-preset-picker select { min-height:34px; padding:5px 8px; }
+.graph2d-preset-picker small { color:var(--muted); line-height:1.35; }
 .graph2d-function-editor label { display: grid; gap: 3px; font-size: 12px; }
 .graph2d-function-editor input:not([type="checkbox"]), .graph2d-function-editor select { min-width: 0; width: 100%; box-sizing: border-box; }
 .graph2d-function-editor input[type="checkbox"] { width: auto; }
