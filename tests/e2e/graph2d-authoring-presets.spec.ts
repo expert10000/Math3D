@@ -29,6 +29,41 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
       await form.getByLabel("Start from preset").selectOption(preset);
       await expect(form.locator("input").first()).toHaveValue(label);
       await expect(form.locator('button[type="submit"]')).toBeEnabled();
+      if (add === "Add implicit") {
+        await form.getByRole("button", { name: "Expand formula" }).click();
+        const dialog = page.getByRole("dialog", { name: "Edit Implicit expression" });
+        const expanded = dialog.getByLabel("Implicit expression expanded");
+        await expect(expanded).toBeFocused();
+        await expect(dialog.getByLabel("Formula preview")).toContainText("Valid expression");
+        await expect(dialog.getByRole("img", { name: /Zero contour preview across x, y/ })).toBeVisible();
+        await expect(dialog).toContainText("bounded samples");
+        await expect(dialog).toContainText("Caret ready");
+        expect(await expanded.evaluate(element => getComputedStyle(element).caretColor)).not.toBe("transparent");
+        const caret = dialog.locator(".graph2d-formula-visible-caret");
+        await expect(caret).toBeVisible();
+        await expanded.press("End");
+        const endPosition = await caret.boundingBox();
+        await expanded.press("Home");
+        await expect.poll(async () => (await caret.boundingBox())?.x).toBeLessThan(endPosition!.x);
+        await expanded.selectText();
+        await expect(caret).toBeHidden();
+        await dialog.getByRole("group", { name: "Expanded formula functions" }).getByRole("button", { name: "atan", exact: true }).click();
+        await expect(expanded).toHaveValue("atan(x^2-y^2-1)");
+        await expect(caret).toBeVisible();
+        await dialog.getByRole("searchbox", { name: "Find formula function" }).fill("sinc");
+        await expect(dialog.getByRole("group", { name: "Expanded formula functions" })
+          .getByRole("button", { name: "sinc", exact: true })).toBeVisible();
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+      } else if (["Add slope field", "Add time-dependent ODE", "Add phase portrait", "Add inequality"].includes(add)) {
+        await form.getByRole("button", { name: "Expand formula" }).first().click();
+        const diagram = page.getByRole("dialog");
+        const title = add === "Add slope field" ? "Local slope directions" :
+          add === "Add time-dependent ODE" ? "Solution from initial value" :
+          add === "Add phase portrait" ? "Phase directions and orbits" : "Combined inequality region";
+        await expect(diagram.getByRole("img", { name: new RegExp(title) })).toBeVisible();
+        await expect(diagram).toContainText("bounded samples");
+        await diagram.getByRole("button", { name: "Cancel" }).click();
+      }
       await form.getByRole("button", { name: "Cancel" }).click();
     }
     await expect(panel.getByText("No functions in this graph.")).toBeVisible();
@@ -39,8 +74,68 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
     await expression.selectText();
     await form.getByRole("group", { name: "Formula functions" }).getByRole("button", { name: "tg" }).click();
     await expect(expression).toHaveValue("tan(x)");
+    await form.getByRole("button", { name: "Expand formula" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit Function expression" });
+    await expect(dialog).toBeVisible();
+    const expanded = dialog.getByLabel("Function expression expanded");
+    await expect(expanded).toHaveValue("tan(x)");
+    await expanded.fill("x+2");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(expression).toHaveValue("tan(x)");
+    await form.getByRole("button", { name: "Expand formula" }).click();
+    await expanded.fill("sin(");
+    await expect(dialog.getByLabel("Formula preview")).toContainText("Correct the formula");
+    await expect(dialog.getByRole("button", { name: "Apply formula" })).toBeDisabled();
+    await dialog.getByRole("button", { name: "Go to error" }).click();
+    await expect(expanded).toBeFocused();
+    await expanded.fill("sqrt(-1)");
+    await expect(dialog.getByLabel("Formula preview")).toContainText("No finite values");
+    await expect(dialog.getByRole("button", { name: "Apply formula" })).toBeEnabled();
+    await expanded.fill("x");
+    await expanded.selectText();
+    await dialog.getByRole("group", { name: "Expanded formula functions" }).getByRole("button", { name: "sin", exact: true }).click();
+    await expect(expanded).toHaveValue("sin(x)");
+    await expanded.fill("x+\n1");
+    await dialog.getByRole("button", { name: "Apply formula" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(expression).toHaveValue("x+ 1");
     await form.getByLabel("Start from preset").selectOption("parabola");
     await form.locator('button[type="submit"]').click();
     await expect(panel.getByRole("button", { name: "Select Parabola" })).toBeVisible();
   } finally { await closeSurfaceApp(app); }
+});
+
+test("Graph Add preset browser searches, previews, applies, and preserves the form on cancel", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    const panel = page.getByLabel("Graph functions", { exact: true });
+    await panel.getByRole("button", { name: "Add function", exact: true }).click();
+    const form = panel.getByRole("form", { name: "New function" });
+    const browse = form.getByRole("button", { name: "Browse presets" });
+    await browse.click();
+    const dialog = page.getByRole("dialog", { name: "Function presets" });
+    await expect(dialog).toBeVisible();
+    const search = dialog.getByRole("searchbox", { name: "Find a preset" });
+    await expect(search).toBeFocused();
+    await search.fill("Gaussian");
+    await expect(dialog.getByRole("button", { name: /Gaussian bell/ })).toBeVisible();
+    await expect(dialog.getByLabel("Selected preset preview")).toContainText("exp(-x^2/2)");
+    await dialog.getByRole("button", { name: "Use preset" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(browse).toBeFocused();
+    await expect(form.getByLabel("Function expression", { exact: true })).toHaveValue("exp(-x^2/2)");
+    await expect(form.locator("input").first()).toHaveValue("Gaussian");
+    await browse.click();
+    await dialog.getByRole("searchbox", { name: "Find a preset" }).fill("parabola");
+    await dialog.getByRole("searchbox", { name: "Find a preset" }).press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(browse).toBeFocused();
+    await expect(form.getByLabel("Function expression", { exact: true })).toHaveValue("exp(-x^2/2)");
+    await expect(panel.getByText("No functions in this graph.")).toBeVisible();
+  } finally {
+    await closeSurfaceApp(app);
+  }
 });

@@ -29,10 +29,20 @@ export type Graph2DEvaluationResult = Readonly<
   { ok: false; diagnostic: Graph2DExpressionDiagnostic; evaluations: number }
 >;
 
-export const GRAPH2D_FUNCTIONS = ["sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "abs", "exp", "ln", "log", "floor", "ceil"] as const;
+export const GRAPH2D_FUNCTIONS = ["sin", "cos", "tan", "asin", "acos", "atan", "sec", "csc", "cot",
+  "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "sqrt", "cbrt", "abs", "exp", "ln", "log",
+  "log2", "sinc", "sign", "floor", "ceil", "round", "trunc"] as const;
 export type Graph2DFunctionName = (typeof GRAPH2D_FUNCTIONS)[number];
 const functionSet = new Set<string>(GRAPH2D_FUNCTIONS);
 const constants: Readonly<Record<string, number>> = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI };
+const functions: Readonly<Record<Graph2DFunctionName, (value: number) => number>> = {
+  sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
+  sec: value => 1 / Math.cos(value), csc: value => 1 / Math.sin(value), cot: value => Math.cos(value) / Math.sin(value),
+  sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, asinh: Math.asinh, acosh: Math.acosh, atanh: Math.atanh,
+  sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, exp: Math.exp, ln: Math.log, log: Math.log10,
+  log2: Math.log2, sinc: value => value === 0 ? 1 : Math.sin(value) / value,
+  sign: Math.sign, floor: Math.floor, ceil: Math.ceil, round: Math.round, trunc: Math.trunc,
+};
 
 type Token = Readonly<{ kind: "number" | "identifier" | "operator" | "left" | "right" | "end"; text: string; start: number; end: number }>;
 class Graph2DExpressionError extends Error {
@@ -201,13 +211,13 @@ export const evaluateGraph2DExpression = (
       case "call": {
         const argument = compute(node.argument, depth + 1);
         if ((node.functionName === "sqrt" && argument < 0) ||
-            ((node.functionName === "ln" || node.functionName === "log") && argument <= 0) ||
-            ((node.functionName === "asin" || node.functionName === "acos") && Math.abs(argument) > 1))
+            ((node.functionName === "ln" || node.functionName === "log" || node.functionName === "log2") && argument <= 0) ||
+            ((node.functionName === "asin" || node.functionName === "acos") && Math.abs(argument) > 1) ||
+            (node.functionName === "acosh" && argument < 1) ||
+            (node.functionName === "atanh" && Math.abs(argument) >= 1) ||
+            (node.functionName === "sec" && Math.abs(Math.cos(argument)) < 1e-12) ||
+            ((node.functionName === "csc" || node.functionName === "cot") && Math.abs(Math.sin(argument)) < 1e-12))
           issue("domain", `Invalid ${node.functionName} argument.`, node.span);
-        const functions: Record<Graph2DFunctionName, (value: number) => number> = {
-          sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
-          sqrt: Math.sqrt, abs: Math.abs, exp: Math.exp, ln: Math.log, log: Math.log10, floor: Math.floor, ceil: Math.ceil,
-        };
         value = functions[node.functionName](argument);
         break;
       }

@@ -14,6 +14,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { pointTableStore } from "./pointTableStore";
 import { graph2DAuthoringPresets, type Graph2DAuthoringPresetMode, type PointDraftState } from "./graph2dAuthoringPresets";
 import { Graph2DFormulaInput } from "./Graph2DFormulaInput";
+import { Graph2DAuthoringPresetDialog } from "./Graph2DAuthoringPresetDialog";
 
 export type Graph2DLeftPalette = "classic" | "geometry";
 type Props = { document: Graph2DDocument; onCommit?: (action: Graph2DAuthoringAction) => void;
@@ -53,6 +54,12 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
   const [editorOpenVersion, setEditorOpenVersion] = useState(0);
   const [message, setMessage] = useState("");
   const [presetId, setPresetId] = useState("");
+  const [presetBrowserMode, setPresetBrowserMode] = useState<Graph2DAuthoringPresetMode | null>(null);
+  const presetBrowserOpener = useRef<HTMLButtonElement | null>(null);
+  const closePresetBrowser = () => {
+    setPresetBrowserMode(null);
+    requestAnimationFrame(() => presetBrowserOpener.current?.focus());
+  };
   const showEditor = () => { setOpen(true); setEditorOpenVersion(version => version + 1); };
   useLayoutEffect(() => {
     if (!open) return;
@@ -61,6 +68,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     if (panel && editor) panel.scrollTop += editor.getBoundingClientRect().top - panel.getBoundingClientRect().top - 12;
   }, [open, mode, editorOpenVersion]);
   const variables = ["x", ...document.source.variables.map((entry) => entry.name)];
+  const parameterValues = Object.fromEntries(document.source.variables.map(entry => [entry.name, entry.value]));
+  const parameters = document.source.variables.map(entry => entry.name);
   const pointPreview = mode === "point-series" ? previewGraph2DPointImport(pointDraft.text) : null;
   const errors = mode === "explicit" ? validateGraph2DFunctionDraft(draft, variables) :
     mode === "point-series" ? [...(pointPreview?.errors ?? []),
@@ -128,6 +137,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       {graph2DAuthoringPresets[kind].map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
     </select></label>
     <small>{graph2DAuthoringPresets[kind].find(item => item.id === presetId)?.detail}</small>
+    <button type="button" onClick={event => {
+      presetBrowserOpener.current = event.currentTarget;
+      setPresetBrowserMode(kind);
+    }}>Browse presets</button>
   </div>;
   const beginEdit = (id: string) => {
     const object = document.source.objects.find((entry) => entry.id === id);
@@ -314,6 +327,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="Function name" value={draft.label} maxLength={160}
         onChange={(event) => setDraft({ ...draft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="y =" ariaLabel="Function expression" value={draft.expression}
+        variables={variables} axes={["x"]} ranges={[draft.domain]} parameterValues={parameterValues}
         onChange={expression => setDraft(current => ({ ...current, expression }))} />
       <div className="graph2d-domain-row">
         <label>From <input aria-label="Domain minimum" type="number" value={draft.domain.min}
@@ -352,8 +366,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="Parametric name" value={parametricDraft.label} maxLength={160}
         onChange={(event) => setParametricDraft({ ...parametricDraft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="x(t) =" ariaLabel="Parametric x expression" value={parametricDraft.xExpression}
+        variables={["t", ...parameters]} axes={["t"]} ranges={[parametricDraft.domain]} parameterValues={parameterValues}
         onChange={xExpression => setParametricDraft(current => ({ ...current, xExpression }))} />
       <Graph2DFormulaInput label="y(t) =" ariaLabel="Parametric y expression" value={parametricDraft.yExpression}
+        variables={["t", ...parameters]} axes={["t"]} ranges={[parametricDraft.domain]} parameterValues={parameterValues}
         onChange={yExpression => setParametricDraft(current => ({ ...current, yExpression }))} />
       <div className="graph2d-domain-row">
         <label>From t <input aria-label="Parameter minimum" type="number" value={parametricDraft.domain.min}
@@ -393,6 +409,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="Polar name" value={polarDraft.label} maxLength={160}
         onChange={(event) => setPolarDraft({ ...polarDraft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="r(θ) =" ariaLabel="Polar radius expression" value={polarDraft.rExpression}
+        variables={["theta", ...parameters]} axes={["theta"]} ranges={[polarDraft.domain]} parameterValues={parameterValues}
         onChange={rExpression => setPolarDraft(current => ({ ...current, rExpression }))} />
       <div className="graph2d-domain-row">
         <label>From θ <input aria-label="Angle minimum" type="number" value={polarDraft.domain.min}
@@ -433,6 +450,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="Slope field name" value={slopeFieldDraft.label} maxLength={160}
         onChange={event => setSlopeFieldDraft({ ...slopeFieldDraft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="dy/dx =" ariaLabel="Slope field expression" value={slopeFieldDraft.expression}
+        variables={["x", "y", ...parameters]} axes={["x", "y"]} previewMode="slope-field"
+        ranges={[slopeFieldDraft.domain, slopeFieldDraft.yDomain]} parameterValues={parameterValues}
         onChange={expression => setSlopeFieldDraft(current => ({ ...current, expression }))} />
       <div className="graph2d-domain-row">
         <label>X from <input aria-label="Slope field x minimum" type="number" value={slopeFieldDraft.domain.min}
@@ -467,6 +486,9 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="ODE name" value={timeOdeDraft.label} maxLength={160}
         onChange={event => setTimeOdeDraft({ ...timeOdeDraft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="x′ =" ariaLabel="ODE derivative f(t,x)" value={timeOdeDraft.expression}
+        variables={["t", "x", ...parameters]} axes={["t", "x"]} previewMode="time-ode"
+        previewContext={{ timeOde: { seed: timeOdeDraft.seed } }}
+        ranges={[timeOdeDraft.domain, timeOdeDraft.stateDomain]} parameterValues={parameterValues}
         onChange={expression => setTimeOdeDraft(current => ({ ...current, expression }))} />
       <div className="graph2d-domain-row">
         <label>Time from <input aria-label="ODE time minimum" type="number" step="any" value={timeOdeDraft.domain.min}
@@ -503,8 +525,16 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="Phase portrait name" value={phaseDraft.label} maxLength={160}
         onChange={event => setPhaseDraft({ ...phaseDraft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="x′ =" ariaLabel="Phase portrait x derivative" value={phaseDraft.xDerivative}
+        variables={["x", "y", ...parameters]} axes={["x", "y"]} previewMode="phase-portrait"
+        previewContext={{ phasePortrait: { xDerivative: phaseDraft.xDerivative, yDerivative: phaseDraft.yDerivative,
+          editing: "x", seeds: phaseDraft.seeds, timeSpan: phaseDraft.timeSpan } }}
+        ranges={[phaseDraft.domain, phaseDraft.yDomain]} parameterValues={parameterValues}
         onChange={xDerivative => setPhaseDraft(current => ({ ...current, xDerivative }))} />
       <Graph2DFormulaInput label="y′ =" ariaLabel="Phase portrait y derivative" value={phaseDraft.yDerivative}
+        variables={["x", "y", ...parameters]} axes={["x", "y"]} previewMode="phase-portrait"
+        previewContext={{ phasePortrait: { xDerivative: phaseDraft.xDerivative, yDerivative: phaseDraft.yDerivative,
+          editing: "y", seeds: phaseDraft.seeds, timeSpan: phaseDraft.timeSpan } }}
+        ranges={[phaseDraft.domain, phaseDraft.yDomain]} parameterValues={parameterValues}
         onChange={yDerivative => setPhaseDraft(current => ({ ...current, yDerivative }))} />
       <div className="graph2d-domain-row">
         <label>X from <input aria-label="Phase portrait x minimum" type="number" step="any" value={phaseDraft.domain.min}
@@ -566,6 +596,8 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <label>Name <input aria-label="Implicit name" value={implicitDraft.label} maxLength={160}
         onChange={(event) => setImplicitDraft({ ...implicitDraft, label: event.target.value })} /></label>
       <Graph2DFormulaInput label="F(x,y) =" ariaLabel="Implicit expression" value={implicitDraft.expression} suffix=" = 0"
+        variables={["x", "y", ...parameters]} axes={["x", "y"]} previewMode="implicit"
+        ranges={[implicitDraft.domain, implicitDraft.yDomain]} parameterValues={parameterValues}
         onChange={expression => setImplicitDraft(current => ({ ...current, expression }))} />
       <div className="graph2d-domain-row">
         <label>X from <input aria-label="Implicit x minimum" type="number" value={implicitDraft.domain.min}
@@ -607,7 +639,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         onChange={(event) => setInequalityDraft({ ...inequalityDraft, label: event.target.value })} /></label>
       {inequalityDraft.clauses.map((clause, index) => <div className="graph2d-domain-row" key={index}>
         <Graph2DFormulaInput label={`F${index + 1}(x,y)`} ariaLabel={`Region expression ${index + 1}`}
-          value={clause.expression} onChange={expression => setInequalityDraft(current => ({ ...current,
+          value={clause.expression} variables={["x", "y", ...parameters]} axes={["x", "y"]} previewMode="inequality"
+          previewContext={{ region: { clauses: inequalityDraft.clauses, operator: inequalityDraft.operator, editingIndex: index } }}
+          ranges={[inequalityDraft.domain, inequalityDraft.yDomain]} parameterValues={parameterValues}
+          onChange={expression => setInequalityDraft(current => ({ ...current,
             clauses: current.clauses.map((item, at) => at === index ? { ...item, expression } : item) }))} />
         <label>Comparison <select aria-label={`Region comparison ${index + 1}`} value={clause.comparator}
           onChange={(event) => setInequalityDraft({ ...inequalityDraft,
@@ -664,6 +699,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       {piecewiseDraft.pieces.map((piece, index) => <fieldset key={index}>
         <legend>Piece {index + 1}</legend>
         <Graph2DFormulaInput label="y =" ariaLabel={`Piece ${index + 1} expression`} value={piece.expression}
+          variables={variables} axes={["x"]} ranges={[piece.domain]} parameterValues={parameterValues}
           onChange={expression => setPiecewiseDraft(current => ({ ...current, pieces: current.pieces.map((entry, at) =>
             at === index ? { ...entry, expression } : entry) }))} />
         <div className="graph2d-domain-row">
@@ -727,5 +763,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       <div className="graph2d-function-actions"><button type="submit" disabled={errors.length > 0}>Save data series</button>
         <button type="button" onClick={() => { setOpen(false); setMessage(""); }}>Cancel</button></div>
     </form>}
+    {presetBrowserMode && <Graph2DAuthoringPresetDialog mode={presetBrowserMode} selectedId={presetId}
+      onApply={id => { applyPreset(presetBrowserMode, id); closePresetBrowser(); }} onClose={closePresetBrowser} />}
   </div>;
 }
