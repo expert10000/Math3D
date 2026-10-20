@@ -100,11 +100,13 @@ function insertImplicitMul(toks: Tok[], funcNames?: Set<string>): Tok[] {
 }
 
 // Shunting-yard to RPN (supports unary minus as "neg")
-type Rpn =
+export type RealExpressionInstruction =
   | { t: "num"; v: number }
   | { t: "var"; name: string }
   | { t: "op"; op: string }
   | { t: "call"; fn: string; argc: number };
+type Rpn = RealExpressionInstruction;
+export type RealExpressionAst = Readonly<{ version: 1; instructions: readonly RealExpressionInstruction[] }>;
 
 const PREC: Record<string, number> = { neg: 5, "^": 4, "*": 3, "/": 3, "+": 2, "-": 2 };
 const RIGHT_ASSOC = new Set(["^", "neg"]);
@@ -112,9 +114,11 @@ const RIGHT_ASSOC = new Set(["^", "neg"]);
 export function compileExpression(
   src: string,
   allowedVars: string[]
-): { fn?: (vars: Record<string, number>) => number; error?: ExprError } {
+): { fn?: (vars: Record<string, number>) => number; ast?: RealExpressionAst; error?: ExprError } {
+  if (src.length > 10_000) return { error: err("Expression exceeds 10000 characters", 10_000) };
   const t0 = tokenize(src);
   if (t0.error) return { error: t0.error };
+  if (t0.toks.length > 4_096) return { error: err("Expression has too many tokens", src.length) };
 
   const toks = insertImplicitMul(t0.toks, new Set(Object.keys(FUNCS)));
 
@@ -227,6 +231,17 @@ export function compileExpression(
     if (topOp) output.push({ t: "op", op: topOp });
   }
 
+  let depth = 0;
+  for (const instruction of output) {
+    if (instruction.t === "num" || instruction.t === "var") { depth += 1; continue; }
+    const inputs = instruction.t === "call" ? instruction.argc : instruction.op === "neg" ? 1 : 2;
+    if (instruction.t === "call" && (inputs < 1 || (instruction.fn !== "min" && instruction.fn !== "max" && inputs !== 1)))
+      return { error: err(`Invalid number of arguments for '${instruction.fn}'`, src.length) };
+    if (depth < inputs) return { error: err("Incomplete expression", src.length) };
+    depth += 1 - inputs;
+  }
+  if (depth !== 1) return { error: err("Incomplete expression", src.length) };
+
   // Evaluate RPN safely (no new Function)
   const fn = (vars: Record<string, number>) => {
     const st: number[] = [];
@@ -258,5 +273,5 @@ export function compileExpression(
     return st.length ? st[st.length - 1] : NaN;
   };
 
-  return { fn };
+  return { fn, ast: { version: 1, instructions: output } };
 }

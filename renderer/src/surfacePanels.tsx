@@ -1,4 +1,5 @@
 import { SurfaceViewControls, SurfaceOverlayControls, SurfaceProbeResult } from "./components/SurfaceInspectorControls";
+import { MathExpressionInput } from "./math/MathExpressionInput";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uiStyles as styles } from "./uiStyles";
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
@@ -3311,16 +3312,8 @@ onChangeImplicitExpr,
           {volumeShowCustom && (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Custom field</div>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-                <span>F(x,y,z)</span>
-                <input
-                  type="text"
-                  value={volumeCustomExpr}
-                  onChange={(e) => onChangeVolumeCustomExpr(e.target.value)}
-                  placeholder="e.g. x^2 + y^2 + z^2 - 1"
-                  style={{ width: "100%", fontFamily: "monospace" }}
-                />
-              </label>
+              <MathExpressionInput label="F(x,y,z)" ariaLabel="Volume custom field" profile="real"
+                variables={["x", "y", "z"]} value={volumeCustomExpr} onChange={onChangeVolumeCustomExpr} />
               <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, marginTop: 8 }}>
                 <span>Embedded examples</span>
                 <select

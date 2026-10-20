@@ -3,6 +3,7 @@ import { COMPLEX_COMMAND_TYPES, type CanonicalJsonValue } from "@math3d/core";
 import type { ComplexAnalysisCommandAdapter } from "../math/complexCommandAdapter";
 import type { ComplexPreviewMapSpec } from "../math/complexPreviewArtifacts";
 import { complexEditorSeed } from "./nativeScientificRestore";
+import { MathExpressionInput } from "../math/MathExpressionInput";
 
 /** Source controls for a restored native Complex document, alongside Function Explorer. */
 export const ScientificProjectEditor = ({ adapter, spec, onChange, onRestore }: {
@@ -28,7 +29,8 @@ export const ScientificProjectEditor = ({ adapter, spec, onChange, onRestore }: 
   return <div data-testid="project-scientific-editor" style={{ padding: "6px 14px", display: "grid", gap: 6, fontFamily: "system-ui, sans-serif", fontSize: 12, lineHeight: 1.4, background: "#f8fafc", borderBottom: "1px solid #cbd5e1" }}>
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
     <span style={{ overflowWrap: "anywhere" }}>Saved Complex · {document.identity.id} · revision {document.identity.revision}</span>
-    <label>f(z) <input data-testid="project-complex-function" value={spec.fExpr} onChange={(event) => onChange({ inputMode: "fz", fExpr: event.target.value })} /></label>
+    <MathExpressionInput label="f(z)" ariaLabel="Complex function" inputTestId="project-complex-function"
+      profile="complex" variables={["z"]} value={spec.fExpr} onChange={value => onChange({ inputMode: "fz", fExpr: value })} />
     <div style={{ display: "flex", gap: 6 }}>
     <button type="button" style={controlStyle} data-testid="project-scientific-undo" disabled={!adapter.history().undoDepth} onClick={() => { adapter.undo(); onRestore(); }}>Undo document</button>
     <button type="button" style={controlStyle} data-testid="project-scientific-redo" disabled={!adapter.history().redoDepth} onClick={() => { adapter.redo(); onRestore(); }}>Redo document</button>

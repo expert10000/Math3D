@@ -18,6 +18,7 @@ import { ComplexAnalysisCommandAdapter } from "./math/complexCommandAdapter";
 import { VolumeProjectEditor } from "./projects/VolumeProjectEditor";
 import { buildNativeVolumeDataset, nativeVolumeObject, volumeEditorSeed, volumeDocumentEditable, validateNativeVolumeReplay } from "./projects/nativeVolumeRestore";
 import { ScientificProjectEditor } from "./projects/ScientificProjectEditor";
+import { MathExpressionInput } from "./math/MathExpressionInput";
 import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 // src/App.tsx
 import { AdditionalProjectSession } from "./projects/additionalProjectSession";
@@ -82053,9 +82054,12 @@ case "mobius":
         <button type="button" data-testid="project-editor-undo" onClick={() => { const adapter = mode === "curves" ? restoredCurveAdapter! : restoredSurfaceAdapter!; adapter.undo(); navigateRestoredDocument(adapter.document().identity.id, mode === "curves" ? "curve" : "surface"); }}>Undo document</button>
         <button type="button" data-testid="project-editor-redo" onClick={() => { const adapter = mode === "curves" ? restoredCurveAdapter! : restoredSurfaceAdapter!; adapter.redo(); navigateRestoredDocument(adapter.document().identity.id, mode === "curves" ? "curve" : "surface"); }}>Redo document</button>
         {mode === "surfaces" && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <label>x(u,v) <input data-testid="project-surface-x" value={paramXExpr} onChange={(event) => setParamXExpr(event.target.value)} style={{ width: 110 }} /></label>
-          <label>y(u,v) <input data-testid="project-surface-y" value={paramYExpr} onChange={(event) => setParamYExpr(event.target.value)} style={{ width: 110 }} /></label>
-          <label>z(u,v) <input data-testid="project-surface-z" value={paramZExpr} onChange={(event) => setParamZExpr(event.target.value)} style={{ width: 150 }} /></label>
+          <MathExpressionInput label="x(u,v)" ariaLabel="Surface x expression" profile="real" variables={["u", "v"]}
+            inputTestId="project-surface-x" value={paramXExpr} onChange={setParamXExpr} />
+          <MathExpressionInput label="y(u,v)" ariaLabel="Surface y expression" profile="real" variables={["u", "v"]}
+            inputTestId="project-surface-y" value={paramYExpr} onChange={setParamYExpr} />
+          <MathExpressionInput label="z(u,v)" ariaLabel="Surface z expression" profile="real" variables={["u", "v"]}
+            inputTestId="project-surface-z" value={paramZExpr} onChange={setParamZExpr} />
         </div>}
         <span>Projects → Save project keeps these edits.</span>
       </div>}
@@ -90292,16 +90296,11 @@ case "mobius":
                       </div>
                     ) : (
                     <div style={{ display: "grid", gap: 6 }}>
-                      <label style={{ fontSize: 11 }}>
-                        x(t)
+                      <div style={{ fontSize: 11 }}>
                         {activeCurveIsCustom ? (
-                          <input
-                            type="text"
-                            value={activeCurveFormulas.x}
-                            onChange={(e) => setCurveCustomXExpr(e.target.value)}
-                            style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
-                          />
-                        ) : (
+                          <MathExpressionInput label="x(t)" ariaLabel="Curve x expression" profile="real" variables={["t"]}
+                            value={activeCurveFormulas.x} onChange={setCurveCustomXExpr} />
+                        ) : (<><span>x(t)</span>
                           <div
                             style={{
                               marginTop: 4,
@@ -90314,19 +90313,13 @@ case "mobius":
                             }}
                           >
                             {activeCurveFormulas.x}
-                          </div>
-                        )}
-                      </label>
-                      <label style={{ fontSize: 11 }}>
-                        y(t)
+                          </div></>)}
+                      </div>
+                      <div style={{ fontSize: 11 }}>
                         {activeCurveIsCustom ? (
-                          <input
-                            type="text"
-                            value={activeCurveFormulas.y}
-                            onChange={(e) => setCurveCustomYExpr(e.target.value)}
-                            style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
-                          />
-                        ) : (
+                          <MathExpressionInput label="y(t)" ariaLabel="Curve y expression" profile="real" variables={["t"]}
+                            value={activeCurveFormulas.y} onChange={setCurveCustomYExpr} />
+                        ) : (<><span>y(t)</span>
                           <div
                             style={{
                               marginTop: 4,
@@ -90339,20 +90332,14 @@ case "mobius":
                             }}
                           >
                             {activeCurveFormulas.y}
-                          </div>
-                        )}
-                      </label>
+                          </div></>)}
+                      </div>
                       {(activeCurvePreset?.dimension ?? 2) === 3 && (
-                        <label style={{ fontSize: 11 }}>
-                          z(t)
+                        <div style={{ fontSize: 11 }}>
                           {activeCurveIsCustom ? (
-                            <input
-                              type="text"
-                              value={activeCurveFormulas.z ?? ""}
-                              onChange={(e) => setCurveCustomZExpr(e.target.value)}
-                              style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
-                            />
-                          ) : (
+                            <MathExpressionInput label="z(t)" ariaLabel="Curve z expression" profile="real" variables={["t"]}
+                              value={activeCurveFormulas.z ?? ""} onChange={setCurveCustomZExpr} />
+                          ) : (<><span>z(t)</span>
                             <div
                               style={{
                                 marginTop: 4,
@@ -90365,9 +90352,8 @@ case "mobius":
                               }}
                             >
                               {activeCurveFormulas.z}
-                            </div>
-                          )}
-                        </label>
+                            </div></>)}
+                        </div>
                       )}
                     </div>
                     )}
@@ -107589,15 +107575,9 @@ case "mobius":
                             active preset note: {otherComplexActivePreset.note}
                           </div>
                         )}
-                        <label style={{ display: "grid", gap: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700 }}>f(z)</span>
-                          <input
-                            type="text"
-                            value={otherComplexFunctionExpr}
-                            onChange={(e) => updateOtherComplexFunctionExpr(e.target.value)}
-                            spellCheck={false}
-                          />
-                        </label>
+                        <MathExpressionInput label="f(z)" ariaLabel="Complex function expression"
+                          profile="complex" variables={["z"]} value={otherComplexFunctionExpr}
+                          onChange={updateOtherComplexFunctionExpr} />
                         <div style={{ fontSize: 11, opacity: 0.75 }}>
                           Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
                         </div>

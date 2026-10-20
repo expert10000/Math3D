@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
+import { definedEnvironment } from "./helpers/electronLauncher";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -42,7 +43,7 @@ test.describe("Packaged desktop flow", () => {
       app = await electron.launch({
         executablePath: installedAppExe,
         args: [],
-        env: launchEnv,
+        env: definedEnvironment(launchEnv),
       });
       const page = await app.firstWindow();
       await page.waitForLoadState("domcontentloaded");

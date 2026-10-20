@@ -1175,6 +1175,7 @@ test("Memory profile: desktop run records process tree RSS", async ({}, testInfo
   try {
     ctx = await launchMemoryProfileApp(electronArgs);
     const rootPid = ctx.app.process().pid;
+    if (rootPid === undefined) throw new Error("Electron process PID is unavailable");
     samples.push({ atMs: performance.now() - startedAt, ...(await sampleProcessTreeRss(rootPid)) });
 
     const rendererMemoryBefore = await readRendererMemory(ctx.page);

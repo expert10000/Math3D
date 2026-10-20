@@ -352,6 +352,7 @@ test.describe("release 1.5.0 topology and complex analysis check", () => {
     try {
       ctx = await launchReleaseCheckApp();
       const rootPid = ctx.app.process().pid;
+      if (rootPid === undefined) throw new Error("Electron process PID is unavailable");
       samples.push(await sampleProcessTreeSafely(rootPid, performance.now() - startedAt));
 
       if (selectedAreas.has("topology")) {

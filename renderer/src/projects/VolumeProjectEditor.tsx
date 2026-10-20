@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { VolumeDocumentSource } from "@math3d/core";
 import type { VolumeDocumentAdapter } from "../volume/volumeDocumentAdapter";
 import { volumeEditorSeed, volumeSourceFromEditor } from "./nativeVolumeRestore";
+import { MathExpressionInput } from "../math/MathExpressionInput";
 
 /** Explicit source commits keep rendering, inspection and navigation from rewriting recipes. */
 export const VolumeProjectEditor = ({ adapter, onRestore }: { adapter: VolumeDocumentAdapter; onRestore: () => void }) => {
@@ -25,7 +26,9 @@ export const VolumeProjectEditor = ({ adapter, onRestore }: { adapter: VolumeDoc
   return <div data-testid="project-volume-editor" style={{ padding: "6px 14px", display: "grid", gap: 6, font: "12px/1.4 system-ui", background: "#f8fafc", borderBottom: "1px solid #cbd5e1" }}>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
       <span style={{ overflowWrap: "anywhere" }}>{document.metadata.title} · revision {document.identity.revision}</span>
-      {seed.kind === "recipe" ? <label>F(x,y,z) <input data-testid="project-volume-expression" value={expression} onChange={(event) => setExpression(event.target.value)} /></label> : <span data-testid="project-volume-payload">Saved scalar payload · {document.source.payload!.scalarType} · {document.source.payload!.byteLength} bytes</span>}
+      {seed.kind === "recipe" ? <MathExpressionInput label="F(x,y,z)" ariaLabel="Volume expression"
+        inputTestId="project-volume-expression" profile="real" variables={["x", "y", "z", ...Object.keys(seed.parameters)]}
+        value={expression} onChange={setExpression} /> : <span data-testid="project-volume-payload">Saved scalar payload · {document.source.payload!.scalarType} · {document.source.payload!.byteLength} bytes</span>}
       <button type="button" style={style} data-testid="project-volume-apply" onClick={apply}>Apply source</button>
       <button type="button" style={style} data-testid="project-volume-undo" disabled={!adapter.history().undoDepth} onClick={() => { adapter.undo(); onRestore(); }}>Undo document</button>
       <button type="button" style={style} data-testid="project-volume-redo" disabled={!adapter.history().redoDepth} onClick={() => { adapter.redo(); onRestore(); }}>Redo document</button>

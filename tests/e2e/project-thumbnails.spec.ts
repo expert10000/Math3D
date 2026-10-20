@@ -40,6 +40,7 @@ test("PRJ48 captures real Surface previews, updates camera views, retains upload
     const canvas = page.getByTestId("module-workspace").locator("canvas").first(); await expect(canvas).toBeVisible();
     await expect.poll(async () => (await canvas.boundingBox())?.height ?? 0).toBeGreaterThan(64);
     let saved = await saveView(page), panel = page.getByTestId("project-explorer-panel");
+    if (!saved.image) throw new Error("Expected a saved Surface thumbnail");
     expect(saved.image).toMatch(/^data:image\/jpeg;base64,/); expect(saved.marker).toMatch(/^sha256:/);
     expect(saved.project.workspace.entries.find((entry: any) => entry.expected.id === sourceId).expected).toEqual(original.workspace.entries[0].expected);
     expect(JSON.stringify(saved.project)).not.toContain("data:image");
@@ -101,6 +102,7 @@ test("PRJ48 captures the Graph SVG and preserves a different saved project's ima
     await panel.getByTestId("project-gallery-layout-toggle").click();
     await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-thumbnail-message")).toContainText("Current view saved");
     await expect(panel.getByTestId("project-save")).toBeEnabled(); saved = await readSaved(page);
+    if (!saved.image) throw new Error("Expected a saved Graph thumbnail");
     writeFileSync(resolve(directory, "graph-preview.jpg"), Buffer.from(saved.image.split(",")[1], "base64"));
     await panel.evaluate(element => { element.scrollTop = 0; });
     await page.screenshot({ path: resolve(directory, "gallery-surface-and-graph.png") });

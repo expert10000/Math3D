@@ -83,7 +83,7 @@ test("PC05 compares a retained Surface checkpoint with its current generation", 
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
-    const source = { representation: "parametric", domain: { kind: "parameter", u: { min: -1, max: 1, periodic: false },
+    const source = { representation: "parametric" as const, domain: { kind: "parameter", u: { min: -1, max: 1, periodic: false },
       v: { min: -1, max: 1, periodic: false } }, units: { length: "unitless" }, orientation: {}, parameters: {}, branchPolicy: null,
       definition: { familyId: "pc-history", expressions: { x: "u", y: "v", z: "0" } } };
     const original = core.createSurfaceDocument({ stableKey: "pc-history-e2e", metadata: { title: "Before / after" }, source });

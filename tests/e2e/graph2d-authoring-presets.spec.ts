@@ -146,3 +146,33 @@ test("Graph Add preset browser searches, previews, applies, and preserves the fo
     await closeSurfaceApp(app);
   }
 });
+
+test("Implicit contour gallery groups a larger library and previews selected mathematics", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(page, "Implicit contour");
+    const editor = graphEditor(page);
+    await editor.getByRole("button", { name: "Browse presets" }).click();
+    const gallery = page.getByRole("dialog", { name: "Implicit contour presets" });
+    await expect(gallery.getByRole("heading", { name: /Algebraic curves/ })).toBeVisible();
+    await expect(gallery.getByRole("heading", { name: /Transcendental contours/ })).toBeVisible();
+    await expect(gallery.getByRole("heading", { name: /Scalar fields and critical points/ })).toBeVisible();
+    await expect(gallery).toContainText("27 of 27 presets");
+    const search = gallery.getByRole("searchbox", { name: "Find a preset" });
+    await search.fill("Cassini");
+    await expect(gallery).toContainText("2 of 27 presets");
+    await gallery.getByRole("button", { name: /Cassini oval · two loops/ }).click();
+    const detail = gallery.getByLabel("Selected preset preview");
+    await expect(detail.getByRole("img", { name: "Cassini oval · two loops sampled contour preview" })).toBeVisible();
+    await expect(detail.locator(".graph2d-implicit-preset-figure path")).toHaveAttribute("d", /[ML]/);
+    await expect(detail).toContainText("Expected components");
+    await expect(detail).toContainText("2 in the default viewport");
+    await expect(detail).toContainText("Default viewport");
+    await gallery.getByRole("button", { name: "Use preset" }).click();
+    await expect(editor.getByLabel("Implicit expression")).toHaveValue("((x-1)^2+y^2)*((x+1)^2+y^2)-0.5");
+    await editor.getByRole("button", { name: "Cancel" }).click();
+  } finally { await closeSurfaceApp(app); }
+});
