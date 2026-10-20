@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
-import { openScientificGraphDatasets, previewScientificGraphSlice, type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
+import { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane, previewScientificGraphVolume,
+  type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
 
@@ -86,16 +87,47 @@ export function registerScientificSceneIpc(): void {
     if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
       throw new TypeError("Invalid Graph slice request");
     const request = args[0] as Record<string, unknown>;
-    if (Object.keys(request).sort().join(",") !== "datasetId,fingerprint,fixedIndex,varyingAxis" ||
+    if (Object.keys(request).sort().join(",") !==
+        (request.component === undefined ? "datasetId,fingerprint,fixedIndex,varyingAxis" : "component,datasetId,fingerprint,fixedIndex,varyingAxis") ||
         typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
         typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        (request.component !== undefined && (typeof request.component !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.component))) ||
         (request.varyingAxis !== 0 && request.varyingAxis !== 1) ||
         typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
       throw new TypeError("Invalid Graph slice request");
     const source = graphActive.get(event.sender);
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
     return previewScientificGraphSlice(source.directory, source.fingerprint, request.datasetId,
-      request.varyingAxis, request.fixedIndex);
+      request.varyingAxis, request.fixedIndex, request.component as string | undefined);
+  });
+  ipcMain.handle("scientificScenes:previewGraphPlane", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid Graph plane request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "component,datasetId,fingerprint,fixedIndex,normalAxis" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        typeof request.component !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.component) ||
+        (request.normalAxis !== null && request.normalAxis !== 0 && request.normalAxis !== 1 && request.normalAxis !== 2) ||
+        (request.fixedIndex !== null && (typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))))
+      throw new TypeError("Invalid Graph plane request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphPlane(source.directory, source.fingerprint, request.datasetId,
+      request.component, request.normalAxis, request.fixedIndex);
+  });
+  ipcMain.handle("scientificScenes:previewGraphVolume", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid Graph volume request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "component,datasetId,fingerprint" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        typeof request.component !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.component))
+      throw new TypeError("Invalid Graph volume request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphVolume(source.directory, source.fingerprint, request.datasetId, request.component);
   });
   ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||

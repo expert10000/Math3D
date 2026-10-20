@@ -51,6 +51,19 @@ describe("small scientific-scene/v1 manifest", () => {
     }
   });
 
+  it("accepts bounded 2D vector components with the same shape and rejects mismatched resources", () => {
+    const manifest = edit(scalar(), copy => {
+      copy.resources.push({ id: "north", path: "north.f64", format: "f64le", count: 12, bytes: 96, sha256: hash("c") });
+      copy.datasets[0] = { id: "velocity", semanticType: "vector-field", coordinateSystem: "xy", shape: [3, 4],
+        order: "last-axis-fastest", quantity: { name: "Velocity", unit: "m/s" },
+        components: [{ name: "east", resource: "values" }, { name: "north", resource: "north" }] };
+      copy.views = [];
+    });
+    expect(normalizeScientificSceneManifest(manifest).ok).toBe(true);
+    expect(normalizeScientificSceneManifest(edit(manifest as ScientificSceneManifest,
+      copy => { copy.resources[1].count = 11; copy.resources[1].bytes = 88; })).ok).toBe(false);
+  });
+
   it("fails closed on unknown versions, fields and executable view expressions", () => {
     expect(normalizeScientificSceneManifest(edit(scalar(), copy => { copy.schema = "scientific-scene/v2"; })).ok).toBe(false);
     expect(normalizeScientificSceneManifest(edit(scalar(), copy => { copy.python = "print('run')"; })).ok).toBe(false);

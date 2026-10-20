@@ -369,6 +369,8 @@ The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](g
 
 **GRA-11.8 — software delivered, focused Samsung journey checked.** [Time-dependent ODE trajectories](graph2d-gra11-time-dependent-ode-scope.md) add one saved scalar `x′=f(t,x)` initial-value problem per object, editable `t₀` and `x₀`, bounded forward/backward numerical paths, separate explicit stop reasons, desktop/web/mobile authoring and status, and an editable Differential equations Gallery example. The plot uses time `t` horizontally and state `x` vertically. The [Samsung evidence](evidence/graph2d-gra11-8-samsung-2026-10-19/README.md) covers Gallery, create/edit/save/reopen, visible `state-boundary` and `time-boundary`, and exposed accessibility labels; actual TalkBack speech and the wider mobile gate remain pending. General non-autonomous planar systems and 3D vector fields remain open and need separate scope before implementation.
 
+**2026-10-20 field follow-on:** [GRA-13.1–13.2](graph2d-fields-fitting-fourier-complex-roadmap.md) adds checked 2D complex/vector line extraction, whole-grid 2D component heatmaps, bounded rotatable 3D volume overviews and verified 3D component plane navigation on desktop. These are read-only field views; saved field references, simultaneous vector arrows and mobile viewing remain open. The same roadmap scopes GRA-13.3 saved field references, GRA-14 general vector fields, GRA-15 nonlinear fitting, GRA-16 Fourier analysis and GRA-17 Graphs → Complex Analysis mapping. Graph → Geometry remains delivered under GRA-N10.
+
 ## 7. Dependency graph and parallel work
 
 ```text

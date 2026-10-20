@@ -551,8 +551,13 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openGraphDataset: (): Promise<ScientificGraphDatasetOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDataset"),
   openGraphDatasetPreset: (id: "sincos" | "thermal"): Promise<ScientificGraphDatasetOpenResponse> =>
     ipcRenderer.invoke("scientificScenes:openGraphDatasetPreset", id),
-  previewGraphSlice: (request: { fingerprint: string; datasetId: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
+  previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphSlice", request),
+  previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
+    normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphPlane", request),
+  previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphVolume", request),
   closeGraphDataset: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:closeGraphDataset", fingerprint),
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   openDirectory: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openDirectory"),

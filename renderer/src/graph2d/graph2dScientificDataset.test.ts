@@ -3,7 +3,9 @@ import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocumen
   GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY, normalizeGraph2DDocument, parseGraph2DDocument,
   GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY,
   inspectGraph2DCompatibility,
-  previewGraph2DScientificDataset, previewGraph2DScientificSlice, serializeGraph2DDocument, sha256Checksum,
+  previewGraph2DScientificDataset, previewGraph2DScientificSlice, verifyGraph2DScientificPlane,
+  verifyGraph2DScientificVolume,
+  serializeGraph2DDocument, sha256Checksum,
   type ScientificSceneManifest } from "@math3d/core";
 
 const fixture = () => {
@@ -101,6 +103,48 @@ describe("GRA-10 verified scientific dataset adapter", () => {
   });
 });
 
+describe("verified multidimensional field planes", () => {
+  it("checks a 3D vector component, axis selection and transfer checksum", () => {
+    const values = Array.from({ length: 24 }, (_, index) => index);
+    const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+    values.forEach((value, index) => view.setFloat64(index * 8, value, true));
+    const digest = sha256Checksum(bytes).slice(7);
+    const manifest: ScientificSceneManifest = {
+      schema: "scientific-scene/v1", sceneId: "volume", title: "Vector volume",
+      source: { producer: "lab", sourceId: "run", sourceSchema: "lab/v1", sha256: "a".repeat(64) },
+      resources: ["east", "north"].map(id => ({ id, path: `${id}.f64`, format: "f64le" as const,
+        count: 24, bytes: 192, sha256: digest })),
+      coordinates: [{ id: "space", kind: "cartesian", axes: [{ name: "x", unit: "m" },
+        { name: "y", unit: "m" }, { name: "z", unit: "m" }],
+        origin: [0, 0, 0], spacing: [1, 1, 1], periodic: [false, false, false] }],
+      datasets: [{ id: "wind", semanticType: "vector-field", coordinateSystem: "space", shape: [2, 3, 4],
+        order: "last-axis-fastest", quantity: { name: "Wind", unit: "m/s" },
+        components: [{ name: "east", resource: "east" }, { name: "north", resource: "north" }] }], views: [],
+    };
+    const json = JSON.stringify(manifest), fingerprint = sha256Checksum(new TextEncoder().encode(json)).slice(7);
+    const selected = [3, 7, 11, 15, 19, 23];
+    const planeBytes = new Uint8Array(selected.length * 8), planeView = new DataView(planeBytes.buffer);
+    selected.forEach((value, index) => planeView.setFloat64(index * 8, value, true));
+    const plane = { fingerprint, datasetId: "wind", component: "north", sourceShape: [2, 3, 4],
+      normalAxis: 2 as const, fixedIndex: 3, planeAxes: [0, 1] as [number, number],
+      shape: [2, 3] as [number, number], resourceSha256: digest,
+      planeSha256: sha256Checksum(planeBytes).slice(7), values: selected };
+    expect(verifyGraph2DScientificPlane(json, fingerprint, plane)).toBe(plane);
+    expect(() => verifyGraph2DScientificPlane(json, fingerprint, { ...plane, values: [...selected.slice(0, 5), 22] }))
+      .toThrow(/checksum/);
+    expect(() => verifyGraph2DScientificPlane(json, fingerprint, { ...plane, component: "wrong" }))
+      .toThrow(/verified field plane/);
+    expect(() => verifyGraph2DScientificPlane(json, fingerprint, { ...plane, normalAxis: 1 }))
+      .toThrow(/verified field plane/);
+    const volume = { fingerprint, datasetId: "wind", component: "north",
+      sourceShape: [2, 3, 4] as [number, number, number], sampleShape: [2, 3, 4] as [number, number, number],
+      resourceSha256: digest, sampleSha256: digest, values };
+    expect(verifyGraph2DScientificVolume(json, fingerprint, volume)).toBe(volume);
+    expect(() => verifyGraph2DScientificVolume(json, fingerprint, { ...volume, values: [...values.slice(0, 23), 50] }))
+      .toThrow(/checksum/);
+  });
+});
+
 const gridFixture = (shape: [number, number] = [3, 4]) => {
   const values = Array.from({ length: shape[0] * shape[1] }, (_, index) => index);
   const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
@@ -129,6 +173,37 @@ const gridFixture = (shape: [number, number] = [3, 4]) => {
 };
 
 describe("GRA-10 explicit 2D scalar lines", () => {
+  it("keeps complex and vector grid components separate with checked hashes and labels", () => {
+    const base = gridFixture(), source = JSON.parse(base.json) as ScientificSceneManifest;
+    const values = Array.from({ length: 12 }, (_, index) => index + 100);
+    const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+    values.forEach((value, index) => view.setFloat64(index * 8, value, true));
+    const resourceSha256 = sha256Checksum(bytes).slice(7);
+    const extra = { id: "other", path: "other.f64", format: "f64le" as const,
+      count: 12, bytes: bytes.length, sha256: resourceSha256 };
+    const selected = [101, 105, 109], lineBytes = new Uint8Array(selected.length * 8), lineView = new DataView(lineBytes.buffer);
+    selected.forEach((value, index) => lineView.setFloat64(index * 8, value, true));
+    const makeLine = (fingerprint: string, component: string) => ({ fingerprint, datasetId: "amplitude", component,
+      varyingAxis: 0 as const, fixedIndex: 1, shape: [3, 4], resourceSha256,
+      sliceSha256: sha256Checksum(lineBytes).slice(7), values: selected });
+    const complex = { ...source, resources: [...source.resources, extra], datasets: [{ ...source.datasets[0]!,
+      semanticType: "complex-scalar-field" as const, imaginary: "other" }] };
+    const complexJson = JSON.stringify(complex), complexHash = sha256Checksum(new TextEncoder().encode(complexJson)).slice(7);
+    const imaginary = previewGraph2DScientificSlice(complexJson, complexHash, makeLine(complexHash, "imaginary"));
+    expect(imaginary.label).toBe("Amplitude imaginary · distance = 12 m");
+    expect(imaginary.origin).toMatchObject({ component: "imaginary", resourceSha256 });
+    expect(() => previewGraph2DScientificSlice(complexJson, complexHash, makeLine(complexHash, "real"))).toThrow(/verified/);
+    const vector = { ...source, resources: [...source.resources, extra], datasets: [{
+      id: "amplitude", semanticType: "vector-field" as const, coordinateSystem: "plane", shape: [3, 4],
+      order: "last-axis-fastest" as const, quantity: { name: "Velocity", unit: "m/s" },
+      components: [{ name: "east", resource: "samples" }, { name: "north", resource: "other" }],
+    }] };
+    const vectorJson = JSON.stringify(vector), vectorHash = sha256Checksum(new TextEncoder().encode(vectorJson)).slice(7);
+    const north = previewGraph2DScientificSlice(vectorJson, vectorHash, makeLine(vectorHash, "north"));
+    expect(north.label).toBe("Velocity north · distance = 12 m");
+    expect(north.rows.map(row => row.y)).toEqual(selected);
+  });
+
   it("extracts both non-square directions, coordinates and saved slice provenance", () => {
     const { json, fingerprint, line } = gridFixture();
     const column = previewGraph2DScientificSlice(json, fingerprint, line(0, 1));
