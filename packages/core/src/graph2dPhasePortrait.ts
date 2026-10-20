@@ -180,7 +180,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       let point = crossing, value = evaluate(point), resolved = false;
       for (let iteration = 0; iteration < 5 && value; iteration += 1) {
         const residual = Math.hypot(value.x, value.y);
-        if (residual <= 1e-7 * (1 + Math.hypot(point.x, point.y))) {
+        if (residual < 1e-7) {
           if (!equilibria.some(other => Math.hypot(other.x - point.x, other.y - point.y) < (gridScale ?? 0) * 0.25))
             equilibria.push({ ...point, residual });
           resolved = true; break;

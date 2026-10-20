@@ -11,7 +11,7 @@ describe("Graphs workspace shell", () => {
   it("renders document-backed empty, loading, and error states", () => {
     const empty = renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} />);
     expect(empty).toContain("0 graph objects");
-    expect(empty).toContain("No functions in this graph.");
+    expect(empty).toContain("No graph objects yet. Choose Add Graph to begin.");
     expect(empty).toContain('aria-label="Graph view essentials"');
     expect(empty).toContain('aria-label="Zoom in"');
     expect(empty).toContain("Fit selection");

@@ -1,6 +1,7 @@
 import { createMixedWorkspaceDocument, regenerateGraph2DPromotion, replaceMath3DProjectWorkspace,
   analyzeGraph2DDerivative, createDocumentRelation, viewerSourceFromDocument,
   analyzeGraph2DIntegral, analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntersections,
+  GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS,
   createSurfaceDocument, canonicalJsonStringify,
   setProjectDocumentMetadata, type Math3DProject, type Graph2DAnyPromotion, type SurfaceDocument,
   type AnalysisResultEnvelope, type DocumentRelation, type KernelWorkspaceDocument } from "@math3d/core";
@@ -87,8 +88,9 @@ const analysisOperations = new Map([
 ]);
 const analysisPlan = (previous: AnalysisResultEnvelope, graph: KernelWorkspaceDocument | undefined): (() => AnalysisResultEnvelope) => {
   const version = previous.provenance.operation.algorithmVersion;
-  // Derivative v2 retains the recorded request fields; other analysis adapters still require v1.
-  const supportedVersion = version === "1" || previous.provenance.operation.type === "graph2d.derivative" && version === "2";
+  // Derivative and critical-point v2 retain their recorded request fields; other adapters still require v1.
+  const supportedVersion = version === "1" || version === "2" &&
+    ["graph2d.derivative", "graph2d.critical-points"].includes(previous.provenance.operation.type);
   if (graph?.format !== "math3d.graph2d-document" || !analysisOperations.has(previous.provenance.operation.type) || !supportedVersion)
     throw new TypeError("This recorded analysis has no qualified local refresh adapter.");
   const value = previous.provenance.operation.parameters;
@@ -122,7 +124,11 @@ const analysisPlan = (previous: AnalysisResultEnvelope, graph: KernelWorkspaceDo
     }
     case "graph2d.critical-points": {
       const objectId = explicit(p.objectId), bounds = interval();
-      return () => analyzeGraph2DCriticalPoints({ document: graph, objectId, interval: bounds }).publication;
+      const budget = version === "2" ? finite(p.maxEvaluations) : GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS;
+      if (!Number.isSafeInteger(budget) || budget < 1 || budget > GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS)
+        throw new TypeError("Recorded critical-point evaluation budget is outside the local algorithm's range.");
+      return () => analyzeGraph2DCriticalPoints({ document: graph, objectId, interval: bounds,
+        maxEvaluations: budget }).publication;
     }
     case "graph2d.intersections": {
       const firstObjectId = explicit(p.firstObjectId), secondObjectId = explicit(p.secondObjectId), bounds = interval();
