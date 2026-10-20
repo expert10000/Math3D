@@ -281,7 +281,8 @@ test.describe("Workspace navigation", () => {
 
       await ctx.page.getByTestId("volume-action-new").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
-      await expect(detailedControls.getByLabel("F(x,y,z)")).toBeVisible();
+      await expect(detailedControls.getByText("Custom field", { exact: true })).toBeVisible();
+      await expect(detailedControls.getByRole("textbox", { name: "Volume custom field" })).toBeVisible();
 
       await ctx.page.getByTestId("volume-action-gallery").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
