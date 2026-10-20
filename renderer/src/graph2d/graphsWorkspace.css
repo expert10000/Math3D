@@ -242,11 +242,25 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .graph2d-critical-points { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
 .graph2d-critical-points h3 { margin: 0 0 8px; font-size: 14px; }
 .graph2d-critical-points p { margin: 6px 0; }
-.graph2d-critical-list { display: grid; gap: 6px; margin: 8px 0; padding: 0; list-style: none; }
-.graph2d-critical-list li { border: 1px solid var(--border); border-radius: 6px; padding: 5px; }
-.graph2d-critical-list button { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; cursor: pointer; padding: 2px; }
-.graph2d-critical-list button:disabled { opacity: .45; cursor: default; }
-.graph2d-critical-list small { display: block; margin-top: 3px; opacity: .7; overflow-wrap: anywhere; }
+.graph2d-critical-status-partial { color: #9a3412; background: #fff7ed; border: 1px solid #fdba74; border-radius: 6px; padding: 8px; }
+.graph2d-critical-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
+.graph2d-critical-summary > div { padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel, #f8fafc); }
+.graph2d-critical-summary dt { font-size: 11px; }
+.graph2d-critical-summary dd { margin: 2px 0 0; font-size: 17px; font-weight: 700; }
+.graph2d-critical-controls { display: grid; gap: 6px; margin: 9px 0; }
+.graph2d-critical-controls [role="group"] { display: flex; flex-wrap: wrap; gap: 3px; }
+.graph2d-critical-controls [aria-pressed="true"] { background: #dbeafe; border-color: #3b82f6; }
+.graph2d-critical-controls label { display: grid; gap: 3px; }
+.graph2d-critical-controls input { box-sizing: border-box; width: 100%; }
+.graph2d-critical-table-wrap { max-height: 250px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.graph2d-critical-table-wrap table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.graph2d-critical-table-wrap th { position: sticky; top: 0; background: var(--panel, #f8fafc); z-index: 1; }
+.graph2d-critical-table-wrap th, .graph2d-critical-table-wrap td { padding: 4px 3px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.graph2d-critical-table-wrap td button { padding: 2px 4px; }
+.graph2d-critical-table-wrap tr.graph2d-critical-active { background: #dbeafe; }
+.graph2d-critical-table-wrap p { padding: 7px; }
+.graph2d-critical-actions { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.graph2d-critical-points > small { display: block; opacity: .8; }
 .graph2d-intervals { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
 .graph2d-intervals h3 { margin: 0 0 8px; font-size: 14px; }
 .graph2d-interval-table-wrap { max-height: 240px; overflow: auto; }

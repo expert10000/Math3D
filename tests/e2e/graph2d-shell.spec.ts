@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
@@ -379,6 +380,55 @@ test("Graphs selects source-linked zeros and refreshes extrema after editing", a
     await saveGraphEditor(app.page);
     await expect(results.getByRole("button", { name: /Select inflection at x/ }).first()).toBeVisible();
     await expect(results.getByRole("button", { name: /Select minimum at x/ })).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});
+
+test("Graphs labels a refinement-limited oscillatory analysis as partial", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("sin(100*x)");
+    await saveGraphEditor(app.page);
+    const status = app.page.getByTestId("graph2d-critical-scan-status").first();
+    await expect(status).toContainText("Partial scan");
+    await expect(status).toContainText("results not exhaustive");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});
+
+test("Graphs Inspector filters, sorts, and batch saves validated numerical results", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2-1");
+    await saveGraphEditor(app.page);
+    const results = app.page.getByLabel("Graph inspector").getByTestId("graph2d-critical-points");
+    await expect(results.locator(".graph2d-critical-summary dd").first()).toHaveText("2");
+    await results.getByRole("button", { name: "Zeros", exact: true }).click();
+    await expect(results.getByRole("button", { name: /Select zero at x/ })).toHaveCount(2);
+    await expect(results.getByRole("button", { name: /Select minimum at x/ })).toHaveCount(0);
+    await results.getByLabel("Search numerical results").fill("minimum");
+    await expect(results.getByRole("button", { name: /Select zero at x/ })).toHaveCount(0);
+    await results.getByLabel("Search numerical results").fill("");
+    await results.getByRole("button", { name: "Sort results by x" }).click();
+    const xCells = results.locator("tbody tr td:nth-child(3)");
+    expect(Number(await xCells.first().textContent())).toBeGreaterThan(Number(await xCells.last().textContent()));
+    await results.getByRole("button", { name: "Save all validated zeros (2)" }).click();
+    await expect(app.page.locator('[data-graph2d-construction]')).toHaveCount(2);
+    await expect(results.getByRole("button", { name: "Save all validated zeros (0)" })).toBeDisabled();
+    const csvPath = test.info().outputPath("numerical-analysis.csv");
+    await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), csvPath);
+    await results.getByRole("button", { name: "Export results" }).click();
+    await expect.poll(() => { try { return readFileSync(csvPath, "utf8"); } catch { return ""; } }).toContain("kind,x,y,residual");
   } finally {
     await closeSurfaceApp(app);
   }

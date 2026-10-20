@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { prepareMathExpression, previewMathExpression } from "./mathExpressionPipeline";
+import { differentiateMathExpression, mathExpressionProvenance, mathExpressionSymbolTable,
+  prepareMathExpression, previewMathExpression, restoreMathExpressionProvenance,
+  serializeMathExpressionAst } from "./mathExpressionPipeline";
 
 describe("shared math expression pipeline", () => {
   it("keeps module grammar and parses each source into a tagged AST", () => {
@@ -37,5 +39,38 @@ describe("shared math expression pipeline", () => {
   it("bounds long real sources before parsing", () => {
     const result = prepareMathExpression("x+".repeat(5_001), "real", ["x"]);
     expect(result.error?.kind).toBe("limit");
+  });
+
+  it("uses explicit scopes, arity checks, and domain diagnostics", () => {
+    expect(prepareMathExpression("sin(x, y)", "graph", ["x", "y"]).error?.kind).toBe("syntax");
+    expect(prepareMathExpression("sqrt(x)", "graph", ["x"]).evaluate?.({ x: -1 }).error?.kind).toBe("domain");
+    expect(prepareMathExpression("1/(x-1)", "graph", ["x"]).evaluate?.({ x: 1 }).error?.kind).toBe("domain");
+    expect(prepareMathExpression("x+y", "graph", ["x"]).error?.kind).toBe("scope");
+    expect(prepareMathExpression("pi+1", "real", ["pi"]).error?.kind).toBe("scope");
+    expect(prepareMathExpression("-x^2", "graph", ["x"]).evaluate?.({ x: 3 }).value).toBe(-9);
+    expect(prepareMathExpression("-x^2", "real", ["x"]).evaluate?.({ x: 3 }).value).toBe(-9);
+    expect(prepareMathExpression("2^-x", "real", ["x"]).evaluate?.({ x: 2 }).value).toBeCloseTo(0.25);
+    const complexValue = prepareMathExpression("-z^2", "complex", ["z"]).evaluate?.({ z: 3 }).value;
+    expect(typeof complexValue).toBe("object");
+    if (typeof complexValue === "object") { expect(complexValue.re).toBeCloseTo(-9); expect(complexValue.im).toBeCloseTo(0); }
+    expect(mathExpressionSymbolTable("graph", ["x"]).variables).toEqual(["x"]);
+  });
+
+  it("canonically serializes typed ASTs and retains source provenance", () => {
+    const first = prepareMathExpression("x + 1", "graph", ["x"]).ast!;
+    const second = prepareMathExpression("x+1", "graph", ["x"]).ast!;
+    expect(first.normalized).toMatchObject({ kind: "binary", operator: "+", left: { kind: "symbol", name: "x" } });
+    expect(prepareMathExpression("2x+1", "real", ["x"]).ast?.normalized).toMatchObject({ kind: "binary", operator: "+" });
+    expect(serializeMathExpressionAst(first)).toBe(serializeMathExpressionAst(second));
+    expect(mathExpressionProvenance(first)).toMatchObject({ source: "x + 1", profile: "graph",
+      structuralHash: expect.any(String) });
+    const provenance = mathExpressionProvenance(first);
+    expect(restoreMathExpressionProvenance(provenance).evaluate?.({ x: 2 }).value).toBe(3);
+    expect(restoreMathExpressionProvenance({ ...provenance, source: "x+2" }).error?.kind).toBe("syntax");
+    expect(differentiateMathExpression(first, "x")).toMatchObject({ ok: true, method: "symbolic-rules",
+      ast: { normalized: { kind: "number", value: 1 } } });
+    expect(differentiateMathExpression(first, "y")).toMatchObject({ ok: false });
+    const complex = prepareMathExpression("z^2+i", "complex", ["z"]).ast!;
+    expect(serializeMathExpressionAst(complex)).toContain("complex");
   });
 });

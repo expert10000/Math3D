@@ -2,7 +2,7 @@ import { canonicalJsonStringify } from "./documentIdentity";
 import type { ComplexExpressionAst } from "./complexAnalysisDocument";
 import type { ValidationResult } from "./validation";
 
-export const COMPLEX_EXPRESSION_PARSER_VERSION = "math3d-controlled-complex@1" as const;
+export const COMPLEX_EXPRESSION_PARSER_VERSION = "math3d-controlled-complex@2" as const;
 export const COMPLEX_EXPRESSION_FUNCTIONS = Object.freeze(["sin", "cos", "tan", "exp", "log", "sqrt", "abs"] as const);
 export const COMPLEX_EXPRESSION_CONSTANTS = Object.freeze(["i", "pi", "e"] as const);
 export const COMPLEX_EXPRESSION_VARIABLES = Object.freeze(["z", "u", "v"] as const);
@@ -154,7 +154,7 @@ export const parseComplexExpressionAst = (
     const token = peek();
     if (token.kind === "operator" && token.value === "-") {
       cursor += 1;
-      const argument = parseExpression(5);
+      const argument = parseExpression(4);
       return argument ? { type: "unary", operator: "-", argument } : fail("Expected expression after unary '-'", token.index + 1);
     }
     if (token.kind === "number") { cursor += 1; return { type: "number", value: token.value }; }

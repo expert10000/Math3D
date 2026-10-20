@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DCriticalPoints, applyGraph2DAuthoring, createEmptyGraph2DDocument,
+  analyzeGraph2DDerivative,
   isGraph2DCriticalPointCurrent,
   createGraph2DDocument } from "@math3d/core";
 
@@ -65,7 +66,48 @@ describe("Graph2D critical point analysis", () => {
     expect(near(result.candidates.filter((entry) => entry.kind === "maximum"), Math.PI / 2)).toBe(true);
     expect(near(result.candidates.filter((entry) => entry.kind === "inflection"), 0)).toBe(true);
     expect(result.evaluations).toBeLessThanOrEqual(12000);
-    expect(result.candidates.length).toBeLessThanOrEqual(64);
+    expect(result.candidates.length).toBeLessThanOrEqual(256);
+  });
+
+  it("resolves the 63 zeros of x sin(x²) on [-10, 10] without borrowing rendering samples", () => {
+    const result = analyze("x*sin(x^2)", -10, 10);
+    const zeros = result.candidates.filter((entry) => entry.kind === "zero");
+    expect(zeros).toHaveLength(63);
+    for (let n = 1; n <= 31; n += 1) {
+      expect(near(zeros, -Math.sqrt(n * Math.PI), 2e-4)).toBe(true);
+      expect(near(zeros, Math.sqrt(n * Math.PI), 2e-4)).toBe(true);
+    }
+    expect(near(zeros, 0)).toBe(true);
+    expect(result.candidates.filter((entry) => entry.kind === "minimum").length).toBeGreaterThan(25);
+    expect(result.candidates.filter((entry) => entry.kind === "maximum").length).toBeGreaterThan(25);
+    expect(result.candidates.filter((entry) => entry.kind === "inflection").length).toBeGreaterThan(50);
+    expect(result.evaluations).toBeLessThanOrEqual(12000);
+    expect(result.candidates.every((entry) => entry.residual < 1e-5)).toBe(true);
+    const outerZero = zeros.find((entry) => Math.abs(entry.x - Math.sqrt(31 * Math.PI)) < 2e-4);
+    expect(outerZero?.localSensitivity).toBeGreaterThan(0);
+    expect(outerZero?.estimatedXError).toBeLessThan(1e-6);
+    expect(zeros.find((entry) => entry.x === 0)?.localSensitivity).toBeNull();
+    const document = documentFor("x*sin(x^2)");
+    const first = analyzeGraph2DDerivative({ document, objectId: "function_1", x: 2, order: 1 });
+    const second = analyzeGraph2DDerivative({ document, objectId: "function_1", x: 2, order: 2 });
+    expect(first.value).toBeCloseTo(Math.sin(4) + 8 * Math.cos(4), 8);
+    expect(second.value).toBeCloseTo(12 * Math.cos(4) - 32 * Math.sin(4), 8);
+  });
+
+  it("reports a partial scan when the analysis evaluation budget is exhausted", () => {
+    const document = documentFor("x*sin(x^2)");
+    const result = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
+      interval: { min: -10, max: 10 }, maxEvaluations: 400 });
+    expect(result.status).toBe("incomplete");
+    expect(result.evaluations).toBe(400);
+    expect(result.diagnostics.some((entry) => entry.code === "evaluation-limit")).toBe(true);
+    expect(result.publication.warnings.some((warning) => warning.includes("Analysis is partial"))).toBe(true);
+  });
+
+  it("does not claim a finished bounded scan for frequencies beyond its refinement budget", () => {
+    const result = analyze("sin(100*x)", -10, 10);
+    expect(result.status).toBe("incomplete");
+    expect(result.diagnostics.some((entry) => ["refinement-limit", "evaluation-limit", "candidate-limit"].includes(entry.code))).toBe(true);
   });
 
   it("rejects poles rather than reporting them as zeros or inflections", () => {

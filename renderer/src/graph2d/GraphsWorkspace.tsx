@@ -60,6 +60,7 @@ import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
 import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
 import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
+import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
@@ -845,33 +846,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <code>{result.formula}</code></details>}
       </div>)}
     </section>}
-    {criticalPoints && <section className="graph2d-critical-points" data-testid="graph2d-critical-points" aria-label="Zeros extrema and inflections">
-      <h3>Zeros, extrema, inflections</h3>
-      <p>Bounded scan: {criticalPoints.status} · x ∈ [{criticalPoints.interval.min.toPrecision(5)}, {criticalPoints.interval.max.toPrecision(5)}]
-        {" "}· {criticalPoints.evaluations.toLocaleString()} evaluations</p>
-      {criticalPoints.candidates.length ? <ol className="graph2d-critical-list">
-        {criticalPoints.candidates.map((candidate) => <li key={candidate.candidateId}>
-          <button type="button" aria-label={`Select ${candidate.kind} at x ${candidate.x.toPrecision(7)}`}
-            disabled={!isGraph2DCriticalPointCurrent(candidate, document)}
-            onClick={() => onSelectionCommit?.({ objectId: candidate.objectId,
-              probe: { objectId: candidate.objectId, x: candidate.x, y: candidate.y } })}>
-            <strong>{candidate.kind}</strong> ({candidate.x.toPrecision(7)}, {candidate.y.toPrecision(7)})
-          </button>
-          <small>{candidate.confidence} · {candidate.method} · residual {candidate.residual.toExponential(2)}
-            {candidate.multiplicity === "even-possible" ? " · even multiplicity possible" : " · multiplicity unknown"}</small>
-          {candidate.kind !== "inflection" && <button type="button" aria-label={`Save ${candidate.kind} at x ${candidate.x.toPrecision(7)} as construction`}
-            title={criticalPoints.status !== "complete" ? "Complete bounded scan required before saving." : undefined}
-            disabled={!onConstructionCommit || criticalPoints.status !== "complete" || !isGraph2DCriticalPointCurrent(candidate, document) ||
-              (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
-            onClick={() => onConstructionCommit?.({ type: "create", object: graph2DConstructionFromCandidate(document, criticalPoints, candidate) })}>
-            Save {candidate.kind} as construction</button>}
-        </li>)}
-      </ol> : <p>No candidates found in the scanned interval.</p>}
-      <small>Candidate locations and multiplicities are not certified; narrow features may be missed.</small>
-      {criticalPoints.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Analysis diagnostics</summary>
-        <ul>{criticalPoints.diagnostics.map((diagnostic) => <li key={diagnostic.code}>{diagnostic.message} ({diagnostic.count})</li>)}</ul>
-      </details>}
-    </section>}
+    {criticalPoints && <Graph2DCriticalResultsPanel analysis={criticalPoints} document={document}
+      onSelectionCommit={onSelectionCommit} onConstructionBatchCommit={onConstructionBatchCommit} />}
     {intervals && <section className="graph2d-intervals" data-testid="graph2d-intervals"
       data-result-id={intervals.resultId} aria-label="Monotonicity and concavity intervals">
       <h3>Monotonicity and concavity</h3>
