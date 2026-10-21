@@ -6,6 +6,7 @@ import {
   type Graph2DIntervalAnalysis,
   type Graph2DIntegralAnalysis,
   type Graph2DDerivativeCurve,
+  type Graph2DUnresolvedInterval,
   type Graph2DIntersectionAnalysis,
   type Graph2DRegionArtifact,
   type Graph2DContourArtifact,
@@ -36,9 +37,10 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   selectedPhaseSeed?: { objectId: string; index: number } | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null;
-  derivativeCurve?: Graph2DDerivativeCurve | null };
+  derivativeCurve?: Graph2DDerivativeCurve | null;
+  unresolvedIntervals?: readonly Graph2DUnresolvedInterval[] };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, derivativeCurve, probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -120,6 +122,19 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           </g>;
         })}
       </g>}
+      {unresolvedIntervals.length > 0 && !graph2DHasLogScale(display.viewport) &&
+        <g data-testid="graph2d-unresolved-bands" clipPath={`url(#${clipId})`}
+          className="graph2d-unresolved-bands" aria-hidden="true" pointerEvents="none">
+          {unresolvedIntervals.map((item, index) => {
+            const left = (item.min - bounds.xMin) / xSpan * size.width;
+            const right = (item.max - bounds.xMin) / xSpan * size.width;
+            return <rect key={`${item.reason}:${item.min}:${item.max}:${index}`}
+              data-unresolved-reason={item.reason} x={left} y={0}
+              width={Math.max(1, right - left)} height={size.height}>
+              <title>{`Unresolved x interval [${item.min}, ${item.max}]: ${item.reason}`}</title>
+            </rect>;
+          })}
+        </g>}
       {display.axes.x && grid.xAxis !== null && <line className="graph2d-axis" x1="0" x2={size.width} y1={grid.xAxis} y2={grid.xAxis} />}
       {display.axes.y && grid.yAxis !== null && <line className="graph2d-axis" x1={grid.yAxis} x2={grid.yAxis} y1="0" y2={size.height} />}
       {display.axes.labels && <g className="graph2d-tick-labels" aria-hidden="true">

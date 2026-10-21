@@ -64,6 +64,7 @@ import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
+import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
 import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
 import "./graphsWorkspace.css";
 
@@ -979,6 +980,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           intersections.quality === "approximate" ? "Approximate enumeration" : "Unavailable"}</strong>
           {" "}· {intersections.candidates.length} candidates · x ∈
           [{intersections.interval.min.toPrecision(5)}, {intersections.interval.max.toPrecision(5)}]</p>
+        <Graph2DUnresolvedCoverage intervals={intersections.unresolvedIntervals} />
         {intersections.candidates.length > 0 ? <ol className="graph2d-intersection-list">
           {intersections.candidates.map((candidate) => <li key={candidate.candidateId}>
             <button type="button" aria-label={`Select intersection at x ${candidate.x.toPrecision(7)}`}
@@ -1375,6 +1377,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
           derivativeCurve={!parameterPreviewActive && derivativeCurve?.sourceHash === document.identity.structuralHash ? derivativeCurve : null}
+          unresolvedIntervals={parameterPreviewActive ? [] : [
+            ...(criticalPoints?.unresolvedIntervals ?? []),
+            ...(intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections.unresolvedIntervals : []),
+          ]}
           intersections={!parameterPreviewActive && intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
         {sampling.error && <div role="alert" className="graph2d-viewer-message"><p>{sampling.error}</p>
           <button type="button" onClick={sampling.retry}>Retry sampling</button></div>}

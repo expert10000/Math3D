@@ -25,6 +25,7 @@ describe("Graph2D pairwise intersections", () => {
     const result = analyzeGraph2DIntersections({ document, firstObjectId: "function_1",
       secondObjectId: "function_2", interval: { min: -2, max: 2 } });
     expect(result.status).toBe("complete");
+    expect(result.unresolvedIntervals).toEqual([]);
     expect(near(result.candidates, -1)).toBe(true);
     expect(near(result.candidates, 1)).toBe(true);
     expect(result.candidates.every((entry) => entry.classification === "crossing" &&
@@ -62,6 +63,8 @@ describe("Graph2D pairwise intersections", () => {
     expect(pole.status).toBe("incomplete");
     expect(pole.quality).toBe("incomplete");
     expect(pole.publication.summary.quality).toBe("incomplete");
+    expect(pole.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= 0 && entry.max >= 0)).toBe(true);
   });
 
   it("rejects poles and keeps unresolved brackets visible", () => {
@@ -72,6 +75,7 @@ describe("Graph2D pairwise intersections", () => {
     expect(near(tangent.candidates, 0)).toBe(true);
     expect(tangent.candidates.some((entry) => Math.abs(Math.abs(entry.x) - Math.PI / 2) < 1e-3)).toBe(false);
     expect(tangent.unresolvedBrackets).toBeGreaterThan(0);
+    expect(tangent.unresolvedIntervals.some(entry => entry.reason === "residual-check")).toBe(true);
   });
 
   it("flags coincident functions instead of manufacturing many isolated crossings", () => {

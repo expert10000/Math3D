@@ -6,8 +6,9 @@ import { evaluateGraph2DExpression, type Graph2DExpressionAst } from "./graph2dE
 import { graph2DQualityForNumericalCandidate, graph2DQualityForScan,
   type Graph2DNumericalCandidateQuality } from "./graph2dAnalysisQuality";
 import type { ScientificSourceGeneration } from "./scientificJobs";
+import { compactGraph2DUnresolvedIntervals, type Graph2DUnresolvedInterval } from "./graph2dUnresolvedCoverage";
 
-export const GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION = "3" as const;
+export const GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION = "4" as const;
 export const GRAPH2D_CRITICAL_POINT_GRID_INTERVALS = 256;
 export const GRAPH2D_CRITICAL_POINT_MAX_CANDIDATES = 256;
 export const GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS = 12000;
@@ -39,6 +40,7 @@ export type Graph2DCriticalPointAnalysis = Readonly<{
   candidates: readonly Graph2DCriticalPoint[];
   evaluations: number;
   diagnostics: readonly Readonly<{ code: string; message: string; count: number }>[];
+  unresolvedIntervals: readonly Graph2DUnresolvedInterval[];
   publication: AnalysisResultEnvelope;
 }>;
 
@@ -73,6 +75,9 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
     diagnostics.set(code, { message, count: (existing?.count ?? 0) + 1 });
   };
   const candidates: Graph2DCriticalPoint[] = [];
+  const unresolvedRaw: Graph2DUnresolvedInterval[] = [];
+  const unresolved = (min: number, max: number, reason: Graph2DUnresolvedInterval["reason"]) =>
+    unresolvedRaw.push({ min, max, reason });
   const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
   const symbolicFirst = differentiateGraph2DExpression(object.expression.ast, 1);
   const symbolicSecond = differentiateGraph2DExpression(object.expression.ast, 2);
@@ -84,7 +89,10 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
   let incomplete = false;
   const evaluate = (ast: Graph2DExpressionAst, x: number): number | null => {
     if (evaluations >= maxEvaluations) {
-      if (!incomplete) note("evaluation-limit", "Evaluation budget reached; results are not exhaustive.");
+      if (!incomplete) {
+        note("evaluation-limit", "Evaluation budget reached; results are not exhaustive.");
+        unresolved(interval.min, interval.max, "work-limit");
+      }
       incomplete = true;
       return null;
     }
@@ -190,6 +198,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
       if (depth >= MAX_REFINEMENT_DEPTH || grid.length >= GRAPH2D_CRITICAL_POINT_MAX_SCAN_CELLS) {
         refinementIncomplete = true;
         note("refinement-limit", "Adaptive refinement stopped before every suspicious cell was resolved.");
+        unresolved(left, right, "refinement-limit");
         grid.push(right);
         return;
       }
@@ -204,6 +213,9 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
       refinementIncomplete = true;
       note("invalid-samples", "Undefined samples split the scanned interval; nearby features may be missed.");
     }
+    for (let index = 0; index < grid.length - 1; index += 1)
+      if (fields[0]![index] === null || fields[0]![index + 1] === null)
+        unresolved(grid[index]!, grid[index + 1]!, "undefined");
     for (let index = 0; index < grid.length; index += 1) {
       const x = grid[index]!;
       const f = fields[0]![index];
@@ -222,6 +234,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
         const checked = analyzeGraph2DDerivative({ document: input.document, objectId: object.id, x: grid[index]!, order });
         if (checked.status !== "numerical" || checked.value === null || Math.abs(checked.value) > residualTolerance) {
           refinementIncomplete = true;
+          unresolved(grid[index - 1]!, grid[index + 1]!, "derivative-check");
           note("unresolved-derivative", "A derivative sign change could not be confirmed at a differentiable point."); continue;
         }
         if (order === 1) add(previous < 0 && next > 0 ? "minimum" : "maximum", grid[index]!,
@@ -236,12 +249,14 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
         if (!finite(fa) || !finite(fb) || fa === 0 || fb === 0 || Math.sign(fa) === Math.sign(fb)) continue;
         const refined = bracket(order, a, b, fa, fb);
         if (!refined) { refinementIncomplete = true;
+          unresolved(a, b, "residual-check");
           note("unresolved-bracket", "A sign-change bracket failed residual or continuity checks."); continue; }
         if (order === 0) { add("zero", refined.x, refined.residual, "bracket-bisection", "numerical"); continue; }
         const checked = analyzeGraph2DDerivative({ document: input.document, objectId: object.id, x: refined.x, order });
         if (checked.status !== "numerical" || checked.value === null ||
             Math.abs(checked.value) > Math.max(residualTolerance, Math.abs((fb - fa) / (b - a)) * xTolerance * 2)) {
           refinementIncomplete = true;
+          unresolved(a, b, "derivative-check");
           note("unresolved-derivative", "A derivative sign change could not be confirmed at a differentiable point."); continue;
         }
         if (order === 1) add(fa < 0 && fb > 0 ? "minimum" : "maximum", refined.x,
@@ -279,11 +294,13 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
     }
   } else note("empty-interval", "The requested interval does not overlap the function domain.");
   if (refinementIncomplete) incomplete = true;
+  if (diagnostics.has("candidate-limit")) unresolved(interval.min, interval.max, "work-limit");
   if (!symbolicFirst.ok || !symbolicSecond.ok) note("numerical-derivative-field", "Derivative field used bounded finite differences where symbolic rules were unavailable.");
   candidates.sort((a, b) => a.x - b.x || a.kind.localeCompare(b.kind));
   const status = interval.min >= interval.max ? "unavailable" : incomplete ? "incomplete" : "complete";
   const quality = graph2DQualityForScan(status);
   const diagnosticList = [...diagnostics.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, entry]) => ({ code, ...entry }));
+  const unresolvedIntervals = compactGraph2DUnresolvedIntervals(unresolvedRaw, interval);
   const publication = createAnalysisResultEnvelope({
     resultId: "graph2d.critical-points." + structuralHash({ source, objectId: object.id, interval,
       maxEvaluations, algorithmVersion: GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION }).slice(7),
@@ -295,7 +312,8 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
         maxCandidates: GRAPH2D_CRITICAL_POINT_MAX_CANDIDATES, maxEvaluations } },
       numericContext: { precision: { binaryBits: 53 }, tolerance: { absolute: residualTolerance } },
       engine: { name: "math3d-core", version: GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION }, elapsedMs: Math.max(0, Date.now() - started) },
-    summary: { status, quality, interval, evaluations, scanCells, candidateCount: candidates.length,
+    summary: { status, quality, interval, evaluations, scanCells, unresolvedIntervalCount: unresolvedIntervals.length,
+      candidateCount: candidates.length,
       approximateCount: candidates.filter((entry) => entry.quality === "approximate").length,
       refinedCount: candidates.filter((entry) => entry.quality === "refined").length,
       zeroCount: candidates.filter((entry) => entry.kind === "zero").length,
@@ -306,7 +324,8 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
     diagnostics: diagnosticList.map((entry) => ({ code: entry.code, severity: "warning" as const,
       message: `${entry.message} (${entry.count})` })), artifacts: [],
   });
-  return { objectId: object.id, interval, status, quality, candidates, evaluations, diagnostics: diagnosticList, publication };
+  return { objectId: object.id, interval, status, quality, candidates, evaluations,
+    diagnostics: diagnosticList, unresolvedIntervals, publication };
 };
 
 export const isGraph2DCriticalPointCurrent = (candidate: Graph2DCriticalPoint, document: Graph2DDocument): boolean =>

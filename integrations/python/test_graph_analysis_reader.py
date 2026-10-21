@@ -19,6 +19,7 @@ def fixture():
                         "quality": "refined", "method": "bracket-bisection",
                         "confidence": "numerical", "estimatedXError": 1e-9}],
         "diagnostics": [], "warnings": ["Bounded scan is not exhaustive."],
+        "unresolvedIntervals": [],
     }
 
 
@@ -48,6 +49,21 @@ class GraphAnalysisReaderTests(unittest.TestCase):
                                "method": "bracket-bisection", "confidence": "numerical",
                                "classification": "crossing"}]
         self.assertEqual(validate_graph_analysis(data)["candidates"][0]["classification"], "crossing")
+
+    def test_unresolved_coverage_is_bounded_and_within_the_scan(self):
+        data = fixture()
+        data["scan"]["status"] = "incomplete"
+        data["scan"]["quality"] = "incomplete"
+        data["unresolvedIntervals"] = [{"min": -0.1, "max": 0.1, "reason": "undefined"}]
+        self.assertEqual(validate_graph_analysis(data)["unresolvedIntervals"][0]["reason"], "undefined")
+        data["unresolvedIntervals"][0]["max"] = 3
+        with self.assertRaisesRegex(ValueError, "unresolved interval"):
+            validate_graph_analysis(data)
+
+    def test_older_v1_export_without_coverage_remains_readable(self):
+        data = fixture()
+        del data["unresolvedIntervals"]
+        self.assertNotIn("unresolvedIntervals", validate_graph_analysis(data))
 
     def test_rejects_inconsistent_coverage_and_nonfinite_values(self):
         data = fixture()

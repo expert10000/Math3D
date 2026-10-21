@@ -6,6 +6,7 @@ import { graph2DConstructionActionsFromCandidates, isGraph2DCriticalCandidateAlr
 import { useEffect, useMemo, useState } from "react";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
+import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
 
 type Filter = "all" | "zero" | "extrema" | "inflection";
 type Props = Readonly<{
@@ -82,6 +83,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
           "candidate limit reached" : "refinement budget reached or cells unresolved"} · results not exhaustive</> :
         analysis.status === "complete" ? " · exhaustive coverage not certified" : null}
     </p>
+    <Graph2DUnresolvedCoverage intervals={analysis.unresolvedIntervals} />
     <p className="graph2d-critical-quality-note">Refined means a bracket solver met residual tolerance 1e−7.
       Approximate means sampled or heuristic. Neither proves a unique root or complete enumeration;
       Certified and Symbolic are not claimed by this scan.</p>

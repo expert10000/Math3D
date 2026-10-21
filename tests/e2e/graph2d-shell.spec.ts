@@ -3,6 +3,23 @@ import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
+test("Graph Inspector shows unresolved pole intervals and shades their x-range", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("1/x");
+    await saveGraphEditor(app.page);
+    const compactInspector = app.page.locator(".graph2d-compact-panels summary").filter({ hasText: "Inspector" });
+    if (await compactInspector.isVisible()) await compactInspector.click();
+    const coverage = app.page.locator(".graph2d-unresolved-coverage:visible").first();
+    await expect(coverage).toContainText("Undefined source or derivative sample");
+    await expect(app.page.getByTestId("graph2d-unresolved-bands").first()
+      .locator('[data-unresolved-reason="undefined"]').first()).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graph calculus panel toggles the sampled first-derivative overlay", async () => {
   const app = await launchSurfaceApp();
   try {

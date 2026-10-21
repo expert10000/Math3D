@@ -54,8 +54,11 @@ def _text(value: Any, name: str, limit: int = 256) -> str:
 
 def validate_graph_analysis(data: Any) -> dict[str, Any]:
     """Validate a decoded v1 dataset and return it for Python/Theory Lab analysis."""
-    root = _object(data, {"format", "operation", "resultId", "source", "objectIds", "interval",
-                          "scan", "candidates", "diagnostics", "warnings"}, "dataset")
+    required = {"format", "operation", "resultId", "source", "objectIds", "interval",
+                "scan", "candidates", "diagnostics", "warnings"}
+    if not isinstance(data, dict) or not required <= set(data) or not set(data) <= required | {"unresolvedIntervals"}:
+        raise ValueError("dataset has missing or unsupported fields")
+    root = data
     if root["format"] != FORMAT or root["operation"] not in ("critical-points", "intersections"):
         raise ValueError("Unsupported Graph numerical dataset format or operation")
     operation = root["operation"]
@@ -139,6 +142,19 @@ def validate_graph_analysis(data: Any) -> dict[str, Any]:
             _text(diagnostic["path"], "diagnostic.path", 256)
         if diagnostic["severity"] not in ("info", "warning", "error"):
             raise ValueError("Invalid diagnostic severity")
+    unresolved = root.get("unresolvedIntervals", [])
+    if not isinstance(unresolved, list) or len(unresolved) > 128:
+        raise ValueError("Invalid unresolved interval list")
+    if unresolved and scan["status"] != "incomplete":
+        raise ValueError("Unresolved intervals require incomplete scan status")
+    reasons = {"undefined", "refinement-limit", "residual-check", "derivative-check",
+               "work-limit", "coincident", "multiple"}
+    for index, item in enumerate(unresolved):
+        entry = _object(item, {"min", "max", "reason"}, f"unresolvedIntervals[{index}]")
+        a = _number(entry["min"], "unresolved.min")
+        b = _number(entry["max"], "unresolved.max")
+        if a < lower or b > upper or a >= b or entry["reason"] not in reasons:
+            raise ValueError("Invalid unresolved interval")
     return root
 
 

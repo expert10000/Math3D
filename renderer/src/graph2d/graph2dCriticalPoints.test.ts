@@ -24,6 +24,7 @@ describe("Graph2D critical point analysis", () => {
     const result = analyzeGraph2DCriticalPoints({ document, objectId: "function_1", interval: { min: -3, max: 3 } });
     expect(result.status).toBe("complete");
     expect(result.quality).toBe("approximate");
+    expect(result.unresolvedIntervals).toEqual([]);
     expect(near(result.candidates.filter((entry) => entry.kind === "zero"), 0)).toBe(true);
     expect(near(result.candidates.filter((entry) => entry.kind === "minimum"), 0)).toBe(true);
     expect(result.candidates.some((entry) => entry.kind === "inflection")).toBe(false);
@@ -125,6 +126,7 @@ describe("Graph2D critical point analysis", () => {
     expect(result.quality).toBe("incomplete");
     expect(result.evaluations).toBe(400);
     expect(result.diagnostics.some((entry) => entry.code === "evaluation-limit")).toBe(true);
+    expect(result.unresolvedIntervals).toContainEqual({ min: -10, max: 10, reason: "work-limit" });
     expect(result.publication.warnings.some((warning) => warning.includes("Analysis is partial"))).toBe(true);
     const thorough = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
       interval: { min: -10, max: 10 }, maxEvaluations: 12000 });
@@ -136,12 +138,18 @@ describe("Graph2D critical point analysis", () => {
     const result = analyze("sin(100*x)", -10, 10);
     expect(result.status).toBe("incomplete");
     expect(result.diagnostics.some((entry) => ["refinement-limit", "evaluation-limit", "candidate-limit"].includes(entry.code))).toBe(true);
+    expect(result.unresolvedIntervals.length).toBeGreaterThan(0);
+    expect(result.unresolvedIntervals.length).toBeLessThanOrEqual(128);
+    expect(result.unresolvedIntervals.every(entry => entry.min >= -10 && entry.max <= 10 &&
+      entry.min < entry.max)).toBe(true);
   });
 
   it("rejects poles rather than reporting them as zeros or inflections", () => {
     const reciprocal = analyze("1/x", -2, 2);
     expect(reciprocal.candidates).toHaveLength(0);
     expect(reciprocal.diagnostics.some((entry) => entry.code === "invalid-samples")).toBe(true);
+    expect(reciprocal.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= 0 && entry.max >= 0)).toBe(true);
     const tangent = analyze("tan(x)", -2, 2);
     expect(near(tangent.candidates.filter((entry) => entry.kind === "zero"), 0)).toBe(true);
     expect(tangent.candidates.some((entry) => Math.abs(Math.abs(entry.x) - Math.PI / 2) < 1e-3)).toBe(false);

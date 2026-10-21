@@ -30,5 +30,6 @@ export const createGraph2DNumericalDataset = (analysis: Graph2DNumericalAnalysis
     }),
     diagnostics: analysis.publication.diagnostics,
     warnings: analysis.publication.warnings,
+    unresolvedIntervals: analysis.unresolvedIntervals,
   };
 };

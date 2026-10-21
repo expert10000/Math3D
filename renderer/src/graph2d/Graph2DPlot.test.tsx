@@ -68,4 +68,12 @@ describe("Graph2D render projection", () => {
     expect(svg).toContain('data-row-id="row_1025"');
     expect(svg).toContain('data-graph2d-path="dense"');
   });
+  it("marks unresolved scan intervals behind the axes", () => {
+    const display = createEmptyGraph2DDocument("unresolved-plot").display;
+    const svg = renderToStaticMarkup(<Graph2DPlot display={display} size={{ width: 640, height: 480 }}
+      series={[]} unresolvedIntervals={[{ min: -1, max: 1, reason: "undefined" }]} />);
+    expect(svg).toContain('data-testid="graph2d-unresolved-bands"');
+    expect(svg).toContain('data-unresolved-reason="undefined"');
+    expect(svg.indexOf('data-testid="graph2d-unresolved-bands"')).toBeLessThan(svg.indexOf('class="graph2d-axis"'));
+  });
 });
