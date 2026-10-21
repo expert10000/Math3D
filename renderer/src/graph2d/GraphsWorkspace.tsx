@@ -38,7 +38,6 @@ import {
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
   graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
-  GRAPH2D_ANALYSIS_QUALITY_MEANINGS,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
   projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions,
@@ -65,6 +64,7 @@ import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
+import { Graph2DIntersectionResultsTable } from "./Graph2DIntersectionResultsTable";
 import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
 import "./graphsWorkspace.css";
 
@@ -304,8 +304,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const scalesOpener = useRef<HTMLButtonElement | null>(null);
   const parameterKey = graph2DParameterSessionKey(document);
   const [parameterPreview, setParameterPreview] = useState<{ key: string; values: Record<string, number> } | null>(null);
+  const [previewAnalysisEnabled, setPreviewAnalysisEnabled] = useState(false);
   const parameterPreviewActive = parameterPreview?.key === parameterKey;
-  const cancelParameter = () => { setParameterPreview(null); setParameterEpoch(value => value + 1); };
+  const cancelParameter = () => { setParameterPreview(null); setPreviewAnalysisEnabled(false);
+    setParameterEpoch(value => value + 1); };
   const exportOpener = useRef<HTMLButtonElement | null>(null);
   const [galleryError, setGalleryError] = useState<string | null>(null);
   const galleryOpener = useRef<HTMLButtonElement | null>(null);
@@ -666,6 +668,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     return analyzeGraph2DCriticalPoints({ document, objectId: selectedObject.id,
       interval: { min: bounds.xMin, max: bounds.xMax }, maxEvaluations: criticalAnalysisBudget });
   }, [document, size, selectedObject, criticalAnalysisBudget]);
+  const previewCriticalPoints = useMemo(() => {
+    if (!previewAnalysisEnabled || !parameterPreviewActive || !sampling.settled ||
+        selectedObject?.kind !== "explicit-cartesian") return null;
+    const bounds = resolveGraph2DViewport(sampledDocument.display.viewport, size);
+    return analyzeGraph2DCriticalPoints({ document: sampledDocument, objectId: selectedObject.id,
+      interval: { min: bounds.xMin, max: bounds.xMax }, maxEvaluations: 2000 });
+  }, [previewAnalysisEnabled, parameterPreviewActive, sampling.settled, sampledDocument, selectedObject, size]);
   const intervals = useMemo(() => criticalPoints ? analyzeGraph2DIntervals({ document,
     objectId: criticalPoints.objectId, interval: criticalPoints.interval, criticalPoints }) : null,
   [document, criticalPoints]);
@@ -868,7 +877,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             `${derivativeCurve.status === "incomplete" ? "Incomplete" : "Approximate"} sampled first derivative · ${derivativeCurve.artifact?.samplesEvaluated ?? 0} evaluations. Gaps and rapid changes may be missed.` :
             "Derivative plot is unavailable."}</small>}
     </section>}
-    {criticalPoints && <Graph2DCriticalResultsPanel analysis={criticalPoints} document={document}
+    {parameterPreviewActive && previewAnalysisEnabled && <div data-testid="graph2d-preview-analysis">
+      {previewCriticalPoints ? <Graph2DCriticalResultsPanel analysis={previewCriticalPoints}
+        document={sampledDocument} analysisBudget={2000} onAnalysisBudgetChange={() => {}}
+        readOnlyPreview /> : <p role="status">Waiting for the preview frame to settle before analyzing it.</p>}
+    </div>}
+    {criticalPoints && !(parameterPreviewActive && previewAnalysisEnabled) &&
+      <Graph2DCriticalResultsPanel analysis={criticalPoints} document={document}
       analysisBudget={criticalAnalysisBudget} onAnalysisBudgetChange={setCriticalAnalysisBudget}
       onSelectionCommit={onSelectionCommit} onConstructionBatchCommit={onConstructionBatchCommit} />}
     {intervals && <section className="graph2d-intervals" data-testid="graph2d-intervals"
@@ -981,25 +996,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {" "}· {intersections.candidates.length} candidates · x ∈
           [{intersections.interval.min.toPrecision(5)}, {intersections.interval.max.toPrecision(5)}]</p>
         <Graph2DUnresolvedCoverage intervals={intersections.unresolvedIntervals} />
-        {intersections.candidates.length > 0 ? <ol className="graph2d-intersection-list">
-          {intersections.candidates.map((candidate) => <li key={candidate.candidateId}>
-            <button type="button" aria-label={`Select intersection at x ${candidate.x.toPrecision(7)}`}
-              disabled={!isGraph2DIntersectionCurrent(intersections, document)}
-              onClick={() => onSelectionCommit?.({ objectId: candidate.firstObjectId,
-                probe: { objectId: candidate.firstObjectId, x: candidate.x, y: candidate.y } })}>
-              ({candidate.x.toPrecision(7)}, {candidate.y.toPrecision(7)})</button>
-            <small><span className={`graph2d-analysis-quality graph2d-analysis-quality-${candidate.quality}`}
-              title={GRAPH2D_ANALYSIS_QUALITY_MEANINGS[candidate.quality]}>
-              {candidate.quality === "refined" ? "Refined" : "Approximate"}</span>
-              {" "}· {candidate.classification} · {candidate.method} · residual {candidate.residual.toExponential(2)}</small>
-            <button type="button" aria-label={`Save intersection at x ${candidate.x.toPrecision(7)} as construction`}
-              title={intersections.status !== "complete" ? "Complete bounded scan required before saving." : undefined}
-              disabled={!onConstructionCommit || intersections.status !== "complete" || !isGraph2DIntersectionCurrent(intersections, document) ||
-                (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS}
-              onClick={() => onConstructionCommit?.({ type: "create", object: graph2DConstructionFromCandidate(document, intersections, candidate) })}>
-              Save intersection as construction</button>
-          </li>)}
-        </ol> : <p>No isolated candidates found.</p>}
+        <Graph2DIntersectionResultsTable analysis={intersections} document={document}
+          onSelectionCommit={onSelectionCommit}
+          canSave={!!onConstructionCommit &&
+            (document.source.constructions?.objects.length ?? 0) < GRAPH2D_MAX_CONSTRUCTIONS}
+          onSave={candidate => onConstructionCommit?.({ type: "create",
+            object: graph2DConstructionFromCandidate(document, intersections, candidate) })} />
         {(intersections.invalidCells > 0 || intersections.unresolvedBrackets > 0 || intersections.coincidentCells > 0) &&
           <small>{intersections.invalidCells} undefined cells · {intersections.unresolvedBrackets} unresolved brackets ·
             {" "}{intersections.coincidentCells} coincident cells</small>}
@@ -1432,6 +1434,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       {gridOpen && <Graph2DGridPanel key={document.identity.id} document={document} onPreview={setGridPreview} onCommit={commitGrid} onClose={() => closeGrid()} />}
       {(parametersOpen || parameterCards) && <Graph2DParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled} samplingError={sampling.error}
         compact={!parametersOpen} onExpand={() => setParametersOpen(true)}
+        analysisPreviewEnabled={previewAnalysisEnabled} onAnalysisPreviewChange={setPreviewAnalysisEnabled}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}
         onCommit={action => { if (!onAuthoringCommit) throw new Error("Parameter authoring is unavailable."); onAuthoringCommit(action); setParameterPreview(null); }}
         onClose={() => { setParametersOpen(false); setParameterCards(false); cancelParameter(); parametersOpener.current?.focus(); }} />}

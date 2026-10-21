@@ -37,6 +37,10 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-parameters-panel h2 { margin:0; }
 .graph2d-parameters-panel section { border-top:1px solid var(--border); margin:12px 0; padding-top:12px; }
 .graph2d-parameters-panel label { display:flex; flex-direction:column; gap:4px; margin:8px 0; }
+.graph2d-parameters-panel .graph2d-analysis-preview-toggle,
+.graph2d-parameter-cards .graph2d-analysis-preview-toggle { display:flex; flex-direction:row; align-items:center; gap:8px; }
+.graph2d-parameters-panel .graph2d-analysis-preview-toggle input,
+.graph2d-parameter-cards .graph2d-analysis-preview-toggle input { width:auto; min-height:auto; margin:0; }
 .graph2d-parameters-panel input,.graph2d-parameters-panel select { width:100%; box-sizing:border-box; min-height:36px; }
 .graph2d-parameters-panel button { min-height:36px; margin:4px; }
 .graph2d-grid-panel label:has(input[type="checkbox"]) { flex-direction:row; align-items:center; gap:10px; min-height:44px; }

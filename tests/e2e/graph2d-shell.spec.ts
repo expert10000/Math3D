@@ -577,6 +577,16 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await expect(result.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(2);
     await expect(result).toContainText("Approximate enumeration");
     await expect(result.locator(".graph2d-analysis-quality").first()).toHaveText("Refined");
+    const table = result.getByTestId("graph2d-intersection-results-table");
+    await table.getByRole("button", { name: "Possible tangencies" }).click();
+    await expect(table.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(0);
+    await table.getByRole("button", { name: "All", exact: true }).click();
+    await table.getByLabel("Search intersection results").fill("tangent");
+    await expect(table.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(0);
+    await table.getByLabel("Search intersection results").fill("");
+    await table.getByRole("button", { name: "Sort intersections by x" }).click();
+    const xCells = table.locator("tbody tr td:nth-child(2)");
+    expect(Number(await xCells.first().textContent())).toBeGreaterThan(Number(await xCells.last().textContent()));
     await expect(app.page.getByTestId("graph2d-intersection-overlays")).toHaveAttribute("data-result-id",
       (await result.getAttribute("data-result-id"))!);
     await result.getByRole("button", { name: /Select intersection at x/ }).first().click();

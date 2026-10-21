@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
+import { graph2DNumericalRows } from "./graph2dNumericalRows";
 
 type Filter = "all" | "zero" | "extrema" | "inflection";
 type Props = Readonly<{
@@ -16,13 +17,14 @@ type Props = Readonly<{
   onAnalysisBudgetChange: (budget: number) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onConstructionBatchCommit?: (actions: readonly Graph2DConstructionAction[]) => void;
+  readOnlyPreview?: boolean;
 }>;
 
 const isExtremum = (item: Graph2DCriticalPoint) => item.kind === "minimum" || item.kind === "maximum";
 const format = (value: number) => Number.isFinite(value) ? value.toPrecision(7) : "—";
 
 export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget, onAnalysisBudgetChange,
-  onSelectionCommit, onConstructionBatchCommit }: Props) {
+  onSelectionCommit, onConstructionBatchCommit, readOnlyPreview = false }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [descending, setDescending] = useState(false);
@@ -34,11 +36,11 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
     extrema: analysis.candidates.filter(isExtremum).length,
     inflection: analysis.candidates.filter(item => item.kind === "inflection").length,
   }), [analysis]);
-  const rows = useMemo(() => analysis.candidates.filter(item =>
-    (filter === "all" || filter === "extrema" && isExtremum(item) || item.kind === filter) &&
-    (!query.trim() || `${item.kind} ${item.x} ${item.y} ${item.quality}`.toLowerCase().includes(query.trim().toLowerCase())))
-    .sort((a, b) => descending ? b.x - a.x : a.x - b.x), [analysis, filter, query, descending]);
-  const validForSave = (item: Graph2DCriticalPoint) => item.kind !== "inflection" && item.confidence === "numerical" &&
+  const rows = useMemo(() => graph2DNumericalRows(analysis.candidates, { query, descending,
+    include: item => filter === "all" || filter === "extrema" && isExtremum(item) || item.kind === filter,
+    searchText: item => `${item.kind} ${item.x} ${item.y} ${item.quality}` }),
+  [analysis, filter, query, descending]);
+  const validForSave = (item: Graph2DCriticalPoint) => !readOnlyPreview && item.kind !== "inflection" && item.confidence === "numerical" &&
     !isGraph2DCriticalCandidateAlreadySaved(document, item) && isGraph2DCriticalPointCurrent(item, document);
   const available = GRAPH2D_MAX_CONSTRUCTIONS - (document.source.constructions?.objects.length ?? 0);
   const selected = analysis.candidates.filter(item => selectedIds.includes(item.candidateId) && validForSave(item));
@@ -70,8 +72,10 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
   };
   const batchZeros = analysis.candidates.filter(item => item.kind === "zero" && validForSave(item));
   const batchExtrema = analysis.candidates.filter(item => isExtremum(item) && validForSave(item));
-  return <section className="graph2d-critical-points" data-testid="graph2d-critical-points" aria-label="Zeros extrema and inflections">
-    <h3>Numerical analysis</h3>
+  return <section className="graph2d-critical-points" data-testid="graph2d-critical-points"
+    data-source-hash={document.identity.structuralHash} aria-label="Zeros extrema and inflections">
+    <h3>{readOnlyPreview ? "Transient frame analysis" : "Numerical analysis"}</h3>
+    {readOnlyPreview && <p role="status">Preview values only · 2,000 evaluation budget · results change with each settled frame. Apply the parameter value to create committed analysis evidence.</p>}
     <p className={analysis.status === "incomplete" ? "graph2d-critical-status-partial" : undefined}
       role="status" data-testid="graph2d-critical-scan-status">
       <strong>{analysis.quality === "incomplete" ? "Incomplete scan" : analysis.status === "unavailable" ?
@@ -88,13 +92,13 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
       Approximate means sampled or heuristic. Neither proves a unique root or complete enumeration;
       Certified and Symbolic are not claimed by this scan.</p>
     <Graph2DAnalysisQualityGuide />
-    <label className="graph2d-analysis-budget">Analysis evaluation budget
+    {!readOnlyPreview && <label className="graph2d-analysis-budget">Analysis evaluation budget
       <select aria-label="Analysis evaluation budget" value={analysisBudget}
         onChange={event => onAnalysisBudgetChange(Number(event.target.value))}>
         <option value={2000}>Quick · 2,000</option>
         <option value={6000}>Standard · 6,000</option>
         <option value={12000}>Thorough · 12,000</option>
-      </select></label>
+      </select></label>}
     <dl className="graph2d-critical-summary">
       <div><dt>Zeros</dt><dd>{counts.zero}</dd></div>
       <div><dt>Extrema</dt><dd>{counts.extrema}</dd></div>
@@ -120,7 +124,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
             onChange={event => setSelectedIds(current => event.target.checked ? [...current, candidate.candidateId] :
               current.filter(id => id !== candidate.candidateId))} /></td>
           <td><button type="button" aria-label={`Select ${candidate.kind} at x ${format(candidate.x)}`}
-            disabled={!isGraph2DCriticalPointCurrent(candidate, document)}
+            disabled={!onSelectionCommit || !isGraph2DCriticalPointCurrent(candidate, document)}
             title={`${candidate.confidence} · ${candidate.method} · residual ${candidate.residual.toExponential(2)}`}
             onClick={() => onSelectionCommit?.({ objectId: candidate.objectId,
               probe: { objectId: candidate.objectId, x: candidate.x, y: candidate.y } })}>{candidate.kind}</button></td>
@@ -134,14 +138,14 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
       })}</tbody>
     </table>{!rows.length && <p>{analysis.candidates.length ? "No matching results." :
       analysis.status === "incomplete" ? "No candidates found in the scanned portion." : "No candidates found in the scanned interval."}</p>}</div>
-    <div className="graph2d-critical-actions">
+    {!readOnlyPreview && <div className="graph2d-critical-actions">
       <button type="button" disabled={!canSave(selected)} onClick={() => save(selected)}>Save selected ({selected.length})</button>
       <button type="button" disabled={!canSave(batchZeros)} onClick={() => save(batchZeros)}>Save all validated zeros ({batchZeros.length})</button>
       <button type="button" disabled={!canSave(batchExtrema)} onClick={() => save(batchExtrema)}>Save all validated extrema ({batchExtrema.length})</button>
       <button type="button" onClick={exportCsv}>Export results</button>
       <button type="button" onClick={() => downloadGraph2DNumericalDataset(analysis)}>Export numerical JSON</button>
-    </div>
-    <small>{available} of {GRAPH2D_MAX_CONSTRUCTIONS} construction slots available. Only validated numerical zeros and extrema from a finished bounded scan can be saved. Location error is estimated, not certified.</small>
+    </div>}
+    {!readOnlyPreview && <small>{available} of {GRAPH2D_MAX_CONSTRUCTIONS} construction slots available. Only validated numerical zeros and extrema from a finished bounded scan can be saved. Location error is estimated, not certified.</small>}
     {actionError && <p role="alert">{actionError}</p>}
     {analysis.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Analysis diagnostics</summary>
       <ul>{analysis.diagnostics.map(entry => <li key={entry.code}>{entry.message} ({entry.count})</li>)}</ul>

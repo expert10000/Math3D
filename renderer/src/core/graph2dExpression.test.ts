@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { evaluateGraph2DExpression, formatGraph2DExpressionAst, parseGraph2DExpression } from "@math3d/core";
+import { evaluateGraph2DExpression, formatGraph2DExpressionAst, parseGraph2DExpression,
+  prepareMathExpression } from "@math3d/core";
 
 const valueOf = (source: string, x = 0) => {
   const parsed = parseGraph2DExpression(source);
@@ -39,5 +40,15 @@ describe("Graph2D safe expression language", () => {
     if (!parsed.ok) throw new Error("Expected AST");
     expect(evaluateGraph2DExpression(parsed.ast, { x: 1 }, { maxEvaluations: 1 })).toMatchObject({ ok: false, diagnostic: { code: "limit" } });
     expect(evaluateGraph2DExpression(parsed.ast, { x: 1 }, { deadlineMs: 0 })).toMatchObject({ ok: false, diagnostic: { code: "limit" } });
+  });
+
+  it("shares the typed Graph AST with the common expression service", () => {
+    const source = "sin(x)+x^2";
+    const parsed = parseGraph2DExpression(source, ["x"]);
+    const prepared = prepareMathExpression(source, "graph", ["x"]);
+    if (!parsed.ok || !prepared.ast || prepared.ast.profile !== "graph") throw new Error("Graph AST unavailable");
+    expect(prepared.ast.tree).toEqual(parsed.ast);
+    expect(prepared.evaluate?.({ x: 0.5 })).toMatchObject({ value: Math.sin(0.5) + 0.25 });
+    expect(prepareMathExpression("constructor(x)", "graph", ["x"]).error?.kind).toBe("scope");
   });
 });
