@@ -27,6 +27,8 @@ describe("Graph2D safe expression language", () => {
     expect(parseGraph2DExpression("sin(y)")).toMatchObject({ ok: false, diagnostics: [{ code: "unknown-symbol" }] });
     expect(valueOf("1/x", 0)).toMatchObject({ ok: false, diagnostic: { code: "domain" } });
     expect(valueOf("sqrt(-1)")).toMatchObject({ ok: false, diagnostic: { code: "domain" } });
+    expect(valueOf("tan(pi/2)")).toMatchObject({ ok: false, diagnostic: { code: "domain" } });
+    expect(valueOf("tan(0)")).toMatchObject({ ok: true, value: 0 });
     expect(valueOf("exp(1000)")).toMatchObject({ ok: false, diagnostic: { code: "non-finite" } });
   });
 

@@ -215,7 +215,7 @@ export const evaluateGraph2DExpression = (
             ((node.functionName === "asin" || node.functionName === "acos") && Math.abs(argument) > 1) ||
             (node.functionName === "acosh" && argument < 1) ||
             (node.functionName === "atanh" && Math.abs(argument) >= 1) ||
-            (node.functionName === "sec" && Math.abs(Math.cos(argument)) < 1e-12) ||
+            ((node.functionName === "tan" || node.functionName === "sec") && Math.abs(Math.cos(argument)) < 1e-12) ||
             ((node.functionName === "csc" || node.functionName === "cot") && Math.abs(Math.sin(argument)) < 1e-12))
           issue("domain", `Invalid ${node.functionName} argument.`, node.span);
         value = functions[node.functionName](argument);

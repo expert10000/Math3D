@@ -403,7 +403,7 @@ The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](g
 | Proposed slice | Reviewable change |
 | --- | --- |
 | GRA-N21 | Consolidate the shared typed AST/parser interface; preserve bounded grammar and compatibility. |
-| GRA-N22 | Strengthen domain-aware evaluation and singularity boundaries. |
+| GRA-N22 | Strengthen domain-aware evaluation and singularity boundaries. **First slice delivered:** `tan` now reports domain failure at its poles, matching the existing `sec`/`csc`/`cot` guard; broader near-singularity interval classification remains open. |
 | GRA-N23 | Expose independent rendering, editor-preview and mathematical-analysis budgets. **First slices delivered:** Fast (61 plotted points) / Accurate (481) curve previews, midpoint probes, actual evaluation counts and a possible-aliasing warning; separate Quick (2,000), Standard (6,000) and Thorough (12,000) critical-analysis evaluation budgets with result identity tied to the chosen budget. Budget controls for other analyses and preview modes remain open. |
 | GRA-N24 | Improve adaptive root/extremum/inflection scanning with explicit unresolved/completeness status. |
 | GRA-N25 | Generalize result tables, filtering and graph highlighting across analysis operations. |
