@@ -6,7 +6,8 @@ export type FormulaRange = Readonly<{ min: number; max: number }>;
 export type FormulaPreview = (
   | Readonly<{ kind: "error"; message: string; start: number; end: number; source: "parser" | "sampling" }>
   | Readonly<{ kind: "curve"; axis: string; range: FormulaRange; points: readonly (number | null)[];
-      midpoint: number | null; min: number; max: number; invalidSamples: number }>
+      midpoint: number | null; min: number; max: number; invalidSamples: number;
+      fidelity: FormulaPreviewFidelity; samplesEvaluated: number; aliasingRisk: boolean }>
   | Readonly<{ kind: "field"; axes: readonly [string, string]; ranges: readonly [FormulaRange, FormulaRange];
       cells: readonly (readonly (number | null)[])[]; midpoint: number | null; maxAbs: number; invalidSamples: number }>
   | Readonly<{ kind: "contour"; axes: readonly [string, string]; ranges: readonly [FormulaRange, FormulaRange];
@@ -24,6 +25,8 @@ export type FormulaPreview = (
       invalidSamples: number; incomplete: boolean; samplesEvaluated: number; note?: string }>) &
   Readonly<{ durationMs?: number }>;
 export type FormulaPreviewMode = "values" | "implicit" | "slope-field" | "inequality" | "time-ode" | "phase-portrait";
+export type FormulaPreviewFidelity = "fast" | "accurate";
+export const GRAPH2D_FORMULA_PREVIEW_POINTS = { fast: 61, accurate: 481 } as const;
 export type FormulaPreviewContext = Readonly<{
   region?: Readonly<{ clauses: readonly Readonly<{ expression: string; comparator: "<" | "<=" | ">" | ">=" }>[];
     operator: "all" | "any"; editingIndex: number }>;
@@ -41,7 +44,7 @@ const sample = (range: FormulaRange, index: number, count: number) => range.min 
 function computeGraph2DFormulaPreview(source: string, variables: readonly string[],
   axes: readonly [string] | readonly [string, string], parameterValues: Readonly<Record<string, number>> = {},
   ranges: readonly [FormulaRange, FormulaRange?] = [defaultRange], mode: FormulaPreviewMode = "values",
-  context: FormulaPreviewContext = {}): FormulaPreview {
+  context: FormulaPreviewContext = {}, fidelity: FormulaPreviewFidelity = "fast"): FormulaPreview {
   const parsed = parseGraph2DExpression(source, variables);
   if (!parsed.ok) {
     const diagnostic = parsed.diagnostics[0]!;
@@ -52,10 +55,12 @@ function computeGraph2DFormulaPreview(source: string, variables: readonly string
     return { kind: "error", source: "sampling", start: 0, end: 0,
       message: "Preview domain is invalid. Set each minimum below its maximum." };
   const baseline = Object.fromEntries(variables.map(name => [name, parameterValues[name] ?? 0]));
-  const deadlineMs = Date.now() + 50;
+  const deadlineMs = Date.now() + (fidelity === "accurate" ? 150 : 50);
   let invalidSamples = 0;
+  let samplesEvaluated = 0;
   let workLimitReached = false;
   const evaluate = (values: Readonly<Record<string, number>>) => {
+    samplesEvaluated += 1;
     const result = evaluateGraph2DExpression(parsed.ast, { ...baseline, ...values }, { maxEvaluations: 2048, deadlineMs });
     if (result.ok && Number.isFinite(result.value)) return result.value;
     if (!result.ok && result.diagnostic.code === "limit") workLimitReached = true;
@@ -65,14 +70,25 @@ function computeGraph2DFormulaPreview(source: string, variables: readonly string
   const first = ranges[0] ?? defaultRange;
   if (axes.length === 1) {
     const axis = axes[0];
-    const points = Array.from({ length: 61 }, (_, index) => evaluate({ [axis]: sample(first, index, 61) }));
+    const pointCount = GRAPH2D_FORMULA_PREVIEW_POINTS[fidelity];
+    const points = Array.from({ length: pointCount }, (_, index) => evaluate({ [axis]: sample(first, index, pointCount) }));
     const finite = points.filter((value): value is number => value !== null);
     if (!finite.length) return { kind: "error", source: "sampling", start: 0, end: 0,
       message: workLimitReached ? "Preview reached its work limit before finding finite values." :
         "No finite values in this preview range. Check the formula and its domain." };
     const midpoint = evaluate({ [axis]: sample(first, 1, 3) });
-    return { kind: "curve", axis, range: first, points, midpoint,
-      min: Math.min(...finite), max: Math.max(...finite), invalidSamples };
+    const min = Math.min(...finite), max = Math.max(...finite);
+    let aliasingRisk = false;
+    // Midpoint probes are independent of the displayed samples. Large deviations indicate
+    // that the polyline may miss oscillations; they do not prove a sufficient resolution.
+    for (let index = 0; index < pointCount - 1; index += 1) {
+      const middle = evaluate({ [axis]: first.min + (first.max - first.min) * (index + 0.5) / (pointCount - 1) });
+      const left = points[index], right = points[index + 1];
+      if (middle === null || left === null || right === null) { aliasingRisk = true; continue; }
+      if (Math.abs(middle - (left + right) / 2) > Math.max((max - min) * 0.12, 1e-9)) aliasingRisk = true;
+    }
+    return { kind: "curve", axis, range: first, points, midpoint, min, max,
+      invalidSamples, fidelity, samplesEvaluated, aliasingRisk: aliasingRisk || workLimitReached };
   }
   const second = ranges[1] ?? defaultRange;
   const [horizontal, vertical] = axes;
@@ -212,8 +228,8 @@ function computeGraph2DFormulaPreview(source: string, variables: readonly string
 export function previewGraph2DFormula(source: string, variables: readonly string[],
   axes: readonly [string] | readonly [string, string], parameterValues: Readonly<Record<string, number>> = {},
   ranges: readonly [FormulaRange, FormulaRange?] = [defaultRange], mode: FormulaPreviewMode = "values",
-  context: FormulaPreviewContext = {}): FormulaPreview {
+  context: FormulaPreviewContext = {}, fidelity: FormulaPreviewFidelity = "fast"): FormulaPreview {
   const started = performance.now();
-  const result = computeGraph2DFormulaPreview(source, variables, axes, parameterValues, ranges, mode, context);
+  const result = computeGraph2DFormulaPreview(source, variables, axes, parameterValues, ranges, mode, context, fidelity);
   return { ...result, durationMs: performance.now() - started };
 }

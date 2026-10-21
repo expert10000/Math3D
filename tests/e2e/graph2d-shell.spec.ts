@@ -3,6 +3,25 @@ import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
+test("Graph formula editor exposes preview fidelity and sparse-sampling warning", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x*sin(x^2)");
+    await graphEditor(app.page).getByRole("button", { name: "Expand formula" }).click();
+    const dialog = app.page.getByRole("dialog", { name: "Edit Function expression" });
+    const fidelity = dialog.getByRole("group", { name: "Preview fidelity" });
+    await expect(fidelity.getByRole("button", { name: "Fast" })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByLabel("Preview diagnostics")).toContainText("61 plotted");
+    await expect(dialog.getByText("Sampling may miss rapid changes or oscillations.", { exact: false })).toBeVisible();
+    await fidelity.getByRole("button", { name: "Accurate" }).click();
+    await expect(fidelity.getByRole("button", { name: "Accurate" })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByLabel("Preview diagnostics")).toContainText("481 plotted");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Fit selection frames the unit circle and Fit all includes the ellipse without toolbar scrolling", async () => {
   const app = await launchSurfaceApp();
   try {

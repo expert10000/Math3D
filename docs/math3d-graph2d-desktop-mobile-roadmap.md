@@ -404,11 +404,11 @@ The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](g
 | --- | --- |
 | GRA-N21 | Consolidate the shared typed AST/parser interface; preserve bounded grammar and compatibility. |
 | GRA-N22 | Strengthen domain-aware evaluation and singularity boundaries. |
-| GRA-N23 | Expose independent rendering, editor-preview and mathematical-analysis budgets. |
+| GRA-N23 | Expose independent rendering, editor-preview and mathematical-analysis budgets. **First slice delivered:** Fast (61 plotted points) / Accurate (481) curve previews, midpoint probes, actual evaluation counts and a possible-aliasing warning. Configurable analysis budgets and broader modes remain open. |
 | GRA-N24 | Improve adaptive root/extremum/inflection scanning with explicit unresolved/completeness status. |
 | GRA-N25 | Generalize result tables, filtering and graph highlighting across analysis operations. |
 | GRA-N26 | Add quality evidence and precision diagnostics. **First slice delivered:** conservative Approximate/Refined/Incomplete labels for critical points and intersections; certification methods remain open. |
-| GRA-N27 | Expand the oscillatory and singular regression corpus with independent mathematical oracles. |
+| GRA-N27 | Expand the oscillatory and singular regression corpus with independent mathematical oracles. **First slice delivered:** exact `x*sin(x^2)` zero locations plus `sin(1/x)`, `tan(x)`, `abs(x)`, `sqrt(x)`, `log(x)` and a double root. Cross-platform and higher-frequency stress cases remain open. |
 | GRA-N28 | Add derivative, tangent and integral overlays. |
 | GRA-N29 | Extend existing parameter controls and animated graph families to analysis refresh. |
 | GRA-N30 | Carry checked numerical datasets into Theory Lab and Python workflows. |

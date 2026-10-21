@@ -9,6 +9,22 @@ describe("Graph formula preview", () => {
     expect(preview.points).toHaveLength(61);
     expect(preview.midpoint).toBeCloseTo(0);
     expect(preview.max).toBeGreaterThan(0.9);
+    expect(preview.fidelity).toBe("fast");
+    expect(preview.samplesEvaluated).toBe(122);
+  });
+
+  it("exposes preview fidelity and warns when sparse samples may alias oscillations", () => {
+    const ranges = [{ min: -10, max: 10 }] as const;
+    const fast = previewGraph2DFormula("x*sin(x^2)", ["x"], ["x"], {}, ranges);
+    const accurate = previewGraph2DFormula("x*sin(x^2)", ["x"], ["x"], {}, ranges,
+      "values", {}, "accurate");
+    expect(fast.kind).toBe("curve");
+    expect(accurate.kind).toBe("curve");
+    if (fast.kind !== "curve" || accurate.kind !== "curve") return;
+    expect(fast.points).toHaveLength(61);
+    expect(fast.aliasingRisk).toBe(true);
+    expect(accurate.points).toHaveLength(481);
+    expect(accurate.samplesEvaluated).toBe(962);
   });
 
   it("samples a two-variable formula and preserves its sign", () => {

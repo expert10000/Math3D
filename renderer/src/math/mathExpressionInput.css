@@ -36,6 +36,11 @@
 .graph2d-formula-dialog-actions button:hover { background:var(--workspace-control-hover-bg); }
 .graph2d-formula-hint { margin:0; color:var(--muted); font-size:12px; }
 .graph2d-formula-preview { display:grid; gap:9px; min-width:0; padding:14px; border:1px solid var(--workspace-control-border); border-radius:9px; background:var(--workspace-section-bg); }
+.graph2d-formula-preview-column { display:grid; gap:8px; min-width:0; }
+.graph2d-formula-preview-fidelity { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12px; }
+.graph2d-formula-preview-fidelity span { margin-right:auto; font-weight:700; }
+.graph2d-formula-preview-fidelity button { border:1px solid var(--workspace-control-border); border-radius:7px; background:var(--workspace-control-bg); color:var(--workspace-control-text); padding:5px 8px; cursor:pointer; }
+.graph2d-formula-preview-fidelity button[aria-pressed="true"] { border-color:var(--workspace-control-active-border); background:var(--workspace-control-active-bg); }
 .graph2d-formula-preview h3 { margin:0; font-size:15px; }
 .graph2d-formula-preview p { margin:0; }
 .graph2d-formula-preview-ok { color:#16803c; font-weight:700; font-size:12px; }

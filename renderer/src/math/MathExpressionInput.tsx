@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "
 import { createPortal } from "react-dom";
 import type { Graph2DFunctionName } from "@math3d/core";
 import { previewGraph2DFormula, type FormulaPreview, type FormulaPreviewContext, type FormulaPreviewMode,
-  type FormulaRange } from "../graph2d/graph2dFormulaPreview";
+  type FormulaPreviewFidelity, type FormulaRange } from "../graph2d/graph2dFormulaPreview";
 import { previewMathExpression, type MathExpressionProfile } from "./mathExpressionPipeline";
 import "./mathExpressionInput.css";
 
@@ -64,7 +64,7 @@ function FormulaPreviewInspector({ preview }: { preview: FormulaPreview }) {
     "incomplete" in preview && preview.incomplete ? "Incomplete" : "Valid in sampled domain";
   const sampling = preview.kind === "contour" ? `${preview.samplesEvaluated} evaluations · ${preview.refinedCells} refined cells` :
     preview.kind === "diagram" ? `${preview.samplesEvaluated} evaluations` :
-      preview.kind === "curve" ? `${preview.points.length} evaluations` :
+      preview.kind === "curve" ? `${preview.samplesEvaluated} evaluations · ${preview.fidelity} (${preview.points.length} plotted)` :
         preview.kind === "field" ? `${preview.cells.length * preview.cells[0]!.length} evaluations` : "Unavailable";
   const viewport = preview.kind === "curve" ? `${preview.axis}: ${formatValue(preview.range.min)} to ${formatValue(preview.range.max)}` :
     "ranges" in preview ? preview.axes.map((axis, index) =>
@@ -122,6 +122,8 @@ function FormulaPreviewPanel({ preview, source, onLocateError }: { preview: Form
       <div className="graph2d-formula-preview-axis"><span>{preview.axis} = {formatValue(preview.range.min)}</span>
         <span>{preview.axis} = {formatValue(preview.range.max)}</span></div>
       <small>At midpoint: {formatValue(preview.midpoint)} · sampled range {formatValue(preview.min)} to {formatValue(preview.max)}</small>
+      {preview.aliasingRisk && <small className="graph2d-formula-preview-warning" role="status">
+        Sampling may miss rapid changes or oscillations. Try Accurate preview and verify with numerical analysis.</small>}
       {preview.invalidSamples > 0 && <small className="graph2d-formula-preview-warning">{preview.invalidSamples} sampled value(s) are undefined; gaps are omitted.</small>}
       <small>Preview samples this formula only; Review the graph editor before saving.</small>
       <FormulaPreviewInspector preview={preview} />
@@ -280,12 +282,14 @@ export function MathExpressionInput({ label, ariaLabel, value, onChange, suffix,
   const dialogRef = useRef<HTMLDivElement>(null);
   const initialCaretRef = useRef(0);
   const [expandedValue, setExpandedValue] = useState<string | null>(null);
+  const [previewFidelity, setPreviewFidelity] = useState<FormulaPreviewFidelity>("fast");
   const [functionQuery, setFunctionQuery] = useState("");
   const [selection, setSelection] = useState({ start: 0, end: 0 });
   const isExpanded = expandedValue !== null;
   const preview = useMemo(() => expandedValue === null || profile !== "graph" ? null :
-    previewGraph2DFormula(expandedValue, variables, axes, parameterValues, ranges, previewMode, previewContext),
-  [expandedValue, profile, variables, axes, parameterValues, ranges, previewMode, previewContext]);
+    previewGraph2DFormula(expandedValue, variables, axes, parameterValues, ranges, previewMode, previewContext,
+      previewFidelity),
+  [expandedValue, profile, variables, axes, parameterValues, ranges, previewMode, previewContext, previewFidelity]);
   const scopedPreview = useMemo(() => expandedValue === null || profile === "graph" ? null :
     previewMathExpression(expandedValue, profile, variables), [expandedValue, profile, variables]);
   const invalid = profile === "graph" ? preview?.kind === "error" && preview.source === "parser" : !!scopedPreview?.error;
@@ -400,6 +404,7 @@ export function MathExpressionInput({ label, ariaLabel, value, onChange, suffix,
     <button ref={expandButtonRef} className="graph2d-formula-expand" type="button" onClick={() => {
       initialCaretRef.current = inputRef.current?.selectionStart ?? value.length;
       setFunctionQuery("");
+      setPreviewFidelity("fast");
       setExpandedValue(value);
     }}>Expand formula</button>
     {isExpanded && createPortal(<div className="graph2d-formula-overlay">
@@ -457,7 +462,16 @@ export function MathExpressionInput({ label, ariaLabel, value, onChange, suffix,
             </section>
             <p className="graph2d-formula-hint">Select an expression to wrap it in a function. Line breaks become spaces on Apply.</p>
           </div>
-          {preview && <FormulaPreviewPanel preview={preview} source={expandedValue} onLocateError={locateError} />}
+          {preview && <div className="graph2d-formula-preview-column">
+            {axes.length === 1 && previewMode === "values" && <div className="graph2d-formula-preview-fidelity"
+              role="group" aria-label="Preview fidelity">
+              <span>Preview fidelity</span>
+              {(["fast", "accurate"] as const).map(level => <button key={level} type="button"
+                aria-pressed={previewFidelity === level} onClick={() => setPreviewFidelity(level)}>
+                {level === "fast" ? "Fast" : "Accurate"}</button>)}
+            </div>}
+            <FormulaPreviewPanel preview={preview} source={expandedValue} onLocateError={locateError} />
+          </div>}
           {profile !== "graph" && scopedPreview && <ScopedPreviewPanel preview={scopedPreview} profile={profile}
             variables={variables} onLocateError={locateError} />}
         </div>
