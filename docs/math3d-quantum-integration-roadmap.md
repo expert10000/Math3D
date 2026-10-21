@@ -2,7 +2,11 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has bounded, source-backed QWZ and SSH study profiles; the broader multi-family milestone remains open. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 remains open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a frozen v0.1 QWZ/SSH supported set and source-backed study profiles; the broader multi-family milestone remains Partial pending producer fixtures. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 has a documented v0.1 profile and desktop/browser matrix, but release sign-off remains Partial pending final CI/browser evidence.
+
+See the [Q08 fixture audit](math3d-q08-fixture-audit.md) and
+[v0.1 release profile](math3d-quantum-v0.1-freeze.md) for the exact supported
+set, frozen interchange, capability matrix and remaining sign-off gates.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -512,7 +516,9 @@ unsourced topological claim.
 
 ### M3D-Q08 — `feat(math3d-quantum): add topological Hamiltonian visualization`
 
-**Status: Partial, QWZ and SSH supplied-result profiles.** Open either pinned QWZ example
+**Status: Partial overall; v0.1 supported set frozen to QWZ and SSH.** The
+[fixture audit](math3d-q08-fixture-audit.md) records the actual producer
+corpus and admission rule for later families. Open either pinned QWZ example
 under **File → Verified quantum examples**, then choose **Link matching QWZ
 views** in its source inspector. The existing scene viewer offers **Bands** and
 **Berry curvature** views after both independently verified bundles declare the
@@ -575,6 +581,12 @@ reopen, and replay preserve hashes and provenance; no hidden Quantum Lab-specifi
 mutation is required.
 
 ### M3D-Q10 — `release(math3d-quantum): freeze QLab Math3D integration v0.1`
+
+**Status: Partial.** The [v0.1 release profile](math3d-quantum-v0.1-freeze.md)
+freezes the QWZ/SSH topological support set, schema/encoding/budget policy,
+known limitations and desktop/browser capability matrix. The quantum corpus,
+QWZ/SSH studies and browser desktop-only boundary are now in maintained CI.
+A green run at the release commit is still required before marking Q10 complete.
 
 **Scope.** Freeze the supported schema/version matrix, object families, artifact
 encodings, runtime capabilities, size budgets, fixture corpus, migration policy,
