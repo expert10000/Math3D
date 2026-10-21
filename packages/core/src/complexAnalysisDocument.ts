@@ -124,10 +124,13 @@ export type ComplexAnalysisDocument = Readonly<{
   mobius: ComplexMobiusDefinition | null;
   results: readonly ComplexResultReference[];
   provenance: Readonly<{
-    origin: "native" | "legacy-adapter";
+    origin: "native" | "legacy-adapter" | "graph2d-promotion";
     sourceFormat: string;
     sourceVersion: number;
     diagnostics: readonly ComplexDocumentDiagnostic[];
+    graphSource?: Readonly<{ documentId: StableDocumentId; revision: number; structuralHash: StructuralHash;
+      objectId: string; sampleCount: number; mapping: "parametric-xy-to-complex-contour";
+      targetStructuralHash: StructuralHash }>;
   }>;
 }>;
 
@@ -311,8 +314,8 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
   const provenance = value.provenance;
   if (!isRecord(provenance)) errors.push("complex.provenance must be an object.");
   else {
-    fields(provenance, ["origin", "sourceFormat", "sourceVersion", "diagnostics"], "complex.provenance", errors);
-    if (!["native", "legacy-adapter"].includes(provenance.origin as string)) errors.push("complex.provenance.origin is invalid.");
+    fields(provenance, ["origin", "sourceFormat", "sourceVersion", "diagnostics", "graphSource"], "complex.provenance", errors);
+    if (!["native", "legacy-adapter", "graph2d-promotion"].includes(provenance.origin as string)) errors.push("complex.provenance.origin is invalid.");
     stringValue(provenance.sourceFormat, "complex.provenance.sourceFormat", errors, 120);
     if (!positiveInteger(provenance.sourceVersion)) errors.push("complex.provenance.sourceVersion must be positive.");
     if (!Array.isArray(provenance.diagnostics)) errors.push("complex.provenance.diagnostics must be an array.");
@@ -323,6 +326,20 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
       stringValue(entry.code, `${path}.code`, errors, 120); stringValue(entry.message, `${path}.message`, errors); stringValue(entry.action, `${path}.action`, errors);
       if (!["info", "warning", "error"].includes(entry.severity as string)) errors.push(`${path}.severity is invalid.`);
     });
+    if (provenance.origin === "graph2d-promotion" || provenance.graphSource !== undefined) {
+      const link = provenance.graphSource;
+      if (provenance.origin !== "graph2d-promotion" || !isRecord(link)) errors.push("complex.provenance.graphSource requires a promoted Graph source.");
+      else {
+        fields(link, ["documentId", "revision", "structuralHash", "objectId", "sampleCount", "mapping", "targetStructuralHash"], "complex.provenance.graphSource", errors);
+        if (typeof link.documentId !== "string" || !SAFE_ID.test(link.documentId)) errors.push("complex.provenance.graphSource.documentId is invalid.");
+        if (!positiveInteger(link.revision)) errors.push("complex.provenance.graphSource.revision is invalid.");
+        if (typeof link.structuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.structuralHash)) errors.push("complex.provenance.graphSource.structuralHash is invalid.");
+        if (typeof link.objectId !== "string" || !SAFE_ID.test(link.objectId)) errors.push("complex.provenance.graphSource.objectId is invalid.");
+        if (!positiveInteger(link.sampleCount) || (link.sampleCount as number) > 4097) errors.push("complex.provenance.graphSource.sampleCount is invalid.");
+        if (link.mapping !== "parametric-xy-to-complex-contour") errors.push("complex.provenance.graphSource.mapping is invalid.");
+        if (typeof link.targetStructuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.targetStructuralHash)) errors.push("complex.provenance.graphSource.targetStructuralHash is invalid.");
+      }
+    }
   }
   if (errors.length) return { ok: false, errors };
   return { ok: true, value: immutableCanonicalJsonClone(value) as ComplexAnalysisDocument };

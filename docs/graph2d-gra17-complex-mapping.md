@@ -1,0 +1,9 @@
+# GRA-17: sampled Graph contour to Complex Analysis
+
+The first mapping accepts one saved Graphs parametric object `x(t), y(t)` with finite values and included endpoints. It samples 16–4097 points over the stated parameter domain and maps each point to `z(t) = x(t) + i y(t)`. The destination is a versioned Complex Analysis document containing a polyline contour and the identity function `f(z) = z`. It does not infer a complex analytic function from the real Graph expressions.
+
+The desktop Graph inspector reviews the point count, closure, endpoint gap and tolerance, largest sampled step, coordinate domain, source revision/hash and limitations. Auto closure requires the sampled endpoints to agree within `10⁻⁶ × max(real range, imaginary range, 1)`; explicit closed mode rejects a larger gap. Undefined or stationary paths are rejected. The preview is re-sampled against the same Graph document revision/hash before download. The downloaded document carries the Graph document/object identity, source revision/hash, sample count, mapping name and target structural hash. The source-status API distinguishes current, changed, missing and locally edited targets; refresh preserves the target identity only when the target is unedited and the matching Graph source is available.
+
+Sampling is bounded and does not establish path smoothness, winding, enclosure, analyticity or convergence of contour integrals. A narrow unsampled excursion or singularity may be missed, and the target sets winding to unknown. The mapping is geometry only. Direct workspace placement, an interactive linked-refresh UI, verified complex field/paired independent Graph source mapping, mobile target workflow and physical-device/accessibility signoff remain open.
+
+Acceptance includes a circle round trip through Complex Analysis serialization, changed/missing-source and edited-target diagnostics, undefined/closure/degenerate rejection, and a desktop preview/download journey.

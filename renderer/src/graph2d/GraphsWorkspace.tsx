@@ -60,6 +60,8 @@ import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
 import { Graph2DScalePanel } from "./Graph2DScalePanel";
 import { Graph2DGridPanel } from "./Graph2DGridPanel";
 import { Graph2DRegressionPanel } from "./Graph2DRegressionPanel";
+import { Graph2DFourierPanel } from "./Graph2DFourierPanel";
+import { Graph2DComplexMappingPanel } from "./Graph2DComplexMappingPanel";
 import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
 import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
@@ -904,6 +906,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     </header>
     {constructions}
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
+    {selectedObject?.kind === "point-series" && <Graph2DFourierPanel document={document} />}
+    {selectedObject?.kind === "parametric" && <Graph2DComplexMappingPanel document={document} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
     {differential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
       <h3>Local differential</h3>

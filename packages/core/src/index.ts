@@ -120,6 +120,8 @@ export * from "./scientificSceneManifest";
 export * from "./graph2dFieldReference";
 export * from "./graph2dNonlinearRegression";
 export * from "./graph2dLogisticRegression";
+export * from "./graph2dFourier";
+export * from "./graph2dComplexMapping";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";
 export * from "./topologyCommands";

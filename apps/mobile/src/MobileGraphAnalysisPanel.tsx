@@ -11,7 +11,7 @@ const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "De
   ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"],
   ["regression-cubic", "Cubic regression"], ["regression-quartic", "Quartic regression"],
   ["regression-spline", "Cubic smoothing spline"], ["regression-exponential", "Exponential decay"],
-  ["regression-logistic", "Logistic growth"]];
+  ["regression-logistic", "Logistic growth"], ["fourier", "Fourier spectrum"]];
 const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "polar" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
@@ -29,10 +29,10 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
   const regression = draft.kind.startsWith("regression-");
   const polarOperation = draft.kind.startsWith("polar-");
   const pointOperation = draft.kind === "derivatives" || draft.kind === "tangent" || draft.kind === "polar-tangent" || draft.kind === "parametric-tangent";
-  const sources = document.source.objects.filter((object) => object.kind === (regression ? "point-series" : polarOperation ? "polar" :
+  const sources = document.source.objects.filter((object) => object.kind === (regression || draft.kind === "fourier" ? "point-series" : polarOperation ? "polar" :
     draft.kind === "parametric-tangent" ? "parametric" : "explicit-cartesian"));
   const chooseKind = (kind: MobileGraphAnalysisKind) => {
-    const targetKind = kind.startsWith("regression-") ? "point-series" : kind.startsWith("polar-") ? "polar" :
+    const targetKind = kind.startsWith("regression-") || kind === "fourier" ? "point-series" : kind.startsWith("polar-") ? "polar" :
       kind === "parametric-tangent" ? "parametric" : "explicit-cartesian";
     const source = document.source.objects.find(object => object.id === draft.objectId && object.kind === targetKind) ??
       document.source.objects.find(object => object.kind === targetKind);
@@ -52,7 +52,7 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
   };
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={s.button}><Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
-  const field = (label: string, key: "x" | "min" | "max" | "tolerance" | "smoothing" | "amplitude" | "rate" | "capacity" | "midpoint") => <View key={key}><Text>{label}</Text>
+  const field = (label: string, key: "x" | "min" | "max" | "tolerance" | "smoothing" | "amplitude" | "rate" | "capacity" | "midpoint" | "xUnit") => <View key={key}><Text>{label}</Text>
     <TextInput accessibilityLabel={label} value={draft[key] ?? "0.001"} maxLength={40} autoCapitalize="none" autoCorrect={false} style={s.input}
       onChangeText={(value) => onDraft({ ...draft, [key]: value })} /></View>;
   return <View testID="mobile-graph-analysis-panel"><Text style={s.title}>Analyze</Text>
@@ -76,7 +76,15 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
         max: object.kind === "polar" ? String(object.domain.max) : draft.max })}><Text>{object.label}</Text></Pressable>)}</View>
     {draft.kind === "intersections" && <><Text>Second function (one pair only)</Text><View style={s.row}>{sources.filter((object) => object.id !== draft.objectId).map((object) =>
       button(`Intersect with ${object.label}${draft.secondId === object.id ? " (selected)" : ""}`, () => onDraft({ ...draft, secondId: object.id })))}</View></>}
-    {regression ? <><Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text>
+    {draft.kind === "fourier" ? <><Text>Uses complete, uniformly spaced, original checked rows. No automatic resampling.</Text>
+      {field("X unit", "xUnit")}
+      <View style={s.row}>{(["rectangular", "hann"] as const).map(value =>
+        button(`${value} window${draft.fourierWindow === value ? " (selected)" : ""}`, () => onDraft({ ...draft, fourierWindow: value })))}</View>
+      <View style={s.row}>{(["peak", "rms"] as const).map(value =>
+        button(`${value} amplitude${draft.fourierNormalization === value ? " (selected)" : ""}`, () => onDraft({ ...draft, fourierNormalization: value })))}</View>
+      <View style={s.row}>{(["mean", "none"] as const).map(value =>
+        button(`${value} detrend${draft.fourierDetrend === value ? " (selected)" : ""}`, () => onDraft({ ...draft, fourierDetrend: value })))}</View>
+      <Text>One-sided amplitude/phase spectrum. Zero padding does not improve physical resolution; phase near zero amplitude is unstable.</Text></> : regression ? <><Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text>
       {draft.kind === "regression-spline" && field("Spline smoothness λ (0–1)", "smoothing")}
       {draft.kind === "regression-exponential" && <>{field("Initial amplitude", "amplitude")}{field("Initial rate per x unit", "rate")}
         <Text>y = amplitude × exp(−rate × (x−smallest included x)); zero baseline. Rate is bounded by the x span.</Text></>}
@@ -89,6 +97,7 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
       <>{field(polarOperation ? "Angle from θ (radians)" : "Analysis from x", "min")}
         {field(polarOperation ? "Angle to θ (radians)" : "Analysis to x", "max")}</>}
     {(["derivatives", "integral", "arc-length", "polar-area", "polar-arc-length"] as string[]).includes(draft.kind) ? field("Analysis tolerance", "tolerance") :
+      draft.kind === "fourier" ? <Text>Uniform spacing and units are checked; irregular or missing samples are rejected.</Text> :
       regression ? <Text>{draft.kind === "regression-spline" ? "λ controls the fixed spline penalty. No confidence or prediction intervals." :
         draft.kind === "regression-exponential" || draft.kind === "regression-logistic" ? "Bounded local solver; no global guarantee or parameter uncertainty is claimed." :
         "Polynomial fit uses shared core uncertainty rules."}</Text> :

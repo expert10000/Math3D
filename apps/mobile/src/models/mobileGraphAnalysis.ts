@@ -6,24 +6,27 @@ import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph
   type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis, type Graph2DIntersectionCandidate,
   type Graph2DIntersectionAnalysis, structuralHash } from "@math3d/core";
 import { graph2DPublicationAnalysisTables, type Graph2DPublicationTable } from "@math3d/core";
-import { analyzeGraph2DRegression, graph2DRegressionResidualTable, graph2DRegressionCurveTable, type Graph2DRegression, type Graph2DPointRow } from "@math3d/core";
+import { analyzeGraph2DRegression, graph2DRegressionResidualTable, graph2DRegressionCurveTable,
+  analyzeGraph2DFourier, type Graph2DFourierResult, type Graph2DRegression, type Graph2DPointRow } from "@math3d/core";
 const publicationProjection = (results: readonly { publication: AnalysisResultEnvelope }[]) => {
   const { analyses, analysisNotes } = graph2DPublicationAnalysisTables(results);
   return { publicationTables: analyses, publicationNotes: analysisNotes };
 };
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
-  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic" | "regression-spline" | "regression-exponential" | "regression-logistic";
+  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic" | "regression-spline" | "regression-exponential" | "regression-logistic" | "fourier";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
   x: string; min: string; max: string; tolerance: string; smoothing?: string;
-  amplitude?: string; rate?: string; capacity?: string; midpoint?: string; mode: "signed" | "absolute" };
+  amplitude?: string; rate?: string; capacity?: string; midpoint?: string;
+  fourierWindow?: "rectangular" | "hann"; fourierNormalization?: "peak" | "rms";
+  fourierDetrend?: "none" | "mean"; xUnit?: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
   candidate?: Graph2DCriticalPoint | Graph2DIntersectionCandidate };
 export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: string; publications: readonly AnalysisResultEnvelope[];
   rows: readonly MobileGraphAnalysisRow[]; overlays: readonly Graph2DLineOverlay[]; areaSegments?: readonly Graph2DAreaFillSegment[];
   candidateAnalysis?: Graph2DCriticalPointAnalysis | Graph2DIntersectionAnalysis;
   publicationTables?: readonly Graph2DPublicationTable[]; publicationNotes?: readonly string[] };
-export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression };
+export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression; fourier?: Graph2DFourierResult };
 export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => {
   const selected = document.source.objects.find(object => object.id === document.selection.objectId);
   const parametricDefault = selected?.kind === "parametric" ?
@@ -33,7 +36,8 @@ export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraph
     secondId: "", x: String(selected?.kind === "parametric" ? document.selection.probe?.parameter ?? parametricDefault : document.selection.probe?.x ?? 0),
     min: String(selected?.kind === "polar" ? selected.domain.min : -1),
     max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", smoothing: "0.001",
-    amplitude: "1", rate: "1", capacity: "1", midpoint: "0", mode: "signed" };
+    amplitude: "1", rate: "1", capacity: "1", midpoint: "0", fourierWindow: "hann",
+    fourierNormalization: "peak", fourierDetrend: "mean", xUnit: "s", mode: "signed" };
 };
 const number = (text: string) => {
   if (!text.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()) || !Number.isFinite(Number(text)))
@@ -78,6 +82,24 @@ export const mobileGraphRegressionResult = (draft: MobileGraphAnalysisDraft, fit
 export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileGraphAnalysisDraft, regressionRows: readonly Graph2DPointRow[] | null = null): MobileGraphRegressionAnalysis => {
   const object = document.source.objects.find((object) => object.id === draft.objectId);
   const result: MobileGraphAnalysis = { kind: draft.kind, inputHash: mobileGraphAnalysisInputHash(draft), publications: [], rows: [], overlays: [] };
+  if (draft.kind === "fourier") {
+    const spectrum = analyzeGraph2DFourier({ document, objectId: draft.objectId, rows: regressionRows,
+      options: { window: draft.fourierWindow ?? "hann", normalization: draft.fourierNormalization ?? "peak",
+        detrend: draft.fourierDetrend ?? "mean", xUnit: draft.xUnit ?? "s" } });
+    const projection = publicationProjection([spectrum]);
+    const bins = spectrum.bins.slice(0, 2048);
+    const table: Graph2DPublicationTable = { publication: spectrum.publication,
+      columns: ["Frequency", "Amplitude", "Phase radians"],
+      rows: bins.map(bin => [bin.frequency, bin.amplitude, bin.phaseRadians]) };
+    return { ...result, fourier: spectrum, publications: [spectrum.publication],
+      publicationTables: [...projection.publicationTables, table],
+      publicationNotes: spectrum.bins.length > bins.length ? [`Spectrum table includes first ${bins.length} of ${spectrum.bins.length} frequency bins.`] : [],
+      rows: [{ label: `Fourier spectrum · ${spectrum.n} samples`,
+        detail: `Δx=${format(spectrum.sampleInterval)} ${spectrum.options.xUnit}; Nyquist=${format(spectrum.nyquist)} ${spectrum.frequencyUnit}; ${spectrum.options.window} window; ${spectrum.options.normalization} amplitude.` },
+        ...spectrum.bins.slice(1).sort((a, b) => b.amplitude - a.amplitude).slice(0, 12).map(bin => ({
+          label: `${format(bin.frequency)} ${spectrum.frequencyUnit}`,
+          detail: `Amplitude ${format(bin.amplitude)} y units; phase ${format(bin.phaseRadians)} rad` }))] };
+  }
   if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic" || draft.kind === "regression-quartic" || draft.kind === "regression-spline" || draft.kind === "regression-exponential" || draft.kind === "regression-logistic") {
     const fit = analyzeGraph2DRegression({ document, objectId: draft.objectId, rows: regressionRows,
       model: draft.kind === "regression-linear" ? "linear" : draft.kind === "regression-quadratic" ? "quadratic" :
