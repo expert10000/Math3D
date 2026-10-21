@@ -3,12 +3,13 @@ import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DExplicitObject } from "./graph2dDocument";
 import { analyzeGraph2DDerivative, differentiateGraph2DExpression } from "./graph2dDerivatives";
 import { evaluateGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { graph2DExpressionPossibleDomainBoundary } from "./graph2dInterval";
 import { graph2DQualityForNumericalCandidate, graph2DQualityForScan,
   type Graph2DNumericalCandidateQuality } from "./graph2dAnalysisQuality";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import { compactGraph2DUnresolvedIntervals, type Graph2DUnresolvedInterval } from "./graph2dUnresolvedCoverage";
 
-export const GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION = "4" as const;
+export const GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION = "5" as const;
 export const GRAPH2D_CRITICAL_POINT_GRID_INTERVALS = 256;
 export const GRAPH2D_CRITICAL_POINT_MAX_CANDIDATES = 256;
 export const GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS = 12000;
@@ -190,15 +191,19 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
       if (incomplete) { grid.push(right); return; }
       const midpoint = (left + right) / 2;
       if (midpoint === left || midpoint === right) { grid.push(right); return; }
-      const needsRefinement = orders.some((order) => {
+      const domainBoundary = graph2DExpressionPossibleDomainBoundary(object.expression.ast,
+        [left, right], variables);
+      const needsRefinement = domainBoundary || orders.some((order) => {
         const a = valueAt(order, left), m = valueAt(order, midpoint), b = valueAt(order, right);
         return a === null || m === null || b === null || suspicious(a, m, b);
       });
       if (!needsRefinement) { grid.push(right); return; }
       if (depth >= MAX_REFINEMENT_DEPTH || grid.length >= GRAPH2D_CRITICAL_POINT_MAX_SCAN_CELLS) {
         refinementIncomplete = true;
-        note("refinement-limit", "Adaptive refinement stopped before every suspicious cell was resolved.");
-        unresolved(left, right, "refinement-limit");
+        note(domainBoundary ? "domain-boundary" : "refinement-limit", domainBoundary ?
+          "A possible domain boundary remains between samples; nearby features may be missed." :
+          "Adaptive refinement stopped before every suspicious cell was resolved.");
+        unresolved(left, right, domainBoundary ? "undefined" : "refinement-limit");
         grid.push(right);
         return;
       }
@@ -209,6 +214,8 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
       refineCell(baseGrid[index]!, baseGrid[index + 1]!, 0);
     scanCells = grid.length - 1;
     const fields = ([0, 1, 2] as const).map((order) => grid.map((x) => valueAt(order, x)));
+    const riskyCells = grid.slice(1).map((right, index) =>
+      graph2DExpressionPossibleDomainBoundary(object.expression.ast, [grid[index]!, right], variables));
     if (fields[0]!.some((entry) => entry === null)) {
       refinementIncomplete = true;
       note("invalid-samples", "Undefined samples split the scanned interval; nearby features may be missed.");
@@ -243,6 +250,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
       }
     }
     for (let index = 0; index < grid.length - 1 && !incomplete; index += 1) {
+      if (riskyCells[index]) continue;
       const a = grid[index]!, b = grid[index + 1]!;
       for (const order of [0, 1, 2] as const) {
         const fa = fields[order]![index], fb = fields[order]![index + 1];

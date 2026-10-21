@@ -3,12 +3,13 @@ import { structuralHash } from "./documentIdentity";
 import { analyzeGraph2DDerivative } from "./graph2dDerivatives";
 import type { Graph2DDocument, Graph2DExplicitObject } from "./graph2dDocument";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { graph2DExpressionPossibleDomainBoundary } from "./graph2dInterval";
 import { graph2DQualityForNumericalCandidate, graph2DQualityForScan,
   type Graph2DNumericalCandidateQuality } from "./graph2dAnalysisQuality";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import { compactGraph2DUnresolvedIntervals, type Graph2DUnresolvedInterval } from "./graph2dUnresolvedCoverage";
 
-export const GRAPH2D_INTERSECTION_ALGORITHM_VERSION = "4" as const;
+export const GRAPH2D_INTERSECTION_ALGORITHM_VERSION = "5" as const;
 export const GRAPH2D_INTERSECTION_GRID_CELLS = 256;
 export const GRAPH2D_INTERSECTION_MAX_SCAN_CELLS = 2048;
 export const GRAPH2D_INTERSECTION_MAX_EVALUATIONS = 12000;
@@ -95,6 +96,9 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     const a = value(first, x), b = value(second, x);
     return a === null || b === null ? null : a - b;
   };
+  const domainBoundary = (left: number, right: number): boolean =>
+    graph2DExpressionPossibleDomainBoundary(first.expression.ast, [left, right], variables) ||
+    graph2DExpressionPossibleDomainBoundary(second.expression.ast, [left, right], variables);
   const candidates: Graph2DIntersectionCandidate[] = [];
   const xTolerance = interval.min < interval.max ? Math.max(1e-10,
     16 * Number.EPSILON * Math.max(1, Math.abs(interval.min), Math.abs(interval.max)),
@@ -129,16 +133,17 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
       const midpoint = (left + right) / 2;
       if (midpoint === left || midpoint === right) { grid.push(right); return; }
       const a = difference(left), m = difference(midpoint), b = difference(right);
+      const boundary = domainBoundary(left, right);
       const scale = a === null || m === null || b === null ? 0 :
         Math.max(1e-12, Math.abs(a), Math.abs(m), Math.abs(b));
-      const suspicious = a === null || m === null || b === null ||
+      const suspicious = boundary || a === null || m === null || b === null ||
         a * b > 0 && (a * m <= 0 || Math.abs(m) < 0.15 * Math.min(Math.abs(a), Math.abs(b))) ||
         a !== null && m !== null && b !== null && Math.abs(m - (a + b) / 2) > 0.12 * scale;
       if (!suspicious) { grid.push(right); return; }
       // Reserve one endpoint for each remaining base cell so the final grid stays bounded.
       if (depth >= 3 || grid.length >= GRAPH2D_INTERSECTION_MAX_SCAN_CELLS - GRAPH2D_INTERSECTION_GRID_CELLS) {
         refinementLimitedCells += 1;
-        unresolved(left, right, "refinement-limit");
+        unresolved(left, right, boundary ? "undefined" : "refinement-limit");
         grid.push(right);
         return;
       }
@@ -148,6 +153,7 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     for (let index = 0; index < baseGrid.length - 1; index += 1)
       refineCell(baseGrid[index]!, baseGrid[index + 1]!, 0);
     const field = grid.map(difference);
+    const riskyCells = grid.slice(1).map((right, index) => domainBoundary(grid[index]!, right));
     for (let index = 0; index < field.length; index += 1) {
       const current = field[index], left = field[index - 1], right = field[index + 1];
       if (current !== 0 || left === 0 || right === 0) continue;
@@ -158,6 +164,9 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     }
     for (let index = 0; index < grid.length - 1 && !incomplete; index += 1) {
       const left = field[index], right = field[index + 1];
+      if (riskyCells[index]) {
+        invalidCells += 1; unresolved(grid[index]!, grid[index + 1]!, "undefined"); continue;
+      }
       if (left === null || right === null) {
         invalidCells += 1; unresolved(grid[index]!, grid[index + 1]!, "undefined"); continue;
       }
@@ -231,7 +240,7 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
       ...(status === "incomplete" ? ["Intersection scan is incomplete because of a work limit or unresolved cells."] : [])],
     diagnostics: [
       ...(invalidCells ? [{ code: "invalid-cells", severity: "warning" as const,
-        message: `${invalidCells} cells touched an undefined sample.` }] : []),
+        message: `${invalidCells} cells touched an undefined sample or possible domain boundary.` }] : []),
       ...(unresolvedBrackets ? [{ code: "unresolved-brackets", severity: "warning" as const,
         message: `${unresolvedBrackets} sign changes did not pass residual checks.` }] : []),
       ...(coincidentCells ? [{ code: "coincident-cells", severity: "warning" as const,

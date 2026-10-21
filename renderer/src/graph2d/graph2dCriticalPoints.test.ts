@@ -154,4 +154,14 @@ describe("Graph2D critical point analysis", () => {
     expect(near(tangent.candidates.filter((entry) => entry.kind === "zero"), 0)).toBe(true);
     expect(tangent.candidates.some((entry) => Math.abs(Math.abs(entry.x) - Math.PI / 2) < 1e-3)).toBe(false);
   });
+
+  it("keeps an off-grid pole unresolved while retaining a separate root", () => {
+    const result = analyze("(x-0.02)/(x-0.003)", -1, 1);
+    expect(result.status).toBe("incomplete");
+    expect(result.diagnostics.some((entry) => entry.code === "domain-boundary")).toBe(true);
+    expect(result.unresolvedIntervals.some((entry) => entry.reason === "undefined" &&
+      entry.min <= 0.003 && entry.max >= 0.003)).toBe(true);
+    expect(result.candidates.some((entry) => entry.kind === "zero" && Math.abs(entry.x - 0.003) < 1e-3)).toBe(false);
+    expect(near(result.candidates.filter((entry) => entry.kind === "zero"), 0.02)).toBe(true);
+  });
 });

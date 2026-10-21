@@ -55,3 +55,40 @@ export function graph2DExpressionInterval(ast: Graph2DExpressionAst, x: Interval
   };
   return walk(ast.root);
 }
+
+/** Flags domain boundaries that interval arithmetic can locate even when point samples miss them. */
+export function graph2DExpressionPossibleDomainBoundary(ast: Graph2DExpressionAst, x: Interval,
+  variables: Readonly<Record<string, number>> = {}): boolean {
+  const bound = (node: Graph2DExpressionNode) =>
+    graph2DExpressionInterval({ ...ast, root: node }, x, [0, 0], variables);
+  const crossesTanPole = (range: Interval): boolean => {
+    const first = Math.ceil((range[0] - Math.PI / 2) / Math.PI);
+    return Math.PI / 2 + first * Math.PI <= range[1];
+  };
+  const crossesSinZero = (range: Interval): boolean =>
+    Math.ceil(range[0] / Math.PI) * Math.PI <= range[1];
+  const visit = (node: Graph2DExpressionNode): boolean => {
+    if (node.kind === "unary") return visit(node.operand);
+    if (node.kind === "call") {
+      const argument = bound(node.argument);
+      if (argument && ((node.functionName === "sqrt" && argument[0] < 0) ||
+          (["ln", "log", "log2"].includes(node.functionName) && argument[0] <= 0) ||
+          (["asin", "acos"].includes(node.functionName) &&
+            (argument[0] < -1 || argument[1] > 1)) ||
+          (node.functionName === "acosh" && argument[0] < 1) ||
+          (node.functionName === "atanh" && (argument[0] <= -1 || argument[1] >= 1)) ||
+          (["tan", "sec"].includes(node.functionName) && crossesTanPole(argument)) ||
+          (["csc", "cot"].includes(node.functionName) && crossesSinZero(argument)))) return true;
+      return visit(node.argument);
+    }
+    if (node.kind !== "binary") return false;
+    const denominator = node.operator === "/" ? bound(node.right) : null;
+    if (denominator && denominator[0] <= 0 && denominator[1] >= 0) return true;
+    const exponent = node.operator === "^" && node.right.kind === "number" ? node.right.value : null;
+    const base = exponent === null ? null : bound(node.left);
+    if (base && exponent !== null && (exponent < 0 && base[0] <= 0 && base[1] >= 0 ||
+        !Number.isInteger(exponent) && base[0] < 0)) return true;
+    return visit(node.left) || visit(node.right);
+  };
+  return visit(ast.root);
+}

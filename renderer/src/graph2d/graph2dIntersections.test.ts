@@ -67,15 +67,26 @@ describe("Graph2D pairwise intersections", () => {
       entry.min <= 0 && entry.max >= 0)).toBe(true);
   });
 
-  it("rejects poles and keeps unresolved brackets visible", () => {
+  it("rejects poles and keeps unresolved domain cells visible", () => {
     const reciprocal = analyze("1/x", "0");
     expect(reciprocal.candidates).toHaveLength(0);
     expect(reciprocal.invalidCells).toBeGreaterThan(0);
     const tangent = analyze("tan(x)", "0");
     expect(near(tangent.candidates, 0)).toBe(true);
     expect(tangent.candidates.some((entry) => Math.abs(Math.abs(entry.x) - Math.PI / 2) < 1e-3)).toBe(false);
-    expect(tangent.unresolvedBrackets).toBeGreaterThan(0);
-    expect(tangent.unresolvedIntervals.some(entry => entry.reason === "residual-check")).toBe(true);
+    expect(tangent.invalidCells).toBeGreaterThan(0);
+    expect(tangent.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= Math.PI / 2 && entry.max >= Math.PI / 2)).toBe(true);
+  });
+
+  it("retains a crossing separate from an off-grid pole", () => {
+    const result = analyze("(x-0.02)/(x-0.003)", "0", -1, 1);
+    expect(result.status).toBe("incomplete");
+    expect(result.invalidCells).toBeGreaterThan(0);
+    expect(result.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= 0.003 && entry.max >= 0.003)).toBe(true);
+    expect(near(result.candidates, 0.02)).toBe(true);
+    expect(result.candidates.some(entry => Math.abs(entry.x - 0.003) < 1e-3)).toBe(false);
   });
 
   it("flags coincident functions instead of manufacturing many isolated crossings", () => {
