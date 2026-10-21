@@ -3,6 +3,26 @@ import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
+test("Graph calculus panel toggles the sampled first-derivative overlay", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(app.page);
+    const compactInspector = app.page.locator(".graph2d-compact-panels summary").filter({ hasText: "Inspector" });
+    if (await compactInspector.isVisible()) await compactInspector.click();
+    const panel = app.page.locator(".graph2d-calculus-overlays:visible").first();
+    await panel.getByRole("button", { name: "Show derivative plot" }).click();
+    await expect(panel).toContainText("sampled first derivative");
+    await expect(app.page.getByTestId("graph2d-derivative-curve-overlay").first().locator("path"))
+      .toHaveAttribute("d", /[ML]/);
+    await panel.getByRole("button", { name: "Hide derivative plot" }).click();
+    await expect(app.page.getByTestId("graph2d-derivative-curve-overlay")).toHaveCount(0);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("Graph formula editor exposes preview fidelity and sparse-sampling warning", async () => {
   const app = await launchSurfaceApp();
   try {

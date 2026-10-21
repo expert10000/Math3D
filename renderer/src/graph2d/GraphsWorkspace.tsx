@@ -1,6 +1,7 @@
 import {
   analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
+  sampleGraph2DDerivativeCurve,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   previewGraph2DScientificDataset,
@@ -279,6 +280,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
   const [criticalAnalysisBudget, setCriticalAnalysisBudget] = useState(12000);
+  const [showDerivativeCurve, setShowDerivativeCurve] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [parameterCards, setParameterCards] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
@@ -709,6 +711,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const polarDifferential = useMemo(() => analyzeGraph2DPolarLocalDifferential(document), [document]);
   const parametricDifferential = useMemo(() => analyzeGraph2DParametricLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
+  const derivativeCurve = useMemo(() => showDerivativeCurve && selectedObject?.kind === "explicit-cartesian" &&
+    !graph2DHasLogScale(document.display.viewport) ?
+    sampleGraph2DDerivativeCurve(document, selectedObject.id, size) : null,
+  [showDerivativeCurve, selectedObject, document, size]);
   const differentialOverlays = useMemo(() => [
     ...(differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : []),
     ...(polarDifferential && isGraph2DPolarLocalDifferentialCurrent(polarDifferential, document) ? polarDifferential.overlays : []),
@@ -849,6 +855,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {result.formula && <details className="graph2d-inspector-more"><summary>Derivative expression</summary>
           <code>{result.formula}</code></details>}
       </div>)}
+    </section>}
+    {selectedObject?.kind === "explicit-cartesian" && <section className="graph2d-calculus-overlays"
+      data-testid="graph2d-calculus-overlays" aria-label="Calculus overlays">
+      <h3>Calculus overlays</h3>
+      <button type="button" aria-pressed={showDerivativeCurve} onClick={() => setShowDerivativeCurve(value => !value)}>
+        {showDerivativeCurve ? "Hide derivative plot" : "Show derivative plot"}</button>
+      {showDerivativeCurve && <small>{graph2DHasLogScale(document.display.viewport) ?
+        "Derivative plot is unavailable on log axes." : derivativeCurve?.status === "unavailable" ?
+          derivativeCurve.reason : derivativeCurve ?
+            `${derivativeCurve.status === "incomplete" ? "Incomplete" : "Approximate"} sampled first derivative · ${derivativeCurve.artifact?.samplesEvaluated ?? 0} evaluations. Gaps and rapid changes may be missed.` :
+            "Derivative plot is unavailable."}</small>}
     </section>}
     {criticalPoints && <Graph2DCriticalResultsPanel analysis={criticalPoints} document={document}
       analysisBudget={criticalAnalysisBudget} onAnalysisBudgetChange={setCriticalAnalysisBudget}
@@ -1357,6 +1374,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
+          derivativeCurve={!parameterPreviewActive && derivativeCurve?.sourceHash === document.identity.structuralHash ? derivativeCurve : null}
           intersections={!parameterPreviewActive && intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections : null} />}
         {sampling.error && <div role="alert" className="graph2d-viewer-message"><p>{sampling.error}</p>
           <button type="button" onClick={sampling.retry}>Retry sampling</button></div>}

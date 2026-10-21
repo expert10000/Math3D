@@ -58,6 +58,7 @@ export * from "./graph2dAuthoring";
 export * from "./graph2dPicking";
 export * from "./graph2dInspector";
 export * from "./graph2dDerivatives";
+export * from "./graph2dDerivativeCurve";
 export * from "./graph2dDifferential";
 export * from "./graph2dPolarDifferential";
 export * from "./graph2dParametricDifferential";

@@ -44,6 +44,13 @@ describe("Graph2D pairwise intersections", () => {
     expect(near(shifted.candidates.filter((entry) => entry.classification === "tangent-possible"), 0.3)).toBe(true);
   });
 
+  it("finds two crossings hidden inside one same-sign base cell", () => {
+    const result = analyze("(x-0.001)*(x-0.002)", "0", 0, 1);
+    expect(near(result.candidates, 0.001)).toBe(true);
+    expect(near(result.candidates, 0.002)).toBe(true);
+    expect(result.evaluations).toBeLessThanOrEqual(12000);
+  });
+
   it("separates local refinement from completeness and never certifies a small residual", () => {
     const refined = analyze("x", "0.3");
     expect(refined.status).toBe("complete");
@@ -78,5 +85,14 @@ describe("Graph2D pairwise intersections", () => {
     const document = documentFor("x", "2*x");
     expect(() => analyzeGraph2DIntersections({ document, firstObjectId: "function_1",
       secondObjectId: "function_1" })).toThrow();
+  });
+
+  it("keeps differently budgeted pair scans as distinct results", () => {
+    const document = documentFor("x", "1");
+    const request = { document, firstObjectId: "function_1", secondObjectId: "function_2" };
+    const quick = analyzeGraph2DIntersections({ ...request, maxEvaluations: 100 });
+    const thorough = analyzeGraph2DIntersections({ ...request, maxEvaluations: 12000 });
+    expect(quick.resultId).not.toBe(thorough.resultId);
+    expect(quick.status).toBe("incomplete");
   });
 });

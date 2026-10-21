@@ -5,6 +5,7 @@ import {
   type Graph2DProbe, type Graph2DScreenSize,
   type Graph2DIntervalAnalysis,
   type Graph2DIntegralAnalysis,
+  type Graph2DDerivativeCurve,
   type Graph2DIntersectionAnalysis,
   type Graph2DRegionArtifact,
   type Graph2DContourArtifact,
@@ -34,9 +35,10 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   selectedPhaseSeed?: { objectId: string; index: number } | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
-  area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
+  area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null;
+  derivativeCurve?: Graph2DDerivativeCurve | null };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, derivativeCurve, probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -271,6 +273,11 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
               strokeWidth={item.style.lineStyle === "solid" ? 3 : item.style.lineWidth}
               strokeDasharray={item.style.lineStyle === "solid" ? undefined : item.style.lineStyle === "dashed" ? "8 5" : "2 4"} />
           </g>)}
+        </g>}
+        {derivativeCurve?.artifact && !graph2DHasLogScale(display.viewport) && <g
+          data-testid="graph2d-derivative-curve-overlay" data-result-id={derivativeCurve.resultId}
+          clipPath={`url(#${clipId})`} aria-hidden="true" pointerEvents="none">
+          <path d={pathFor(derivativeCurve.artifact)} className="graph2d-derivative-curve-path" />
         </g>}
         {overlays.map((overlay) => {
           const segment = clipGraph2DLineOverlay(overlay, display.viewport, size);

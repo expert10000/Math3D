@@ -62,3 +62,17 @@ Graphs → **More → Author** also includes two bundled 2D grid presets: **Sine
 An optional **Publish with reference Python script…** action in the same desktop dialog uses this pinned, standard-library script from either the checkout or the installed app. Supply an independently managed Python 3.10+ executable, a JSON spec and a new `.sscene` destination; no interpreter is bundled for this interchange path. **Publish with custom Python script (trusted code)…** remains an explicit, unsandboxed option. Math3D displays hashes and paths before Run and asks for native confirmation of local-code execution. Nothing runs merely because a scene or spec is opened. The [workflow and limitations](../../docs/scientific-scene-python-job-workflow.md) describe cancellation, source-change refusal and the current 2D preview boundary. The standalone CLI above remains usable without Math3D.
 
 For a first run, choose the shipped `examples/sincos-grid.json` shown by the spec picker. It is a small 5×5 demonstration, not a physics calculation or a performance benchmark. Replace it with your own bounded JSON data to publish a scientific dataset.
+
+## Read Graph numerical analysis in Python or Theory Lab notebooks
+
+Graphs exports critical-point and intersection results with **Export analysis JSON** in the Analysis Inspector. The standard-library reader in this directory validates the bounded `math3d.graph2d-numerical.v1` contract before a Python or Theory Lab notebook uses the numbers:
+
+```python
+from graph_analysis_reader import load_graph_analysis
+
+data = load_graph_analysis("graph-analysis.json")
+points = [(candidate["x"], candidate["y"]) for candidate in data["candidates"]]
+print(data["operation"], data["scan"]["quality"], points)
+```
+
+Run `python graph_analysis_reader.py graph-analysis.json` to check a file from a shell. Add this directory to the notebook's Python path or copy the reader into the notebook environment. The reader rejects duplicate keys, nonfinite numbers, out-of-interval candidates, inconsistent quality labels, and unsupported fields; it enforces a 1 MiB file and 256-candidate bound. Treat `source.structuralHash` as a link to a Math3D source revision, not independent proof of the result: the JSON contains numerical evidence, not the editable function or a verified source bundle. A `refined` candidate met a stated numerical residual test; `scan.quality` remains `approximate` for a completed bounded scan, or `incomplete` when coverage is unresolved. Theory Lab can consume the validated dictionary in its own Python analysis code; there is no automatic Theory Lab project import or reverse synchronization yet.
