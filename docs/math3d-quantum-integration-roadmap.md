@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a bounded, source-backed QWZ study profile; the multi-family milestone remains open. M3D-Q09–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has bounded, source-backed QWZ and SSH study profiles; the broader multi-family milestone remains open. M3D-Q09–Q10 remain open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -512,7 +512,7 @@ unsourced topological claim.
 
 ### M3D-Q08 — `feat(math3d-quantum): add topological Hamiltonian visualization`
 
-**Status: Partial, QWZ supplied-result profile.** Open either pinned QWZ example
+**Status: Partial, QWZ and SSH supplied-result profiles.** Open either pinned QWZ example
 under **File → Verified quantum examples**, then choose **Link matching QWZ
 views** in its source inspector. The existing scene viewer offers **Bands** and
 **Berry curvature** views after both independently verified bundles declare the
@@ -523,8 +523,14 @@ method; exact band and curvature picks still use their existing source-backed
 inspectors. Band inversion, edge/bulk classification, and nodes are marked
 **not supplied**. No dataset is joined or computed in Math3D. A different QWZ
 run cannot be paired with the pinned example merely by matching its model name.
-The remaining BHZ, BBH, Kitaev, Weyl, nodal and Landau/Hall profiles require
-verified portable fixtures before implementation or completion claims.
+The pinned SSH finite-chain and band-path examples offer the same source-backed
+view switching through **Link matching SSH views**. The study displays only
+producer-labeled bond and density objects, supplied band labels, the worker
+bulk gap and structured winding result. It does not infer an edge/bulk phase
+from the density view. Each switch re-verifies the target bundle, and mismatched
+runs, hashes, inputs or changed bytes are refused. The remaining BHZ, BBH,
+Kitaev, Weyl, nodal and Landau/Hall profiles require verified portable fixtures
+before implementation or completion claims.
 
 **Scope.** Compose the prior generic primitives into reviewed scenes for QWZ, BHZ,
 BBH, Kitaev, Weyl, nodal, and Landau/Hall families. Support supplied band inversion,

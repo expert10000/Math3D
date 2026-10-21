@@ -11,7 +11,7 @@ import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
   type LatticeGeometryDefinition, type LatticeSampleIdentity, type LatticeSupercell } from "./quantumLatticeOverlay";
 import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPointFromPrimitive,
   type ReciprocalDefinition } from "./quantumReciprocalView";
-import { qwzSceneRole, reviewedQwzPair } from "./quantumQwzProfile";
+import { qwzSceneRole, reviewedQwzPair, sshSceneRole, reviewedSshPair } from "./quantumStudyProfile";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -101,6 +101,50 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     } finally { if (generation === qwzGeneration.current) setQwzBusy(false); }
   };
   const qwzSummary = qwzPair ? reviewedQwzPair(qwzPair.bands, qwzPair.curvature) : null;
+  const sshRole = sshSceneRole(opened);
+  const [sshPair, setSshPair] = useState<{ chain: OpenedScene; bands: OpenedScene } | null>(null);
+  const [sshBusy, setSshBusy] = useState(false);
+  const [sshError, setSshError] = useState("");
+  const sshGeneration = useRef(0);
+  useEffect(() => {
+    if (sshPair && ![sshPair.chain.reference.sceneFingerprint, sshPair.bands.reference.sceneFingerprint]
+      .includes(opened.reference.sceneFingerprint)) setSshPair(null);
+    return () => { sshGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
+  const loadSshPair = async () => {
+    if (!sshRole || !window.quantumScenes?.openReference || !window.quantumScenes.openExample || sshBusy) return;
+    const generation = ++sshGeneration.current;
+    setSshBusy(true); setSshError("");
+    try {
+      const current = await window.quantumScenes.openReference(opened.reference);
+      if (!current.ok || current.reference.sceneFingerprint !== opened.reference.sceneFingerprint)
+        throw new TypeError("Current SSH source failed exact read-back verification.");
+      const companion = await window.quantumScenes.openExample(sshRole === "chain" ? "ssh-bands" : "ssh-chain");
+      if (!companion.ok) throw new TypeError("Matching pinned SSH bundle is unavailable or changed.");
+      const pair = sshRole === "chain" ? { chain: current, bands: companion } : { chain: companion, bands: current };
+      reviewedSshPair(pair.chain, pair.bands);
+      if (generation === sshGeneration.current) setSshPair(pair);
+    } catch (error) {
+      if (generation === sshGeneration.current) setSshError(String((error as Error).message ?? error));
+    } finally { if (generation === sshGeneration.current) setSshBusy(false); }
+  };
+  const switchSshView = async (role: "chain" | "bands") => {
+    if (!sshPair || !onOpenRelated || !window.quantumScenes?.openReference || sshBusy) return;
+    const generation = ++sshGeneration.current;
+    setSshBusy(true); setSshError("");
+    try {
+      const target = sshPair[role];
+      const reopened = await window.quantumScenes.openReference(target.reference);
+      if (!reopened.ok || reopened.reference.sceneFingerprint !== target.reference.sceneFingerprint)
+        throw new TypeError("Selected SSH view failed exact read-back verification.");
+      const pair = { ...sshPair, [role]: reopened };
+      reviewedSshPair(pair.chain, pair.bands);
+      if (generation === sshGeneration.current) { setSshPair(pair); setSshBusy(false); onOpenRelated(reopened); }
+    } catch (error) {
+      if (generation === sshGeneration.current) setSshError(String((error as Error).message ?? error));
+    } finally { if (generation === sshGeneration.current) setSshBusy(false); }
+  };
+  const sshSummary = sshPair ? reviewedSshPair(sshPair.chain, sshPair.bands) : null;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
   const [view, setView] = useState<"geometry" | "slice" | "surface" | "volume">(scene.fields?.length && count === 0 ? "slice" : "geometry");
@@ -407,6 +451,26 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               </>}
               <p>Band inversion, edge/bulk classification, and nodes: not supplied in these bundles. Math3D does not calculate or infer them.</p>
               {qwzError && <p role="alert">QWZ view link refused: {qwzError}</p>}
+            </section>}
+            {sshRole && <section data-testid="ssh-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>SSH · supplied-result study</h3>
+              <p>Current verified view: {sshRole === "chain" ? "finite chain" : "band path"}. Each view retains its own bundle and exact dataset IDs.</p>
+              {!sshPair ? <button type="button" data-testid="ssh-link-views" disabled={sshBusy || !onOpenRelated}
+                onClick={() => void loadSshPair()}>{sshBusy ? "Verifying both views…" : "Link matching SSH views"}</button> : <>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" data-testid="ssh-view-chain" aria-pressed={sshRole === "chain"} disabled={sshBusy}
+                    onClick={() => void switchSshView("chain")}>Finite chain</button>
+                  <button type="button" data-testid="ssh-view-bands" aria-pressed={sshRole === "bands"} disabled={sshBusy}
+                    onClick={() => void switchSshView("bands")}>Band path</button>
+                </div>
+                <p data-testid="ssh-study-source" style={{ overflowWrap: "anywhere" }}>Same supplied run <code>{sshSummary!.runId}</code> · result SHA-256 <code>{sshSummary!.resultSha256}</code>. Both bundles passed independent byte and schema checks; producer claims are not authenticated.</p>
+                <div>Producer-labeled chain: {sshSummary!.chainLabels.join("; ")}.</div>
+                <div>Producer-labeled {sshSummary!.densityLabel} · dataset <code>{sshSummary!.densityDataset}</code> · unit {sshSummary!.densityUnit}.</div>
+                <div>Supplied bands: {sshSummary!.bandLabels.join(", ")}; worker bulk gap {sshSummary!.bulkGap} {sshSummary!.energyUnit}.</div>
+                {sshSummary!.invariants.map(item => <div key={item.id}>Producer-supplied {item.label}: {item.value ?? "unavailable"} · producer status: {item.status} · method: {item.method}</div>)}
+              </>}
+              <p>Density and winding are shown as supplied. Math3D does not infer edge/bulk classification, band inversion, or node claims.</p>
+              {sshError && <p role="alert">SSH view link refused: {sshError}</p>}
             </section>}
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
             <div><b>Run:</b> {scene.provenance.runId}</div>
