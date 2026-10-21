@@ -11,6 +11,7 @@ import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
   type LatticeGeometryDefinition, type LatticeSampleIdentity, type LatticeSupercell } from "./quantumLatticeOverlay";
 import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPointFromPrimitive,
   type ReciprocalDefinition } from "./quantumReciprocalView";
+import { qwzSceneRole, reviewedQwzPair } from "./quantumQwzProfile";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -46,7 +47,9 @@ type PickedTopologySample = Awaited<ReturnType<NonNullable<Window["quantumScenes
 type PickedVectorSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["vectorSample"]>>;
 const CURVATURE_COLORS = [0x174f9c, 0x397ec6, 0x8cbadd, 0xb7bdc6, 0xefbe8b, 0xe7824d, 0xb94038];
 
-export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; onClose: () => void }) {
+export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
+  opened: OpenedScene; onClose: () => void; onOpenRelated?: (scene: OpenedScene) => void;
+}) {
   const document = opened.document;
   const details = (document.extensions["quantum-scene/v2"] ?? document.extensions["quantum-scene/v1"]) as {
     scene: SceneSource; selectionTransferred: false; latticeSamples?: LatticeSampleIdentity[];
@@ -54,6 +57,50 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const qwzRole = qwzSceneRole(opened);
+  const [qwzPair, setQwzPair] = useState<{ bands: OpenedScene; curvature: OpenedScene } | null>(null);
+  const [qwzBusy, setQwzBusy] = useState(false);
+  const [qwzError, setQwzError] = useState("");
+  const qwzGeneration = useRef(0);
+  useEffect(() => {
+    if (qwzPair && ![qwzPair.bands.reference.sceneFingerprint, qwzPair.curvature.reference.sceneFingerprint]
+      .includes(opened.reference.sceneFingerprint)) setQwzPair(null);
+    return () => { qwzGeneration.current++; };
+  }, [opened.reference.sceneFingerprint]);
+  const loadQwzPair = async () => {
+    if (!qwzRole || !window.quantumScenes?.openReference || !window.quantumScenes.openExample || qwzBusy) return;
+    const generation = ++qwzGeneration.current;
+    setQwzBusy(true); setQwzError("");
+    try {
+      const current = await window.quantumScenes.openReference(opened.reference);
+      if (!current.ok || current.reference.sceneFingerprint !== opened.reference.sceneFingerprint)
+        throw new TypeError("Current QWZ source failed exact read-back verification.");
+      const companion = await window.quantumScenes.openExample(qwzRole === "bands" ? "qwz-curvature" : "qwz-bands");
+      if (!companion.ok) throw new TypeError("Matching pinned QWZ bundle is unavailable or changed.");
+      const pair = qwzRole === "bands" ? { bands: current, curvature: companion } : { bands: companion, curvature: current };
+      reviewedQwzPair(pair.bands, pair.curvature);
+      if (generation === qwzGeneration.current) setQwzPair(pair);
+    } catch (error) {
+      if (generation === qwzGeneration.current) setQwzError(String((error as Error).message ?? error));
+    } finally { if (generation === qwzGeneration.current) setQwzBusy(false); }
+  };
+  const switchQwzView = async (role: "bands" | "curvature") => {
+    if (!qwzPair || !onOpenRelated || !window.quantumScenes?.openReference || qwzBusy) return;
+    const generation = ++qwzGeneration.current;
+    setQwzBusy(true); setQwzError("");
+    try {
+      const target = qwzPair[role];
+      const reopened = await window.quantumScenes.openReference(target.reference);
+      if (!reopened.ok || reopened.reference.sceneFingerprint !== target.reference.sceneFingerprint)
+        throw new TypeError("Selected QWZ view failed exact read-back verification.");
+      const pair = { ...qwzPair, [role]: reopened };
+      reviewedQwzPair(pair.bands, pair.curvature);
+      if (generation === qwzGeneration.current) { setQwzPair(pair); setQwzBusy(false); onOpenRelated(reopened); }
+    } catch (error) {
+      if (generation === qwzGeneration.current) setQwzError(String((error as Error).message ?? error));
+    } finally { if (generation === qwzGeneration.current) setQwzBusy(false); }
+  };
+  const qwzSummary = qwzPair ? reviewedQwzPair(qwzPair.bands, qwzPair.curvature) : null;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
   const [view, setView] = useState<"geometry" | "slice" | "surface" | "volume">(scene.fields?.length && count === 0 ? "slice" : "geometry");
@@ -342,6 +389,25 @@ export function QuantumScenePreview({ opened, onClose }: { opened: OpenedScene; 
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
+            {qwzRole && <section data-testid="qwz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>QWZ · supplied-result study</h3>
+              <p>Current verified view: {qwzRole === "bands" ? "band surfaces" : "Berry curvature"}. Each view retains its own bundle and exact dataset IDs.</p>
+              {!qwzPair ? <button type="button" data-testid="qwz-link-views" disabled={qwzBusy || !onOpenRelated}
+                onClick={() => void loadQwzPair()}>{qwzBusy ? "Verifying both views…" : "Link matching QWZ views"}</button> : <>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" data-testid="qwz-view-bands" aria-pressed={qwzRole === "bands"} disabled={qwzBusy}
+                    onClick={() => void switchQwzView("bands")}>Bands</button>
+                  <button type="button" data-testid="qwz-view-curvature" aria-pressed={qwzRole === "curvature"} disabled={qwzBusy}
+                    onClick={() => void switchQwzView("curvature")}>Berry curvature</button>
+                </div>
+                <p data-testid="qwz-study-source" style={{ overflowWrap: "anywhere" }}>Same supplied run <code>{qwzSummary!.runId}</code> · result SHA-256 <code>{qwzSummary!.resultSha256}</code>. Both bundles passed independent byte and schema checks; producer claims are not authenticated.</p>
+                <div>Supplied bands: {qwzSummary!.bandLabels.join(", ")}; worker bulk gap {qwzSummary!.bulkGap} {qwzSummary!.energyUnit}.</div>
+                {qwzSummary!.curvature.map(item => <div key={item.dataset}>Supplied {item.label} · dataset <code>{item.dataset}</code> · {item.convention}</div>)}
+                {qwzSummary!.invariants.map(item => <div key={item.id}>Producer-supplied {item.label}: {item.value ?? "unavailable"} · producer status: {item.status} · method: {item.method}</div>)}
+              </>}
+              <p>Band inversion, edge/bulk classification, and nodes: not supplied in these bundles. Math3D does not calculate or infer them.</p>
+              {qwzError && <p role="alert">QWZ view link refused: {qwzError}</p>}
+            </section>}
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
             <div><b>Run:</b> {scene.provenance.runId}</div>
             <div><b>Result SHA-256:</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
