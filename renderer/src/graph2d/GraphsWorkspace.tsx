@@ -921,7 +921,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       onResidualFocus={(row, result) => setFocusedNumericalPoint({ origin: "regression", resultId: result.publication.resultId,
         point: { objectId: result.objectId, x: row.x, y: row.observed } })} />}
     {selectedObject?.kind === "point-series" && <Graph2DFourierPanel document={document} />}
-    {selectedObject?.kind === "parametric" && <Graph2DComplexMappingPanel document={document} onPlace={onComplexContourPlace} />}
+    {(selectedObject?.kind === "parametric" || selectedObject?.kind === "explicit-cartesian" ||
+      selectedObject?.kind === "point-series" && selectedObject.origin?.component === "real" && !!selectedObject.origin.slice) &&
+      <Graph2DComplexMappingPanel document={document} onPlace={onComplexContourPlace} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
     {differential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
       <h3>Local differential</h3>
