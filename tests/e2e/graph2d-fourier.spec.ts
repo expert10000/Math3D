@@ -22,8 +22,12 @@ test("GRA-16 desktop shows a checked known-tone spectrum with frequency units", 
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
     await expect(panel.getByRole("status")).toHaveText("Current spectrum");
     await expect(panel.getByTestId("graph2d-fourier-plot")).toBeVisible();
-    await expect(panel.getByRole("table")).toContainText("cycles/s");
-    await expect(panel.getByRole("table").locator("tbody tr").first().locator("td").first()).toHaveText("8.000000");
+    await expect(panel.getByRole("table", { name: "Fourier numerical results" })).toContainText("cycles/s");
+    await panel.getByRole("button", { name: "Strongest 12" }).click();
+    await expect(panel.getByRole("table", { name: "Fourier numerical results" }).locator("tbody"))
+      .toContainText("8.000000");
+    await panel.getByRole("button", { name: "Highlight frequency bin 8" }).click();
+    await expect(panel.getByTestId("graph2d-fourier-selected-bin")).toHaveAttribute("x1", "48");
     await panel.getByLabel("Fourier x unit").fill("ms");
     await expect(panel.getByRole("status")).toHaveCount(0);
   } finally { await closeSurfaceApp(app); }

@@ -36,11 +36,12 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   selectedPhaseSeed?: { objectId: string; index: number } | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
+  focusedIntervalId?: string | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null;
   derivativeCurve?: Graph2DDerivativeCurve | null;
   unresolvedIntervals?: readonly Graph2DUnresolvedInterval[] };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, focusedIntervalId, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -362,6 +363,9 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           const x = (part.min - bounds.xMin) / xSpan * size.width;
           const width = (part.max - part.min) / xSpan * size.width;
           return <g key={part.intervalId} data-interval-id={part.intervalId}>
+            {part.intervalId === focusedIntervalId && <rect data-focused-interval-id={part.intervalId}
+              x={x} y={0} width={width} height={size.height} fill="#2563eb" fillOpacity={0.08}
+              stroke="#2563eb" strokeWidth={1} pointerEvents="none" />}
             <rect className={`graph2d-interval-trend graph2d-interval-${part.monotonicity}`}
               x={x} y={size.height - 14} width={width} height={5} />
             <rect className={`graph2d-interval-concavity graph2d-interval-${part.concavity}`}

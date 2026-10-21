@@ -520,6 +520,8 @@ test("Graphs interval table and plot markers share the same analysis result", as
     const resultId = await table.getAttribute("data-result-id");
     expect(resultId).toMatch(/^graph2d\.intervals\./);
     await expect(app.page.getByTestId("graph2d-interval-overlays")).toHaveAttribute("data-result-id", resultId!);
+    await table.getByRole("button", { name: /Highlight interval/ }).first().click();
+    await expect(app.page.locator("[data-focused-interval-id]")).toHaveCount(1);
   } finally {
     await closeSurfaceApp(app);
   }
@@ -585,12 +587,16 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await expect(table.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(0);
     await table.getByLabel("Search intersection results").fill("");
     await table.getByRole("button", { name: "Sort intersections by x" }).click();
-    const xCells = table.locator("tbody tr td:nth-child(2)");
+    const xCells = table.locator("tbody tr td:nth-child(3)");
     expect(Number(await xCells.first().textContent())).toBeGreaterThan(Number(await xCells.last().textContent()));
     await expect(app.page.getByTestId("graph2d-intersection-overlays")).toHaveAttribute("data-result-id",
       (await result.getAttribute("data-result-id"))!);
     await result.getByRole("button", { name: /Select intersection at x/ }).first().click();
     await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("1.00000");
+    await table.locator('tbody input[type="checkbox"]').first().check();
+    await table.locator('tbody input[type="checkbox"]').last().check();
+    await table.getByRole("button", { name: "Save selected (2)" }).click();
+    await expect(app.page.locator('[data-graph2d-construction]')).toHaveCount(2);
     await section.getByLabel("Intersection interval").selectOption("custom");
     await section.getByLabel("Intersection from x").fill("-0.5");
     await section.getByLabel("Intersection to x").fill("0.5");

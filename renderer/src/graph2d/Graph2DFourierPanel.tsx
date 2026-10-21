@@ -2,6 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { graph2DFourierCsv, isGraph2DFourierCurrent, type Graph2DDocument,
   type Graph2DFourierOptions, type Graph2DFourierResult } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
+import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
+import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
+  type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+
+type Bin = Graph2DFourierResult["bins"][number];
+const columns: readonly Graph2DResultColumn<Bin>[] = [
+  { id: "amplitude", label: "Amplitude", render: item => item.amplitude.toPrecision(7) },
+  { id: "phase", label: "Phase (rad)", render: item => item.phaseRadians.toPrecision(7) },
+];
 
 const spectrumPath = (result: Graph2DFourierResult) => {
   const columns = 384, peaks = Array.from({ length: columns }, () => 0);
@@ -18,7 +27,9 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
   const [normalization, setNormalization] = useState<Graph2DFourierOptions["normalization"]>("peak");
   const [detrend, setDetrend] = useState<Graph2DFourierOptions["detrend"]>("mean");
   const [xUnit, setXUnit] = useState("s"), [result, setResult] = useState<Graph2DFourierResult | null>(null);
+  const [selectedBinIndex, setSelectedBinIndex] = useState<number | null>(null);
   const [pending, setPending] = useState(false), [error, setError] = useState("");
+  useEffect(() => setSelectedBinIndex(null), [result?.resultId]);
   const worker = useRef<Worker | null>(null), deadline = useRef<ReturnType<typeof setTimeout> | null>(null), generation = useRef(0);
   const object = document.source.objects.find(item => item.id === document.selection.objectId);
   const options: Graph2DFourierOptions = { window, normalization, detrend, xUnit };
@@ -56,6 +67,12 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
     result.objectId === object?.id && result.options.window === window &&
     result.options.normalization === normalization && result.options.detrend === detrend && result.options.xUnit === xUnit;
   const strongest = result?.bins.slice(1).sort((a, b) => b.amplitude - a.amplitude).slice(0, 12) ?? [];
+  const strongestIds = new Set(strongest.map(bin => bin.index));
+  const filters: readonly Graph2DResultFilter<Bin>[] = [
+    { id: "all", label: "All", include: () => true },
+    { id: "non-dc", label: "Non-DC", include: bin => bin.index > 0 },
+    { id: "strongest", label: "Strongest 12", include: bin => strongestIds.has(bin.index) },
+  ];
   const download = () => {
     if (!current || !result) return;
     const url = URL.createObjectURL(new Blob([graph2DFourierCsv(result)], { type: "text/csv;charset=utf-8" }));
@@ -80,13 +97,31 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
       <p>{result.n} samples · Δx={result.sampleInterval.toPrecision(6)} {result.options.xUnit} · Nyquist {result.nyquist.toPrecision(6)} {result.frequencyUnit} · {result.fftLength}-point FFT.</p>
       <svg data-testid="graph2d-fourier-plot" role="img" aria-label={`Amplitude spectrum from 0 to ${result.nyquist.toPrecision(6)} ${result.frequencyUnit}`}
         viewBox="0 0 384 120" preserveAspectRatio="none" style={{ width: "100%", height: 120, background: "#f6f9fc" }}>
-        <path d={spectrumPath(result)} fill="none" stroke="#2563eb" strokeWidth="1.5" /></svg>
+        <path d={spectrumPath(result)} fill="none" stroke="#2563eb" strokeWidth="1.5" />
+        {selectedBinIndex !== null && <line data-testid="graph2d-fourier-selected-bin"
+          x1={selectedBinIndex * 384 / Math.max(1, result.bins.length - 1)}
+          x2={selectedBinIndex * 384 / Math.max(1, result.bins.length - 1)}
+          y1={0} y2={120} stroke="#e11d48" strokeWidth={1.5} />}</svg>
       <p>Amplitude is in y units; phase is in radians. Zero padding does not increase physical resolution. Phase near zero amplitude is unstable.</p>
-      <table><caption>Strongest non-DC frequency bins</caption><thead><tr><th scope="col">Frequency ({result.frequencyUnit})</th>
-        <th scope="col">Amplitude</th><th scope="col">Phase (rad)</th></tr></thead><tbody>
-        {strongest.map(bin => <tr key={bin.index}><td>{bin.frequency.toPrecision(7)}</td><td>{bin.amplitude.toPrecision(7)}</td>
-          <td>{bin.phaseRadians.toPrecision(7)}</td></tr>)}</tbody></table>
-      <button type="button" disabled={!current} onClick={download}>Download checked spectrum CSV</button>
+      <dl className="graph2d-critical-summary">
+        <div><dt>Frequency bins</dt><dd>{result.bins.length}</dd></div>
+        <div><dt>Strongest non-DC</dt><dd>{strongest[0]?.frequency.toPrecision(5) ?? "—"}</dd></div>
+        <div><dt>Nyquist</dt><dd>{result.nyquist.toPrecision(5)}</dd></div>
+      </dl>
+      <Graph2DNumericalResultsTable resultKey={result.resultId} tableLabel="Fourier numerical results"
+        controlsLabel="Filter frequency bins" searchLabel="Search frequency bins" sortLabel="Sort bins by frequency"
+        items={result.bins} filters={filters} columns={columns} getId={bin => String(bin.index)}
+        getX={bin => bin.frequency} getKind={bin => `Bin ${bin.index}`}
+        getSearchText={bin => `${bin.index} ${bin.frequency} ${bin.amplitude} ${bin.phaseRadians}`}
+        xLabel={`Frequency (${result.frequencyUnit})`}
+        onFocus={bin => setSelectedBinIndex(bin.index)} canFocus={() => !!current}
+        focusLabel={bin => `Highlight frequency bin ${bin.index}`}
+        isActive={bin => selectedBinIndex === bin.index}
+        exportCsv={current ? download : undefined}
+        exportJson={current ? () => downloadGraph2DResultJson(`graph-spectrum-${result.objectId}.json`, {
+          format: "math3d.graph2d-fourier.v1", ...result }) : undefined}
+        emptyText="No frequency bins available." />
+      <small>Spectrum bins can be highlighted and exported. They are not graph construction candidates.</small>
       <details><summary>Source and method</summary><code>{result.table.checksum}</code>
         <ul>{result.publication.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul></details>
     </>}

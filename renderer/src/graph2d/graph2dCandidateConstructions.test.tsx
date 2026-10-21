@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntersections, applyGraph2DAuthoring,
   createEmptyGraph2DDocument, graph2DConstructionFromCandidate, graph2DConstructionActionsFromCandidates,
+  graph2DConstructionActionsFromIntersectionCandidates,
   isGraph2DCriticalCandidateAlreadySaved,
   inspectGraph2DCompatibility,
   parseGraph2DDocument, resolveGraph2DConstructions, serializeGraph2DDocument,
@@ -117,6 +118,23 @@ describe("G2D49 source-linked numerical candidate constructions", () => {
       anchor: { ...saved.anchor, matchRadius: 100 } }] }, sources)).not.toEqual([]);
     expect(validateGraph2DConstructionSet({ version: 1, objects: [{ ...saved,
       inputs: [{ kind: "source", objectId: "function_1" }, { kind: "source", objectId: "function_1" }] }] }, sources)).not.toEqual([]);
+  });
+
+  it("saves multiple intersections atomically and rejects duplicates", () => {
+    const adapter = create("x^2", "1");
+    const analysis = analyzeGraph2DIntersections({ document: adapter.document(), firstObjectId: "function_1",
+      secondObjectId: "function_2", interval });
+    expect(analysis.candidates).toHaveLength(2);
+    const actions = graph2DConstructionActionsFromIntersectionCandidates(adapter.document(), analysis,
+      analysis.candidates);
+    expect(actions.map(action => action.type === "create" ? action.object.id : "")).toEqual([
+      "construction_1", "construction_2"]);
+    expect(() => graph2DConstructionActionsFromIntersectionCandidates(adapter.document(), analysis,
+      [analysis.candidates[0]!, analysis.candidates[0]!])).toThrow(/duplicated/);
+    adapter.commitConstructions(actions);
+    expect(adapter.document().source.constructions?.objects).toHaveLength(2);
+    expect(() => graph2DConstructionActionsFromIntersectionCandidates(adapter.document(), analysis,
+      analysis.candidates)).toThrow(/current complete/);
   });
 
   it("keeps multiple distinct candidate scans within the shared construction evaluation budget", () => {

@@ -28,6 +28,7 @@ import {
   type Graph2DTimeOdeArtifact,
   type Graph2DConstructionAction,
   graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
+  graph2DConstructionActionsFromIntersectionCandidates,
   type Graph2DIntegralMode,
   type Graph2DPolarMeasurement,
   type Graph2DAnyPromotion,
@@ -69,7 +70,8 @@ import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
 import { Graph2DIntersectionResultsTable } from "./Graph2DIntersectionResultsTable";
-import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
+import { Graph2DIntervalResultsPanel } from "./Graph2DIntervalResultsPanel";
+import { Graph2DPhaseEquilibriaTable } from "./Graph2DPhaseEquilibriaTable";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
@@ -379,6 +381,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
   const [criticalAnalysisBudget, setCriticalAnalysisBudget] = useState(12000);
+  const [focusedInterval, setFocusedInterval] = useState<{ resultId: string; intervalId: string } | null>(null);
   const [showDerivativeCurve, setShowDerivativeCurve] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [parameterCards, setParameterCards] = useState(false);
@@ -397,6 +400,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setGridPreview(null); setGridOpen(false); if (focus) gridOpener.current?.focus();
   };
   const [regression, setRegression] = useState<Graph2DRegression | null>(null), [regressionModel, setRegressionModel] = useState<Graph2DRegressionModel>("linear");
+  const [focusedNumericalPoint, setFocusedNumericalPoint] = useState<
+    { origin: "regression"; resultId: string; point: { objectId: string; x: number; y: number } } |
+    { origin: "phase"; artifact: Graph2DPhasePortraitArtifact; point: { objectId: string; x: number; y: number } } | null>(null);
   const [parameterEpoch, setParameterEpoch] = useState(0);
   const parametersOpener = useRef<HTMLButtonElement | null>(null);
   const scalesOpener = useRef<HTMLButtonElement | null>(null);
@@ -758,6 +764,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const currentRegression = regression && regression.model === regressionModel && regression.objectId === selectedObject?.id &&
     isGraph2DRegressionCurrent(regression, document) ? regression : null;
+  const focusedNumericalProbe = focusedNumericalPoint?.origin === "regression" &&
+    focusedNumericalPoint.resultId === currentRegression?.publication.resultId ? focusedNumericalPoint.point :
+    focusedNumericalPoint?.origin === "phase" && focusedNumericalPoint.artifact === selectedSeries?.artifact &&
+      selectedObject?.id === focusedNumericalPoint.point.objectId && !phaseSeedPreview && !parameterPreviewActive ?
+      focusedNumericalPoint.point : null;
   // Same-source retained samples are an explicitly labelled previous observation, not current analysis evidence.
   const inspected = queryGraph2DInspector(document, parameterPreviewActive ? undefined : selectedSeries);
   const criticalPoints = useMemo(() => {
@@ -906,7 +917,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       }}>Edit graph</button>
     </header>
     {constructions}
-    {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
+    {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression}
+      onResidualFocus={(row, result) => setFocusedNumericalPoint({ origin: "regression", resultId: result.publication.resultId,
+        point: { objectId: result.objectId, x: row.x, y: row.observed } })} />}
     {selectedObject?.kind === "point-series" && <Graph2DFourierPanel document={document} />}
     {selectedObject?.kind === "parametric" && <Graph2DComplexMappingPanel document={document} onPlace={onComplexContourPlace} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
@@ -1009,19 +1022,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       <Graph2DCriticalResultsPanel analysis={criticalPoints} document={document}
       analysisBudget={criticalAnalysisBudget} onAnalysisBudgetChange={setCriticalAnalysisBudget}
       onSelectionCommit={onSelectionCommit} onConstructionBatchCommit={onConstructionBatchCommit} />}
-    {intervals && <section className="graph2d-intervals" data-testid="graph2d-intervals"
-      data-result-id={intervals.resultId} aria-label="Monotonicity and concavity intervals">
-      <h3>Monotonicity and concavity</h3>
-      <p>{intervals.status} · {intervals.partitions.length} bounded intervals · {intervals.invalidSamples} undefined samples</p>
-      <div className="graph2d-interval-table-wrap"><table><thead><tr>
-        <th>Interval</th><th>Trend</th><th>Concavity</th><th>Boundary</th>
-      </tr></thead><tbody>{intervals.partitions.map((part) => <tr key={part.intervalId}>
-        <td>({part.min.toPrecision(5)}, {part.max.toPrecision(5)})</td>
-        <td>{part.monotonicity}</td><td>{part.concavity}</td>
-        <td>{part.leftBoundary} → {part.rightBoundary}</td>
-      </tr>)}</tbody></table></div>
-      <small>Signs are numerical samples, not proofs. Unknown intervals may contain discontinuities or narrow changes.</small>
-    </section>}
+    {intervals && <Graph2DIntervalResultsPanel analysis={intervals} document={document}
+      focusedId={focusedInterval?.resultId === intervals.resultId ? focusedInterval.intervalId : null}
+      onFocus={part => setFocusedInterval({ resultId: intervals.resultId, intervalId: part.intervalId })} />}
     {selectedObject?.kind === "polar" ? <section className="graph2d-polar-measurements" data-testid="graph2d-polar-measurements" aria-label="Polar measurements">
       <h3>Polar measurements</h3>
       <p>Angular bounds are in radians. Swept area counts repeated traversal, including loops.</p>
@@ -1124,12 +1127,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           canSave={!!onConstructionCommit &&
             (document.source.constructions?.objects.length ?? 0) < GRAPH2D_MAX_CONSTRUCTIONS}
           onSave={candidate => onConstructionCommit?.({ type: "create",
-            object: graph2DConstructionFromCandidate(document, intersections, candidate) })} />
+            object: graph2DConstructionFromCandidate(document, intersections, candidate) })}
+          onSaveBatch={onConstructionBatchCommit ? candidates => onConstructionBatchCommit(
+            graph2DConstructionActionsFromIntersectionCandidates(document, intersections, candidates)) : undefined} />
         {(intersections.invalidCells > 0 || intersections.unresolvedBrackets > 0 || intersections.coincidentCells > 0) &&
           <small>{intersections.invalidCells} undefined cells · {intersections.unresolvedBrackets} unresolved brackets ·
             {" "}{intersections.coincidentCells} coincident cells</small>}
         <small>Refined means a bracket solver met residual tolerance 1e−7. A small residual does not prove a unique intersection or complete enumeration. Tangencies are possible candidates; narrow intersections may be missed.</small>
-        <button type="button" onClick={() => downloadGraph2DNumericalDataset(intersections)}>Export numerical JSON</button>
         <Graph2DAnalysisQualityGuide />
       </div>}
     </section>}
@@ -1195,19 +1199,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 return speeds.length ? ` Sampled speed ${Math.min(...speeds).toPrecision(3)}–${Math.max(...speeds).toPrecision(3)} coordinate units per time unit; arrow length is median-relative.` : " No finite nonzero vectors sampled."; })()}</dd>
             <dt>Nullclines</dt><dd data-testid="graph2d-phase-nullclines">x′=0 orange dashed;
               {" "}y′=0 cyan dotted · {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.status}</dd>
-            <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
-              {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.length ?
-                (selectedSeries.artifact as Graph2DPhasePortraitArtifact).equilibria.map((point, index) =>
-                  <span key={index} data-testid="graph2d-phase-classification">
-                    ({point.x.toPrecision(6)}, {point.y.toPrecision(6)}) · residual {point.residual.toExponential(2)}<br />
-                    Linearization: {point.linearization.kind.replace(/-/g, " ")} · {point.linearization.stability}
-                    {point.linearization.jacobian && <> · J = [{point.linearization.jacobian.map(value => value.toPrecision(4)).join(", ")}]</>}
-                    {point.linearization.eigenvalues && <> · λ = {point.linearization.eigenvalues.map(value => value.imaginary === 0 ?
-                        value.real.toPrecision(4) :
-                        `${value.real.toPrecision(4)}${value.imaginary < 0 ? "−" : "+"}${Math.abs(value.imaginary).toPrecision(4)}i`).join(", ")}</>}
-                    {point.linearization.reason && <> · {point.linearization.reason}</>}<br />
-                  </span>) :
-                "None resolved at sampled grid resolution"}</dd>
+          <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
+            <Graph2DPhaseEquilibriaTable artifact={selectedSeries.artifact as Graph2DPhasePortraitArtifact}
+              document={document} objectId={selectedObject.id}
+              onHighlight={point => setFocusedNumericalPoint({ origin: "phase",
+                artifact: selectedSeries.artifact as Graph2DPhasePortraitArtifact,
+                point: { objectId: selectedObject.id, x: point.x, y: point.y } })}
+              readOnlyPreview={!sampling.ready || !!phaseSeedPreview || parameterPreviewActive} />
+          </dd>
             <dt>Method</dt><dd>Marching squares contour crossings, then up to five Newton steps.
               {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.candidates} candidates;
               {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.unresolved} unresolved.
@@ -1531,8 +1530,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
-          selectedProbe={parameterPreviewActive ? null : document.selection.probe} hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
+          selectedProbe={parameterPreviewActive ? null : focusedNumericalProbe ?? document.selection.probe}
+          hoverProbe={parameterPreviewActive ? null : hoverSelection?.probe} overlays={parameterPreviewActive ? [] : differentialOverlays}
           intervals={!parameterPreviewActive && intervals && isGraph2DIntervalAnalysisCurrent(intervals, document) ? intervals : null}
+          focusedIntervalId={focusedInterval && focusedInterval.resultId === intervals?.resultId ?
+            focusedInterval.intervalId : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
           derivativeCurve={!parameterPreviewActive && derivativeCurve?.sourceHash === document.identity.structuralHash ? derivativeCurve : null}
           unresolvedIntervals={parameterPreviewActive ? [] : [

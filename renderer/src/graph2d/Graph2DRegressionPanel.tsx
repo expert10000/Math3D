@@ -1,9 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { isGraph2DRegressionCurrent, type Graph2DRegression, type Graph2DRegressionModel, type Graph2DDocument } from "@math3d/core";
+import { isGraph2DRegressionCurrent, type Graph2DRegression, type Graph2DRegressionModel,
+  type Graph2DDocument } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
-export function Graph2DRegressionPanel({ document, model, onModel, result, onResult }: { document: Graph2DDocument; model: Graph2DRegressionModel;
-  onModel: (model: Graph2DRegressionModel) => void; result: Graph2DRegression | null; onResult: (result: Graph2DRegression | null) => void }) {
-  const [error, setError] = useState(""), [offset, setOffset] = useState(0), [pending, setPending] = useState(false);
+import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
+import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
+import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
+  type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+
+type Residual = Graph2DRegression["residuals"][number];
+const columns: readonly Graph2DResultColumn<Residual>[] = [
+  { id: "observed", label: "Observed", render: item => item.observed.toPrecision(6) },
+  { id: "fitted", label: "Fitted", render: item => item.fitted.toPrecision(6) },
+  { id: "residual", label: "Residual", render: item => item.residual.toPrecision(6) },
+];
+export function Graph2DRegressionPanel({ document, model, onModel, result, onResult, onResidualFocus }: { document: Graph2DDocument; model: Graph2DRegressionModel;
+  onModel: (model: Graph2DRegressionModel) => void; result: Graph2DRegression | null;
+  onResult: (result: Graph2DRegression | null) => void;
+  onResidualFocus?: (row: Residual, result: Graph2DRegression) => void }) {
+  const [error, setError] = useState(""), [pending, setPending] = useState(false);
+  const [residualsOpen, setResidualsOpen] = useState(false);
+  const [focusedResidualId, setFocusedResidualId] = useState<string | null>(null);
+  useEffect(() => setFocusedResidualId(null), [result?.publication.resultId]);
   const [smoothing, setSmoothing] = useState("0.001");
   const [initialAmplitude, setInitialAmplitude] = useState("1"), [initialRate, setInitialRate] = useState("1");
   const [initialCapacity, setInitialCapacity] = useState("1"), [initialGrowthRate, setInitialGrowthRate] = useState("1"),
@@ -46,7 +63,7 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
         if (deadline.current) clearTimeout(deadline.current); deadline.current = null; setPending(false); };
       task.onmessage = (event: MessageEvent<{ result?: Graph2DRegression; error?: string }>) => {
         if (generation.current !== token || latestKey.current !== key) return;
-        finish(); if (event.data.result) { onResult(event.data.result); setOffset(0); }
+        finish(); if (event.data.result) { onResult(event.data.result); }
         else { onResult(null); setError(event.data.error ?? "Regression failed."); }
       };
       task.onerror = event => { event.preventDefault(); if (generation.current !== token || latestKey.current !== key) return;
@@ -63,7 +80,7 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
     } catch (caught) { cancel(false); onResult(null); setError((caught as Error).message); }
   };
   return <section aria-label="Regression fitting" data-testid="graph2d-regression"><h3>Regression and uncertainty</h3>
-    <label>Regression model<select aria-label="Regression model" value={model} onChange={e => { onModel(e.target.value as Graph2DRegressionModel); setOffset(0); }}>
+    <label>Regression model<select aria-label="Regression model" value={model} onChange={e => { onModel(e.target.value as Graph2DRegressionModel); }}>
       <option value="linear">Linear least squares</option><option value="quadratic">Quadratic least squares</option><option value="cubic">Cubic least squares</option><option value="quartic">Quartic least squares</option>
       <option value="spline">Cubic smoothing spline</option>
       <option value="exponential-decay">Exponential decay · y = a exp(−k(x−x₀))</option>
@@ -125,10 +142,42 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
           <p>z=(x−{result.center.toPrecision(8)})/{result.scale.toPrecision(8)}; y={result.coefficients.map((v, i) => `${v.toPrecision(8)}${i ? `·z${["", "", "²", "³", "⁴"][i]}` : ""}`).join(" + ")}</p>
           <p>Brown: fitted curve. Purple dashed: 95% mean-response limits. Purple dotted: 95% prediction limits. Pointwise, not simultaneous; log axes omit non-positive parts.</p></>}</>}
       <details><summary>Assumptions and dataset provenance</summary><ul>{result.publication.warnings.map(w => <li key={w}>{w}</li>)}</ul><code>{result.table.checksum}</code></details>
-      <details><summary>Residuals ({result.residuals.length})</summary><div style={{ overflowX: "auto" }}><table><caption>Observed minus fitted, original row IDs; rows {offset + 1}–{Math.min(offset + 50, result.n)}</caption>
-        <thead><tr>{["Row", "x", "Observed", "Fitted", "Residual"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
-        <tbody>{result.residuals.slice(offset, offset + 50).map(r => <tr key={r.rowId}><th scope="row">{r.rowId}</th>{[r.x, r.observed, r.fitted, r.residual].map((v, i) => <td key={i}>{v.toPrecision(6)}</td>)}</tr>)}</tbody></table></div>
-        <button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous residuals</button><button disabled={offset + 50 >= result.n} onClick={() => setOffset(offset + 50)}>Next residuals</button></details>
+      <details onToggle={event => setResidualsOpen(event.currentTarget.open)}>
+        <summary>Residuals ({result.residuals.length})</summary>
+        {residualsOpen && <>
+        <dl className="graph2d-critical-summary">
+          <div><dt>Positive</dt><dd>{result.residuals.filter(row => row.residual > 0).length}</dd></div>
+          <div><dt>Negative</dt><dd>{result.residuals.filter(row => row.residual < 0).length}</dd></div>
+          <div><dt>Large |residual|</dt><dd>{result.residuals.filter(row => Math.abs(row.residual) > 2 * result.residualSD).length}</dd></div>
+        </dl>
+        <Graph2DNumericalResultsTable resultKey={result.publication.resultId}
+          tableLabel="Regression residual numerical results" controlsLabel="Filter regression residuals"
+          searchLabel="Search regression residuals" sortLabel="Sort residuals by x"
+          items={result.residuals} columns={columns}
+          filters={[
+            { id: "all", label: "All", include: () => true },
+            { id: "positive", label: "Positive", include: (row: Residual) => row.residual > 0 },
+            { id: "negative", label: "Negative", include: (row: Residual) => row.residual < 0 },
+            { id: "large", label: "Large", include: (row: Residual) => Math.abs(row.residual) > 2 * result.residualSD },
+          ] satisfies readonly Graph2DResultFilter<Residual>[]}
+          getId={row => row.rowId} getX={row => row.x} getKind={row => row.rowId}
+          getSearchText={row => `${row.rowId} ${row.x} ${row.observed} ${row.fitted} ${row.residual}`}
+          onFocus={row => { setFocusedResidualId(row.rowId); onResidualFocus?.(row, result); }}
+          canFocus={() => !!current && !!onResidualFocus}
+          focusLabel={row => `Highlight residual row ${row.rowId}`}
+          isActive={row => focusedResidualId === row.rowId}
+          exportCsv={current ? () => downloadGraph2DResultsCsv(`graph-residuals-${result.objectId}.csv`,
+            ["row_id", "x", "observed", "fitted", "residual", "model", "source_document", "source_revision", "dataset_checksum"],
+            result.residuals.map(row => [row.rowId, row.x, row.observed, row.fitted, row.residual,
+              result.model, result.source.documentId, result.source.revision, result.table.checksum])) : undefined}
+          exportJson={current ? () => downloadGraph2DResultJson(`graph-residuals-${result.objectId}.json`, {
+            format: "math3d.graph2d-regression-residuals.v1", resultId: result.publication.resultId,
+            source: result.source, model: result.model, table: result.table, residuals: result.residuals,
+            publication: result.publication }) : undefined}
+          emptyText="No residual rows available." />
+        <small>Residual rows can be highlighted and exported. They are not construction candidates.</small>
+        </>}
+      </details>
       <button onClick={() => onResult(null)}>Clear regression</button><p>Export includes a fit summary, 129 fitted samples{result.model === "spline" || result.model === "exponential-decay" || result.model === "logistic-growth" ? "" : " with pointwise intervals"} and the first 2,048 residuals; larger residual tables are explicitly truncated. Results are transient and must be fitted again after reopening.</p>
     </>}
   </section>;

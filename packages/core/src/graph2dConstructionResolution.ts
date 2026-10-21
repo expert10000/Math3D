@@ -214,6 +214,30 @@ export function graph2DConstructionActionsFromCandidates(document: Graph2DDocume
   return actions;
 }
 
+/** Save a selected set of intersections as one checked, source-linked command. */
+export function graph2DConstructionActionsFromIntersectionCandidates(document: Graph2DDocument,
+  analysis: Graph2DIntersectionAnalysis,
+  candidates: readonly Graph2DIntersectionCandidate[]): readonly Graph2DConstructionAction[] {
+  if (analysis.status !== "complete" || !isGraph2DIntersectionCurrent(analysis, document))
+    throw new TypeError("A current complete intersection scan is required before saving candidates.");
+  if (candidates.length + (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS)
+    throw new TypeError(`Saving candidates exceeds the ${GRAPH2D_MAX_CONSTRUCTIONS}-construction budget.`);
+  const ids = new Set<string>();
+  let staged = document;
+  const actions: Graph2DConstructionAction[] = [];
+  for (const candidate of candidates) {
+    if (ids.has(candidate.candidateId) || (document.source.constructions?.objects ?? []).some(saved =>
+      saved.kind === "intersection" && saved.anchor.candidateId === candidate.candidateId))
+      throw new TypeError("Intersection candidate is duplicated or already saved.");
+    ids.add(candidate.candidateId);
+    const action: Graph2DConstructionAction = { type: "create",
+      object: graph2DConstructionFromCandidate(staged, analysis, candidate) };
+    actions.push(action);
+    staged = { ...staged, source: applyGraph2DConstructionAction(staged.source, action) };
+  }
+  return actions;
+}
+
 /** Resolves the ordered graph against exact source expressions, never sampler polylines. */
 export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DConstructionArtifact {
   const source = sourceGeneration(document), generationKey = graph2DConstructionGenerationKey(document);

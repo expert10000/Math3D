@@ -6,10 +6,11 @@ import { graph2DConstructionActionsFromCandidates, isGraph2DCriticalCandidateAlr
 import { useEffect, useMemo, useState } from "react";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
+import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
-import { graph2DNumericalRows } from "./graph2dNumericalRows";
+import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
+  type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
 
-type Filter = "all" | "zero" | "extrema" | "inflection";
 type Props = Readonly<{
   analysis: Graph2DCriticalPointAnalysis;
   document: Graph2DDocument;
@@ -22,12 +23,23 @@ type Props = Readonly<{
 
 const isExtremum = (item: Graph2DCriticalPoint) => item.kind === "minimum" || item.kind === "maximum";
 const format = (value: number) => Number.isFinite(value) ? value.toPrecision(7) : "—";
+const filters: readonly Graph2DResultFilter<Graph2DCriticalPoint>[] = [
+  { id: "all", label: "All", include: () => true },
+  { id: "zero", label: "Zeros", include: item => item.kind === "zero" },
+  { id: "extrema", label: "Extrema", include: isExtremum },
+  { id: "inflection", label: "Inflections", include: item => item.kind === "inflection" },
+];
+const columns: readonly Graph2DResultColumn<Graph2DCriticalPoint>[] = [
+  { id: "y", label: "y", render: item => format(item.y) },
+  { id: "residual", label: "Residual", render: item => item.residual.toExponential(1) },
+  { id: "quality", label: "Quality", render: item => <span
+    className={`graph2d-analysis-quality graph2d-analysis-quality-${item.quality}`}
+    title={`${GRAPH2D_ANALYSIS_QUALITY_MEANINGS[item.quality]} Method: ${item.method}; residual: ${item.residual.toExponential(2)}`}>
+    {item.quality === "refined" ? "Refined" : "Approximate"}</span> },
+];
 
 export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget, onAnalysisBudgetChange,
   onSelectionCommit, onConstructionBatchCommit, readOnlyPreview = false }: Props) {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [query, setQuery] = useState("");
-  const [descending, setDescending] = useState(false);
   const [selectedIds, setSelectedIds] = useState<readonly string[]>([]);
   const [actionError, setActionError] = useState("");
   useEffect(() => { setSelectedIds([]); setActionError(""); }, [analysis.publication.resultId]);
@@ -36,14 +48,9 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
     extrema: analysis.candidates.filter(isExtremum).length,
     inflection: analysis.candidates.filter(item => item.kind === "inflection").length,
   }), [analysis]);
-  const rows = useMemo(() => graph2DNumericalRows(analysis.candidates, { query, descending,
-    include: item => filter === "all" || filter === "extrema" && isExtremum(item) || item.kind === filter,
-    searchText: item => `${item.kind} ${item.x} ${item.y} ${item.quality}` }),
-  [analysis, filter, query, descending]);
   const validForSave = (item: Graph2DCriticalPoint) => !readOnlyPreview && item.kind !== "inflection" && item.confidence === "numerical" &&
     !isGraph2DCriticalCandidateAlreadySaved(document, item) && isGraph2DCriticalPointCurrent(item, document);
   const available = GRAPH2D_MAX_CONSTRUCTIONS - (document.source.constructions?.objects.length ?? 0);
-  const selected = analysis.candidates.filter(item => selectedIds.includes(item.candidateId) && validForSave(item));
   const canSave = (items: readonly Graph2DCriticalPoint[]) => !!onConstructionBatchCommit && analysis.status === "complete" &&
     items.length > 0 && items.length <= available;
   const save = (items: readonly Graph2DCriticalPoint[]) => {
@@ -55,20 +62,12 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
     } catch (error) { setActionError(error instanceof Error ? error.message : "Candidates could not be saved."); }
   };
   const exportCsv = () => {
-    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const csv = ["kind,x,y,residual,quality,confidence,method,source_document,source_revision,scan_status,scan_quality,interval_min,interval_max",
-      ...analysis.candidates.map(item => [item.kind, item.x, item.y, item.residual, item.quality, item.confidence, item.method,
+    downloadGraph2DResultsCsv(`graph-analysis-${analysis.objectId}.csv`,
+      ["kind", "x", "y", "residual", "quality", "confidence", "method", "source_document", "source_revision",
+        "scan_status", "scan_quality", "interval_min", "interval_max"],
+      analysis.candidates.map(item => [item.kind, item.x, item.y, item.residual, item.quality, item.confidence, item.method,
         item.source.documentId, item.source.revision, analysis.status, analysis.quality ?? "unavailable",
-        analysis.interval.min, analysis.interval.max]
-        .map(quote).join(","))].join("\r\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = globalThis.document.createElement("a");
-    link.href = url;
-    link.download = `graph-analysis-${analysis.objectId}.csv`;
-    globalThis.document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+        analysis.interval.min, analysis.interval.max]));
   };
   const batchZeros = analysis.candidates.filter(item => item.kind === "zero" && validForSave(item));
   const batchExtrema = analysis.candidates.filter(item => isExtremum(item) && validForSave(item));
@@ -104,47 +103,29 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
       <div><dt>Extrema</dt><dd>{counts.extrema}</dd></div>
       <div><dt>Inflections</dt><dd>{counts.inflection}</dd></div>
     </dl>
-    <div className="graph2d-critical-controls">
-      <div role="group" aria-label="Filter numerical results">
-        {(["all", "zero", "extrema", "inflection"] as const).map(value => <button key={value} type="button"
-          aria-pressed={filter === value} onClick={() => setFilter(value)}>{value === "all" ? "All" :
-            value === "zero" ? "Zeros" : value === "extrema" ? "Extrema" : "Inflections"}</button>)}
-      </div>
-      <label>Search results <input aria-label="Search numerical results" value={query} onChange={event => setQuery(event.target.value)} /></label>
-    </div>
-    <div className="graph2d-critical-table-wrap"><table aria-label="Numerical analysis results">
-      <thead><tr><th scope="col">Select</th><th scope="col">Kind</th><th scope="col"><button type="button" aria-label="Sort results by x"
-        onClick={() => setDescending(value => !value)}>x {descending ? "↓" : "↑"}</button></th><th scope="col">y</th><th scope="col">Residual</th><th scope="col">Quality</th><th scope="col">Save</th></tr></thead>
-      <tbody>{rows.map(candidate => {
-        const probe = document.selection.probe;
-        const active = probe?.objectId === candidate.objectId && Math.abs(probe.x - candidate.x) < 1e-8;
-        return <tr key={candidate.candidateId} className={active ? "graph2d-critical-active" : undefined}>
-          <td><input type="checkbox" aria-label={`Select ${candidate.kind} at x ${format(candidate.x)} for saving`}
-            checked={selectedIds.includes(candidate.candidateId)} disabled={!validForSave(candidate) || analysis.status !== "complete"}
-            onChange={event => setSelectedIds(current => event.target.checked ? [...current, candidate.candidateId] :
-              current.filter(id => id !== candidate.candidateId))} /></td>
-          <td><button type="button" aria-label={`Select ${candidate.kind} at x ${format(candidate.x)}`}
-            disabled={!onSelectionCommit || !isGraph2DCriticalPointCurrent(candidate, document)}
-            title={`${candidate.confidence} · ${candidate.method} · residual ${candidate.residual.toExponential(2)}`}
-            onClick={() => onSelectionCommit?.({ objectId: candidate.objectId,
-              probe: { objectId: candidate.objectId, x: candidate.x, y: candidate.y } })}>{candidate.kind}</button></td>
-          <td>{format(candidate.x)}</td><td>{format(candidate.y)}</td><td>{candidate.residual.toExponential(1)}</td>
-          <td><span className={`graph2d-analysis-quality graph2d-analysis-quality-${candidate.quality}`}
-            title={`${GRAPH2D_ANALYSIS_QUALITY_MEANINGS[candidate.quality]} Method: ${candidate.method}; residual: ${candidate.residual.toExponential(2)}`}>
-            {candidate.quality === "refined" ? "Refined" : "Approximate"}</span></td>
-          <td>{candidate.kind !== "inflection" && <button type="button" aria-label={`Save ${candidate.kind} at x ${format(candidate.x)} as construction`}
-            disabled={!canSave([candidate]) || !validForSave(candidate)} onClick={() => save([candidate])}>Save</button>}</td>
-        </tr>;
-      })}</tbody>
-    </table>{!rows.length && <p>{analysis.candidates.length ? "No matching results." :
-      analysis.status === "incomplete" ? "No candidates found in the scanned portion." : "No candidates found in the scanned interval."}</p>}</div>
-    {!readOnlyPreview && <div className="graph2d-critical-actions">
-      <button type="button" disabled={!canSave(selected)} onClick={() => save(selected)}>Save selected ({selected.length})</button>
-      <button type="button" disabled={!canSave(batchZeros)} onClick={() => save(batchZeros)}>Save all validated zeros ({batchZeros.length})</button>
-      <button type="button" disabled={!canSave(batchExtrema)} onClick={() => save(batchExtrema)}>Save all validated extrema ({batchExtrema.length})</button>
-      <button type="button" onClick={exportCsv}>Export results</button>
-      <button type="button" onClick={() => downloadGraph2DNumericalDataset(analysis)}>Export numerical JSON</button>
-    </div>}
+    <Graph2DNumericalResultsTable resultKey={analysis.publication.resultId} tableLabel="Numerical analysis results"
+      controlsLabel="Filter numerical results" searchLabel="Search numerical results" sortLabel="Sort results by x"
+      items={analysis.candidates} filters={filters} columns={columns} getId={item => item.candidateId}
+      getX={item => item.x} getKind={item => item.kind}
+      getSearchText={item => `${item.kind} ${item.x} ${item.y} ${item.quality} ${item.method}`}
+      onFocus={item => onSelectionCommit?.({ objectId: item.objectId,
+        probe: { objectId: item.objectId, x: item.x, y: item.y } })}
+      canFocus={item => !!onSelectionCommit && isGraph2DCriticalPointCurrent(item, document)}
+      isActive={item => document.selection.probe?.objectId === item.objectId &&
+        Math.abs(document.selection.probe.x - item.x) < 1e-8}
+      canSave={item => analysis.status === "complete" && canSave([item]) && validForSave(item)}
+      onSaveOne={readOnlyPreview ? undefined : item => save([item])}
+      selectedIds={readOnlyPreview ? undefined : selectedIds}
+      onSelectedIdsChange={readOnlyPreview ? undefined : setSelectedIds}
+      onSaveSelected={readOnlyPreview ? undefined : save} canSaveSelected={canSave}
+      exportCsv={readOnlyPreview ? undefined : exportCsv}
+      exportJson={readOnlyPreview ? undefined : () => downloadGraph2DNumericalDataset(analysis)}
+      extraActions={readOnlyPreview ? undefined : <>
+        <button type="button" disabled={!canSave(batchZeros)} onClick={() => save(batchZeros)}>Save all validated zeros ({batchZeros.length})</button>
+        <button type="button" disabled={!canSave(batchExtrema)} onClick={() => save(batchExtrema)}>Save all validated extrema ({batchExtrema.length})</button>
+      </>}
+      emptyText={analysis.status === "incomplete" ? "No candidates found in the scanned portion." :
+        "No candidates found in the scanned interval."} />
     {!readOnlyPreview && <small>{available} of {GRAPH2D_MAX_CONSTRUCTIONS} construction slots available. Only validated numerical zeros and extrema from a finished bounded scan can be saved. Location error is estimated, not certified.</small>}
     {actionError && <p role="alert">{actionError}</p>}
     {analysis.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Analysis diagnostics</summary>

@@ -290,6 +290,8 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .graph2d-critical-table-wrap tr.graph2d-critical-active { background: #dbeafe; }
 .graph2d-critical-table-wrap p { padding: 7px; }
 .graph2d-critical-actions { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.graph2d-result-pages { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 6px 0; font-size: 11px; }
+.graph2d-result-pages span { text-align: center; }
 .graph2d-critical-points > small { display: block; opacity: .8; }
 .graph2d-intervals { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
 .graph2d-intervals h3 { margin: 0 0 8px; font-size: 14px; }
