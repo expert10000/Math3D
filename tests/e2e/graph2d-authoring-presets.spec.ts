@@ -29,6 +29,11 @@ test("every Graph Add editor can load a distinct editable preset", async () => {
       await expect(form.locator(".graph2d-preset-picker")).toBeInViewport();
       await form.getByLabel("Start from preset").selectOption(preset);
       await expect(form.locator("input").first()).toHaveValue(label);
+      if (add === "Add phase portrait") {
+        await expect(form.getByLabel("Phase portrait arrow density")).toHaveValue("16");
+        await expect(form.getByLabel("Phase portrait x unit")).toHaveValue("m");
+        await expect(form.getByLabel("Phase portrait time unit")).toHaveValue("s");
+      }
       await expect(form.locator('button[type="submit"]')).toBeEnabled();
       if (add === "Add implicit") {
         await form.getByRole("button", { name: "Expand formula" }).click();

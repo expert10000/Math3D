@@ -1099,6 +1099,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {selectedObject?.kind === "phase-portrait" && <>
           <dt>System</dt><dd>x′ = {selectedObject.xDerivative.source}; y′ = {selectedObject.yDerivative.source}</dd>
           <dt>Time horizon</dt><dd>±{selectedObject.timeSpan}</dd>
+          <dt>Field settings</dt><dd>{selectedObject.fieldDensity ?? 12} arrows per longest side ·
+            x {selectedObject.fieldUnits?.x || "unitless"}, y {selectedObject.fieldUnits?.y || "unitless"},
+            time {selectedObject.fieldUnits?.time || "unitless"}</dd>
           <dt>Initial points</dt><dd data-testid="graph2d-phase-seed-list">
             {selectedObject.seeds.length === 0 && <span>No initial points. Place one on the graph.</span>}
             {selectedObject.seeds.map((seed, index) => {
@@ -1129,7 +1132,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" && <>
             <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits.map((orbit, index) =>
               <span key={index}>{index + 1}: backward {orbit.backward}, forward {orbit.forward}; {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected<br /></span>)}</dd>
-            <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶</dd>
+            <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶.
+              {(() => { const speeds = (selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldMagnitudes;
+                return speeds.length ? ` Sampled speed ${Math.min(...speeds).toPrecision(3)}–${Math.max(...speeds).toPrecision(3)} coordinate units per time unit; arrow length is median-relative.` : " No finite nonzero vectors sampled."; })()}</dd>
             <dt>Nullclines</dt><dd data-testid="graph2d-phase-nullclines">x′=0 orange dashed;
               {" "}y′=0 cyan dotted · {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.status}</dd>
             <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">

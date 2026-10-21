@@ -42,6 +42,8 @@ export type Graph2DPhasePortraitDraft = Readonly<{
   label: string; xDerivative: string; yDerivative: string;
   domain: Graph2DDomain; yDomain: Graph2DDomain; timeSpan: number;
   seeds: readonly Readonly<{ x: number; y: number }>[];
+  fieldDensity?: number;
+  fieldUnits?: Readonly<{ x: string; y: string; time: string }>;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
 export type Graph2DTimeOdeDraft = Readonly<{
@@ -186,6 +188,11 @@ export const validateGraph2DPhasePortraitDraft = (draft: Graph2DPhasePortraitDra
     ...validateGraph2DImplicitDraft({ ...draft, expression: draft.yDerivative }, variables)];
   if (!Number.isFinite(draft.timeSpan) || draft.timeSpan <= 0 || draft.timeSpan > 100)
     errors.push("Time horizon must be greater than 0 and at most 100.");
+  if (draft.fieldDensity !== undefined && (!Number.isInteger(draft.fieldDensity) || draft.fieldDensity < 4 || draft.fieldDensity > 24))
+    errors.push("Field density must be an integer from 4 to 24 arrows per longest side.");
+  if (draft.fieldUnits !== undefined && Object.values(draft.fieldUnits).some(unit =>
+    typeof unit !== "string" || unit.length > 24 || unit.trim() !== unit))
+    errors.push("Coordinate and time units must be at most 24 characters without surrounding spaces.");
   if (draft.seeds.length > 8) errors.push("Use at most eight initial points.");
   for (const seed of draft.seeds) if (!Number.isFinite(seed.x) || !Number.isFinite(seed.y) ||
     seed.x < draft.domain.min || seed.x > draft.domain.max || seed.y < draft.yDomain.min || seed.y > draft.yDomain.max)
@@ -432,7 +439,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       xDerivative: { source: action.draft.xDerivative, variable: "xy" as const, ast: parsedX.ast },
       yDerivative: { source: action.draft.yDerivative, variable: "xy" as const, ast: parsedY.ast },
       domain: action.draft.domain, yDomain: action.draft.yDomain, timeSpan: action.draft.timeSpan,
-      seeds: action.draft.seeds };
+      seeds: action.draft.seeds,
+      ...(action.draft.fieldDensity === undefined ? {} : { fieldDensity: action.draft.fieldDensity }),
+      ...(action.draft.fieldUnits === undefined ? {} : { fieldUnits: action.draft.fieldUnits }) };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-phase-portrait") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }

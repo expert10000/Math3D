@@ -47,7 +47,7 @@ const seedListAction = (document: Graph2DDocument, objectId: string,
   return { type: "edit-phase-portrait", objectId, draft: { label: object.label,
     xDerivative: object.xDerivative.source, yDerivative: object.yDerivative.source,
     domain: object.domain, yDomain: object.yDomain, timeSpan: object.timeSpan,
-    seeds,
+    seeds, fieldDensity: object.fieldDensity, fieldUnits: object.fieldUnits,
     style: { color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle, visible: style.visible } } };
 };
 

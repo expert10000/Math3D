@@ -202,3 +202,43 @@ describe("GRA-11.3 planar phase portraits", () => {
     expect(geometry.omitted).toBe(0);
   });
 });
+
+describe("GRA-14 authored planar field controls", () => {
+  it("persists density and units, varies arrow length with speed, and keeps orbit stops", () => {
+    const source = create({ ...draft("x+2", "0"), fieldDensity: 20,
+      fieldUnits: { x: "m", y: "m", time: "s" }, seeds: [{ x: 1, y: 0 }] });
+    const normalized = normalizeGraph2DDocument(JSON.parse(JSON.stringify(source)));
+    expect(normalized.ok).toBe(true);
+    const object = source.source.objects[0];
+    expect(object?.kind === "phase-portrait" && object.fieldUnits).toEqual({ x: "m", y: "m", time: "s" });
+    const dense = solve(source);
+    const sparse = solve(create({ ...draft("x+2", "0"), fieldDensity: 4 }));
+    expect(dense.fieldSegments.length).toBeGreaterThan(sparse.fieldSegments.length);
+    expect(dense.fieldMagnitudes).toHaveLength(dense.fieldSegments.length);
+    const slow = dense.fieldMagnitudes.findIndex(speed => speed > 0 && speed < 1);
+    const fast = dense.fieldMagnitudes.findIndex(speed => speed > 4);
+    expect(slow).toBeGreaterThanOrEqual(0);
+    expect(fast).toBeGreaterThanOrEqual(0);
+    const length = (index: number) => {
+      const [a, b] = dense.fieldSegments[index]!.points;
+      return Math.hypot(b!.x - a!.x, b!.y - a!.y);
+    };
+    expect(length(fast)).toBeGreaterThan(length(slow));
+    expect(dense.orbits[0]?.forward).toBe("domain-boundary");
+    expect(dense.samplesEvaluated).toBeLessThanOrEqual(12000);
+    const adapter = new Graph2DCommandAdapter(source);
+    adapter.commitScene(applyGraph2DAuthoring(source,
+      graph2DPhaseSeedAction(source, "phase_portrait_1", 0, { x: 0, y: 1 })), "edit-phase-portrait");
+    const edited = adapter.document().source.objects[0];
+    expect(edited?.kind === "phase-portrait" && edited.fieldDensity).toBe(20);
+    expect(edited?.kind === "phase-portrait" && edited.fieldUnits?.time).toBe("s");
+    adapter.undo();
+    expect(adapter.document().source).toEqual(source.source);
+  });
+
+  it("accepts legacy phase documents and rejects out-of-range density or malformed units", () => {
+    expect(normalizeGraph2DDocument(create()).ok).toBe(true);
+    expect(() => create({ ...draft(), fieldDensity: 25 })).toThrow(/density/i);
+    expect(() => create({ ...draft(), fieldUnits: { x: " m", y: "m", time: "s" } })).toThrow(/units/i);
+  });
+});

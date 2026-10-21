@@ -586,6 +586,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {selectedPhase && <View accessibilityLabel="Phase portrait equilibrium analysis" testID="mobile-graph-phase-equilibria">
           <Text style={s.title}>Equilibrium scan · {selectedPhase.analysis.status}</Text>
           {selectedPhaseObject?.kind === "phase-portrait" && <>
+            <Text>Field: {selectedPhaseObject.fieldDensity ?? 12} arrows per longest side; x {selectedPhaseObject.fieldUnits?.x || "unitless"}, y {selectedPhaseObject.fieldUnits?.y || "unitless"}, time {selectedPhaseObject.fieldUnits?.time || "unitless"}.</Text>
+            <Text>{selectedPhase.fieldSegments.length} sampled arrows. Arrow length indicates median-relative speed.
+              {selectedPhase.fieldMagnitudes.length ? ` Speed range ${Math.min(...selectedPhase.fieldMagnitudes).toPrecision(3)}–${Math.max(...selectedPhase.fieldMagnitudes).toPrecision(3)} coordinate units per time unit.` : " No finite nonzero vectors sampled."}</Text>
             <Text>Initial points: {selectedPhaseObject.seeds.length}/8. Drag a marked point to update its orbit.</Text>
             {selectedPhaseObject.seeds.length === 0 && <Text>No initial points. Place one on the graph.</Text>}
             {selectedPhaseObject.seeds.map((seed, index) => {

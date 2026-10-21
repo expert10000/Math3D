@@ -14,6 +14,8 @@ export type Graph2DPhaseOrbit = Readonly<{
 export type Graph2DPhasePortraitArtifact = Graph2DSamplingArtifact & Readonly<{
   kind: "phase-portrait";
   fieldSegments: readonly Graph2DSampleSegment[];
+  /** Speed at each visible arrow, in coordinate units per authored time unit. */
+  fieldMagnitudes: readonly number[];
   orbits: readonly Graph2DPhaseOrbit[];
   nullclines: Readonly<{ x: readonly Graph2DSampleSegment[]; y: readonly Graph2DSampleSegment[] }>;
   equilibria: readonly Readonly<{ x: number; y: number; residual: number; linearization: Graph2DPhaseLinearization }> [];
@@ -35,7 +37,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       !Number.isSafeInteger(request.maxSamples) || request.maxSamples < 1)
     throw new TypeError("Invalid phase-portrait sampling request.");
   if (viewport.xScale === "log10" || viewport.yScale === "log10") return {
-    samplerVersion: 1, kind: "phase-portrait", segments: [], fieldSegments: [], orbits: [], samplesEvaluated: 0,
+    samplerVersion: 1, kind: "phase-portrait", segments: [], fieldSegments: [], fieldMagnitudes: [], orbits: [], samplesEvaluated: 0,
     nullclines: { x: [], y: [] }, equilibria: [],
     analysis: { status: "unavailable", method: "contour-intersection-newton", gridScale: null,
       candidates: 0, unresolved: 0, evaluations: 0 },
@@ -53,12 +55,13 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
   };
   const xMin = Math.max(viewport.xMin, object.domain.min), xMax = Math.min(viewport.xMax, object.domain.max);
   const yMin = Math.max(viewport.yMin, object.yDomain.min), yMax = Math.min(viewport.yMax, object.yDomain.max);
-  const fieldSegments: Graph2DSampleSegment[] = [];
+  const fieldSegments: Graph2DSampleSegment[] = [], fieldMagnitudes: number[] = [];
   if (xMin < xMax && yMin < yMax) {
-    let columns = Math.max(1, Math.min(20, Math.floor(width / 48)));
-    let rows = Math.max(1, Math.min(20, Math.floor(height / 48)));
+    const spacing = Math.max(width, height) / (object.fieldDensity ?? 12);
+    let columns = Math.max(1, Math.min(24, Math.floor(width / spacing)));
+    let rows = Math.max(1, Math.min(24, Math.floor(height / spacing)));
     // Reserve most evaluations for saved orbits, especially when another graph shares the scene budget.
-    const glyphBudget = Math.max(1, Math.min(256, Math.floor(maxEvaluations / 20)));
+    const glyphBudget = Math.max(1, Math.min(576, Math.floor(maxEvaluations / 12)));
     while (columns * rows > glyphBudget) {
       if (columns >= rows && columns > 1) columns -= 1;
       else rows -= 1;
@@ -66,6 +69,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     const pxPerX = width / (viewport.xMax - viewport.xMin);
     const pxPerY = height / (viewport.yMax - viewport.yMin);
     const lengthPx = Math.min(24, 0.4 * Math.min(width / columns, height / rows));
+    const fieldSamples: { center: Point; vector: Point; screenNorm: number; magnitude: number }[] = [];
     for (let row = 0; row < rows && !fieldTimedOut; row += 1) for (let column = 0; column < columns; column += 1) {
       if (deadlineMs !== undefined && Date.now() > deadlineMs) { fieldTimedOut = true; break; }
       const center = { x: xMin + (column + 0.5) * (xMax - xMin) / columns,
@@ -74,10 +78,21 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       if (!vector) { invalidGlyphs += 1; continue; }
       const norm = Math.hypot(vector.x * pxPerX, vector.y * pxPerY);
       if (!Number.isFinite(norm) || norm === 0) continue;
-      const dx = vector.x * lengthPx / (2 * norm), dy = vector.y * lengthPx / (2 * norm);
+      const magnitude = Math.hypot(vector.x, vector.y);
+      if (!Number.isFinite(magnitude)) { invalidGlyphs += 1; continue; }
+      fieldSamples.push({ center, vector, screenNorm: norm, magnitude });
+    }
+    const ordered = fieldSamples.map(sample => sample.magnitude).sort((a, b) => a - b);
+    const reference = ordered[Math.floor(ordered.length / 2)] ?? 1;
+    for (const { center, vector, screenNorm, magnitude } of fieldSamples) {
+      // Median-relative lengths expose speed without letting one singular spike flatten the entire field.
+      const speedScale = Math.max(0.35, Math.min(1.4, Math.sqrt(magnitude / reference)));
+      const dx = vector.x * lengthPx * speedScale / (2 * screenNorm);
+      const dy = vector.y * lengthPx * speedScale / (2 * screenNorm);
       if (![dx, dy].every(Number.isFinite)) { invalidGlyphs += 1; continue; }
       fieldSegments.push({ points: [{ x: center.x - dx, y: center.y - dy }, { x: center.x + dx, y: center.y + dy }],
         openStart: false, openEnd: false });
+      fieldMagnitudes.push(magnitude);
     }
   }
   const maxStep = object.timeSpan / 16, minStep = Math.max(1e-10, object.timeSpan * 1e-9);
@@ -217,7 +232,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     if (stop === "sample-limit" || stop === "step-limit") diagnostics.push({ code: "sample-limit", count: 1 });
     if (stop === "deadline") diagnostics.push({ code: "deadline", count: 1 });
   }
-  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, orbits, segments, nullclines,
+  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, fieldMagnitudes, orbits, segments, nullclines,
     equilibria: classifiedEquilibria,
     analysis: { status: analysisStatus, method: "contour-intersection-newton", gridScale,
       candidates, unresolved, evaluations: samplesEvaluated - analysisStart },

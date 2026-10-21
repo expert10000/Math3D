@@ -167,7 +167,7 @@ export const graph2DAuthoringPresets: Catalog = {
     { id: "saddle", title: "Saddle", detail: "One growing and one decaying direction.",
       draft: () => ({ label: "Saddle", xDerivative: "x", yDerivative: "-y", domain: domain(-4, 4), yDomain: domain(-4, 4), timeSpan: 4, seeds: [{ x: 1, y: 1 }, { x: -1, y: 1 }], style: style("#e11d48") }) },
     { id: "damped", title: "Damped spiral", detail: "Trajectories spiral toward the origin.",
-      draft: () => ({ label: "Damped spiral", xDerivative: "y", yDerivative: "-x-0.3*y", domain: domain(-4, 4), yDomain: domain(-4, 4), timeSpan: 12, seeds: [{ x: 2, y: 0 }], style: style("#0d9488") }) },
+      draft: () => ({ label: "Damped spiral", xDerivative: "y", yDerivative: "-x-0.3*y", domain: domain(-4, 4), yDomain: domain(-4, 4), timeSpan: 12, seeds: [{ x: 2, y: 0 }], fieldDensity: 16, fieldUnits: { x: "m", y: "m", time: "s" }, style: style("#0d9488") }) },
     { id: "source", title: "Source", detail: "Orbits move outward from the origin.",
       draft: () => ({ label: "Source", xDerivative: "x", yDerivative: "y", domain: domain(-4, 4), yDomain: domain(-4, 4), timeSpan: 3, seeds: [{ x: 0.5, y: 0.5 }], style: style("#b45309") }) },
     { id: "stable-node", title: "Stable node", detail: "Both coordinates decay toward zero at different rates.",

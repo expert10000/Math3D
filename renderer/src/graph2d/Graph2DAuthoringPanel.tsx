@@ -204,6 +204,7 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       setMode("phase-portrait"); setPhaseDraft({ label: object.label, xDerivative: object.xDerivative.source,
         yDerivative: object.yDerivative.source, domain: object.domain, yDomain: object.yDomain,
         timeSpan: object.timeSpan, seeds: object.seeds.map(seed => ({ ...seed })),
+        fieldDensity: object.fieldDensity ?? 12, fieldUnits: object.fieldUnits ?? { x: "", y: "", time: "" },
         style: { visible: style.visible, color: style.color, lineWidth: style.lineWidth, lineStyle: style.lineStyle } });
     } else if (object.kind === "time-ode") {
       setMode("time-ode"); setTimeOdeDraft({ label: object.label, expression: object.expression.source,
@@ -652,6 +653,17 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
       </div>
       <label>Time horizon in each direction <input aria-label="Phase portrait time horizon" type="number" step="any" min="0.000001" max="100" value={phaseDraft.timeSpan}
         onChange={event => setPhaseDraft({ ...phaseDraft, timeSpan: Number(event.target.value) })} /></label>
+      <label>Arrow density (longest side) <input aria-label="Phase portrait arrow density" type="number" step="1" min="4" max="24"
+        value={phaseDraft.fieldDensity ?? 12}
+        onChange={event => setPhaseDraft({ ...phaseDraft, fieldDensity: Number(event.target.value) })} /></label>
+      <div className="graph2d-domain-row">
+        {(["x", "y", "time"] as const).map(axis => <label key={axis}>{axis === "time" ? "Time" : axis.toUpperCase()} unit
+          <input aria-label={`Phase portrait ${axis} unit`} maxLength={24} value={phaseDraft.fieldUnits?.[axis] ?? ""}
+            onChange={event => setPhaseDraft({ ...phaseDraft, fieldUnits: {
+              x: phaseDraft.fieldUnits?.x ?? "", y: phaseDraft.fieldUnits?.y ?? "", time: phaseDraft.fieldUnits?.time ?? "",
+              [axis]: event.target.value } })} /></label>)}
+      </div>
+      <p>Arrow length indicates speed relative to the median sampled vector. Unit labels appear in the Inspector; enter consistent units for both derivatives.</p>
       {phaseDraft.seeds.map((seed, index) => <div className="graph2d-domain-row" key={index}>
         <label>Seed {index + 1} x <input aria-label={`Phase seed ${index + 1} x`} type="number" step="any" value={seed.x}
           onChange={event => setPhaseDraft({ ...phaseDraft, seeds: phaseDraft.seeds.map((entry, i) => i === index ? { ...entry, x: Number(event.target.value) } : entry) })} /></label>

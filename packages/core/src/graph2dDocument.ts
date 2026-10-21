@@ -148,6 +148,8 @@ export type Graph2DPhasePortraitObject = Readonly<{
   yDomain: Graph2DDomain;
   timeSpan: number;
   seeds: readonly Readonly<{ x: number; y: number }>[];
+  fieldDensity?: number;
+  fieldUnits?: Readonly<{ x: string; y: string; time: string }>;
 }>;
 export type Graph2DTimeOdeObject = Readonly<{
   id: string; kind: "time-ode"; label: string;
@@ -280,10 +282,15 @@ const validTrajectoryObject = (value: unknown): value is Graph2DTrajectoryObject
   value.kind === "trajectory" && bounded(value.label, 160) && objectId(value.sourceFieldId) &&
   record(value.seed) && exact(value.seed, ["x", "y"]) && finite(value.seed.x) && finite(value.seed.y);
 const validPhasePortraitObject = (value: unknown, variables: readonly string[]): value is Graph2DPhasePortraitObject =>
-  record(value) && exact(value, ["id", "kind", "label", "xDerivative", "yDerivative", "domain", "yDomain", "timeSpan", "seeds"]) &&
+  record(value) && exact(value, ["id", "kind", "label", "xDerivative", "yDerivative", "domain", "yDomain", "timeSpan", "seeds",
+    ...(value.fieldDensity === undefined ? [] : ["fieldDensity"]), ...(value.fieldUnits === undefined ? [] : ["fieldUnits"])]) &&
   objectId(value.id) && value.kind === "phase-portrait" && bounded(value.label, 160) &&
   validExpression(value.xDerivative, variables, "xy") && validExpression(value.yDerivative, variables, "xy") &&
   validDomain(value.domain) && validDomain(value.yDomain) && finite(value.timeSpan) && value.timeSpan > 0 && value.timeSpan <= 100 &&
+  (value.fieldDensity === undefined || integerWithin(value.fieldDensity, 4, 24)) &&
+  (value.fieldUnits === undefined || record(value.fieldUnits) && exact(value.fieldUnits, ["x", "y", "time"]) &&
+    [value.fieldUnits.x, value.fieldUnits.y, value.fieldUnits.time].every(unit =>
+      typeof unit === "string" && unit.length <= 24 && unit.trim() === unit)) &&
   Array.isArray(value.seeds) && value.seeds.length <= 8 &&
   value.seeds.every((seed: unknown) => record(seed) && exact(seed, ["x", "y"]) && finite(seed.x) && finite(seed.y) &&
     seed.x >= (value.domain as Graph2DDomain).min && seed.x <= (value.domain as Graph2DDomain).max &&
