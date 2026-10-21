@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has bounded, source-backed QWZ and SSH study profiles; the broader multi-family milestone remains open. M3D-Q09 has a tested desktop folder handoff but remains Partial pending full cross-app and optional OS/URL-route acceptance. M3D-Q10 remains open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has bounded, source-backed QWZ and SSH study profiles; the broader multi-family milestone remains open. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 remains open.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -140,7 +140,7 @@ no zone construction, physics calculation or coordinate conversion. Square,
 honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
 frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
 and its full acceptance remain gated on a separately versioned producer
-contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08–Q09 are Partial and M3D-Q10 remains open.
+contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08 is Partial, M3D-Q09 is complete for desktop file handoff, and M3D-Q10 remains open.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -544,16 +544,19 @@ edge/bulk and node labels are visibly attributed to the producing computation.
 
 ### M3D-Q09 — `feat(math3d-quantum): add Quantum Lab to Math3D round trip`
 
-**Status: Partial; bounded desktop `.qscene` folder route verified.** The native
-picker, pinned example, and the `--quantum-scene` startup route used by Theory Lab
-produce the same canonical source-backed graph and fingerprint for a pinned QWZ
-fixture. Malformed startup paths report a visible refusal; missing and modified
-bundles leave active scene and saved Project bytes intact. A saved link survives
-restart, refuses changed bytes, accepts only exact-fingerprint relinking, and opens
-after another restart. The recent-scene shortcut remains independent of a Project
-relink. See `docs/quantum-scene-project-links.md` for the tested UI path. A live
-two-app button test, OS file association, and URL/deep-link policy are not covered
-by this acceptance pass; do not read this bounded result as full Q09 completion.
+**Status: Complete for the supported desktop `.qscene` folder handoff.** A live
+Windows two-app test starts Theory Lab, computes and saves a Rabi run, clicks
+**Open in Math3D**, and confirms that the independently launched Math3D imports
+the exact Lab-created bytes and preserves source run, result hash and scene
+fingerprint. It also exercises the Lab export/import/open path and verifies that
+both Math3D startup and native-picker imports produce the same canonical scene
+graph. Pinned QWZ route parity, visible malformed-launch refusal, missing or
+modified source refusal without Project mutation, saved-Project restart and
+exact-hash relinking pass independently. No private Lab state or Math3D physics
+worker is used. The recent-scene shortcut remains independent of a Project
+relink. See `docs/quantum-scene-project-links.md` for the UI and test path.
+This implementation uses an absolute folder argument, not an OS file association
+or URL/deep link; those conditional transports are not claimed.
 
 **Scope.** Add file/URL-policy-safe handoff and an **Open in MATH3D** entry point:
 

@@ -9,6 +9,7 @@ test("Q09 saved Lab scene refuses stale bytes and survives exact relink and rest
   const root = await mkdtemp(join(tmpdir(), "m3d-q09-project-"));
   const fixture = resolve(__dirname, "..", "fixtures", "quantum-scene",
     "run-97a132d1d712414bb62bb8c9212f517e-bands.qscene");
+  const pinned = JSON.parse(await readFile(join(fixture, "scene.json"), "utf8"));
   const original = join(root, "original.qscene"), relocated = join(root, "relocated.qscene");
   await cp(fixture, original, { recursive: true });
   await cp(fixture, relocated, { recursive: true });
@@ -67,6 +68,8 @@ test("Q09 saved Lab scene refuses stale bytes and survives exact relink and rest
     await projects.getByTestId(`project-open-quantum-scene-${saved.reference.sceneFingerprint}`).click();
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("QWZ supplied energy bands");
     await expect(page.getByTestId("quantum-source-directory")).toHaveText(relocated);
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText(pinned.provenance.runId);
+    await expect(page.getByTestId("quantum-scene-preview")).toContainText(pinned.provenance.resultSha256);
     // Recent and Project links have distinct scopes: the last direct import
     // still targets the tampered original, while the saved Project owns the
     // explicit exact-fingerprint relink to the relocated bundle.
