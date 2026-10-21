@@ -1,5 +1,13 @@
 # Quantum scenes in saved Math3D Projects
 
+## Desktop walkthrough (M3D-Q09)
+
+1. In Theory Lab, open a compatible saved run in **Scenes**, select its scene view, then choose **Open in Math3D**. Theory Lab exports a portable `.qscene` bundle and launches Math3D with `--quantum-scene <bundle folder>`. To import an existing bundle manually, use Math3D **File → Open Theory Lab quantum scene (.qscene)** and choose the `.qscene` **folder**, not `manifest.json` or `bundle.json`. The pinned **File → Verified quantum examples** use the same importer.
+2. Inspect the verified scene and its source/provenance in the read-only viewer. Close the viewer, open **Projects**, and use **Attach open verified scene** in Contents (or the **Verified scene links** card's **Manage links / attach in Contents** shortcut). Choose **Save project**. Attachment alone is not a save.
+3. After a restart, open the saved Project, then choose **Verify and view scene**. If the external bundle is absent or changed, a link-only Project can still open, but the scene is marked unavailable and no preview is shown. Use **Relink source** to select an exact-hash copy of the original bundle and **Save changes**. An admitted read-only Project document has stricter activation checks: it cannot activate from a stale source.
+
+The desktop picker, pinned example, and Theory Lab-style `--quantum-scene` launch have a parity test against the same pinned QWZ bundle. Malformed launch folders produce a visible, one-shot refusal. Project restart tests cover changed-source refusal and exact-fingerprint relinking. These checks cover the current desktop folder handoff, not an OS file association, URL/deep-link route, or full two-process UI automation from Theory Lab's button.
+
 Math3D Projects can retain a `quantum-scene/v1` or `quantum-scene/v2` source as a sealed, external, read-only link. The Project envelope stores a title, bundle directory and 64-character scene fingerprint under `quantumScenes`. Its structural hash covers these references. Existing Project revisions without this optional field remain valid.
 
 The Project contents panel offers **Attach open verified scene** after a desktop scene has been opened. Attachment re-verifies the source and remains staged until **Save project**. **Verify and view scene** reopens through the existing Electron quantum-scene importer, which checks the bundle manifest and datasets before showing the existing geometry, field-slice or density-surface preview. If the directory is absent or bytes have changed, the Project stays intact and the scene is unavailable; no unverified visualization is shown.
