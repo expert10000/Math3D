@@ -1,8 +1,8 @@
 import { analyzeGraph2DRegression, type Graph2DDocument, type Graph2DPointRow,
-  type Graph2DRegressionModel, type Graph2DExponentialInitial } from "@math3d/core";
+  type Graph2DRegressionModel, type Graph2DExponentialInitial, type Graph2DLogisticInitial } from "@math3d/core";
 
 type Request = { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial };
+  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial | Graph2DLogisticInitial };
 self.onmessage = (event: MessageEvent<Request>) => {
   try {
     const result = analyzeGraph2DRegression(event.data);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analyzeGraph2DExponentialRegression, applyGraph2DAuthoring, createEmptyGraph2DDocument,
+import { analyzeGraph2DExponentialRegression, analyzeGraph2DLogisticRegression,
+  applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DLogisticRegressionJob,
   createGraph2DDocument, createGraph2DExponentialRegressionJob, Graph2DPointTableStore,
   graph2DPointDomain, type Graph2DPointRow } from "@math3d/core";
 
@@ -63,6 +64,68 @@ describe("GRA-15 bounded exponential decay fit", () => {
     while (!job.advance(1)) { /* one solver iteration per mobile batch */ }
     expect(job.result().solver.status).toBe("converged");
     const cancelled = createGraph2DExponentialRegressionJob(request);
+    cancelled.advance(1); cancelled.cancel();
+    expect(() => cancelled.advance(1)).toThrow(/cancelled/);
+    expect(() => cancelled.result()).toThrow(/not completed/);
+  });
+});
+
+describe("GRA-15 bounded logistic growth fit", () => {
+  const logistic = (x: number, capacity = 5, rate = 1.4, midpoint = 2) =>
+    capacity / (1 + Math.exp(-rate * (x - midpoint)));
+  const xs = Array.from({ length: 41 }, (_, index) => index / 10);
+
+  it("recovers exact capacity, rate and midpoint with finite residuals and no intervals", () => {
+    const input = dataset(xs.map(x => logistic(x)), xs);
+    const fit = analyzeGraph2DLogisticRegression({ ...input, initial: { capacity: 4, rate: 1, midpoint: 1.5 } });
+    expect(fit.parameters.capacity).toBeCloseTo(5, 7);
+    expect(fit.parameters.rate).toBeCloseTo(1.4, 7);
+    expect(fit.parameters.midpoint).toBeCloseTo(2, 7);
+    expect(fit.sse).toBeLessThan(1e-14);
+    expect(fit.curve).toHaveLength(129);
+    expect(fit.residuals).toHaveLength(xs.length);
+    expect(fit.publication.summary.intervalSemantics).toBe("none");
+    expect(fit.publication.warnings.join(" ")).toMatch(/no parameter uncertainty/i);
+  });
+
+  it("fits noisy data and reports a local numerical result", () => {
+    const input = dataset(xs.map((x, i) => logistic(x) + .015 * Math.sin(i * 7)), xs);
+    const fit = analyzeGraph2DLogisticRegression({ ...input, initial: { capacity: 4.5, rate: 1.1, midpoint: 1.8 } });
+    expect(fit.parameters.capacity).toBeCloseTo(5, 1);
+    expect(fit.parameters.rate).toBeCloseTo(1.4, 1);
+    expect(fit.parameters.midpoint).toBeCloseTo(2, 1);
+    expect(fit.sse).toBeGreaterThan(0);
+    expect(fit.residualSD).toBeGreaterThan(0);
+    expect(fit.rSquared).toBeGreaterThan(.99);
+  });
+
+  it("rejects degenerate, invalid-bound and changed sidecar inputs", () => {
+    const flat = dataset(Array.from({ length: 20 }, () => 0));
+    expect(() => analyzeGraph2DLogisticRegression({ ...flat, initial: { capacity: 1, rate: 1, midpoint: 1 } }))
+      .toThrow(/not identifiable/i);
+    const exact = dataset(xs.map(x => logistic(x)), xs);
+    expect(() => analyzeGraph2DLogisticRegression({ ...exact, initial: { capacity: -1, rate: 1, midpoint: 2 } }))
+      .toThrow(/capacity must be positive/i);
+    expect(() => analyzeGraph2DLogisticRegression({ ...exact, initial: { capacity: 4, rate: 0, midpoint: 2 } }))
+      .toThrow(/rate×span/i);
+    expect(() => analyzeGraph2DLogisticRegression({ ...exact, initial: { capacity: 4, rate: 1, midpoint: 8 } }))
+      .toThrow(/midpoint must be/i);
+    expect(() => analyzeGraph2DLogisticRegression({ ...exact,
+      rows: exact.rows.map((row, i) => i ? row : { ...row, y: 99 }),
+      initial: { capacity: 4, rate: 1, midpoint: 2 } })).toThrow(/checksum/i);
+    const constant = dataset(Array.from({ length: 41 }, () => 3));
+    expect(() => analyzeGraph2DLogisticRegression({ ...constant, initial: { capacity: 4, rate: 1, midpoint: 2 } }))
+      .toThrow(/not identifiable|stalled|without convergence/i);
+  });
+
+  it("supports one-iteration mobile batches and cancellation", () => {
+    const input = dataset(xs.map(x => logistic(x)), xs);
+    const request = { ...input, initial: { capacity: 4, rate: 1, midpoint: 1.5 } };
+    const job = createGraph2DLogisticRegressionJob(request);
+    expect(job.advance(1)).toBe(false);
+    while (!job.advance(1)) { /* explicit bounded UI batches */ }
+    expect(job.result().solver.status).toBe("converged");
+    const cancelled = createGraph2DLogisticRegressionJob(request);
     cancelled.advance(1); cancelled.cancel();
     expect(() => cancelled.advance(1)).toThrow(/cancelled/);
     expect(() => cancelled.result()).toThrow(/not completed/);

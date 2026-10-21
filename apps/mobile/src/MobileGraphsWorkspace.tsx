@@ -6,7 +6,8 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion,
   type Graph2DPhasePortraitArtifact, type Graph2DTimeOdeArtifact } from "@math3d/core";
 import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob, createGraph2DExponentialRegressionJob,
-  type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob, type Graph2DExponentialRegressionJob } from "@math3d/core";
+  createGraph2DLogisticRegressionJob, type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob,
+  type Graph2DExponentialRegressionJob, type Graph2DLogisticRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
 import { graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -34,7 +35,7 @@ import { MobileGraphPromotionPanel } from "./MobileGraphPromotionPanel";
 import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestination } from "./models/mobileGraphLayout";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, mobileGraphAnalysisInputHash, mobileGraphRegressionResult, mobileGraphSplineSmoothness,
-  mobileGraphExponentialInitial,
+  mobileGraphExponentialInitial, mobileGraphLogisticInitial,
   runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
 import { mobileGraphToolUnavailable, mobileGraphTangentDraft } from "./models/mobileGraphTools";
@@ -117,7 +118,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
   const [analysisPending, setAnalysisPending] = useState<number | null>(null);
   const analysisGeneration = useRef(0);
-  const activeFit = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob | Graph2DPolynomialRegressionJob | Graph2DExponentialRegressionJob;
+  const activeFit = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob | Graph2DPolynomialRegressionJob | Graph2DExponentialRegressionJob | Graph2DLogisticRegressionJob;
     sourceKey: string; draftHash: string; progressBucket: number } | null>(null);
   const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}`;
   const sourceKeyRef = useRef(sourceKey); sourceKeyRef.current = sourceKey;
@@ -144,7 +145,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         createGraph2DSplineRegressionJob({ document, objectId: analysisDraft.objectId, rows,
           smoothing: mobileGraphSplineSmoothness(analysisDraft) }) : analysisDraft.kind === "regression-exponential" ?
         createGraph2DExponentialRegressionJob({ document, objectId: analysisDraft.objectId, rows,
-          initial: mobileGraphExponentialInitial(analysisDraft) }) :
+          initial: mobileGraphExponentialInitial(analysisDraft) }) : analysisDraft.kind === "regression-logistic" ?
+        createGraph2DLogisticRegressionJob({ document, objectId: analysisDraft.objectId, rows,
+          initial: mobileGraphLogisticInitial(analysisDraft) }) :
         createGraph2DPolynomialRegressionJob({ document, objectId: analysisDraft.objectId, rows,
           model: analysisDraft.kind === "regression-linear" ? "linear" : analysisDraft.kind === "regression-quadratic" ? "quadratic" :
             analysisDraft.kind === "regression-cubic" ? "cubic" : "quartic" });
@@ -157,7 +160,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         if (activeFit.current !== active) return;
         if (sourceKeyRef.current !== sourceAtStart || draftHashRef.current !== draftAtStart) { cancelFit(false); return; }
         try {
-          if (job.advance(draft.kind === "regression-exponential" ? 1 : draft.kind === "regression-spline" ? 128 : 2048)) {
+          if (job.advance(draft.kind === "regression-exponential" || draft.kind === "regression-logistic" ? 1 : draft.kind === "regression-spline" ? 128 : 2048)) {
             const result = mobileGraphRegressionResult(draft, job.result());
             activeFit.current = null; setAnalysisPending(null); setAnalysis(result); setError("");
             console.info(`MATH3D_DEVICE_METRIC fit-publish durationMs=${Date.now() - analysisStartedAt} model=${draft.kind} rows=${rows?.length ?? 0}`);

@@ -149,7 +149,7 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
               cx={screen.x} cy={screen.y} r={3.5} fill={item.style.color} stroke="white" strokeWidth={1.5}
               pointerEvents="none"><title>Possible isolated zero or tangency; refine the domain to inspect.</title></circle>;
           }))}
-        {regression && regression.model !== "spline" && regression.model !== "exponential-decay" && <g aria-hidden="true">
+        {regression && regression.model !== "spline" && regression.model !== "exponential-decay" && regression.model !== "logistic-growth" && <g aria-hidden="true">
           {regression.curve.slice(1).map((p, i) => {
             const a = regression.curve[i];
             if (!a || !("meanLow" in a) || !("meanHigh" in a) || !("meanLow" in p) || !("meanHigh" in p)) return null;

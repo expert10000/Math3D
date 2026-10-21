@@ -10,7 +10,8 @@ const kinds: readonly [MobileGraphAnalysisKind, string][] = [["derivatives", "De
   ["parametric-tangent", "Parametric tangent & curvature"],
   ["regression-linear", "Linear regression"], ["regression-quadratic", "Quadratic regression"],
   ["regression-cubic", "Cubic regression"], ["regression-quartic", "Quartic regression"],
-  ["regression-spline", "Cubic smoothing spline"], ["regression-exponential", "Exponential decay"]];
+  ["regression-spline", "Cubic smoothing spline"], ["regression-exponential", "Exponential decay"],
+  ["regression-logistic", "Logistic growth"]];
 const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "polar" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
@@ -43,11 +44,15 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
           document.selection.probe?.parameter ?? (source?.kind === "parametric" ? firstParametricParameter(source) : 0) :
           source?.kind === "parametric" ? firstParametricParameter(source) : 0) : draft.x,
       min: source?.kind === "polar" ? String(source.domain.min) : draft.min,
-      max: source?.kind === "polar" ? String(source.domain.max) : draft.max });
+      max: source?.kind === "polar" ? String(source.domain.max) : draft.max,
+      midpoint: kind === "regression-logistic" && source?.kind === "point-series" ?
+        String((source.domain.min + source.domain.max) / 2) : draft.midpoint,
+      rate: kind === "regression-logistic" && source?.kind === "point-series" ?
+        String(4 / (source.domain.max - source.domain.min)) : draft.rate });
   };
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} disabled={disabled} accessibilityState={{ disabled }} onPress={onPress} style={s.button}><Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8" }}>{label}</Text></Pressable>;
-  const field = (label: string, key: "x" | "min" | "max" | "tolerance" | "smoothing" | "amplitude" | "rate") => <View key={key}><Text>{label}</Text>
+  const field = (label: string, key: "x" | "min" | "max" | "tolerance" | "smoothing" | "amplitude" | "rate" | "capacity" | "midpoint") => <View key={key}><Text>{label}</Text>
     <TextInput accessibilityLabel={label} value={draft[key] ?? "0.001"} maxLength={40} autoCapitalize="none" autoCorrect={false} style={s.input}
       onChangeText={(value) => onDraft({ ...draft, [key]: value })} /></View>;
   return <View testID="mobile-graph-analysis-panel"><Text style={s.title}>Analyze</Text>
@@ -74,7 +79,10 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
     {regression ? <><Text>Fits original checked rows within the authored domain, not the viewport. No missing-value imputation.</Text>
       {draft.kind === "regression-spline" && field("Spline smoothness λ (0–1)", "smoothing")}
       {draft.kind === "regression-exponential" && <>{field("Initial amplitude", "amplitude")}{field("Initial rate per x unit", "rate")}
-        <Text>y = amplitude × exp(−rate × (x−smallest included x)); zero baseline. Rate is bounded by the x span.</Text></>}</> : pointOperation ? <>{field(draft.kind === "polar-tangent" ? "Angle θ (radians)" : draft.kind === "parametric-tangent" ? "Parameter t" : "Analysis x", "x")}{button(draft.kind === "polar-tangent" ? "Use current probe angle" : draft.kind === "parametric-tangent" ? "Use current probe parameter" : "Use current probe x", () => onDraft({ ...draft,
+        <Text>y = amplitude × exp(−rate × (x−smallest included x)); zero baseline. Rate is bounded by the x span.</Text></>}
+      {draft.kind === "regression-logistic" && <>{field("Initial capacity", "capacity")}{field("Initial growth rate per x unit", "rate")}
+        {field("Initial midpoint x", "midpoint")}
+        <Text>y = capacity / (1 + exp(−rate × (x−midpoint))); positive capacity, bounded rate and midpoint inside the observed x extent.</Text></>}</> : pointOperation ? <>{field(draft.kind === "polar-tangent" ? "Angle θ (radians)" : draft.kind === "parametric-tangent" ? "Parameter t" : "Analysis x", "x")}{button(draft.kind === "polar-tangent" ? "Use current probe angle" : draft.kind === "parametric-tangent" ? "Use current probe parameter" : "Use current probe x", () => onDraft({ ...draft,
       objectId: document.selection.probe!.objectId, x: String(draft.kind === "polar-tangent" || draft.kind === "parametric-tangent" ? document.selection.probe!.parameter : document.selection.probe!.x) }), !document.selection.probe ||
       (draft.kind === "polar-tangent" || draft.kind === "parametric-tangent") && document.selection.probe.parameter === undefined ||
       !sources.some(object => object.id === document.selection.probe?.objectId))}</> :
@@ -82,7 +90,7 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
         {field(polarOperation ? "Angle to θ (radians)" : "Analysis to x", "max")}</>}
     {(["derivatives", "integral", "arc-length", "polar-area", "polar-arc-length"] as string[]).includes(draft.kind) ? field("Analysis tolerance", "tolerance") :
       regression ? <Text>{draft.kind === "regression-spline" ? "λ controls the fixed spline penalty. No confidence or prediction intervals." :
-        draft.kind === "regression-exponential" ? "Bounded local solver; no global guarantee or parameter uncertainty is claimed." :
+        draft.kind === "regression-exponential" || draft.kind === "regression-logistic" ? "Bounded local solver; no global guarantee or parameter uncertainty is claimed." :
         "Polynomial fit uses shared core uncertainty rules."}</Text> :
       <Text>Uses shared core per-operation tolerances, shown below.</Text>}
     {draft.kind === "integral" && <View style={s.row}>{(["signed", "absolute"] as const).map((mode) => button(`${mode} area${draft.mode === mode ? " (selected)" : ""}`, () => onDraft({ ...draft, mode })))}</View>}

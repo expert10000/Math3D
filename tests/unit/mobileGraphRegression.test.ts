@@ -72,3 +72,33 @@ it("native exponential fit matches shared core and publishes only supported outp
   expect(html).toContain("exponential-decay");
   expect(html).not.toContain("95% prediction");
 });
+it("native logistic fit matches shared core, has bounded overlay and withholds unsupported uncertainty", () => {
+  const logistic = (x: number) => 5 / (1 + Math.exp(-1.4 * (x - 2)));
+  const rows = Array.from({ length: 41 }, (_, index) => ({ id: `row_${index + 1}`, x: index / 10,
+    y: logistic(index / 10) }));
+  const tables = new Graph2DPointTableStore(), table = tables.publish(rows);
+  const source = applyGraph2DAuthoring(createEmptyGraph2DDocument("native-logistic"), { type: "create-point-series",
+    draft: { label: "Growth data", table, domain: graph2DPointDomain(rows), mode: "points",
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } } });
+  const document = createGraph2DDocument({ ...source, stableKey: "native-logistic" });
+  const objectId = document.source.objects[0]!.id;
+  const draft = { ...mobileGraphAnalysisDraft(document), objectId, kind: "regression-logistic" as const,
+    capacity: "4", rate: "1", midpoint: "1.5" };
+  const result = runMobileGraphAnalysis(document, draft, rows), fit = result.regression!;
+  const direct = analyzeGraph2DRegression({ document, objectId, rows,
+    model: "logistic-growth", initial: { capacity: 4, rate: 1, midpoint: 1.5 } });
+  expect(fit.model).toBe("logistic-growth");
+  expect(fit.coefficients).toEqual(direct.coefficients);
+  expect(result.publicationTables?.at(-1)?.columns).toEqual(["x", "Fitted y"]);
+  expect(result.rows.some(row => row.detail.includes("No parameter uncertainty"))).toBe(true);
+  expect(isMobileGraphAnalysisCurrent(result, document, { ...draft, midpoint: "1.6" })).toBe(false);
+  expect(() => runMobileGraphAnalysis(document, { ...draft, capacity: "-1" }, rows)).toThrow(/capacity must be positive/);
+  const lines = projectMobileGraphLines(graph2DRegressionOverlaySeries(fit), document.display.viewport,
+    { width: 320, height: 320 }, null, 512);
+  expect(lines.length).toBeGreaterThan(0);
+  const publication = createGraph2DPublication({ ...mobileGraphPublicationRequest(document, tables, result, draft,
+    { width: 320, height: 240 }, { x: "s", y: "m" }), deterministic: true });
+  const html = new TextDecoder().decode(renderGraph2DPublicationArtifact(publication, "html").bytes);
+  expect(html).toContain("logistic-growth");
+  expect(html).not.toContain("95% prediction");
+});
