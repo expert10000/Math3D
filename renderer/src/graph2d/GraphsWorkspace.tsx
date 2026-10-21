@@ -6,7 +6,7 @@ import {
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   previewGraph2DScientificDataset,
   previewGraph2DScientificSlice, verifyGraph2DScientificPlane, verifyGraph2DScientificVolume,
-  parseScientificSceneManifest,
+  parseScientificSceneManifest, createGraph2DFieldReference, inspectGraph2DFieldReference,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
@@ -21,6 +21,7 @@ import {
   type Graph2DScientificDatasetPreview,
   type Graph2DScientificPlane,
   type Graph2DScientificVolume,
+  type Graph2DFieldLocator, type Graph2DFieldReference,
   type Graph2DTrajectoryArtifact,
   type Graph2DPhasePortraitArtifact,
   type Graph2DTimeOdeArtifact,
@@ -140,8 +141,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   }, [analysisRequest, document.identity.id]);
   const [toolHint, setToolHint] = useState("");
   const [scientificImport, setScientificImport] = useState<{
-    manifestJson: string; fingerprint: string; datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
+    manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator;
+    datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
       { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } | null>(null);
+  const [fieldStatuses, setFieldStatuses] = useState<Record<string, "current" | "changed" | "missing" | "error">>({});
+  useEffect(() => setFieldStatuses({}), [document.identity.id]);
   const [scientificDatasetId, setScientificDatasetId] = useState("");
   const [scientificVaryingAxis, setScientificVaryingAxis] = useState<0 | 1 | null>(null);
   const [scientificFixedIndex, setScientificFixedIndex] = useState<number | null>(null);
@@ -177,6 +181,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const scientificLineAlreadyImported = !!scientificPreview?.origin.slice && scientificImportedLines.some(item =>
     item.kind === "point-series" && item.origin?.slice?.varyingAxis === scientificPreview.origin.slice?.varyingAxis &&
     item.origin?.slice?.fixedIndex === scientificPreview.origin.slice?.fixedIndex);
+  const scientificFieldAlreadySaved = !!scientificImport && !!scientificSelected && !!document.source.fieldReferences?.some(item =>
+    item.sceneFingerprint === scientificImport.fingerprint && item.datasetId === scientificSelected.datasetId &&
+    item.component === scientificSelected.component);
+  const scientificFieldViewed = !!scientificSelected && (scientificPlane?.datasetId === scientificSelected.datasetId &&
+    scientificPlane.component === scientificSelected.component || scientificVolume?.datasetId === scientificSelected.datasetId &&
+    scientificVolume.component === scientificSelected.component);
   const selectDefaultScientificSlice = (shape?: readonly number[]) => {
     const axis = shape?.length === 2 ? shape[0] >= 2 ? 0 : shape[1] >= 2 ? 1 : null : null;
     setScientificVaryingAxis(axis);
@@ -242,6 +252,41 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         selectDefaultScientificSlice(first?.shape); }
       else if (!opened.canceled) setScientificImportError(opened.error);
     } catch (error) { setScientificImportError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
+  };
+  const saveScientificFieldReference = () => {
+    if (!scientificImport || !scientificSelected?.shape || !onAuthoringCommit ||
+        !(scientificPlane?.datasetId === scientificSelected.datasetId && scientificPlane.component === scientificSelected.component ||
+          scientificVolume?.datasetId === scientificSelected.datasetId && scientificVolume.component === scientificSelected.component)) return;
+    try {
+      const reference = createGraph2DFieldReference(scientificImport.manifestJson, scientificImport.fingerprint,
+        scientificImport.locator, scientificSelected.datasetId, scientificSelected.component);
+      onAuthoringCommit({ type: "save-field-reference", reference });
+      setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
+      setScientificImportError("");
+    } catch (error) { setScientificImportError((error as Error).message); }
+  };
+  const openSavedFieldReference = async (reference: Graph2DFieldReference) => {
+    if (!window.scientificScenes?.openGraphDatasetReference || scientificImportBusy) return;
+    setScientificImportBusy(true); setScientificImportError("");
+    resetScientificSlice();
+    setScientificImport(null);
+    try {
+      const opened = await window.scientificScenes.openGraphDatasetReference({ locator: reference.locator,
+        sceneFingerprint: reference.sceneFingerprint });
+      if (!opened.ok) { setFieldStatuses(current => ({ ...current, [reference.id]: opened.status })); return; }
+      const status = inspectGraph2DFieldReference(reference, opened.source.manifestJson);
+      setFieldStatuses(current => ({ ...current, [reference.id]: status }));
+      if (status !== "current") { void window.scientificScenes.closeGraphDataset(opened.source.fingerprint); return; }
+      const selected = opened.source.datasets.find(item => item.datasetId === reference.datasetId &&
+        item.component === reference.component);
+      if (!selected) { setFieldStatuses(current => ({ ...current, [reference.id]: "changed" }));
+        void window.scientificScenes.closeGraphDataset(opened.source.fingerprint); return; }
+      setScientificImport(opened.source);
+      setScientificDatasetId(`${selected.datasetId}:${selected.component}`);
+      selectDefaultScientificSlice(selected.shape);
+    } catch (error) { setFieldStatuses(current => ({ ...current, [reference.id]: "error" }));
+      setScientificImportError((error as Error).message); }
     finally { setScientificImportBusy(false); }
   };
   const commitScientificDataset = () => {
@@ -766,6 +811,26 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const constructions = <Graph2DConstructionsPanel document={pointPreviewDocument ?? document}
     artifact={parameterPreviewActive ? null : shownConstructions}
     onAction={onConstructionCommit} onBatchAction={onConstructionBatchCommit} onFitConstruction={fitConstruction} />;
+  const savedFields = !!document.source.fieldReferences?.length && <section className="graph2d-saved-fields"
+    data-testid="graph2d-saved-fields" aria-label="Saved scientific fields">
+    <h3>Saved scientific fields</h3>
+    <p>References contain source metadata only. Verify the original .sscene before viewing field values.</p>
+    {document.source.fieldReferences.map(reference => <article key={reference.id}>
+      <strong>{reference.datasetId} · {reference.component}</strong>
+      <small>{reference.shape.join(" × ")} · {reference.axes.map(axis => `${axis.name} (${axis.unit})`).join(" / ")}</small>
+      <small>Source {reference.locator.kind === "preset" ? `preset ${reference.locator.value}` : reference.locator.value}</small>
+      <small role="status">{fieldStatuses[reference.id] === "current" ? "Source verified on last opening" :
+        fieldStatuses[reference.id] === "changed" ? "Changed source — values withheld" :
+        fieldStatuses[reference.id] === "missing" ? "Missing source — values unavailable" :
+        fieldStatuses[reference.id] === "error" ? "Reverification failed — values unavailable" :
+          "Not reverified on this opening"}</small>
+      <div><button type="button" disabled={scientificImportBusy || !window.scientificScenes?.openGraphDatasetReference}
+        onClick={() => void openSavedFieldReference(reference)}>Reverify and view</button>
+        <button type="button" disabled={!onAuthoringCommit}
+          onClick={() => onAuthoringCommit?.({ type: "remove-field-reference", referenceId: reference.id })}>
+          Remove reference</button></div>
+    </article>)}
+  </section>;
   const saveTangentButton = (available: boolean) => <button type="button"
     disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
       (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS - 2}
@@ -1362,13 +1427,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <div>{scientificSelected?.shape?.length !== 3 && <button type="button"
             disabled={!scientificPreview || scientificLineAlreadyImported || scientificImportBusy}
             onClick={commitScientificDataset}>Import as point series</button>}
+            {scientificSelected?.shape && <button type="button" disabled={!scientificFieldViewed || scientificFieldAlreadySaved ||
+              scientificImportBusy || !onAuthoringCommit} onClick={saveScientificFieldReference}>
+              Save field reference</button>}
             <button type="button" onClick={() => { resetScientificSlice();
               void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint); setScientificImport(null); }}>Cancel</button></div>
         </div>}
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">
           {showLeft && <details><summary>Graph objects ({document.source.objects.length})</summary>{functionList("compact")}</details>}
-          {showRight && <details><summary>Inspector</summary>{inspector}</details>}
+          {showRight && <details><summary>Inspector</summary>{inspector}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
           selectedPhaseSeed={selectedPhaseSeed}
@@ -1414,7 +1482,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}
+        </details>}{inspector}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}

@@ -12,8 +12,18 @@ export type ScientificSceneOpenResponse =
       reference: { format: "scientific-scene/v1"; title: string; directory: string; sceneFingerprint: string } } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
-export type ScientificGraphDatasetOpenResponse = { ok: true; source: ScientificGraphDatasetSource } |
+export type ScientificGraphDatasetOpenResponse = { ok: true; source: ScientificGraphDatasetSource & { locator: Graph2DFieldLocator } } |
   { ok: false; canceled: true } | { ok: false; canceled: false; error: string };
+export type ScientificGraphReferenceOpenResponse = { ok: true; source: ScientificGraphDatasetSource & { locator: Graph2DFieldLocator } } |
+  { ok: false; status: "missing" | "changed" | "error"; error: string };
+export type Graph2DFieldLocator = { kind: "directory" | "preset"; value: string };
+const isGraph2DFieldLocator = (value: unknown): value is Graph2DFieldLocator =>
+  !!value && typeof value === "object" && !Array.isArray(value) &&
+  Object.keys(value).sort().join(",") === "kind,value" &&
+  "kind" in value && "value" in value &&
+  (value.kind === "preset" && typeof value.value === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.value) ||
+    value.kind === "directory" && typeof value.value === "string" && value.value.length >= 8 &&
+    value.value.length <= 2048 && value.value.toLowerCase().endsWith(".sscene") && !/[\x00-\x1f]/.test(value.value));
 export type PythonPublisherPrepareResponse =
   | { ok: true; sessionId: string; executable: string; script: string; spec: string; output: string;
       scriptSha256: string; specSha256: string; sourceHash: string; reference: boolean }
@@ -68,7 +78,7 @@ export function registerScientificSceneIpc(): void {
         throw new TypeError("Choose a .sscene directory");
       const source = await openScientificGraphDatasets(directory);
       graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
-      return { ok: true, source };
+      return { ok: true, source: { ...source, locator: { kind: "directory", value: directory } } };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
   ipcMain.handle("scientificScenes:openGraphDatasetPreset", async (event, ...args: unknown[]): Promise<ScientificGraphDatasetOpenResponse> => {
@@ -83,8 +93,36 @@ export function registerScientificSceneIpc(): void {
       const source = await openScientificGraphDatasets(directory);
       if (source.fingerprint !== preset.fingerprint) throw new Error("Bundled Graph dataset preset changed");
       graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
-      return { ok: true, source };
+      return { ok: true, source: { ...source, locator: { kind: "preset", value: args[0] } } };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+  ipcMain.handle("scientificScenes:openGraphDatasetReference", async (event, ...args: unknown[]): Promise<ScientificGraphReferenceOpenResponse> => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      return { ok: false, status: "error", error: "Invalid Graph field reference request." };
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "locator,sceneFingerprint" ||
+        !isGraph2DFieldLocator(request.locator) ||
+        request.locator.kind === "directory" && !isAbsolute(request.locator.value) ||
+        typeof request.sceneFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.sceneFingerprint))
+      return { ok: false, status: "error", error: "Invalid Graph field reference request." };
+    const locator = request.locator as Graph2DFieldLocator;
+    const directory = locator.kind === "preset" ?
+      Object.prototype.hasOwnProperty.call(GRAPH_DATASET_PRESETS, locator.value) ?
+        app.isPackaged ? join(process.resourcesPath, "scientific-scenes", GRAPH_DATASET_PRESETS[locator.value as keyof typeof GRAPH_DATASET_PRESETS].directory) :
+          join(app.getAppPath(), "tests", "fixtures", "scientific-scene", GRAPH_DATASET_PRESETS[locator.value as keyof typeof GRAPH_DATASET_PRESETS].directory) : null : locator.value;
+    if (!directory) return { ok: false, status: "error", error: "Unknown Graph field preset." };
+    graphActive.delete(event.sender);
+    try {
+      const source = await openScientificGraphDatasets(directory);
+      if (source.fingerprint !== request.sceneFingerprint)
+        return { ok: false, status: "changed", error: "Saved field source has changed. Choose a matching source before viewing." };
+      graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
+      return { ok: true, source: { ...source, locator } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, status: /ENOENT|not found|does not exist/i.test(message) ? "missing" : "error",
+        error: message };
+    }
   });
   ipcMain.handle("scientificScenes:previewGraphSlice", async (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))

@@ -5,7 +5,8 @@ import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fiel
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
-import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
+import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, ScientificGraphReferenceOpenResponse, Graph2DFieldLocator,
+  PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
 import type { TopologySample, TopologySampleRequest, VectorSample, VectorSampleRequest } from "./main/quantumScene/topologyDisplay";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
@@ -552,6 +553,8 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "vortexFlow" | "vortexVolume"):
     Promise<ScientificGraphDatasetOpenResponse> =>
     ipcRenderer.invoke("scientificScenes:openGraphDatasetPreset", id),
+  openGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string }):
+    Promise<ScientificGraphReferenceOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDatasetReference", request),
   previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphSlice", request),
   previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;

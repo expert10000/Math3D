@@ -591,11 +591,16 @@ declare global {
   interface Window {
     scientificScenes?: {
       openGraphDataset: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
+          locator: import("@math3d/core").Graph2DFieldLocator;
           datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
             { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "vortexFlow" | "vortexVolume") =>
         ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>;
+      openGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string }) =>
+        Promise<{ ok: true; source: Awaited<ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>> extends infer R ?
+          R extends { ok: true; source: infer S } ? S : never : never } |
+          { ok: false; status: "missing" | "changed" | "error"; error: string }>;
       previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
         Promise<{ fingerprint: string; datasetId: string; component: string; varyingAxis: 0 | 1; fixedIndex: number;
           shape: [number, number]; resourceSha256: string; sliceSha256: string; values: number[] }>;

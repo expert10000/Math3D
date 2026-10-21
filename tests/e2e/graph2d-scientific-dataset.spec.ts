@@ -540,3 +540,57 @@ test("Graphs opens bundled scalar, complex and vector field presets without a fo
     await closeSurfaceApp(app);
   }
 });
+
+test("GRA-13.3 saves a field component reference and revalidates it after Graphs reopen", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    await page.getByRole("dialog", { name: "Scientific field presets" })
+      .getByRole("button", { name: "Planar vortex" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await dialog.getByLabel("Dataset component").selectOption("field:north");
+    await expect(dialog.getByRole("button", { name: "Save field reference" })).toBeDisabled();
+    await dialog.getByRole("button", { name: "View verified field" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified field plane for Velocity north/ })).toBeVisible();
+    await dialog.getByRole("button", { name: "Save field reference" }).click();
+    const saved = page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields");
+    await expect(saved).toContainText("field · north");
+    await expect(saved).toContainText("Source verified on last opening");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("kernel-workspace-save").click();
+    await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved");
+    const savedSources = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!)
+      .entries.filter((entry: { module: string }) => entry.module === "graph2d")
+      .map((entry: { checkpoint: { source: { fieldReferences?: unknown[] } } }) => entry.checkpoint.source.fieldReferences));
+    expect(savedSources).toContainEqual(expect.arrayContaining([expect.objectContaining({ datasetId: "field", component: "north" })]));
+    await page.reload();
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("kernel-workspace-reopen").click();
+    await expect(page.getByTestId("kernel-workspace-message")).toContainText("Reopened and replay-verified");
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    const reopened = page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields");
+    await expect(reopened).toContainText("Not reverified on this opening");
+    await reopened.getByRole("button", { name: "Reverify and view" }).click();
+    await expect(reopened).toContainText("Source verified on last opening");
+    await expect(page.getByRole("dialog", { name: "Import verified scientific dataset" }).getByLabel("Dataset component"))
+      .toHaveValue("field:north");
+    const changed = await page.evaluate(() => (window as unknown as { scientificScenes: { openGraphDatasetReference:
+      (request: { locator: { kind: "preset"; value: string }; sceneFingerprint: string }) => Promise<unknown> } })
+      .scientificScenes.openGraphDatasetReference({
+      locator: { kind: "preset", value: "vortexFlow" }, sceneFingerprint: "0".repeat(64) }));
+    expect(changed).toMatchObject({ ok: false, status: "changed" });
+    const missingPath = join(tmpdir(), `math3d-field-reference-missing-${Date.now()}.sscene`);
+    const missing = await page.evaluate(path => (window as unknown as { scientificScenes: { openGraphDatasetReference:
+      (request: { locator: { kind: "directory"; value: string }; sceneFingerprint: string }) => Promise<unknown> } })
+      .scientificScenes.openGraphDatasetReference({ locator: { kind: "directory", value: path },
+        sceneFingerprint: "0".repeat(64) }), missingPath);
+    expect(missing).toMatchObject({ ok: false, status: "missing" });
+  } finally { await closeSurfaceApp(app); }
+});

@@ -4,6 +4,7 @@ import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDa
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
+import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -71,6 +72,8 @@ export type Graph2DPiecewiseDraft = Readonly<{
 }>;
 export type Graph2DAuthoringAction =
   | Graph2DParameterAction
+  | Readonly<{ type: "save-field-reference"; reference: Graph2DFieldReference }>
+  | Readonly<{ type: "remove-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
@@ -245,6 +248,22 @@ export const validateGraph2DPiecewiseDraft = (draft: Graph2DPiecewiseDraft,
 
 export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2DAuthoringAction): Graph2DScene => {
   if (isGraph2DParameterAction(action)) return applyGraph2DParameterAction(document, action);
+  if (action.type === "save-field-reference") {
+    if (!isGraph2DFieldReference(action.reference)) throw new TypeError("Invalid field reference.");
+    const existing = document.source.fieldReferences ?? [];
+    if (existing.some(item => item.id === action.reference.id)) throw new TypeError("Field component is already saved.");
+    if (existing.length >= 16) throw new TypeError("Field reference limit reached.");
+    return { source: { ...document.source, fieldReferences: [...existing, action.reference] },
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "remove-field-reference") {
+    const existing = document.source.fieldReferences ?? [];
+    if (!existing.some(item => item.id === action.referenceId)) throw new TypeError("Field reference does not exist.");
+    const remaining = existing.filter(item => item.id !== action.referenceId);
+    const { fieldReferences: _removed, ...source } = document.source;
+    return { source: remaining.length ? { ...source, fieldReferences: remaining } : source,
+      display: document.display, selection: document.selection };
+  }
   const objects = [...document.source.objects];
   const displays = [...document.display.objects];
   let selection = document.selection;

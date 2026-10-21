@@ -43,6 +43,10 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-parameter-cards .graph2d-analysis-preview-toggle input { width:auto; min-height:auto; margin:0; }
 .graph2d-parameters-panel input,.graph2d-parameters-panel select { width:100%; box-sizing:border-box; min-height:36px; }
 .graph2d-parameters-panel button { min-height:36px; margin:4px; }
+.graph2d-saved-fields { border-top:1px solid var(--border); padding-top:12px; margin-top:16px; }
+.graph2d-saved-fields article { border:1px solid var(--border); border-radius:8px; padding:10px; margin:8px 0; display:grid; gap:6px; }
+.graph2d-saved-fields small { overflow-wrap:anywhere; }
+.graph2d-saved-fields article div { display:flex; flex-wrap:wrap; gap:6px; }
 .graph2d-grid-panel label:has(input[type="checkbox"]) { flex-direction:row; align-items:center; gap:10px; min-height:44px; }
 .graph2d-grid-panel input,.graph2d-grid-panel select,.graph2d-grid-panel button { min-height:44px; }
 .graph2d-grid-panel input[type="checkbox"] { width:20px; height:20px; min-height:20px; flex-shrink:0; }

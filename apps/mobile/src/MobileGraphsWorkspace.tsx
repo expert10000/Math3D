@@ -558,6 +558,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
         <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Explicit calculus, polar measurements, and parametric/polar local differentials use source expressions; regression uses original point data. Sampling is approximate.</Text>
+        {!!document.source.fieldReferences?.length && <View accessibilityLabel="Saved scientific field references" testID="mobile-graph-field-references">
+          <Text style={s.title}>Saved scientific fields</Text>
+          {document.source.fieldReferences.map(reference => <View key={reference.id}>
+            <Text>{reference.datasetId} · {reference.component} · {reference.shape.join(" × ")}</Text>
+            <Text>{reference.axes.map(axis => `${axis.name} (${axis.unit})`).join(" / ")}</Text>
+            <Text>Source metadata only. Reverify the original .sscene on desktop before viewing values.</Text>
+          </View>)}
+        </View>}
         {guided && <View accessibilityLabel={`Guide ${guided.concept.title}`} testID="mobile-graph-guided-panel">
           <Text accessibilityRole="header" style={s.title}>Guide: {guided.concept.title} · {guided.state}</Text>
           {guided.state === "stale" && <Text accessibilityLiveRegion="polite">Source or marker changed. These steps describe the original example; request fresh analysis.</Text>}

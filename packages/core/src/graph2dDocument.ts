@@ -7,6 +7,7 @@ import type { ValidationResult } from "./validation";
 import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
 import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 import { graph2DParameterExpressionsCurrent } from "./graph2dParameterExpressions";
+import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
 import { isGraph2DViewport } from "./graph2dViewport";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
@@ -28,6 +29,7 @@ export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
 export const GRAPH2D_POINT_SERIES_CAPABILITY = "graph2d.point-series.v1" as const;
 export const GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY = "graph2d.scientific-dataset.v1" as const;
 export const GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY = "graph2d.scientific-dataset-slice.v1" as const;
+export const GRAPH2D_FIELD_REFERENCE_CAPABILITY = "graph2d.field-reference.v1" as const;
 export const GRAPH2D_PIECEWISE_CAPABILITY = "graph2d.piecewise.v1" as const;
 export const GRAPH2D_SLOPE_FIELD_CAPABILITY = "graph2d.slope-field.v1" as const;
 export const GRAPH2D_TRAJECTORY_CAPABILITY = "graph2d.trajectory.v1" as const;
@@ -161,6 +163,7 @@ export type Graph2DSource = Readonly<{
   variables: readonly Graph2DParameter[];
   assumptions: readonly string[];
   constructions?: Graph2DConstructionSet;
+  fieldReferences?: readonly Graph2DFieldReference[];
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport" | "axes">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
@@ -172,6 +175,7 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin) ? [GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin?.slice) ?
       [GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY] : []),
+    ...(source.fieldReferences?.length ? [GRAPH2D_FIELD_REFERENCE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "slope-field") ? [GRAPH2D_SLOPE_FIELD_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "trajectory") ? [GRAPH2D_TRAJECTORY_CAPABILITY] : []),
@@ -215,7 +219,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -348,14 +352,19 @@ const validPiecewiseObject = (value: unknown, variables: readonly string[]): val
   return true;
 };
 const validSource = (value: unknown): value is Graph2DSource => {
-  if (!record(value) || !exact(value, ["objects", "variables", "assumptions", ...(value.constructions !== undefined ? ["constructions"] : [])]) || !Array.isArray(value.objects) ||
+  if (!record(value) || !exact(value, ["objects", "variables", "assumptions", ...(value.constructions !== undefined ? ["constructions"] : []),
+      ...(value.fieldReferences !== undefined ? ["fieldReferences"] : [])]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
       !Array.isArray(value.variables) || value.variables.length > 16 ||
       !value.variables.every(isGraph2DParameter) ||
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
       !graph2DParameterExpressionsCurrent(value.variables) ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
-      !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;
+      !value.assumptions.every((entry: unknown) => bounded(entry, 160)) ||
+      (value.fieldReferences !== undefined && (!Array.isArray(value.fieldReferences) ||
+        value.fieldReferences.length < 1 || value.fieldReferences.length > 16 ||
+        !value.fieldReferences.every(isGraph2DFieldReference) ||
+        new Set(value.fieldReferences.map((entry: Graph2DFieldReference) => entry.id)).size !== value.fieldReferences.length))) return false;
   const names = value.variables.map((entry: { name: string }) => entry.name);
   if (names.includes("t") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "parametric" || entry.kind === "time-ode")) return false;
   if (names.includes("theta") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "polar")) return false;
