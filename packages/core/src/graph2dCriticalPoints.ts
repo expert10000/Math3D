@@ -286,7 +286,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
   const diagnosticList = [...diagnostics.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, entry]) => ({ code, ...entry }));
   const publication = createAnalysisResultEnvelope({
     resultId: "graph2d.critical-points." + structuralHash({ source, objectId: object.id, interval,
-      algorithmVersion: GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION }).slice(7),
+      maxEvaluations, algorithmVersion: GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION }).slice(7),
     status: status === "unavailable" ? "unsupported" : "numerical",
     provenance: { source, operation: { type: "graph2d.critical-points", algorithm: "adaptive-grid-bracket-residual",
       algorithmVersion: GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION,

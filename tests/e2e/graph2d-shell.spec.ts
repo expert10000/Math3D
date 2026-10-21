@@ -389,6 +389,9 @@ test("Graphs selects source-linked zeros and refreshes extrema after editing", a
     await saveGraphEditor(app.page);
     const inspector = app.page.getByLabel("Graph inspector");
     const results = inspector.getByTestId("graph2d-critical-points");
+    await results.getByLabel("Analysis evaluation budget").selectOption("2000");
+    await expect(results.getByLabel("Analysis evaluation budget")).toHaveValue("2000");
+    await expect(results.getByTestId("graph2d-critical-scan-status")).toContainText("evaluations");
     await expect(results.getByRole("button", { name: /Select zero at x/ }).first()).toBeVisible();
     await expect(results.getByRole("button", { name: /Select minimum at x/ }).first()).toBeVisible();
     await expect(results.getByRole("button", { name: /Select inflection at x/ })).toHaveCount(0);
@@ -451,6 +454,12 @@ test("Graphs Inspector filters, sorts, and batch saves validated numerical resul
       (_event, item) => item.setSavePath(target)), csvPath);
     await results.getByRole("button", { name: "Export results" }).click();
     await expect.poll(() => { try { return readFileSync(csvPath, "utf8"); } catch { return ""; } }).toContain("kind,x,y,residual");
+    const jsonPath = test.info().outputPath("numerical-analysis.json");
+    await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), jsonPath);
+    await results.getByRole("button", { name: "Export numerical JSON" }).click();
+    await expect.poll(() => { try { return JSON.parse(readFileSync(jsonPath, "utf8")).format; } catch { return ""; } })
+      .toBe("math3d.graph2d-numerical.v1");
   } finally {
     await closeSurfaceApp(app);
   }

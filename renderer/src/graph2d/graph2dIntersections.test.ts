@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DIntersections, applyGraph2DAuthoring, createEmptyGraph2DDocument,
-  createGraph2DDocument, isGraph2DIntersectionCurrent } from "@math3d/core";
+  createGraph2DDocument, createGraph2DNumericalDataset, isGraph2DIntersectionCurrent } from "@math3d/core";
 
 const documentFor = (first: string, second: string) => {
   let document = createEmptyGraph2DDocument(`intersection:${first}:${second}`);
@@ -31,6 +31,10 @@ describe("Graph2D pairwise intersections", () => {
       entry.resultId === result.resultId && entry.residual <= 1e-7)).toBe(true);
     expect(result.evaluations).toBeLessThanOrEqual(12000);
     expect(isGraph2DIntersectionCurrent(result, document)).toBe(true);
+    const dataset = createGraph2DNumericalDataset(result);
+    expect(dataset).toMatchObject({ format: "math3d.graph2d-numerical.v1", operation: "intersections",
+      objectIds: ["function_1", "function_2"], scan: { quality: "approximate" } });
+    expect(dataset.candidates).toHaveLength(2);
   });
 
   it("reports an even tangency as possible, including off-grid", () => {

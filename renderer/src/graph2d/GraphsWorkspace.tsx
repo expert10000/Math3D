@@ -63,6 +63,7 @@ import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
+import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
@@ -277,6 +278,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [editRequest, setEditRequest] = useState<{ objectId: string; sequence: number } | null>(null);
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
+  const [criticalAnalysisBudget, setCriticalAnalysisBudget] = useState(12000);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [parameterCards, setParameterCards] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
@@ -659,8 +661,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     if (!selectedObject || selectedObject.kind !== "explicit-cartesian") return null;
     const bounds = resolveGraph2DViewport(document.display.viewport, size);
     return analyzeGraph2DCriticalPoints({ document, objectId: selectedObject.id,
-      interval: { min: bounds.xMin, max: bounds.xMax } });
-  }, [document, size, selectedObject]);
+      interval: { min: bounds.xMin, max: bounds.xMax }, maxEvaluations: criticalAnalysisBudget });
+  }, [document, size, selectedObject, criticalAnalysisBudget]);
   const intervals = useMemo(() => criticalPoints ? analyzeGraph2DIntervals({ document,
     objectId: criticalPoints.objectId, interval: criticalPoints.interval, criticalPoints }) : null,
   [document, criticalPoints]);
@@ -849,6 +851,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       </div>)}
     </section>}
     {criticalPoints && <Graph2DCriticalResultsPanel analysis={criticalPoints} document={document}
+      analysisBudget={criticalAnalysisBudget} onAnalysisBudgetChange={setCriticalAnalysisBudget}
       onSelectionCommit={onSelectionCommit} onConstructionBatchCommit={onConstructionBatchCommit} />}
     {intervals && <section className="graph2d-intervals" data-testid="graph2d-intervals"
       data-result-id={intervals.resultId} aria-label="Monotonicity and concavity intervals">
@@ -982,6 +985,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <small>{intersections.invalidCells} undefined cells · {intersections.unresolvedBrackets} unresolved brackets ·
             {" "}{intersections.coincidentCells} coincident cells</small>}
         <small>Refined means a bracket solver met residual tolerance 1e−7. A small residual does not prove a unique intersection or complete enumeration. Tangencies are possible candidates; narrow intersections may be missed.</small>
+        <button type="button" onClick={() => downloadGraph2DNumericalDataset(intersections)}>Export numerical JSON</button>
         <Graph2DAnalysisQualityGuide />
       </div>}
     </section>}

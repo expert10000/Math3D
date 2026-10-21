@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeGraph2DCriticalPoints, applyGraph2DAuthoring, createEmptyGraph2DDocument,
   analyzeGraph2DDerivative,
   graph2DQualityForNumericalCandidate,
+  createGraph2DNumericalDataset,
   isGraph2DCriticalPointCurrent,
   createGraph2DDocument } from "@math3d/core";
 
@@ -32,6 +33,11 @@ describe("Graph2D critical point analysis", () => {
       identity: { ...document.identity, revision: document.identity.revision + 1 } })).toBe(false);
     expect(result.candidates.every((entry) => Number.isFinite(entry.residual) && entry.residual <= 1e-7)).toBe(true);
     expect(result.candidates.find((entry) => entry.kind === "zero")?.quality).toBe("approximate");
+    const dataset = createGraph2DNumericalDataset(result);
+    expect(dataset).toMatchObject({ format: "math3d.graph2d-numerical.v1", operation: "critical-points",
+      source: { documentId: document.identity.id, structuralHash: document.identity.structuralHash },
+      scan: { status: "complete", quality: "approximate" } });
+    expect(dataset.candidates.some(entry => entry.kind === "zero" && entry.x === 0)).toBe(true);
   });
 
   it("only labels residual-checked bracket refinement as Refined", () => {
@@ -120,6 +126,10 @@ describe("Graph2D critical point analysis", () => {
     expect(result.evaluations).toBe(400);
     expect(result.diagnostics.some((entry) => entry.code === "evaluation-limit")).toBe(true);
     expect(result.publication.warnings.some((warning) => warning.includes("Analysis is partial"))).toBe(true);
+    const thorough = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
+      interval: { min: -10, max: 10 }, maxEvaluations: 12000 });
+    expect(thorough.publication.resultId).not.toBe(result.publication.resultId);
+    expect(thorough.publication.provenance.operation.parameters.maxEvaluations).toBe(12000);
   });
 
   it("does not claim a finished bounded scan for frequencies beyond its refinement budget", () => {
