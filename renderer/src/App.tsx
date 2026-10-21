@@ -10138,7 +10138,8 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader) => {
+const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader,
+  sourceReader?: (item: ProjectResourceRequirement) => Uint8Array | null) => {
   const exportedAt = formatExportTimestamp(Date.now());
   if (!workbooks.length) {
     return ["# Math3D Workbook Export", `_Exported ${exportedAt}_`, "_No workbooks available._"].join("\n\n");
@@ -10242,7 +10243,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
       });
     });
   });
-  lines.push(notebookPublicationMarkdown(notebookPublicationManifest(workbooks, project, reader, selected)));
+  lines.push(notebookPublicationMarkdown(notebookPublicationManifest(workbooks, project, reader, selected, sourceReader)));
   return lines.join("\n\n");
 };
 
@@ -10314,7 +10315,8 @@ const buildWorkbookAnalysisTablesCsv = (workbooks: Workbook[], activeWorkbookId:
   return rows.join("\n");
 };
 
-const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader) => {
+const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader,
+  sourceReader?: (item: ProjectResourceRequirement) => Uint8Array | null) => {
   const exportedAt = formatExportTimestamp(Date.now());
   const multi = workbooks.length > 1;
   const hasWorkbooks = workbooks.length > 0;
@@ -10493,7 +10495,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
     <div class="report">
       ${header}
       ${workbooksHtml}
-      ${notebookPublicationManifestHtml(notebookPublicationManifest(workbooks, project, reader, selected))}
+      ${notebookPublicationManifestHtml(notebookPublicationManifest(workbooks, project, reader, selected, sourceReader))}
     </div>
   </body>
 </html>`;
@@ -42615,6 +42617,7 @@ const App: React.FC = () => {
   const getNotebookSnapshotSourceRef = useRef<() => ReturnType<typeof viewerSourceFromDocument> | null>(() => null);
   const getNotebookCaptureContextRef = useRef<() => NotebookProjectContext | null>(() => null);
   const getWorkbookDependencyProjectRef = useRef<() => Math3DProject | null>(() => null);
+  const readComparisonReportResourceRef = useRef<(item: ProjectResourceRequirement) => Uint8Array | null>(() => null);
   const workbookStatus = useMemo(() => {
     const statuses = Object.values(computeStatusById);
     if (!statuses.length) return "ok";
@@ -55803,7 +55806,7 @@ case "mobius":
   }, [workbookBundleJson]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
-    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current());
+    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);
     const base =
       workbooks.length > 1
         ? "math3d-book"
@@ -55812,7 +55815,7 @@ case "mobius":
   }, [workbooks, activeWorkbookId, activeWorkbook]);
 
   const handleExportWorkbooksPdf = useCallback(() => {
-    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current());
+    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);
     const base =
       workbooks.length > 1
         ? "math3d-book"
@@ -77486,6 +77489,7 @@ case "mobius":
     }
     return null;
   };
+  readComparisonReportResourceRef.current = readComparisonResource;
   const readNotebookContext = () => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace, readNotebookArtifact);
   const getNotebookContext = () => {
     const context = readNotebookContext();
@@ -77503,9 +77507,9 @@ case "mobius":
     const book = activeWorkbook, context = getNotebookContext(), project = context?.project ?? null;
     const base = sanitizeFileBase(book.title, "workbook");
     if (kind === "markdown") {
-      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact), base + ".report.md", "text/markdown"); return;
+      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact, readComparisonResource), base + ".report.md", "text/markdown"); return;
     }
-    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact);
+    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact, readComparisonResource);
     if (kind === "pdf") {
       const opened = window.open("", "_blank");
       if (!opened) { downloadTextFile(html, base + ".report.html", "text/html"); return; }

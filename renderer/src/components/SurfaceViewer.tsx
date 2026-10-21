@@ -1596,6 +1596,7 @@ type Props = {
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   captureToken?: number;
+  captureSize?: "thumbnail" | "report";
   onCaptureThumbnail?: (dataUrl: string | null) => void;
 
   showBoundingBox?: boolean;
@@ -1896,6 +1897,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     cameraTourCommand = null,
     onCameraTourEvent,
     captureToken = 0,
+    captureSize = "thumbnail",
     onCaptureThumbnail,
 
     showBoundingBox = false,
@@ -11775,8 +11777,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     renderer.render(scene, cam);
     const src = renderer.domElement;
-    const w = 240;
-    const h = 160;
+    const w = captureSize === "report" ? 720 : 240;
+    const h = captureSize === "report" ? 480 : 160;
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
@@ -11787,7 +11789,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     ctx.drawImage(src, 0, 0, w, h);
     onCaptureThumbnail(canvas.toDataURL("image/jpeg", 0.7));
-  }, [captureToken]);
+  }, [captureToken, captureSize]);
 
   useEffect(() => {
     const gizmo = viewGizmoRef.current;

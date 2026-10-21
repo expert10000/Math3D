@@ -15,6 +15,8 @@ import { GeometryViewer } from "./GeometryViewer";
 import { ParamSurfaceViewer } from "./ParamSurfaceViewer";
 import { surfaceDocumentBinding, type SurfaceDocumentBinding } from "../workspace/surfaceDocumentBinding";
 import type { CameraSyncState, OverlayPointSet, OverlayPolylineGroup } from "./SurfaceViewer";
+import { type ComparisonEvidenceSelection } from "../projects/projectComparisonEvidence";
+import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceExport";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -22,7 +24,7 @@ type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number
 export type RenderMember = { id: string; title: string; revision: number; hash: string; generation: "current" | "retained checkpoint"; slot?: 0 | 1;
   coordinates: ProjectCoordinateFrameRead; meshes: RenderMesh[]; points: OverlayPointSet[]; lines: OverlayPolylineGroup[];
   param?: { binding?: SurfaceDocumentBinding; x?: string; y?: string; z?: string; domain?: { uMin: number; uMax: number; vMin: number; vMax: number }; unit: string; opacity: number } };
-type Pick = { memberId: string; revision: number; hash: string; meshKey?: string; faceIndex?: number; uv?: { u: number; v: number };
+type Pick = ComparisonEvidenceSelection & { meshKey?: string; faceIndex?: number; uv?: { u: number; v: number };
   point: { x: number; y: number; z: number } };
 const colors = ["#3976d7", "#e8793a"] as const;
 const supported = (project: Math3DProject) => project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module));
@@ -116,9 +118,10 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
 };
 
 export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
+  captureToken?: number; onCaptureThumbnail?: (dataUrl: string | null) => void;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, height = 520, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
   const points = useMemo(() => members.flatMap(member => member.points), [members]);
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
@@ -131,9 +134,13 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
       paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
       isCameraLeader={!!onCameraSync} onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       paramProbeUV={linkedUV} paramProbeToken={linkedToken}
+      captureToken={captureToken} onCaptureThumbnail={onCaptureThumbnail}
+      captureSize="report"
       onInspectPick={hit => onPick({ memberId: members[0]!.id,
         revision: members[0]!.revision, hash: members[0]!.hash, point: hit.point, ...(hit.uv ? { uv: hit.uv } : {}) })} /> :
     <GeometryViewer scene={{} as GeometryScene} meshOverrides={meshes} extraOverlayPointSets={points} extraOverlayPolylineGroups={lines}
+      captureToken={captureToken} onCaptureThumbnail={onCaptureThumbnail}
+      captureSize="report"
       onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       pickEnabled onPick={hit => { const key = hit.meshKey ?? ""; const member = members.find(item => key === item.id || key.startsWith(`${item.id}/`));
         if (member) onPick({ memberId: member.id, revision: member.revision, hash: member.hash,
@@ -219,6 +226,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     }
     catch (error) { return { members: [] as RenderMember[], error: (error as Error).message }; }
   }, [composition, project, readResource]);
+  const report = useComparisonEvidenceExport(project, composition, readResource, pick);
   const linkable = mode === "side-by-side" && compatibleCompositionParameterChart(resolved.members);
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
@@ -276,9 +284,11 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       </div>)}
     </div>
     {resolved.error ? <p role="alert">{resolved.error}</p> : <div style={{ display: "grid", gridTemplateColumns: mode === "overlay" ? "1fr" : "repeat(2, minmax(0, 1fr))", gap: 12, flex: 1 }}>
-      {mode === "overlay" ? <ComparisonPane members={resolved.members} label={`Overlay · ${frame} · ${unit}`} onPick={onPick} /> :
+      {mode === "overlay" ? <ComparisonPane members={resolved.members} label={`Overlay · ${frame} · ${unit}`} onPick={onPick}
+        captureToken={report.captureToken} onCaptureThumbnail={report.onCapture(0)} /> :
         composition?.members.map((member, index) => <ComparisonPane key={`${index}:${member.documentId}`} members={resolved.members.filter(item => item.slot === index)}
           label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
+          captureToken={report.captureToken} onCaptureThumbnail={report.onCapture(index)}
           linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token}
           onCameraSync={cameraLinked && index === cameraLeader ? onLeaderCamera : undefined}
           cameraOverride={cameraLinked && index !== cameraLeader ? cameraPose?.state : null}
@@ -289,6 +299,17 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         "Source-declared coordinate frames, axes, handedness, and units match this overlay." :
         "Unverified overlay: at least one source has no coordinate-frame declaration. The frame and unit above are operator assertions."}
     </p>}
+    {composition && <section data-testid="project-comparison-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8 }}>
+      <strong>Exportable comparison evidence</strong><p style={{ margin: "4px 0" }}>A/B source revisions and complete hashes are retained in the report; selected values are local to their source.</p>
+      {composition.members.map((member, index) => <div key={index} style={{ overflowWrap: "anywhere" }}>
+        {index === 0 ? "A" : "B"} · {titleOf(project, member.documentId)} · r{member.expected.revision} · {member.expected.structuralHash}
+      </div>)}
+      <p style={{ margin: "4px 0" }}>Alignment: {mode === "overlay" ? resolved.verifiedOverlay ? "source-declared match" : "operator assertion (not independently verified)" : "not applicable; side-by-side"}.
+        {pick ? ` Selected local xyz: ${JSON.stringify(pick.point)}${pick.uv ? `; stored (u,v): ${JSON.stringify(pick.uv)}` : ""}.` : " No point selected."}</p>
+      <button data-testid="project-comparison-export-evidence" disabled={!saved || !!resolved.error || report.busy} onClick={() => void report.exportEvidence()}>
+        {report.busy ? "Capturing views…" : "Export checked HTML report with views"}</button>
+      {report.message && <span role="status" style={{ marginLeft: 8 }}>{report.message}</span>}
+    </section>}
     <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}><strong>Selection</strong> {pick ?
       `${titleOf(project, pick.memberId)} · r${pick.revision} · ${pick.hash.slice(0, 20)}… · ${pick.meshKey ?? "mesh"} · face ${pick.faceIndex ?? "—"} · (${pick.point.x.toPrecision(5)}, ${pick.point.y.toPrecision(5)}, ${pick.point.z.toPrecision(5)})` :
       "Click a rendered mesh to inspect its exact member and local coordinate; point and line overlays are not pickable here."}

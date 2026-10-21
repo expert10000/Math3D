@@ -56,6 +56,9 @@ export type GeometryViewerProps = {
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
   cameraFitCommand?: CameraFitCommand | null;
+  captureToken?: number;
+  captureSize?: "thumbnail" | "report";
+  onCaptureThumbnail?: (dataUrl: string | null) => void;
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
@@ -174,6 +177,9 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   cameraOverride = null,
   cameraOverrideToken = 0,
   cameraFitCommand = null,
+  captureToken = 0,
+  captureSize = "thumbnail",
+  onCaptureThumbnail,
   cameraTourCommand = null,
   onCameraTourEvent,
   extraOverlayPolylineGroups = null,
@@ -379,6 +385,9 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       cameraOverride={cameraOverride}
       cameraOverrideToken={cameraOverrideToken}
       cameraFitCommand={cameraFitCommand}
+      captureToken={captureToken}
+      captureSize={captureSize}
+      onCaptureThumbnail={onCaptureThumbnail}
       cameraTourCommand={cameraTourCommand}
       onCameraTourEvent={onCameraTourEvent}
       renderQuality={renderQuality}

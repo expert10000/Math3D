@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC05)
+# Project comparison and composition (PC01–PC08)
 
 This is a read-only view of two documents already saved in one Math3D Project. A
 composition saves source IDs, exact document revisions and hashes, visibility,
@@ -95,6 +95,38 @@ overlay alignment remains an operator assertion when source metadata is absent.
 
 Focused checks: `npx vitest run tests/unit/workbookProjectComparison.test.ts`
 and `npx playwright test tests/e2e/workbook-comparison.spec.ts --reporter=list`.
+
+## PC08 · Exportable comparison evidence
+
+Status: **Complete** for the current saved Mesh, Geometry and bounded Surface
+comparison adapters. PC03 and PC05 retain the partial boundaries below.
+
+Open either built-in comparison starter under **Projects → Starter projects**, then
+**Compare saved documents → Saved composition**. The **Exportable comparison
+evidence** section shows A/B titles, exact source revisions and complete hashes,
+the alignment qualification, and a picked local coordinate (plus stored `(u,v)`
+for a compatible Surface chart). **Export checked HTML report with views**
+captures the existing one- or two-pane viewer and downloads a standalone HTML
+report with those images and a machine-readable evidence record. The captured
+images are display illustrations, not scientific source arrays. The report
+re-verifies both exact generations and any Mesh sidecars before and after
+capture; a changed, missing, mismatched or tampered source refuses export.
+
+The same control appears inside **Workbook → Visualize → Saved Project
+comparison → Show embedded comparison**. A selected Workbook publication
+(Markdown, HTML, print/PDF, or portable) also includes a checked A/B evidence
+section with revisions, hashes, units and qualification. The publication does
+not claim a transient viewer selection or image was saved in the Workbook:
+export a selected/captured view from the open comparison control. Portable
+publication verifies its embedded Project and the same source references on
+reopen. No second renderer, copied scientific buffers or worker calculation is
+introduced.
+
+Checks: `npx vitest run tests/unit/projectComparisonEvidence.test.ts` and
+`npx playwright test tests/e2e/project-comparison-evidence.spec.ts --reporter=list`.
+PC03 remains **Partial** for legacy sources without coordinate declarations;
+PC05 remains **Partial** for unretained generations and unrelated-model
+selection mapping. PC08 does not reinterpret those limitations as verified.
 
 An optional source declaration uses the exact object
 `{"format":"math3d.coordinate-frame/v1","frame":"laboratory xyz","unit":"mm","axes":["x","y","z"],"handedness":"right"}`.

@@ -3,8 +3,10 @@ import { assessWorkbookClaim, inspectNotebookProvenance, normalizeNotebookRefere
 import { captureProjectResources, exportProjectPackage, parseProjectPackage, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
+import { inspectWorkbookComparisonReference } from "@math3d/workbook";
+import { createProjectComparisonEvidence } from "../projects/projectComparisonEvidence";
 
-export const notebookPublicationManifest = (books: readonly Workbook[], project: Math3DProject | null, reader?: NotebookArtifactReader, selected?: readonly string[]) => {
+export const notebookPublicationManifest = (books: readonly Workbook[], project: Math3DProject | null, reader?: NotebookArtifactReader, selected?: readonly string[], sourceReader?: ProjectResourceReader) => {
   const citations = new Map<string, NotebookReference>();
   const blocks = books.flatMap(book => book.stages.flatMap(stage => stage.blocks.filter(block => !selected || selected.includes(block.id)).map(block => {
     const cite = (reference: NotebookReference) => { if (!normalizeNotebookReference(reference)) throw new TypeError("Invalid publication citation."); citations.set(canonicalJsonStringify(reference), reference); };
@@ -18,13 +20,19 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
       for (const result of snapshot!.provenance?.results ?? []) cite(result.reference);
       return { hash: structuralHash(snapshot!), capturedAt: snapshot!.capturedAt, qualification: workbookSnapshotQualification(snapshot!), provenance: snapshot!.provenance ?? null };
     });
+    const comparison = block.visualize?.comparison ? (() => {
+      const inspected = inspectWorkbookComparisonReference(project, block.visualize.comparison!);
+      if (inspected.status !== "current" || !project || !inspected.composition || !sourceReader)
+        throw new TypeError(`Workbook comparison ${block.title} is stale, missing, or lacks verified source bytes.`);
+      return createProjectComparisonEvidence(project, inspected.composition, sourceReader);
+    })() : null;
     const notes = (book.dependencies ?? []).filter(edge => edge.targetBlockId === block.id && edge.source.kind === "note").map(edge => {
       if (edge.source.kind !== "note") throw new Error("Expected Note source");
       const ref = edge.source, note = ref.projectId === project?.identity.id ? project.notes?.find(note => note.identity.id === ref.noteId) : undefined;
       return { reference: ref, status: note ? note.identity.structuralHash === ref.hash && note.identity.revision === ref.revision ? "current" : "stale" : "missing",
         renderedBody: note ? projectNoteRenderedBody(note, project!.workspace) : null };
     });
-    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots };
+    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison };
   })));
   return { schemaVersion: 1 as const, projectId: project?.identity.id ?? null, projectHash: project ? structuralHash(project) : null,
     parameters: books.map(book => ({ workbookId: book.id, namedParameters: book.namedParameters ?? [] })),
@@ -35,14 +43,22 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
     }) };
 };
 export type NotebookPublicationManifest = ReturnType<typeof notebookPublicationManifest>;
-export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n\`\`\`json\n${JSON.stringify(manifest, null, 2)}\n\`\`\``;
+export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n${manifest.blocks.filter(block => block.comparison).map(block => {
+  const comparison = block.comparison!;
+  return `### Saved Project comparison · ${comparison.title}\n\nAlignment: ${comparison.alignment}.\n\n${comparison.members.map(member => `- ${member.slot}: ${member.title} · ${member.documentId} · r${member.revision} · ${member.structuralHash} · ${member.unit ?? "unit not recorded"}`).join("\n")}\n\nSelection: ${comparison.selection ? JSON.stringify(comparison.selection) : "No recorded selection in this report; use the open comparison to export a selected view."}`;
+}).join("\n\n")}\n\n\`\`\`json\n${JSON.stringify(manifest, null, 2)}\n\`\`\``;
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 export const notebookPublicationManifestHtml = (manifest: NotebookPublicationManifest) => {
   const rows = manifest.citations.map(item => {
     const result = item.result, source = item.reference.source;
     return `<tr><td>${escapeHtml(item.reference.targetId)}</td><td>${escapeHtml(item.status)}<br>${escapeHtml(item.reason)}</td><td>${escapeHtml(source.documentId)}<br>r${source.revision} · g${source.generation}<br>${escapeHtml(source.structuralHash)}</td><td>${escapeHtml(result ? result.status + " · " + result.provenance.operation.algorithm + " v" + result.provenance.operation.algorithmVersion + " · " + result.provenance.engine.name : "Document context")}<br>${escapeHtml(result?.warnings.join("; ") ?? "")}</td></tr>`;
   }).join("");
+  const comparisons = manifest.blocks.filter(block => block.comparison).map(block => {
+    const comparison = block.comparison!;
+    return `<section data-comparison-evidence><h3>Saved Project comparison · ${escapeHtml(comparison.title)}</h3><p>Mode: ${comparison.mode} · alignment: <strong>${comparison.alignment}</strong></p><p>Project ${escapeHtml(comparison.projectId)} · composition ${escapeHtml(comparison.compositionHash)}</p><table><thead><tr><th>Source</th><th>Exact saved generation</th><th>Unit</th></tr></thead><tbody>${comparison.members.map(member => `<tr><td>${member.slot} · ${escapeHtml(member.title)}<br>${escapeHtml(member.documentId)}</td><td>r${member.revision} · ${escapeHtml(member.generation)}<br>${escapeHtml(member.structuralHash)}</td><td>${escapeHtml(member.unit ?? "not recorded")}</td></tr>`).join("")}</tbody></table><p>Selection: none recorded in this publication. Export a selected view from the open comparison.</p><p>${escapeHtml(comparison.qualification)}</p></section>`;
+  }).join("");
   return `<section data-publication-manifest><h2>Linked-source manifest</h2><p>${escapeHtml(manifest.qualification)}</p>
+    ${comparisons}
     <table style="width:100%;font-size:11px;overflow-wrap:anywhere"><thead><tr><th>Exact target</th><th>Freshness</th><th>Recorded source</th><th>Authority, method and warnings</th></tr></thead><tbody>${rows}</tbody></table>
     <details><summary>Exact manifest (JSON)</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(JSON.stringify(manifest, null, 2))}</pre></details></section>`;
 };
@@ -53,7 +69,7 @@ export function createPortableNotebookPublication(project: Math3DProject, books:
   const workbookBytes = new Map<string, Uint8Array>();
   for (const book of books) { const prepared = prepareProjectWorkbook(next, book, `publication-${book.id}`); next = upsertMath3DProjectWorkbook(next, prepared.reference); workbookBytes.set(prepared.reference.id, prepared.bytes); }
   const captured = captureProjectResources(next, item => workbookBytes.get(item.id) ?? sourceReader?.(item) ?? resources.bytes(item));
-  const manifest = notebookPublicationManifest(books, project, reader, selected);
+  const manifest = notebookPublicationManifest(books, project, reader, selected, sourceReader);
   const artifacts: { id: string; source: NotebookReference["source"]; checksum: string; byteLength: number; data: string }[] = [];
   for (const item of manifest.citations) {
     if (["unresolved", "missing", "different-project", "invalid"].includes(item.status)) throw new TypeError(`Publication evidence is unavailable: ${item.reference.targetId}.`);
@@ -79,6 +95,12 @@ export const inspectPortableNotebookPublication = (payload: ReturnType<typeof cr
   captureProjectResources(reopened.project, item => reopened.resources.bytes(item));
   for (const ref of reopened.project.workbooks ?? []) readProjectWorkbook(reopened.resources.bytes({ kind: "workbook-payload", id: ref.id })!, ref);
   if (payload.manifest.projectId !== reopened.project.identity.id) throw new TypeError("Publication belongs to another Project.");
+  for (const block of payload.manifest.blocks) if (block.comparison) {
+    const saved = reopened.project.compositions?.find(item => item.id === block.comparison!.compositionId);
+    if (!saved) throw new TypeError("Publication comparison is missing from the Project.");
+    const checked = createProjectComparisonEvidence(reopened.project, saved, item => reopened.resources.bytes(item));
+    if (structuralHash(checked) !== structuralHash(block.comparison)) throw new TypeError("Publication comparison source or generation changed.");
+  }
   for (const artifact of payload.artifacts) {
     const binary = atob(artifact.data), bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
     if (bytes.length !== artifact.byteLength || sha256Checksum(bytes) !== artifact.checksum) throw new TypeError("Publication artifact checksum mismatch.");
