@@ -60,6 +60,7 @@ export const reviewGraph2DComplexContour = (document: Graph2DDocument, objectId:
   };
   const graphSource = { documentId: document.identity.id, revision: document.identity.revision,
     structuralHash: document.identity.structuralHash, objectId, sampleCount: options.sampleCount,
+    closure: options.closure,
     mapping: "parametric-xy-to-complex-contour" as const,
     targetStructuralHash: complexAnalysisSourceHash(targetSource) };
   const target = createComplexAnalysisDocument(targetSource, {
@@ -98,12 +99,13 @@ export const graph2DComplexContourSourceStatus = (target: ComplexAnalysisDocumen
 };
 
 export const refreshGraph2DComplexContour = (target: ComplexAnalysisDocument, source: Graph2DDocument,
-  closure: Graph2DComplexContourOptions["closure"] = "auto"): ComplexAnalysisDocument => {
+  closure?: Graph2DComplexContourOptions["closure"]): ComplexAnalysisDocument => {
   const link = target.provenance.graphSource;
   if (!link || source.identity.id !== link.documentId ||
       graph2DComplexContourSourceStatus(target, source) === "target-edited")
     throw new TypeError("Complex contour cannot refresh: source link is missing or target was edited.");
-  const fresh = reviewGraph2DComplexContour(source, link.objectId, { sampleCount: link.sampleCount, closure });
+  const fresh = reviewGraph2DComplexContour(source, link.objectId,
+    { sampleCount: link.sampleCount, closure: closure ?? link.closure ?? "auto" });
   return createComplexAnalysisDocument({ function: target.function, parameters: target.parameters,
     assumptions: target.assumptions, domain: fresh.target.domain, sampling: target.sampling,
     contours: fresh.target.contours, branchPolicy: target.branchPolicy, covering: target.covering,

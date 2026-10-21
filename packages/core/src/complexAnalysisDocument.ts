@@ -129,7 +129,8 @@ export type ComplexAnalysisDocument = Readonly<{
     sourceVersion: number;
     diagnostics: readonly ComplexDocumentDiagnostic[];
     graphSource?: Readonly<{ documentId: StableDocumentId; revision: number; structuralHash: StructuralHash;
-      objectId: string; sampleCount: number; mapping: "parametric-xy-to-complex-contour";
+      objectId: string; sampleCount: number; closure?: "auto" | "open" | "closed";
+      mapping: "parametric-xy-to-complex-contour";
       targetStructuralHash: StructuralHash }>;
   }>;
 }>;
@@ -330,12 +331,13 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
       const link = provenance.graphSource;
       if (provenance.origin !== "graph2d-promotion" || !isRecord(link)) errors.push("complex.provenance.graphSource requires a promoted Graph source.");
       else {
-        fields(link, ["documentId", "revision", "structuralHash", "objectId", "sampleCount", "mapping", "targetStructuralHash"], "complex.provenance.graphSource", errors);
+        fields(link, ["documentId", "revision", "structuralHash", "objectId", "sampleCount", "closure", "mapping", "targetStructuralHash"], "complex.provenance.graphSource", errors);
         if (typeof link.documentId !== "string" || !SAFE_ID.test(link.documentId)) errors.push("complex.provenance.graphSource.documentId is invalid.");
         if (!positiveInteger(link.revision)) errors.push("complex.provenance.graphSource.revision is invalid.");
         if (typeof link.structuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.structuralHash)) errors.push("complex.provenance.graphSource.structuralHash is invalid.");
         if (typeof link.objectId !== "string" || !SAFE_ID.test(link.objectId)) errors.push("complex.provenance.graphSource.objectId is invalid.");
         if (!positiveInteger(link.sampleCount) || (link.sampleCount as number) > 4097) errors.push("complex.provenance.graphSource.sampleCount is invalid.");
+        if (link.closure !== undefined && !["auto", "open", "closed"].includes(link.closure as string)) errors.push("complex.provenance.graphSource.closure is invalid.");
         if (link.mapping !== "parametric-xy-to-complex-contour") errors.push("complex.provenance.graphSource.mapping is invalid.");
         if (typeof link.targetStructuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.targetStructuralHash)) errors.push("complex.provenance.graphSource.targetStructuralHash is invalid.");
       }

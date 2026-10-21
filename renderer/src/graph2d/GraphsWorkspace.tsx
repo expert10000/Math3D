@@ -112,6 +112,7 @@ type Props = {
   onPromotionCreate?: (promotion: Graph2DAnyPromotion) => void;
   onPromotionLocate?: (id: string) => void;
   onPromotionRegenerate?: (id: string, mode: "replace" | "fork") => void;
+  onComplexContourPlace?: (target: import("@math3d/core").ComplexAnalysisDocument) => void;
   onOpenPreset?: (preset: Graph2DPreset) => void;
   onResumeCheckpoint?: (id: string) => void;
   onCopyProject?: (id: string, title: string) => void;
@@ -124,7 +125,7 @@ type Props = {
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
-  onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onOpenPreset, onResumeCheckpoint, onCopyProject,
+  onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
@@ -907,7 +908,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     {constructions}
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression} />}
     {selectedObject?.kind === "point-series" && <Graph2DFourierPanel document={document} />}
-    {selectedObject?.kind === "parametric" && <Graph2DComplexMappingPanel document={document} />}
+    {selectedObject?.kind === "parametric" && <Graph2DComplexMappingPanel document={document} onPlace={onComplexContourPlace} />}
     {parameterPreviewActive && <p role="status">Inspector and analyses refer to the committed source, not the parameter preview.</p>}
     {differential && <section className="graph2d-local-differential" data-testid="graph2d-local-differential" aria-label="Local differential">
       <h3>Local differential</h3>

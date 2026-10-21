@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { acceptGraph2DComplexContour, reviewGraph2DComplexContour,
-  serializeComplexAnalysisDocument, type Graph2DComplexContourReview, type Graph2DDocument } from "@math3d/core";
+  serializeComplexAnalysisDocument, type ComplexAnalysisDocument, type Graph2DComplexContourReview, type Graph2DDocument } from "@math3d/core";
 
 const contourPath = (review: Graph2DComplexContourReview) => {
   const { domain, contours } = review.target, points = contours[0]?.points ?? [];
@@ -8,7 +8,8 @@ const contourPath = (review: Graph2DComplexContourReview) => {
   return points.map((point, index) => `${index ? "L" : "M"}${(point.re - domain.re.min) / width * 200},${200 - (point.im - domain.im.min) / height * 200}`).join(" ");
 };
 
-export function Graph2DComplexMappingPanel({ document }: { document: Graph2DDocument }) {
+export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Graph2DDocument;
+  onPlace?: (target: ComplexAnalysisDocument) => void }) {
   const [sampleCount, setSampleCount] = useState("257"), [closure, setClosure] = useState<"auto" | "open" | "closed">("auto");
   const [review, setReview] = useState<Graph2DComplexContourReview | null>(null), [error, setError] = useState("");
   const object = document.source.objects.find(item => item.id === document.selection.objectId);
@@ -28,6 +29,11 @@ export function Graph2DComplexMappingPanel({ document }: { document: Graph2DDocu
       const link = globalThis.document.createElement("a"); link.href = url;
       link.download = `complex-contour-${review.source.objectId}.json`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); setError("");
+    } catch (caught) { setReview(null); setError((caught as Error).message); }
+  };
+  const place = () => {
+    try { if (!review || !onPlace) return;
+      onPlace(acceptGraph2DComplexContour(review, document)); setError("");
     } catch (caught) { setReview(null); setError((caught as Error).message); }
   };
   return <section aria-label="Graph to Complex Analysis" data-testid="graph2d-complex-mapping">
@@ -53,7 +59,8 @@ export function Graph2DComplexMappingPanel({ document }: { document: Graph2DDocu
       <p>Source revision {review.source.revision} · <code>{review.source.structuralHash}</code></p>
       <ul>{review.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
       <button type="button" onClick={download}>Download Complex Analysis document</button>
-      <p>Rechecks the Graph source at download. The file is a versioned Complex Analysis document; live workspace placement and linked refresh UI are future work.</p>
+      {onPlace && <button type="button" onClick={place}>Open in Complex Analysis</button>}
+      <p>Download and workspace placement both recheck the Graph source against this preview. The target contains sampled contour geometry and identity function z.</p>
     </div>}
   </section>;
 }

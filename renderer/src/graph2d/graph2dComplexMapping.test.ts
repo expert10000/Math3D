@@ -66,4 +66,18 @@ describe("GRA-17 sampled Graph path to Complex Analysis contour", () => {
     expect(() => reviewGraph2DComplexContour(stationary.document, stationary.objectId))
       .toThrow(/degenerate/i);
   });
+
+  it("retains an explicit open closure policy across source refresh", () => {
+    const { document, draft, objectId } = path();
+    const review = reviewGraph2DComplexContour(document, objectId, { sampleCount: 65, closure: "open" });
+    const target = acceptGraph2DComplexContour(review, document);
+    expect(target.contours[0]!.closed).toBe(false);
+    expect(target.provenance.graphSource?.closure).toBe("open");
+    const changed = createGraph2DDocument({
+      ...applyGraph2DAuthoring(document, { type: "edit-parametric", objectId,
+        draft: { ...draft, xExpression: "2*cos(t)" } }), stableKey: "complex-graph-source" });
+    const refreshed = refreshGraph2DComplexContour(target, changed);
+    expect(refreshed.contours[0]!.closed).toBe(false);
+    expect(refreshed.provenance.graphSource?.closure).toBe("open");
+  });
 });

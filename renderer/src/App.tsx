@@ -75,6 +75,7 @@ import {
   type WorkspaceDockLayout,
 } from "./workspaceDocks";
 import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
+import { Graph2DComplexLinkPanel } from "./graph2d/Graph2DComplexLinkPanel";
 import { freshGraphGalleryLaunchToken, launchGraphGalleryPreset, resumeGraphGalleryCheckpoint, copyPersonalGraphProject,
   exportPersonalGraphProject, personalGraphDefinition, previewPersonalGraphImport, importPersonalGraphProject } from "./graph2d/graph2dGallerySession";
 import { pointTableStore } from "./graph2d/pointTableStore";
@@ -792,6 +793,7 @@ import {
   viewerSourceFromDocument,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
+  type ComplexAnalysisDocument,
   type CanonicalJsonValue,
   type MeshEditKind,
   type MeshDocument,
@@ -78648,6 +78650,21 @@ case "mobius":
 
   const projectNavigationRef = useRef(new ProjectNavigation());
   const restoredMeshDatasetRef = useRef<{ documentId: string; sourceHash: string; mesh: SurfaceMeshData } | null>(null);
+  const activateComplexAdapter = (complex: ComplexAnalysisCommandAdapter) => {
+    const document = complex.document(), seed = complexEditorSeed(document);
+    setRestoredComplexAdapter(complex); setComplexPreviewSession(new ComplexFunctionPreviewSession(seed, complex, complexSourceFromEditor));
+    setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID); setComplexMapSpec({ ...COMPLEX_MAP_DEFAULT_SPEC, ...seed });
+    setOtherComplexIncludeInfinityBranchPoint(document.branchPolicy.includeInfinity);
+    setOtherComplexBranchCutMode(({ principal: "principal", "negative-real-axis": "negative_real_axis", "positive-real-axis": "positive_real_axis", radial: "radial_from_point" } as const)[document.branchPolicy.cut.kind as "principal" | "negative-real-axis" | "positive-real-axis" | "radial"]);
+    setOtherComplexBranchCutRadialAngleDeg(seed.branchCutAngle * 180 / Math.PI);
+    const contour = document.contours[0];
+    if (contour) {
+      if (contour.kind === "circle" && contour.center && contour.radius !== null) { setOtherComplexPathMode("circle"); setOtherComplexPathCenter(contour.center); setOtherComplexPathRadius(contour.radius); }
+      else { setOtherComplexPathMode("polyline"); setOtherComplexPolylinePath(contour.points.map((point) => [point.re, point.im])); setOtherComplexPolylineClosed(contour.closed); }
+    }
+    setOtherComplexPathAnimationPlaying(false); setActiveGraph2DTargetId(null);
+    setFunctionExplorerScene("other_complex"); setMode("mobius");
+  };
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     setProjectMiddleContent(null);
     const navigationSequence = ++quantumSceneNavigationSequence.current;
@@ -78769,19 +78786,7 @@ case "mobius":
       setActiveGraph2DTargetId(null); setMode("topology"); return true;
     }
     if (complex) {
-      const document = complex.document(), seed = complexEditorSeed(document);
-      setRestoredComplexAdapter(complex); setComplexPreviewSession(new ComplexFunctionPreviewSession(seed, complex, complexSourceFromEditor));
-      setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID); setComplexMapSpec({ ...COMPLEX_MAP_DEFAULT_SPEC, ...seed });
-      setOtherComplexIncludeInfinityBranchPoint(document.branchPolicy.includeInfinity);
-      setOtherComplexBranchCutMode(({ principal: "principal", "negative-real-axis": "negative_real_axis", "positive-real-axis": "positive_real_axis", radial: "radial_from_point" } as const)[document.branchPolicy.cut.kind as "principal" | "negative-real-axis" | "positive-real-axis" | "radial"]);
-      setOtherComplexBranchCutRadialAngleDeg(seed.branchCutAngle * 180 / Math.PI);
-      const contour = document.contours[0];
-      if (contour) {
-        if (contour.kind === "circle" && contour.center && contour.radius !== null) { setOtherComplexPathMode("circle"); setOtherComplexPathCenter(contour.center); setOtherComplexPathRadius(contour.radius); }
-        else { setOtherComplexPathMode("polyline"); setOtherComplexPolylinePath(contour.points.map((point) => [point.re, point.im])); setOtherComplexPolylineClosed(contour.closed); }
-      }
-      setOtherComplexPathAnimationPlaying(false); setActiveGraph2DTargetId(null);
-      setFunctionExplorerScene("other_complex"); setMode("mobius"); return true;
+      activateComplexAdapter(complex); return true;
     }
     if (geometry) {
       const document = geometry.document(), seed = restoredGeometryEditorSeed(document);
@@ -78822,6 +78827,52 @@ case "mobius":
       setMode("surfaces"); setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
     return false;
+  };
+  const complexWorkspaceEntry = (adapter: ComplexAnalysisCommandAdapter): MixedWorkspaceEntry => {
+    const replay = adapter.exportReplay();
+    return { module: "complex", checkpoint: replay.checkpoint.document,
+      expected: adapter.document().identity,
+      replay: { format: MIXED_REPLAY_FORMATS.complex, payload: replay as unknown as CanonicalJsonValue } };
+  };
+  const placeGraphComplexContour = (target: ComplexAnalysisDocument) => {
+    const link = target.provenance.graphSource;
+    if (!link || link.documentId !== graph2dDocument.identity.id ||
+        link.revision !== graph2dDocument.identity.revision ||
+        link.structuralHash !== graph2dDocument.identity.structuralHash)
+      throw new TypeError("Graph source changed before Complex placement; preview the contour again.");
+    const restored = restoredProjectRef.current;
+    if (restored?.workspace.entries.some(entry => entry.expected.id === target.identity.id) ||
+        !restored && complexPreviewSession.commands.document().identity.id === target.identity.id)
+      throw new TypeError("This linked Complex document already exists. Open it in Complex Analysis and review a refresh there.");
+    const adapter = new ComplexAnalysisCommandAdapter(target);
+    if (restored) {
+      restored.workspace = captureMixedKernelWorkspace();
+      if (!restored.workspace.entries.some(entry => entry.expected.id === link.documentId))
+        throw new TypeError("Save or open the source Graph in this project before placing its Complex contour.");
+      const entry = complexWorkspaceEntry(adapter);
+      restored.workspace = createMixedWorkspaceDocument({ ...restored.workspace,
+        entries: [...restored.workspace.entries, entry],
+        activeDocumentIds: [target.identity.id, ...restored.workspace.activeDocumentIds] });
+      restored.complexes.set(target.identity.id, adapter);
+      navigateRestoredDocument(target.identity.id, "complex");
+    } else { setActiveProjectDocumentId(null); setProjectMiddleContent(null); activateComplexAdapter(adapter); }
+  };
+  const refreshPlacedGraphComplexContour = (target: ComplexAnalysisDocument) => {
+    const restored = restoredProjectRef.current;
+    if (restored) restored.workspace = captureMixedKernelWorkspace();
+    const current = restoredComplexAdapter?.document();
+    if (!current || current.identity.id !== target.identity.id ||
+        target.identity.revision !== current.identity.revision + 1)
+      throw new TypeError("Complex target changed before refresh; review it again.");
+    const adapter = new ComplexAnalysisCommandAdapter(target);
+    if (restored?.complexes.has(target.identity.id)) {
+      const index = restored.workspace.entries.findIndex(entry => entry.expected.id === target.identity.id && entry.module === "complex");
+      if (index < 0) throw new TypeError("Linked Complex document is missing from the project.");
+      const entries = [...restored.workspace.entries]; entries[index] = complexWorkspaceEntry(adapter);
+      restored.workspace = createMixedWorkspaceDocument({ ...restored.workspace, entries });
+      restored.complexes.set(target.identity.id, adapter);
+      navigateRestoredDocument(target.identity.id, "complex");
+    } else activateComplexAdapter(adapter);
   };
   const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
@@ -82053,6 +82104,11 @@ case "mobius":
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
       {nativeVolumeActive && activeKernelModule === "volume" && <VolumeProjectEditor key={restoredVolumeAdapter!.document().identity.id} adapter={restoredVolumeAdapter!} onRestore={() => navigateRestoredDocument(restoredVolumeAdapter!.document().identity.id, "volume")} />}
       {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
+      {restoredComplexAdapter && activeKernelModule === "complex" && restoredComplexAdapter.document().provenance.graphSource &&
+        <Graph2DComplexLinkPanel target={restoredComplexAdapter.document()}
+          source={restoredComplexAdapter.document().provenance.graphSource!.documentId === graph2dDocument.identity.id
+            ? graph2dDocument : restoredProjectRef.current?.graphs.get(restoredComplexAdapter.document().provenance.graphSource!.documentId)?.document() ?? null}
+          onRefresh={refreshPlacedGraphComplexContour} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>
         <span>Saved document · {mode === "curves" ? restoredCurveAdapter?.document().metadata.title : restoredSurfaceAdapter?.document().metadata.title}</span>
         <button type="button" data-testid="project-editor-undo" onClick={() => { const adapter = mode === "curves" ? restoredCurveAdapter! : restoredSurfaceAdapter!; adapter.undo(); navigateRestoredDocument(adapter.document().identity.id, mode === "curves" ? "curve" : "surface"); }}>Undo document</button>
@@ -89916,6 +89972,7 @@ case "mobius":
             }}
             promotions={graph2dPromotions} onPromotionCreate={addGraph2DPromotion}
             onPromotionLocate={openGraph2DTarget} onPromotionRegenerate={regenerateGraph2DTarget}
+            onComplexContourPlace={placeGraphComplexContour}
             onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}
             onAxesCommit={commitGraph2DAxes}
             onProbesCommit={pinnedProbes => { const adapter = graph2dAdapterRef.current!, document = adapter.document();
