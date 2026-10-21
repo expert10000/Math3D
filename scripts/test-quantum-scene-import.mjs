@@ -244,6 +244,8 @@ try {
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene")
+    .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
     "ssh/bands": { axes: ["k", "energy", "display z"], units: ["rad / cell spacing", "normalized energy (hbar=1)", "dimensionless"] },
@@ -251,6 +253,7 @@ try {
     "qwz/bands": { axes: ["kx", "ky", "energy"], units: ["rad / lattice constant", "rad / lattice constant", "normalized energy (hbar=1)"] },
   };
   const acceptedViews = new Set();
+  const pairedViews = new Map();
   for (const name of fixtureNames) {
     const real = await importQuantumSceneBundle(join(fixtureRoot, name));
     const { source, document } = real;
@@ -261,6 +264,9 @@ try {
     assert.ok(real.mappedObjectIds.length || real.deferredObjectIds.length || real.deferredFieldIds.length);
     const key = `${source.provenance.model}/${source.bands ? "bands" : "standard"}`;
     assert.deepEqual({ axes: source.coordinates.axes, units: source.coordinates.units }, expectedCoordinates[key]);
+    const peers = pairedViews.get(source.provenance.model) ?? [];
+    peers.push({ source, fingerprint: sceneFingerprint(real) });
+    pairedViews.set(source.provenance.model, peers);
     if (source.provenance.model === "ssh") {
       assert.equal(source.lattice, undefined, "1D SSH is supplied Geometry, not a fictitious 2D/3D lattice");
       assert.ok(real.mappedObjectIds.length > 0);
@@ -301,6 +307,17 @@ try {
     acceptedViews.add(key);
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
+  for (const [model, peers] of pairedViews) {
+    assert.equal(peers.length, 2, `${model} requires standard and bands from one saved result`);
+    assert.equal(peers.filter(peer => !!peer.source.bands).length, 1);
+    assert.equal(new Set(peers.map(peer => peer.source.provenance.runId)).size, 1);
+    assert.equal(new Set(peers.map(peer => peer.source.provenance.resultSha256)).size, 1);
+    assert.equal(new Set(peers.map(peer => peer.source.provenance.engine)).size, 1);
+    assert.deepEqual(peers[0].source.provenance.parameters, peers[1].source.provenance.parameters);
+    assert.equal(new Set(peers.map(peer => peer.fingerprint)).size, 2, "Each view retains its own source fingerprint");
+    assert.deepEqual(peers.flatMap(peer => peer.source.topology?.invariants.map(invariant => invariant.id) ?? []),
+      [model === "qwz" ? "chern" : "winding"]);
+  }
   const qwzDirectory = join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e.qscene");
   const qwz = await importQuantumSceneBundle(qwzDirectory);
   const display = qwz.document.extensions[qwz.source.schema].topologyDisplay;
