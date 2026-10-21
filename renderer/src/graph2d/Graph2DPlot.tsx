@@ -149,9 +149,11 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
               cx={screen.x} cy={screen.y} r={3.5} fill={item.style.color} stroke="white" strokeWidth={1.5}
               pointerEvents="none"><title>Possible isolated zero or tangency; refine the domain to inspect.</title></circle>;
           }))}
-        {regression?.model !== "spline" && regression && <g aria-hidden="true">
+        {regression && regression.model !== "spline" && regression.model !== "exponential-decay" && <g aria-hidden="true">
           {regression.curve.slice(1).map((p, i) => {
-            const a = regression.curve[i], corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
+            const a = regression.curve[i];
+            if (!a || !("meanLow" in a) || !("meanHigh" in a) || !("meanLow" in p) || !("meanHigh" in p)) return null;
+            const corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
             return corners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)) ? <polygon key={i} points={corners.map(point => `${point.x},${point.y}`).join(" ")} fill="#7c3aed" fillOpacity={.12} /> : null;
           })}
         </g>}

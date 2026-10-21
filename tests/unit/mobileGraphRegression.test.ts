@@ -46,3 +46,29 @@ it("native spline uses the shared checked source, respects λ, and publishes fit
   expect(isMobileGraphAnalysisCurrent(result, document, { ...draft, smoothing: "0.02" })).toBe(false);
   expect(() => runMobileGraphAnalysis(document, { ...draft, smoothing: "2" }, rows)).toThrow(/between 0 and 1/);
 });
+it("native exponential fit matches shared core and publishes only supported outputs", () => {
+  const rows = Array.from({ length: 60 }, (_, index) => ({ id: `row_${index + 1}`, x: index / 10,
+    y: 2.5 * Math.exp(-.4 * index / 10) }));
+  const tables = new Graph2DPointTableStore(), table = tables.publish(rows);
+  const source = applyGraph2DAuthoring(createEmptyGraph2DDocument("native-exponential"), { type: "create-point-series",
+    draft: { label: "Decay data", table, domain: graph2DPointDomain(rows), mode: "points",
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } } });
+  const document = createGraph2DDocument({ ...source, stableKey: "native-exponential" });
+  const objectId = document.source.objects[0]!.id;
+  const draft = { ...mobileGraphAnalysisDraft(document), objectId, kind: "regression-exponential" as const,
+    amplitude: "2", rate: "0.2" };
+  const result = runMobileGraphAnalysis(document, draft, rows), fit = result.regression!;
+  const direct = analyzeGraph2DRegression({ document, objectId, rows,
+    model: "exponential-decay", initial: { amplitude: 2, rate: .2 } });
+  expect(fit.model).toBe("exponential-decay");
+  expect(fit.coefficients).toEqual(direct.coefficients);
+  expect(result.publicationTables?.at(-1)?.columns).toEqual(["x", "Fitted y"]);
+  expect(result.rows.some(row => row.detail.includes("No parameter uncertainty"))).toBe(true);
+  expect(isMobileGraphAnalysisCurrent(result, document, { ...draft, rate: "0.3" })).toBe(false);
+  expect(() => runMobileGraphAnalysis(document, { ...draft, rate: "-1" }, rows)).toThrow(/rate must be/);
+  const publication = createGraph2DPublication({ ...mobileGraphPublicationRequest(document, tables, result, draft,
+    { width: 320, height: 240 }, { x: "s", y: "m" }), deterministic: true });
+  const html = new TextDecoder().decode(renderGraph2DPublicationArtifact(publication, "html").bytes);
+  expect(html).toContain("exponential-decay");
+  expect(html).not.toContain("95% prediction");
+});

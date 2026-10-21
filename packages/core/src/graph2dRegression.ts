@@ -5,7 +5,9 @@ import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, type Graph2
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import type { Graph2DPublicationTable } from "./graph2dPublication";
 import { analyzeGraph2DSplineRegression, type Graph2DSplineRegression } from "./graph2dSplineRegression";
-export type Graph2DRegressionModel = "linear" | "quadratic" | "cubic" | "quartic" | "spline";
+import { analyzeGraph2DExponentialRegression, type Graph2DExponentialInitial,
+  type Graph2DExponentialRegression } from "./graph2dNonlinearRegression";
+export type Graph2DRegressionModel = "linear" | "quadratic" | "cubic" | "quartic" | "spline" | "exponential-decay";
 export const GRAPH2D_REGRESSION_ASSUMPTIONS = Object.freeze([
   "Unweighted ordinary least squares in original world coordinates; x is treated as fixed and measured without error.",
   "Intervals assume independent, normally distributed, constant-variance errors and a correctly specified model; these assumptions are not tested automatically.",
@@ -13,13 +15,13 @@ export const GRAPH2D_REGRESSION_ASSUMPTIONS = Object.freeze([
   "Missing y and rows outside the authored domain are excluded, not imputed. No extrapolation beyond the fitted x extent.",
 ]);
 export type Graph2DRegressionPoint = Readonly<{ x: number; y: number; meanLow: number; meanHigh: number; predictionLow: number; predictionHigh: number }>;
-export type Graph2DPolynomialRegression = Readonly<{ resultId: string; objectId: string; model: Exclude<Graph2DRegressionModel, "spline">;
+export type Graph2DPolynomialRegression = Readonly<{ resultId: string; objectId: string; model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay">;
   source: ScientificSourceGeneration; table: Graph2DPointTableReference; coefficients: readonly number[]; center: number; scale: number;
   n: number; excluded: number; degreesOfFreedom: number; sse: number; residualSD: number; rSquared: number | null; tCritical: number;
   extent: Readonly<{ min: number; max: number }>;
   residuals: readonly Readonly<{ rowId: string; x: number; observed: number; fitted: number; residual: number }>[];
   curve: readonly Graph2DRegressionPoint[]; publication: AnalysisResultEnvelope }>;
-export type Graph2DRegression = Graph2DPolynomialRegression | Graph2DSplineRegression;
+export type Graph2DRegression = Graph2DPolynomialRegression | Graph2DSplineRegression | Graph2DExponentialRegression;
 const sum = (values: readonly number[]): number => {
   let total = 0, correction = 0;
   for (const value of values) { const adjusted = value - correction, next = total + adjusted; correction = (next - total) - adjusted; total = next; }
@@ -55,24 +57,30 @@ export const graph2DStudentTCritical95 = (degreesOfFreedom: number): number => {
 const freeze = <T>(value: T): T => { if (value && typeof value === "object" && !Object.isFrozen(value)) { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 /** Bounded reviewed models only; checksum-verified source rows. */
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Exclude<Graph2DRegressionModel, "spline">; smoothing?: number }): Graph2DPolynomialRegression;
+  model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay">; smoothing?: number }): Graph2DPolynomialRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
   model: "spline"; smoothing?: number }): Graph2DSplineRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Graph2DRegressionModel; smoothing?: number }): Graph2DRegression;
+  model: "exponential-decay"; initial: Graph2DExponentialInitial }): Graph2DExponentialRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Graph2DRegressionModel; smoothing?: number }): Graph2DRegression {
+  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial }): Graph2DRegression;
+export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
+  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial }): Graph2DRegression {
   if (input.model === "spline") return analyzeGraph2DSplineRegression({ ...input, smoothing: input.smoothing ?? .001 });
-  return analyzePolynomialGraph2DRegression(input as typeof input & { model: Exclude<Graph2DRegressionModel, "spline"> });
+  if (input.model === "exponential-decay") {
+    if (!input.initial) throw new TypeError("Exponential decay requires initial amplitude and rate.");
+    return analyzeGraph2DExponentialRegression({ ...input, initial: input.initial });
+  }
+  return analyzePolynomialGraph2DRegression(input as typeof input & { model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay"> });
 }
 function analyzePolynomialGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Exclude<Graph2DRegressionModel, "spline"> }): Graph2DPolynomialRegression {
+  model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay"> }): Graph2DPolynomialRegression {
   const job = createGraph2DPolynomialRegressionJob(input);
   while (!job.advance(10000)) { /* shared bounded stages, without yielding */ }
   return job.result();
 }
 export type Graph2DPolynomialRegressionInput = { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Exclude<Graph2DRegressionModel, "spline"> };
+  model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay"> };
 export type Graph2DPolynomialRegressionJob = Readonly<{
   progress: number; complete: boolean; cancelled: boolean;
   advance: (maxRows?: number) => boolean; cancel: () => void; result: () => Graph2DPolynomialRegression;
@@ -185,14 +193,14 @@ export const isGraph2DRegressionCurrent = (result: Graph2DRegression, document: 
 /** Explicit bounded residual table, retaining the existing scientific envelope and original row IDs. */
 export const graph2DRegressionResidualTable = (result: Graph2DRegression): Graph2DPublicationTable => ({ publication: result.publication,
   columns: ["Row", "x", "Observed y", "Fitted y", "Residual"], rows: result.residuals.slice(0, 2048).map(r => [r.rowId, r.x, r.observed, r.fitted, r.residual]) });
-export const graph2DRegressionCurveTable = (result: Graph2DRegression): Graph2DPublicationTable => result.model === "spline" ?
+export const graph2DRegressionCurveTable = (result: Graph2DRegression): Graph2DPublicationTable => result.model === "spline" || result.model === "exponential-decay" ?
   { publication: result.publication, columns: ["x", "Fitted y"], rows: result.curve.map(p => [p.x, p.y]) } : ({ publication: result.publication,
   columns: ["x", "Fitted y", "95% mean low", "95% mean high", "95% prediction low", "95% prediction high"],
   rows: result.curve.map(p => [p.x, p.y, p.meanLow, p.meanHigh, p.predictionLow, p.predictionHigh]) });
-export const graph2DRegressionOverlaySeries = (result: Graph2DRegression) => (result.model === "spline" ? ["y"] as const :
+export const graph2DRegressionOverlaySeries = (result: Graph2DRegression) => (result.model === "spline" || result.model === "exponential-decay" ? ["y"] as const :
   ["y", "meanLow", "meanHigh", "predictionLow", "predictionHigh"] as const).map(key => ({
   objectId: `${result.objectId}-regression-${key}`, style: { objectId: `${result.objectId}-regression-${key}`, visible: true,
     color: key === "y" ? "#b45309" : "#7c3aed", lineWidth: key === "y" ? 2 : 1, lineStyle: key === "y" ? "solid" as const : key.startsWith("mean") ? "dashed" as const : "dotted" as const },
   artifact: { samplerVersion: 1 as const, converged: true, samplesEvaluated: 0, diagnostics: [], segments: [{ openStart: false, openEnd: false,
-    points: result.model === "spline" ? result.curve.map(point => ({ x: point.x, y: point.y })) :
+    points: result.model === "spline" || result.model === "exponential-decay" ? result.curve.map(point => ({ x: point.x, y: point.y })) :
       result.curve.map(point => ({ x: point.x, y: point[key] })) }] } }));

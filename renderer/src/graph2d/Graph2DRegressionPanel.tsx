@@ -5,12 +5,16 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
   onModel: (model: Graph2DRegressionModel) => void; result: Graph2DRegression | null; onResult: (result: Graph2DRegression | null) => void }) {
   const [error, setError] = useState(""), [offset, setOffset] = useState(0), [pending, setPending] = useState(false);
   const [smoothing, setSmoothing] = useState("0.001");
+  const [initialAmplitude, setInitialAmplitude] = useState("1"), [initialRate, setInitialRate] = useState("1");
   const worker = useRef<Worker | null>(null), deadline = useRef<ReturnType<typeof setTimeout> | null>(null), generation = useRef(0);
   const object = document.source.objects.find(o => o.id === document.selection.objectId), current = result && result.model === model &&
     result.objectId === object?.id && isGraph2DRegressionCurrent(result, document) &&
-    (result.model !== "spline" || result.spline.lambda === Number(smoothing));
+    (result.model !== "spline" || result.spline.lambda === Number(smoothing)) &&
+    (result.model !== "exponential-decay" || result.initial.amplitude === Number(initialAmplitude) &&
+      result.initial.rate === Number(initialRate));
   const fitKey = [document.identity.id, document.identity.revision, document.identity.structuralHash, object?.id,
-    object?.kind === "point-series" ? object.table.checksum : "", model, model === "spline" ? smoothing : ""].join("|");
+    object?.kind === "point-series" ? object.table.checksum : "", model,
+    model === "spline" ? smoothing : model === "exponential-decay" ? `${initialAmplitude}|${initialRate}` : ""].join("|");
   const latestKey = useRef(fitKey); latestKey.current = fitKey;
   const cancel = (announce = true) => { generation.current++; worker.current?.terminate(); worker.current = null;
     if (deadline.current) clearTimeout(deadline.current); deadline.current = null; setPending(false);
@@ -21,6 +25,10 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
     if (object?.kind !== "point-series") return;
     if (model === "spline" && (!smoothing.trim() || !Number.isFinite(Number(smoothing)) || Number(smoothing) < 0 || Number(smoothing) > 1)) {
       setError("Spline smoothness λ must be between 0 and 1."); return;
+    }
+    if (model === "exponential-decay" && (!initialAmplitude.trim() || !initialRate.trim() ||
+        !Number.isFinite(Number(initialAmplitude)) || !Number.isFinite(Number(initialRate)))) {
+      setError("Enter finite initial amplitude and rate."); return;
     }
     cancel(false); setError(""); setPending(true); const token = ++generation.current, key = fitKey;
     try {
@@ -39,15 +47,34 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
       deadline.current = setTimeout(() => { if (generation.current !== token || latestKey.current !== key) return;
         finish(); setError("Regression exceeded 15 seconds. Reduce the point series and retry."); }, 15000);
       task.postMessage({ document, objectId: object.id, model, smoothing: model === "spline" ? Number(smoothing) : undefined,
+        initial: model === "exponential-decay" ? { amplitude: Number(initialAmplitude), rate: Number(initialRate) } : undefined,
         rows: pointTableStore.resolve(object.table) });
     } catch (caught) { cancel(false); onResult(null); setError((caught as Error).message); }
   };
   return <section aria-label="Regression fitting" data-testid="graph2d-regression"><h3>Regression and uncertainty</h3>
     <label>Regression model<select aria-label="Regression model" value={model} onChange={e => { onModel(e.target.value as Graph2DRegressionModel); setOffset(0); }}>
       <option value="linear">Linear least squares</option><option value="quadratic">Quadratic least squares</option><option value="cubic">Cubic least squares</option><option value="quartic">Quartic least squares</option>
-      <option value="spline">Cubic smoothing spline</option></select></label>
+      <option value="spline">Cubic smoothing spline</option>
+      <option value="exponential-decay">Exponential decay · y = a exp(−k(x−x₀))</option></select></label>
     {model === "spline" && <label>Smoothness λ (0–1)<input aria-label="Spline smoothness" type="number" min="0" max="1" step="any"
       value={smoothing} onChange={e => { setSmoothing(e.target.value); onResult(null); }} /></label>}
+    {model === "exponential-decay" && <>
+      <p>Named model: y = amplitude × exp(−rate × (x−x₀)), where x₀ is the smallest included x. Baseline is fixed at zero.</p>
+      <label>Initial amplitude <input aria-label="Initial exponential amplitude" type="number" step="any" value={initialAmplitude}
+        onChange={e => { setInitialAmplitude(e.target.value); onResult(null); }} /></label>
+      <label>Initial rate per x unit <input aria-label="Initial exponential rate" type="number" min="0" step="any" value={initialRate}
+        onChange={e => { setInitialRate(e.target.value); onResult(null); }} /></label>
+      <button type="button" disabled={object?.kind !== "point-series"} onClick={() => {
+        if (object?.kind !== "point-series") return;
+        const rows = pointTableStore.resolve(object.table)?.filter(row => row.y !== null && row.x >= object.domain.min && row.x <= object.domain.max &&
+          (object.domain.includeMin || row.x !== object.domain.min) && (object.domain.includeMax || row.x !== object.domain.max));
+        if (!rows?.length) return;
+        const atMinimum = rows.reduce((first, row) => row.x < first.x ? row : first, rows[0]!);
+        const span = Math.max(...rows.map(row => row.x)) - atMinimum.x;
+        setInitialAmplitude(String(atMinimum.y)); setInitialRate(String(span > 0 ? 1 / span : 1)); onResult(null);
+      }}>Estimate initial values from data</button>
+      <p>Local bounded solver; convergence does not establish a global optimum. No parameter uncertainty or intervals are reported.</p>
+    </>}
     <p>Uses original checksum-verified data, not displayed samples. Unweighted fit in world units; no extrapolation.</p>
     <button disabled={object?.kind !== "point-series" || pending} onClick={fit}>Fit dataset</button>
     {pending && <><button onClick={() => cancel()}>Cancel fit</button><p aria-live="polite">Fitting checked point series…</p></>}
@@ -56,14 +83,17 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
       <p>n={result.n} · excluded={result.excluded} · {result.model === "spline" ? "descriptive RMSE" : `df=${result.degreesOfFreedom} · residual SD`}={result.residualSD.toPrecision(6)} · R²={result.rSquared?.toPrecision(6) ?? "undefined"}</p>
       {result.model === "spline" ? <><p>Cubic B-spline · {result.spline.controlPoints} control points · λ={result.spline.lambda}.</p>
         <p>Brown: fitted curve. No confidence or prediction intervals are provided for this regularized model.</p></> : <>
-        <p>z=(x−{result.center.toPrecision(8)})/{result.scale.toPrecision(8)}; y={result.coefficients.map((v, i) => `${v.toPrecision(8)}${i ? `·z${["", "", "²", "³", "⁴"][i]}` : ""}`).join(" + ")}</p>
-        <p>Brown: fitted curve. Purple dashed: 95% mean-response limits. Purple dotted: 95% prediction limits. Pointwise, not simultaneous; log axes omit non-positive parts.</p></>}
+        {result.model === "exponential-decay" ? <><p>y = {result.parameters.amplitude.toPrecision(8)} × exp(−{result.parameters.rate.toPrecision(8)} × (x−{result.parameters.anchor.toPrecision(8)}))</p>
+          <p>{result.solver.method}: {result.solver.status} in {result.solver.iterations} iterations; {result.solver.rejectedSteps} rejected steps; relative gradient {result.solver.relativeGradient.toExponential(2)}.</p>
+          <p>Brown: fitted curve. No uncertainty bands are claimed for this nonlinear model.</p></> : <>
+          <p>z=(x−{result.center.toPrecision(8)})/{result.scale.toPrecision(8)}; y={result.coefficients.map((v, i) => `${v.toPrecision(8)}${i ? `·z${["", "", "²", "³", "⁴"][i]}` : ""}`).join(" + ")}</p>
+          <p>Brown: fitted curve. Purple dashed: 95% mean-response limits. Purple dotted: 95% prediction limits. Pointwise, not simultaneous; log axes omit non-positive parts.</p></>}</>}
       <details><summary>Assumptions and dataset provenance</summary><ul>{result.publication.warnings.map(w => <li key={w}>{w}</li>)}</ul><code>{result.table.checksum}</code></details>
       <details><summary>Residuals ({result.residuals.length})</summary><div style={{ overflowX: "auto" }}><table><caption>Observed minus fitted, original row IDs; rows {offset + 1}–{Math.min(offset + 50, result.n)}</caption>
         <thead><tr>{["Row", "x", "Observed", "Fitted", "Residual"].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
         <tbody>{result.residuals.slice(offset, offset + 50).map(r => <tr key={r.rowId}><th scope="row">{r.rowId}</th>{[r.x, r.observed, r.fitted, r.residual].map((v, i) => <td key={i}>{v.toPrecision(6)}</td>)}</tr>)}</tbody></table></div>
         <button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous residuals</button><button disabled={offset + 50 >= result.n} onClick={() => setOffset(offset + 50)}>Next residuals</button></details>
-      <button onClick={() => onResult(null)}>Clear regression</button><p>Export includes a fit summary, 129 fitted samples{result.model === "spline" ? "" : " with pointwise intervals"} and the first 2,048 residuals; larger residual tables are explicitly truncated. Results are transient and must be fitted again after reopening.</p>
+      <button onClick={() => onResult(null)}>Clear regression</button><p>Export includes a fit summary, 129 fitted samples{result.model === "spline" || result.model === "exponential-decay" ? "" : " with pointwise intervals"} and the first 2,048 residuals; larger residual tables are explicitly truncated. Results are transient and must be fitted again after reopening.</p>
     </>}
   </section>;
 }
