@@ -40,8 +40,9 @@ function failed(error: unknown): QuantumSceneOpenResponse {
   return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
 }
 
-export function registerQuantumSceneIpc(initialDirectory: string | null = null): void {
+export function registerQuantumSceneIpc(initialDirectory: string | null = null, initialError: string | null = null): void {
   let launchDirectory = initialDirectory;
+  let launchError = initialError;
   const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; directory: string; imported: ImportedQuantumScene }>();
   const volumeJobs = new WeakMap<Electron.WebContents, Map<string, { cancelled: boolean }>>();
   const openedFor = (event: Electron.IpcMainInvokeEvent, directory: string, imported: ImportedQuantumScene, remembered: boolean) => {
@@ -63,7 +64,10 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     if (!trustedSender(event))
       return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
     const directory = launchDirectory;
+    const error = launchError;
     launchDirectory = null;
+    launchError = null;
+    if (error) return failed(new Error(`External quantum scene handoff refused: ${error}`));
     if (!directory) return { ok: false, canceled: true };
     try {
       const imported = await importQuantumSceneBundle(directory);

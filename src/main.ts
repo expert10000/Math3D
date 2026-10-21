@@ -1011,9 +1011,13 @@ app.whenReady().then(async () => {
   registerSageServiceIpc();
   registerComputeEngineManagerIpc();
   let launchQuantumScene: string | null = null;
+  let launchQuantumSceneError: string | null = null;
   try { launchQuantumScene = quantumSceneLaunchDirectory(process.argv); }
-  catch (error) { console.error("Quantum scene launch ignored:", error); }
-  registerQuantumSceneIpc(launchQuantumScene);
+  catch (error) {
+    launchQuantumSceneError = error instanceof Error ? error.message : String(error);
+    console.error("Quantum scene launch refused:", launchQuantumSceneError);
+  }
+  registerQuantumSceneIpc(launchQuantumScene, launchQuantumSceneError);
   registerScientificSceneIpc();
   registerWorkspaceFileIpc();
   registerProjectThumbnailIpc();
