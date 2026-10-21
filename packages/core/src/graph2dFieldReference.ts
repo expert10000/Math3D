@@ -82,6 +82,36 @@ export function createGraph2DFieldReference(manifestJson: string, fingerprint: s
 }
 
 export type Graph2DFieldReferenceStatus = "current" | "changed" | "missing";
+export type Graph2DFieldRelinkReview = Readonly<{
+  eligible: boolean;
+  differences: readonly Readonly<{ field: string; saved: string; replacement: string; required: boolean; matches: boolean }>[];
+}>;
+
+/** Compare metadata only after the host has verified the replacement bundle's bytes. */
+export function reviewGraph2DFieldRelink(saved: Graph2DFieldReference,
+  replacement: Graph2DFieldReference): Graph2DFieldRelinkReview {
+  if (!isGraph2DFieldReference(saved) || !isGraph2DFieldReference(replacement))
+    throw new TypeError("Invalid field relink metadata.");
+  const axisText = (reference: Graph2DFieldReference) => reference.axes.map(axis =>
+    `${axis.name} (${axis.unit}): ${axis.origin} + n×${axis.spacing}${axis.periodic ? "; periodic" : ""}`).join(" / ");
+  const entries = [
+    ["Location", `${saved.locator.kind}: ${saved.locator.value}`, `${replacement.locator.kind}: ${replacement.locator.value}`, false],
+    ["Scene", saved.sceneId, replacement.sceneId, false],
+    ["Manifest fingerprint", saved.sceneFingerprint, replacement.sceneFingerprint, false],
+    ["Dataset", saved.datasetId, replacement.datasetId, false],
+    ["Component", saved.component, replacement.component, true],
+    ["Field type", saved.semanticType, replacement.semanticType, true],
+    ["Shape", saved.shape.join(" × "), replacement.shape.join(" × "), true],
+    ["Axes", axisText(saved), axisText(replacement), true],
+    ["Resource SHA-256", saved.resourceSha256, replacement.resourceSha256, true],
+  ] as const;
+  const differences = entries.map(([field, before, after, required]) => ({
+    field, saved: before, replacement: after, required, matches: before === after,
+  }));
+  return { eligible: differences.every(item => !item.required || item.matches) &&
+    differences.some(item => !item.matches), differences };
+}
+
 export function inspectGraph2DFieldReference(reference: Graph2DFieldReference, manifestJson: string | null): Graph2DFieldReferenceStatus {
   if (!isGraph2DFieldReference(reference)) throw new TypeError("Invalid field reference.");
   if (manifestJson === null) return "missing";

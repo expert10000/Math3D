@@ -356,6 +356,11 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .graph2d-scientific-import small { display: block; font-size: 11px; }
 .graph2d-scientific-import button { min-height: 36px; margin-right: 8px; }
 .graph2d-scientific-import button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.graph2d-field-relink { width: min(800px, calc(100% - 24px)); }
+.graph2d-field-relink table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; table-layout: fixed; }
+.graph2d-field-relink th, .graph2d-field-relink td { border: 1px solid var(--border); padding: 6px; text-align: left; overflow-wrap: anywhere; }
+.graph2d-field-relink tr[data-match="no"] { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.graph2d-field-relink tr[data-required="yes"][data-match="no"] { font-weight: 700; }
 .graph2d-scientific-preset-option { padding: 8px 0; border-top: 1px solid var(--border); }
 .graph2d-scientific-preset-option button { width: 100%; text-align: left; }
 .graph2d-scientific-preset-option small { margin-top: 2px; }

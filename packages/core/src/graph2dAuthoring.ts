@@ -4,7 +4,7 @@ import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDa
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
-import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
+import { isGraph2DFieldReference, reviewGraph2DFieldRelink, type Graph2DFieldReference } from "./graph2dFieldReference";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -75,6 +75,7 @@ export type Graph2DPiecewiseDraft = Readonly<{
 export type Graph2DAuthoringAction =
   | Graph2DParameterAction
   | Readonly<{ type: "save-field-reference"; reference: Graph2DFieldReference }>
+  | Readonly<{ type: "relink-field-reference"; referenceId: string; replacement: Graph2DFieldReference }>
   | Readonly<{ type: "remove-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
@@ -262,6 +263,16 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     if (existing.length >= 16) throw new TypeError("Field reference limit reached.");
     return { source: { ...document.source, fieldReferences: [...existing, action.reference] },
       display: document.display, selection: document.selection };
+  }
+  if (action.type === "relink-field-reference") {
+    const existing = document.source.fieldReferences ?? [];
+    const saved = existing.find(item => item.id === action.referenceId);
+    if (!saved) throw new TypeError("Field reference does not exist.");
+    const review = reviewGraph2DFieldRelink(saved, action.replacement);
+    if (!review.eligible) throw new TypeError("Replacement field component, axes, shape or checksum do not match.");
+    const updated = { ...action.replacement, id: saved.id };
+    return { source: { ...document.source, fieldReferences: existing.map(item =>
+      item.id === saved.id ? updated : item) }, display: document.display, selection: document.selection };
   }
   if (action.type === "remove-field-reference") {
     const existing = document.source.fieldReferences ?? [];

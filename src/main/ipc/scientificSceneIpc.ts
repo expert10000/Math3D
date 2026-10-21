@@ -16,6 +16,10 @@ export type ScientificGraphDatasetOpenResponse = { ok: true; source: ScientificG
   { ok: false; canceled: true } | { ok: false; canceled: false; error: string };
 export type ScientificGraphReferenceOpenResponse = { ok: true; source: ScientificGraphDatasetSource & { locator: Graph2DFieldLocator } } |
   { ok: false; status: "missing" | "changed" | "error"; error: string };
+export type ScientificGraphRelinkPickResponse = { ok: true; source: Pick<ScientificGraphDatasetSource, "manifestJson" | "fingerprint"> & {
+  locator: Graph2DFieldLocator; datasets: { datasetId: string; component: string;
+    shape: [number, number] | [number, number, number] }[] } } |
+  { ok: false; canceled: true } | { ok: false; canceled: false; error: string };
 export type Graph2DFieldLocator = { kind: "directory" | "preset"; value: string };
 const isGraph2DFieldLocator = (value: unknown): value is Graph2DFieldLocator =>
   !!value && typeof value === "object" && !Array.isArray(value) &&
@@ -123,6 +127,25 @@ export function registerScientificSceneIpc(): void {
       return { ok: false, status: /ENOENT|not found|does not exist/i.test(message) ? "missing" : "error",
         error: message };
     }
+  });
+  ipcMain.handle("scientificScenes:chooseGraphDatasetRelink", async (event, ...args: unknown[]): Promise<ScientificGraphRelinkPickResponse> => {
+    if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid Graph field relink request." };
+    try {
+      const window = BrowserWindow.fromWebContents(event.sender)!;
+      const picked = await dialog.showOpenDialog(window, { title: "Choose replacement verified .sscene bundle",
+        properties: ["openDirectory"] });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+      const directory = picked.filePaths[0];
+      if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".sscene"))
+        throw new TypeError("Choose a .sscene directory");
+      // This reads and hashes the complete bundle, but does not activate it for field previews.
+      const source = await openScientificGraphDatasets(directory);
+      const datasets = source.datasets.filter((part): part is Extract<typeof part, { shape: [number, number] | [number, number, number] }> =>
+        Array.isArray(part.shape)).map(part => ({ datasetId: part.datasetId, component: part.component, shape: part.shape }));
+      if (!datasets.length) throw new TypeError("Replacement bundle has no 2D or 3D field components.");
+      return { ok: true, source: { manifestJson: source.manifestJson, fingerprint: source.fingerprint,
+        locator: { kind: "directory", value: directory }, datasets } };
+    } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
   ipcMain.handle("scientificScenes:previewGraphSlice", async (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))

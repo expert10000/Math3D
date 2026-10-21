@@ -3,11 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   createGraph2DFieldReference, GRAPH2D_FIELD_REFERENCE_CAPABILITY, inspectGraph2DCompatibility,
-  inspectGraph2DFieldReference, parseGraph2DDocument, serializeGraph2DDocument, sha256Checksum } from "@math3d/core";
+  inspectGraph2DFieldReference, reviewGraph2DFieldRelink, parseGraph2DDocument, serializeGraph2DDocument, sha256Checksum } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 
 const source = () => {
-  const manifestJson = readFileSync(resolve("tests/fixtures/scientific-scene/vortex-flow.sscene/manifest.json"), "utf8");
+  const manifestJson = readFileSync(resolve(import.meta.dirname,
+    "../../../tests/fixtures/scientific-scene/vortex-flow.sscene/manifest.json"), "utf8");
   const fingerprint = sha256Checksum(new TextEncoder().encode(manifestJson)).slice(7);
   return { manifestJson, fingerprint };
 };
@@ -42,5 +43,40 @@ describe("GRA-13.3 saved field references", () => {
     expect(adapter.document().source.fieldReferences).toHaveLength(1);
     expect(adapter.undo()?.source.fieldReferences).toBeUndefined();
     expect(adapter.redo()?.source.fieldReferences).toHaveLength(1);
+  });
+  it("reviews every required field, relinks a verified matching copy, and replays undoably", () => {
+    const { manifestJson, fingerprint } = source();
+    const saved = createGraph2DFieldReference(manifestJson, fingerprint,
+      { kind: "preset", value: "vortexFlow" }, "field", "north");
+    const replacement = createGraph2DFieldReference(manifestJson, fingerprint,
+      { kind: "directory", value: "C:\\verified-copy.sscene" }, "field", "north");
+    const review = reviewGraph2DFieldRelink(saved, replacement);
+    expect(review.eligible).toBe(true);
+    expect(review.differences.find(item => item.field === "Location")).toMatchObject({ matches: false, required: false });
+    expect(review.differences.filter(item => item.required).every(item => item.matches)).toBe(true);
+    const renamed = { ...replacement, sceneId: "replacement-scene", datasetId: "velocity",
+      sceneFingerprint: "0".repeat(64) };
+    expect(reviewGraph2DFieldRelink(saved, renamed).eligible).toBe(true);
+    expect(reviewGraph2DFieldRelink(saved, renamed).differences.filter(item => !item.matches).map(item => item.field))
+      .toEqual(expect.arrayContaining(["Location", "Scene", "Manifest fingerprint", "Dataset"]));
+    const sourceDocument = createGraph2DDocument({ ...applyGraph2DAuthoring(createEmptyGraph2DDocument("relink"),
+      { type: "save-field-reference", reference: saved }), stableKey: "relink" });
+    const adapter = new Graph2DCommandAdapter(sourceDocument);
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(),
+      { type: "relink-field-reference", referenceId: saved.id, replacement }), "relink-field-reference");
+    const updated = adapter.document().source.fieldReferences![0]!;
+    expect(updated.id).toBe(saved.id);
+    expect(updated.locator).toEqual(replacement.locator);
+    expect(parseGraph2DDocument(serializeGraph2DDocument(adapter.document())).source.fieldReferences![0]).toEqual(updated);
+    expect(adapter.undo()?.source.fieldReferences![0]).toEqual(saved);
+    expect(adapter.redo()?.source.fieldReferences![0]).toEqual(updated);
+    expect(reviewGraph2DFieldRelink(saved, { ...replacement, component: "east" }).eligible).toBe(false);
+    expect(reviewGraph2DFieldRelink(saved, { ...replacement, shape: [32, 33] }).eligible).toBe(false);
+    expect(reviewGraph2DFieldRelink(saved, { ...replacement,
+      axes: [{ ...replacement.axes[0]!, spacing: 0.5 }, replacement.axes[1]!] }).eligible).toBe(false);
+    expect(reviewGraph2DFieldRelink(saved, { ...replacement, resourceSha256: "0".repeat(64) }).eligible).toBe(false);
+    expect(() => applyGraph2DAuthoring(sourceDocument, { type: "relink-field-reference", referenceId: saved.id,
+      replacement: { ...replacement, resourceSha256: "0".repeat(64) } })).toThrow(/do not match/);
+    expect(inspectGraph2DFieldReference(saved, null)).toBe("missing");
   });
 });

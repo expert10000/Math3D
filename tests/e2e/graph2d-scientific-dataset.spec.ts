@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -593,4 +593,87 @@ test("GRA-13.3 saves a field component reference and revalidates it after Graphs
         sceneFingerprint: "0".repeat(64) }), missingPath);
     expect(missing).toMatchObject({ ok: false, status: "missing" });
   } finally { await closeSurfaceApp(app); }
+});
+
+test("GRA-13.3 reviews changed and missing sources, then relinks only a matching verified bundle", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-field-relink-"));
+  const fixture = resolve("tests/fixtures/scientific-scene/vortex-flow.sscene");
+  const original = join(root, "original.sscene");
+  const altered = join(root, "altered.sscene");
+  const matching = join(root, "matching.sscene");
+  await cp(fixture, original, { recursive: true });
+  await cp(fixture, altered, { recursive: true });
+  await cp(fixture, matching, { recursive: true });
+  const alteredManifest = JSON.parse(await readFile(join(altered, "manifest.json"), "utf8"));
+  alteredManifest.coordinates[0].axes[0].unit = "cm";
+  const alteredJson = JSON.stringify(alteredManifest);
+  await writeFile(join(altered, "manifest.json"), alteredJson);
+  const alteredBundle = JSON.parse(await readFile(join(altered, "bundle.json"), "utf8"));
+  alteredBundle.manifest.bytes = Buffer.byteLength(alteredJson);
+  alteredBundle.manifest.sha256 = hash(alteredJson);
+  await writeFile(join(altered, "bundle.json"), JSON.stringify(alteredBundle));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, original);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importDialog.getByLabel("Dataset component").selectOption("field:north");
+    await importDialog.getByRole("button", { name: "View verified field" }).click();
+    await importDialog.getByRole("button", { name: "Save field reference" }).click();
+    await importDialog.getByRole("button", { name: "Cancel" }).click();
+    const saved = page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields");
+    await expect(saved).toContainText("original.sscene");
+    if (!original.startsWith(root + sep)) throw new Error("Unsafe field fixture cleanup path");
+    await rm(original, { recursive: true, force: true });
+    await saved.getByRole("button", { name: "Reverify and view" }).click();
+    await expect(saved).toContainText("Missing source — values unavailable");
+
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, altered);
+    await saved.getByRole("button", { name: "Find replacement" }).click();
+    const review = page.getByRole("dialog", { name: "Review replacement scientific field" });
+    await expect(review).toContainText("original.sscene");
+    await expect(review).toContainText("altered.sscene");
+    await expect(review.locator('tr[data-required="yes"][data-match="no"]')).toContainText("Axes");
+    await expect(review.getByRole("button", { name: "Accept verified relink" })).toBeDisabled();
+    await review.getByLabel("Replacement component").selectOption("field:east");
+    await expect(review.locator('tr[data-required="yes"][data-match="no"]').filter({ hasText: "Component" })).toHaveCount(1);
+    await review.getByRole("button", { name: "Cancel" }).click();
+    await expect(saved).toContainText("original.sscene");
+
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, matching);
+    await saved.getByRole("button", { name: "Find replacement" }).click();
+    await expect(review).toContainText("matching.sscene");
+    await expect(review.locator('tr[data-required="yes"][data-match="no"]')).toHaveCount(0);
+    const matchingManifest = await readFile(join(matching, "manifest.json"));
+    const matchingBundle = await readFile(join(matching, "bundle.json"));
+    const intervening = { ...JSON.parse(matchingManifest.toString("utf8")), title: "Changed after relink review" };
+    const interveningJson = JSON.stringify(intervening);
+    await writeFile(join(matching, "manifest.json"), interveningJson);
+    const interveningBundle = JSON.parse(matchingBundle.toString("utf8"));
+    interveningBundle.manifest.bytes = Buffer.byteLength(interveningJson);
+    interveningBundle.manifest.sha256 = hash(interveningJson);
+    await writeFile(join(matching, "bundle.json"), JSON.stringify(interveningBundle));
+    await review.getByRole("button", { name: "Accept verified relink" }).click();
+    await expect(review.getByRole("alert")).toContainText("Replacement changed");
+    await expect(saved).toContainText("original.sscene");
+    await writeFile(join(matching, "manifest.json"), matchingManifest);
+    await writeFile(join(matching, "bundle.json"), matchingBundle);
+    await review.getByRole("button", { name: "Accept verified relink" }).click();
+    await expect(review).toBeHidden();
+    await expect(saved).toContainText("matching.sscene");
+    await saved.getByRole("button", { name: "Reverify and view" }).click();
+    await expect(importDialog.getByLabel("Dataset component")).toHaveValue("field:north");
+    await importDialog.getByRole("button", { name: "Cancel" }).click();
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-field-relink-"))
+      throw new Error("Unsafe field fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
 });

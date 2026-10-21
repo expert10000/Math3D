@@ -7,6 +7,7 @@ import {
   previewGraph2DScientificDataset,
   previewGraph2DScientificSlice, verifyGraph2DScientificPlane, verifyGraph2DScientificVolume,
   parseScientificSceneManifest, createGraph2DFieldReference, inspectGraph2DFieldReference,
+  reviewGraph2DFieldRelink,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
@@ -146,6 +147,21 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } | null>(null);
   const [fieldStatuses, setFieldStatuses] = useState<Record<string, "current" | "changed" | "missing" | "error">>({});
   useEffect(() => setFieldStatuses({}), [document.identity.id]);
+  const [fieldRelink, setFieldRelink] = useState<{ referenceId: string; source: {
+    manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator;
+    datasets: { datasetId: string; component: string; shape: [number, number] | [number, number, number] }[] };
+    selectedKey: string } | null>(null);
+  useEffect(() => setFieldRelink(null), [document.identity.id]);
+  const [fieldRelinkError, setFieldRelinkError] = useState("");
+  const relinkSaved = document.source.fieldReferences?.find(item => item.id === fieldRelink?.referenceId);
+  const relinkSelected = fieldRelink?.source.datasets.find(item => `${item.datasetId}:${item.component}` === fieldRelink.selectedKey);
+  const relinkCandidate = useMemo(() => {
+    if (!fieldRelink || !relinkSelected) return null;
+    try { return createGraph2DFieldReference(fieldRelink.source.manifestJson, fieldRelink.source.fingerprint,
+      fieldRelink.source.locator, relinkSelected.datasetId, relinkSelected.component); }
+    catch { return null; }
+  }, [fieldRelink, relinkSelected]);
+  const relinkReview = relinkSaved && relinkCandidate ? reviewGraph2DFieldRelink(relinkSaved, relinkCandidate) : null;
   const [scientificDatasetId, setScientificDatasetId] = useState("");
   const [scientificVaryingAxis, setScientificVaryingAxis] = useState<0 | 1 | null>(null);
   const [scientificFixedIndex, setScientificFixedIndex] = useState<number | null>(null);
@@ -287,6 +303,40 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       selectDefaultScientificSlice(selected.shape);
     } catch (error) { setFieldStatuses(current => ({ ...current, [reference.id]: "error" }));
       setScientificImportError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
+  };
+  const chooseFieldRelink = async (reference: Graph2DFieldReference) => {
+    if (!window.scientificScenes?.chooseGraphDatasetRelink || scientificImportBusy) return;
+    setScientificImportBusy(true); setFieldRelinkError("");
+    try {
+      const picked = await window.scientificScenes.chooseGraphDatasetRelink();
+      if (!picked.ok) { if (!picked.canceled) setFieldRelinkError(picked.error); return; }
+      const preferred = picked.source.datasets.find(item => item.datasetId === reference.datasetId &&
+        item.component === reference.component) ?? picked.source.datasets[0]!;
+      setFieldRelink({ referenceId: reference.id, source: picked.source,
+        selectedKey: `${preferred.datasetId}:${preferred.component}` });
+    } catch (error) { setFieldRelinkError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
+  };
+  const acceptFieldRelink = async () => {
+    if (!fieldRelink || !relinkSaved || !relinkSelected || !relinkReview?.eligible ||
+        !onAuthoringCommit || !window.scientificScenes?.openGraphDatasetReference || scientificImportBusy) return;
+    setScientificImportBusy(true); setFieldRelinkError("");
+    try {
+      // A fresh bundle read closes the time-of-check/time-of-use gap after the comparison was displayed.
+      const opened = await window.scientificScenes.openGraphDatasetReference({
+        locator: fieldRelink.source.locator, sceneFingerprint: fieldRelink.source.fingerprint });
+      if (!opened.ok) throw new Error(`Replacement ${opened.status}: ${opened.error}`);
+      try {
+        const replacement = createGraph2DFieldReference(opened.source.manifestJson, opened.source.fingerprint,
+          opened.source.locator, relinkSelected.datasetId, relinkSelected.component);
+        if (!reviewGraph2DFieldRelink(relinkSaved, replacement).eligible)
+          throw new Error("Replacement component, axes, shape or checksum changed during verification.");
+        onAuthoringCommit({ type: "relink-field-reference", referenceId: relinkSaved.id, replacement });
+        setFieldStatuses(current => ({ ...current, [relinkSaved.id]: "current" }));
+        setFieldRelink(null);
+      } finally { await window.scientificScenes.closeGraphDataset(opened.source.fingerprint); }
+    } catch (error) { setFieldRelinkError((error as Error).message); }
     finally { setScientificImportBusy(false); }
   };
   const commitScientificDataset = () => {
@@ -826,10 +876,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           "Not reverified on this opening"}</small>
       <div><button type="button" disabled={scientificImportBusy || !window.scientificScenes?.openGraphDatasetReference}
         onClick={() => void openSavedFieldReference(reference)}>Reverify and view</button>
+        <button type="button" disabled={scientificImportBusy || !onAuthoringCommit || !window.scientificScenes?.chooseGraphDatasetRelink}
+          onClick={() => void chooseFieldRelink(reference)}>Find replacement…</button>
         <button type="button" disabled={!onAuthoringCommit}
           onClick={() => onAuthoringCommit?.({ type: "remove-field-reference", referenceId: reference.id })}>
           Remove reference</button></div>
     </article>)}
+    {fieldRelinkError && !fieldRelink && <p role="alert">{fieldRelinkError}</p>}
   </section>;
   const saveTangentButton = (available: boolean) => <button type="button"
     disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
@@ -1334,6 +1387,31 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               {preset.title}</button><small>{preset.detail}</small>
           </div>)}
           <button type="button" onClick={() => setScientificPresetOpen(false)}>Cancel</button>
+        </div>}
+        {fieldRelink && <div className="graph2d-scientific-import graph2d-field-relink" role="dialog"
+          aria-label="Review replacement scientific field" aria-modal="true">
+          <h3>Review replacement scientific field</h3>
+          <p>The candidate bundle was verified. Compare its metadata before replacing the saved location. No field values are displayed here.</p>
+          <label>Replacement component <select aria-label="Replacement component" value={fieldRelink.selectedKey}
+            onChange={event => setFieldRelink({ ...fieldRelink, selectedKey: event.target.value })}>
+            {fieldRelink.source.datasets.map(item => <option key={`${item.datasetId}:${item.component}`}
+              value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component} · {item.shape.join(" × ")}</option>)}
+          </select></label>
+          {relinkReview ? <>
+            <table><thead><tr><th>Property</th><th>Saved</th><th>Replacement</th></tr></thead>
+              <tbody>{relinkReview.differences.map(item => <tr key={item.field}
+                data-match={item.matches ? "yes" : "no"} data-required={item.required ? "yes" : "no"}>
+                <th scope="row">{item.field}{item.required ? " *" : ""}</th>
+                <td>{item.saved}</td><td>{item.replacement}</td></tr>)}</tbody></table>
+            <p role="status">{relinkReview.eligible ?
+              "Required component, field type, shape, axes and resource checksum match. Source details may differ." :
+              "Relink unavailable: a required field differs, or this is already the saved source."}</p>
+          </> : <p role="alert">This replacement has no valid field component.</p>}
+          {fieldRelinkError && <p role="alert">{fieldRelinkError}</p>}
+          <div><button type="button" disabled={!relinkReview?.eligible || scientificImportBusy}
+            onClick={() => void acceptFieldRelink()}>Accept verified relink</button>
+            <button type="button" disabled={scientificImportBusy} onClick={() => { setFieldRelink(null); setFieldRelinkError(""); }}>Cancel</button></div>
+          <small>* Required for relinking. Acceptance re-reads and verifies the bundle again; opening it later re-verifies before viewing.</small>
         </div>}
         {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
           onPointerDown={event => event.stopPropagation()}>

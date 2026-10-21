@@ -15,7 +15,7 @@ export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", 
   "create-trajectory", "edit-trajectory",
   "create-phase-portrait", "edit-phase-portrait",
   "create-time-ode", "edit-time-ode",
-  "save-field-reference", "remove-field-reference",
+  "save-field-reference", "relink-field-reference", "remove-field-reference",
   "parameter-create", "parameter-configure", "parameter-expression-create", "parameter-expression-configure", "parameter-value", "parameter-delete",
   "grid-mode", "pinned-probes", "duplicate", "reorder", "visibility", "style", "delete", "restore"] as const;
 export type Graph2DSceneOperation = (typeof GRAPH2D_SCENE_OPERATIONS)[number];
