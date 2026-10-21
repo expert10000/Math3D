@@ -37,6 +37,7 @@ import {
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
   graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
+  GRAPH2D_ANALYSIS_QUALITY_MEANINGS,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
   projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions,
@@ -61,6 +62,7 @@ import { Graph2DToolsPanel } from "./Graph2DToolsPanel";
 import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
+import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
@@ -953,7 +955,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           Solve intersections</button>
       </div> : <p>Add another function to compare.</p>}
       {intersections && <div data-testid="graph2d-intersection-result" data-result-id={intersections.resultId}>
-        <p>{intersections.status} · {intersections.candidates.length} candidates · x ∈
+        <p><strong>{intersections.quality === "incomplete" ? "Incomplete" :
+          intersections.quality === "approximate" ? "Approximate enumeration" : "Unavailable"}</strong>
+          {" "}· {intersections.candidates.length} candidates · x ∈
           [{intersections.interval.min.toPrecision(5)}, {intersections.interval.max.toPrecision(5)}]</p>
         {intersections.candidates.length > 0 ? <ol className="graph2d-intersection-list">
           {intersections.candidates.map((candidate) => <li key={candidate.candidateId}>
@@ -962,7 +966,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               onClick={() => onSelectionCommit?.({ objectId: candidate.firstObjectId,
                 probe: { objectId: candidate.firstObjectId, x: candidate.x, y: candidate.y } })}>
               ({candidate.x.toPrecision(7)}, {candidate.y.toPrecision(7)})</button>
-            <small>{candidate.classification} · {candidate.confidence} · {candidate.method} · residual {candidate.residual.toExponential(2)}</small>
+            <small><span className={`graph2d-analysis-quality graph2d-analysis-quality-${candidate.quality}`}
+              title={GRAPH2D_ANALYSIS_QUALITY_MEANINGS[candidate.quality]}>
+              {candidate.quality === "refined" ? "Refined" : "Approximate"}</span>
+              {" "}· {candidate.classification} · {candidate.method} · residual {candidate.residual.toExponential(2)}</small>
             <button type="button" aria-label={`Save intersection at x ${candidate.x.toPrecision(7)} as construction`}
               title={intersections.status !== "complete" ? "Complete bounded scan required before saving." : undefined}
               disabled={!onConstructionCommit || intersections.status !== "complete" || !isGraph2DIntersectionCurrent(intersections, document) ||
@@ -974,7 +981,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {(intersections.invalidCells > 0 || intersections.unresolvedBrackets > 0 || intersections.coincidentCells > 0) &&
           <small>{intersections.invalidCells} undefined cells · {intersections.unresolvedBrackets} unresolved brackets ·
             {" "}{intersections.coincidentCells} coincident cells</small>}
-        <small>Tangencies are possible candidates; narrow intersections may be missed.</small>
+        <small>Refined means a bracket solver met residual tolerance 1e−7. A small residual does not prove a unique intersection or complete enumeration. Tangencies are possible candidates; narrow intersections may be missed.</small>
+        <Graph2DAnalysisQualityGuide />
       </div>}
     </section>}
     {onPromotionCreate && onPromotionLocate && onPromotionRegenerate && <Graph2DPromotionPanel document={document}

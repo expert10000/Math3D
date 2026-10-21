@@ -373,6 +373,9 @@ test("Graphs selects source-linked zeros and refreshes extrema after editing", a
     await expect(results.getByRole("button", { name: /Select zero at x/ }).first()).toBeVisible();
     await expect(results.getByRole("button", { name: /Select minimum at x/ }).first()).toBeVisible();
     await expect(results.getByRole("button", { name: /Select inflection at x/ })).toHaveCount(0);
+    await expect(results.locator(".graph2d-analysis-quality").first()).toHaveText("Approximate");
+    await results.getByText("Analysis quality levels").click();
+    await expect(results.getByText("Certified", { exact: true })).toBeVisible();
     await results.getByRole("button", { name: /Select zero at x/ }).first().click();
     await expect(inspector.getByTestId("graph2d-probe-coordinates")).toContainText("0.00000");
     await editGraph(app.page, "f");
@@ -394,7 +397,7 @@ test("Graphs labels a refinement-limited oscillatory analysis as partial", async
     await graphEditor(app.page).getByLabel("Function expression").fill("sin(100*x)");
     await saveGraphEditor(app.page);
     const status = app.page.getByTestId("graph2d-critical-scan-status").first();
-    await expect(status).toContainText("Partial scan");
+    await expect(status).toContainText("Incomplete scan");
     await expect(status).toContainText("results not exhaustive");
   } finally {
     await closeSurfaceApp(app);
@@ -507,6 +510,8 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await section.getByRole("button", { name: "Solve intersections" }).click();
     const result = section.getByTestId("graph2d-intersection-result");
     await expect(result.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(2);
+    await expect(result).toContainText("Approximate enumeration");
+    await expect(result.locator(".graph2d-analysis-quality").first()).toHaveText("Refined");
     await expect(app.page.getByTestId("graph2d-intersection-overlays")).toHaveAttribute("data-result-id",
       (await result.getAttribute("data-result-id"))!);
     await result.getByRole("button", { name: /Select intersection at x/ }).first().click();

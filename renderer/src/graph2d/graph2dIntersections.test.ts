@@ -40,6 +40,19 @@ describe("Graph2D pairwise intersections", () => {
     expect(near(shifted.candidates.filter((entry) => entry.classification === "tangent-possible"), 0.3)).toBe(true);
   });
 
+  it("separates local refinement from completeness and never certifies a small residual", () => {
+    const refined = analyze("x", "0.3");
+    expect(refined.status).toBe("complete");
+    expect(refined.quality).toBe("approximate");
+    expect(refined.candidates[0]?.quality).toBe("refined");
+    const sampled = analyze("x", "0");
+    expect(sampled.candidates[0]?.quality).toBe("approximate");
+    const pole = analyze("1/x", "0");
+    expect(pole.status).toBe("incomplete");
+    expect(pole.quality).toBe("incomplete");
+    expect(pole.publication.summary.quality).toBe("incomplete");
+  });
+
   it("rejects poles and keeps unresolved brackets visible", () => {
     const reciprocal = analyze("1/x", "0");
     expect(reciprocal.candidates).toHaveLength(0);

@@ -242,6 +242,17 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .graph2d-critical-points { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
 .graph2d-critical-points h3 { margin: 0 0 8px; font-size: 14px; }
 .graph2d-critical-points p { margin: 6px 0; }
+.graph2d-critical-quality-note { color: var(--muted); line-height: 1.45; }
+.graph2d-analysis-quality { display: inline-block; padding: 2px 5px; border: 1px solid var(--workspace-control-border); border-radius: 5px; color: var(--text); font-weight: 700; white-space: nowrap; }
+.graph2d-analysis-quality-approximate { background: color-mix(in srgb, #fbbf24 20%, var(--workspace-section-bg)); }
+.graph2d-analysis-quality-refined { background: color-mix(in srgb, #34d399 20%, var(--workspace-section-bg)); }
+.graph2d-analysis-quality-guide { margin: 7px 0; border: 1px solid var(--workspace-control-border); border-radius: 6px; padding: 6px 8px; }
+.graph2d-analysis-quality-guide summary { cursor: pointer; font-weight: 700; }
+.graph2d-analysis-quality-guide dl { display: grid; gap: 5px; margin: 8px 0; }
+.graph2d-analysis-quality-guide dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 6px; }
+.graph2d-analysis-quality-guide dt { font-weight: 700; }
+.graph2d-analysis-quality-guide dd { margin: 0; color: var(--muted); }
+.graph2d-analysis-quality-guide p { margin: 7px 0 0; }
 .graph2d-critical-status-partial { color: #9a3412; background: #fff7ed; border: 1px solid #fdba74; border-radius: 6px; padding: 8px; }
 .graph2d-critical-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
 .graph2d-critical-summary > div { padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel, #f8fafc); }

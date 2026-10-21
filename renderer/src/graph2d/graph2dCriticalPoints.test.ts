@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DCriticalPoints, applyGraph2DAuthoring, createEmptyGraph2DDocument,
   analyzeGraph2DDerivative,
+  graph2DQualityForNumericalCandidate,
   isGraph2DCriticalPointCurrent,
   createGraph2DDocument } from "@math3d/core";
 
@@ -21,6 +22,7 @@ describe("Graph2D critical point analysis", () => {
     const document = documentFor("x^2");
     const result = analyzeGraph2DCriticalPoints({ document, objectId: "function_1", interval: { min: -3, max: 3 } });
     expect(result.status).toBe("complete");
+    expect(result.quality).toBe("approximate");
     expect(near(result.candidates.filter((entry) => entry.kind === "zero"), 0)).toBe(true);
     expect(near(result.candidates.filter((entry) => entry.kind === "minimum"), 0)).toBe(true);
     expect(result.candidates.some((entry) => entry.kind === "inflection")).toBe(false);
@@ -29,6 +31,21 @@ describe("Graph2D critical point analysis", () => {
     expect(isGraph2DCriticalPointCurrent(result.candidates[0]!, { ...document,
       identity: { ...document.identity, revision: document.identity.revision + 1 } })).toBe(false);
     expect(result.candidates.every((entry) => Number.isFinite(entry.residual) && entry.residual <= 1e-7)).toBe(true);
+    expect(result.candidates.find((entry) => entry.kind === "zero")?.quality).toBe("approximate");
+  });
+
+  it("only labels residual-checked bracket refinement as Refined", () => {
+    const result = analyze("x-0.3", -2, 2);
+    const zero = result.candidates.find((entry) => entry.kind === "zero");
+    expect(zero?.method).toBe("bracket-bisection");
+    expect(zero?.quality).toBe("refined");
+    expect(result.publication.summary.quality).toBe("approximate");
+    expect(graph2DQualityForNumericalCandidate({ method: "minimum-absolute-residual",
+      confidence: "heuristic", residual: 0 }, 1e-7)).toBe("approximate");
+    expect(graph2DQualityForNumericalCandidate({ method: "bracket-bisection",
+      confidence: "numerical", residual: 2e-7 }, 1e-7)).toBe("approximate");
+    expect(graph2DQualityForNumericalCandidate({ method: "bracket-bisection",
+      confidence: "numerical", residual: 1e-8 }, 1e-7)).toBe("refined");
   });
 
   it("refines a zero away from the sample grid and labels even multiplicity as possible", () => {
@@ -99,6 +116,7 @@ describe("Graph2D critical point analysis", () => {
     const result = analyzeGraph2DCriticalPoints({ document, objectId: "function_1",
       interval: { min: -10, max: 10 }, maxEvaluations: 400 });
     expect(result.status).toBe("incomplete");
+    expect(result.quality).toBe("incomplete");
     expect(result.evaluations).toBe(400);
     expect(result.diagnostics.some((entry) => entry.code === "evaluation-limit")).toBe(true);
     expect(result.publication.warnings.some((warning) => warning.includes("Analysis is partial"))).toBe(true);

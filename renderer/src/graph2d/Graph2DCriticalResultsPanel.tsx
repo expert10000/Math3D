@@ -1,8 +1,10 @@
 import { graph2DConstructionActionsFromCandidates, isGraph2DCriticalCandidateAlreadySaved,
   isGraph2DCriticalPointCurrent,
   GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis,
-  type Graph2DConstructionAction, type Graph2DDocument, type Graph2DSelection } from "@math3d/core";
+  GRAPH2D_ANALYSIS_QUALITY_MEANINGS, type Graph2DConstructionAction,
+  type Graph2DDocument, type Graph2DSelection } from "@math3d/core";
 import { useEffect, useMemo, useState } from "react";
+import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
 
 type Filter = "all" | "zero" | "extrema" | "inflection";
 type Props = Readonly<{
@@ -29,7 +31,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, onSelectionCom
   }), [analysis]);
   const rows = useMemo(() => analysis.candidates.filter(item =>
     (filter === "all" || filter === "extrema" && isExtremum(item) || item.kind === filter) &&
-    (!query.trim() || `${item.kind} ${item.x} ${item.y}`.toLowerCase().includes(query.trim().toLowerCase())))
+    (!query.trim() || `${item.kind} ${item.x} ${item.y} ${item.quality}`.toLowerCase().includes(query.trim().toLowerCase())))
     .sort((a, b) => descending ? b.x - a.x : a.x - b.x), [analysis, filter, query, descending]);
   const validForSave = (item: Graph2DCriticalPoint) => item.kind !== "inflection" && item.confidence === "numerical" &&
     !isGraph2DCriticalCandidateAlreadySaved(document, item) && isGraph2DCriticalPointCurrent(item, document);
@@ -47,9 +49,10 @@ export function Graph2DCriticalResultsPanel({ analysis, document, onSelectionCom
   };
   const exportCsv = () => {
     const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-    const csv = ["kind,x,y,residual,confidence,method,source_document,source_revision,scan_status,interval_min,interval_max",
-      ...analysis.candidates.map(item => [item.kind, item.x, item.y, item.residual, item.confidence, item.method,
-        item.source.documentId, item.source.revision, analysis.status, analysis.interval.min, analysis.interval.max]
+    const csv = ["kind,x,y,residual,quality,confidence,method,source_document,source_revision,scan_status,scan_quality,interval_min,interval_max",
+      ...analysis.candidates.map(item => [item.kind, item.x, item.y, item.residual, item.quality, item.confidence, item.method,
+        item.source.documentId, item.source.revision, analysis.status, analysis.quality ?? "unavailable",
+        analysis.interval.min, analysis.interval.max]
         .map(quote).join(","))].join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = globalThis.document.createElement("a");
@@ -66,7 +69,8 @@ export function Graph2DCriticalResultsPanel({ analysis, document, onSelectionCom
     <h3>Numerical analysis</h3>
     <p className={analysis.status === "incomplete" ? "graph2d-critical-status-partial" : undefined}
       role="status" data-testid="graph2d-critical-scan-status">
-      <strong>{analysis.status === "incomplete" ? "Partial scan" : analysis.status === "unavailable" ? "Scan unavailable" : "Bounded scan finished"}</strong>
+      <strong>{analysis.quality === "incomplete" ? "Incomplete scan" : analysis.status === "unavailable" ?
+        "Scan unavailable" : "Approximate enumeration"}</strong>
       {" "}· Interval [{analysis.interval.min.toPrecision(5)}, {analysis.interval.max.toPrecision(5)}]
       {" "}· {analysis.evaluations.toLocaleString()} evaluations
       {analysis.status === "incomplete" ? <>{" "}· {analysis.diagnostics.some(entry => entry.code === "evaluation-limit") ?
@@ -74,6 +78,10 @@ export function Graph2DCriticalResultsPanel({ analysis, document, onSelectionCom
           "candidate limit reached" : "refinement budget reached or cells unresolved"} · results not exhaustive</> :
         analysis.status === "complete" ? " · exhaustive coverage not certified" : null}
     </p>
+    <p className="graph2d-critical-quality-note">Refined means a bracket solver met residual tolerance 1e−7.
+      Approximate means sampled or heuristic. Neither proves a unique root or complete enumeration;
+      Certified and Symbolic are not claimed by this scan.</p>
+    <Graph2DAnalysisQualityGuide />
     <dl className="graph2d-critical-summary">
       <div><dt>Zeros</dt><dd>{counts.zero}</dd></div>
       <div><dt>Extrema</dt><dd>{counts.extrema}</dd></div>
@@ -89,7 +97,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, onSelectionCom
     </div>
     <div className="graph2d-critical-table-wrap"><table aria-label="Numerical analysis results">
       <thead><tr><th scope="col">Select</th><th scope="col">Kind</th><th scope="col"><button type="button" aria-label="Sort results by x"
-        onClick={() => setDescending(value => !value)}>x {descending ? "↓" : "↑"}</button></th><th scope="col">y</th><th scope="col">Residual</th><th scope="col">Save</th></tr></thead>
+        onClick={() => setDescending(value => !value)}>x {descending ? "↓" : "↑"}</button></th><th scope="col">y</th><th scope="col">Residual</th><th scope="col">Quality</th><th scope="col">Save</th></tr></thead>
       <tbody>{rows.map(candidate => {
         const probe = document.selection.probe;
         const active = probe?.objectId === candidate.objectId && Math.abs(probe.x - candidate.x) < 1e-8;
@@ -104,6 +112,9 @@ export function Graph2DCriticalResultsPanel({ analysis, document, onSelectionCom
             onClick={() => onSelectionCommit?.({ objectId: candidate.objectId,
               probe: { objectId: candidate.objectId, x: candidate.x, y: candidate.y } })}>{candidate.kind}</button></td>
           <td>{format(candidate.x)}</td><td>{format(candidate.y)}</td><td>{candidate.residual.toExponential(1)}</td>
+          <td><span className={`graph2d-analysis-quality graph2d-analysis-quality-${candidate.quality}`}
+            title={`${GRAPH2D_ANALYSIS_QUALITY_MEANINGS[candidate.quality]} Method: ${candidate.method}; residual: ${candidate.residual.toExponential(2)}`}>
+            {candidate.quality === "refined" ? "Refined" : "Approximate"}</span></td>
           <td>{candidate.kind !== "inflection" && <button type="button" aria-label={`Save ${candidate.kind} at x ${format(candidate.x)} as construction`}
             disabled={!canSave([candidate]) || !validForSave(candidate)} onClick={() => save([candidate])}>Save</button>}</td>
         </tr>;

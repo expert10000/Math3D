@@ -3,9 +3,11 @@ import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DExplicitObject } from "./graph2dDocument";
 import { analyzeGraph2DDerivative, differentiateGraph2DExpression } from "./graph2dDerivatives";
 import { evaluateGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { graph2DQualityForNumericalCandidate, graph2DQualityForScan,
+  type Graph2DNumericalCandidateQuality } from "./graph2dAnalysisQuality";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 
-export const GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION = "2" as const;
+export const GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION = "3" as const;
 export const GRAPH2D_CRITICAL_POINT_GRID_INTERVALS = 256;
 export const GRAPH2D_CRITICAL_POINT_MAX_CANDIDATES = 256;
 export const GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS = 12000;
@@ -25,6 +27,7 @@ export type Graph2DCriticalPoint = Readonly<{
   estimatedXError: number | null;
   method: "sample" | "bracket-bisection" | "minimum-absolute-residual";
   confidence: "numerical" | "heuristic";
+  quality: Graph2DNumericalCandidateQuality;
   multiplicity: "unknown" | "even-possible";
   source: ScientificSourceGeneration;
 }>;
@@ -32,6 +35,7 @@ export type Graph2DCriticalPointAnalysis = Readonly<{
   objectId: string;
   interval: Readonly<{ min: number; max: number }>;
   status: "complete" | "incomplete" | "unavailable";
+  quality: "approximate" | "incomplete" | null;
   candidates: readonly Graph2DCriticalPoint[];
   evaluations: number;
   diagnostics: readonly Readonly<{ code: string; message: string; count: number }>[];
@@ -149,7 +153,8 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
     const candidate: Graph2DCriticalPoint = { candidateId: "graph2d.critical-point." + structuralHash({ source, objectId: object.id, kind, x }).slice(7),
       objectId: object.id, kind, x, y, residual, localSensitivity,
       estimatedXError: localSensitivity === null ? null : residual * localSensitivity,
-      method, confidence, multiplicity, source };
+      method, confidence, quality: graph2DQualityForNumericalCandidate({ method, confidence, residual },
+        residualTolerance), multiplicity, source };
     if (previous >= 0) {
       if (candidate.residual < candidates[previous]!.residual ||
           candidate.confidence === "numerical" && candidates[previous]!.confidence === "heuristic") candidates[previous] = candidate;
@@ -277,6 +282,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
   if (!symbolicFirst.ok || !symbolicSecond.ok) note("numerical-derivative-field", "Derivative field used bounded finite differences where symbolic rules were unavailable.");
   candidates.sort((a, b) => a.x - b.x || a.kind.localeCompare(b.kind));
   const status = interval.min >= interval.max ? "unavailable" : incomplete ? "incomplete" : "complete";
+  const quality = graph2DQualityForScan(status);
   const diagnosticList = [...diagnostics.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, entry]) => ({ code, ...entry }));
   const publication = createAnalysisResultEnvelope({
     resultId: "graph2d.critical-points." + structuralHash({ source, objectId: object.id, interval,
@@ -289,7 +295,9 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
         maxCandidates: GRAPH2D_CRITICAL_POINT_MAX_CANDIDATES, maxEvaluations } },
       numericContext: { precision: { binaryBits: 53 }, tolerance: { absolute: residualTolerance } },
       engine: { name: "math3d-core", version: GRAPH2D_CRITICAL_POINT_ALGORITHM_VERSION }, elapsedMs: Math.max(0, Date.now() - started) },
-    summary: { status, interval, evaluations, scanCells, candidateCount: candidates.length,
+    summary: { status, quality, interval, evaluations, scanCells, candidateCount: candidates.length,
+      approximateCount: candidates.filter((entry) => entry.quality === "approximate").length,
+      refinedCount: candidates.filter((entry) => entry.quality === "refined").length,
       zeroCount: candidates.filter((entry) => entry.kind === "zero").length,
       extremaCount: candidates.filter((entry) => entry.kind === "minimum" || entry.kind === "maximum").length,
       inflectionCount: candidates.filter((entry) => entry.kind === "inflection").length },
@@ -298,7 +306,7 @@ export const analyzeGraph2DCriticalPoints = (input: Readonly<{
     diagnostics: diagnosticList.map((entry) => ({ code: entry.code, severity: "warning" as const,
       message: `${entry.message} (${entry.count})` })), artifacts: [],
   });
-  return { objectId: object.id, interval, status, candidates, evaluations, diagnostics: diagnosticList, publication };
+  return { objectId: object.id, interval, status, quality, candidates, evaluations, diagnostics: diagnosticList, publication };
 };
 
 export const isGraph2DCriticalPointCurrent = (candidate: Graph2DCriticalPoint, document: Graph2DDocument): boolean =>

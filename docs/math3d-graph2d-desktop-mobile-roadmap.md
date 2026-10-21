@@ -373,6 +373,48 @@ The broader GRA-01–12 proposal has a [coverage audit and follow-on sequence](g
 
 **GRA-13.2a preset follow-up:** Graphs → More → Author → Scientific field presets offers five deterministic, hash-pinned desktop examples: sine–cosine, thermal gradient, a 2D complex wave packet, a 2D planar vortex and a 3D swirling flow. They exercise component lines, whole-field heatmaps, plane navigation and the bounded volume overview. The [field roadmap](graph2d-fields-fitting-fourier-complex-roadmap.md) records the delivered preset scope and remaining work.
 
+### GRA-N21–N30: numerical analysis quality and follow-on tools
+
+**Requested 2026-10-21; N26 quality-label first slice implemented for bounded roots, extrema, inflections and pair intersections.** The shared result distinguishes a candidate's local evidence from a scan's coverage. A completed bounded scan remains **Approximate** as an enumeration; a bracket-solved candidate is **Refined** only when its numerical residual meets the stated tolerance. A sampled zero or residual-minimum candidate remains **Approximate**, even when its residual is zero. A scan stopped by a budget or with unresolved cells is **Incomplete**, even if some individual candidates were refined. The current Graph solvers do not claim Certified or Symbolic roots. Quality travels with transient core results, Inspector readouts and the critical-point CSV; it does not silently upgrade saved numerical constructions or change the Graph document schema.
+
+| Quality | Meaning and evidence required |
+| --- | --- |
+| Approximate | Candidate found by sampling or a bounded search; no proof of uniqueness or complete enumeration. |
+| Refined | A numerical bracket solver met its stated residual/tolerance at a candidate; no uniqueness or completeness claim. |
+| Certified | A mathematical/numerical method establishes a specifically stated guarantee under explicit assumptions and a verified bound. No current Graph root or intersection solver qualifies. |
+| Symbolic | A result is derived exactly within supported symbolic rules. Applying a symbolic derivative rule and then evaluating it in floating point does not make the numerical root symbolic. |
+| Incomplete | Search was terminated, a region was unresolved, or completeness is unknown. This is scan-level information and can coexist with locally refined candidates. |
+
+**Next priorities.** The existing typed Graph expression AST, domain checks, independent analysis budgets, parameter controls, and critical-result table are starting points, not features to reimplement. Tighten them where the gates below identify gaps.
+
+| Priority | Feature | Why |
+| --- | --- | --- |
+| P0 | Numerical regression suite | Catch missed roots, aliases, poles, even multiplicity and singular derivatives. |
+| P0 | Analysis Inspector restructuring | Keep large result lists searchable, filterable, source-linked and quality-labelled across operations. |
+| P0 | Independent render, preview and analysis budgets | Keep solver work separate from visual performance and expose the fidelity used. |
+| P1 | Parameter sliders and animation follow-on | Extend the delivered controls so analysis and quality refresh correctly for function families. |
+| P1 | Derivative and integral plots | Connect existing local differential/integral results to visible calculus overlays. |
+| P1 | Interval/region selection | Run bounded analysis on a user-selected subdomain with clear clipping rules. |
+| P1 | Multi-function intersections | Extend the delivered pairwise solver and source-linked constructions without claiming exhaustive all-pairs enumeration. |
+| P1 | Numerical dataset export | Carry quality, residual, method, source generation and completeness to CSV/JSON for Python and Theory Lab. |
+| P2 | Spectral/Fourier analysis | Diagnose oscillations with a separately validated transform contract. |
+| P2 | Advanced ODE solvers and phase-plane tools | Extend delivered ODE/phase modes with explicit solver accuracy and stop conditions. |
+
+| Proposed slice | Reviewable change |
+| --- | --- |
+| GRA-N21 | Consolidate the shared typed AST/parser interface; preserve bounded grammar and compatibility. |
+| GRA-N22 | Strengthen domain-aware evaluation and singularity boundaries. |
+| GRA-N23 | Expose independent rendering, editor-preview and mathematical-analysis budgets. |
+| GRA-N24 | Improve adaptive root/extremum/inflection scanning with explicit unresolved/completeness status. |
+| GRA-N25 | Generalize result tables, filtering and graph highlighting across analysis operations. |
+| GRA-N26 | Add quality evidence and precision diagnostics. **First slice delivered:** conservative Approximate/Refined/Incomplete labels for critical points and intersections; certification methods remain open. |
+| GRA-N27 | Expand the oscillatory and singular regression corpus with independent mathematical oracles. |
+| GRA-N28 | Add derivative, tangent and integral overlays. |
+| GRA-N29 | Extend existing parameter controls and animated graph families to analysis refresh. |
+| GRA-N30 | Carry checked numerical datasets into Theory Lab and Python workflows. |
+
+**N27 oracle and preview gate:** For `x*sin(x^2)` on `[-10,10]`, the independent zero set is `x=0` and `x=±sqrt(n*pi)` for integers `1≤n≤31` (63 zeros); keep this as an exact-location oracle for numerical regression, separate from plotted samples. Also cover `sin(1/x)`, `tan(x)`, `abs(x)`, `sqrt(x)`, `log(x)` and even-multiplicity roots, including undefined points and incomplete scans. The editor's fast preview may use far fewer evaluations than object creation or mathematical analysis (the reported case used 61 versus 2,225); add explicit **Fast / Accurate** preview modes and an aliasing/insufficient-budget warning before presenting a dense oscillation as faithful. N21–N27 form the next numerical milestone; later tools depend on their evidence, not on a claim that a small residual proves uniqueness or exhaustive search.
+
 ## 7. Dependency graph and parallel work
 
 ```text
