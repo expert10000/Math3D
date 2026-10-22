@@ -33,6 +33,7 @@ export * from "./graph2dSceneSampling";
 export * from "./graph2dSlopeField";
 export * from "./graph2dTrajectory";
 export * from "./graph2dPhasePortrait";
+export * from "./graph2dVectorFieldAnalysis";
 export * from "./graph2dTimeOde";
 export * from "./graph2dPhaseLinearization";
 export * from "./graph2dParametric";

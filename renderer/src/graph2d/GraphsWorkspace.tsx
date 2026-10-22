@@ -55,6 +55,8 @@ import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthori
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
 import { useGraph2DSampling } from "./useGraph2DSampling";
+import { useGraph2DPhaseAnalysis } from "./useGraph2DPhaseAnalysis";
+import { useGraph2DVectorFieldAnalysis } from "./useGraph2DVectorFieldAnalysis";
 import { GraphGalleryDialog } from "./GraphGalleryDialog";
 import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
@@ -68,6 +70,7 @@ import { Graph2DProbesPanel } from "./Graph2DProbesPanel";
 import { Graph2DConstructionsPanel } from "./Graph2DConstructionsPanel";
 import { Graph2DCriticalResultsPanel } from "./Graph2DCriticalResultsPanel";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
+import { Graph2DAnalysisBudgetControl, type Graph2DAnalysisBudget } from "./Graph2DAnalysisBudgetControl";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
 import { Graph2DIntersectionResultsTable } from "./Graph2DIntersectionResultsTable";
 import { Graph2DIntervalResultsPanel } from "./Graph2DIntervalResultsPanel";
@@ -380,7 +383,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [editRequest, setEditRequest] = useState<{ objectId: string; sequence: number } | null>(null);
   const closeTools = () => { setToolsOpen(false); toolsOpener.current?.focus(); };
   const [exportOpen, setExportOpen] = useState(false);
-  const [criticalAnalysisBudget, setCriticalAnalysisBudget] = useState(12000);
+  const [criticalAnalysisBudget, setCriticalAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [intersectionAnalysisBudget, setIntersectionAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [areaAnalysisBudget, setAreaAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [arcAnalysisBudget, setArcAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [polarAreaAnalysisBudget, setPolarAreaAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [polarArcAnalysisBudget, setPolarArcAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [phaseAnalysisBudget, setPhaseAnalysisBudget] = useState<Graph2DAnalysisBudget>(6000);
+  const [vectorFieldAnalysisBudget, setVectorFieldAnalysisBudget] = useState<Graph2DAnalysisBudget>(2000);
   const [focusedInterval, setFocusedInterval] = useState<{ resultId: string; intervalId: string } | null>(null);
   const [showDerivativeCurve, setShowDerivativeCurve] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
@@ -524,6 +534,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const renderedDisplay = useMemo(() => ({ ...document.display, axes: displayAxes, viewport, ...(parameterPreviewActive ? { pinnedProbes: [] } : {}) }), [document.display, displayAxes, viewport, parameterPreviewActive]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null || phaseSeedPreview !== null,
+    separatePhaseAnalysis: true,
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
       object.kind === "point-series" ? [[object.table.id, pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview]);
@@ -732,6 +743,31 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const phaseObject = sampledDocument.source.objects.find((item) => item.id === document.selection.objectId);
+  const phaseVisible = sampledDocument.display.objects.some(style =>
+    style.objectId === phaseObject?.id && style.visible);
+  const phaseRequest = useMemo(() => phaseVisible && phaseObject?.kind === "phase-portrait" ? {
+    object: phaseObject,
+    variables: Object.fromEntries(sampledDocument.source.variables.map(entry => [entry.name, entry.value])),
+    viewport, width: size.width, height: size.height, maxEvaluations: phaseAnalysisBudget,
+  } : null, [phaseVisible, phaseObject, sampledDocument.source.variables, viewport, size, phaseAnalysisBudget]);
+  const phaseAnalysis = useGraph2DPhaseAnalysis(phaseRequest);
+  const vectorFieldRequest = useMemo(() => phaseRequest ? {
+    object: { id: phaseRequest.object.id,
+      xDerivative: phaseRequest.object.xDerivative, yDerivative: phaseRequest.object.yDerivative,
+      domain: phaseRequest.object.domain, yDomain: phaseRequest.object.yDomain },
+    variables: phaseRequest.variables, viewport,
+    maxEvaluations: vectorFieldAnalysisBudget,
+  } : null, [phaseRequest, viewport, vectorFieldAnalysisBudget]);
+  const vectorFieldAnalysis = useGraph2DVectorFieldAnalysis(vectorFieldRequest);
+  const phaseArtifact = useMemo<Graph2DPhasePortraitArtifact | null>(() => selectedSeries?.artifact &&
+    "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" ?
+    (sampling.ready && phaseAnalysis.result ? { ...selectedSeries.artifact, ...phaseAnalysis.result } :
+      selectedSeries.artifact) as Graph2DPhasePortraitArtifact : null,
+  [selectedSeries?.artifact, sampling.ready, phaseAnalysis.result]);
+  const phaseSeries = useMemo(() => phaseArtifact ? series.map(item =>
+    item.objectId === document.selection.objectId ? { ...item, artifact: phaseArtifact } : item) : series,
+  [series, phaseArtifact, document.selection.objectId]);
   const activePolarDraft = selectedObject?.kind === "polar" && polarDraft.objectId !== selectedObject.id ?
     { objectId: selectedObject.id, min: String(selectedObject.domain.min), max: String(selectedObject.domain.max) } : polarDraft;
   const polarMin = activePolarDraft.min.trim() ? Number(activePolarDraft.min) : NaN;
@@ -766,7 +802,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     isGraph2DRegressionCurrent(regression, document) ? regression : null;
   const focusedNumericalProbe = focusedNumericalPoint?.origin === "regression" &&
     focusedNumericalPoint.resultId === currentRegression?.publication.resultId ? focusedNumericalPoint.point :
-    focusedNumericalPoint?.origin === "phase" && focusedNumericalPoint.artifact === selectedSeries?.artifact &&
+    focusedNumericalPoint?.origin === "phase" && focusedNumericalPoint.artifact === phaseArtifact &&
       selectedObject?.id === focusedNumericalPoint.point.objectId && !phaseSeedPreview && !parameterPreviewActive ?
       focusedNumericalPoint.point : null;
   // Same-source retained samples are an explicitly labelled previous observation, not current analysis evidence.
@@ -789,22 +825,25 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   [document, criticalPoints]);
   const area = useMemo(() => !areaUnavailable && areaRequest && areaRequest.objectId === document.selection.objectId ?
     analyzeGraph2DIntegral({ document, objectId: areaRequest.objectId,
-      interval: { min: areaRequest.min, max: areaRequest.max }, mode: areaRequest.mode }) : null,
-  [document, areaRequest, areaUnavailable]);
+      interval: { min: areaRequest.min, max: areaRequest.max }, mode: areaRequest.mode,
+      maxEvaluations: areaAnalysisBudget }) : null,
+  [document, areaRequest, areaUnavailable, areaAnalysisBudget]);
   const arcLength = useMemo(() => !arcUnavailable && arcRequest && arcRequest.objectId === document.selection.objectId ?
     analyzeGraph2DArcLength({ document, objectId: arcRequest.objectId,
-      interval: { min: arcRequest.min, max: arcRequest.max } }) : null,
-  [document, arcRequest, arcUnavailable]);
+      interval: { min: arcRequest.min, max: arcRequest.max }, maxEvaluations: arcAnalysisBudget }) : null,
+  [document, arcRequest, arcUnavailable, arcAnalysisBudget]);
   const polarArea = useMemo(() => selectedObject?.kind === "polar" && polarAreaRequest?.objectId === selectedObject.id &&
     polarAreaRequest.min >= selectedObject.domain.min && polarAreaRequest.max <= selectedObject.domain.max ?
     analyzeGraph2DPolarMeasurement({ document, objectId: selectedObject.id, kind: "swept-area",
-      interval: { min: polarAreaRequest.min, max: polarAreaRequest.max } }) : null,
-  [document, selectedObject, polarAreaRequest]);
+      interval: { min: polarAreaRequest.min, max: polarAreaRequest.max },
+      maxEvaluations: polarAreaAnalysisBudget }) : null,
+  [document, selectedObject, polarAreaRequest, polarAreaAnalysisBudget]);
   const polarArcLength = useMemo(() => selectedObject?.kind === "polar" && polarArcRequest?.objectId === selectedObject.id &&
     polarArcRequest.min >= selectedObject.domain.min && polarArcRequest.max <= selectedObject.domain.max ?
     analyzeGraph2DPolarMeasurement({ document, objectId: selectedObject.id, kind: "arc-length",
-      interval: { min: polarArcRequest.min, max: polarArcRequest.max } }) : null,
-  [document, selectedObject, polarArcRequest]);
+      interval: { min: polarArcRequest.min, max: polarArcRequest.max },
+      maxEvaluations: polarArcAnalysisBudget }) : null,
+  [document, selectedObject, polarArcRequest, polarArcAnalysisBudget]);
   const areaMin = areaDraft.min.trim() === "" ? NaN : Number(areaDraft.min);
   const areaMax = areaDraft.max.trim() === "" ? NaN : Number(areaDraft.max);
   const areaValid = Number.isFinite(areaMin) && Number.isFinite(areaMax) && areaMin < areaMax;
@@ -824,8 +863,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     return analyzeGraph2DIntersections({ document, firstObjectId: intersectionRequest.firstId,
       secondObjectId: intersectionRequest.secondId, interval: intersectionRequest.intervalMode === "visible" ?
         { min: bounds.xMin, max: bounds.xMax } :
-        { min: intersectionRequest.min, max: intersectionRequest.max } });
-  }, [document, size, intersectionRequest, selectedObject]);
+        { min: intersectionRequest.min, max: intersectionRequest.max },
+      maxEvaluations: intersectionAnalysisBudget });
+  }, [document, size, intersectionRequest, selectedObject, intersectionAnalysisBudget]);
   const differential = useMemo(() => analyzeGraph2DLocalDifferential(document), [document]);
   const polarDifferential = useMemo(() => analyzeGraph2DPolarLocalDifferential(document), [document]);
   const parametricDifferential = useMemo(() => analyzeGraph2DParametricLocalDifferential(document), [document]);
@@ -1041,8 +1081,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           min: String(selectedObject.domain.min), max: String(selectedObject.domain.max) });
           setPolarAreaRequest(null); setPolarArcRequest(null); }}>Use source angle range</button></div>}
       <div className="graph2d-area-controls">
+        <Graph2DAnalysisBudgetControl label="Polar area evaluation budget"
+          value={polarAreaAnalysisBudget} onChange={setPolarAreaAnalysisBudget} />
         <button type="button" disabled={!polarValid} title={!polarValid ? "Choose increasing angles within the authored angular domain." : undefined} onClick={() => polarValid && selectedObject.kind === "polar" &&
           setPolarAreaRequest({ objectId: selectedObject.id, min: polarMin, max: polarMax })}>Measure swept area</button>
+        <Graph2DAnalysisBudgetControl label="Polar arc length evaluation budget"
+          value={polarArcAnalysisBudget} onChange={setPolarArcAnalysisBudget} />
         <button type="button" disabled={!polarValid} title={!polarValid ? "Choose increasing angles within the authored angular domain." : undefined} onClick={() => polarValid && selectedObject.kind === "polar" &&
           setPolarArcRequest({ objectId: selectedObject.id, min: polarMin, max: polarMax })}>Measure polar arc length</button>
       </div>
@@ -1053,8 +1097,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <p>{result.kind === "swept-area" ? "Swept area" : "Polar arc length"}: {result.value === null ?
             "Unavailable over full angular interval" : result.value.toPrecision(9)}</p>
           <small>{result.method} · tolerance {result.tolerance.toExponential(1)} · estimated error {result.errorEstimate === null ?
-            "unavailable" : result.errorEstimate.toExponential(2)} · {result.evaluations.toLocaleString()} evaluations</small>
+            "unavailable" : result.errorEstimate.toExponential(2)} · {result.evaluations.toLocaleString()} of
+            {" "}{(result.kind === "swept-area" ? polarAreaAnalysisBudget : polarArcAnalysisBudget).toLocaleString()} evaluations</small>
           {result.unresolvedCells > 0 && <p>{result.unresolvedCells} unresolved cells; partial value {result.partialValue.toPrecision(7)}.</p>}
+          {result.publication.diagnostics.filter(entry => entry.code === "evaluation-limit")
+            .map(entry => <p key={entry.code} role="status">{entry.message}</p>)}
         </div>)}
     </section> : areaUnavailable && arcUnavailable ? <section className="graph2d-measurement-unavailable" aria-label="Measurements unavailable">
       <h3>Measurements</h3><p>{areaUnavailable}</p><p>{arcUnavailable}</p>
@@ -1069,6 +1116,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onChange={(event) => { setAreaDraft({ ...areaDraft, mode: event.target.value as Graph2DIntegralMode }); setAreaRequest(null); }}>
           <option value="signed">Signed area</option><option value="absolute">Absolute area</option>
         </select></label>
+        <Graph2DAnalysisBudgetControl label="Area evaluation budget"
+          value={areaAnalysisBudget} onChange={setAreaAnalysisBudget} />
         <button type="button" disabled={!areaValid || !!areaUnavailable} onClick={() => !areaUnavailable && document.selection.objectId &&
           setAreaRequest({ objectId: document.selection.objectId, min: areaMin, max: areaMax, mode: areaDraft.mode })}>
           Integrate interval</button>
@@ -1076,13 +1125,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       {area && <div data-testid="graph2d-area-result" data-result-id={area.resultId}>
         <p>{area.mode} area: {area.value === null ? "Unavailable over full interval" : area.value.toPrecision(9)}</p>
         <small>Adaptive Simpson · tolerance {area.tolerance.toExponential(1)} · estimated error {area.errorEstimate === null ?
-          "unavailable" : area.errorEstimate.toExponential(2)} · {area.evaluations.toLocaleString()} evaluations</small>
+          "unavailable" : area.errorEstimate.toExponential(2)} · {area.evaluations.toLocaleString()} of
+          {" "}{areaAnalysisBudget.toLocaleString()} evaluations</small>
         {area.skippedCells > 0 && <p>{area.skippedCells} undefined or unresolved cells skipped; partial area {area.partialValue.toPrecision(7)}.</p>}
+        {area.publication.diagnostics.filter(entry => entry.code === "evaluation-limit")
+          .map(entry => <p key={entry.code} role="status">{entry.message}</p>)}
       </div>}
     </section>
     <section className="graph2d-arc-length" data-testid="graph2d-arc-length" aria-label="Arc length">
       <h3>Arc length</h3>
       <p>Measure the selected function over the x interval above.</p>
+      <Graph2DAnalysisBudgetControl label="Arc length evaluation budget"
+        value={arcAnalysisBudget} onChange={setArcAnalysisBudget} />
       <button type="button" disabled={!areaValid || !!arcUnavailable} onClick={() => !arcUnavailable && document.selection.objectId &&
         setArcRequest({ objectId: document.selection.objectId, min: areaMin, max: areaMax })}>
         Measure arc length</button>
@@ -1090,9 +1144,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <p>Length: {arcLength.value === null ? "Unavailable over full interval" : arcLength.value.toPrecision(9)}</p>
         <small>{arcLength.method} · tolerance {arcLength.tolerance.toExponential(1)} · estimated error
           {" "}{arcLength.errorEstimate === null ? "unavailable" : arcLength.errorEstimate.toExponential(2)} ·
-          {" "}{arcLength.evaluations.toLocaleString()} evaluations</small>
+          {" "}{arcLength.evaluations.toLocaleString()} of {arcAnalysisBudget.toLocaleString()} evaluations</small>
         {arcLength.unresolvedCells > 0 && <p>{arcLength.unresolvedCells} unresolved cells; partial length
           {" "}{arcLength.partialValue.toPrecision(7)}.</p>}
+        {arcLength.publication.diagnostics.filter(entry => entry.code === "evaluation-limit")
+          .map(entry => <p key={entry.code} role="status">{entry.message}</p>)}
       </div>}
     </section></>}
     {selectedObject?.kind === "explicit-cartesian" && <section className="graph2d-intersections" data-testid="graph2d-intersections" aria-label="Pairwise intersections">
@@ -1113,6 +1169,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <label>To x <input aria-label="Intersection to x" type="number" value={intersectionDraft.max}
             onChange={(event) => { setIntersectionDraft({ ...intersectionDraft, max: event.target.value }); setIntersectionRequest(null); }} /></label>
         </>}
+        <Graph2DAnalysisBudgetControl label="Intersection evaluation budget"
+          value={intersectionAnalysisBudget} onChange={setIntersectionAnalysisBudget} />
         <button type="button" disabled={!intersectionValid} onClick={() => selectedObject.kind === "explicit-cartesian" &&
           setIntersectionRequest({ firstId: selectedObject.id, secondId,
             intervalMode: intersectionDraft.intervalMode, min: intersectionMin, max: intersectionMax })}>
@@ -1122,7 +1180,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <p><strong>{intersections.quality === "incomplete" ? "Incomplete" :
           intersections.quality === "approximate" ? "Approximate enumeration" : "Unavailable"}</strong>
           {" "}· {intersections.candidates.length} candidates · x ∈
-          [{intersections.interval.min.toPrecision(5)}, {intersections.interval.max.toPrecision(5)}]</p>
+          [{intersections.interval.min.toPrecision(5)}, {intersections.interval.max.toPrecision(5)}]
+          {" "}· {intersections.evaluations.toLocaleString()} of {intersectionAnalysisBudget.toLocaleString()} evaluations</p>
         <Graph2DUnresolvedCoverage intervals={intersections.unresolvedIntervals} />
         <Graph2DIntersectionResultsTable analysis={intersections} document={document}
           onSelectionCommit={onSelectionCommit}
@@ -1193,26 +1252,53 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             onClick={() => { setPhaseSeedPlacement(current => current === selectedObject.id ? null : selectedObject.id); setToolHint(""); }}>
             {phaseSeedPlacement === selectedObject.id ? "Cancel placement" : "Place initial point"}</button>
             <span> Drag a marked initial point to update its orbit. Release saves one undo step.</span></dd>
-          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" && <>
-            <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits.map((orbit, index) =>
+          {phaseArtifact && <>
+            <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{phaseArtifact.orbits.map((orbit, index) =>
               <span key={index}>{index + 1}: backward {orbit.backward}, forward {orbit.forward}; {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected<br /></span>)}</dd>
-            <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶.
-              {(() => { const speeds = (selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldMagnitudes;
+            <dt>Field</dt><dd>{phaseArtifact.fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶.
+              {(() => { const speeds = phaseArtifact.fieldMagnitudes;
                 return speeds.length ? ` Sampled speed ${Math.min(...speeds).toPrecision(3)}–${Math.max(...speeds).toPrecision(3)} coordinate units per time unit; arrow length is median-relative.` : " No finite nonzero vectors sampled."; })()}</dd>
+            <dt>Field diagnostics</dt><dd data-testid="graph2d-vector-field-analysis"
+              data-result-id={vectorFieldAnalysis.result?.resultId ?? ""}>
+              <Graph2DAnalysisBudgetControl label="Vector field analysis evaluation budget"
+                value={vectorFieldAnalysisBudget} onChange={setVectorFieldAnalysisBudget} />
+              <small>Separate sampled grid; changing this budget does not resample arrows, orbits or equilibria.</small>
+              {vectorFieldAnalysis.error && <span role="alert"> {vectorFieldAnalysis.error}</span>}
+              {!vectorFieldAnalysis.ready && !vectorFieldAnalysis.error && <span role="status"> Computing field diagnostics…</span>}
+              {vectorFieldAnalysis.result && <div role="status">
+                {vectorFieldAnalysis.result.status === "complete" ? "Sampled grid complete" :
+                  vectorFieldAnalysis.result.status === "partial" ? "Partial sampled grid" : "Field scan unavailable"}
+                {" "}· {vectorFieldAnalysis.result.gridSize}×{vectorFieldAnalysis.result.gridSize} cells
+                {" "}· {vectorFieldAnalysis.result.validCells} valid, {vectorFieldAnalysis.result.invalidCells} undefined
+                {" "}· {vectorFieldAnalysis.result.evaluations.toLocaleString("en-US")} / {vectorFieldAnalysisBudget.toLocaleString("en-US")} evaluations
+                {vectorFieldAnalysis.result.speed && <>
+                  <br />Speed {vectorFieldAnalysis.result.speed.min.toPrecision(4)}–{vectorFieldAnalysis.result.speed.max.toPrecision(4)}
+                  {" "}· mean divergence {vectorFieldAnalysis.result.divergence?.mean.toPrecision(4)}
+                  {" "}· mean scalar curl {vectorFieldAnalysis.result.curl?.mean.toPrecision(4)}</>}
+                {vectorFieldAnalysis.result.status === "partial" && <> · {vectorFieldAnalysis.result.reason}; results not exhaustive</>}
+              </div>}
+              <small>Finite-difference estimates on sampled cells only; extrema and full-domain behavior are not certified. Scalar curl assumes compatible x/y coordinate units.</small>
+            </dd>
+            <dt>Analysis budget</dt><dd><Graph2DAnalysisBudgetControl label="Phase equilibrium evaluation budget"
+              value={phaseAnalysisBudget} onChange={setPhaseAnalysisBudget} />
+              <small>Independent of field and orbit rendering · {phaseArtifact.analysis.evaluations.toLocaleString()} evaluations</small>
+              {phaseAnalysis.error && <span role="alert"> {phaseAnalysis.error}</span>}
+              {!phaseAnalysis.ready && !phaseAnalysis.error && <span role="status"> Computing nullclines and equilibria…</span>}</dd>
             <dt>Nullclines</dt><dd data-testid="graph2d-phase-nullclines">x′=0 orange dashed;
-              {" "}y′=0 cyan dotted · {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.status}</dd>
+              {" "}y′=0 cyan dotted · {phaseArtifact.analysis.status}</dd>
           <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
-            <Graph2DPhaseEquilibriaTable artifact={selectedSeries.artifact as Graph2DPhasePortraitArtifact}
+            {phaseAnalysis.ready && sampling.ready && <Graph2DPhaseEquilibriaTable artifact={phaseArtifact}
+              budget={phaseAnalysisBudget}
               document={document} objectId={selectedObject.id}
               onHighlight={point => setFocusedNumericalPoint({ origin: "phase",
-                artifact: selectedSeries.artifact as Graph2DPhasePortraitArtifact,
+                artifact: phaseArtifact,
                 point: { objectId: selectedObject.id, x: point.x, y: point.y } })}
-              readOnlyPreview={!sampling.ready || !!phaseSeedPreview || parameterPreviewActive} />
+              readOnlyPreview={!sampling.ready || !!phaseSeedPreview || parameterPreviewActive} />}
           </dd>
             <dt>Method</dt><dd>Marching squares contour crossings, then up to five Newton steps.
-              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.candidates} candidates;
-              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.unresolved} unresolved.
-              {" "}Grid scale ≈ {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.gridScale?.toPrecision(3) ?? "unavailable"} world units.
+              {" "}{phaseArtifact.analysis.candidates} candidates;
+              {" "}{phaseArtifact.analysis.unresolved} unresolved.
+              {" "}Grid scale ≈ {phaseArtifact.analysis.gridScale?.toPrecision(3) ?? "unavailable"} world units.
               {" "}Residual tolerance 10⁻⁷(1+|position|); no certified error bound.</dd>
           </>}
         </>}
@@ -1527,7 +1613,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showLeft && <details><summary>Graph objects ({document.source.objects.length})</summary>{functionList("compact")}</details>}
           {showRight && <details><summary>Inspector</summary>{inspector}{savedFields}</details>}
         </div>
-        {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+        {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
           constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={probeMarkers}

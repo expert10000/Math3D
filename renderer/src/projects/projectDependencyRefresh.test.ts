@@ -79,7 +79,9 @@ describe("PRJ20 explicit dependency refresh", () => {
     const current = createGraph2DDocument({ source, identity: advanceDocumentIdentity(graph.identity, source), title: graph.metadata.title });
     const request = { document: current, objectId: current.source.objects[0]!.id, interval: { min: -2, max: 2 }, tolerance: 1e-5 };
     const result = kind === "integral" ? analyzeGraph2DIntegral({ ...request, mode: "signed" }).publication : kind === "arc-length" ? analyzeGraph2DArcLength(request).publication :
-      kind === "critical-points" ? analyzeGraph2DCriticalPoints(request).publication : analyzeGraph2DIntersections({ document: current, firstObjectId: request.objectId, secondObjectId: "second", interval: request.interval }).publication;
+      kind === "critical-points" ? analyzeGraph2DCriticalPoints({ ...request, maxEvaluations: 2000 }).publication :
+        analyzeGraph2DIntersections({ document: current, firstObjectId: request.objectId, secondObjectId: "second",
+          interval: request.interval, maxEvaluations: 2000 }).publication;
     const editedSource = { ...current.source, variables: [...current.source.variables, { name: "a", value: 2 }] };
     const edited = createGraph2DDocument({ source: editedSource, identity: advanceDocumentIdentity(current.identity, editedSource), title: current.metadata.title });
     const project = createMath3DProject({ ...original.workspace, entries: [{ module: "graph2d", checkpoint: edited, expected: edited.identity, replay: null }], results: [result], relations: [], activeDocumentIds: [edited.identity.id] }, { stableKey: kind });
@@ -87,6 +89,8 @@ describe("PRJ20 explicit dependency refresh", () => {
     const next = recomputeProjectAnalysis(project, result.resultId);
     expect(next.workspace.results[0]).toEqual(result);
     expect(next.workspace.results.at(-1)!.provenance.numericContext.tolerance).toEqual(result.provenance.numericContext.tolerance);
+    if (kind === "critical-points" || kind === "intersections")
+      expect(next.workspace.results.at(-1)!.provenance.operation.parameters.maxEvaluations).toBe(2000);
     expect(inspectProjectDependencies(next).results.at(-1)!.sourceFreshness).toBe("current");
     expect(() => recomputeProjectAnalysis(next, result.resultId)).toThrow("already exists");
     const history = new ProjectCommandAdapter(project); history.commit(next); expect(history.undo().workspace).toEqual(project.workspace);

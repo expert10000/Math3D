@@ -1,7 +1,8 @@
 import { createAnalysisResultEnvelope, type AnalysisResultEnvelope } from "./analysisResults";
 import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocument";
-import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, type Graph2DPointRow } from "./graph2dPointSeries";
+import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, assertGraph2DAnalysisRowBudget,
+  type Graph2DPointRow } from "./graph2dPointSeries";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 
 export type Graph2DFourierOptions = Readonly<{ window: "rectangular" | "hann";
@@ -48,11 +49,12 @@ const fft = (real: Float64Array, imaginary: Float64Array) => {
 
 /** One-sided amplitude/phase spectrum of a checked, uniformly spaced scalar point series. */
 export const analyzeGraph2DFourier = (input: Readonly<{ document: Graph2DDocument; objectId: string;
-  rows: readonly Graph2DPointRow[] | null; options: Graph2DFourierOptions }>): Graph2DFourierResult => {
+  rows: readonly Graph2DPointRow[] | null; options: Graph2DFourierOptions; maxRows?: number }>): Graph2DFourierResult => {
   const started = Date.now(), { document, objectId, options } = input;
   const object = document.source.objects.find(item => item.id === objectId);
   if (object?.kind !== "point-series") throw new TypeError("Choose a point series for Fourier analysis.");
   if (!input.rows) throw new TypeError("Fourier analysis requires the original checked point-table sidecar.");
+  assertGraph2DAnalysisRowBudget(input.rows.length, input.maxRows, "Fourier analysis");
   if (!(["rectangular", "hann"] as string[]).includes(options.window) ||
       !(["peak", "rms"] as string[]).includes(options.normalization) ||
       !(["none", "mean"] as string[]).includes(options.detrend) ||

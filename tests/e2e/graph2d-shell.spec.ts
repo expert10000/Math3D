@@ -474,6 +474,7 @@ test("Graphs Inspector filters, sorts, and batch saves validated numerical resul
     await saveGraphEditor(app.page);
     const results = app.page.getByLabel("Graph inspector").getByTestId("graph2d-critical-points");
     await expect(results.locator(".graph2d-critical-summary dd").first()).toHaveText("2");
+    await expect(results.getByRole("columnheader", { name: "x est." })).toBeVisible();
     await results.getByRole("button", { name: "Zeros", exact: true }).click();
     await expect(results.getByRole("button", { name: /Select zero at x/ })).toHaveCount(2);
     await expect(results.getByRole("button", { name: /Select minimum at x/ })).toHaveCount(0);
@@ -491,6 +492,7 @@ test("Graphs Inspector filters, sorts, and batch saves validated numerical resul
       (_event, item) => item.setSavePath(target)), csvPath);
     await results.getByRole("button", { name: "Export results" }).click();
     await expect.poll(() => { try { return readFileSync(csvPath, "utf8"); } catch { return ""; } }).toContain("kind,x,y,residual");
+    expect(readFileSync(csvPath, "utf8")).toContain("local_sensitivity,estimated_x_error");
     const jsonPath = test.info().outputPath("numerical-analysis.json");
     await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), jsonPath);
@@ -580,6 +582,7 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await expect(result).toContainText("Approximate enumeration");
     await expect(result.locator(".graph2d-analysis-quality").first()).toHaveText("Refined");
     const table = result.getByTestId("graph2d-intersection-results-table");
+    await expect(table.getByRole("columnheader", { name: "x est." })).toBeVisible();
     await table.getByRole("button", { name: "Possible tangencies" }).click();
     await expect(table.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(0);
     await table.getByRole("button", { name: "All", exact: true }).click();
@@ -602,6 +605,50 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await section.getByLabel("Intersection to x").fill("0.5");
     await section.getByRole("button", { name: "Solve intersections" }).click();
     await expect(section.getByTestId("graph2d-intersection-result")).toContainText("No isolated candidates found");
+  } finally {
+    await closeSurfaceApp(app);
+  }
+});
+
+test("Graphs analysis budgets recompute only their own results", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    await resetSurfaceAppState(app.page);
+    await app.page.setViewportSize({ width: 1440, height: 850 });
+    await app.page.getByTestId("workspace-nav-graphs").click();
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(app.page);
+    await openGraphType(app.page, "Function");
+    await graphEditor(app.page).getByLabel("Function name").fill("g");
+    await graphEditor(app.page).getByLabel("Function expression").fill("1");
+    await saveGraphEditor(app.page);
+    await app.page.getByLabel("Graph functions").getByRole("button", { name: "Select f" }).click();
+    const inspector = app.page.getByLabel("Graph inspector");
+    const area = inspector.getByTestId("graph2d-area");
+    const arc = inspector.getByTestId("graph2d-arc-length");
+    const pair = inspector.getByTestId("graph2d-intersections");
+    await area.getByRole("button", { name: "Integrate interval" }).click();
+    await arc.getByRole("button", { name: "Measure arc length" }).click();
+    await pair.getByRole("button", { name: "Solve intersections" }).click();
+    const areaResult = area.getByTestId("graph2d-area-result");
+    const arcResult = arc.getByTestId("graph2d-arc-length-result");
+    const pairResult = pair.getByTestId("graph2d-intersection-result");
+    const firstArea = await areaResult.getAttribute("data-result-id");
+    const firstArc = await arcResult.getAttribute("data-result-id");
+    const firstPair = await pairResult.getAttribute("data-result-id");
+    await pair.getByLabel("Intersection evaluation budget").selectOption("2000");
+    await expect(pairResult).not.toHaveAttribute("data-result-id", firstPair!);
+    await expect(areaResult).toHaveAttribute("data-result-id", firstArea!);
+    await expect(arcResult).toHaveAttribute("data-result-id", firstArc!);
+    const secondPair = await pairResult.getAttribute("data-result-id");
+    await area.getByLabel("Area evaluation budget").selectOption("6000");
+    await expect(areaResult).not.toHaveAttribute("data-result-id", firstArea!);
+    await expect(pairResult).toHaveAttribute("data-result-id", secondPair!);
+    await expect(arcResult).toHaveAttribute("data-result-id", firstArc!);
+    await arc.getByLabel("Arc length evaluation budget").selectOption("2000");
+    await expect(arcResult).not.toHaveAttribute("data-result-id", firstArc!);
+    await expect(pairResult).toHaveAttribute("data-result-id", secondPair!);
   } finally {
     await closeSurfaceApp(app);
   }
@@ -683,6 +730,17 @@ test("Graphs renders a signed-radius polar curve and switches grid modes", async
     await expect(measurements.getByTestId("graph2d-polar-area-result")).toContainText("6.28318531");
     await measurements.getByRole("button", { name: "Measure polar arc length" }).click();
     await expect(measurements.getByTestId("graph2d-polar-arc-result")).toContainText("6.28318531");
+    const polarAreaResult = measurements.getByTestId("graph2d-polar-area-result");
+    const polarArcResult = measurements.getByTestId("graph2d-polar-arc-result");
+    const firstPolarArea = await polarAreaResult.getAttribute("data-result-id");
+    const firstPolarArc = await polarArcResult.getAttribute("data-result-id");
+    await measurements.getByLabel("Polar area evaluation budget").selectOption("2000");
+    await expect(polarAreaResult).not.toHaveAttribute("data-result-id", firstPolarArea!);
+    await expect(polarArcResult).toHaveAttribute("data-result-id", firstPolarArc!);
+    const secondPolarArea = await polarAreaResult.getAttribute("data-result-id");
+    await measurements.getByLabel("Polar arc length evaluation budget").selectOption("6000");
+    await expect(polarArcResult).not.toHaveAttribute("data-result-id", firstPolarArc!);
+    await expect(polarAreaResult).toHaveAttribute("data-result-id", secondPolarArea!);
     await expect(inspector.getByTestId("graph2d-area")).toHaveCount(0);
     await expect(inspector.getByTestId("graph2d-arc-length")).toHaveCount(0);
     await expect(inspector.getByTestId("graph2d-intersections")).toHaveCount(0);

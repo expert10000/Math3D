@@ -6,6 +6,7 @@ import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
 import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+import { Graph2DAnalysisRowBudgetControl, type Graph2DAnalysisRowBudget } from "./Graph2DAnalysisBudgetControl";
 
 type Residual = Graph2DRegression["residuals"][number];
 const columns: readonly Graph2DResultColumn<Residual>[] = [
@@ -22,6 +23,7 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
   const [focusedResidualId, setFocusedResidualId] = useState<string | null>(null);
   useEffect(() => setFocusedResidualId(null), [result?.publication.resultId]);
   const [smoothing, setSmoothing] = useState("0.001");
+  const [rowBudget, setRowBudget] = useState<Graph2DAnalysisRowBudget>(10000);
   const [initialAmplitude, setInitialAmplitude] = useState("1"), [initialRate, setInitialRate] = useState("1");
   const [initialCapacity, setInitialCapacity] = useState("1"), [initialGrowthRate, setInitialGrowthRate] = useState("1"),
     [initialMidpoint, setInitialMidpoint] = useState("0");
@@ -34,7 +36,7 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
     (result.model !== "logistic-growth" || result.initial.capacity === Number(initialCapacity) &&
       result.initial.rate === Number(initialGrowthRate) && result.initial.midpoint === Number(initialMidpoint));
   const fitKey = [document.identity.id, document.identity.revision, document.identity.structuralHash, object?.id,
-    object?.kind === "point-series" ? object.table.checksum : "", model,
+    object?.kind === "point-series" ? object.table.checksum : "", model, rowBudget,
     model === "spline" ? smoothing : model === "exponential-decay" ? `${initialAmplitude}|${initialRate}` :
       model === "logistic-growth" ? `${initialCapacity}|${initialGrowthRate}|${initialMidpoint}` : ""].join("|");
   const latestKey = useRef(fitKey); latestKey.current = fitKey;
@@ -45,6 +47,10 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
     if (deadline.current) clearTimeout(deadline.current); deadline.current = null; }; }, [fitKey]);
   const fit = () => {
     if (object?.kind !== "point-series") return;
+    if (object.table.rowCount > rowBudget) {
+      setError(`Regression needs ${object.table.rowCount.toLocaleString("en-US")} checked rows; increase the analysis row budget. No rows were omitted.`);
+      return;
+    }
     if (model === "spline" && (!smoothing.trim() || !Number.isFinite(Number(smoothing)) || Number(smoothing) < 0 || Number(smoothing) > 1)) {
       setError("Spline smoothness λ must be between 0 and 1."); return;
     }
@@ -76,7 +82,7 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
         initial: model === "exponential-decay" ? { amplitude: Number(initialAmplitude), rate: Number(initialRate) } :
           model === "logistic-growth" ? { capacity: Number(initialCapacity), rate: Number(initialGrowthRate),
             midpoint: Number(initialMidpoint) } : undefined,
-        rows: pointTableStore.resolve(object.table) });
+        rows: pointTableStore.resolve(object.table), maxRows: rowBudget });
     } catch (caught) { cancel(false); onResult(null); setError((caught as Error).message); }
   };
   return <section aria-label="Regression fitting" data-testid="graph2d-regression"><h3>Regression and uncertainty</h3>
@@ -126,6 +132,9 @@ export function Graph2DRegressionPanel({ document, model, onModel, result, onRes
       <p>Local bounded solver; convergence does not establish a global optimum. No parameter uncertainty or intervals are reported.</p>
     </>}
     <p>Uses original checksum-verified data, not displayed samples. Unweighted fit in world units; no extrapolation.</p>
+    <Graph2DAnalysisRowBudgetControl label="Regression analysis row budget" value={rowBudget}
+      onChange={value => { setRowBudget(value); onResult(null); setError(""); }} />
+    {object?.kind === "point-series" && <small>Selected dataset: {object.table.rowCount.toLocaleString("en-US")} checked rows. The fit uses every row or declines the job.</small>}
     <button disabled={object?.kind !== "point-series" || pending} onClick={fit}>Fit dataset</button>
     {pending && <><button onClick={() => cancel()}>Cancel fit</button><p aria-live="polite">Fitting checked point series…</p></>}
     {error && <p role="alert">{error}</p>}

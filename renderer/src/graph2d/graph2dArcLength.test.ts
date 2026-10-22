@@ -40,4 +40,19 @@ describe("Graph2D arc length", () => {
     expect(domainGap.status).toBe("unavailable");
     expect(domainGap.value).toBeNull();
   });
+
+  it("keeps the chosen arc-length budget in result identity and provenance", () => {
+    const document = documentFor("x^2");
+    const request = { document, objectId: "function_1", interval: { min: -1, max: 1 } };
+    const quick = analyzeGraph2DArcLength({ ...request, maxEvaluations: 400 });
+    const thorough = analyzeGraph2DArcLength({ ...request, maxEvaluations: 12000 });
+    expect(quick.resultId).not.toBe(thorough.resultId);
+    expect(quick.status).toBe("unavailable");
+    expect(quick.value).toBeNull();
+    expect(quick.evaluations).toBe(400);
+    expect(quick.publication.diagnostics.some(entry => entry.code === "evaluation-limit")).toBe(true);
+    expect(quick.publication.provenance.operation.parameters.maxEvaluations).toBe(400);
+    expect(thorough.status).toBe("complete");
+    expect(() => analyzeGraph2DArcLength({ ...request, maxEvaluations: 0 })).toThrow(/budget/);
+  });
 });

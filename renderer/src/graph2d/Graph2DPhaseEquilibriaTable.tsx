@@ -29,23 +29,24 @@ const columns: readonly Graph2DResultColumn<Equilibrium>[] = [
   </details> },
 ];
 
-export function Graph2DPhaseEquilibriaTable({ artifact, document, objectId, onHighlight,
+export function Graph2DPhaseEquilibriaTable({ artifact, document, objectId, budget, onHighlight,
   readOnlyPreview = false }: Readonly<{
   artifact: Graph2DPhasePortraitArtifact;
   document: Graph2DDocument;
   objectId: string;
+  budget?: number;
   onHighlight?: (point: Equilibrium) => void;
   readOnlyPreview?: boolean;
 }>) {
   const resultKey = structuralHash({ source: document.identity.structuralHash, objectId,
-    viewport: document.display.viewport, equilibria: artifact.equilibria, analysis: artifact.analysis });
+    viewport: document.display.viewport, equilibria: artifact.equilibria, analysis: artifact.analysis, budget: budget ?? null });
   const [focusedId, setFocusedId] = useState<string | null>(null);
   useEffect(() => setFocusedId(null), [resultKey]);
   const exportCsv = () => downloadGraph2DResultsCsv(`graph-equilibria-${objectId}.csv`,
-    ["x", "y", "residual", "kind", "stability", "classification_status", "scan_status",
+    ["x", "y", "residual", "kind", "stability", "classification_status", "scan_status", "evaluation_budget",
       "source_document", "source_revision", "viewport_x_min", "viewport_x_max", "viewport_y_min", "viewport_y_max"],
     artifact.equilibria.map(item => [item.x, item.y, item.residual, item.linearization.kind,
-      item.linearization.stability, item.linearization.status, artifact.analysis.status,
+      item.linearization.stability, item.linearization.status, artifact.analysis.status, budget ?? "",
       document.identity.id, document.identity.revision, document.display.viewport.xMin,
       document.display.viewport.xMax, document.display.viewport.yMin, document.display.viewport.yMax]));
   return <div data-testid="graph2d-phase-equilibria-table">
@@ -70,7 +71,7 @@ export function Graph2DPhaseEquilibriaTable({ artifact, document, objectId, onHi
       exportCsv={readOnlyPreview ? undefined : exportCsv}
       exportJson={readOnlyPreview ? undefined : () => downloadGraph2DResultJson(`graph-equilibria-${objectId}.json`, {
         format: "math3d.graph2d-equilibria.v1", resultKey, source: document.identity,
-        objectId, viewport: document.display.viewport, analysis: artifact.analysis,
+        objectId, viewport: document.display.viewport, budget: budget ?? null, analysis: artifact.analysis,
         equilibria: artifact.equilibria })}
       emptyText="None resolved at sampled grid resolution." />
     <small>Equilibria are viewport sampled numerical candidates. Construction saving is unavailable until a source-linked revalidation rule exists.</small>

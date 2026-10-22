@@ -1,7 +1,7 @@
 import { createMixedWorkspaceDocument, regenerateGraph2DPromotion, replaceMath3DProjectWorkspace,
   analyzeGraph2DDerivative, createDocumentRelation, viewerSourceFromDocument,
   analyzeGraph2DIntegral, analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntersections,
-  GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS,
+  GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS, GRAPH2D_INTERSECTION_MAX_EVALUATIONS,
   createSurfaceDocument, canonicalJsonStringify,
   setProjectDocumentMetadata, type Math3DProject, type Graph2DAnyPromotion, type SurfaceDocument,
   type AnalysisResultEnvelope, type DocumentRelation, type KernelWorkspaceDocument } from "@math3d/core";
@@ -86,12 +86,17 @@ const analysisOperations = new Map([
   ["graph2d.arc-length", "Recompute arc length"], ["graph2d.critical-points", "Recompute critical points"],
   ["graph2d.intersections", "Recompute intersections"],
 ]);
+const supportedAnalysisVersions = new Map<string, ReadonlySet<string>>([
+  ["graph2d.derivative", new Set(["1", "2"])],
+  ["graph2d.integral", new Set(["1"])],
+  ["graph2d.arc-length", new Set(["1"])],
+  ["graph2d.critical-points", new Set(["1", "2", "3", "4", "5"])],
+  ["graph2d.intersections", new Set(["1", "2", "3", "4", "5"])],
+]);
 const analysisPlan = (previous: AnalysisResultEnvelope, graph: KernelWorkspaceDocument | undefined): (() => AnalysisResultEnvelope) => {
   const version = previous.provenance.operation.algorithmVersion;
-  // Derivative and critical-point v2 retain their recorded request fields; other adapters still require v1.
-  const supportedVersion = version === "1" || version === "2" &&
-    ["graph2d.derivative", "graph2d.critical-points"].includes(previous.provenance.operation.type);
-  if (graph?.format !== "math3d.graph2d-document" || !analysisOperations.has(previous.provenance.operation.type) || !supportedVersion)
+  const operation = previous.provenance.operation.type;
+  if (graph?.format !== "math3d.graph2d-document" || !supportedAnalysisVersions.get(operation)?.has(version))
     throw new TypeError("This recorded analysis has no qualified local refresh adapter.");
   const value = previous.provenance.operation.parameters;
   const p = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -124,7 +129,7 @@ const analysisPlan = (previous: AnalysisResultEnvelope, graph: KernelWorkspaceDo
     }
     case "graph2d.critical-points": {
       const objectId = explicit(p.objectId), bounds = interval();
-      const budget = version === "2" ? finite(p.maxEvaluations) : GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS;
+      const budget = version === "1" ? GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS : finite(p.maxEvaluations);
       if (!Number.isSafeInteger(budget) || budget < 1 || budget > GRAPH2D_CRITICAL_POINT_MAX_EVALUATIONS)
         throw new TypeError("Recorded critical-point evaluation budget is outside the local algorithm's range.");
       return () => analyzeGraph2DCriticalPoints({ document: graph, objectId, interval: bounds,
@@ -133,7 +138,11 @@ const analysisPlan = (previous: AnalysisResultEnvelope, graph: KernelWorkspaceDo
     case "graph2d.intersections": {
       const firstObjectId = explicit(p.firstObjectId), secondObjectId = explicit(p.secondObjectId), bounds = interval();
       if (firstObjectId === secondObjectId) throw new TypeError("Two distinct recorded functions are required.");
-      return () => analyzeGraph2DIntersections({ document: graph, firstObjectId, secondObjectId, interval: bounds }).publication;
+      const budget = version === "1" || version === "2" ? GRAPH2D_INTERSECTION_MAX_EVALUATIONS : finite(p.maxEvaluations);
+      if (!Number.isSafeInteger(budget) || budget < 1 || budget > GRAPH2D_INTERSECTION_MAX_EVALUATIONS)
+        throw new TypeError("Recorded intersection evaluation budget is outside the local algorithm's range.");
+      return () => analyzeGraph2DIntersections({ document: graph, firstObjectId, secondObjectId,
+        interval: bounds, maxEvaluations: budget }).publication;
     }
     default: throw new TypeError("This analysis has no local adapter.");
   }

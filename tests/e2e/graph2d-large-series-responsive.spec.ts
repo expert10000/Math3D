@@ -47,6 +47,12 @@ test("10,000-point Gallery and regression controls stay responsive; spline is dr
     expect(zoomMs).toBeLessThan(1500);
     expect(modelMs).toBeLessThan(1500);
 
+    const renderBeforeBudget = await plot.getAttribute("d");
+    await panel.getByLabel("Regression analysis row budget").selectOption("2000");
+    await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
+    await expect(panel.getByRole("alert")).toContainText("10,000 checked rows");
+    expect(await plot.getAttribute("d")).toBe(renderBeforeBudget);
+    await panel.getByLabel("Regression analysis row budget").selectOption("10000");
     await panel.getByRole("button", { name: "Fit dataset", exact: true }).click();
     await expect(panel.getByRole("status")).toHaveText("Current regression");
     const overlay = page.getByTestId("graph2d-regression-overlay");

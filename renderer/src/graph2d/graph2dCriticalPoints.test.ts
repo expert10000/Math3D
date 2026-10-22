@@ -39,6 +39,8 @@ describe("Graph2D critical point analysis", () => {
       source: { documentId: document.identity.id, structuralHash: document.identity.structuralHash },
       scan: { status: "complete", quality: "approximate" } });
     expect(dataset.candidates.some(entry => entry.kind === "zero" && entry.x === 0)).toBe(true);
+    expect(dataset.candidates.every(entry => "localSensitivity" in entry &&
+      "estimatedXError" in entry)).toBe(true);
   });
 
   it("only labels residual-checked bracket refinement as Refined", () => {

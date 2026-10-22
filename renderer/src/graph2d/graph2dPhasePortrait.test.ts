@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
-  inspectGraph2DCompatibility, normalizeGraph2DDocument, sampleGraph2DPhasePortrait,
+  analyzeGraph2DPhasePortrait, inspectGraph2DCompatibility, normalizeGraph2DDocument, sampleGraph2DPhasePortrait,
   sampleGraph2DScene, projectGraph2DPublicationGeometry, selectionForGraph2DObject,
   graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed, graph2DWorldToScreen,
   type Graph2DPhasePortraitDraft } from "@math3d/core";
@@ -94,6 +94,28 @@ describe("GRA-11.6 interactive initial points", () => {
   });
 });
 describe("GRA-11.3 planar phase portraits", () => {
+  it("runs equilibrium analysis without spending the scene arrow and orbit budget", () => {
+    const document = create();
+    const object = document.source.objects[0];
+    if (object?.kind !== "phase-portrait") throw new Error("Expected phase portrait.");
+    const request = { object, variables: {}, viewport, width: 640, height: 640 };
+    const scene = sampleGraph2DPhasePortrait({ ...request, maxSamples: 2000, includeAnalysis: false });
+    const quick = analyzeGraph2DPhasePortrait({ ...request, maxEvaluations: 2000 });
+    const thorough = analyzeGraph2DPhasePortrait({ ...request, maxEvaluations: 12000 });
+    expect(scene.analysis.status).toBe("unavailable");
+    expect(scene.analysis.evaluations).toBe(0);
+    expect(scene.nullclines.x).toHaveLength(0);
+    expect(scene.orbits[0]?.forward).toBe("time-horizon");
+    expect(quick.equilibria).toHaveLength(1);
+    expect(thorough.equilibria).toHaveLength(1);
+    expect(quick.analysis.evaluations).toBeLessThanOrEqual(2000);
+    expect(thorough.analysis.evaluations).toBeLessThanOrEqual(12000);
+    expect(thorough.analysis.evaluations).toBeGreaterThan(quick.analysis.evaluations);
+    const interactive = sampleGraph2DScene({ document, viewport, width: 640, height: 640,
+      interaction: false, separatePhaseAnalysis: true })[0]!.artifact;
+    expect(interactive).toMatchObject({ kind: "phase-portrait", nullclines: { x: [], y: [] }, equilibria: [] });
+    expect(interactive.samplesEvaluated).toBeLessThanOrEqual(document.display.sampling.maxSamples);
+  });
   it("returns to the unit circle for x′=y, y′=-x in both time directions", () => {
     const result = solve();
     expect(result.fieldSegments.length).toBeGreaterThan(50);
