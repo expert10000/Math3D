@@ -4,6 +4,14 @@ import { GRAPH2D_SAMPLER_VERSION, type Graph2DSamplePoint,
   type Graph2DSampleSegment, type Graph2DSamplingArtifact } from "./graph2dSampling";
 
 export const GRAPH2D_POINT_TABLE_MAX_ROWS = 10000;
+/** Optional per-job ceiling; analyses must never silently replace checked rows with display samples. */
+export const assertGraph2DAnalysisRowBudget = (rowCount: number, maxRows: number | undefined, label: string): void => {
+  if (maxRows === undefined) return;
+  if (!Number.isSafeInteger(maxRows) || maxRows < 8 || maxRows > GRAPH2D_POINT_TABLE_MAX_ROWS)
+    throw new TypeError(`${label} row budget must be 8–${GRAPH2D_POINT_TABLE_MAX_ROWS}.`);
+  if (rowCount > maxRows)
+    throw new TypeError(`${label} needs ${rowCount.toLocaleString("en-US")} checked rows; increase the analysis row budget to at least ${rowCount.toLocaleString("en-US")}. No rows were omitted.`);
+};
 export const GRAPH2D_POINT_TABLE_MAX_BYTES = 1024 * 1024;
 export type Graph2DPointRow = Readonly<{ id: string; x: number; y: number | null }>;
 export type Graph2DPointImportPreview = Readonly<{

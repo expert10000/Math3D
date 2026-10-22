@@ -8,6 +8,18 @@ const dataset = (ys: (number | null)[], xs = ys.map((_, i) => i)) => {
     draft: { label: "Measured", table, domain: graph2DPointDomain(rows), mode: "points", style: { color: "#2255cc", lineStyle: "solid", lineWidth: 2, visible: true } } });
   return { rows, document: createGraph2DDocument({ ...edit, stableKey: "fit-test" }), store };
 };
+it("caps fitting by checked source rows without changing an accepted fit", () => {
+  const { document, rows } = dataset(Array.from({ length: 80 }, (_, x) => 2 + 3 * x));
+  const input = { document, objectId: document.source.objects[0]!.id, rows, model: "linear" as const };
+  expect(() => analyzeGraph2DRegression({ ...input, maxRows: 64 })).toThrow(/80 checked rows.*No rows were omitted/);
+  expect(() => analyzeGraph2DRegression({ ...input, maxRows: 10001 })).toThrow(/row budget/);
+  const capped = analyzeGraph2DRegression({ ...input, maxRows: 80 });
+  const uncapped = analyzeGraph2DRegression(input);
+  expect(capped.resultId).toBe(uncapped.resultId);
+  expect(capped.coefficients).toEqual(uncapped.coefficients);
+  expect(capped.residuals).toEqual(uncapped.residuals);
+  expect(() => analyzeGraph2DRegression({ ...input, model: "spline", maxRows: 64 })).toThrow(/row budget/);
+});
 it("fits an exact cubic with unpenalized B-splines and reports no unsupported intervals", () => {
   const xs = Array.from({ length: 80 }, (_, i) => 1e9 + i / 10);
   const ys = xs.map(x => { const z = (x - 1e9) / 8; return 2 + z - 3 * z ** 2 + .5 * z ** 3; });

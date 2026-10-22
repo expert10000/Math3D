@@ -5,6 +5,7 @@ import { pointTableStore } from "./pointTableStore";
 import { downloadGraph2DResultJson } from "./downloadGraph2DResultJson";
 import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
   type Graph2DResultFilter } from "./Graph2DNumericalResultsTable";
+import { Graph2DAnalysisRowBudgetControl, type Graph2DAnalysisRowBudget } from "./Graph2DAnalysisBudgetControl";
 
 type Bin = Graph2DFourierResult["bins"][number];
 const columns: readonly Graph2DResultColumn<Bin>[] = [
@@ -27,6 +28,7 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
   const [normalization, setNormalization] = useState<Graph2DFourierOptions["normalization"]>("peak");
   const [detrend, setDetrend] = useState<Graph2DFourierOptions["detrend"]>("mean");
   const [xUnit, setXUnit] = useState("s"), [result, setResult] = useState<Graph2DFourierResult | null>(null);
+  const [rowBudget, setRowBudget] = useState<Graph2DAnalysisRowBudget>(10000);
   const [selectedBinIndex, setSelectedBinIndex] = useState<number | null>(null);
   const [pending, setPending] = useState(false), [error, setError] = useState("");
   useEffect(() => setSelectedBinIndex(null), [result?.resultId]);
@@ -34,7 +36,7 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
   const object = document.source.objects.find(item => item.id === document.selection.objectId);
   const options: Graph2DFourierOptions = { window, normalization, detrend, xUnit };
   const requestKey = [document.identity.id, document.identity.revision, document.identity.structuralHash,
-    object?.id, object?.kind === "point-series" ? object.table.checksum : "", window, normalization, detrend, xUnit].join("|");
+    object?.id, object?.kind === "point-series" ? object.table.checksum : "", window, normalization, detrend, xUnit, rowBudget].join("|");
   const latestKey = useRef(requestKey); latestKey.current = requestKey;
   const cancel = (announce = true) => { generation.current++; worker.current?.terminate(); worker.current = null;
     if (deadline.current) clearTimeout(deadline.current); deadline.current = null; setPending(false);
@@ -45,6 +47,10 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
   }; }, [requestKey]);
   const analyze = () => {
     if (object?.kind !== "point-series") return;
+    if (object.table.rowCount > rowBudget) {
+      setError(`Fourier analysis needs ${object.table.rowCount.toLocaleString("en-US")} checked rows; increase the analysis row budget. No rows were omitted.`);
+      return;
+    }
     cancel(false); setError(""); setPending(true); const token = ++generation.current, key = requestKey;
     try {
       const task = new Worker(new URL("./graph2dFourierWorker.ts", import.meta.url), { type: "module" });
@@ -60,7 +66,8 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
         finish(); setError(event.message || "Fourier worker failed."); };
       deadline.current = setTimeout(() => { if (generation.current !== token || latestKey.current !== key) return;
         finish(); setError("Fourier analysis exceeded 15 seconds."); }, 15000);
-      task.postMessage({ document, objectId: object.id, rows: pointTableStore.resolve(object.table), options });
+      task.postMessage({ document, objectId: object.id, rows: pointTableStore.resolve(object.table), options,
+        maxRows: rowBudget });
     } catch (caught) { cancel(false); setError((caught as Error).message); }
   };
   const current = result && isGraph2DFourierCurrent(result, document) &&
@@ -90,6 +97,9 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
     <label>Detrend <select aria-label="Fourier detrend" value={detrend} onChange={event => setDetrend(event.target.value as typeof detrend)}>
       <option value="mean">Remove mean</option><option value="none">Keep mean</option></select></label>
     <label>X unit <input aria-label="Fourier x unit" value={xUnit} maxLength={24} onChange={event => setXUnit(event.target.value)} /></label>
+    <Graph2DAnalysisRowBudgetControl label="Fourier analysis row budget" value={rowBudget}
+      onChange={value => { setRowBudget(value); setResult(null); setError(""); }} />
+    {object?.kind === "point-series" && <small>Selected dataset: {object.table.rowCount.toLocaleString("en-US")} checked rows. The FFT uses every row or declines the job.</small>}
     <button type="button" disabled={pending} onClick={analyze}>Analyze spectrum</button>
     {pending && <><button type="button" onClick={() => cancel()}>Cancel spectrum</button><p aria-live="polite">Analyzing checked samples…</p></>}
     {error && <p role="alert">{error}</p>}

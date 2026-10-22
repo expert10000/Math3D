@@ -1,7 +1,8 @@
 import { createAnalysisResultEnvelope, type AnalysisResultEnvelope } from "./analysisResults";
 import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocument";
-import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, type Graph2DPointRow } from "./graph2dPointSeries";
+import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, assertGraph2DAnalysisRowBudget,
+  type Graph2DPointRow } from "./graph2dPointSeries";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import type { Graph2DPublicationTable } from "./graph2dPublication";
 import { analyzeGraph2DSplineRegression, type Graph2DSplineRegression } from "./graph2dSplineRegression";
@@ -24,6 +25,7 @@ export type Graph2DPolynomialRegression = Readonly<{ resultId: string; objectId:
   residuals: readonly Readonly<{ rowId: string; x: number; observed: number; fitted: number; residual: number }>[];
   curve: readonly Graph2DRegressionPoint[]; publication: AnalysisResultEnvelope }>;
 export type Graph2DRegression = Graph2DPolynomialRegression | Graph2DSplineRegression | Graph2DExponentialRegression | Graph2DLogisticRegression;
+type RegressionBudget = { maxRows?: number };
 const sum = (values: readonly number[]): number => {
   let total = 0, correction = 0;
   for (const value of values) { const adjusted = value - correction, next = total + adjusted; correction = (next - total) - adjusted; total = next; }
@@ -59,17 +61,18 @@ export const graph2DStudentTCritical95 = (degreesOfFreedom: number): number => {
 const freeze = <T>(value: T): T => { if (value && typeof value === "object" && !Object.isFrozen(value)) { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 /** Bounded reviewed models only; checksum-verified source rows. */
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay" | "logistic-growth">; smoothing?: number }): Graph2DPolynomialRegression;
+  model: Exclude<Graph2DRegressionModel, "spline" | "exponential-decay" | "logistic-growth">; smoothing?: number } & RegressionBudget): Graph2DPolynomialRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: "spline"; smoothing?: number }): Graph2DSplineRegression;
+  model: "spline"; smoothing?: number } & RegressionBudget): Graph2DSplineRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: "exponential-decay"; initial: Graph2DExponentialInitial }): Graph2DExponentialRegression;
+  model: "exponential-decay"; initial: Graph2DExponentialInitial } & RegressionBudget): Graph2DExponentialRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: "logistic-growth"; initial: Graph2DLogisticInitial }): Graph2DLogisticRegression;
+  model: "logistic-growth"; initial: Graph2DLogisticInitial } & RegressionBudget): Graph2DLogisticRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial | Graph2DLogisticInitial }): Graph2DRegression;
+  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial | Graph2DLogisticInitial } & RegressionBudget): Graph2DRegression;
 export function analyzeGraph2DRegression(input: { document: Graph2DDocument; objectId: string; rows: readonly Graph2DPointRow[] | null;
-  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial | Graph2DLogisticInitial }): Graph2DRegression {
+  model: Graph2DRegressionModel; smoothing?: number; initial?: Graph2DExponentialInitial | Graph2DLogisticInitial } & RegressionBudget): Graph2DRegression {
+  assertGraph2DAnalysisRowBudget(input.rows?.length ?? 0, input.maxRows, "Regression");
   if (input.model === "spline") return analyzeGraph2DSplineRegression({ ...input, smoothing: input.smoothing ?? .001 });
   if (input.model === "exponential-decay") {
     if (!input.initial) throw new TypeError("Exponential decay requires initial amplitude and rate.");

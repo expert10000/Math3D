@@ -16,6 +16,16 @@ const options = { window: "rectangular" as const, normalization: "peak" as const
   detrend: "mean" as const, xUnit: "s" };
 
 describe("GRA-16 checked Fourier spectrum", () => {
+  it("uses every checked sample within its independent row cap and refuses a smaller cap", () => {
+    const values = Array.from({ length: 128 }, (_, i) => Math.cos(2 * Math.PI * 8 * i / 128));
+    const input = dataset(values);
+    expect(() => analyzeGraph2DFourier({ ...input, options, maxRows: 64 })).toThrow(/128 checked rows.*No rows were omitted/);
+    expect(() => analyzeGraph2DFourier({ ...input, options, maxRows: 10001 })).toThrow(/row budget/);
+    const capped = analyzeGraph2DFourier({ ...input, options, maxRows: 128 });
+    const uncapped = analyzeGraph2DFourier({ ...input, options });
+    expect(capped.resultId).toBe(uncapped.resultId);
+    expect(capped.bins).toEqual(uncapped.bins);
+  });
   it("recovers a known tone with amplitude, phase, frequency units and source lineage", () => {
     const values = Array.from({ length: 128 }, (_, i) => 1.3 + 2.5 * Math.cos(2 * Math.PI * 8 * i / 128 + .4));
     const input = dataset(values), spectrum = analyzeGraph2DFourier({ ...input, options });
