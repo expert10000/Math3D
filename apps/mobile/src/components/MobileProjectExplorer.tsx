@@ -11,6 +11,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
   const [refreshing, setRefreshing] = React.useState(false);
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
+  const [complexId, setComplexId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<MobileProjectNoteInput | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteMessage, setNoteMessage] = useState("");
@@ -18,7 +19,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
   }, [raw, resources]);
-  useEffect(() => { setWorkbookId(null); setNoteId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
+  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
   if (!state.explorer) return <Text accessibilityRole="alert" style={styles.note}>{state.error}</Text>;
   const { groups, relations, results, workbooks, notes } = state.explorer;
   const selectedWorkbook = workbooks.find(item => item.id === workbookId);
@@ -89,6 +90,25 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
       {group.documents.map(document => <View key={document.id} testID={`mobile-project-document-${document.id}`}>
         <Text style={styles.itemMeta}>{document.title} · revision {document.revision}</Text>
         <Text style={styles.note}>{document.editing}{document.archived ? " · archived" : ""}{document.stale ? " · historical dependency" : ""}</Text>
+        {document.module === "complex" && document.complexPreview && <>
+          <Pressable testID={`mobile-project-view-complex-${document.id}`} accessibilityRole="button"
+            onPress={() => setComplexId(complexId === document.id ? null : document.id)} style={styles.secondaryBtn}>
+            <Text style={styles.secondaryBtnText}>{complexId === document.id ? "Hide" : "View"} Complex contour</Text>
+          </Pressable>
+          {complexId === document.id && <View testID="mobile-project-complex-detail">
+            <Text style={styles.itemMeta}>f(z) = {document.complexPreview.functionText}</Text>
+            {document.complexPreview.contours.map(contour => <Text key={contour.id} style={styles.itemMeta}>
+              {contour.id}: {contour.points} points · {contour.closed ? "closed" : "open"}
+            </Text>)}
+            <Text style={styles.note}>{document.complexPreview.graphStatus}</Text>
+            {document.complexPreview.mapping && <Text style={styles.note}>Mapping: {document.complexPreview.mapping}</Text>}
+            {document.complexPreview.scientific && <>
+              <Text style={styles.note}>Grid {document.complexPreview.scientific.sceneId}/{document.complexPreview.scientific.datasetId}; {document.complexPreview.scientific.fixedName} = {document.complexPreview.scientific.fixedCoordinate} {document.complexPreview.scientific.fixedUnit}; varying {document.complexPreview.scientific.varyingName} ({document.complexPreview.scientific.varyingUnit}).</Text>
+              <Text style={styles.note}>External scientific bundle not checked on mobile. Fingerprint {document.complexPreview.scientific.fingerprint}.</Text>
+            </>}
+            <Text style={styles.note}>Read-only saved contour; use desktop Complex Analysis to edit or refresh.</Text>
+          </View>}
+        </>}
         {document.module === "curve" && onOpenCurve && <>
           <Pressable testID={`mobile-project-edit-curve-${document.id}`} disabled={document.editing !== "Curve workspace"}
             accessibilityState={{ disabled: document.editing !== "Curve workspace" }} onPress={() => onOpenCurve(document.id)} style={styles.secondaryBtn}>

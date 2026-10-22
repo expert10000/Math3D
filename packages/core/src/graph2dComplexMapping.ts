@@ -4,6 +4,8 @@ import { GRAPH2D_DOCUMENT_FORMAT, GRAPH2D_DOCUMENT_SCHEMA_VERSION, type Graph2DD
 import { evaluateGraph2DParametric } from "./graph2dParametric";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { graph2DVerifiedPointTableReference, type Graph2DPointTableStore } from "./graph2dPointSeries";
+import { previewGraph2DScientificSlice } from "./graph2dScientificDataset";
+import { canonicalJsonStringify } from "./documentIdentity";
 
 export type Graph2DComplexContourOptions = Readonly<{ sampleCount: number; closure: "auto" | "open" | "closed" }>;
 export type Graph2DComplexContourReview = Readonly<{
@@ -69,7 +71,7 @@ const reviewPoints = (document: Graph2DDocument, objectId: string,
     options, target, endpointGap, closureTolerance, maximumSegmentLength,
     warnings: ["This is a bounded sampled contour, not an analytic complex function or a verified field transfer.",
       "The target function is identity z; the Graph source supplies contour geometry only.",
-      ...(scientificSource ? ["The imported point tables are checksum-checked again; this mapping records a snapshot and does not reopen the original scientific bundle."] : []),
+      ...(scientificSource ? ["The contour is a snapshot of the checked grid line; a desktop live-bundle check is required before placing or downloading it."] : []),
       "Winding is set to unknown (0); sampling does not prove topology or smoothness."] };
 };
 
@@ -137,7 +139,9 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
       realOrigin.yUnit !== imaginaryOrigin.yUnit ||
       realSlice.varyingAxis !== imaginarySlice.varyingAxis || realSlice.fixedIndex !== imaginarySlice.fixedIndex ||
       realSlice.fixedCoordinate !== imaginarySlice.fixedCoordinate || realSlice.fixedName !== imaginarySlice.fixedName ||
-      realSlice.fixedUnit !== imaginarySlice.fixedUnit)
+      realSlice.fixedUnit !== imaginarySlice.fixedUnit ||
+      (realOrigin.locator && imaginaryOrigin.locator &&
+        (realOrigin.locator.kind !== imaginaryOrigin.locator.kind || realOrigin.locator.value !== imaginaryOrigin.locator.value)))
     throw new TypeError("Real and imaginary lines must come from the same verified complex-grid slice and axes.");
   const realRows = tables.resolve(real.table), imaginaryRows = tables.resolve(imaginary.table);
   if (!realRows || !imaginaryRows ||
@@ -148,9 +152,13 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
       realRows.some((row, index) => row.y === null || imaginaryRows[index]!.y === null ||
         row.x !== imaginaryRows[index]!.x || (index > 0 && row.x <= realRows[index - 1]!.x)))
     throw new TypeError("Complex-grid lines need 16–4097 complete, aligned, increasing coordinates.");
+  const locator = realOrigin.locator ?? imaginaryOrigin.locator ?? document.source.fieldReferences?.find(reference =>
+    reference.sceneFingerprint === realOrigin.sceneFingerprint && reference.datasetId === realOrigin.datasetId &&
+    (reference.component === "real" || reference.component === "imaginary"))?.locator;
   const scientificSource: ScientificSource = {
     sceneId: realOrigin.sceneId, datasetId: realOrigin.datasetId,
     sceneFingerprint: realOrigin.sceneFingerprint,
+    ...(locator ? { locator } : {}),
     realResourceSha256: realOrigin.resourceSha256, imaginaryResourceSha256: imaginaryOrigin.resourceSha256,
     varyingAxis: realSlice.varyingAxis, fixedIndex: realSlice.fixedIndex,
     fixedCoordinate: realSlice.fixedCoordinate, fixedName: realSlice.fixedName, fixedUnit: realSlice.fixedUnit,
@@ -159,6 +167,29 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
   const points = realRows.map((row, index) => ({ re: row.y!, im: imaginaryRows[index]!.y! }));
   return reviewPoints(document, realObjectId, { ...options, sampleCount: points.length }, points,
     "scientific-complex-line-to-contour", imaginaryObjectId, scientificSource);
+};
+
+/** Match freshly re-read bundle slices to both immutable imported Graph tables. */
+export const verifyGraph2DComplexPairBundle = (document: Graph2DDocument, realObjectId: string,
+  imaginaryObjectId: string, tables: Graph2DPointTableStore, manifestJson: string, fingerprint: string,
+  lines: readonly [Parameters<typeof previewGraph2DScientificSlice>[2], Parameters<typeof previewGraph2DScientificSlice>[2]],
+): void => {
+  const reviewed = reviewGraph2DComplexPair(document, realObjectId, imaginaryObjectId, defaultOptions, tables);
+  const provenance = reviewed.target.provenance.graphSource?.scientificSource;
+  if (!provenance || provenance.sceneFingerprint !== fingerprint)
+    throw new TypeError("Scientific complex source fingerprint changed; preview the bundle again.");
+  for (const [index, objectId] of [realObjectId, imaginaryObjectId].entries()) {
+    const object = document.source.objects.find(item => item.id === objectId);
+    if (object?.kind !== "point-series" || !object.origin)
+      throw new TypeError("A linked scientific Graph line is missing.");
+    const line = lines[index]!;
+    const fresh = previewGraph2DScientificSlice(manifestJson, fingerprint, line);
+    const { locator: _locator, ...savedOrigin } = object.origin;
+    if (line.component !== (index === 0 ? "real" : "imaginary") ||
+        canonicalJsonStringify(fresh.origin) !== canonicalJsonStringify(savedOrigin) ||
+        canonicalJsonStringify(fresh.rows) !== canonicalJsonStringify(tables.resolve(object.table)))
+      throw new TypeError("Scientific complex source line or axes changed since import.");
+  }
 };
 
 const reviewLinkedSource = (document: Graph2DDocument, link: GraphSource,

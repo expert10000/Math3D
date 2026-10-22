@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate, serializeMath3DProject } from "@math3d/core";
+import { acceptGraph2DComplexContour, applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
+  createMath3DProject, createMixedWorkspaceDocument, instantiateMath3DProjectTemplate,
+  reviewGraph2DComplexContour, serializeMath3DProject } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { buildMobileProjectExplorer } from "../../apps/mobile/src/models/mobileProjectExplorer";
 import { instantiateNotebookStarter } from "../../renderer/src/projects/notebookStarters";
@@ -48,5 +50,26 @@ describe("PRJ21 read-only named-project explorer", () => {
     const explorer = buildMobileProjectExplorer(serializeMath3DProject(project));
     expect(explorer.groups.filter(group => group.documents.length).map(group => group.module)).toEqual(["geometry", "topology"]);
     expect(explorer.groups.flatMap(group => group.documents).every(document => document.editing === "Saved preview")).toBe(true);
+  });
+  it("shows a linked Complex contour as a read-only snapshot with Graph checkpoint status", () => {
+    const empty = createEmptyGraph2DDocument("mobile-complex-source");
+    const graph = createGraph2DDocument({ ...applyGraph2DAuthoring(empty, { type: "create-parametric",
+      draft: { label: "Circle", xExpression: "cos(t)", yExpression: "sin(t)",
+        domain: { min: 0, max: 2 * Math.PI, includeMin: true, includeMax: true },
+        style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } }),
+      stableKey: "mobile-complex-source" });
+    const complex = acceptGraph2DComplexContour(reviewGraph2DComplexContour(graph, graph.source.objects[0]!.id), graph);
+    const workspace = createMixedWorkspaceDocument({ entries: [
+      { module: "graph2d", checkpoint: graph, expected: graph.identity, replay: null },
+      { module: "complex", checkpoint: complex, expected: complex.identity, replay: null },
+    ], activeDocumentIds: [graph.identity.id, complex.identity.id], results: [], relations: [],
+      artifacts: [], constructions: [], committedSelection: null });
+    const raw = serializeMath3DProject(createMath3DProject(workspace, { stableKey: "mobile-complex-project" }));
+    const explorer = buildMobileProjectExplorer(raw);
+    const preview = explorer.groups.flatMap(group => group.documents).find(item => item.module === "complex");
+    expect(preview?.editing).toBe("Saved preview");
+    expect(preview?.complexPreview).toMatchObject({ functionText: "z", graphStatus: "Graph checkpoint matches",
+      mapping: "parametric-xy-to-complex-contour", contours: [{ points: 257, closed: true }] });
+    expect(serializeMath3DProject(createMath3DProject(workspace, { stableKey: "mobile-complex-project" }))).toBe(raw);
   });
 });

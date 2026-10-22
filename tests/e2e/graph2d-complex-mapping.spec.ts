@@ -98,6 +98,9 @@ test("GRA-17 maps the checked real and imaginary lines of one complex field", as
     const link = page.getByRole("region", { name: "Linked Graph contour", exact: true });
     await expect(link.getByRole("status")).toContainText("Source current");
     await expect(link).toContainText("component checksums");
+    await expect(link).toContainText("Original bundle: not checked in this session");
+    await link.getByRole("button", { name: "Verify original bundle" }).click();
+    await expect(link).toContainText("Original bundle: verified in this session");
   } finally { await closeSurfaceApp(app); }
 });
 

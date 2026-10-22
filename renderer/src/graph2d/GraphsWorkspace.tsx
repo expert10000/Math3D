@@ -348,11 +348,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     finally { setScientificImportBusy(false); }
   };
   const commitScientificDataset = () => {
-    if (!scientificPreview || !onAuthoringCommit || scientificLineAlreadyImported) return;
+    if (!scientificPreview || !scientificImport || !onAuthoringCommit || scientificLineAlreadyImported) return;
     try {
       const table = pointTableStore.publish(scientificPreview.rows);
       onAuthoringCommit({ type: "create-point-series", draft: { label: scientificPreview.label,
-        table, mode: "line", domain: scientificPreview.domain, origin: scientificPreview.origin,
+        table, mode: "line", domain: scientificPreview.domain,
+        origin: { ...scientificPreview.origin, locator: scientificImport.locator },
         style: { color: scientificSelected?.shape ? SCIENTIFIC_GRID_LINE_COLORS[scientificImportedLines.length % SCIENTIFIC_GRID_LINE_COLORS.length] : "#2563eb",
           lineWidth: 2, lineStyle: "solid", visible: true } } });
       if (scientificSelected?.shape) {

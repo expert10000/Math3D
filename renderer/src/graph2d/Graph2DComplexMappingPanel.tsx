@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { acceptGraph2DComplexContour, reviewGraph2DComplexContour, reviewGraph2DComplexPair,
   serializeComplexAnalysisDocument, type ComplexAnalysisDocument, type Graph2DComplexContourReview, type Graph2DDocument } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
+import { reverifyComplexFieldSource } from "./reverifyComplexFieldSource";
 
 const contourPath = (review: Graph2DComplexContourReview) => {
   const { domain, contours } = review.target, points = contours[0]?.points ?? [];
@@ -14,6 +15,7 @@ export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Gr
   const [sampleCount, setSampleCount] = useState("257"), [closure, setClosure] = useState<"auto" | "open" | "closed">("auto");
   const [chosenPairId, setChosenPairId] = useState("");
   const [review, setReview] = useState<Graph2DComplexContourReview | null>(null), [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const object = document.source.objects.find(item => item.id === document.selection.objectId);
   const paired = object?.kind === "explicit-cartesian" || object?.kind === "point-series";
   const scientific = object?.kind === "point-series";
@@ -26,30 +28,52 @@ export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Gr
       item.origin.slice?.varyingAxis === object.origin.slice?.varyingAxis &&
       item.origin.slice?.fixedIndex === object.origin.slice?.fixedIndex));
   const pairId = pairCandidates.some(item => item.id === chosenPairId) ? chosenPairId : pairCandidates[0]?.id ?? "";
-  const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}|${object?.id}`;
-  useEffect(() => { setReview(null); setError(""); }, [sourceKey, sampleCount, closure, pairId]);
-  const preview = () => {
+  const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}|${object?.id}|${pairId}|${sampleCount}|${closure}`;
+  const latestKey = useRef(sourceKey);
+  latestKey.current = sourceKey;
+  useEffect(() => { setReview(null); setError(""); setBusy(false); }, [sourceKey]);
+  const preview = async () => {
+    const key = sourceKey;
+    setBusy(true); setReview(null); setError("");
     try { if (!object) return;
+      if (scientific) await reverifyComplexFieldSource(document, object.id, pairId);
+      if (latestKey.current !== key) return;
       const next = object.kind === "parametric" ? reviewGraph2DComplexContour(document, object.id,
         { sampleCount: Number(sampleCount), closure }) :
         reviewGraph2DComplexPair(document, object.id, pairId,
           { sampleCount: object.kind === "point-series" ? object.table.rowCount : Number(sampleCount), closure }, pointTableStore);
       setReview(next); setError("");
-    } catch (caught) { setReview(null); setError((caught as Error).message); }
+    } catch (caught) { if (latestKey.current === key) { setReview(null); setError((caught as Error).message); } }
+    finally { if (latestKey.current === key) setBusy(false); }
   };
-  const download = () => {
+  const acceptFresh = async () => {
+    if (!review) return null;
+    const key = sourceKey;
+    if (review.target.provenance.graphSource?.scientificSource && review.source.pairedObjectId)
+      await reverifyComplexFieldSource(document, review.source.objectId, review.source.pairedObjectId);
+    if (latestKey.current !== key) throw new TypeError("Graph source changed during bundle verification; preview again.");
+    return acceptGraph2DComplexContour(review, document, pointTableStore);
+  };
+  const download = async () => {
+    setBusy(true);
     try { if (!review) return;
-      const target = acceptGraph2DComplexContour(review, document, pointTableStore);
+      const target = await acceptFresh();
+      if (!target) return;
       const url = URL.createObjectURL(new Blob([serializeComplexAnalysisDocument(target)], { type: "application/json" }));
       const link = globalThis.document.createElement("a"); link.href = url;
       link.download = `complex-contour-${review.source.objectId}.json`; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000); setError("");
     } catch (caught) { setReview(null); setError((caught as Error).message); }
+    finally { setBusy(false); }
   };
-  const place = () => {
+  const place = async () => {
+    setBusy(true);
     try { if (!review || !onPlace) return;
-      onPlace(acceptGraph2DComplexContour(review, document, pointTableStore)); setError("");
+      const target = await acceptFresh();
+      if (target) onPlace(target);
+      setError("");
     } catch (caught) { setReview(null); setError((caught as Error).message); }
+    finally { setBusy(false); }
   };
   return <section aria-label="Graph to Complex Analysis" data-testid="graph2d-complex-mapping">
     <h3>Graph → Complex Analysis</h3>
@@ -72,7 +96,8 @@ export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Gr
       onChange={event => setClosure(event.target.value as typeof closure)}>
       <option value="auto">Detect matching endpoints</option><option value="open">Open contour</option>
       <option value="closed">Require matching endpoints</option></select></label>
-    <button type="button" disabled={!!paired && !pairId} onClick={preview}>Preview Complex contour</button>
+    <button type="button" disabled={busy || !!paired && !pairId} onClick={() => void preview()}>Preview Complex contour</button>
+    {busy && <p role="status">Rechecking the Graph source and scientific bundle…</p>}
     {error && <p role="alert">{error}</p>}
     {review && <div data-testid="graph2d-complex-mapping-review">
       <p role="status">Reviewed {review.target.contours[0]!.points.length} points · {review.target.contours[0]!.closed ? "closed" : "open"} contour.</p>
@@ -97,9 +122,9 @@ export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Gr
         real checksum <code>{review.target.provenance.graphSource.scientificSource.realResourceSha256}</code>;
         imaginary checksum <code>{review.target.provenance.graphSource.scientificSource.imaginaryResourceSha256}</code>.</p>}
       <ul>{review.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>
-      <button type="button" onClick={download}>Download Complex Analysis document</button>
-      {onPlace && <button type="button" onClick={place}>Open in Complex Analysis</button>}
-      <p>Download and workspace placement both recheck the Graph source against this preview. The target contains sampled contour geometry and identity function z.</p>
+      <button type="button" disabled={busy} onClick={() => void download()}>Download Complex Analysis document</button>
+      {onPlace && <button type="button" disabled={busy} onClick={() => void place()}>Open in Complex Analysis</button>}
+      <p>Download and workspace placement both recheck the Graph source against this preview{scientific ? " and reopen the scientific bundle" : ""}. The target contains sampled contour geometry and identity function z.</p>
     </div>}
   </section>;
 }

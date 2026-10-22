@@ -7,7 +7,8 @@ import type { ValidationResult } from "./validation";
 import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
 import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 import { graph2DParameterExpressionsCurrent } from "./graph2dParameterExpressions";
-import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
+import { isGraph2DFieldReference, isGraph2DFieldLocator,
+  type Graph2DFieldReference, type Graph2DFieldLocator } from "./graph2dFieldReference";
 import { isGraph2DViewport } from "./graph2dViewport";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
@@ -96,6 +97,7 @@ export type Graph2DPointTableReference = Readonly<{
 }>;
 export type Graph2DScientificDatasetOrigin = Readonly<{
   schema: "scientific-scene/v1"; sceneId: string; datasetId: string;
+  locator?: Graph2DFieldLocator;
   component?: string;
   slice?: Readonly<{ varyingAxis: 0 | 1; fixedIndex: number; fixedCoordinate: number;
     fixedName: string; fixedUnit: string }>;
@@ -324,7 +326,9 @@ export const validPointTableReference = (value: unknown): value is Graph2DPointT
 export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Graph2DScientificDatasetOrigin => record(value) &&
   exact(value, ["schema", "sceneId", "datasetId", "sceneFingerprint", "resourceSha256", "sourceProducer", "sourceId",
     "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit",
-    ...(value.component === undefined ? [] : ["component"]), ...(value.slice === undefined ? [] : ["slice"])]) &&
+    ...(value.component === undefined ? [] : ["component"]), ...(value.slice === undefined ? [] : ["slice"]),
+    ...(value.locator === undefined ? [] : ["locator"])]) &&
+  (value.locator === undefined || isGraph2DFieldLocator(value.locator)) &&
   value.schema === "scientific-scene/v1" &&
   [value.sceneId, value.datasetId, value.sourceProducer, value.sourceId].every(item =>
     typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&

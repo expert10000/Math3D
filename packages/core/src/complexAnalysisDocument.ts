@@ -12,6 +12,7 @@ import {
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
 import { validateComplexExpressionAst, type ComplexExpressionVariable } from "./complexExpressionAst";
+import { isGraph2DFieldLocator, type Graph2DFieldLocator } from "./graph2dFieldReference";
 
 export const COMPLEX_ANALYSIS_DOCUMENT_FORMAT = "math3d.complex-analysis-document" as const;
 export const COMPLEX_ANALYSIS_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -132,6 +133,7 @@ export type ComplexAnalysisDocument = Readonly<{
       objectId: string; pairedObjectId?: string; sampleCount: number; closure?: "auto" | "open" | "closed";
       mapping: "parametric-xy-to-complex-contour" | "paired-functions-to-complex-contour" | "scientific-complex-line-to-contour";
       scientificSource?: Readonly<{ sceneId: string; datasetId: string; sceneFingerprint: string;
+        locator?: Graph2DFieldLocator;
         realResourceSha256: string; imaginaryResourceSha256: string; varyingAxis: 0 | 1;
         fixedIndex: number; fixedCoordinate: number; fixedName: string; fixedUnit: string;
         varyingName: string; varyingUnit: string }>;
@@ -351,7 +353,9 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
           const scientific = link.scientificSource;
           if (!isRecord(scientific)) errors.push("complex.provenance.graphSource.scientificSource is invalid.");
           else {
-            fields(scientific, ["sceneId", "datasetId", "sceneFingerprint", "realResourceSha256", "imaginaryResourceSha256", "varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "varyingName", "varyingUnit"], "complex.provenance.graphSource.scientificSource", errors);
+            fields(scientific, ["sceneId", "datasetId", "sceneFingerprint", "locator", "realResourceSha256", "imaginaryResourceSha256", "varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "varyingName", "varyingUnit"], "complex.provenance.graphSource.scientificSource", errors);
+            if (scientific.locator !== undefined && !isGraph2DFieldLocator(scientific.locator))
+              errors.push("complex.provenance.graphSource.scientificSource.locator is invalid.");
             for (const key of ["sceneId", "datasetId", "fixedName", "fixedUnit", "varyingName", "varyingUnit"])
               stringValue(scientific[key], `complex.provenance.graphSource.scientificSource.${key}`, errors, 160);
             for (const key of ["sceneFingerprint", "realResourceSha256", "imaginaryResourceSha256"])

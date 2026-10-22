@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { acceptGraph2DComplexContour, applyGraph2DAuthoring, createComplexAnalysisDocument,
   createEmptyGraph2DDocument, createGraph2DDocument, deserializeComplexAnalysisDocument,
   graph2DComplexContourSourceStatus, refreshGraph2DComplexContour, reviewGraph2DComplexContour,
-  reviewGraph2DComplexPair, Graph2DPointTableStore, previewGraph2DScientificSlice,
+  reviewGraph2DComplexPair, verifyGraph2DComplexPairBundle, Graph2DPointTableStore, previewGraph2DScientificSlice,
   serializeComplexAnalysisDocument, sha256Checksum, type ScientificSceneManifest } from "@math3d/core";
+import { reverifyComplexFieldSource } from "./reverifyComplexFieldSource";
 
 const path = (xExpression = "cos(t)", yExpression = "sin(t)") => {
   const draft = { label: "Complex contour", xExpression, yExpression,
@@ -125,7 +126,7 @@ describe("GRA-17 paired Graph and verified complex-grid sources", () => {
       disjoint.source.objects[1]!.id)).toThrow(/shared domain/);
   });
 
-  it("maps only checksum-checked real/imaginary lines from the same fixed grid coordinate", () => {
+  it("maps only checksum-checked real/imaginary lines from the same fixed grid coordinate", async () => {
     const shape = [17, 2] as const;
     const realValues = Array.from({ length: 34 }, (_, index) => Math.cos(2 * Math.PI * Math.floor(index / 2) / 16));
     const imaginaryValues = Array.from({ length: 34 }, (_, index) => Math.sin(2 * Math.PI * Math.floor(index / 2) / 16));
@@ -144,20 +145,23 @@ describe("GRA-17 paired Graph and verified complex-grid sources", () => {
         shape: [...shape], order: "last-axis-fastest", quantity: { name: "Amplitude", unit: "V" },
         real: "real-values", imaginary: "imag-values" }], views: [] };
     const json = JSON.stringify(manifest), fingerprint = sha256Checksum(new TextEncoder().encode(json)).slice(7);
-    const line = (component: "real" | "imaginary", fixedIndex: number) => {
+    const rawLine = (component: "real" | "imaginary", fixedIndex: number) => {
       const values = (component === "real" ? realValues : imaginaryValues)
         .filter((_, index) => index % 2 === fixedIndex);
-      return previewGraph2DScientificSlice(json, fingerprint, { fingerprint, datasetId: "amplitude",
+      return { fingerprint, datasetId: "amplitude",
         component, varyingAxis: 0, fixedIndex, shape,
         resourceSha256: manifest.resources[component === "real" ? 0 : 1]!.sha256,
-        sliceSha256: hashValues(values), values });
+        sliceSha256: hashValues(values), values };
     };
+    const line = (component: "real" | "imaginary", fixedIndex: number) =>
+      previewGraph2DScientificSlice(json, fingerprint, rawLine(component, fixedIndex));
     const store = new Graph2DPointTableStore();
     const real = line("real", 1), imaginary = line("imaginary", 1);
     let scene = createEmptyGraph2DDocument("complex-grid-pair");
     for (const preview of [real, imaginary]) scene = applyGraph2DAuthoring(scene, { type: "create-point-series",
       draft: { label: preview.label, table: store.publish(preview.rows), mode: "line",
-        domain: preview.domain, origin: preview.origin, style } });
+        domain: preview.domain, origin: { ...preview.origin,
+          locator: { kind: "preset", value: "complexWave" } }, style } });
     const document = createGraph2DDocument({ ...scene, stableKey: "complex-grid-pair" });
     const [realObject, imaginaryObject] = document.source.objects;
     const review = reviewGraph2DComplexPair(document, realObject!.id, imaginaryObject!.id,
@@ -169,6 +173,32 @@ describe("GRA-17 paired Graph and verified complex-grid sources", () => {
       realResourceSha256: manifest.resources[0]!.sha256,
       imaginaryResourceSha256: manifest.resources[1]!.sha256 });
     const target = acceptGraph2DComplexContour(review, document, store);
+    expect(() => verifyGraph2DComplexPairBundle(document, realObject!.id, imaginaryObject!.id, store,
+      json, fingerprint, [rawLine("real", 1), rawLine("imaginary", 1)])).not.toThrow();
+    const changedLine = rawLine("imaginary", 1);
+    const changedValues = [...changedLine.values]; changedValues[3] += .125;
+    expect(() => verifyGraph2DComplexPairBundle(document, realObject!.id, imaginaryObject!.id, store,
+      json, fingerprint, [rawLine("real", 1), { ...changedLine, values: changedValues,
+        sliceSha256: hashValues(changedValues) }])).toThrow(/line or axes changed/);
+    expect(() => verifyGraph2DComplexPairBundle(document, realObject!.id, imaginaryObject!.id, store,
+      json, "0".repeat(64), [rawLine("real", 1), rawLine("imaginary", 1)])).toThrow(/fingerprint changed/);
+    const close = vi.fn(async () => true);
+    const bridge = { openGraphDatasetReference: vi.fn(async () => ({ ok: true,
+      source: { manifestJson: json, fingerprint } })),
+    previewGraphSlice: vi.fn(async (request: { component: "real" | "imaginary" }) =>
+      rawLine(request.component, 1)), closeGraphDataset: close } as unknown as
+      Pick<NonNullable<typeof window.scientificScenes>, "openGraphDatasetReference" | "previewGraphSlice" | "closeGraphDataset">;
+    await expect(reverifyComplexFieldSource(document, realObject!.id, imaginaryObject!.id, store, bridge)).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledWith(fingerprint);
+    const missing = { ...bridge, openGraphDatasetReference: vi.fn(async () =>
+      ({ ok: false as const, status: "missing" as const, error: "bundle removed" })) };
+    await expect(reverifyComplexFieldSource(document, realObject!.id, imaginaryObject!.id, store, missing))
+      .rejects.toThrow(/bundle missing: bundle removed/);
+    const changedBridge = { ...bridge, previewGraphSlice: vi.fn(async (request: { component: "real" | "imaginary" }) =>
+      request.component === "real" ? rawLine("real", 1) : { ...changedLine, values: changedValues,
+        sliceSha256: hashValues(changedValues) }) } as unknown as typeof bridge;
+    await expect(reverifyComplexFieldSource(document, realObject!.id, imaginaryObject!.id, store, changedBridge))
+      .rejects.toThrow(/line or axes changed/);
     expect(deserializeComplexAnalysisDocument(serializeComplexAnalysisDocument(target)).ok).toBe(true);
     expect(graph2DComplexContourSourceStatus(target, document, store)).toBe("current");
     if (imaginaryObject?.kind !== "point-series") throw new Error("Expected imported imaginary line.");
