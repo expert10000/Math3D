@@ -4,5 +4,6 @@ export const graph2DSceneSamplingKey = (request: Graph2DSceneSamplingRequest) =>
   source: request.document.source, identity: request.document.identity,
   styles: request.document.display.objects, sampling: request.document.display.sampling,
   viewport: request.viewport, width: request.width, height: request.height, interaction: request.interaction,
-  pointTables: graph2DPointTableSamplingInputs(request.pointTables ?? {}), timeBudgetMs: request.timeBudgetMs ?? null, deterministic: request.deterministic ?? false,
+  pointTables: graph2DPointTableSamplingInputs(request.pointTables ?? {}), timeBudgetMs: request.timeBudgetMs ?? null,
+  deterministic: request.deterministic ?? false, separatePhaseAnalysis: request.separatePhaseAnalysis ?? false,
 });

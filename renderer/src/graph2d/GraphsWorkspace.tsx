@@ -55,6 +55,7 @@ import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthori
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
 import { useGraph2DSampling } from "./useGraph2DSampling";
+import { useGraph2DPhaseAnalysis } from "./useGraph2DPhaseAnalysis";
 import { GraphGalleryDialog } from "./GraphGalleryDialog";
 import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
@@ -387,6 +388,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [arcAnalysisBudget, setArcAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
   const [polarAreaAnalysisBudget, setPolarAreaAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
   const [polarArcAnalysisBudget, setPolarArcAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
+  const [phaseAnalysisBudget, setPhaseAnalysisBudget] = useState<Graph2DAnalysisBudget>(6000);
   const [focusedInterval, setFocusedInterval] = useState<{ resultId: string; intervalId: string } | null>(null);
   const [showDerivativeCurve, setShowDerivativeCurve] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
@@ -530,6 +532,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const renderedDisplay = useMemo(() => ({ ...document.display, axes: displayAxes, viewport, ...(parameterPreviewActive ? { pinnedProbes: [] } : {}) }), [document.display, displayAxes, viewport, parameterPreviewActive]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null || phaseSeedPreview !== null,
+    separatePhaseAnalysis: true,
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
       object.kind === "point-series" ? [[object.table.id, pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview]);
@@ -738,6 +741,23 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const phaseObject = sampledDocument.source.objects.find((item) => item.id === document.selection.objectId);
+  const phaseVisible = sampledDocument.display.objects.some(style =>
+    style.objectId === phaseObject?.id && style.visible);
+  const phaseRequest = useMemo(() => phaseVisible && phaseObject?.kind === "phase-portrait" ? {
+    object: phaseObject,
+    variables: Object.fromEntries(sampledDocument.source.variables.map(entry => [entry.name, entry.value])),
+    viewport, width: size.width, height: size.height, maxEvaluations: phaseAnalysisBudget,
+  } : null, [phaseVisible, phaseObject, sampledDocument.source.variables, viewport, size, phaseAnalysisBudget]);
+  const phaseAnalysis = useGraph2DPhaseAnalysis(phaseRequest);
+  const phaseArtifact = useMemo<Graph2DPhasePortraitArtifact | null>(() => selectedSeries?.artifact &&
+    "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" ?
+    (sampling.ready && phaseAnalysis.result ? { ...selectedSeries.artifact, ...phaseAnalysis.result } :
+      selectedSeries.artifact) as Graph2DPhasePortraitArtifact : null,
+  [selectedSeries?.artifact, sampling.ready, phaseAnalysis.result]);
+  const phaseSeries = useMemo(() => phaseArtifact ? series.map(item =>
+    item.objectId === document.selection.objectId ? { ...item, artifact: phaseArtifact } : item) : series,
+  [series, phaseArtifact, document.selection.objectId]);
   const activePolarDraft = selectedObject?.kind === "polar" && polarDraft.objectId !== selectedObject.id ?
     { objectId: selectedObject.id, min: String(selectedObject.domain.min), max: String(selectedObject.domain.max) } : polarDraft;
   const polarMin = activePolarDraft.min.trim() ? Number(activePolarDraft.min) : NaN;
@@ -772,7 +792,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     isGraph2DRegressionCurrent(regression, document) ? regression : null;
   const focusedNumericalProbe = focusedNumericalPoint?.origin === "regression" &&
     focusedNumericalPoint.resultId === currentRegression?.publication.resultId ? focusedNumericalPoint.point :
-    focusedNumericalPoint?.origin === "phase" && focusedNumericalPoint.artifact === selectedSeries?.artifact &&
+    focusedNumericalPoint?.origin === "phase" && focusedNumericalPoint.artifact === phaseArtifact &&
       selectedObject?.id === focusedNumericalPoint.point.objectId && !phaseSeedPreview && !parameterPreviewActive ?
       focusedNumericalPoint.point : null;
   // Same-source retained samples are an explicitly labelled previous observation, not current analysis evidence.
@@ -1220,26 +1240,32 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             onClick={() => { setPhaseSeedPlacement(current => current === selectedObject.id ? null : selectedObject.id); setToolHint(""); }}>
             {phaseSeedPlacement === selectedObject.id ? "Cancel placement" : "Place initial point"}</button>
             <span> Drag a marked initial point to update its orbit. Release saves one undo step.</span></dd>
-          {selectedSeries?.artifact && "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" && <>
-            <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).orbits.map((orbit, index) =>
+          {phaseArtifact && <>
+            <dt>Orbits</dt><dd data-testid="graph2d-phase-orbits">{phaseArtifact.orbits.map((orbit, index) =>
               <span key={index}>{index + 1}: backward {orbit.backward}, forward {orbit.forward}; {orbit.acceptedSteps} accepted, {orbit.rejectedSteps} rejected<br /></span>)}</dd>
-            <dt>Field</dt><dd>{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶.
-              {(() => { const speeds = (selectedSeries.artifact as Graph2DPhasePortraitArtifact).fieldMagnitudes;
+            <dt>Field</dt><dd>{phaseArtifact.fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶.
+              {(() => { const speeds = phaseArtifact.fieldMagnitudes;
                 return speeds.length ? ` Sampled speed ${Math.min(...speeds).toPrecision(3)}–${Math.max(...speeds).toPrecision(3)} coordinate units per time unit; arrow length is median-relative.` : " No finite nonzero vectors sampled."; })()}</dd>
+            <dt>Analysis budget</dt><dd><Graph2DAnalysisBudgetControl label="Phase equilibrium evaluation budget"
+              value={phaseAnalysisBudget} onChange={setPhaseAnalysisBudget} />
+              <small>Independent of field and orbit rendering · {phaseArtifact.analysis.evaluations.toLocaleString()} evaluations</small>
+              {phaseAnalysis.error && <span role="alert"> {phaseAnalysis.error}</span>}
+              {!phaseAnalysis.ready && !phaseAnalysis.error && <span role="status"> Computing nullclines and equilibria…</span>}</dd>
             <dt>Nullclines</dt><dd data-testid="graph2d-phase-nullclines">x′=0 orange dashed;
-              {" "}y′=0 cyan dotted · {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.status}</dd>
+              {" "}y′=0 cyan dotted · {phaseArtifact.analysis.status}</dd>
           <dt>Equilibria</dt><dd data-testid="graph2d-phase-equilibria">
-            <Graph2DPhaseEquilibriaTable artifact={selectedSeries.artifact as Graph2DPhasePortraitArtifact}
+            {phaseAnalysis.ready && sampling.ready && <Graph2DPhaseEquilibriaTable artifact={phaseArtifact}
+              budget={phaseAnalysisBudget}
               document={document} objectId={selectedObject.id}
               onHighlight={point => setFocusedNumericalPoint({ origin: "phase",
-                artifact: selectedSeries.artifact as Graph2DPhasePortraitArtifact,
+                artifact: phaseArtifact,
                 point: { objectId: selectedObject.id, x: point.x, y: point.y } })}
-              readOnlyPreview={!sampling.ready || !!phaseSeedPreview || parameterPreviewActive} />
+              readOnlyPreview={!sampling.ready || !!phaseSeedPreview || parameterPreviewActive} />}
           </dd>
             <dt>Method</dt><dd>Marching squares contour crossings, then up to five Newton steps.
-              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.candidates} candidates;
-              {" "}{(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.unresolved} unresolved.
-              {" "}Grid scale ≈ {(selectedSeries.artifact as Graph2DPhasePortraitArtifact).analysis.gridScale?.toPrecision(3) ?? "unavailable"} world units.
+              {" "}{phaseArtifact.analysis.candidates} candidates;
+              {" "}{phaseArtifact.analysis.unresolved} unresolved.
+              {" "}Grid scale ≈ {phaseArtifact.analysis.gridScale?.toPrecision(3) ?? "unavailable"} world units.
               {" "}Residual tolerance 10⁻⁷(1+|position|); no certified error bound.</dd>
           </>}
         </>}
@@ -1554,7 +1580,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showLeft && <details><summary>Graph objects ({document.source.objects.length})</summary>{functionList("compact")}</details>}
           {showRight && <details><summary>Inspector</summary>{inspector}{savedFields}</details>}
         </div>
-        {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={series}
+        {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
           constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={probeMarkers}
