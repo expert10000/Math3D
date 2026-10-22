@@ -21,6 +21,16 @@ test("phase analysis budget changes equilibria without restarting scene sampling
     await expect.poll(() => arrows.count()).toBeGreaterThan(0);
     const arrowCount = await arrows.count();
     const orbitPath = await page.locator("[data-graph2d-path]").first().getAttribute("d");
+    const field = inspector.getByTestId("graph2d-vector-field-analysis");
+    await expect(field).toContainText("Sampled grid complete");
+    const quickFieldId = await field.getAttribute("data-result-id");
+    const equilibriumSummary = await table.getByRole("status").first().textContent();
+    await inspector.getByLabel("Vector field analysis evaluation budget").selectOption("6000");
+    await expect.poll(() => field.getAttribute("data-result-id")).not.toBe(quickFieldId);
+    await expect(field).toContainText("6,000 evaluations");
+    expect(await arrows.count()).toBe(arrowCount);
+    expect(await page.locator("[data-graph2d-path]").first().getAttribute("d")).toBe(orbitPath);
+    expect(await table.getByRole("status").first().textContent()).toBe(equilibriumSummary);
     const quickEvaluations = await inspector.getByText(/Independent of field and orbit rendering/).textContent();
     await inspector.getByLabel("Phase equilibrium evaluation budget").selectOption("12000");
     await expect(table).toBeVisible();

@@ -56,6 +56,7 @@ import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
 import { useGraph2DSampling } from "./useGraph2DSampling";
 import { useGraph2DPhaseAnalysis } from "./useGraph2DPhaseAnalysis";
+import { useGraph2DVectorFieldAnalysis } from "./useGraph2DVectorFieldAnalysis";
 import { GraphGalleryDialog } from "./GraphGalleryDialog";
 import { Graph2DExportDialog } from "./Graph2DExportDialog";
 import { Graph2DParametersPanel } from "./Graph2DParametersPanel";
@@ -389,6 +390,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [polarAreaAnalysisBudget, setPolarAreaAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
   const [polarArcAnalysisBudget, setPolarArcAnalysisBudget] = useState<Graph2DAnalysisBudget>(12000);
   const [phaseAnalysisBudget, setPhaseAnalysisBudget] = useState<Graph2DAnalysisBudget>(6000);
+  const [vectorFieldAnalysisBudget, setVectorFieldAnalysisBudget] = useState<Graph2DAnalysisBudget>(2000);
   const [focusedInterval, setFocusedInterval] = useState<{ resultId: string; intervalId: string } | null>(null);
   const [showDerivativeCurve, setShowDerivativeCurve] = useState(false);
   const [parametersOpen, setParametersOpen] = useState(false);
@@ -750,6 +752,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     viewport, width: size.width, height: size.height, maxEvaluations: phaseAnalysisBudget,
   } : null, [phaseVisible, phaseObject, sampledDocument.source.variables, viewport, size, phaseAnalysisBudget]);
   const phaseAnalysis = useGraph2DPhaseAnalysis(phaseRequest);
+  const vectorFieldRequest = useMemo(() => phaseRequest ? {
+    object: { id: phaseRequest.object.id,
+      xDerivative: phaseRequest.object.xDerivative, yDerivative: phaseRequest.object.yDerivative,
+      domain: phaseRequest.object.domain, yDomain: phaseRequest.object.yDomain },
+    variables: phaseRequest.variables, viewport,
+    maxEvaluations: vectorFieldAnalysisBudget,
+  } : null, [phaseRequest, viewport, vectorFieldAnalysisBudget]);
+  const vectorFieldAnalysis = useGraph2DVectorFieldAnalysis(vectorFieldRequest);
   const phaseArtifact = useMemo<Graph2DPhasePortraitArtifact | null>(() => selectedSeries?.artifact &&
     "kind" in selectedSeries.artifact && selectedSeries.artifact.kind === "phase-portrait" ?
     (sampling.ready && phaseAnalysis.result ? { ...selectedSeries.artifact, ...phaseAnalysis.result } :
@@ -1246,6 +1256,27 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <dt>Field</dt><dd>{phaseArtifact.fieldSegments.length} direction arrows · adaptive RK4, local tolerance 10⁻⁶.
               {(() => { const speeds = phaseArtifact.fieldMagnitudes;
                 return speeds.length ? ` Sampled speed ${Math.min(...speeds).toPrecision(3)}–${Math.max(...speeds).toPrecision(3)} coordinate units per time unit; arrow length is median-relative.` : " No finite nonzero vectors sampled."; })()}</dd>
+            <dt>Field diagnostics</dt><dd data-testid="graph2d-vector-field-analysis"
+              data-result-id={vectorFieldAnalysis.result?.resultId ?? ""}>
+              <Graph2DAnalysisBudgetControl label="Vector field analysis evaluation budget"
+                value={vectorFieldAnalysisBudget} onChange={setVectorFieldAnalysisBudget} />
+              <small>Separate sampled grid; changing this budget does not resample arrows, orbits or equilibria.</small>
+              {vectorFieldAnalysis.error && <span role="alert"> {vectorFieldAnalysis.error}</span>}
+              {!vectorFieldAnalysis.ready && !vectorFieldAnalysis.error && <span role="status"> Computing field diagnostics…</span>}
+              {vectorFieldAnalysis.result && <div role="status">
+                {vectorFieldAnalysis.result.status === "complete" ? "Sampled grid complete" :
+                  vectorFieldAnalysis.result.status === "partial" ? "Partial sampled grid" : "Field scan unavailable"}
+                {" "}· {vectorFieldAnalysis.result.gridSize}×{vectorFieldAnalysis.result.gridSize} cells
+                {" "}· {vectorFieldAnalysis.result.validCells} valid, {vectorFieldAnalysis.result.invalidCells} undefined
+                {" "}· {vectorFieldAnalysis.result.evaluations.toLocaleString("en-US")} / {vectorFieldAnalysisBudget.toLocaleString("en-US")} evaluations
+                {vectorFieldAnalysis.result.speed && <>
+                  <br />Speed {vectorFieldAnalysis.result.speed.min.toPrecision(4)}–{vectorFieldAnalysis.result.speed.max.toPrecision(4)}
+                  {" "}· mean divergence {vectorFieldAnalysis.result.divergence?.mean.toPrecision(4)}
+                  {" "}· mean scalar curl {vectorFieldAnalysis.result.curl?.mean.toPrecision(4)}</>}
+                {vectorFieldAnalysis.result.status === "partial" && <> · {vectorFieldAnalysis.result.reason}; results not exhaustive</>}
+              </div>}
+              <small>Finite-difference estimates on sampled cells only; extrema and full-domain behavior are not certified. Scalar curl assumes compatible x/y coordinate units.</small>
+            </dd>
             <dt>Analysis budget</dt><dd><Graph2DAnalysisBudgetControl label="Phase equilibrium evaluation budget"
               value={phaseAnalysisBudget} onChange={setPhaseAnalysisBudget} />
               <small>Independent of field and orbit rendering · {phaseArtifact.analysis.evaluations.toLocaleString()} evaluations</small>
