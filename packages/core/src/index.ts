@@ -123,6 +123,7 @@ export * from "./graph2dNonlinearRegression";
 export * from "./graph2dLogisticRegression";
 export * from "./graph2dFourier";
 export * from "./graph2dComplexMapping";
+export * from "./vectorField3DDocument";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";
 export * from "./topologyCommands";
