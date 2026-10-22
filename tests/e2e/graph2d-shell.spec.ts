@@ -474,6 +474,7 @@ test("Graphs Inspector filters, sorts, and batch saves validated numerical resul
     await saveGraphEditor(app.page);
     const results = app.page.getByLabel("Graph inspector").getByTestId("graph2d-critical-points");
     await expect(results.locator(".graph2d-critical-summary dd").first()).toHaveText("2");
+    await expect(results.getByRole("columnheader", { name: "x est." })).toBeVisible();
     await results.getByRole("button", { name: "Zeros", exact: true }).click();
     await expect(results.getByRole("button", { name: /Select zero at x/ })).toHaveCount(2);
     await expect(results.getByRole("button", { name: /Select minimum at x/ })).toHaveCount(0);
@@ -491,6 +492,7 @@ test("Graphs Inspector filters, sorts, and batch saves validated numerical resul
       (_event, item) => item.setSavePath(target)), csvPath);
     await results.getByRole("button", { name: "Export results" }).click();
     await expect.poll(() => { try { return readFileSync(csvPath, "utf8"); } catch { return ""; } }).toContain("kind,x,y,residual");
+    expect(readFileSync(csvPath, "utf8")).toContain("local_sensitivity,estimated_x_error");
     const jsonPath = test.info().outputPath("numerical-analysis.json");
     await app.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), jsonPath);
@@ -580,6 +582,7 @@ test("Graphs solves only the chosen function pair and selects an intersection", 
     await expect(result).toContainText("Approximate enumeration");
     await expect(result.locator(".graph2d-analysis-quality").first()).toHaveText("Refined");
     const table = result.getByTestId("graph2d-intersection-results-table");
+    await expect(table.getByRole("columnheader", { name: "x est." })).toBeVisible();
     await table.getByRole("button", { name: "Possible tangencies" }).click();
     await expect(table.getByRole("button", { name: /Select intersection at x/ })).toHaveCount(0);
     await table.getByRole("button", { name: "All", exact: true }).click();

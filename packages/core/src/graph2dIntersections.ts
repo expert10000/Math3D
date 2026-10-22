@@ -22,6 +22,10 @@ export type Graph2DIntersectionCandidate = Readonly<{
   x: number;
   y: number;
   residual: number;
+  /** Local |dx/d(f-g)| at a transverse crossing; null for possible tangencies or unresolved slope. */
+  localSensitivity: number | null;
+  /** Residual times local sensitivity, a linear estimate rather than a certified bound. */
+  estimatedXError: number | null;
   classification: "crossing" | "tangent-possible";
   method: "sample" | "bracket-bisection" | "minimum-absolute-residual";
   confidence: "numerical" | "heuristic";
@@ -108,9 +112,20 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     method: Graph2DIntersectionCandidate["method"], confidence: Graph2DIntersectionCandidate["confidence"]) => {
     const a = value(first, x), b = value(second, x);
     if (a === null || b === null || Math.abs(a - b) > Math.max(residualTolerance, residual * 2)) return;
+    const h = 1e-5 * Math.max(1, Math.abs(x));
+    const transverse = classification === "crossing" && x - h > interval.min && x + h < interval.max &&
+      allowed(first, x - h) && allowed(first, x + h) && allowed(second, x - h) && allowed(second, x + h) &&
+      !domainBoundary(x - h, x + h) && evaluations + 4 <= maxEvaluations;
+    const left = transverse ? difference(x - h) : null;
+    const right = transverse ? difference(x + h) : null;
+    const slope = left !== null && right !== null ? (right - left) / (2 * h) : null;
+    const localSensitivity = slope !== null && Number.isFinite(slope) && Math.abs(slope) > 1e-8 ?
+      1 / Math.abs(slope) : null;
     const candidate: Graph2DIntersectionCandidate = { candidateId: `${resultId}.${structuralHash({ x }).slice(7)}`,
       resultId, firstObjectId: first.id, secondObjectId: second.id, x, y: (a + b) / 2,
-      residual: Math.abs(a - b), classification, method, confidence,
+      residual: Math.abs(a - b), localSensitivity,
+      estimatedXError: localSensitivity === null ? null : Math.abs(a - b) * localSensitivity,
+      classification, method, confidence,
       quality: graph2DQualityForNumericalCandidate({ method, confidence, residual: Math.abs(a - b) },
         residualTolerance), source };
     const previous = candidates.findIndex((entry) => Math.abs(entry.x - x) <= Math.max(xTolerance * 8, 1e-7));

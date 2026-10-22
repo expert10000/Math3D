@@ -15,6 +15,10 @@ const filters: readonly Graph2DResultFilter<Graph2DIntersectionCandidate>[] = [
 const columns: readonly Graph2DResultColumn<Graph2DIntersectionCandidate>[] = [
   { id: "y", label: "y", render: item => item.y.toPrecision(7) },
   { id: "residual", label: "Residual", render: item => item.residual.toExponential(1) },
+  { id: "x-error", label: "x est.", render: item => <span
+    title={item.localSensitivity === null ? "Possible tangency or unresolved local slope; no x-error estimate." :
+      `Linear x-error estimate from residual and local slope difference: ${item.estimatedXError?.toExponential(2)}. Not a certified bound.`}>
+    {item.estimatedXError === null ? "—" : item.estimatedXError.toExponential(1)}</span> },
   { id: "quality", label: "Quality", render: item => <span
     className={`graph2d-analysis-quality graph2d-analysis-quality-${item.quality}`}
     title={GRAPH2D_ANALYSIS_QUALITY_MEANINGS[item.quality]}>
@@ -39,12 +43,14 @@ export function Graph2DIntersectionResultsTable({ analysis, document, onSelectio
     analysis.status === "complete" && !document.source.constructions?.objects.some(saved =>
       saved.kind === "intersection" && saved.anchor.candidateId === item.candidateId);
   const exportCsv = () => downloadGraph2DResultsCsv(`graph-intersections-${analysis.firstObjectId}-${analysis.secondObjectId}.csv`,
-    ["classification", "x", "y", "residual", "quality", "confidence", "method", "source_document",
+    ["classification", "x", "y", "residual", "local_sensitivity", "estimated_x_error", "quality", "confidence", "method", "source_document",
       "source_revision", "scan_status", "interval_min", "interval_max"],
-    analysis.candidates.map(item => [item.classification, item.x, item.y, item.residual, item.quality,
+    analysis.candidates.map(item => [item.classification, item.x, item.y, item.residual, item.localSensitivity,
+      item.estimatedXError, item.quality,
       item.confidence, item.method, item.source.documentId, item.source.revision, analysis.status,
       analysis.interval.min, analysis.interval.max]));
   return <div data-testid="graph2d-intersection-results-table" data-source-hash={analysis.source.structuralHash}>
+    <small>x est. uses the residual and local slope difference at a crossing. It is a linear estimate, not a certified bound; possible tangencies have no such estimate.</small>
     <dl className="graph2d-critical-summary">
       <div><dt>Crossings</dt><dd>{analysis.candidates.filter(item => item.classification === "crossing").length}</dd></div>
       <div><dt>Possible tangencies</dt><dd>{analysis.candidates.filter(item => item.classification === "tangent-possible").length}</dd></div>

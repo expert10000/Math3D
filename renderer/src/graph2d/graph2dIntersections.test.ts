@@ -30,19 +30,34 @@ describe("Graph2D pairwise intersections", () => {
     expect(near(result.candidates, 1)).toBe(true);
     expect(result.candidates.every((entry) => entry.classification === "crossing" &&
       entry.resultId === result.resultId && entry.residual <= 1e-7)).toBe(true);
+    expect(result.candidates.every((entry) => entry.localSensitivity !== null &&
+      Math.abs(entry.localSensitivity - 0.5) < 1e-4 &&
+      entry.estimatedXError !== null && entry.estimatedXError < 1e-6)).toBe(true);
     expect(result.evaluations).toBeLessThanOrEqual(12000);
     expect(isGraph2DIntersectionCurrent(result, document)).toBe(true);
     const dataset = createGraph2DNumericalDataset(result);
     expect(dataset).toMatchObject({ format: "math3d.graph2d-numerical.v1", operation: "intersections",
       objectIds: ["function_1", "function_2"], scan: { quality: "approximate" } });
     expect(dataset.candidates).toHaveLength(2);
+    expect(dataset.candidates.every(entry => entry.localSensitivity !== null &&
+      entry.estimatedXError !== null)).toBe(true);
   });
 
   it("reports an even tangency as possible, including off-grid", () => {
     const atZero = analyze("x^2", "0");
     expect(near(atZero.candidates.filter((entry) => entry.classification === "tangent-possible"), 0)).toBe(true);
+    expect(atZero.candidates.filter((entry) => entry.classification === "tangent-possible")
+      .every(entry => entry.localSensitivity === null && entry.estimatedXError === null)).toBe(true);
     const shifted = analyze("(x-0.3)^2", "0");
     expect(near(shifted.candidates.filter((entry) => entry.classification === "tangent-possible"), 0.3)).toBe(true);
+  });
+
+  it("withholds a location estimate when a crossing has zero local slope", () => {
+    const result = analyze("x^3", "0");
+    const crossing = result.candidates.find(entry => Math.abs(entry.x) < 1e-6);
+    expect(crossing?.classification).toBe("crossing");
+    expect(crossing?.localSensitivity).toBeNull();
+    expect(crossing?.estimatedXError).toBeNull();
   });
 
   it("finds two crossings hidden inside one same-sign base cell", () => {
