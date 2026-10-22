@@ -5,6 +5,7 @@ import { graph2DConstructionActionsFromCandidates, isGraph2DCriticalCandidateAlr
   type Graph2DDocument, type Graph2DSelection } from "@math3d/core";
 import { useEffect, useMemo, useState } from "react";
 import { Graph2DAnalysisQualityGuide } from "./Graph2DAnalysisQualityGuide";
+import { Graph2DAnalysisBudgetControl, type Graph2DAnalysisBudget } from "./Graph2DAnalysisBudgetControl";
 import { downloadGraph2DNumericalDataset } from "./downloadGraph2DNumericalDataset";
 import { downloadGraph2DResultsCsv } from "./downloadGraph2DResultsCsv";
 import { Graph2DUnresolvedCoverage } from "./Graph2DUnresolvedCoverage";
@@ -14,8 +15,8 @@ import { Graph2DNumericalResultsTable, type Graph2DResultColumn,
 type Props = Readonly<{
   analysis: Graph2DCriticalPointAnalysis;
   document: Graph2DDocument;
-  analysisBudget: number;
-  onAnalysisBudgetChange: (budget: number) => void;
+  analysisBudget: Graph2DAnalysisBudget;
+  onAnalysisBudgetChange: (budget: Graph2DAnalysisBudget) => void;
   onSelectionCommit?: (selection: Graph2DSelection) => void;
   onConstructionBatchCommit?: (actions: readonly Graph2DConstructionAction[]) => void;
   readOnlyPreview?: boolean;
@@ -91,13 +92,8 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
       Approximate means sampled or heuristic. Neither proves a unique root or complete enumeration;
       Certified and Symbolic are not claimed by this scan.</p>
     <Graph2DAnalysisQualityGuide />
-    {!readOnlyPreview && <label className="graph2d-analysis-budget">Analysis evaluation budget
-      <select aria-label="Analysis evaluation budget" value={analysisBudget}
-        onChange={event => onAnalysisBudgetChange(Number(event.target.value))}>
-        <option value={2000}>Quick · 2,000</option>
-        <option value={6000}>Standard · 6,000</option>
-        <option value={12000}>Thorough · 12,000</option>
-      </select></label>}
+    {!readOnlyPreview && <Graph2DAnalysisBudgetControl label="Analysis evaluation budget"
+      value={analysisBudget} onChange={onAnalysisBudgetChange} />}
     <dl className="graph2d-critical-summary">
       <div><dt>Zeros</dt><dd>{counts.zero}</dd></div>
       <div><dt>Extrema</dt><dd>{counts.extrema}</dd></div>

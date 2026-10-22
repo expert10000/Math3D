@@ -37,6 +37,7 @@ export const analyzeGraph2DIntegral = (input: Readonly<{
   interval: Readonly<{ min: number; max: number }>;
   mode: Graph2DIntegralMode;
   tolerance?: number;
+  maxEvaluations?: number;
 }>): Graph2DIntegralAnalysis => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
   if (!object || object.kind !== "explicit-cartesian" || !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
@@ -45,19 +46,23 @@ export const analyzeGraph2DIntegral = (input: Readonly<{
   const tolerance = input.tolerance ?? 1e-6;
   if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.1)
     throw new TypeError("Invalid Graph2D integral tolerance.");
+  const maxEvaluations = input.maxEvaluations ?? GRAPH2D_INTEGRAL_MAX_EVALUATIONS;
+  if (!Number.isSafeInteger(maxEvaluations) || maxEvaluations < 1 ||
+    maxEvaluations > GRAPH2D_INTEGRAL_MAX_EVALUATIONS)
+    throw new TypeError("Invalid Graph2D integral evaluation budget.");
   const started = Date.now();
   const source: ScientificSourceGeneration = { documentId: input.document.identity.id,
     revision: input.document.identity.revision, structuralHash: input.document.identity.structuralHash,
     generation: input.document.identity.revision };
   const resultId = "graph2d.integral." + structuralHash({ source, objectId: object.id, interval: input.interval,
-    mode: input.mode, tolerance, algorithmVersion: GRAPH2D_INTEGRAL_ALGORITHM_VERSION }).slice(7);
+    mode: input.mode, tolerance, maxEvaluations, algorithmVersion: GRAPH2D_INTEGRAL_ALGORITHM_VERSION }).slice(7);
   const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
-  let evaluations = 0;
+  let evaluations = 0, budgetReached = false;
   const raw = (x: number): number | null => {
     if (x < object.domain.min || x > object.domain.max ||
       x === object.domain.min && !object.domain.includeMin ||
-      x === object.domain.max && !object.domain.includeMax ||
-      evaluations >= GRAPH2D_INTEGRAL_MAX_EVALUATIONS) return null;
+      x === object.domain.max && !object.domain.includeMax) return null;
+    if (evaluations >= maxEvaluations) { budgetReached = true; return null; }
     evaluations += 1;
     const result = evaluateGraph2DExpression(object.expression.ast, { ...variables, x });
     return result.ok ? result.value : null;
@@ -104,15 +109,17 @@ export const analyzeGraph2DIntegral = (input: Readonly<{
     provenance: { source, operation: { type: "graph2d.integral", algorithm: "cellwise-adaptive-simpson",
       algorithmVersion: GRAPH2D_INTEGRAL_ALGORITHM_VERSION,
       parameters: { objectId: object.id, interval: input.interval, mode: input.mode,
-        gridCells: GRAPH2D_INTEGRAL_GRID_CELLS, maxEvaluations: GRAPH2D_INTEGRAL_MAX_EVALUATIONS } },
+        gridCells: GRAPH2D_INTEGRAL_GRID_CELLS, maxEvaluations } },
       numericContext: { precision: { binaryBits: 53 }, tolerance: { absolute: tolerance } },
       engine: { name: "math3d-core", version: GRAPH2D_INTEGRAL_ALGORITHM_VERSION }, elapsedMs: Math.max(0, Date.now() - started) },
     summary: { interval: input.interval, mode: input.mode, status, value, partialValue,
       errorEstimate: status === "complete" ? errorEstimate : null, skippedCells, evaluations },
     warnings: ["Error estimate measures Simpson refinement only; it is not a certified bound.",
+      ...(budgetReached ? ["Evaluation budget reached; the full interval result is unavailable."] : []),
       ...(skippedCells ? ["Undefined or unresolved cells were skipped; the full interval area is unavailable."] : [])],
-    diagnostics: skippedCells ? [{ code: "skipped-cells", severity: "warning",
-      message: `${skippedCells} cells crossed an undefined value, domain boundary, or work limit.` }] : [],
+    diagnostics: skippedCells ? [{ code: budgetReached ? "evaluation-limit" : "skipped-cells", severity: "warning",
+      message: budgetReached ? `Evaluation budget reached at ${maxEvaluations}; ${skippedCells} cells remain unresolved.` :
+        `${skippedCells} cells crossed an undefined value or domain boundary.` }] : [],
     artifacts: [] });
   return { objectId: object.id, resultId, source, interval: input.interval, mode: input.mode, status,
     value, partialValue, errorEstimate: status === "complete" ? errorEstimate : null,

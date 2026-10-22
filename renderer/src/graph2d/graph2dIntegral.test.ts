@@ -51,4 +51,20 @@ describe("Graph2D interval integration", () => {
     expect(result.value).toBeNull();
     expect(result.partialValue).toBeCloseTo(2 / 3, 3);
   });
+
+  it("keeps the chosen integration budget in result identity and provenance", () => {
+    const document = documentFor("x^2");
+    const request = { document, objectId: "function_1", interval: { min: -1, max: 1 },
+      mode: "signed" as const };
+    const quick = analyzeGraph2DIntegral({ ...request, maxEvaluations: 400 });
+    const thorough = analyzeGraph2DIntegral({ ...request, maxEvaluations: 12000 });
+    expect(quick.resultId).not.toBe(thorough.resultId);
+    expect(quick.status).toBe("incomplete");
+    expect(quick.value).toBeNull();
+    expect(quick.evaluations).toBe(400);
+    expect(quick.publication.diagnostics.some(entry => entry.code === "evaluation-limit")).toBe(true);
+    expect(quick.publication.provenance.operation.parameters.maxEvaluations).toBe(400);
+    expect(thorough.status).toBe("complete");
+    expect(() => analyzeGraph2DIntegral({ ...request, maxEvaluations: 12001 })).toThrow(/budget/);
+  });
 });
