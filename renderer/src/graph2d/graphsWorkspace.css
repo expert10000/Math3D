@@ -370,11 +370,17 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-scientific-field figcaption, .graph2d-scientific-volume figcaption { font-weight: 700; margin-bottom: 8px; }
 .graph2d-scientific-field p, .graph2d-scientific-volume p { margin: 8px 0; }
-.vector-field3d-editor { box-shadow: 0 16px 44px #0f172a44; }
+.vector-field3d-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
+  padding: 12px; box-sizing: border-box; background: #09142699; }
+.vector-field3d-editor { position: relative; top: auto; left: auto; transform: none;
+  width: min(900px, 100%); max-height: calc(100vh - 24px); overflow: auto;
+  box-shadow: 0 16px 44px #0f172a44; }
 .vector-field3d-editor .vector-field3d-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; margin: 14px 0; }
+.vector-field3d-form { border: 0; padding: 0; margin: 0; min-width: 0; }
 .vector-field3d-editor .vector-field3d-controls label { display: grid; gap: 4px; font-weight: 600; }
 .vector-field3d-editor .vector-field3d-controls input,
 .vector-field3d-editor .vector-field3d-controls select { min-width: 0; width: 100%; box-sizing: border-box; padding: 6px 8px; }
+.vector-field3d-camera-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot [data-graph2d-draggable-point] { cursor: grab; touch-action: none; }
 .graph2d-viewer[data-point-dragging="true"] .graph2d-plot [data-graph2d-draggable-point] { cursor: grabbing; }

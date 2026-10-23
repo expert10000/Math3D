@@ -125,6 +125,7 @@ export * from "./graph2dFourier";
 export * from "./graph2dComplexMapping";
 export * from "./vectorField3DDocument";
 export * from "./vectorField3DScientific";
+export * from "./vectorField3DTrajectories";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";
 export * from "./topologyCommands";

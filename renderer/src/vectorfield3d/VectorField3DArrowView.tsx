@@ -1,11 +1,42 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import type { VectorField3DArrowArtifact, VectorField3DDocument } from "@math3d/core";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import type { VectorField3DArrowArtifact, VectorField3DDocument,
+  VectorField3DTrajectoryArtifact } from "@math3d/core";
 
-export function VectorField3DArrowView({ document, artifact }: {
+export function VectorField3DArrowView({ document, artifact, trajectories }: {
   document: VectorField3DDocument; artifact: VectorField3DArrowArtifact;
+  trajectories?: VectorField3DTrajectoryArtifact | null;
 }) {
+  const controls = useRef<OrbitControlsImpl>(null);
+  const [cameraStatus, setCameraStatus] = useState("Camera ready. Use arrow keys to orbit, + or − to zoom, Home to reset.");
+  const reportCamera = () => {
+    const current = controls.current;
+    if (!current) return;
+    setCameraStatus(`Camera azimuth ${Math.round(current.getAzimuthalAngle() * 180 / Math.PI)}°, ` +
+      `polar ${Math.round(current.getPolarAngle() * 180 / Math.PI)}°, ` +
+      `distance ${current.getDistance().toFixed(2)}.`);
+  };
+  const moveCamera = (action: "left" | "right" | "up" | "down" | "in" | "out" | "reset") => {
+    const current = controls.current;
+    if (!current) return;
+    const angle = Math.PI / 12;
+    if (action === "left" || action === "right") current.setAzimuthalAngle(current.getAzimuthalAngle() +
+      (action === "left" ? -angle : angle));
+    else if (action === "up" || action === "down") current.setPolarAngle(Math.max(.1, Math.min(Math.PI - .1,
+      current.getPolarAngle() + (action === "up" ? -angle : angle))));
+    else if (action === "in") current.dollyIn(1.25);
+    else if (action === "out") current.dollyOut(1.25);
+    else current.reset();
+    current.update(); reportCamera();
+  };
+  const onCameraKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const action = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
+      "+": "in", "=": "in", "-": "out", Home: "reset" } as const)[event.key as
+        "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "+" | "=" | "-" | "Home"];
+    if (action) { event.preventDefault(); moveCamera(action); }
+  };
   const geometry = useMemo(() => {
     const axes = document.source.axes;
     const span = Math.max(...axes.map(axis => axis.max - axis.min));
@@ -41,13 +72,30 @@ export function VectorField3DArrowView({ document, artifact }: {
     return { positions: new Float32Array(positions), colors: new Float32Array(colors),
       stationary: new Float32Array(stationary) };
   }, [document, artifact]);
+  const paths = useMemo(() => {
+    const positions: number[] = [], colors: number[] = [];
+    const axes = document.source.axes;
+    const span = Math.max(...axes.map(axis => axis.max - axis.min));
+    trajectories?.trajectories.forEach((trajectory, trajectoryIndex) => {
+      const color = trajectoryIndex % 2 === 0 ? [1, .79, .23] : [.38, .97, .77];
+      for (let index = 1; index < trajectory.points.length; index++) {
+        for (const point of [trajectory.points[index - 1]!, trajectory.points[index]!]) {
+          positions.push(...point.position.map((value, axis) =>
+            (value - (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span));
+          colors.push(...color);
+        }
+      }
+    });
+    return { positions: new Float32Array(positions), colors: new Float32Array(colors) };
+  }, [document, trajectories]);
   const maximum = Math.max(...artifact.arrows.map(arrow => arrow.magnitude), 0);
   const colorLabel = artifact.colorBy === "speed" ? `magnitude 0–${maximum.toPrecision(4)}` :
     `${artifact.colorBy.toUpperCase()} component −${maximum.toPrecision(4)}–${maximum.toPrecision(4)}`;
   return <figure aria-label="3D vector arrow renderer" className="graph2d-scientific-volume">
     <figcaption>{artifact.accepted} of {artifact.evaluated} bounded samples · {artifact.stationary} stationary ·
       {" "}{artifact.rejected} rejected · density {artifact.density.join(" × ")}</figcaption>
-    <div style={{ width: "100%", height: 360, background: "#0d1726" }}>
+    <div role="group" aria-label="3D camera viewport" tabIndex={0} onKeyDown={onCameraKey}
+      style={{ width: "100%", height: 360, background: "#0d1726" }}>
       <Canvas camera={{ position: [2.7, 2.2, 2.7], fov: 48 }}>
         <lineSegments>
           <bufferGeometry>
@@ -62,12 +110,32 @@ export function VectorField3DArrowView({ document, artifact }: {
           </bufferGeometry>
           <pointsMaterial color="#f8b44c" size={0.055} sizeAttenuation />
         </points>
+        {paths.positions.length > 0 && <lineSegments>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[paths.positions, 3]} />
+            <bufferAttribute attach="attributes-color" args={[paths.colors, 3]} />
+          </bufferGeometry>
+          <lineBasicMaterial vertexColors toneMapped={false} depthTest={false} />
+        </lineSegments>}
         <axesHelper args={[1.15]} />
-        <OrbitControls enablePan enableZoom />
+        <OrbitControls ref={controls} enablePan enableZoom onEnd={reportCamera} />
       </Canvas>
     </div>
+    <div role="group" aria-label="3D camera controls" className="vector-field3d-camera-controls">
+      <button type="button" onClick={() => moveCamera("left")}>Orbit left</button>
+      <button type="button" onClick={() => moveCamera("right")}>Orbit right</button>
+      <button type="button" onClick={() => moveCamera("up")}>Orbit up</button>
+      <button type="button" onClick={() => moveCamera("down")}>Orbit down</button>
+      <button type="button" onClick={() => moveCamera("in")}>Zoom in</button>
+      <button type="button" onClick={() => moveCamera("out")}>Zoom out</button>
+      <button type="button" onClick={() => moveCamera("reset")}>Reset camera</button>
+    </div>
+    <p role="status" aria-live="polite" data-testid="vector-field3d-camera-status">{cameraStatus}</p>
     <p>Drag to orbit; scroll to zoom. Axes: {document.source.axes.map(axis =>
       `${axis.label} (${axis.unit})`).join(" · ")}. Components: {artifact.componentUnits.join(" · ")}.
       Color: {colorLabel}.</p>
+    {trajectories && <p>Trajectory overlay: {trajectories.trajectories.length} seed(s),
+      {" "}{trajectories.trajectories.map(path => `${path.seedId}: ${path.stopReason}`).join("; ")}.
+      Gold/cyan lines show adaptive numerical approximations.</p>}
   </figure>;
 }

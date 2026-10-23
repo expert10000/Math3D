@@ -22,7 +22,7 @@ export type VectorField3DSource = Readonly<{
   display: Readonly<{ density: readonly [number, number, number]; maxGlyphs: number;
     magnitudeScale: number; colorBy: "speed" | "p" | "q" | "r" }>;
   solver: Readonly<{ absoluteTolerance: number; relativeTolerance: number;
-    maxSteps: number; maxTime: number }>;
+    maxSteps: number; maxTime: number; maxArcLength?: number }>;
 }>;
 export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOCUMENT_FORMAT;
   schemaVersion: typeof VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION; identity: DocumentIdentity;
@@ -101,10 +101,13 @@ const validSource = (source: unknown): source is VectorField3DSource => {
       display.magnitudeScale <= 0 || display.magnitudeScale > 1e9 ||
       !["speed", "p", "q", "r"].includes(String(display.colorBy))) return false;
   const solver = source.solver;
-  return record(solver) && exact(solver, ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime"]) &&
+  return record(solver) && (exact(solver, ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime"]) ||
+    exact(solver, ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime", "maxArcLength"])) &&
     finite(solver.absoluteTolerance) && solver.absoluteTolerance >= 1e-12 && solver.absoluteTolerance <= 1 &&
     finite(solver.relativeTolerance) && solver.relativeTolerance >= 1e-12 && solver.relativeTolerance <= 1 &&
-    integer(solver.maxSteps, 1, 100000) && finite(solver.maxTime) && solver.maxTime > 0 && solver.maxTime <= 1e6;
+    integer(solver.maxSteps, 1, 100000) && finite(solver.maxTime) && solver.maxTime > 0 && solver.maxTime <= 1e6 &&
+    (solver.maxArcLength === undefined || finite(solver.maxArcLength) && solver.maxArcLength > 0 &&
+      solver.maxArcLength <= 1e9);
 };
 
 export const normalizeVectorField3DDocument = (value: unknown): ValidationResult<VectorField3DDocument> => {

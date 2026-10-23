@@ -1509,7 +1509,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificImportBusy && <p className="graph2d-tool-hint" role="status">Verifying scientific dataset…</p>}
         {scientificImportError && !scientificImport && <p className="graph2d-tool-hint" role="alert">{scientificImportError}</p>}
         {vectorField3DOpen && <VectorField3DPanel key={vectorField3DDocument?.identity.id ?? "new"}
-          initialDocument={vectorField3DDocument ?? undefined} onClose={() => setVectorField3DOpen(false)} />}
+          initialDocument={vectorField3DDocument ?? undefined} onClose={() => { setVectorField3DOpen(false);
+            requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}
         {scientificPresetOpen && <div className="graph2d-scientific-import graph2d-scientific-presets" role="dialog"
           aria-label="Scientific field presets" onPointerDown={event => event.stopPropagation()}>
           <h3>Scientific field presets</h3>

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createGraph2DFieldReference, createVectorField3DDocument,
   sampleVectorField3DScientificArrows, sha256Checksum, verifyVectorField3DVolumes,
+  integrateVectorField3DScientificTrajectories, reviseVectorField3DDocument,
   type Graph2DScientificVolume, type VectorField3DSource } from "@math3d/core";
 
 const directory = fileURLToPath(new URL("../../../tests/fixtures/scientific-scene/vortex-volume.sscene/", import.meta.url));
@@ -57,5 +58,17 @@ describe("GRA-14 complete verified scientific 3D transfer", () => {
     const alteredFingerprint = sha256Checksum(new TextEncoder().encode(alteredJson)).slice(7);
     expect(() => verifyVectorField3DVolumes(document, alteredJson, alteredFingerprint, volumes))
       .toThrow(/saved complete|changed/i);
+  });
+
+  it("integrates a saved seed only after verifying the complete bundle transfer", () => {
+    const seeded = reviseVectorField3DDocument(document, { ...document.source,
+      seeds: [{ id: "off-axis", position: [2, 0, 0] }],
+      solver: { ...document.source.solver, maxSteps: 100, maxTime: 1, maxArcLength: 10 } });
+    const result = integrateVectorField3DScientificTrajectories(seeded, manifestJson, fingerprint, volumes);
+    expect(result.trajectories[0]!.points.length).toBeGreaterThan(1);
+    expect(result.trajectories[0]!.stopReason).toMatch(/time-limit|step-limit|boundary/);
+    expect(result.source.structuralHash).toBe(seeded.identity.structuralHash);
+    expect(() => integrateVectorField3DScientificTrajectories(seeded, manifestJson, fingerprint,
+      [volumes[0], { ...volumes[1], sampleSha256: "0".repeat(64) }, volumes[2]])).toThrow(/checksum/);
   });
 });

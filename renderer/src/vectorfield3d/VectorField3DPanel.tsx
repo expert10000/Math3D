@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { createVectorField3DDocument, parseVectorField3DDocument, reviseVectorField3DDocument,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
+  integrateVectorField3DTrajectories, integrateVectorField3DScientificTrajectories,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
-  type VectorField3DSource, type VectorField3DExpression } from "@math3d/core";
+  type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -20,14 +22,37 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 export function VectorField3DPanel({ initialDocument, onClose }: {
   initialDocument?: VectorField3DDocument; onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previous = globalThis.document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => previous?.focus();
+  }, []);
+  const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+      "button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex='0']") ?? []);
+    if (!focusable.length) return;
+    const first = focusable[0]!, last = focusable.at(-1)!;
+    if (event.shiftKey && globalThis.document.activeElement === first) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && globalThis.document.activeElement === last) {
+      event.preventDefault(); first.focus();
+    }
+  };
   const [document, setDocument] = useState(initialDocument ?? createDefaultVectorField3DDocument);
   const [expressions, setExpressions] = useState<[string, string, string]>(document.source.field.kind === "expressions" ?
     document.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
   const [artifact, setArtifact] = useState<VectorField3DArrowArtifact | null>(null);
+  const [trajectories, setTrajectories] = useState<VectorField3DTrajectoryArtifact | null>(null);
+  const [seedDraft, setSeedDraft] = useState<[string, string, string]>(document.source.axes.map(axis =>
+    String((axis.min + axis.max) / 2)) as [string, string, string]);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const updateSource = (source: VectorField3DSource) => {
-    setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setError("");
+    setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setTrajectories(null); setError("");
   };
   const currentDocument = () => document.source.field.kind === "expressions" ?
     reviseVectorField3DDocument(document, { ...document.source, field: { kind: "expressions",
@@ -36,7 +61,7 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
   const render = async () => {
     if (busy) return;
-    setBusy(true); setArtifact(null); setError("");
+    setBusy(true); setArtifact(null); setTrajectories(null); setError("");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
@@ -59,6 +84,49 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
       setBusy(false); }
   };
+  const addSeed = () => {
+    try {
+      const position = seedDraft.map(Number) as [number, number, number];
+      if (seedDraft.some(value => !value.trim()) || position.some((value, index) =>
+        !Number.isFinite(value) || value < document.source.axes[index].min ||
+          value > document.source.axes[index].max)) throw new TypeError("Seed must lie inside all three axis bounds.");
+      const nextIndex = document.source.seeds.reduce((highest, seed) =>
+        Math.max(highest, Number(seed.id.replace(/^seed-/, "")) || 0), 0) + 1;
+      updateSource({ ...document.source, seeds: [...document.source.seeds,
+        { id: `seed-${nextIndex}`, position }] });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const runTrajectories = async () => {
+    if (busy) return;
+    setBusy(true); setArtifact(null); setTrajectories(null); setError("");
+    let fingerprint: string | null = null;
+    try {
+      const next = currentDocument();
+      if (!next.source.seeds.length) throw new TypeError("Add at least one seed before integrating trajectories.");
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      if (next.source.field.kind === "expressions") {
+        const arrows = sampleVectorField3DArrows(next);
+        const paths = integrateVectorField3DTrajectories(next, { direction });
+        setDocument(next); setArtifact(arrows); setTrajectories(paths); return;
+      }
+      const refs = next.source.field.references;
+      const bridge = window.scientificScenes;
+      if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+        throw new Error("Scientific vector trajectories require the desktop source verifier.");
+      const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
+        sceneFingerprint: refs[0].sceneFingerprint });
+      if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
+      fingerprint = opened.source.fingerprint;
+      const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
+        components: refs.map(ref => ref.component) as [string, string, string] });
+      const arrows = sampleVectorField3DScientificArrows(next, opened.source.manifestJson, fingerprint, volumes);
+      const paths = integrateVectorField3DScientificTrajectories(next,
+        opened.source.manifestJson, fingerprint, volumes, { direction });
+      setDocument(next); setArtifact(arrows); setTrajectories(paths);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      setBusy(false); }
+  };
   const save = () => {
     try { const next = currentDocument(); window.localStorage.setItem(storageKey,
       serializeVectorField3DDocument(next)); setDocument(next); setError(""); }
@@ -70,22 +138,26 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
       const next = parseVectorField3DDocument(saved);
       setDocument(next); setExpressions(next.source.field.kind === "expressions" ?
         next.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
-      setArtifact(null); setError(""); }
+      setSeedDraft(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as [string, string, string]);
+      setArtifact(null); setTrajectories(null); setError(""); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  return <div role="dialog" aria-modal="true" aria-label="3D vector field editor"
-    className="graph2d-scientific-import vector-field3d-editor" data-testid="vector-field-3d-editor"
-    onPointerDown={event => event.stopPropagation()}
-    style={{ width: "min(900px, 92vw)", maxHeight: "85vh", overflowY: "auto", zIndex: 35 }}>
+  return createPortal(<div className="vector-field3d-backdrop" onPointerDown={event => {
+    event.stopPropagation(); if (event.target === event.currentTarget) onClose(); }}>
+    <div role="dialog" aria-modal="true" aria-label="3D vector field editor"
+      ref={dialogRef} onKeyDown={onDialogKey}
+      className="graph2d-scientific-import vector-field3d-editor" data-testid="vector-field-3d-editor"
+      onPointerDown={event => event.stopPropagation()}>
     <h3>3D vector field · {document.metadata.title}</h3>
-    <p>Independent 3D document · bounded arrow preview · trajectories follow after renderer validation.</p>
+    <p>Independent 3D document · bounded arrows and adaptive numerical trajectories.</p>
+    <fieldset className="vector-field3d-form" disabled={busy}>
     {document.source.field.kind === "expressions" ?
       <div role="group" aria-label="Vector components" className="vector-field3d-controls">
         {(["P(x,y,z)", "Q(x,y,z)", "R(x,y,z)"] as const).map((label, index) => <label key={label}>
           {label} ({document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : ""})
           <input aria-label={label} value={expressions[index]} onChange={event => {
             const next = [...expressions] as [string, string, string]; next[index] = event.target.value;
-            setExpressions(next); setArtifact(null); setError(""); }} />
+            setExpressions(next); setArtifact(null); setTrajectories(null); setError(""); }} />
         </label>)}
       </div> : <p>Verified bundle: {document.source.field.references[0].sceneId} · dataset
         {" "}{document.source.field.references[0].datasetId} · components
@@ -115,11 +187,93 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
     </div>
     <p>Domain: {document.source.axes.map(axis => `${axis.label} ${axis.min}…${axis.max} ${axis.unit}`).join(" · ")}.
       Maximum {document.source.display.maxGlyphs} glyphs.</p>
+    <section aria-label="3D trajectory seeds">
+      <h4>Trajectory seeds ({document.source.seeds.length}/32)</h4>
+      <div className="vector-field3d-controls">
+        {([0, 1, 2] as const).map(axis => <label key={axis}>Seed {document.source.axes[axis].label}
+          <input type="number" step="any" aria-label={`Seed ${document.source.axes[axis].label}`}
+            value={seedDraft[axis]} onChange={event => { const next = [...seedDraft] as [string, string, string];
+              next[axis] = event.target.value; setSeedDraft(next); }} />
+        </label>)}
+        <button type="button" disabled={busy || document.source.seeds.length >= 32} onClick={addSeed}>
+          Add seed</button>
+      </div>
+      {document.source.seeds.length > 0 && <ul>{document.source.seeds.map(seed => <li key={seed.id}>
+        {seed.id}: ({seed.position.join(", ")}) {document.source.axes[0].unit}
+        {" "}<button type="button" disabled={busy} aria-label={`Remove ${seed.id}`}
+          onClick={() => updateSource({ ...document.source,
+            seeds: document.source.seeds.filter(item => item.id !== seed.id) })}>Remove</button>
+      </li>)}</ul>}
+    </section>
+    <section aria-label="3D trajectory solver">
+      <h4>Adaptive trajectory solver</h4>
+      <div className="vector-field3d-controls">
+        <label>Direction <select aria-label="Trajectory direction" value={direction}
+          onChange={event => { setDirection(event.target.value as "forward" | "backward");
+            setTrajectories(null); }}>
+          <option value="forward">Forward</option><option value="backward">Backward</option>
+        </select></label>
+        <label>Max steps <input type="number" min={1} max={100000} aria-label="Trajectory max steps"
+          value={document.source.solver.maxSteps} onChange={event => {
+            try { updateSource({ ...document.source, solver: { ...document.source.solver,
+              maxSteps: Number(event.target.value) } }); }
+            catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+          }} /></label>
+        <label>Max time ({document.source.timeUnit}) <input type="number" min="0.000001" step="any"
+          aria-label="Trajectory max time" value={document.source.solver.maxTime} onChange={event => {
+            try { updateSource({ ...document.source, solver: { ...document.source.solver,
+              maxTime: Number(event.target.value) } }); }
+            catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+          }} /></label>
+        <label>Max arc length ({document.source.axes[0].unit})
+          <input type="number" min="0.000001" step="any" aria-label="Trajectory max arc length"
+            value={document.source.solver.maxArcLength ?? 1e6} onChange={event => {
+              try { updateSource({ ...document.source, solver: { ...document.source.solver,
+                maxArcLength: Number(event.target.value) } }); }
+              catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+            }} /></label>
+        <label>Absolute tolerance <input type="number" min="1e-12" max="1" step="any"
+          aria-label="Trajectory absolute tolerance" value={document.source.solver.absoluteTolerance}
+          onChange={event => {
+            try { updateSource({ ...document.source, solver: { ...document.source.solver,
+              absoluteTolerance: Number(event.target.value) } }); }
+            catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+          }} /></label>
+        <label>Relative tolerance <input type="number" min="1e-12" max="1" step="any"
+          aria-label="Trajectory relative tolerance" value={document.source.solver.relativeTolerance}
+          onChange={event => {
+            try { updateSource({ ...document.source, solver: { ...document.source.solver,
+              relativeTolerance: Number(event.target.value) } }); }
+            catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+          }} /></label>
+      </div>
+      <p>Adaptive RK4 step doubling · at most 2,048 attempted steps per seed in this preview.
+        Each trace reports its stop reason; a numerical trace does not certify topology.</p>
+    </section>
+    </fieldset>
     <div><button type="button" disabled={busy} onClick={() => void render()}>{busy ? "Verifying…" :
-      "Verify & render arrows"}</button> <button type="button" onClick={save}>Save document</button>
-      {" "}<button type="button" onClick={reopen}>Open saved document</button>
+      "Verify & render arrows"}</button> <button type="button" disabled={busy} onClick={save}>Save document</button>
+      {" "}<button type="button" disabled={busy || !document.source.seeds.length}
+        onClick={() => void runTrajectories()}>{busy ? "Integrating…" : "Run trajectories"}</button>
+      {" "}<button type="button" disabled={busy} onClick={reopen}>Open saved document</button>
       {" "}<button type="button" onClick={onClose}>Close</button></div>
     {error && <p role="alert">{error}</p>}
-    {artifact && <VectorField3DArrowView document={document} artifact={artifact} />}
-  </div>;
+    {artifact && <p role="status" aria-live="polite" data-testid="vector-field3d-render-status">
+      Rendered {artifact.accepted} of {artifact.evaluated} 3D samples; {artifact.stationary} stationary,
+      {" "}{artifact.rejected} rejected. Source revision {artifact.source.revision}.
+      Coordinate units {artifact.coordinateUnits.join(", ")}; vector units {artifact.componentUnits.join(", ")}.
+    </p>}
+    {trajectories && <div role="status" aria-live="polite" data-testid="vector-field3d-trajectory-status">
+      {trajectories.trajectories.map(path => <p key={path.seedId}>
+        {path.seedId}: {path.stopReason} after {path.acceptedSteps} accepted and
+        {" "}{path.rejectedSteps} rejected steps; {path.evaluations} evaluations;
+        {" "}time {path.points.at(-1)?.time.toPrecision(5)} {document.source.timeUnit},
+        {" "}arc {path.points.at(-1)?.arcLength.toPrecision(5)} {document.source.axes[0].unit}.
+      </p>)}
+      <small>Numerical approximation · absolute tolerance {trajectories.solver.absoluteTolerance},
+        relative tolerance {trajectories.solver.relativeTolerance}.</small>
+    </div>}
+    {artifact && <VectorField3DArrowView document={document} artifact={artifact} trajectories={trajectories} />}
+    </div>
+  </div>, globalThis.document.body);
 }
