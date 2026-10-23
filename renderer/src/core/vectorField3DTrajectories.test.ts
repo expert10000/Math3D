@@ -40,6 +40,40 @@ describe("GRA-14 bounded adaptive 3D trajectories", () => {
     expect(resultBounded(forward)).toBe(true);
   });
 
+  it("stops at the first face of an asymmetric box without overshooting another axis", () => {
+    const document = make(["2", "1", "-1"], {
+      axes: [{ role: "x", label: "x", unit: "m", min: -2, max: 3 },
+        { role: "y", label: "y", unit: "m", min: -4, max: 4 },
+        { role: "z", label: "z", unit: "m", min: -1, max: 2 }],
+      seeds: [{ id: "inside", position: [0, 0, 0] }],
+      solver: { absoluteTolerance: 1e-8, relativeTolerance: 1e-8,
+        maxSteps: 200, maxTime: 10, maxArcLength: 100 },
+    });
+    const forward = integrateVectorField3DTrajectories(document).trajectories[0]!;
+    expect(forward.stopReason).toBe("boundary");
+    expect(forward.points.at(-1)?.position).toEqual([2, 1, -1]);
+    expect(forward.points.at(-1)?.time).toBeCloseTo(1, 8);
+    expect(forward.points.at(-1)?.arcLength).toBeCloseTo(Math.sqrt(6), 8);
+    expect(forward.points.every(point => point.position[0] <= 3 && point.position[2] >= -1)).toBe(true);
+    const backward = integrateVectorField3DTrajectories(document, { direction: "backward" }).trajectories[0]!;
+    expect(backward.stopReason).toBe("boundary");
+    expect(backward.points.at(-1)?.position).toEqual([-2, -1, 1]);
+    expect(backward.points.at(-1)?.time).toBeCloseTo(-1, 8);
+  });
+
+  it("reports an outward-facing boundary seed immediately and permits inward travel", () => {
+    const document = make(["1", "0", "0"], {
+      seeds: [{ id: "face", position: [1, 0, 0] }],
+    });
+    const outward = integrateVectorField3DTrajectories(document).trajectories[0]!;
+    expect(outward).toMatchObject({ stopReason: "boundary", acceptedSteps: 0 });
+    expect(outward.points).toHaveLength(1);
+    const inward = integrateVectorField3DTrajectories(document, { direction: "backward" }).trajectories[0]!;
+    expect(inward.stopReason).toBe("boundary");
+    expect(inward.points.at(-1)?.position[0]).toBeCloseTo(-1, 8);
+    expect(inward.points.at(-1)?.time).toBeCloseTo(-2, 8);
+  });
+
   it("stops at an undefined singular seed and does not cross it", () => {
     const result = integrateVectorField3DTrajectories(make(["1/x", "0", "0"])).trajectories[0]!;
     expect(result.stopReason).toBe("undefined");
@@ -58,6 +92,19 @@ describe("GRA-14 bounded adaptive 3D trajectories", () => {
     })).trajectories[0]!;
     expect(sameSignPole.points.every(point => point.position[0] < 0)).toBe(true);
     expect(sameSignPole.stopReason).toMatch(/undefined|solver-failure|step-limit/);
+  });
+
+  it("never publishes points beyond a non-grid-aligned pole", () => {
+    const pole = .13;
+    const result = integrateVectorField3DTrajectories(make(["1/(x-0.13)^2", "0", "0"], {
+      seeds: [{ id: "near-pole", position: [0, 0, 0] }],
+      solver: { absoluteTolerance: 1e-9, relativeTolerance: 1e-9,
+        maxSteps: 800, maxTime: .1, maxArcLength: 10 },
+    })).trajectories[0]!;
+    expect(result.points.length).toBeGreaterThan(1);
+    expect(result.points.every(point => point.position[0] < pole)).toBe(true);
+    expect(result.stopReason).toMatch(/undefined|solver-failure|step-limit/);
+    expect(result.evaluations).toBeLessThanOrEqual(1 + 800 * 17);
   });
 
   it("reports step, time, length and cancellation limits separately", () => {

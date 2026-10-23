@@ -39,7 +39,7 @@ function withIsolatedProfileArgs(args: string[], userDataDir: string, cacheDir: 
 }
 
 export async function launchRepoElectron(options: ElectronLaunchOptions): Promise<ElectronApplication> {
-  const executablePath = await resolveExecutablePathOnce();
+  const executablePath = options.executablePath ?? await resolveExecutablePathOnce();
   const providedEnv = options.env as Record<string, string | undefined> | undefined;
   const profileRoot = providedEnv?.MATH3D_E2E_PROFILE_ROOT
     ? path.resolve(providedEnv.MATH3D_E2E_PROFILE_ROOT)

@@ -261,9 +261,16 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
       renderTimes.push(Date.now() - started);
     }
     const medianMilliseconds = [...renderTimes].sort((a, b) => a - b)[1]!;
-    console.log(`GRA-14 512-glyph first stable frame: median ${medianMilliseconds} ms; runs ${renderTimes.join(", ")} ms`);
+    const graphics = await editor.locator("canvas").first().evaluate(element => {
+      const canvas = element as HTMLCanvasElement;
+      const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+      const debug = gl?.getExtension("WEBGL_debug_renderer_info");
+      return { renderer: gl && debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : "unavailable",
+        vendor: gl && debug ? String(gl.getParameter(debug.UNMASKED_VENDOR_WEBGL)) : "unavailable" };
+    });
+    console.log(`GRA-14 512-glyph first stable frame: median ${medianMilliseconds} ms; runs ${renderTimes.join(", ")} ms; GPU ${graphics.renderer}`);
     await testInfo.attach("vector-field3d-512-performance.json", { body: JSON.stringify({ glyphs: 512,
-      renderTimes, medianMilliseconds, viewport: [1440, 900] }), contentType: "application/json" });
+      renderTimes, medianMilliseconds, viewport: [1440, 900], graphics }), contentType: "application/json" });
     expect(Math.max(...renderTimes)).toBeLessThan(5000);
     await expect(editor.getByTestId("vector-field3d-render-status"))
       .toContainText("Rendered 512 of 512 3D samples");

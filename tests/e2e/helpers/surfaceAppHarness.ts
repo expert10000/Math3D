@@ -29,11 +29,13 @@ export async function launchSurfaceApp(
     ELECTRON_ENABLE_LOGGING: "1",
   };
   delete launchEnv.ELECTRON_RUN_AS_NODE;
+  const packagedExecutable = process.env.MATH3D_PACKAGED_APP_EXE;
 
   const app = await launchRepoElectron({
-    args: ["."],
+    args: packagedExecutable ? [] : ["."],
     cwd: repoRoot,
     env: launchEnv,
+    ...(packagedExecutable ? { executablePath: packagedExecutable } : {}),
   });
 
   const page = await app.firstWindow();
