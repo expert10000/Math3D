@@ -1,8 +1,9 @@
 # Quantum Lab → Math3D v0.1 release profile
 
-**Profile frozen for review on 2026-10-21; M3D-Q10 release sign-off is still
-partial.** This freezes what may be claimed by the existing implementation;
-it does not turn untested browser functionality or future Hamiltonian families
+**Profile frozen for review on 2026-10-21; M3D-Q10 v0.1 sign-off completed on
+2026-10-24 for the scoped QWZ/SSH desktop profile.** This freezes what may be
+claimed by the existing implementation; it does not turn untested browser
+functionality or future Hamiltonian families
 into release features. The source inventory and topological decision are in
 [`math3d-q08-fixture-audit.md`](math3d-q08-fixture-audit.md).
 
@@ -47,18 +48,29 @@ build shares application UI but does not expose `window.quantumScenes`; its
 File command reports that verified quantum import is desktop-only. No browser
 topological profile or browser round trip is claimed in v0.1.
 
-## Release evidence and remaining gates
+## Release evidence and remaining scope limits
 
 `npm run test:quantum-scene:import` checks pinned examples, independent
 admission, coordinates/units, source hashes, tampering, bounded scene types,
 and negative cases. The QWZ/SSH Playwright studies check matched-view
 selection and changed-byte refusal. Q09 desktop tests cover native picker,
 pinned example, actual Lab button, export/import, restart, relink and tamper
-refusal. Run those tests against the release commit and retain the CI run URL.
+refusal. [CI run 40032122253](https://github.com/expert10000/Math3D/actions/runs/40032122253)
+on release code commit `5797fbdcbe9e3afc8beed90892de5c047f6bb85e`
+(also on main) passed the renderer unit suite (including Graph2D dependency
+refresh), frozen quantum corpus,
+QWZ/SSH studies, Q09 desktop import/persistence routes and browser capability
+boundary. This focused workflow dispatch left the optional slow e2e job skipped;
+that suite passed separately in the superseded main run
+[40029813013](https://github.com/expert10000/Math3D/actions/runs/40029813013).
+The real two-app Q09 path was also run on Windows with Theory Lab
+checkout `255ebb4f91b3a0a98e7e97a463fad0b512cce00f`: all five Q09 tests
+passed, including its conditional Lab-button test. CI runs the four standalone
+Q09 tests; the conditional two-app test needs a built Theory Lab checkout and
+is not silently counted as a CI pass.
 
-The **contract/fixture matrix above is frozen**; final M3D-Q10 sign-off is not
-yet asserted. It needs a maintained green CI run of the quantum gate at the
-release commit. The browser capability boundary is exercised by
+The **contract/fixture matrix above is frozen** for this scoped v0.1 profile.
+The browser capability boundary is exercised by
 `npm run test:quantum:browser`: no Electron import API is present and the
 `.qscene` command explicitly reports desktop-only availability. The broader Q08
 families remain out of v0.1; they are not blockers for the QWZ/SSH scoped

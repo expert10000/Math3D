@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a frozen v0.1 QWZ/SSH supported set and source-backed study profiles; the broader multi-family milestone remains Partial pending producer fixtures. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 has a documented v0.1 profile and desktop/browser matrix, but release sign-off remains Partial pending final CI/browser evidence.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a frozen v0.1 QWZ/SSH supported set and source-backed study profiles; the broader multi-family milestone remains Partial pending producer fixtures. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 is complete for the scoped v0.1 QWZ/SSH release profile, desktop/browser matrix and recorded CI/two-app evidence.
 
 See the [Q08 fixture audit](math3d-q08-fixture-audit.md) and
 [v0.1 release profile](math3d-quantum-v0.1-freeze.md) for the exact supported
@@ -144,7 +144,7 @@ no zone construction, physics calculation or coordinate conversion. Square,
 honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
 frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
 and its full acceptance remain gated on a separately versioned producer
-contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08 is Partial, M3D-Q09 is complete for desktop file handoff, and M3D-Q10 remains open.
+contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08 is Partial, M3D-Q09 is complete for desktop file handoff, and M3D-Q10 is complete for the scoped v0.1 profile.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -582,11 +582,15 @@ mutation is required.
 
 ### M3D-Q10 — `release(math3d-quantum): freeze QLab Math3D integration v0.1`
 
-**Status: Partial.** The [v0.1 release profile](math3d-quantum-v0.1-freeze.md)
+**Status: Complete for scoped v0.1.** The [v0.1 release profile](math3d-quantum-v0.1-freeze.md)
 freezes the QWZ/SSH topological support set, schema/encoding/budget policy,
 known limitations and desktop/browser capability matrix. The quantum corpus,
-QWZ/SSH studies and browser desktop-only boundary are now in maintained CI.
-A green run at the release commit is still required before marking Q10 complete.
+QWZ/SSH studies, Q09 desktop routes and browser desktop-only boundary passed
+in [CI run 40032122253](https://github.com/expert10000/Math3D/actions/runs/40032122253)
+at release code commit `5797fbdcbe9e3afc8beed90892de5c047f6bb85e`
+(also on main); the real two-app Lab-button route passed separately on Windows.
+This sign-off does not expand
+the Q08 model set or claim a Math3D browser `.qscene` importer.
 
 **Scope.** Freeze the supported schema/version matrix, object families, artifact
 encodings, runtime capabilities, size budgets, fixture corpus, migration policy,
