@@ -3,6 +3,7 @@ import { buildProjectExplorer, createMath3DProject, createMixedWorkspaceDocument
   createVectorField3DDocument, parseMath3DProject, reviseVectorField3DDocument,
   serializeMath3DProject, vectorField3DExpression, type VectorField3DSource } from "@math3d/core";
 import { inspectProjectCompatibility, previewProjectImport } from "./projectTransfer";
+import { buildMobileProjectExplorer } from "../../../apps/mobile/src/models/mobileProjectExplorer";
 
 const field = () => {
   const source: VectorField3DSource = {
@@ -49,5 +50,14 @@ describe("GRA-14 Project workspace persistence", () => {
     expect(reopened.workspace.entries[0]!.expected.revision).toBe(original.identity.revision + 1);
     expect(reopened.workspace.entries[0]!.checkpoint).toEqual(revised);
     expect(serializeMath3DProject(reopened)).not.toContain("trajectoryArtifact");
+  });
+
+  it("offers the saved field as a read-only mobile Project viewer entry", () => {
+    const authored = field();
+    const explorer = buildMobileProjectExplorer(serializeMath3DProject(projectFor(authored)));
+    const vector = explorer.groups.find(group => group.module === "vector3d")?.documents[0];
+    expect(vector?.vector3dPreview).toEqual(authored);
+    expect(vector?.editing).toBe("Saved preview");
+    expect(vector?.unavailableReason).toBeNull();
   });
 });
