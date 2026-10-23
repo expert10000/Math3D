@@ -24,12 +24,13 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
     await expect(importer).toContainText("shape [21, 21, 17]");
     await importer.getByRole("button", { name: "Open in 3D vector editor" }).click();
-    const editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    let editor = page.getByRole("dialog", { name: "3D vector field editor" });
     await expect(editor).toContainText("east");
     await expect(editor).toContainText("north");
     await expect(editor).toContainText("up");
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
+
     await editor.getByLabel("Seed x").fill("2");
     await editor.getByRole("button", { name: "Add seed" }).click();
     await editor.getByRole("button", { name: "Run trajectories" }).click();
@@ -45,6 +46,24 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
     await editor.getByRole("button", { name: "Save document" }).click();
     await editor.getByRole("button", { name: "Open saved document" }).click();
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
+
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const panel = page.getByTestId("project-explorer-panel");
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const projectId = project.identity.id as string;
+    const fieldId = project.workspace.entries.find((entry: { module: string }) => entry.module === "vector3d")?.expected.id as string;
+    expect(fieldId).toBeTruthy();
+    await panel.getByTestId(`project-open-saved-${projectId}`).click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
+    await panel.getByTestId("project-viewer-document").selectOption(fieldId);
+    editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await expect(editor).toContainText("seed-1: (2");
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
@@ -152,6 +171,75 @@ test("GRA-14 trajectory editor reports stationary, boundary, undefined and step-
   } finally { await closeSurfaceApp(app); }
 });
 
+test("GRA-14 Project save and reopen retains 3D seeds and solver policy without stale results", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "3D vector field editor" }).click();
+    let editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await editor.getByLabel("Seed x").fill("2");
+    await editor.getByRole("button", { name: "Add seed" }).click();
+    await editor.getByLabel("Trajectory max steps").fill("57");
+    await editor.getByLabel("Absolute tolerance").fill("0.00001");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await expect(editor.getByTestId("vector-field3d-save-status")).toContainText("Project workspace");
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry?.checkpoint.source.seeds).toEqual([{ id: "seed-1", position: [2, 0, 0] }]);
+    expect(entry?.checkpoint.source.solver).toMatchObject({ maxSteps: 57, absoluteTolerance: 0.00001 });
+    await projectPanel.getByTestId(`project-open-saved-${saved.identity.id}`).click();
+    await expect(projectPanel.getByTestId("project-viewer-document")).toBeVisible();
+    await projectPanel.getByTestId("project-viewer-document").selectOption(entry.expected.id);
+    editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await expect(editor).toContainText("seed-1: (2, 0, 0)");
+    await expect(editor.getByLabel("Trajectory max steps")).toHaveValue("57");
+    await expect(editor.getByLabel("Absolute tolerance")).toHaveValue("0.00001");
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("GRA-14 trajectory Cancel terminates a pending worker and publishes no partial result", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "3D vector field editor" }).click();
+    const editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await editor.getByLabel("Seed x").fill("2");
+    await editor.getByRole("button", { name: "Add seed" }).click();
+    await page.evaluate(() => {
+      const original = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function(message) {
+        window.setTimeout(() => original.call(this, message), 1200);
+      };
+    });
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status")).toContainText("Integrating trajectories");
+    await editor.getByRole("button", { name: "Cancel run" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status")).toContainText("cancelled; no partial result");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
+    await expect(editor.getByRole("button", { name: "Run trajectories" })).toBeEnabled();
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboard camera controls", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();
@@ -180,6 +268,11 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
     await expect(editor.getByTestId("vector-field3d-render-status"))
       .toContainText("Rendered 512 of 512 3D samples");
     await expect(editor.getByTestId("vector-field3d-render-status")).toContainText("vector units m/s, m/s, m/s");
+    await expect(editor.getByTestId("vector-field3d-render-status")).toHaveAttribute("role", "status");
+    const accessible = await editor.ariaSnapshot();
+    expect(accessible).toContain("3D vector field editor");
+    expect(accessible).toContain("Verify & render arrows");
+    expect(accessible).toContain("Camera ready. Use arrow keys to orbit");
     const viewport = editor.getByRole("group", { name: "3D camera viewport" });
     const before = await viewport.boundingBox();
     if (!before) throw new Error("3D camera viewport did not mount");

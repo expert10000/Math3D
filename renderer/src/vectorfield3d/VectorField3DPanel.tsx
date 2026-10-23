@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { createVectorField3DDocument, parseVectorField3DDocument, reviseVectorField3DDocument,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
-  integrateVectorField3DTrajectories, integrateVectorField3DScientificTrajectories,
+  integrateVectorField3DScientificTrajectories,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
   type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
@@ -16,17 +16,20 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
       vectorField3DExpression("0", "m/s")] }, seeds: [], display: { density: [5, 5, 5], maxGlyphs: 512,
       magnitudeScale: 1, colorBy: "speed" }, solver: { absoluteTolerance: 1e-6,
       relativeTolerance: 1e-6, maxSteps: 10000, maxTime: 20 } },
-  { stableKey: "graphs-vector-field-3d", title: "3D vector field" });
+  { stableKey: crypto.randomUUID(), title: "3D vector field" });
 }
 
-export function VectorField3DPanel({ initialDocument, onClose }: {
-  initialDocument?: VectorField3DDocument; onClose: () => void;
+export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose }: {
+  initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
+  onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRunRef = useRef<(() => void) | null>(null);
+  const cancelRequested = useRef(false);
   useEffect(() => {
     const previous = globalThis.document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => previous?.focus();
+    return () => { cancelRunRef.current?.(); previous?.focus(); };
   }, []);
   const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
@@ -51,8 +54,11 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<"render" | "trajectory" | null>(null);
+  const [runStatus, setRunStatus] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
   const updateSource = (source: VectorField3DSource) => {
-    setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setTrajectories(null); setError("");
+    setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setTrajectories(null); setError(""); setRunStatus("");
   };
   const currentDocument = () => document.source.field.kind === "expressions" ?
     reviseVectorField3DDocument(document, { ...document.source, field: { kind: "expressions",
@@ -61,7 +67,7 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
   const render = async () => {
     if (busy) return;
-    setBusy(true); setArtifact(null); setTrajectories(null); setError("");
+    setBusy(true); setBusyAction("render"); setArtifact(null); setTrajectories(null); setError("");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
@@ -82,7 +88,7 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
       setArtifact(result); setDocument(next);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
-      setBusy(false); }
+      setBusy(false); setBusyAction(null); }
   };
   const addSeed = () => {
     try {
@@ -98,15 +104,29 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
   };
   const runTrajectories = async () => {
     if (busy) return;
-    setBusy(true); setArtifact(null); setTrajectories(null); setError("");
+    cancelRequested.current = false;
+    setBusy(true); setBusyAction("trajectory"); setArtifact(null); setTrajectories(null); setError(""); setRunStatus("Verifying source and preparing trajectory worker…");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
       if (!next.source.seeds.length) throw new TypeError("Add at least one seed before integrating trajectories.");
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      const solve = (scientific?: { manifestJson: string; fingerprint: string;
+        volumes: Parameters<typeof integrateVectorField3DScientificTrajectories>[3] }) =>
+        new Promise<VectorField3DTrajectoryArtifact>((resolve, reject) => {
+          if (cancelRequested.current) { reject(new Error("Trajectory integration cancelled.")); return; }
+          const worker = new Worker(new URL("./trajectoryWorker.ts", import.meta.url), { type: "module" });
+          const finish = () => { worker.terminate(); cancelRunRef.current = null; };
+          cancelRunRef.current = () => { finish(); reject(new Error("Trajectory integration cancelled.")); };
+          worker.onmessage = (event: MessageEvent<{ ok: true; result: VectorField3DTrajectoryArtifact } | { ok: false; error: string }>) => {
+            finish(); if (event.data.ok) resolve(event.data.result); else reject(new Error(event.data.error));
+          };
+          worker.onerror = (event) => { finish(); reject(new Error(event.message || "Trajectory worker failed.")); };
+          setRunStatus("Integrating trajectories… Cancel is available.");
+          worker.postMessage({ document: next, direction, scientific });
+        });
       if (next.source.field.kind === "expressions") {
         const arrows = sampleVectorField3DArrows(next);
-        const paths = integrateVectorField3DTrajectories(next, { direction });
+        const paths = await solve();
         setDocument(next); setArtifact(arrows); setTrajectories(paths); return;
       }
       const refs = next.source.field.references;
@@ -119,27 +139,35 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
       fingerprint = opened.source.fingerprint;
       const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
         components: refs.map(ref => ref.component) as [string, string, string] });
+      if (cancelRequested.current) throw new Error("Trajectory integration cancelled.");
       const arrows = sampleVectorField3DScientificArrows(next, opened.source.manifestJson, fingerprint, volumes);
-      const paths = integrateVectorField3DScientificTrajectories(next,
-        opened.source.manifestJson, fingerprint, volumes, { direction });
+      const paths = await solve({ manifestJson: opened.source.manifestJson, fingerprint, volumes });
       setDocument(next); setArtifact(arrows); setTrajectories(paths);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (cancelRequested.current) setRunStatus("Trajectory integration cancelled; no partial result was published.");
+      else setError(message);
+    }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
-      setBusy(false); }
+      setBusy(false); setBusyAction(null); if (!cancelRequested.current) setRunStatus(""); }
   };
   const save = () => {
-    try { const next = currentDocument(); window.localStorage.setItem(storageKey,
-      serializeVectorField3DDocument(next)); setDocument(next); setError(""); }
+    try { const next = currentDocument(); onSaveDocument?.(next);
+      try { window.localStorage.setItem(storageKey, serializeVectorField3DDocument(next)); }
+      catch (cause) { if (!onSaveDocument) throw cause; }
+      setDocument(next); setError("");
+      setSaveStatus(onSaveDocument ? "Field included in the Project workspace. Save the Project to retain it in the library." : "Field saved locally."); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const reopen = () => {
-    try { const saved = window.localStorage.getItem(storageKey);
+    try { const saved = savedDocument ?? window.localStorage.getItem(storageKey);
       if (!saved) throw new Error("No saved 3D vector-field document.");
-      const next = parseVectorField3DDocument(saved);
+      const next = typeof saved === "string" ? parseVectorField3DDocument(saved) :
+        parseVectorField3DDocument(serializeVectorField3DDocument(saved));
       setDocument(next); setExpressions(next.source.field.kind === "expressions" ?
         next.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
       setSeedDraft(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as [string, string, string]);
-      setArtifact(null); setTrajectories(null); setError(""); }
+      setArtifact(null); setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   return createPortal(<div className="vector-field3d-backdrop" onPointerDown={event => {
@@ -255,8 +283,12 @@ export function VectorField3DPanel({ initialDocument, onClose }: {
       "Verify & render arrows"}</button> <button type="button" disabled={busy} onClick={save}>Save document</button>
       {" "}<button type="button" disabled={busy || !document.source.seeds.length}
         onClick={() => void runTrajectories()}>{busy ? "Integrating…" : "Run trajectories"}</button>
+      {busyAction === "trajectory" && <button type="button" onClick={() => { cancelRequested.current = true;
+        cancelRunRef.current?.(); setRunStatus("Cancelling trajectory integration…"); }}>Cancel run</button>}
       {" "}<button type="button" disabled={busy} onClick={reopen}>Open saved document</button>
       {" "}<button type="button" onClick={onClose}>Close</button></div>
+    {runStatus && <p role="status" aria-live="polite" data-testid="vector-field3d-run-status">{runStatus}</p>}
+    {saveStatus && <p role="status" data-testid="vector-field3d-save-status">{saveStatus}</p>}
     {error && <p role="alert">{error}</p>}
     {artifact && <p role="status" aria-live="polite" data-testid="vector-field3d-render-status">
       Rendered {artifact.accepted} of {artifact.evaluated} 3D samples; {artifact.stationary} stationary,

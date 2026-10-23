@@ -384,7 +384,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         try {
           const saved = loadLibraryProject(localStorage, entry.id);
           summary = { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
-            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex", quantum: "Quantum scene" }[item.module] ?? item.module)),
+            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", vector3d: "3D vector field", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex", quantum: "Quantum scene" }[item.module] ?? item.module)),
               ...(saved.workbooks?.length ? ["Workbook"] : []), ...(saved.notes?.length ? ["Notes"] : []), ...(saved.workspace.results.length ? ["Analysis"] : [])])] };
         } catch { summary = { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] }; }
         summaryCache.current.set(entry.id, { savedAt: entry.savedAt, summary });
@@ -1184,7 +1184,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
           <div className="project-gallery-search-row"><label>Search projects<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, topics or tags" /></label>
-            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
+            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>

@@ -127,13 +127,17 @@ type Props = {
   onCopyGraphDefinition?: (id: string) => string;
   onPreviewPersonalImport?: (raw: string) => Graph2DPersonalPresetPreview;
   onImportPersonalProject?: (preview: Graph2DPersonalPresetPreview) => void;
+  savedVectorField3D?: VectorField3DDocument | null;
+  openVectorField3DRequest?: { document: VectorField3DDocument; token: number } | null;
+  onSaveVectorField3D?: (document: VectorField3DDocument) => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
 export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
-  onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject }: Props) {
+  onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
+  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
   const [leftPalette, setLeftPalette] = useState<Graph2DLeftPalette>(readGraph2DLeftPalette);
@@ -186,6 +190,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
   const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(null);
   const [vectorField3DOpen, setVectorField3DOpen] = useState(false);
+  useEffect(() => {
+    if (!openVectorField3DRequest) return;
+    setVectorField3DDocument(openVectorField3DRequest.document);
+    setVectorField3DOpen(true);
+  }, [openVectorField3DRequest?.token]);
   const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
   const scientificSelected = scientificImport?.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
   const scientificManifest = useMemo(() => scientificImport ? parseScientificSceneManifest(scientificImport.manifestJson) : null,
@@ -1470,7 +1479,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                     setScientificPresetOpen(true); }}>Scientific field presets</button>
                 <button type="button" disabled={!scientificImportAvailable}
                   onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open");
-                    setVectorField3DDocument(null); setVectorField3DOpen(true); }}>3D vector field editor</button>
+                    setVectorField3DDocument(savedVectorField3D ?? null); setVectorField3DOpen(true); }}>3D vector field editor</button>
                 <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
                   parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
                   setScalesOpen(false); closeGrid(true, false);
@@ -1509,7 +1518,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificImportBusy && <p className="graph2d-tool-hint" role="status">Verifying scientific dataset…</p>}
         {scientificImportError && !scientificImport && <p className="graph2d-tool-hint" role="alert">{scientificImportError}</p>}
         {vectorField3DOpen && <VectorField3DPanel key={vectorField3DDocument?.identity.id ?? "new"}
-          initialDocument={vectorField3DDocument ?? undefined} onClose={() => { setVectorField3DOpen(false);
+          initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
+          onSaveDocument={onSaveVectorField3D} onClose={() => { setVectorField3DOpen(false);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}
         {scientificPresetOpen && <div className="graph2d-scientific-import graph2d-scientific-presets" role="dialog"
           aria-label="Scientific field presets" onPointerDown={event => event.stopPropagation()}>
