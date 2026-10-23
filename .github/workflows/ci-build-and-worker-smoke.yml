@@ -150,6 +150,9 @@ jobs:
       - name: Verify QWZ and SSH study profiles
         run: npx playwright test tests/e2e/quantum-qwz-study.spec.ts tests/e2e/quantum-ssh-study.spec.ts --reporter=list
 
+      - name: Verify Q09 desktop import and persistence routes
+        run: npm run test:quantum:q09
+
       - name: Install Chromium for browser capability test
         run: npx playwright install chromium
 
