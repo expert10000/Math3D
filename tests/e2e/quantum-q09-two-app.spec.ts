@@ -140,6 +140,7 @@ test("Q09 real Theory Lab button launches Math3D with the same canonical portabl
       }
     }
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-q09-two-app-")) throw new Error("Unsafe Q09 cleanup path");
-    await rm(root, { recursive: true, force: true });
+    // Chromium may briefly retain Windows session files after its process exits.
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
   }
 });
