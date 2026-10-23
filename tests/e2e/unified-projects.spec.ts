@@ -9,6 +9,21 @@ import { runNamedProjectRoundTrip } from "./helpers/namedProjectRoundTrip";
 import { meshResourceFixture, inspectMeshPackage, scalarVolumeResourceFixture, inspectScalarVolumePackage } from "./helpers/meshProjectResources";
 const projectCore = require(resolve("packages/core/src/index.ts"));
 
+const showProjectGallery = async (page: import("@playwright/test").Page) => {
+  const panel = page.getByTestId("project-explorer-panel");
+  if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click();
+  await expect(panel).toBeVisible();
+  if (await panel.getAttribute("data-project-placement")) {
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await expect(panel.getByTestId("project-detail-toggle")).toBeVisible();
+  }
+  if (await panel.locator(".project-gallery-layout-detail").count())
+    await panel.getByTestId("project-detail-toggle").click();
+  await expect(panel.locator(".project-gallery-layout-detail")).toHaveCount(0);
+  await expect(panel.getByTestId("project-library")).toBeVisible();
+  return panel;
+};
+
 test("saved project cards open supported surfaces directly and explain preview-only projects", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -33,11 +48,11 @@ test("saved project cards open supported surfaces directly and explain preview-o
     }
     const originalPayloads = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage).filter(([key]) => key.startsWith("math3d.project.v1.payload."))));
     await panel.getByTestId(`project-open-saved-${supported.identity.id}`).click();
-    await expect(panel).toBeHidden();
+    await expect(panel).toHaveAttribute("data-project-placement", "left");
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(supported.identity.id);
     await expect(page.locator("canvas:visible").first()).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1.before-open"))).not.toBeNull();
-    await page.getByTestId("projects-toggle").click();
+    await showProjectGallery(page);
     await panel.getByTestId(`project-preview-${supported.identity.id}`).click();
     await expect(panel.getByTestId("project-view-mode")).toContainText("Saved project preview");
     const active = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
@@ -78,12 +93,13 @@ test("PRJ16 built-in source starters retain editing history across Electron rest
     const page = ctx.page, panel = page.getByTestId("project-explorer-panel"); await page.getByTestId("projects-toggle").click();
     await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     await checkReopenedAdditionalHistory(page, originalDocument);
   } finally { await closeSurfaceApp(ctx); }
 });
 
 test("PRJ16 additional source editors survive independent transfer and Electron restart", async () => {
-  test.setTimeout(240_000);let ctx:LaunchedSurfaceApp|null=null;
+  test.setTimeout(360_000);let ctx:LaunchedSurfaceApp|null=null;
   try {
     const fixture=additionalRepresentationFixture();ctx=await launchSurfaceApp();await resetSurfaceAppState(ctx.page);
     const {selected,saved}=await exerciseAdditionalEditors(ctx.page,fixture);
@@ -94,10 +110,13 @@ test("PRJ16 additional source editors survive independent transfer and Electron 
     await closeSurfaceApp(ctx);ctx=await launchSurfaceApp();await resetSurfaceAppState(ctx.page);
     let page=ctx.page,panel=page.getByTestId("project-explorer-panel");await page.getByTestId("projects-toggle").click();
     await panel.getByTestId("project-import-file").setInputFiles({name:"independent.json",mimeType:"application/json",buffer:Buffer.from(exported)});await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
+    await showProjectGallery(page);
     await panel.getByTestId("project-save").click();await expect(panel.getByTestId("project-message")).toContainText("Saved");
     expect((await page.evaluate(()=>JSON.parse(localStorage.getItem("math3d.project.v1")!))).workspace.entries.map((e:any)=>e.expected)).toEqual(saved.workspace.entries.map((e:any)=>e.expected));
     const profile=ctx.profileDir;await ctx.app.close();ctx=await launchSurfaceApp({},profile);page=ctx.page;panel=page.getByTestId("project-explorer-panel");
     await page.getByTestId("projects-toggle").click();await panel.getByTestId("project-view-saved").click();await panel.getByTestId("project-restore-saved").click();await expect(panel.getByTestId("project-import-open")).toBeEnabled();await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     for(const document of selected)await checkReopenedAdditionalHistory(page,document);
     await page.setViewportSize({width:390,height:844});await expect(page.getByTestId("project-source-editor")).toBeVisible();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth)).toBe(true);
@@ -110,7 +129,7 @@ test("PRJ16 restores verified scalar Volume bytes, grid edits and history across
     const fixture = scalarVolumeResourceFixture();
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
-    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const show = async () => { await showProjectGallery(page); };
     const closePanel = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
     const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
     const importFile = async (raw: string) => { await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "scalar.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) }); };
@@ -143,9 +162,11 @@ test("PRJ16 restores verified scalar Volume bytes, grid edits and history across
     expect(await page.evaluate(() => localStorage.getItem("math3d.project.v1"))).toBe(protectedJson);
     await closeSurfaceApp(ctx); ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
     await importFile(exported); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
     const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
     await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
     await closePanel(); await page.getByTestId("project-volume-editor").locator("summary").click();
     expect(JSON.parse(await page.getByTestId("project-volume-spatial").inputValue())).toEqual(changed);
@@ -169,7 +190,7 @@ test("PRJ15 transfers verified Mesh buffers, preserves history through a cold re
     const fixture = meshResourceFixture();
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
     let page = ctx.page, panel = page.getByTestId("project-explorer-panel");
-    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const show = async () => { await showProjectGallery(page); };
     const closePanel = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
     const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
     const exportResources = async (suffix: string) => {
@@ -185,15 +206,19 @@ test("PRJ15 transfers verified Mesh buffers, preserves history through a cold re
       request.onerror = () => reject(request.error);
     }));
     const importFile = async (raw: string) => { await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "mesh.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) }); };
+    const study = async () => { const editor = page.getByTestId("project-mesh-editor"); if (!await editor.count()) { const button = page.getByTestId("project-mesh-study-view"); await expect(button).toBeVisible(); await button.click(); } await page.getByRole("tab", { name: "Source/Object" }).click(); await expect(editor).toBeVisible(); };
     await importFile(fixture.raw); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await study();
     await expect(page.getByTestId("project-mesh-editor")).toContainText("First saved triangle");
     let saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(fixture.docs.map((document) => document.identity));
     let inspected = inspectMeshPackage(await exportResources("unchanged"));
     expect(inspected[0]!.positions).toEqual([2,0,0,3,0,0,2,1,0]); expect(inspected[0]!.selection).toEqual(["mesh-face:0"]);
     expect(inspected[0]!.document.source.origin).toEqual(fixture.docs[0]!.source.origin);
     await closePanel(); await page.getByTestId("project-mesh-translate-0").fill("5"); await page.getByTestId("project-mesh-apply").click();
-    await page.getByTestId("project-mesh-undo").click(); await page.getByTestId("project-mesh-redo").click();
+    await study(); await page.getByTestId("project-mesh-undo").click();
+    await study(); await page.getByTestId("project-mesh-redo").click();
     await show(); await panel.getByTestId(`project-open-${fixture.docs[1]!.identity.id}`).click();
+    await study();
     await expect(page.getByTestId("project-mesh-editor")).toContainText("Second saved triangle");
     await page.getByTestId("project-mesh-scale").fill("2"); await page.getByTestId("project-mesh-apply").click();
     saved = await save(); const generations = saved.workspace.entries.map((entry: any) => entry.expected);
@@ -217,17 +242,20 @@ test("PRJ15 transfers verified Mesh buffers, preserves history through a cold re
     await importFile(JSON.stringify(JSON.parse(exported).project)); await expect(panel.getByTestId("project-import-open")).toBeDisabled();
     await expect(panel.getByTestId("project-import-preview")).toContainText("missing or unverified");
     await importFile(exported); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
     const profile = ctx.profileDir; await ctx.app.close(); ctx = await launchSurfaceApp({}, profile); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
     await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
     inspected = inspectMeshPackage(await exportResources("restart")); expect(inspected[0]!.positions).toEqual([7,0,0,8,0,0,7,1,0]); expect(inspected[0]!.selection).toEqual(["mesh-face:0"]);
-    await closePanel(); await page.getByTestId("project-mesh-undo").click();
+    await closePanel(); await study(); await page.getByTestId("project-mesh-undo").click();
     inspected = inspectMeshPackage(await exportResources("undo-restarted")); expect(inspected[0]!.positions).toEqual([2,0,0,3,0,0,2,1,0]);
-    await closePanel(); await page.getByTestId("project-mesh-redo").click();
+    await closePanel(); await study(); await page.getByTestId("project-mesh-redo").click();
+    await study();
     await page.getByTestId("project-mesh-translate-0").fill("1"); await page.getByTestId("project-mesh-apply").click();
     inspected = inspectMeshPackage(await exportResources("continued")); expect(inspected[0]!.positions).toEqual([8,0,0,9,0,0,8,1,0]);
-    await closePanel(); await page.getByTestId("project-mesh-scale").fill("0"); await page.getByTestId("project-mesh-apply").click(); await expect(page.getByTestId("project-mesh-error")).toContainText("positive scale");
+    await closePanel(); await study(); await page.getByTestId("project-mesh-scale").fill("0"); await page.getByTestId("project-mesh-apply").click(); await expect(page.getByTestId("project-mesh-error")).toContainText("positive scale");
     await page.setViewportSize({ width: 390, height: 844 }); const bounds = await page.getByTestId("project-mesh-editor").boundingBox(); expect(bounds!.width).toBeLessThanOrEqual(391); expect(bounds!.height).toBeLessThan(422);
     await page.getByTestId("project-mesh-editor").screenshot({ path: test.info().outputPath("mesh-resource-editor-phone.png") });
   } finally { await closeSurfaceApp(ctx); }
@@ -244,7 +272,7 @@ test("PRJ14 restores Volume samples, source/history and historical provenance ac
     const docs = [first, second];
     const result = projectCore.createAnalysisResultEnvelope({ resultId: "prj14-historical", status: "numerical", provenance: { source: { documentId: first.identity.id, revision: first.identity.revision, structuralHash: first.identity.structuralHash, generation: first.identity.revision }, operation: { type: "volume.statistics", algorithm: "fixture", algorithmVersion: "1", parameters: {} }, numericContext: { tolerance: { absolute: 0.001 } }, engine: { name: "historical-offline-engine", version: "1" }, elapsedMs: 1 }, summary: { min: 13 }, warnings: [], diagnostics: [], artifacts: [] });
     const project = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ entries: docs.map((document) => ({ module: "volume", checkpoint: document, expected: document.identity, replay: null })), activeDocumentIds: docs.map((document) => document.identity.id), constructions: [], results: [result], relations: [], artifacts: [], committedSelection: null }), { title: "Native Volume project", stableKey: "prj14-ui" });
-    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const show = async () => { await showProjectGallery(page); };
     const open = async (index: number) => { await show(); await panel.getByTestId(`project-open-${docs[index].identity.id}`).click(); };
     const save = async () => { await show(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
     const closePanel = async () => { if (await panel.isVisible()) await page.getByRole("button", { name: "Close project explorer" }).click(); };
@@ -274,6 +302,7 @@ test("PRJ14 restores Volume samples, source/history and historical provenance ac
     await expect(panel.getByTestId(`project-result-status-${result.resultId}`)).toContainText("stale");
     await ctx.app.close(); ctx = await launchSurfaceApp({}, ctx.profileDir); page = ctx.page; panel = page.getByTestId("project-explorer-panel");
     await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     saved = await save(); expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual(generations);
     await open(1); await range("4 … 8"); await page.getByTestId("project-volume-undo").click(); await expect(page.getByTestId("project-volume-expression")).toHaveValue("x+y+z+K");
     await page.getByTestId("project-volume-redo").click(); await page.getByTestId("project-volume-expression").fill("x+y+z+K+1"); await page.getByTestId("project-volume-apply").click(); await range("7 … 10");
@@ -320,8 +349,8 @@ test("PRJ13 restores distinct Topology and Complex documents unchanged, edits hi
     }, { stableKey: text });
     const docs = [makeTopology("First topology"), makeTopology("Second topology"), makeComplex("sqrt(z)"), makeComplex("exp(z)")];
     const project = projectCore.createMath3DProject(projectCore.createMixedWorkspaceDocument({ entries: docs.map((document) => ({ module: document.format === "math3d.topology-document" ? "topology" : "complex", checkpoint: document, expected: document.identity, replay: null })), activeDocumentIds: docs.map((document) => document.identity.id), constructions: [], results: [], relations: [], artifacts: [], committedSelection: null }), { title: "Native scientific project", stableKey: "prj13-ui" });
-    const save = async () => { await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
-    const show = async () => { if (!await panel.isVisible()) await page.getByTestId("projects-toggle").click(); };
+    const save = async () => { await showProjectGallery(page); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved"); return page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)); };
+    const show = async () => { await showProjectGallery(page); };
     const open = async (index: number) => { await show(); await panel.getByTestId(`project-open-${docs[index].identity.id}`).click(); };
     await show(); await panel.getByTestId("project-import-file").setInputFiles({ name: "scientific.math3d.project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(project)) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
@@ -348,6 +377,7 @@ test("PRJ13 restores distinct Topology and Complex documents unchanged, edits hi
     page = ctx.page; panel = page.getByTestId("project-explorer-panel");
     await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click();
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     await open(1); await page.getByText("Raw JSON editor", { exact: true }).click();
     expect(JSON.parse(await page.getByTestId("topology-source-json").inputValue()).name).toBe("Edited second topology");
     await page.getByTestId("topology-source-undo").click(); expect(JSON.parse(await page.getByTestId("topology-source-json").inputValue()).name).toBe("Second topology");
@@ -371,6 +401,7 @@ test("PRJ13 restores distinct Topology and Complex documents unchanged, edits hi
     const replayed = projectCore.replayComplexCommandLog(saved.workspace.entries[2].replay.payload);
     expect(replayed.ok).toBe(true); expect(replayed.value.document.branchPolicy).toEqual(changedBranch); expect(replayed.value.document.contours).toEqual(changedContours);
     await page.reload(); await show(); await panel.getByTestId("project-view-saved").click(); await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
+    await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     await open(2); await page.getByText("Branch and contours (1)", { exact: true }).click();
     expect(JSON.parse(await page.getByTestId("project-complex-branch").inputValue())).toEqual(changedBranch);
     expect(JSON.parse(await page.getByTestId("project-complex-contours").inputValue())).toEqual(changedContours);
@@ -423,12 +454,11 @@ test("PRJ07 previews independent scientific starters and opens their real docume
     expect(current.identity.id).toBe(first); expect(current.workspace.entries.map((entry: any) => entry.module)).toEqual(["graph2d", "curve", "surface"]);
     await expect(page.getByTestId("workspace-nav-surfaces")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("project-source-editor")).toHaveAttribute("data-document-id", current.workspace.entries.find((entry: any) => entry.module === "surface").expected.id);
-    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await showProjectGallery(page);
     await expect(panel.getByTestId("project-group-surface")).toContainText("catenoid");
     await expect(panel.getByTestId("project-group-analysis")).toContainText("numerical");
     await panel.getByTestId("project-inspect-relations").click();
     await expect(panel.getByTestId("project-dependencies")).toContainText("graph2d.revolve-surface");
-    await panel.getByTestId("project-detail-toggle").click();
     await panel.getByTestId("project-template-select").selectOption("derivative-study");
     await panel.getByTestId("project-template-preview").click();
     await expect(panel.getByTestId("project-import-preview")).toContainText("Derivative Study");
@@ -713,7 +743,7 @@ test("PRJ06 exports, previews, cancels and opens supported imports while retaini
     await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
     const backup = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1.before-open")!));
     expect(backup.workspace.entries.map((entry: any) => entry.expected.id)).toEqual(JSON.parse(originalBytes).workspace.entries.map((entry: any) => entry.expected.id));
-    await panel.getByTestId("project-current").click();
+    await showProjectGallery(page); await panel.getByTestId("project-current").click();
     await expect(panel.getByTestId(`project-open-${graph.identity.id}`)).toBeEnabled();
     await expect(panel.getByTestId("project-group-curve")).toContainText(curve.document.metadata.title);
     await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved “Imported Graph study”");
@@ -740,32 +770,34 @@ test("PRJ10 opens independent Curve and Surface in native editors, preserves ide
     await panel.getByTestId("project-import-file").setInputFiles({ name: "native.math3d.project.json", mimeType: "application/json", buffer: Buffer.from(projectCore.serializeMath3DProject(project)) });
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
     await expect(page.getByTestId("curve-kernel-document")).toContainText(curve.identity.id);
+    await showProjectGallery(page);
     await panel.getByTestId("project-save").click();
     let saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries.map((entry: any) => entry.expected)).toEqual([curve.identity, surface.identity]);
     await page.getByRole("button", { name: "Close project explorer" }).click();
-    await page.getByLabel("y(t)", { exact: true }).fill("t*t*t");
-    await page.getByTestId("project-editor-undo").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t");
-    await page.getByTestId("project-editor-redo").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t*t");
-    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    const curveY = () => page.locator('input[aria-label="Curve y expression"]');
+    await curveY().fill("t*t*t");
+    await page.getByTestId("project-editor-undo").click(); await expect(curveY()).toHaveValue("t*t");
+    await page.getByTestId("project-editor-redo").click(); await expect(curveY()).toHaveValue("t*t*t");
+    await showProjectGallery(page); await panel.getByTestId("project-save").click();
     saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.identity.id).toBe(project.identity.id); expect(saved.workspace.entries[0].expected.id).toBe(curve.identity.id);
     await panel.getByTestId(`project-open-${surface.identity.id}`).click();
     await expect(page.getByTestId("project-editor-history")).toContainText("Native Surface");
     await page.getByTestId("project-surface-z").fill("u*u+v*v");
-    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    await showProjectGallery(page); await panel.getByTestId("project-save").click();
     await expect(panel.getByTestId("project-message")).toContainText("Saved");
     saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries[1].expected.id).toBe(surface.identity.id);
     expect(saved.workspace.entries[1].expected.structuralHash).not.toBe(surface.identity.structuralHash);
     await page.getByRole("button", { name: "Close project explorer" }).click();
-    await page.getByTestId("workspace-nav-curves").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t*t");
+    await page.getByTestId("workspace-nav-curves").click(); await expect(curveY()).toHaveValue("t*t*t");
     await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click();
     await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
     await expect(page.getByTestId("curve-kernel-document")).toContainText(curve.identity.id);
     await page.getByRole("button", { name: "Close project explorer" }).click();
-    await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t*t");
-    await page.getByTestId("project-editor-undo").click(); await expect(page.getByLabel("y(t)", { exact: true })).toHaveValue("t*t");
+    await expect(curveY()).toHaveValue("t*t*t");
+    await page.getByTestId("project-editor-undo").click(); await expect(curveY()).toHaveValue("t*t");
   } finally { await closeSurfaceApp(ctx); }
 });
 
@@ -785,20 +817,21 @@ test("PRJ11 restores Geometry objects and construction lineage, then edits, save
     await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
     await expect(page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("project-geometry-editor")).toContainText(document.identity.id);
+    await showProjectGallery(page);
     await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
     let saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries[0].expected).toEqual(document.identity);
     await page.getByRole("button", { name: "Close project explorer" }).click();
     await expect(page.getByTestId("project-geometry-param-width")).toHaveValue("2");
     await page.getByTestId("project-geometry-param-width").fill("5");
-    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await showProjectGallery(page); await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
     saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries[0].expected.id).toBe(document.identity.id); expect(saved.workspace.entries[0].expected.structuralHash).not.toBe(document.identity.structuralHash);
     await page.reload(); await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-view-saved").click();
     await panel.getByTestId("project-restore-saved").click(); await panel.getByTestId("project-import-open").click();
     await expect(page.getByTestId("project-geometry-editor")).toContainText(document.identity.id);
     await page.getByRole("button", { name: "Close project explorer" }).click(); await expect(page.getByTestId("project-geometry-param-width")).toHaveValue("5");
-    await page.getByTestId("projects-toggle").click(); await panel.getByTestId("project-save").click();
+    await showProjectGallery(page); await panel.getByTestId("project-save").click();
     saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries[0].checkpoint.source.extensions["math3d.geometry.live-derived.v1"]).toEqual(document.source.extensions["math3d.geometry.live-derived.v1"]);
     expect(saved.workspace.constructions).toEqual(project.workspace.constructions);
