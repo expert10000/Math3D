@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readScientificSceneBundle } from "./bundle";
+import { readScientificSceneBundle, type VerifiedScientificSceneBundle } from "./bundle";
 
 export type ScientificGraphDatasetSource = {
   manifestJson: string;
@@ -19,11 +19,8 @@ export type ScientificGraphVolume = { fingerprint: string; datasetId: string; co
   sourceShape: [number, number, number]; sampleShape: [number, number, number];
   resourceSha256: string; sampleSha256: string; values: number[] };
 
-/** A bounded sample lattice covering the entire verified 3D domain for an orbitable overview. */
-export async function previewScientificGraphVolume(directory: string, fingerprint: string, datasetId: string,
-  component: string): Promise<ScientificGraphVolume> {
-  const bundle = await readScientificSceneBundle(directory);
-  if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+const volumeFromVerifiedBundle = (bundle: VerifiedScientificSceneBundle, datasetId: string,
+  component: string): ScientificGraphVolume => {
   const dataset = bundle.manifest.datasets.find(item => item.id === datasetId);
   const coordinate = bundle.manifest.coordinates.find(item => item.id === dataset?.coordinateSystem);
   if (!dataset || dataset.shape.length !== 3 || coordinate?.axes.length !== 3 ||
@@ -47,8 +44,30 @@ export async function previewScientificGraphVolume(directory: string, fingerprin
     const value = buffer.readDoubleLE(((first * sourceShape[1] + second) * sourceShape[2] + third) * 8);
     values[next] = value; bytes.writeDoubleLE(value, next * 8); next++;
   }
-  return { fingerprint, datasetId, component, sourceShape, sampleShape, resourceSha256: resource.sha256,
+  return { fingerprint: bundle.fingerprint, datasetId, component, sourceShape, sampleShape, resourceSha256: resource.sha256,
     sampleSha256: createHash("sha256").update(bytes).digest("hex"), values };
+};
+
+/** A bounded sample lattice covering the entire verified 3D domain for an orbitable overview. */
+export async function previewScientificGraphVolume(directory: string, fingerprint: string, datasetId: string,
+  component: string): Promise<ScientificGraphVolume> {
+  const bundle = await readScientificSceneBundle(directory);
+  if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+  return volumeFromVerifiedBundle(bundle, datasetId, component);
+}
+
+/** All three components come from one manifest/resource verification pass. */
+export async function previewScientificGraphVectorVolume(directory: string, fingerprint: string, datasetId: string,
+  components: readonly [string, string, string]): Promise<[ScientificGraphVolume, ScientificGraphVolume, ScientificGraphVolume]> {
+  if (new Set(components).size !== 3) throw new TypeError("Choose three distinct vector components.");
+  const bundle = await readScientificSceneBundle(directory);
+  if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+  const dataset = bundle.manifest.datasets.find(item => item.id === datasetId);
+  if (dataset?.semanticType !== "vector-field" || dataset.shape.length !== 3 ||
+      dataset.components?.length !== 3 || components.some(name => !dataset.components?.some(part => part.name === name)))
+    throw new TypeError("Choose one complete three-component vector dataset.");
+  return components.map(component => volumeFromVerifiedBundle(bundle, datasetId, component)) as
+    [ScientificGraphVolume, ScientificGraphVolume, ScientificGraphVolume];
 }
 
 /** Reverify the bundle on every request, then transfer only one bounded 2D plane. */

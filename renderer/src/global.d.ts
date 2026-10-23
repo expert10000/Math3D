@@ -613,6 +613,10 @@ declare global {
         Promise<import("@math3d/core").Graph2DScientificPlane>;
       previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
         Promise<import("@math3d/core").Graph2DScientificVolume>;
+      previewVectorVolume: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string] }) =>
+        Promise<[import("@math3d/core").Graph2DScientificVolume,
+          import("@math3d/core").Graph2DScientificVolume, import("@math3d/core").Graph2DScientificVolume]>;
       closeGraphDataset: (fingerprint: string) => Promise<boolean>;
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;

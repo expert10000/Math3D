@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
 import { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane, previewScientificGraphVolume,
+  previewScientificGraphVectorVolume,
   type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
@@ -124,7 +125,8 @@ export function registerScientificSceneIpc(): void {
       return { ok: true, source: { ...source, locator } };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, status: /ENOENT|not found|does not exist/i.test(message) ? "missing" : "error",
+      return { ok: false, status: /ENOENT|not found|does not exist|missing/i.test(message) ? "missing" :
+        /integrity failed|checksum|fingerprint changed/i.test(message) ? "changed" : "error",
         error: message };
     }
   });
@@ -192,6 +194,23 @@ export function registerScientificSceneIpc(): void {
     const source = graphActive.get(event.sender);
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVolume(source.directory, source.fingerprint, request.datasetId, request.component);
+  });
+  ipcMain.handle("scientificScenes:previewVectorVolume", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid 3D vector-field request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        !Array.isArray(request.components) || request.components.length !== 3 ||
+        request.components.some(component => typeof component !== "string" ||
+          !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
+        new Set(request.components).size !== 3)
+      throw new TypeError("Invalid 3D vector-field request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphVectorVolume(source.directory, source.fingerprint, request.datasetId,
+      request.components as [string, string, string]);
   });
   ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||

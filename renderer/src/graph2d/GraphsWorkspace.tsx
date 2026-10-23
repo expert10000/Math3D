@@ -40,6 +40,7 @@ import {
   type Graph2DRegression, type Graph2DRegressionModel,
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
+  createVectorField3DDocument, type VectorField3DDocument, type VectorField3DSource,
   graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
@@ -51,6 +52,7 @@ import type { WorkspaceDockLayout } from "../workspaceDocks";
 import { Graph2DPlot } from "./Graph2DPlot";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
+import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
@@ -182,6 +184,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
+  const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(null);
+  const [vectorField3DOpen, setVectorField3DOpen] = useState(false);
   const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
   const scientificSelected = scientificImport?.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
   const scientificManifest = useMemo(() => scientificImport ? parseScientificSceneManifest(scientificImport.manifestJson) : null,
@@ -289,6 +293,36 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
       setScientificImportError("");
     } catch (error) { setScientificImportError((error as Error).message); }
+  };
+  const openScientificVectorField3D = async () => {
+    if (!scientificImport || !scientificManifest?.ok || !scientificDataset || !scientificCoordinate ||
+        scientificDataset.semanticType !== "vector-field" || scientificDataset.shape.length !== 3 ||
+        scientificDataset.shape.some(size => size < 2) ||
+        scientificDataset.components?.length !== 3 || scientificCoordinate.axes.length !== 3 || scientificImportBusy) return;
+    setScientificImportBusy(true);
+    try {
+      const refs = scientificDataset.components.map(part => createGraph2DFieldReference(
+        scientificImport.manifestJson, scientificImport.fingerprint, scientificImport.locator,
+        scientificDataset.id, part.name)) as [Graph2DFieldReference, Graph2DFieldReference, Graph2DFieldReference];
+      const axes = scientificCoordinate.axes.map((axis, index) => ({ role: (["x", "y", "z"] as const)[index]!,
+        label: axis.name, unit: axis.unit, min: scientificCoordinate.origin[index]!,
+        max: scientificCoordinate.origin[index]! + scientificCoordinate.spacing[index]! *
+          (scientificDataset.shape[index]! - 1) })) as unknown as VectorField3DSource["axes"];
+      const timeUnits = axes.map(axis => scientificDataset.quantity.unit.startsWith(`${axis.unit}/`) ?
+        scientificDataset.quantity.unit.slice(axis.unit.length + 1) : "");
+      if (!timeUnits[0] || new Set(timeUnits).size !== 1)
+        throw new TypeError("3D vector components need matching coordinate/time units (for example m/s).");
+      const source: VectorField3DSource = { axes, timeUnit: timeUnits[0], field: { kind: "scientific-bundle",
+        componentUnits: [scientificDataset.quantity.unit, scientificDataset.quantity.unit,
+          scientificDataset.quantity.unit], references: refs }, seeds: [],
+        display: { density: [5, 5, 5], maxGlyphs: 512, magnitudeScale: 1, colorBy: "speed" },
+        solver: { absoluteTolerance: 1e-6, relativeTolerance: 1e-6, maxSteps: 10000, maxTime: 20 } };
+      const next = createVectorField3DDocument(source, { stableKey: `${scientificImport.fingerprint}:${scientificDataset.id}`,
+        title: scientificManifest.value.title });
+      await window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint);
+      setVectorField3DDocument(next); setVectorField3DOpen(true); setScientificImport(null);
+    } catch (error) { setScientificImportError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
   };
   const openSavedFieldReference = async (reference: Graph2DFieldReference) => {
     if (!window.scientificScenes?.openGraphDatasetReference || scientificImportBusy) return;
@@ -1434,6 +1468,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   title={!scientificImportAvailable ? "Available in the desktop app" : undefined}
                   onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open");
                     setScientificPresetOpen(true); }}>Scientific field presets</button>
+                <button type="button" disabled={!scientificImportAvailable}
+                  onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open");
+                    setVectorField3DDocument(null); setVectorField3DOpen(true); }}>3D vector field editor</button>
                 <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
                   parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
                   setScalesOpen(false); closeGrid(true, false);
@@ -1471,6 +1508,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </div>
         {scientificImportBusy && <p className="graph2d-tool-hint" role="status">Verifying scientific dataset…</p>}
         {scientificImportError && !scientificImport && <p className="graph2d-tool-hint" role="alert">{scientificImportError}</p>}
+        {vectorField3DOpen && <VectorField3DPanel key={vectorField3DDocument?.identity.id ?? "new"}
+          initialDocument={vectorField3DDocument ?? undefined} onClose={() => setVectorField3DOpen(false)} />}
         {scientificPresetOpen && <div className="graph2d-scientific-import graph2d-scientific-presets" role="dialog"
           aria-label="Scientific field presets" onPointerDown={event => event.stopPropagation()}>
           <h3>Scientific field presets</h3>
@@ -1606,6 +1645,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {scientificSelected?.shape && <button type="button" disabled={!scientificFieldViewed || scientificFieldAlreadySaved ||
               scientificImportBusy || !onAuthoringCommit} onClick={saveScientificFieldReference}>
               Save field reference</button>}
+            {scientificDataset?.semanticType === "vector-field" && scientificDataset.shape.length === 3 &&
+              scientificDataset.shape.every(size => size >= 2) && scientificDataset.components?.length === 3 &&
+              <button type="button" disabled={scientificImportBusy}
+                onClick={() => void openScientificVectorField3D()}>Open in 3D vector editor</button>}
             <button type="button" onClick={() => { resetScientificSlice();
               void window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint); setScientificImport(null); }}>Cancel</button></div>
         </div>}
