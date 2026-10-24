@@ -433,6 +433,14 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
+            {scene.provenance.model==="bhz"&&scene.bands?.kind==="surface"&&<section data-testid="bhz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>BHZ · producer-supplied bulk study</h3>
+              <p>Four stored band surfaces from one verified Theory Lab result. Math3D reads the supplied energy arrays and sample coordinates; it runs no BHZ solver.</p>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Model inputs: M={scene.provenance.parameters?.mass}, A=B=1, ε=0; momentum grid {scene.bands.grid?.join(" × ")}. Energy unit: {scene.bands.energyUnit}.</p>
+              {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"unavailable"} · producer status {item.status} · {item.method}.</p>)}
+              <p>Edge states, spin mixing, and a general BHZ phase diagram are not supplied. A gap closure or unresolved producer mesh carries no verified Z₂ label.</p>
+            </section>}
             {qwzRole && <section data-testid="qwz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>QWZ · supplied-result study</h3>
               <p>Current verified view: {qwzRole === "bands" ? "band surfaces" : "Berry curvature"}. Each view retains its own bundle and exact dataset IDs.</p>

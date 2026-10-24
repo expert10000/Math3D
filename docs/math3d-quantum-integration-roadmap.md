@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a frozen v0.1 QWZ/SSH supported set and source-backed study profiles; the broader multi-family milestone remains Partial pending producer fixtures. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 is complete for the scoped v0.1 QWZ/SSH release profile, desktop/browser matrix and recorded CI/two-app evidence.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a frozen v0.1 QWZ/SSH set plus a bounded post-v0.1 producer-backed BHZ four-band view; the broader multi-family milestone remains Partial pending more producer fixtures. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 is complete for the scoped v0.1 QWZ/SSH release profile, desktop/browser matrix and recorded CI/two-app evidence.
 
 See the [Q08 fixture audit](math3d-q08-fixture-audit.md) and
 [v0.1 release profile](math3d-quantum-v0.1-freeze.md) for the exact supported
@@ -516,7 +516,7 @@ unsourced topological claim.
 
 ### M3D-Q08 — `feat(math3d-quantum): add topological Hamiltonian visualization`
 
-**Status: Partial overall; v0.1 supported set frozen to QWZ and SSH.** The
+**Status: Partial overall; v0.1 supported set frozen to QWZ and SSH, with a bounded post-v0.1 BHZ producer-backed extension.** The
 [fixture audit](math3d-q08-fixture-audit.md) records the actual producer
 corpus and admission rule for later families. Open either pinned QWZ example
 under **File → Verified quantum examples**, then choose **Link matching QWZ
@@ -534,9 +534,13 @@ view switching through **Link matching SSH views**. The study displays only
 producer-labeled bond and density objects, supplied band labels, the worker
 bulk gap and structured winding result. It does not infer an edge/bulk phase
 from the density view. Each switch re-verifies the target bundle, and mismatched
-runs, hashes, inputs or changed bytes are refused. The remaining BHZ, BBH,
-Kitaev, Weyl, nodal and Landau/Hall profiles require verified portable fixtures
-before implementation or completion claims.
+runs, hashes, inputs or changed bytes are refused. BHZ now has a separate
+producer-computed, pinned four-band lattice fixture with exact stored-sample
+inspection and a read-only source-attributed profile. Its `A=B=1`, `ε=0`
+scope, two block Chern values, spin-conserved Z₂ status, and limitations are
+recorded in the [fixture audit](math3d-q08-fixture-audit.md). It is not the
+full Atlas continuum BHZ family. BBH, Kitaev, Weyl, nodal and Landau/Hall
+profiles still require verified portable fixtures before support claims.
 
 **Scope.** Compose the prior generic primitives into reviewed scenes for QWZ, BHZ,
 BBH, Kitaev, Weyl, nodal, and Landau/Hall families. Support supplied band inversion,
