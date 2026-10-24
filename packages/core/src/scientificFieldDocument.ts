@@ -17,6 +17,9 @@ export type ScientificFieldDisplay = Readonly<{
 }>;
 export type ScientificFieldSource = Readonly<{
   reference: Graph2DFieldReference;
+  paired?: Readonly<{ imaginary: Graph2DFieldReference;
+    line: Readonly<{ normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+      varyingAxis: 0 | 1 | 2; fixedIndex: number }> }>;
   quantity: Readonly<{ name: string; unit: string }>;
   display: ScientificFieldDisplay;
 }>;
@@ -41,12 +44,40 @@ const validTransfer = (value: unknown): value is ScientificFieldTransfer =>
     typeof value.min === "number" && typeof value.max === "number" &&
     Number.isFinite(value.min) && Number.isFinite(value.max) && value.min < value.max);
 const validSource = (value: unknown): value is ScientificFieldSource => {
-  if (!record(value) || !exact(value, ["reference", "quantity", "display"]) ||
+  if (!record(value) || !(exact(value, ["reference", "quantity", "display"]) ||
+      exact(value, ["reference", "paired", "quantity", "display"])) ||
       !isGraph2DFieldReference(value.reference) || !record(value.quantity) ||
       !exact(value.quantity, ["name", "unit"]) || !text(value.quantity.name) || !text(value.quantity.unit, 80) ||
       !record(value.display) || !exact(value.display, ["view", "normalAxis", "fixedIndex", "transfer"]) ||
       !validTransfer(value.display.transfer)) return false;
   const { reference, display } = value as unknown as ScientificFieldSource;
+  if (value.paired !== undefined) {
+    const paired = value.paired;
+    if (!record(paired) || !exact(paired, ["imaginary", "line"]) ||
+        !isGraph2DFieldReference(paired.imaginary) || !record(paired.line) ||
+        !exact(paired.line, ["normalAxis", "planeFixedIndex", "varyingAxis", "fixedIndex"])) return false;
+    const imaginary = paired.imaginary as Graph2DFieldReference;
+    const line = paired.line;
+    const normal = line.normalAxis as number, varying = line.varyingAxis as number;
+    const fixed = [0, 1, 2].find(axis => axis !== normal && axis !== varying);
+    if (reference.semanticType !== "complex-scalar-field" || reference.component !== "real" ||
+        reference.shape.length !== 3 || imaginary.semanticType !== "complex-scalar-field" ||
+        imaginary.component !== "imaginary" ||
+        reference.sceneFingerprint !== imaginary.sceneFingerprint ||
+        reference.sceneId !== imaginary.sceneId || reference.datasetId !== imaginary.datasetId ||
+        canonicalJsonStringify(reference.locator) !== canonicalJsonStringify(imaginary.locator) ||
+        canonicalJsonStringify(reference.shape) !== canonicalJsonStringify(imaginary.shape) ||
+        canonicalJsonStringify(reference.axes) !== canonicalJsonStringify(imaginary.axes) ||
+        ![0, 1, 2].includes(normal) || ![0, 1, 2].includes(varying) ||
+        normal === varying || fixed === undefined ||
+        reference.shape[varying]! < 16 ||
+        !Number.isSafeInteger(line.planeFixedIndex) || (line.planeFixedIndex as number) < 0 ||
+        (line.planeFixedIndex as number) >= reference.shape[normal]! ||
+        !Number.isSafeInteger(line.fixedIndex) || (line.fixedIndex as number) < 0 ||
+        (line.fixedIndex as number) >= reference.shape[fixed]! ||
+        display.view !== "plane" || display.normalAxis !== normal ||
+        display.fixedIndex !== line.planeFixedIndex) return false;
+  }
   return reference.shape.length === 2 ? display.view === "plane" && display.normalAxis === null &&
     display.fixedIndex === null :
     (display.view === "plane" || display.view === "volume") &&

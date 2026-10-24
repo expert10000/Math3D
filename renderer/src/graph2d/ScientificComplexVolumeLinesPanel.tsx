@@ -5,8 +5,9 @@ import { previewGraph2DScientificVolumeLine, type Graph2DAuthoringAction,
 import { pointTableStore } from "./pointTableStore";
 
 type Axis = Readonly<{ name: string; unit: string }>;
-type Selection = Readonly<{ normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+export type ScientificComplexVolumeLineSelection = Readonly<{ normalAxis: 0 | 1 | 2; planeFixedIndex: number;
   varyingAxis: 0 | 1 | 2; fixedIndex: number }>;
+type Selection = ScientificComplexVolumeLineSelection;
 type Pair = readonly [Graph2DScientificDatasetPreview, Graph2DScientificDatasetPreview];
 const colors = ["#2563eb", "#db2777"] as const;
 const initialAxes = (shape: readonly [number, number, number]) => {
@@ -18,17 +19,21 @@ const initialAxes = (shape: readonly [number, number, number]) => {
 };
 
 export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, locator, datasetId, shape,
-  axes, origin, spacing, document, disabled, onAuthoringCommit }: {
+  axes, origin, spacing, document, disabled, initialSelection, onAuthoringCommit, onSaveWorkspace,
+  onVerificationStatus }: {
   manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator; datasetId: string;
   shape: readonly [number, number, number]; axes: readonly [Axis, Axis, Axis];
   origin: readonly [number, number, number]; spacing: readonly [number, number, number];
   document: Graph2DDocument; disabled?: boolean; onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
+  initialSelection?: Selection; onSaveWorkspace?: (selection: Selection) => void;
+  onVerificationStatus?: (status: "current" | "changed" | "missing") => void;
 }) {
   const initial = initialAxes(shape);
-  const [normalAxis, setNormalAxis] = useState<0 | 1 | 2>(initial.normalAxis);
-  const [planeFixedIndex, setPlaneFixedIndex] = useState(Math.floor(shape[initial.normalAxis] / 2));
-  const [varyingAxis, setVaryingAxis] = useState<0 | 1 | 2>(initial.varyingAxis);
-  const [fixedIndex, setFixedIndex] = useState(Math.floor(shape[initial.fixedAxis] / 2));
+  const [normalAxis, setNormalAxis] = useState<0 | 1 | 2>(initialSelection?.normalAxis ?? initial.normalAxis);
+  const [planeFixedIndex, setPlaneFixedIndex] = useState(initialSelection?.planeFixedIndex ??
+    Math.floor(shape[initial.normalAxis] / 2));
+  const [varyingAxis, setVaryingAxis] = useState<0 | 1 | 2>(initialSelection?.varyingAxis ?? initial.varyingAxis);
+  const [fixedIndex, setFixedIndex] = useState(initialSelection?.fixedIndex ?? Math.floor(shape[initial.fixedAxis] / 2));
   const [preview, setPreview] = useState<Pair | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -64,18 +69,19 @@ export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, l
       throw new TypeError("Verified real and imaginary lines have different plane coordinates or samples.");
     return pair;
   };
-  const run = async (add: boolean) => {
+  const run = async (action: "preview" | "import" | "save") => {
     if (busy || disabled || !hasContourLength) return;
-    if (add && (!preview || alreadyImported || !onAuthoringCommit)) {
+    if (action === "import" && (!preview || alreadyImported || !onAuthoringCommit)) {
       setError("Preview an unimported real/imaginary pair before adding it to Graphs."); return;
     }
     const request = { ...selection }, current = ++epoch.current;
-    setBusy(true); setError(""); if (!add) setPreview(null);
-    setStatus(add ? "Reverifying both components before import…" : "Verifying both components before preview…");
+    setBusy(true); setError(""); if (action !== "import") setPreview(null);
+    setStatus(action === "import" ? "Reverifying both components before import…" :
+      "Verifying both components…");
     try {
       const fresh = await readPair(request);
       if (epoch.current !== current) return;
-      if (add) {
+      if (action === "import") {
         if (fresh.some((part, index) => JSON.stringify(part.origin) !== JSON.stringify(preview![index]!.origin) ||
             JSON.stringify(part.rows) !== JSON.stringify(preview![index]!.rows)))
           throw new TypeError("The complex source changed since preview. Preview the pair again.");
@@ -87,9 +93,19 @@ export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, l
           [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft];
         onAuthoringCommit!({ type: "create-point-series-pair", drafts });
         setPreview(null); setStatus(`${fresh[0].rows.length} aligned real/imaginary samples added to Graphs.`);
-      } else { setPreview(fresh); setStatus(`${fresh[0].rows.length} aligned samples per component are ready.`); }
+      } else {
+        setPreview(fresh);
+        if (action === "save") {
+          if (!onSaveWorkspace) throw new TypeError("Project saving is unavailable.");
+          onSaveWorkspace(request);
+          setStatus("Verified real/imaginary field and selected line saved to Project.");
+        } else setStatus(`${fresh[0].rows.length} aligned samples per component are ready.`);
+      }
+      onVerificationStatus?.("current");
     } catch (cause) { if (epoch.current === current) { setPreview(null);
-      setError(cause instanceof Error ? cause.message : String(cause)); setStatus("No verified complex pair is available."); } }
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(message); setStatus("No verified complex pair is available.");
+      onVerificationStatus?.(/missing|ENOENT|not found/i.test(message) ? "missing" : "changed"); } }
     finally { if (epoch.current === current) setBusy(false); }
   };
   return <section aria-label="3D complex field lines" data-testid="scientific-complex-volume-lines">
@@ -129,10 +145,13 @@ export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, l
     <p>Plane {axes[normalAxis].name} = {coordinate(normalAxis, planeFixedIndex)} {axes[normalAxis].unit};
       {" "}line at {axes[fixedAxis].name} = {coordinate(fixedAxis, fixedIndex)} {axes[fixedAxis].unit};
       {" "}vary {axes[varyingAxis].name} ({axes[varyingAxis].unit}).</p>
-    <button type="button" disabled={busy || disabled || !hasContourLength} onClick={() => void run(false)}>Preview real/imaginary lines</button>
+    <button type="button" disabled={busy || disabled || !hasContourLength} onClick={() => void run("preview")}>Preview real/imaginary lines</button>
     {" "}<button type="button" disabled={busy || disabled || !hasContourLength || !preview || alreadyImported || !onAuthoringCommit}
-      onClick={() => void run(true)}>Import real/imaginary pair</button>
-    <p role="status">{alreadyImported ? "This complex plane line pair is already in Graphs." : status}</p>
+      onClick={() => void run("import")}>Import real/imaginary pair</button>
+    {onSaveWorkspace && <>{" "}<button type="button" disabled={busy || disabled || !hasContourLength}
+      onClick={() => void run("save")}>Save paired field to Project</button></>}
+    <p role="status">{status}</p>
+    {alreadyImported && <p>This complex plane line pair is already in Graphs.</p>}
     {error && <p role="alert">{error}</p>}
     {preview && <figure aria-label="Verified 3D complex line pair">
       <figcaption>{preview[0].rows.length} aligned samples per component · real and imaginary.

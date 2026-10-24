@@ -61,6 +61,8 @@ import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
 import { ScientificFieldWorkspacePanel } from "./ScientificFieldWorkspacePanel";
 import { ScientificComplexVolumeLinesPanel } from "./ScientificComplexVolumeLinesPanel";
+import { ScientificComplexField3DWorkspacePanel } from "./ScientificComplexField3DWorkspacePanel";
+import type { ScientificComplexVolumeLineSelection } from "./ScientificComplexVolumeLinesPanel";
 import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
@@ -408,6 +410,26 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
       setScientificImportError("");
     } catch (error) { setScientificImportError((error as Error).message); }
+  };
+  const saveScientificComplexField = (line: ScientificComplexVolumeLineSelection) => {
+    if (!scientificImport || !scientificDataset || !onSaveScientificField ||
+        scientificDataset.semanticType !== "complex-scalar-field" || scientificDataset.shape.length !== 3)
+      throw new TypeError("A verified 3D complex field is required.");
+    const real = createGraph2DFieldReference(scientificImport.manifestJson, scientificImport.fingerprint,
+      scientificImport.locator, scientificDataset.id, "real");
+    const imaginary = createGraph2DFieldReference(scientificImport.manifestJson, scientificImport.fingerprint,
+      scientificImport.locator, scientificDataset.id, "imaginary");
+    const source = { reference: real, paired: { imaginary, line },
+      quantity: { name: scientificDataset.quantity.name, unit: scientificDataset.quantity.unit },
+      display: { view: "plane" as const, normalAxis: line.normalAxis,
+        fixedIndex: line.planeFixedIndex, transfer: { mode: "data" as const } } };
+    const saved = savedScientificFields.find(item => item.source.reference.id === real.id && item.source.paired);
+    const workspace = saved ? reviseScientificFieldDocument(saved, source) :
+      createScientificFieldDocument(source, { stableKey: real.id,
+        title: scientificDataset.quantity.name + " · 3D complex field" });
+    onSaveScientificField(workspace);
+    setScientificFieldDocument(workspace);
+    setFieldStatuses(current => ({ ...current, [real.id]: "current" }));
   };
   const saveScientificVectorFieldReference = async () => {
     if (!scientificImport || !scientificSelected || !scientificVectorPlane || !onAuthoringCommit ||
@@ -1868,7 +1890,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           key={vectorField2DDocument.identity.id} initialDocument={vectorField2DDocument}
           onSaveDocument={field => { setVectorField2DDocument(field); onSaveVectorField2D?.(field); }}
           onClose={() => setVectorField2DOpen(false)} />}
-        {scientificFieldOpen && scientificFieldDocument && <ScientificFieldWorkspacePanel
+        {scientificFieldOpen && scientificFieldDocument?.source.paired &&
+          <ScientificComplexField3DWorkspacePanel key={scientificFieldDocument.identity.id}
+            initialDocument={scientificFieldDocument} graphDocument={document}
+            onSaveDocument={field => { setScientificFieldDocument(field); onSaveScientificField?.(field); }}
+            onAuthoringCommit={onAuthoringCommit}
+            onVerificationStatus={status => setFieldStatuses(current => ({ ...current,
+              [scientificFieldDocument.source.reference.id]: status }))}
+            onClose={() => setScientificFieldOpen(false)} />}
+        {scientificFieldOpen && scientificFieldDocument && !scientificFieldDocument.source.paired && <ScientificFieldWorkspacePanel
           key={scientificFieldDocument.identity.id} initialDocument={scientificFieldDocument}
           onSaveDocument={field => { setScientificFieldDocument(field); onSaveScientificField?.(field); }}
           isGraphLineImported={selection => document.source.objects.some(item =>
@@ -2061,7 +2091,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   typeof scientificCoordinate.axes[number], typeof scientificCoordinate.axes[number]]}
                 origin={scientificCoordinate.origin as [number, number, number]}
                 spacing={scientificCoordinate.spacing as [number, number, number]}
-                document={document} disabled={scientificImportBusy} onAuthoringCommit={onAuthoringCommit} />}
+                document={document} disabled={scientificImportBusy} onAuthoringCommit={onAuthoringCommit}
+                onSaveWorkspace={onSaveScientificField ? saveScientificComplexField : undefined} />}
           </>}
           {scientificPreview ? <>
             <p>{scientificPreview.rows.length} checked samples · {scientificPreview.origin.xName} ({scientificPreview.origin.xUnit}) →

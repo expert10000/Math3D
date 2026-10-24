@@ -3,7 +3,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 const core = require(resolve("packages/core/src/index.ts"));
 
@@ -221,6 +221,87 @@ test("GRA-17 bundled 3D complex preset imports and maps without a folder picker"
     await link.getByRole("button", { name: "Verify original bundle" }).click();
     await expect(link).toContainText("Original bundle: verified in this session");
   } finally { await closeSurfaceApp(app); }
+});
+
+test("GRA-17 saved 3D complex field reopens and imports distinct verified pairs", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-complex-field-project-"));
+  const directory = join(root, "complex-field.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/complex-wave-volume.sscene"), directory,
+    { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
+      ({ canceled: false, filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    const pair = importer.getByRole("region", { name: "3D complex field lines" });
+    await pair.getByLabel("Complex plane coordinate z").selectOption("4");
+    await pair.getByLabel("Complex fixed y").selectOption("10");
+    await pair.getByRole("button", { name: "Save paired field to Project" }).click();
+    await expect(pair.getByRole("status")).toContainText("saved to Project");
+    await importer.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const fieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "field")?.expected.id as string);
+    expect(fieldId).toBeTruthy();
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    let workspace = page.getByRole("dialog", { name: "3D complex field workspace" });
+    await expect(workspace).toContainText("Both source components verified on this opening");
+    let savedPair = workspace.getByRole("region", { name: "3D complex field lines" });
+    await expect(savedPair.getByLabel("Complex plane coordinate z")).toHaveValue("4");
+    await expect(savedPair.getByLabel("Complex fixed y")).toHaveValue("10");
+    await savedPair.getByRole("button", { name: "Preview real/imaginary lines" }).click();
+    await expect(savedPair.getByRole("figure", { name: "Verified 3D complex line pair" })).toContainText("41 aligned samples");
+    await savedPair.getByRole("button", { name: "Import real/imaginary pair" }).click();
+    await expect(savedPair).toContainText("already in Graphs");
+    await expect(savedPair.getByRole("button", { name: "Import real/imaginary pair" })).toBeDisabled();
+    await savedPair.getByLabel("Complex fixed y").selectOption("11");
+    await savedPair.getByRole("button", { name: "Preview real/imaginary lines" }).click();
+    await savedPair.getByRole("button", { name: "Import real/imaginary pair" }).click();
+    await expect(savedPair).toContainText("already in Graphs");
+    await savedPair.getByRole("button", { name: "Save paired field to Project" }).click();
+    await expect(savedPair.getByRole("status")).toContainText("saved to Project");
+    await workspace.getByRole("button", { name: "Close" }).click();
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    workspace = page.getByRole("dialog", { name: "3D complex field workspace" });
+    await expect(workspace).toContainText("Both source components verified on this opening");
+    savedPair = workspace.getByRole("region", { name: "3D complex field lines" });
+    await expect(savedPair.getByLabel("Complex fixed y")).toHaveValue("11");
+    const imaginaryFile = join(directory, "imaginary.f64"), original = await readFile(imaginaryFile);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(imaginaryFile, changed);
+    await workspace.getByRole("button", { name: "Reverify field" }).click();
+    await expect(workspace.getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await expect(workspace.getByRole("region", { name: "3D complex field lines" })).toHaveCount(0);
+    await writeFile(imaginaryFile, original);
+    await workspace.getByRole("button", { name: "Reverify field" }).click();
+    await expect(workspace).toContainText("Both source components verified on this opening");
+    await rm(join(directory, "real.f64"));
+    await workspace.getByRole("button", { name: "Reverify field" }).click();
+    await expect(workspace.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-complex-field-project-"))
+      throw new Error("Unsafe complex field Project fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("GRA-17 places a linked contour and reviews a changed Graph before refresh", async () => {

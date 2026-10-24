@@ -75,3 +75,46 @@ describe("scientific scalar field Project workspace", () => {
       display: { ...revised.source.display, fixedIndex: volumeReference.shape[2] } } }).ok).toBe(false);
   });
 });
+
+describe("saved 3D complex field pair", () => {
+  const volumeManifest = readFileSync(fileURLToPath(new URL(
+    "../../../tests/fixtures/scientific-scene/complex-wave-volume.sscene/manifest.json", import.meta.url)), "utf8");
+  const volumeFingerprint = sha256Checksum(new TextEncoder().encode(volumeManifest)).slice(7);
+  const locator = { kind: "preset" as const, value: "complexWaveVolume" };
+  const real = createGraph2DFieldReference(volumeManifest, volumeFingerprint, locator, "field", "real");
+  const imaginary = createGraph2DFieldReference(volumeManifest, volumeFingerprint, locator, "field", "imaginary");
+  const original = createScientificFieldDocument({ reference: real,
+    paired: { imaginary, line: { normalAxis: 2, planeFixedIndex: 8, varyingAxis: 0, fixedIndex: 20 } },
+    quantity: { name: "Wave amplitude", unit: "1" },
+    display: { view: "plane", normalAxis: 2, fixedIndex: 8, transfer: { mode: "data" } } },
+  { stableKey: real.id, title: "Wave amplitude · 3D complex field" });
+
+  it("reopens both checksums and the selected plane line from a Project", () => {
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "field", checkpoint: original,
+      expected: original.identity, replay: null }], activeDocumentIds: [original.identity.id],
+    results: [], artifacts: [], relations: [], committedSelection: null, constructions: [] });
+    const reopened = parseMath3DProject(serializeMath3DProject(createMath3DProject(workspace,
+      { stableKey: "paired-complex-field" })));
+    expect(reopened.workspace.entries[0]?.checkpoint).toEqual(original);
+    expect(reopened.workspace.entries[0]?.checkpoint).toMatchObject({ source: {
+      reference: { component: "real", resourceSha256: real.resourceSha256 },
+      paired: { imaginary: { component: "imaginary", resourceSha256: imaginary.resourceSha256 },
+        line: { normalAxis: 2, planeFixedIndex: 8, varyingAxis: 0, fixedIndex: 20 } } } });
+    expect(serializeMath3DProject(reopened)).not.toContain('"values"');
+  });
+
+  it("rejects a mismatched companion and invalid line, and preserves a revised selection", () => {
+    expect(() => createScientificFieldDocument({ ...original.source,
+      paired: { ...original.source.paired!, imaginary: { ...imaginary, shape: [40, 41, 17] } } },
+    { stableKey: real.id })).toThrow(/Invalid scientific field document/);
+    expect(() => createScientificFieldDocument({ ...original.source,
+      paired: { ...original.source.paired!, line: { normalAxis: 2, planeFixedIndex: 8,
+        varyingAxis: 2, fixedIndex: 20 } } }, { stableKey: real.id })).toThrow();
+    const revised = reviseScientificFieldDocument(original, { ...original.source,
+      paired: { imaginary, line: { normalAxis: 1, planeFixedIndex: 12, varyingAxis: 2, fixedIndex: 5 } },
+      display: { ...original.source.display, normalAxis: 1, fixedIndex: 12 } });
+    expect(revised.identity.revision).toBe(original.identity.revision + 1);
+    expect(revised.source.paired?.line).toEqual({ normalAxis: 1, planeFixedIndex: 12,
+      varyingAxis: 2, fixedIndex: 5 });
+  });
+});
