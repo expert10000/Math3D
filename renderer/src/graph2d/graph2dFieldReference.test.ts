@@ -65,8 +65,16 @@ describe("GRA-13.3 saved field references", () => {
     expect(reviewGraph2DVectorFieldRelink(saved, changed).eligible).toBe(false);
     expect(reviewGraph2DVectorFieldRelink(saved, changed).differences
       .find(item => item.field === "Component 2 resource SHA-256")).toMatchObject({ required: true, matches: false });
+    const changedFirst = { ...replacement, components: replacement.components.map((part, index) =>
+      index === 0 ? { ...part, resourceSha256: "0".repeat(64) } : part) };
+    expect(reviewGraph2DVectorFieldRelink(saved, changedFirst).eligible).toBe(false);
+    expect(reviewGraph2DVectorFieldRelink(saved, changedFirst).differences
+      .find(item => item.field === "Component 1 resource SHA-256")).toMatchObject({ required: true, matches: false });
     const swapped = { ...replacement, components: [...replacement.components].reverse() };
     expect(reviewGraph2DVectorFieldRelink(saved, swapped).eligible).toBe(false);
+    const wrongShape = { ...replacement, components: replacement.components.map(part => ({
+      ...part, shape: [32, 33] })) };
+    expect(reviewGraph2DVectorFieldRelink(saved, wrongShape).eligible).toBe(false);
     const wrongAxes = { ...replacement, components: replacement.components.map(part => ({
       ...part, axes: [{ ...part.axes[0]!, unit: "cm" }, part.axes[1]!] })) };
     expect(reviewGraph2DVectorFieldRelink(saved, wrongAxes).eligible).toBe(false);

@@ -839,6 +839,12 @@ test("GRA-13.3 relinks both saved vector components only after matching and fres
     await saved.getByRole("button", { name: "Find vector replacement" }).click();
     await expect(review).toContainText("matching.sscene");
     await expect(review.locator('tr[data-required="yes"][data-match="no"]')).toHaveCount(0);
+    const east = await readFile(join(matching, "east.f64"));
+    await rm(join(matching, "east.f64"));
+    await review.getByRole("button", { name: "Accept verified vector relink" }).click();
+    await expect(review.getByRole("alert")).toContainText("Replacement missing");
+    await expect(saved).toContainText("original.sscene");
+    await writeFile(join(matching, "east.f64"), east);
     const north = await readFile(join(matching, "north.f64"));
     const changedAfterReview = Buffer.from(north);
     changedAfterReview[0] ^= 1;
