@@ -190,6 +190,39 @@ test("GRA-17 maps a freshly verified real/imaginary line pair from one 3D comple
   }
 });
 
+test("GRA-17 bundled 3D complex preset imports and maps without a folder picker", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => {
+      throw new Error("A pinned preset must not open a folder picker"); }; });
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    const chooser = page.getByRole("dialog", { name: "Scientific field presets" });
+    await chooser.getByRole("button", { name: "Complex wave volume", exact: true }).click();
+    const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    const pair = importer.getByRole("region", { name: "3D complex field lines" });
+    await expect(importer).toContainText("shape [41, 41, 17]");
+    await pair.getByRole("button", { name: "Preview real/imaginary lines" }).click();
+    await expect(pair.getByRole("figure", { name: "Verified 3D complex line pair" })).toContainText("41 aligned samples");
+    await pair.getByRole("button", { name: "Import real/imaginary pair" }).click();
+    await expect(pair).toContainText("already in Graphs");
+    await importer.getByRole("button", { name: "Cancel" }).click();
+    await page.getByLabel("Graph functions", { exact: true })
+      .getByRole("button", { name: /Select Wave amplitude · real/ }).click();
+    const mapping = page.getByRole("region", { name: "Graph to Complex Analysis", exact: true });
+    await mapping.getByRole("button", { name: "Preview Complex contour" }).click();
+    await expect(mapping.getByRole("status")).toContainText("41 points");
+    await mapping.getByRole("button", { name: "Open in Complex Analysis" }).click();
+    const link = page.getByRole("region", { name: "Linked Graph contour", exact: true });
+    await link.getByRole("button", { name: "Verify original bundle" }).click();
+    await expect(link).toContainText("Original bundle: verified in this session");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-17 places a linked contour and reviews a changed Graph before refresh", async () => {
   const app = await launchSurfaceApp();
   try {

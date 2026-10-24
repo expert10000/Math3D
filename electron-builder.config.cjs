@@ -71,6 +71,10 @@ const config = {
       to: "scientific-scenes/complex-wave.sscene",
     },
     {
+      from: "tests/fixtures/scientific-scene/complex-wave-volume.sscene",
+      to: "scientific-scenes/complex-wave-volume.sscene",
+    },
+    {
       from: "tests/fixtures/scientific-scene/vortex-flow.sscene",
       to: "scientific-scenes/vortex-flow.sscene",
     },

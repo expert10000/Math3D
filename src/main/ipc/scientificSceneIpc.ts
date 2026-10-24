@@ -42,6 +42,7 @@ const GRAPH_DATASET_PRESETS = {
   sincos: { directory: "sincos.sscene", fingerprint: PINNED_SINCOS_MANIFEST },
   thermal: { directory: "thermal-gradient.sscene", fingerprint: "bbcc6be51d2194a5e81498f0ad6bd7556c11a87c9d764d8c84a32be497a7320a" },
   complexWave: { directory: "complex-wave.sscene", fingerprint: "30861be84fbb0d762d55b21e2554fcd60c7bf543fb9689aeae5d3e9df9682135" },
+  complexWaveVolume: { directory: "complex-wave-volume.sscene", fingerprint: "207290452e2066b36460e1b61e3bc09c18150ee147d5e2d3c9dd4fe4d92de0b4" },
   vortexFlow: { directory: "vortex-flow.sscene", fingerprint: "f06c249796ccd55de39ca3d27ce401e46ac1d34a6c469207613423383961fd01" },
   vortexVolume: { directory: "vortex-volume.sscene", fingerprint: "e117c3692fd2da6d549c7c93981e1a39b4c73609ae9e40ca9e3a63557bfc264c" },
 } as const;

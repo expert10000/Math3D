@@ -27,6 +27,16 @@ const wave = (i, j) => {
   const phase = 2.2 * x + 0.9 * y + 0.4 * Math.sin(y);
   return [envelope * Math.cos(phase), envelope * Math.sin(phase)];
 };
+const complexVolumeShape = [41, 41, 17], complexVolumeOrigin = [-4, -4, -2];
+const complexVolumeSpacing = [0.2, 0.2, 0.25];
+const volumeWave = (i, j, k) => {
+  const x = complexVolumeOrigin[0] + i * complexVolumeSpacing[0];
+  const y = complexVolumeOrigin[1] + j * complexVolumeSpacing[1];
+  const z = complexVolumeOrigin[2] + k * complexVolumeSpacing[2];
+  const envelope = Math.exp(-(x * x + y * y) / 18 - z * z / 12);
+  const phase = 1.3 * x + 0.8 * y + 0.65 * z + 0.25 * Math.sin(y);
+  return [envelope * Math.cos(phase), envelope * Math.sin(phase)];
+};
 const vortexShape = [33, 33], vortexOrigin = [-4, -4], vortexSpacing = [0.25, 0.25];
 const vortex = (i, j) => {
   const x = vortexOrigin[0] + i * vortexSpacing[0], y = vortexOrigin[1] + j * vortexSpacing[1];
@@ -47,6 +57,11 @@ const presets = [
     shape: complexShape, coordinate: coordinates("plane", [{ name: "x", unit: "m" }, { name: "y", unit: "m" }],
       complexOrigin, complexSpacing), quantity: { name: "Wave amplitude", unit: "1" },
     semanticType: "complex-scalar-field", components: ["real", "imaginary"], sample: wave },
+  { directory: "complex-wave-volume.sscene", sceneId: "complex-wave-volume", title: "Complex wave volume · 3D",
+    shape: complexVolumeShape, coordinate: coordinates("space", [{ name: "x", unit: "m" },
+      { name: "y", unit: "m" }, { name: "z", unit: "m" }], complexVolumeOrigin, complexVolumeSpacing),
+    quantity: { name: "Wave amplitude", unit: "1" }, semanticType: "complex-scalar-field",
+    components: ["real", "imaginary"], sample: volumeWave },
   { directory: "vortex-flow.sscene", sceneId: "vortex-flow", title: "Planar vortex · 2D vector field",
     shape: vortexShape, coordinate: coordinates("plane", [{ name: "x", unit: "m" }, { name: "y", unit: "m" }],
       vortexOrigin, vortexSpacing), quantity: { name: "Velocity", unit: "m/s" },

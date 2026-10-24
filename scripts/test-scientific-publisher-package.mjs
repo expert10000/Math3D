@@ -15,7 +15,8 @@ const packageRoot = resolve("output/scientific-publisher-package-probe/win-unpac
 const executable = join(packageRoot, "Math3D.exe");
 const publisher = join(packageRoot, "resources/scientific-publisher/scientific_scene_publisher.py");
 const spec = join(packageRoot, "resources/scientific-publisher/examples/sincos-grid.json");
-const graphPresetNames = ["thermal-gradient.sscene", "complex-wave.sscene", "vortex-flow.sscene", "vortex-volume.sscene"];
+const graphPresetNames = ["thermal-gradient.sscene", "complex-wave.sscene", "complex-wave-volume.sscene",
+  "vortex-flow.sscene", "vortex-volume.sscene"];
 const ipcSource = await readFile(resolve("src/main/ipc/scientificSceneIpc.ts"), "utf8");
 const pinned = ipcSource.match(/const PINNED_REFERENCE_PUBLISHER = "([a-f0-9]{64})";/)?.[1];
 assert(pinned, "desktop reference publisher pin is missing");

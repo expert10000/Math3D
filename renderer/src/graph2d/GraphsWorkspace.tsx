@@ -98,6 +98,7 @@ const SCIENTIFIC_FIELD_PRESETS = [
   { id: "sincos", title: "Sine–cosine grid", detail: "2D scalar · compare lines and inspect the full field" },
   { id: "thermal", title: "Thermal gradient", detail: "2D scalar · temperature in kelvin across time and distance" },
   { id: "complexWave", title: "Complex wave packet", detail: "2D complex · real and imaginary wave components" },
+  { id: "complexWaveVolume", title: "Complex wave volume", detail: "3D complex · paired real and imaginary plane lines" },
   { id: "vortexFlow", title: "Planar vortex", detail: "2D vector · east and north velocity components" },
   { id: "vortexVolume", title: "Swirling flow volume", detail: "3D vector · rotate volume and inspect exact planes" },
 ] as const;

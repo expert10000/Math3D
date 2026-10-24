@@ -550,7 +550,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openGraphDataset: (): Promise<ScientificGraphDatasetOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDataset"),
-  openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "vortexFlow" | "vortexVolume"):
+  openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "complexWaveVolume" | "vortexFlow" | "vortexVolume"):
     Promise<ScientificGraphDatasetOpenResponse> =>
     ipcRenderer.invoke("scientificScenes:openGraphDatasetPreset", id),
   openGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string }):

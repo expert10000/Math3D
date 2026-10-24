@@ -8,7 +8,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { readScientificSceneBundle } = require("../dist/main/scientificScene/bundle.js");
 const { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane,
-  previewScientificGraphVolume } = require("../dist/main/scientificScene/graphDataset.js");
+  previewScientificGraphVolume, previewScientificGraphComplexVolumeLines } =
+  require("../dist/main/scientificScene/graphDataset.js");
 const { adaptVerifiedHeightSurface, openScientificHeightSurface, inspectScientificHeightSample } = require("../dist/main/scientificScene/heightSurface.js");
 const { importQuantumFieldScientificManifest } = require("../dist/main/quantumScene/scientificManifest.js");
 const { normalizeScientificSceneManifest } = require("../dist/shared/scientificSceneManifest.js");
@@ -37,6 +38,16 @@ const waveImaginary = await previewScientificGraphSlice(graphPreset("complex-wav
   "field", 0, 24, "imaginary");
 assert.equal(waveImaginary.values.length, 41);
 assert.notEqual(waveImaginary.values[20], 0);
+const waveVolumeSource = await openScientificGraphDatasets(graphPreset("complex-wave-volume"));
+assert.equal(waveVolumeSource.fingerprint, "207290452e2066b36460e1b61e3bc09c18150ee147d5e2d3c9dd4fe4d92de0b4");
+assert.deepEqual(waveVolumeSource.datasets.map(item => item.component), ["real", "imaginary"]);
+assert.deepEqual(waveVolumeSource.datasets[0].shape, [41, 41, 17]);
+const waveVolumeLines = await previewScientificGraphComplexVolumeLines(graphPreset("complex-wave-volume"),
+  waveVolumeSource.fingerprint, "field", 2, 8, 0, 20);
+assert.deepEqual(waveVolumeLines.map(item => item.component), ["real", "imaginary"]);
+assert.deepEqual(waveVolumeLines.map(item => item.values.length), [41, 41]);
+assert.equal(waveVolumeLines[0].values[20], 1);
+assert.equal(waveVolumeLines[1].values[20], 0);
 const vortexSource = await openScientificGraphDatasets(graphPreset("vortex-flow"));
 assert.deepEqual(vortexSource.datasets.map(item => item.component), ["east", "north"]);
 const vortexNorth = await previewScientificGraphSlice(graphPreset("vortex-flow"), vortexSource.fingerprint,
