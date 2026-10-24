@@ -4,7 +4,7 @@ import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { expect, test } from "@playwright/test";
-import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
 const hash = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 
@@ -598,6 +598,15 @@ test("GRA-13.3 saves one paired 2D vector reference and re-verifies both compone
     await expect(saved).toContainText("field · 2D vector field · east + north");
     await expect(saved).toContainText("Both components verified on last opening");
     await dialog.getByRole("button", { name: "Cancel" }).click();
+    await saved.getByRole("button", { name: "Open 2D field workspace" }).click();
+    let fieldWorkspace = page.getByRole("dialog", { name: "2D vector field workspace" });
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await fieldWorkspace.getByRole("spinbutton", { name: "Density x" }).fill("9");
+    await fieldWorkspace.getByRole("spinbutton", { name: "Density y" }).fill("7");
+    await fieldWorkspace.getByRole("spinbutton", { name: "Arrow limit" }).fill("40");
+    await fieldWorkspace.getByRole("spinbutton", { name: "Magnitude scale" }).fill("1.5");
+    await fieldWorkspace.getByRole("button", { name: "Save view to Project" }).click();
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
     await page.getByTestId("kernel-workspace-toggle").click();
     await page.getByTestId("kernel-workspace-save").click();
     await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved");
@@ -608,6 +617,11 @@ test("GRA-13.3 saves one paired 2D vector reference and re-verifies both compone
     expect(references).toHaveLength(1);
     expect(references[0]).toMatchObject({ components: [
       { datasetId: "field", component: "east" }, { datasetId: "field", component: "north" }] });
+    const vectorDocuments = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!)
+      .entries.filter((entry: { module: string }) => entry.module === "vector2d"));
+    expect(vectorDocuments).toHaveLength(1);
+    expect(vectorDocuments[0].checkpoint.source.display).toEqual({
+      density: [9, 7], maxGlyphs: 40, magnitudeScale: 1.5 });
     await page.reload();
     await page.getByTestId("kernel-workspace-toggle").click();
     await page.getByTestId("kernel-workspace-reopen").click();
@@ -615,6 +629,11 @@ test("GRA-13.3 saves one paired 2D vector reference and re-verifies both compone
     await page.getByTestId("kernel-workspace-toggle").click();
     await page.getByTestId("workspace-nav-graphs").click();
     await expect(saved).toContainText("Not reverified on this opening");
+    await saved.getByRole("button", { name: "Open 2D field workspace" }).click();
+    fieldWorkspace = page.getByRole("dialog", { name: "2D vector field workspace" });
+    await expect(fieldWorkspace.getByRole("spinbutton", { name: "Density x" })).toHaveValue("9");
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
     await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
     dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
     await expect(dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
@@ -640,6 +659,36 @@ test("GRA-13.3 saves one paired 2D vector reference and re-verifies both compone
     await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
     await expect(saved).toContainText("Missing source — arrows unavailable");
     await expect(page.getByRole("dialog", { name: "Import verified scientific dataset" })).toHaveCount(0);
+    await cp(resolve("tests/fixtures/scientific-scene/vortex-flow.sscene/east.f64"), join(directory, "east.f64"));
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    const projectFieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "vector2d")?.expected.id);
+    expect(projectFieldId).toBeTruthy();
+    await projectPanel.getByTestId(`project-view-${projectFieldId}`).click();
+    fieldWorkspace = page.getByRole("dialog", { name: "2D vector field workspace" });
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await expect(fieldWorkspace.getByRole("spinbutton", { name: "Magnitude scale" })).toHaveValue("1.5");
+    await writeFile(join(directory, "north.f64"), changed);
+    await fieldWorkspace.getByRole("button", { name: "Reverify arrows" }).click();
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toHaveCount(0);
+    await expect(fieldWorkspace.getByRole("alert")).toContainText("resource integrity failed");
+    await writeFile(join(directory, "north.f64"), north);
+    await fieldWorkspace.getByRole("button", { name: "Reverify arrows" }).click();
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await rm(join(directory, "east.f64"));
+    await fieldWorkspace.getByRole("button", { name: "Reverify arrows" }).click();
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toHaveCount(0);
+    await expect(fieldWorkspace.getByRole("status")).toContainText("Arrows withheld");
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(projectFieldId);
+    fieldWorkspace = page.getByRole("dialog", { name: "2D vector field workspace" });
+    await expect(fieldWorkspace.getByRole("status")).toContainText("Arrows withheld");
+    await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toHaveCount(0);
+    await expect(fieldWorkspace.getByRole("spinbutton", { name: "Arrow limit" })).toHaveValue("40");
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector-reference-"))

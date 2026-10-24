@@ -11,6 +11,7 @@ import { normalizeComplexAnalysisDocument, type ComplexAnalysisDocument } from "
 import { normalizeGraph2DDocument, type Graph2DDocument } from "./graph2dDocument";
 import { normalizeQuantumSceneDocument, type QuantumSceneDocument } from "./quantumSceneDocument";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
+import { normalizeVectorField2DDocument, type VectorField2DDocument } from "./vectorField2DDocument";
 import { normalizeViewerCommittedSelection, viewerSourceFromDocument, type ViewerCommittedSelection } from "./viewerProvenance";
 import { canonicalJsonByteLength, matchesScientificSourceGeneration, type ScientificSourceGeneration } from "./scientificJobs";
 import type { ValidationResult } from "./validation";
@@ -19,9 +20,9 @@ export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const MAX_MIXED_WORKSPACE_BYTES = 16 * 1024 * 1024;
 export const MAX_MIXED_WORKSPACE_REPLAY_BYTES = 256 * 1024;
-export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d", "quantum", "vector3d"] as const;
+export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d", "quantum", "vector3d", "vector2d"] as const;
 export type KernelWorkspaceModule = typeof KERNEL_WORKSPACE_MODULES[number];
-export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument | VectorField3DDocument;
+export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument | VectorField3DDocument | VectorField2DDocument;
 export type MixedWorkspaceReplay = Readonly<{ format: string; payload: CanonicalJsonValue }>;
 export type MixedWorkspaceEntry = Readonly<{
   module: KernelWorkspaceModule;
@@ -71,6 +72,7 @@ const normalizeModuleDocument = (module: KernelWorkspaceModule, value: unknown):
     case "graph2d": return normalizeGraph2DDocument(value);
     case "quantum": return normalizeQuantumSceneDocument(value);
     case "vector3d": return normalizeVectorField3DDocument(value);
+    case "vector2d": return normalizeVectorField2DDocument(value);
   }
 };
 const entryKey = (entry: MixedWorkspaceEntry): string => `${entry.module}:${entry.expected.id}`;

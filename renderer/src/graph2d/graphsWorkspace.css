@@ -381,6 +381,10 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .vector-field3d-editor { position: relative; top: auto; left: auto; transform: none;
   width: min(900px, 100%); max-height: calc(100vh - 24px); overflow: auto;
   box-shadow: 0 16px 44px #0f172a44; }
+.vector-field2d-editor { width: min(920px, 100%); }
+.vector-field2d-backdrop { z-index: 4100; }
+.vector-field2d-editor .graph2d-scientific-vector { max-width: 720px; }
+.vector-field2d-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .vector-field3d-editor .vector-field3d-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; margin: 14px 0; }
 .vector-field3d-form { border: 0; padding: 0; margin: 0; min-width: 0; }
 .vector-field3d-editor .vector-field3d-controls label { display: grid; gap: 4px; font-weight: 600; }

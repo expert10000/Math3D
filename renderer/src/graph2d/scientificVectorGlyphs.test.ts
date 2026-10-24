@@ -35,4 +35,13 @@ describe("bounded scientific 2D vector glyphs", () => {
     expect(result.minimum).toBe(0);
     expect(result.maximum).toBe(0);
   });
+
+  it("uses requested grid density but never exceeds the arrow limit", () => {
+    const requested = buildScientificVectorGlyphs(planes([33, 33], 3, 4), coordinate,
+      { density: [9, 7], maxGlyphs: 100 });
+    expect(requested.glyphs).toHaveLength(63);
+    const capped = buildScientificVectorGlyphs(planes([33, 33], 3, 4), coordinate,
+      { density: [33, 33], maxGlyphs: 40 });
+    expect(capped.glyphs.length).toBeLessThanOrEqual(40);
+  });
 });

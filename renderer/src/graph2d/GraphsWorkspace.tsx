@@ -45,6 +45,7 @@ import {
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash,
   createVectorField3DDocument, type VectorField3DDocument, type VectorField3DSource,
+  createVectorField2DDocument, reviseVectorField2DDocument, type VectorField2DDocument,
   graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
@@ -58,6 +59,7 @@ import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
 import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
+import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
 import { Graph2DPromotionPanel } from "./Graph2DPromotionPanel";
@@ -135,6 +137,9 @@ type Props = {
   savedVectorField3D?: VectorField3DDocument | null;
   openVectorField3DRequest?: { document: VectorField3DDocument; token: number } | null;
   onSaveVectorField3D?: (document: VectorField3DDocument) => void;
+  savedVectorField2D?: VectorField2DDocument | null;
+  openVectorField2DRequest?: { document: VectorField2DDocument; token: number } | null;
+  onSaveVectorField2D?: (document: VectorField2DDocument) => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
@@ -142,7 +147,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
-  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D }: Props) {
+  savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D,
+  savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
   const [leftPalette, setLeftPalette] = useState<Graph2DLeftPalette>(readGraph2DLeftPalette);
@@ -217,6 +223,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
   const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(null);
   const [vectorField3DOpen, setVectorField3DOpen] = useState(false);
+  const [vectorField2DDocument, setVectorField2DDocument] = useState<VectorField2DDocument | null>(null);
+  const [vectorField2DOpen, setVectorField2DOpen] = useState(false);
+  useEffect(() => {
+    if (!openVectorField2DRequest) return;
+    setVectorField2DDocument(openVectorField2DRequest.document);
+    setVectorField2DOpen(true);
+  }, [openVectorField2DRequest?.token]);
   useEffect(() => {
     if (!openVectorField3DRequest) return;
     setVectorField3DDocument(openVectorField3DRequest.document);
@@ -380,11 +393,50 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (scientificPreviewEpoch.current !== epoch) return;
       const reference = createGraph2DVectorFieldReference(source.manifestJson, source.fingerprint,
         source.locator, datasetId);
+      const quantity = scientificDataset?.quantity;
+      if (!quantity) throw new TypeError("Vector quantity metadata is unavailable.");
+      const workspace = createVectorField2DDocument({ reference,
+        quantity: { name: quantity.name, unit: quantity.unit },
+        display: { density: [17, 17], maxGlyphs: 512, magnitudeScale: 1 } },
+      { stableKey: reference.id, title: quantity.name + " · 2D vector field" });
       onAuthoringCommit({ type: "save-vector-field-reference", reference });
+      onSaveVectorField2D?.(workspace);
+      setVectorField2DDocument(workspace);
       setScientificVectorPlane(verified);
       setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
     } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
+  };
+  const openSavedVectorField2DWorkspace = async (reference: Graph2DVectorFieldReference) => {
+    if (scientificImportBusy) return;
+    if (savedVectorField2D?.source.reference.id === reference.id &&
+        savedVectorField2D.source.reference.components[0]?.sceneFingerprint === reference.components[0]?.sceneFingerprint) {
+      setVectorField2DDocument(savedVectorField2D); setVectorField2DOpen(true); return;
+    }
+    if (!window.scientificScenes?.openGraphDatasetReference) return;
+    setScientificImportBusy(true); setScientificImportError("");
+    let fingerprint: string | null = null;
+    try {
+      const first = reference.components[0]!;
+      const opened = await window.scientificScenes.openGraphDatasetReference({
+        locator: first.locator, sceneFingerprint: first.sceneFingerprint });
+      if (!opened.ok) throw new Error("Saved source " + opened.status + ": " + opened.error);
+      fingerprint = opened.source.fingerprint;
+      if (inspectGraph2DVectorFieldReference(reference, opened.source.manifestJson) !== "current")
+        throw new Error("Saved vector components, axes, shape or checksums changed.");
+      const parsed = parseScientificSceneManifest(opened.source.manifestJson);
+      if (!parsed.ok) throw new Error(parsed.errors.join(" "));
+      const quantity = parsed.value.datasets.find(item => item.id === first.datasetId)?.quantity;
+      if (!quantity) throw new TypeError("Saved vector quantity metadata is unavailable.");
+      const workspace = createVectorField2DDocument({ reference,
+        quantity: { name: quantity.name, unit: quantity.unit },
+        display: { density: [17, 17], maxGlyphs: 512, magnitudeScale: 1 } },
+      { stableKey: reference.id, title: quantity.name + " · 2D vector field" });
+      onSaveVectorField2D?.(workspace);
+      setVectorField2DDocument(workspace); setVectorField2DOpen(true);
+    } catch (error) { setScientificImportError((error as Error).message); }
+    finally { if (fingerprint) await window.scientificScenes.closeGraphDataset(fingerprint);
+      setScientificImportBusy(false); }
   };
   const openScientificVectorField3D = async () => {
     if (!scientificImport || !scientificManifest?.ok || !scientificDataset || !scientificCoordinate ||
@@ -552,7 +604,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         const planes = await window.scientificScenes.previewVectorPlane({ fingerprint: opened.source.fingerprint,
           datasetId: vectorFieldRelink.datasetId, components });
         verifyGraph2DScientificVectorPlane(opened.source.manifestJson, opened.source.fingerprint, planes);
+        const parsed = parseScientificSceneManifest(opened.source.manifestJson);
+        if (!parsed.ok) throw new Error(parsed.errors.join(" "));
+        const quantity = parsed.value.datasets.find(item => item.id === vectorFieldRelink.datasetId)?.quantity;
+        if (!quantity) throw new Error("Replacement vector quantity metadata is unavailable.");
+        const revisedWorkspace = savedVectorField2D?.source.reference.id === vectorRelinkSaved.id ?
+          reviseVectorField2DDocument(savedVectorField2D, { ...savedVectorField2D.source, reference: {
+            ...replacement, id: vectorRelinkSaved.id }, quantity: { name: quantity.name, unit: quantity.unit } }) : null;
         onAuthoringCommit({ type: "relink-vector-field-reference", referenceId: vectorRelinkSaved.id, replacement });
+        if (revisedWorkspace) { onSaveVectorField2D?.(revisedWorkspace);
+          setVectorField2DDocument(revisedWorkspace); setVectorField2DOpen(false); }
         resetScientificSlice(); setScientificImport(null);
         setFieldStatuses(current => ({ ...current, [vectorRelinkSaved.id]: "current" }));
         setVectorFieldRelink(null);
@@ -1165,6 +1226,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             "Not reverified on this opening"}</small>
         <div><button type="button" disabled={scientificImportBusy || !window.scientificScenes?.openGraphDatasetReference}
           onClick={() => void openSavedVectorFieldReference(reference)}>Reverify and view vector field</button>
+          <button type="button" disabled={scientificImportBusy}
+            onClick={() => void openSavedVectorField2DWorkspace(reference)}>Open 2D field workspace</button>
           <button type="button" disabled={scientificImportBusy || !onAuthoringCommit || !window.scientificScenes?.chooseGraphDatasetRelink}
             onClick={() => void chooseVectorFieldRelink(reference)}>Find vector replacement…</button>
           <button type="button" disabled={!onAuthoringCommit}
@@ -1714,6 +1777,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
           onSaveDocument={onSaveVectorField3D} onClose={() => { setVectorField3DOpen(false);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}
+        {vectorField2DOpen && vectorField2DDocument && <VectorField2DPanel
+          key={vectorField2DDocument.identity.id} initialDocument={vectorField2DDocument}
+          onSaveDocument={field => { setVectorField2DDocument(field); onSaveVectorField2D?.(field); }}
+          onClose={() => setVectorField2DOpen(false)} />}
         {scientificPresetOpen && <div className="graph2d-scientific-import graph2d-scientific-presets" role="dialog"
           aria-label="Scientific field presets" onPointerDown={event => event.stopPropagation()}>
           <h3>Scientific field presets</h3>

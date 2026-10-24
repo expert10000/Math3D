@@ -384,7 +384,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         try {
           const saved = loadLibraryProject(localStorage, entry.id);
           summary = { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
-            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", vector3d: "3D vector field", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex", quantum: "Quantum scene" }[item.module] ?? item.module)),
+            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", vector2d: "2D vector field", vector3d: "3D vector field", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex", quantum: "Quantum scene" }[item.module] ?? item.module)),
               ...(saved.workbooks?.length ? ["Workbook"] : []), ...(saved.notes?.length ? ["Notes"] : []), ...(saved.workspace.results.length ? ["Analysis"] : [])])] };
         } catch { summary = { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] }; }
         summaryCache.current.set(entry.id, { savedAt: entry.savedAt, summary });

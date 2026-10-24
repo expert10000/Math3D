@@ -60,7 +60,7 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
   if (!canonical.workspace.entries.length) reasons.push("The project has no documents to open.");
   const capturedCurves = capturedCurveSources(canonical.workspace);
   const documents = canonical.workspace.entries.map((entry) => {
-    let editable = entry.module === "graph2d" || entry.module === "vector3d";
+    let editable = entry.module === "graph2d" || entry.module === "vector3d" || entry.module === "vector2d";
     if (entry.module === "curve" || entry.module === "surface") {
       const parents = canonical.workspace.relations.filter((relation) => promotions.has(relation.operation) && relation.target.type === "document" && relation.target.generation.documentId === entry.expected.id);
       const graph = parents.length === 1 ? resolved.get(parents[0]!.sources[0]?.documentId ?? "") : null;

@@ -3,16 +3,21 @@ import type { Graph2DScientificPlane, ScientificCoordinateSystem } from "@math3d
 export const SCIENTIFIC_VECTOR_GLYPH_LIMIT = 512;
 
 export type ScientificVectorGlyph = { x: number; y: number; vx: number; vy: number; magnitude: number };
+export type ScientificVectorGlyphOptions = { density?: readonly [number, number]; maxGlyphs?: number };
 
 /** Coordinates and vectors use axis 0 horizontally and axis 1 vertically, including reversed source spacing. */
 export function buildScientificVectorGlyphs(planes: readonly [Graph2DScientificPlane, Graph2DScientificPlane],
-  coordinate: ScientificCoordinateSystem): { glyphs: ScientificVectorGlyph[]; minimum: number; maximum: number;
+  coordinate: ScientificCoordinateSystem, options: ScientificVectorGlyphOptions = {}):
+  { glyphs: ScientificVectorGlyph[]; minimum: number; maximum: number;
     xRange: [number, number]; yRange: [number, number] } {
   const [horizontal, vertical] = planes;
   const [xSize, ySize] = horizontal.shape;
-  let xCount = Math.min(xSize, Math.max(1, Math.floor(Math.sqrt(SCIENTIFIC_VECTOR_GLYPH_LIMIT * xSize / ySize))));
-  let yCount = Math.min(ySize, Math.max(1, Math.floor(SCIENTIFIC_VECTOR_GLYPH_LIMIT / xCount)));
-  while (xCount * yCount > SCIENTIFIC_VECTOR_GLYPH_LIMIT) {
+  const limit = Math.max(1, Math.min(SCIENTIFIC_VECTOR_GLYPH_LIMIT, options.maxGlyphs ?? SCIENTIFIC_VECTOR_GLYPH_LIMIT));
+  let xCount = options.density ? Math.min(xSize, options.density[0]) :
+    Math.min(xSize, Math.max(1, Math.floor(Math.sqrt(limit * xSize / ySize))));
+  let yCount = options.density ? Math.min(ySize, options.density[1]) :
+    Math.min(ySize, Math.max(1, Math.floor(limit / xCount)));
+  while (xCount * yCount > limit) {
     if (xCount >= yCount) xCount--; else yCount--;
   }
   const xEnd = coordinate.origin[0]! + coordinate.spacing[0]! * (xSize - 1);

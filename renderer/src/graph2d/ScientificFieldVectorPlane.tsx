@@ -4,11 +4,12 @@ import { buildScientificVectorGlyphs, SCIENTIFIC_VECTOR_GLYPH_LIMIT } from "./sc
 
 const format = (value: number) => Number(value.toPrecision(4)).toString();
 
-export function ScientificFieldVectorPlane({ planes, coordinate, label, unit }: {
+export function ScientificFieldVectorPlane({ planes, coordinate, label, unit, display }: {
   planes: readonly [Graph2DScientificPlane, Graph2DScientificPlane];
   coordinate: ScientificCoordinateSystem; label: string; unit: string;
+  display?: { density: readonly [number, number]; maxGlyphs: number; magnitudeScale: number };
 }) {
-  const preview = useMemo(() => buildScientificVectorGlyphs(planes, coordinate), [planes, coordinate]);
+  const preview = useMemo(() => buildScientificVectorGlyphs(planes, coordinate, display), [planes, coordinate, display]);
   const [horizontal, vertical] = planes;
   const xAxis = coordinate.axes[0]!, yAxis = coordinate.axes[1]!;
   const xLabel = xAxis.name + " (" + xAxis.unit + ")", yLabel = yAxis.name + " (" + yAxis.unit + ")";
@@ -33,7 +34,7 @@ export function ScientificFieldVectorPlane({ planes, coordinate, label, unit }: 
       {preview.glyphs.map((glyph, index) => {
         const x = 58 + glyph.x * 510, y = 18 + glyph.y * 350;
         if (glyph.magnitude === 0) return <circle key={index} cx={x} cy={y} r="2" fill="#63758c" />;
-        const length = 11 * glyph.magnitude / preview.maximum;
+        const length = Math.min(22, 11 * glyph.magnitude / preview.maximum * (display?.magnitudeScale ?? 1));
         const dx = glyph.vx / glyph.magnitude, dy = -glyph.vy / glyph.magnitude;
         const tipX = x + dx * length, tipY = y + dy * length;
         const backX = tipX - dx * Math.min(4, length * 0.5);
@@ -58,7 +59,7 @@ export function ScientificFieldVectorPlane({ planes, coordinate, label, unit }: 
       <span className="graph2d-scientific-vector-scale" aria-hidden="true" />
       <span>{format(preview.maximum)}</span>
     </div>
-    <p>{preview.glyphs.length} arrows or stationary points shown (limit {SCIENTIFIC_VECTOR_GLYPH_LIMIT}) ·
+    <p>{preview.glyphs.length} arrows or stationary points shown (limit {display?.maxGlyphs ?? SCIENTIFIC_VECTOR_GLYPH_LIMIT}) ·
       {" "}{horizontal.component} is horizontal, {vertical.component} is vertical.</p>
     <small>Verified components: {horizontal.component} {horizontal.planeSha256}; {vertical.component} {vertical.planeSha256}
       {" "}· source resources {horizontal.resourceSha256}, {vertical.resourceSha256}</small>
