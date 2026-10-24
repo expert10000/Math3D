@@ -23174,6 +23174,9 @@ const App: React.FC = () => {
   const [vectorField2DDocument, setVectorField2DDocument] = useState<import("@math3d/core").VectorField2DDocument | null>(null);
   const [vectorField2DOpenRequest, setVectorField2DOpenRequest] = useState<{ document: import("@math3d/core").VectorField2DDocument; token: number } | null>(null);
   const vectorField2DRequestSerial = useRef(0);
+  const [scientificFieldDocuments, setScientificFieldDocuments] = useState<import("@math3d/core").ScientificFieldDocument[]>([]);
+  const [scientificFieldOpenRequest, setScientificFieldOpenRequest] = useState<{ document: import("@math3d/core").ScientificFieldDocument; token: number } | null>(null);
+  const scientificFieldRequestSerial = useRef(0);
   const [graph2dPromotions, setGraph2dPromotions] = useState<Graph2DAnyPromotion[]>([]);
   const [activeGraph2DTargetId, setActiveGraph2DTargetId] = useState<string | null>(null);
   const activeGraph2DTarget = graph2dPromotions.find((item) => item.document.identity.id === activeGraph2DTargetId &&
@@ -77349,6 +77352,10 @@ case "mobius":
           return { ...entry, checkpoint: vectorField3DDocument, expected: vectorField3DDocument.identity, replay: null };
         if (entry.module === "vector2d" && vectorField2DDocument?.identity.id === entry.expected.id)
           return { ...entry, checkpoint: vectorField2DDocument, expected: vectorField2DDocument.identity, replay: null };
+        const scientificFieldDocument = entry.module === "field" ? scientificFieldDocuments.find(item =>
+          item.identity.id === entry.expected.id) : null;
+        if (scientificFieldDocument)
+          return { ...entry, checkpoint: scientificFieldDocument, expected: scientificFieldDocument.identity, replay: null };
         const graph = restored.graphs.get(entry.expected.id);
         if (graph) { const replay = graph.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: graph.document().identity, replay: { format: MIXED_REPLAY_FORMATS.graph2d, payload: replay as unknown as CanonicalJsonValue } }; }
         const additional = restored.additional.get(entry.expected.id);
@@ -77377,6 +77384,10 @@ case "mobius":
       if (vectorField2DDocument && !entries.some((entry) => entry.expected.id === vectorField2DDocument.identity.id))
         entries.push({ module: "vector2d", checkpoint: vectorField2DDocument,
           expected: vectorField2DDocument.identity, replay: null });
+      for (const scientificFieldDocument of scientificFieldDocuments)
+        if (!entries.some((entry) => entry.expected.id === scientificFieldDocument.identity.id))
+          entries.push({ module: "field", checkpoint: scientificFieldDocument,
+            expected: scientificFieldDocument.identity, replay: null });
       // Capture newly selected native documents and their derived publications,
       // while keeping unrelated editors outside the opened project.
       const live = captureMixedKernelWorkspace(false);
@@ -77444,6 +77455,7 @@ case "mobius":
     add("graph2d", graph2dDocument);
     add("vector3d", vectorField3DDocument);
     add("vector2d", vectorField2DDocument);
+    for (const scientificFieldDocument of scientificFieldDocuments) add("field", scientificFieldDocument);
     for (const promotion of graph2dPromotions) add(promotion.document.format === "math3d.curve-document" ? "curve" : promotion.document.format === "math3d.geometry-document" ? "geometry" : "surface", promotion.document);
     const activeDocumentIds = entries.map((entry) => entry.expected.id);
     const surfaceHandoffs = surfaceMeshKernelHandoff.records();
@@ -78654,6 +78666,10 @@ case "mobius":
           const field2D = workspace.entries.find((entry) => entry.module === "vector2d")?.checkpoint;
           setVectorField2DDocument(field2D?.format === "math3d.vector-field2d-document" ? field2D : null);
           setVectorField2DOpenRequest(null);
+          setScientificFieldDocuments(workspace.entries.filter((entry) => entry.module === "field")
+            .map(entry => entry.checkpoint).filter((item): item is import("@math3d/core").ScientificFieldDocument =>
+              item.format === "math3d.scientific-field-document"));
+          setScientificFieldOpenRequest(null);
           const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
           if (!graph || graph.format !== "math3d.graph2d-document") return;
           graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
@@ -78737,6 +78753,15 @@ case "mobius":
       if (!field) return false;
       setVectorField2DDocument(field);
       setVectorField2DOpenRequest({ document: field, token: ++vectorField2DRequestSerial.current });
+      setMode("graphs"); return true;
+    }
+    if (module === "field") {
+      const entry = restored?.workspace.entries.find(item => item.module === "field" && item.expected.id === id);
+      const field = entry?.checkpoint.format === "math3d.scientific-field-document" ? entry.checkpoint :
+        scientificFieldDocuments.find(item => item.identity.id === id) ?? null;
+      if (!field) return false;
+      setScientificFieldDocuments(current => [field, ...current.filter(item => item.identity.id !== field.identity.id)]);
+      setScientificFieldOpenRequest({ document: field, token: ++scientificFieldRequestSerial.current });
       setMode("graphs"); return true;
     }
     const graph = restored?.graphs.get(id);
@@ -79774,7 +79799,7 @@ case "mobius":
           setProjectMiddleContent({ kind: "workbook", workbook, focusBlockId: blockId });
         }}
         onViewProjectDetail={() => setProjectMiddleContent({ kind: "project-detail" })}
-        canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.workspace.entries.some(entry => (entry.module === "vector3d" || entry.module === "vector2d") && entry.expected.id === id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+        canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.workspace.entries.some(entry => (entry.module === "vector3d" || entry.module === "vector2d" || entry.module === "field") && entry.expected.id === id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
           surface: (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document().identity.id,
@@ -79785,6 +79810,7 @@ case "mobius":
           graph2d: graph2dDocument.identity.id,
           vector3d: vectorField3DDocument?.identity.id,
           vector2d: vectorField2DDocument?.identity.id,
+          field: scientificFieldDocuments.find(item => item.identity.id === id)?.identity.id,
           quantum: restoredProjectRef.current?.workspace.entries.find((entry) => entry.module === "quantum" && entry.expected.id === id)?.expected.id,
         }[module] === id)}
         onNavigateDocument={(id, module) => {
@@ -90001,6 +90027,9 @@ case "mobius":
             onSaveVectorField3D={field => { setVectorField3DDocument(field); setVectorField3DOpenRequest(null); }}
             savedVectorField2D={vectorField2DDocument} openVectorField2DRequest={vectorField2DOpenRequest}
             onSaveVectorField2D={field => { setVectorField2DDocument(field); setVectorField2DOpenRequest(null); }}
+            savedScientificFields={scientificFieldDocuments} openScientificFieldRequest={scientificFieldOpenRequest}
+            onSaveScientificField={field => { setScientificFieldDocuments(current => [field,
+              ...current.filter(item => item.identity.id !== field.identity.id)]); setScientificFieldOpenRequest(null); }}
             onExportPersonalProject={id => exportPersonalGraphProject(captureMixedKernelWorkspace,id,localStorage)}
             onCopyGraphDefinition={id => personalGraphDefinition(captureMixedKernelWorkspace,id,localStorage)}
             onPreviewPersonalImport={raw => previewPersonalGraphImport(raw,localStorage)}

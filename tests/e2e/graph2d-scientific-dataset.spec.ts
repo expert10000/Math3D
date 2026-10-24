@@ -478,6 +478,8 @@ test("Graphs views reverified 3D vector planes and rejects changed source bytes"
     await dialog.getByRole("button", { name: "View verified volume" }).click();
     await expect(dialog.getByRole("figure", { name: /Verified volume for Wind north/ }))
       .toContainText("2 × 3 × 4 displayed samples");
+    await expect(dialog.getByRole("figure", { name: /Verified volume for Wind north/ }))
+      .toContainText("Displayed sample range 100 to 123 m/s");
     await expect(dialog.locator(".graph2d-scientific-volume canvas")).toHaveCount(1);
     const volume = dialog.getByRole("figure", { name: /Verified volume for Wind north/ });
     await volume.getByRole("combobox", { name: "Color range" }).selectOption("data");
@@ -693,9 +695,8 @@ test("GRA-13.3 saves one paired 2D vector reference and re-verifies both compone
     await page.getByTestId("projects-toggle").click();
     const projectPanel = page.getByTestId("project-explorer-panel");
     await projectPanel.getByTestId("project-save").click();
-    const projectFieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
-      .workspace.entries.find((entry: { module: string }) => entry.module === "vector2d")?.expected.id);
-    expect(projectFieldId).toBeTruthy();
+    const projectFieldId = vectorDocuments[0].expected.id as string;
+    await expect(projectPanel.getByTestId(`project-view-${projectFieldId}`)).toBeVisible();
     await projectPanel.getByTestId(`project-view-${projectFieldId}`).click();
     fieldWorkspace = page.getByRole("dialog", { name: "2D vector field workspace" });
     await expect(fieldWorkspace.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
@@ -748,6 +749,16 @@ test("GRA-13.3 saves a field component reference and revalidates it after Graphs
     await expect(saved).toContainText("field · north");
     await expect(saved).toContainText("Source verified on last opening");
     await dialog.getByRole("button", { name: "Cancel" }).click();
+    await saved.getByRole("button", { name: "Open field workspace" }).click();
+    let fieldWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(fieldWorkspace.getByRole("figure", { name: /Verified field plane for Velocity north/ })).toBeVisible();
+    const fieldPlane = fieldWorkspace.getByRole("figure", { name: /Verified field plane for Velocity north/ });
+    await fieldPlane.getByRole("combobox", { name: "Color range" }).selectOption("manual");
+    await fieldPlane.getByLabel("Color minimum (m/s)").fill("-2");
+    await fieldPlane.getByLabel("Color maximum (m/s)").fill("3");
+    await fieldPlane.getByRole("button", { name: "Apply verified color range" }).click();
+    await expect(fieldPlane.getByLabel(/Color legend/)).toHaveAttribute("aria-label", "Color legend, -2 to 3 m/s");
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
     await page.getByTestId("kernel-workspace-toggle").click();
     await page.getByTestId("kernel-workspace-save").click();
     await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved");
@@ -755,6 +766,10 @@ test("GRA-13.3 saves a field component reference and revalidates it after Graphs
       .entries.filter((entry: { module: string }) => entry.module === "graph2d")
       .map((entry: { checkpoint: { source: { fieldReferences?: unknown[] } } }) => entry.checkpoint.source.fieldReferences));
     expect(savedSources).toContainEqual(expect.arrayContaining([expect.objectContaining({ datasetId: "field", component: "north" })]));
+    const fieldDocuments = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!)
+      .entries.filter((entry: { module: string }) => entry.module === "field"));
+    expect(fieldDocuments).toHaveLength(1);
+    expect(fieldDocuments[0].checkpoint.source.display.transfer).toEqual({ mode: "manual", min: -2, max: 3 });
     await page.reload();
     await page.getByTestId("kernel-workspace-toggle").click();
     await page.getByTestId("kernel-workspace-reopen").click();
@@ -763,10 +778,26 @@ test("GRA-13.3 saves a field component reference and revalidates it after Graphs
     await page.getByTestId("workspace-nav-graphs").click();
     const reopened = page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields");
     await expect(reopened).toContainText("Not reverified on this opening");
-    await reopened.getByRole("button", { name: "Reverify and view" }).click();
+    await reopened.getByRole("button", { name: "Open field workspace" }).click();
     await expect(reopened).toContainText("Source verified on last opening");
-    await expect(page.getByRole("dialog", { name: "Import verified scientific dataset" }).getByLabel("Dataset component"))
-      .toHaveValue("field:north");
+    fieldWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(fieldWorkspace).toContainText("Velocity (m/s)");
+    await expect(fieldWorkspace.getByRole("figure", { name: /Verified field plane for Velocity north/ })).toBeVisible();
+    await expect(fieldWorkspace.getByLabel(/Color legend/)).toHaveAttribute("aria-label", "Color legend, -2 to 3 m/s");
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await projectPanel.getByTestId(`project-view-${fieldDocuments[0].expected.id}`).click();
+    fieldWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(fieldWorkspace.getByLabel(/Color legend/)).toHaveAttribute("aria-label", "Color legend, -2 to 3 m/s");
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(fieldDocuments[0].expected.id);
+    fieldWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(fieldWorkspace.getByLabel(/Color legend/)).toHaveAttribute("aria-label", "Color legend, -2 to 3 m/s");
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
     const changed = await page.evaluate(() => (window as unknown as { scientificScenes: { openGraphDatasetReference:
       (request: { locator: { kind: "preset"; value: string }; sceneFingerprint: string }) => Promise<unknown> } })
       .scientificScenes.openGraphDatasetReference({
@@ -817,8 +848,11 @@ test("GRA-13.3 reviews changed and missing sources, then relinks only a matching
     await expect(saved).toContainText("original.sscene");
     if (!original.startsWith(root + sep)) throw new Error("Unsafe field fixture cleanup path");
     await rm(original, { recursive: true, force: true });
-    await saved.getByRole("button", { name: "Reverify and view" }).click();
+    await saved.getByRole("button", { name: "Open field workspace" }).click();
     await expect(saved).toContainText("Missing source — values unavailable");
+    const unavailable = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(unavailable.getByRole("figure", { name: /Verified field plane/ })).toHaveCount(0);
+    await unavailable.getByRole("button", { name: "Close" }).click();
 
     await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, altered);
     await saved.getByRole("button", { name: "Find replacement" }).click();
@@ -853,9 +887,17 @@ test("GRA-13.3 reviews changed and missing sources, then relinks only a matching
     await review.getByRole("button", { name: "Accept verified relink" }).click();
     await expect(review).toBeHidden();
     await expect(saved).toContainText("matching.sscene");
-    await saved.getByRole("button", { name: "Reverify and view" }).click();
-    await expect(importDialog.getByLabel("Dataset component")).toHaveValue("field:north");
-    await importDialog.getByRole("button", { name: "Cancel" }).click();
+    await saved.getByRole("button", { name: "Open field workspace" }).click();
+    const fieldWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(fieldWorkspace.getByRole("figure", { name: /Verified field plane for Velocity north/ })).toBeVisible();
+    const northBytes = Buffer.from(await readFile(join(matching, "north.f64")));
+    const changedNorth = Buffer.from(northBytes);
+    changedNorth[0] ^= 1;
+    await writeFile(join(matching, "north.f64"), changedNorth);
+    await fieldWorkspace.getByRole("button", { name: "Reverify field" }).click();
+    await expect(fieldWorkspace.getByRole("figure", { name: /Verified field plane/ })).toHaveCount(0);
+    await expect(fieldWorkspace.getByRole("alert")).toContainText("resource integrity failed");
+    await fieldWorkspace.getByRole("button", { name: "Close" }).click();
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-field-relink-"))

@@ -1,6 +1,5 @@
-export type ScientificFieldTransfer = Readonly<
-  { mode: "data" | "percentile" } | { mode: "manual"; min: number; max: number }
->;
+export type { ScientificFieldTransfer } from "@math3d/core";
+import type { ScientificFieldTransfer } from "@math3d/core";
 
 export const DEFAULT_SCIENTIFIC_FIELD_TRANSFER: ScientificFieldTransfer = { mode: "data" };
 

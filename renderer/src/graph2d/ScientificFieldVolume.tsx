@@ -50,7 +50,8 @@ export function ScientificFieldVolume({ volume, coordinate, label, unit, transfe
       </Canvas>
     </div>
     <p>Drag to rotate; scroll to zoom. Axes: {coordinate.axes.map(axis => `${axis.name} (${axis.unit})`).join(" · ")}.</p>
-    <ScientificFieldTransferControls range={range} transfer={transfer} unit={unit} onApply={onApplyTransfer} />
+    <ScientificFieldTransferControls range={range} transfer={transfer} unit={unit} onApply={onApplyTransfer}
+      rangeLabel="Displayed sample range" />
     <small>Verified sample {volume.sampleSha256} · source resource {volume.resourceSha256}</small>
   </figure>;
 }
