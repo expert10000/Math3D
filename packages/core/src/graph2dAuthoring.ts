@@ -5,6 +5,7 @@ import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
 import { isGraph2DFieldReference, reviewGraph2DFieldRelink, type Graph2DFieldReference } from "./graph2dFieldReference";
+import { isGraph2DVectorFieldReference, type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -77,6 +78,8 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "save-field-reference"; reference: Graph2DFieldReference }>
   | Readonly<{ type: "relink-field-reference"; referenceId: string; replacement: Graph2DFieldReference }>
   | Readonly<{ type: "remove-field-reference"; referenceId: string }>
+  | Readonly<{ type: "save-vector-field-reference"; reference: Graph2DVectorFieldReference }>
+  | Readonly<{ type: "remove-vector-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
@@ -280,6 +283,22 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     const remaining = existing.filter(item => item.id !== action.referenceId);
     const { fieldReferences: _removed, ...source } = document.source;
     return { source: remaining.length ? { ...source, fieldReferences: remaining } : source,
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "save-vector-field-reference") {
+    if (!isGraph2DVectorFieldReference(action.reference)) throw new TypeError("Invalid paired vector field reference.");
+    const existing = document.source.vectorFieldReferences ?? [];
+    if (existing.some(item => item.id === action.reference.id)) throw new TypeError("Vector field is already saved.");
+    if (existing.length >= 8) throw new TypeError("Vector field reference limit reached.");
+    return { source: { ...document.source, vectorFieldReferences: [...existing, action.reference] },
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "remove-vector-field-reference") {
+    const existing = document.source.vectorFieldReferences ?? [];
+    if (!existing.some(item => item.id === action.referenceId)) throw new TypeError("Vector field reference does not exist.");
+    const remaining = existing.filter(item => item.id !== action.referenceId);
+    const { vectorFieldReferences: _removed, ...source } = document.source;
+    return { source: remaining.length ? { ...source, vectorFieldReferences: remaining } : source,
       display: document.display, selection: document.selection };
   }
   const objects = [...document.source.objects];

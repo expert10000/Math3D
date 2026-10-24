@@ -8,6 +8,7 @@ import {
   previewGraph2DScientificSlice, verifyGraph2DScientificPlane, verifyGraph2DScientificVectorPlane,
   verifyGraph2DScientificVolume,
   parseScientificSceneManifest, createGraph2DFieldReference, inspectGraph2DFieldReference,
+  createGraph2DVectorFieldReference, inspectGraph2DVectorFieldReference,
   reviewGraph2DFieldRelink,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
@@ -24,6 +25,7 @@ import {
   type Graph2DScientificPlane,
   type Graph2DScientificVolume,
   type Graph2DFieldLocator, type Graph2DFieldReference,
+  type Graph2DVectorFieldReference,
   type Graph2DTrajectoryArtifact,
   type Graph2DPhasePortraitArtifact,
   type Graph2DTimeOdeArtifact,
@@ -225,11 +227,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const scientificFieldAlreadySaved = !!scientificImport && !!scientificSelected && !!document.source.fieldReferences?.some(item =>
     item.sceneFingerprint === scientificImport.fingerprint && item.datasetId === scientificSelected.datasetId &&
     item.component === scientificSelected.component);
+  const scientificVectorFieldAlreadySaved = !!scientificImport && !!scientificSelected &&
+    !!document.source.vectorFieldReferences?.some(item => item.components[0].sceneFingerprint === scientificImport.fingerprint &&
+      item.components[0].datasetId === scientificSelected.datasetId);
   const scientificFieldViewed = !!scientificSelected && (scientificPlane?.datasetId === scientificSelected.datasetId &&
     scientificPlane.component === scientificSelected.component || scientificVolume?.datasetId === scientificSelected.datasetId &&
-    scientificVolume.component === scientificSelected.component ||
-    scientificVectorPlane?.[0].datasetId === scientificSelected.datasetId &&
-    scientificVectorPlane.some(plane => plane.component === scientificSelected.component));
+    scientificVolume.component === scientificSelected.component);
   const selectDefaultScientificSlice = (shape?: readonly number[]) => {
     const axis = shape?.length === 2 ? shape[0] >= 2 ? 0 : shape[1] >= 2 ? 1 : null : null;
     setScientificVaryingAxis(axis);
@@ -282,8 +285,22 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const planes = await window.scientificScenes.previewVectorPlane({ fingerprint: source.fingerprint,
         datasetId, components });
       const verified = verifyGraph2DScientificVectorPlane(source.manifestJson, source.fingerprint, planes);
-      if (scientificPreviewEpoch.current === epoch) setScientificVectorPlane(verified);
-    } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
+      if (scientificPreviewEpoch.current === epoch) {
+        setScientificVectorPlane(verified);
+        const saved = document.source.vectorFieldReferences?.find(item =>
+          item.components[0].sceneFingerprint === source.fingerprint && item.components[0].datasetId === datasetId);
+        if (saved) setFieldStatuses(current => ({ ...current, [saved.id]: "current" }));
+      }
+    } catch (error) {
+      if (scientificPreviewEpoch.current === epoch) {
+        const message = (error as Error).message;
+        setScientificImportError(message);
+        const saved = document.source.vectorFieldReferences?.find(item =>
+          item.components[0].sceneFingerprint === source.fingerprint && item.components[0].datasetId === datasetId);
+        if (saved) setFieldStatuses(current => ({ ...current, [saved.id]:
+          /ENOENT|not found|does not exist|missing/i.test(message) ? "missing" : "changed" }));
+      }
+    }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
   const previewScientificVolume = async () => {
@@ -326,6 +343,27 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
       setScientificImportError("");
     } catch (error) { setScientificImportError((error as Error).message); }
+  };
+  const saveScientificVectorFieldReference = async () => {
+    if (!scientificImport || !scientificSelected || !scientificVectorPlane || !onAuthoringCommit ||
+        !window.scientificScenes?.previewVectorPlane || scientificImportBusy ||
+        scientificVectorPlane[0].datasetId !== scientificSelected.datasetId) return;
+    const source = scientificImport, datasetId = scientificSelected.datasetId;
+    const components: [string, string] = [scientificVectorPlane[0].component, scientificVectorPlane[1].component];
+    const epoch = ++scientificPreviewEpoch.current;
+    setScientificImportBusy(true); setScientificImportError(""); setScientificVectorPlane(null);
+    try {
+      const planes = await window.scientificScenes.previewVectorPlane({ fingerprint: source.fingerprint,
+        datasetId, components });
+      const verified = verifyGraph2DScientificVectorPlane(source.manifestJson, source.fingerprint, planes);
+      if (scientificPreviewEpoch.current !== epoch) return;
+      const reference = createGraph2DVectorFieldReference(source.manifestJson, source.fingerprint,
+        source.locator, datasetId);
+      onAuthoringCommit({ type: "save-vector-field-reference", reference });
+      setScientificVectorPlane(verified);
+      setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
+    } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
+    finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
   const openScientificVectorField3D = async () => {
     if (!scientificImport || !scientificManifest?.ok || !scientificDataset || !scientificCoordinate ||
@@ -379,6 +417,51 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     } catch (error) { setFieldStatuses(current => ({ ...current, [reference.id]: "error" }));
       setScientificImportError((error as Error).message); }
     finally { setScientificImportBusy(false); }
+  };
+  const openSavedVectorFieldReference = async (reference: Graph2DVectorFieldReference) => {
+    if (!window.scientificScenes?.openGraphDatasetReference || !window.scientificScenes.previewVectorPlane ||
+        scientificImportBusy) return;
+    resetScientificSlice(); setScientificImport(null); setScientificImportBusy(true);
+    const epoch = scientificPreviewEpoch.current;
+    const saved = reference.components[0]!;
+    let activeFingerprint: string | null = null;
+    try {
+      const opened = await window.scientificScenes.openGraphDatasetReference({ locator: saved.locator,
+        sceneFingerprint: saved.sceneFingerprint });
+      if (opened.ok) activeFingerprint = opened.source.fingerprint;
+      if (scientificPreviewEpoch.current !== epoch) return;
+      if (!opened.ok) {
+        setFieldStatuses(current => ({ ...current, [reference.id]: opened.status }));
+        return;
+      }
+      if (inspectGraph2DVectorFieldReference(reference, opened.source.manifestJson) !== "current")
+        throw new Error("Saved vector components, axes, shape or checksums changed.");
+      const datasetId = saved.datasetId;
+      const components: [string, string] = [reference.components[0]!.component, reference.components[1]!.component];
+      const planes = await window.scientificScenes.previewVectorPlane({ fingerprint: opened.source.fingerprint,
+        datasetId, components });
+      const verified = verifyGraph2DScientificVectorPlane(opened.source.manifestJson, opened.source.fingerprint, planes);
+      if (scientificPreviewEpoch.current !== epoch) return;
+      const selected = opened.source.datasets.find(item => item.datasetId === datasetId &&
+        item.component === components[0]);
+      if (!selected) throw new Error("Saved vector components are absent from the verified source.");
+      setScientificImport(opened.source);
+      setScientificDatasetId(datasetId + ":" + components[0]);
+      selectDefaultScientificSlice(selected.shape);
+      setScientificVectorPlane(verified);
+      setFieldStatuses(current => ({ ...current, [reference.id]: "current" }));
+      activeFingerprint = null;
+    } catch (error) {
+      if (scientificPreviewEpoch.current === epoch) {
+        const message = (error as Error).message;
+        setFieldStatuses(current => ({ ...current, [reference.id]:
+          /ENOENT|not found|does not exist|missing/i.test(message) ? "missing" : "changed" }));
+        setScientificImportError(message);
+      }
+    } finally {
+      if (activeFingerprint) void window.scientificScenes.closeGraphDataset(activeFingerprint);
+      if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false);
+    }
   };
   const chooseFieldRelink = async (reference: Graph2DFieldReference) => {
     if (!window.scientificScenes?.chooseGraphDatasetRelink || scientificImportBusy) return;
@@ -983,11 +1066,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const constructions = <Graph2DConstructionsPanel document={pointPreviewDocument ?? document}
     artifact={parameterPreviewActive ? null : shownConstructions}
     onAction={onConstructionCommit} onBatchAction={onConstructionBatchCommit} onFitConstruction={fitConstruction} />;
-  const savedFields = !!document.source.fieldReferences?.length && <section className="graph2d-saved-fields"
+  const savedFields = !!(document.source.fieldReferences?.length || document.source.vectorFieldReferences?.length) &&
+    <section className="graph2d-saved-fields"
     data-testid="graph2d-saved-fields" aria-label="Saved scientific fields">
     <h3>Saved scientific fields</h3>
     <p>References contain source metadata only. Verify the original .sscene before viewing field values.</p>
-    {document.source.fieldReferences.map(reference => <article key={reference.id}>
+    {document.source.fieldReferences?.map(reference => <article key={reference.id}>
       <strong>{reference.datasetId} · {reference.component}</strong>
       <small>{reference.shape.join(" × ")} · {reference.axes.map(axis => `${axis.name} (${axis.unit})`).join(" / ")}</small>
       <small>Source {reference.locator.kind === "preset" ? `preset ${reference.locator.value}` : reference.locator.value}</small>
@@ -1004,6 +1088,25 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onClick={() => onAuthoringCommit?.({ type: "remove-field-reference", referenceId: reference.id })}>
           Remove reference</button></div>
     </article>)}
+    {document.source.vectorFieldReferences?.map(reference => {
+      const first = reference.components[0], second = reference.components[1];
+      return <article key={reference.id} data-testid="graph2d-saved-vector-field">
+        <strong>{first.datasetId} · 2D vector field · {first.component} + {second.component}</strong>
+        <small>{first.shape.join(" × ")} · {first.axes.map(axis => `${axis.name} (${axis.unit})`).join(" / ")}</small>
+        <small>Source {first.locator.kind === "preset" ? `preset ${first.locator.value}` : first.locator.value}</small>
+        <small>Component checksums: {first.resourceSha256}, {second.resourceSha256}</small>
+        <small role="status">{fieldStatuses[reference.id] === "current" ? "Both components verified on last opening" :
+          fieldStatuses[reference.id] === "changed" ? "Changed source — arrows withheld" :
+          fieldStatuses[reference.id] === "missing" ? "Missing source — arrows unavailable" :
+          fieldStatuses[reference.id] === "error" ? "Reverification failed — arrows unavailable" :
+            "Not reverified on this opening"}</small>
+        <div><button type="button" disabled={scientificImportBusy || !window.scientificScenes?.openGraphDatasetReference}
+          onClick={() => void openSavedVectorFieldReference(reference)}>Reverify and view vector field</button>
+          <button type="button" disabled={!onAuthoringCommit}
+            onClick={() => onAuthoringCommit?.({ type: "remove-vector-field-reference", referenceId: reference.id })}>
+            Remove vector reference</button></div>
+      </article>;
+    })}
     {fieldRelinkError && !fieldRelink && <p role="alert">{fieldRelinkError}</p>}
   </section>;
   const saveTangentButton = (available: boolean) => <button type="button"
@@ -1689,6 +1792,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {scientificSelected?.shape && <button type="button" disabled={!scientificFieldViewed || scientificFieldAlreadySaved ||
               scientificImportBusy || !onAuthoringCommit} onClick={saveScientificFieldReference}>
               Save field reference</button>}
+            {scientificDataset?.semanticType === "vector-field" && scientificDataset.shape.length === 2 &&
+              scientificDataset.components?.length === 2 &&
+              <button type="button" disabled={!scientificVectorPlane || scientificVectorFieldAlreadySaved ||
+                scientificImportBusy || !onAuthoringCommit} onClick={saveScientificVectorFieldReference}>
+                Save 2D vector field reference</button>}
             {scientificDataset?.semanticType === "vector-field" && scientificDataset.shape.length === 3 &&
               scientificDataset.shape.every(size => size >= 2) && scientificDataset.components?.length === 3 &&
               <button type="button" disabled={scientificImportBusy}

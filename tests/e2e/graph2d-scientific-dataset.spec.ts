@@ -565,6 +565,89 @@ test("Graphs opens bundled scalar, complex and vector field presets without a fo
   }
 });
 
+test("GRA-13.3 saves one paired 2D vector reference and re-verifies both components after Project reopen", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-reference-"));
+  const directory = join(root, "saved-vector.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/vortex-flow.sscene"), directory, { recursive: true });
+  const north = await readFile(join(directory, "north.f64"));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    let dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await expect(dialog.getByRole("button", { name: "Save 2D vector field reference" })).toBeDisabled();
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    const stale = Buffer.from(north);
+    stale[0] ^= 1;
+    await writeFile(join(directory, "north.f64"), stale);
+    await dialog.getByRole("button", { name: "Save 2D vector field reference" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toHaveCount(0);
+    await expect(page.getByLabel("Graph inspector").getByTestId("graph2d-saved-vector-field")).toHaveCount(0);
+    await writeFile(join(directory, "north.f64"), north);
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await dialog.getByRole("button", { name: "Save 2D vector field reference" }).click();
+    const saved = page.getByLabel("Graph inspector").getByTestId("graph2d-saved-vector-field");
+    await expect(saved).toContainText("field · 2D vector field · east + north");
+    await expect(saved).toContainText("Both components verified on last opening");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("kernel-workspace-save").click();
+    await expect(page.getByTestId("kernel-workspace-message")).toContainText("Saved");
+    const references = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!)
+      .entries.filter((entry: { module: string }) => entry.module === "graph2d")
+      .flatMap((entry: { checkpoint: { source: { vectorFieldReferences?: unknown[] } } }) =>
+        entry.checkpoint.source.vectorFieldReferences ?? []));
+    expect(references).toHaveLength(1);
+    expect(references[0]).toMatchObject({ components: [
+      { datasetId: "field", component: "east" }, { datasetId: "field", component: "north" }] });
+    await page.reload();
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("kernel-workspace-reopen").click();
+    await expect(page.getByTestId("kernel-workspace-message")).toContainText("Reopened and replay-verified");
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await expect(saved).toContainText("Not reverified on this opening");
+    await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
+    dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await expect(dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await expect(saved).toContainText("Both components verified on last opening");
+    const changed = Buffer.from(north);
+    changed[0] ^= 1;
+    await writeFile(join(directory, "north.f64"), changed);
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toHaveCount(0);
+    await expect(saved).toContainText("Changed source — arrows withheld");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
+    await expect(saved).toContainText("Changed source — arrows withheld");
+    await expect(page.getByRole("dialog", { name: "Import verified scientific dataset" })).toHaveCount(0);
+    await writeFile(join(directory, "north.f64"), north);
+    await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
+    await expect(page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Cancel" }).click();
+    await rm(join(directory, "east.f64"));
+    await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
+    await expect(saved).toContainText("Missing source — arrows unavailable");
+    await expect(page.getByRole("dialog", { name: "Import verified scientific dataset" })).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector-reference-"))
+      throw new Error("Unsafe vector fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GRA-13.3 saves a field component reference and revalidates it after Graphs reopen", async () => {
   const app = await launchSurfaceApp();
   try {

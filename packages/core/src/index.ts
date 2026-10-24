@@ -119,6 +119,7 @@ export * from "./graph2dPresets/preview";
 export * from "./scientificJobs";
 export * from "./scientificSceneManifest";
 export * from "./graph2dFieldReference";
+export * from "./graph2dVectorFieldReference";
 export * from "./graph2dNonlinearRegression";
 export * from "./graph2dLogisticRegression";
 export * from "./graph2dFourier";

@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   createGraph2DFieldReference, GRAPH2D_FIELD_REFERENCE_CAPABILITY, inspectGraph2DCompatibility,
+  createGraph2DVectorFieldReference, inspectGraph2DVectorFieldReference, isGraph2DVectorFieldReference,
+  GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY,
   inspectGraph2DFieldReference, reviewGraph2DFieldRelink, parseGraph2DDocument, serializeGraph2DDocument, sha256Checksum } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 
@@ -14,6 +16,36 @@ const source = () => {
 };
 
 describe("GRA-13.3 saved field references", () => {
+  it("persists one ordered 2D vector reference and rechecks both components after reopening", () => {
+    const { manifestJson, fingerprint } = source();
+    const reference = createGraph2DVectorFieldReference(manifestJson, fingerprint,
+      { kind: "preset", value: "vortexFlow" }, "field");
+    expect(reference.components.map(part => part.component)).toEqual(["east", "north"]);
+    expect(reference.components.every(part => part.resourceSha256.length === 64)).toBe(true);
+    const empty = createEmptyGraph2DDocument("paired-field");
+    const scene = applyGraph2DAuthoring(empty, { type: "save-vector-field-reference", reference });
+    const document = createGraph2DDocument({ ...scene, stableKey: "paired-field" });
+    expect(document.requiredCapabilities).toContain(GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY);
+    const serialized = serializeGraph2DDocument(document);
+    expect(serialized).not.toContain('"values"');
+    const reopened = parseGraph2DDocument(serialized);
+    expect(inspectGraph2DCompatibility(reopened).status).toBe("current");
+    expect(reopened.source.vectorFieldReferences).toEqual([reference]);
+    expect(inspectGraph2DVectorFieldReference(reference, manifestJson)).toBe("current");
+    expect(inspectGraph2DVectorFieldReference(reference, manifestJson.replace("vortex", "changed"))).toBe("changed");
+    expect(inspectGraph2DVectorFieldReference(reference, null)).toBe("missing");
+    expect(isGraph2DVectorFieldReference({ ...reference,
+      components: [reference.components[0], { ...reference.components[1], shape: [32, 33] }] })).toBe(false);
+    expect(() => applyGraph2DAuthoring(reopened, { type: "save-vector-field-reference", reference }))
+      .toThrow(/already saved/);
+    const adapter = new Graph2DCommandAdapter(empty);
+    adapter.commitScene(scene, "save-vector-field-reference");
+    expect(adapter.document().source.vectorFieldReferences).toHaveLength(1);
+    expect(adapter.undo()?.source.vectorFieldReferences).toBeUndefined();
+    expect(adapter.redo()?.source.vectorFieldReferences).toHaveLength(1);
+    const removed = applyGraph2DAuthoring(reopened, { type: "remove-vector-field-reference", referenceId: reference.id });
+    expect(removed.source.vectorFieldReferences).toBeUndefined();
+  });
   it("saves a component without grid values and rechecks the original metadata on reopen", () => {
     const { manifestJson, fingerprint } = source();
     const locator = { kind: "preset" as const, value: "vortexFlow" };
