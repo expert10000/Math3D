@@ -75,6 +75,25 @@ export async function previewScientificGraphPlane(directory: string, fingerprint
   component: string, normalAxis: 0 | 1 | 2 | null, fixedIndex: number | null): Promise<ScientificGraphPlane> {
   const bundle = await readScientificSceneBundle(directory);
   if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+  return planeFromVerifiedBundle(bundle, datasetId, component, normalAxis, fixedIndex);
+}
+
+/** Both 2D vector components must survive the same fresh bundle verification pass. */
+export async function previewScientificGraphVectorPlane(directory: string, fingerprint: string, datasetId: string,
+  components: readonly [string, string]): Promise<[ScientificGraphPlane, ScientificGraphPlane]> {
+  if (new Set(components).size !== 2) throw new TypeError("Choose two distinct vector components.");
+  const bundle = await readScientificSceneBundle(directory);
+  if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+  const dataset = bundle.manifest.datasets.find(item => item.id === datasetId);
+  if (dataset?.semanticType !== "vector-field" || dataset.shape.length !== 2 ||
+      dataset.components?.length !== 2 || components.some(name => !dataset.components?.some(part => part.name === name)))
+    throw new TypeError("Choose one complete two-component vector dataset.");
+  return components.map(component => planeFromVerifiedBundle(bundle, datasetId, component, null, null)) as
+    [ScientificGraphPlane, ScientificGraphPlane];
+}
+
+const planeFromVerifiedBundle = (bundle: VerifiedScientificSceneBundle, datasetId: string, component: string,
+  normalAxis: 0 | 1 | 2 | null, fixedIndex: number | null): ScientificGraphPlane => {
   const dataset = bundle.manifest.datasets.find(item => item.id === datasetId);
   const coordinate = bundle.manifest.coordinates.find(item => item.id === dataset?.coordinateSystem);
   if (!dataset || !coordinate || ![2, 3].includes(dataset.shape.length) ||
@@ -104,9 +123,9 @@ export async function previewScientificGraphPlane(directory: string, fingerprint
     values[position] = value;
     bytes.writeDoubleLE(value, position * 8);
   }
-  return { fingerprint, datasetId, component, sourceShape, normalAxis, fixedIndex, planeAxes, shape,
+  return { fingerprint: bundle.fingerprint, datasetId, component, sourceShape, normalAxis, fixedIndex, planeAxes, shape,
     resourceSha256: resource.sha256, planeSha256: createHash("sha256").update(bytes).digest("hex"), values };
-}
+};
 
 /** Reverify the complete bundle immediately before extracting a single last-axis-fastest line. */
 export async function previewScientificGraphSlice(directory: string, fingerprint: string, datasetId: string,

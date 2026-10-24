@@ -562,6 +562,8 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
     normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphPlane", request),
+  previewVectorPlane: (request: { fingerprint: string; datasetId: string;
+    components: [string, string] }) => ipcRenderer.invoke("scientificScenes:previewVectorPlane", request),
   previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphVolume", request),
   previewVectorVolume: (request: { fingerprint: string; datasetId: string;

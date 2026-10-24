@@ -370,6 +370,12 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-scientific-field figcaption, .graph2d-scientific-volume figcaption { font-weight: 700; margin-bottom: 8px; }
 .graph2d-scientific-field p, .graph2d-scientific-volume p { margin: 8px 0; }
+.graph2d-scientific-vector svg { display: block; max-width: 100%; }
+.graph2d-scientific-vector-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 7px;
+  font-size: 12px; color: var(--text); }
+.graph2d-scientific-vector-scale { display: inline-block; width: min(170px, 35%); height: 12px;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: linear-gradient(90deg, hsl(215 72% 42%), hsl(30 72% 42%)); }
 .vector-field3d-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
   padding: 12px; box-sizing: border-box; background: #09142699; }
 .vector-field3d-editor { position: relative; top: auto; left: auto; transform: none;

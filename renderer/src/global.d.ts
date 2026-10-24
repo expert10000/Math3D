@@ -611,6 +611,9 @@ declare global {
       previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
         normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
         Promise<import("@math3d/core").Graph2DScientificPlane>;
+      previewVectorPlane: (request: { fingerprint: string; datasetId: string;
+        components: [string, string] }) =>
+        Promise<[import("@math3d/core").Graph2DScientificPlane, import("@math3d/core").Graph2DScientificPlane]>;
       previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
         Promise<import("@math3d/core").Graph2DScientificVolume>;
       previewVectorVolume: (request: { fingerprint: string; datasetId: string;

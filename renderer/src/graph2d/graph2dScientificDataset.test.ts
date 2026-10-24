@@ -4,6 +4,7 @@ import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocumen
   GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY,
   inspectGraph2DCompatibility,
   previewGraph2DScientificDataset, previewGraph2DScientificSlice, verifyGraph2DScientificPlane,
+  verifyGraph2DScientificVectorPlane,
   verifyGraph2DScientificVolume,
   serializeGraph2DDocument, sha256Checksum,
   type ScientificSceneManifest } from "@math3d/core";
@@ -202,6 +203,21 @@ describe("GRA-10 explicit 2D scalar lines", () => {
     const north = previewGraph2DScientificSlice(vectorJson, vectorHash, makeLine(vectorHash, "north"));
     expect(north.label).toBe("Velocity north · distance = 12 m");
     expect(north.rows.map(row => row.y)).toEqual(selected);
+    const eastValues = Array.from({ length: 12 }, (_, index) => index);
+    const eastBytes = new Uint8Array(12 * 8), eastView = new DataView(eastBytes.buffer);
+    eastValues.forEach((value, index) => eastView.setFloat64(index * 8, value, true));
+    const shared = { fingerprint: vectorHash, datasetId: "amplitude", sourceShape: [3, 4],
+      normalAxis: null, fixedIndex: null, planeAxes: [0, 1] as [number, number], shape: [3, 4] as [number, number] };
+    const eastPlane = { ...shared, component: "east", resourceSha256: source.resources[0]!.sha256,
+      planeSha256: sha256Checksum(eastBytes).slice(7), values: eastValues };
+    const northPlane = { ...shared, component: "north", resourceSha256,
+      planeSha256: resourceSha256, values };
+    expect(verifyGraph2DScientificVectorPlane(vectorJson, vectorHash, [eastPlane, northPlane]))
+      .toEqual([eastPlane, northPlane]);
+    expect(() => verifyGraph2DScientificVectorPlane(vectorJson, vectorHash,
+      [eastPlane, { ...northPlane, values: [...values.slice(0, 11), 999] }])).toThrow(/checksum/);
+    expect(() => verifyGraph2DScientificVectorPlane(vectorJson, vectorHash,
+      [northPlane, eastPlane])).toThrow(/aligned components/);
   });
 
   it("extracts both non-square directions, coordinates and saved slice provenance", () => {

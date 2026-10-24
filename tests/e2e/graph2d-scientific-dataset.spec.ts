@@ -378,6 +378,27 @@ test("GRA-10 imports selected complex and vector lines from one verified 2D scen
     await dialog.getByRole("button", { name: "Import as point series" }).click();
     await expect(page.getByLabel("Graph functions", { exact: true })).toContainText("Velocity north · time = 3 s");
     await expect(page.getByLabel("Graph inspector", { exact: true })).toContainText("Velocity north (m/s)");
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    const vector = dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" });
+    await expect(vector).toContainText("east → time, north → distance");
+    await expect(vector).toContainText("Magnitude (m/s)");
+    await expect(vector.getByRole("img")).toHaveAttribute("aria-label", /time \(s\).*distance \(m\)/);
+    await expect(vector.locator("svg g[stroke-width='1.5']")).toHaveCount(12);
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(vector).toBeVisible();
+    const changed = Buffer.from(parts[3]!.bytes);
+    changed[0] ^= 1;
+    await writeFile(join(directory, "north.f64"), changed);
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(vector).toHaveCount(0);
+    await writeFile(join(directory, "north.f64"), parts[3]!.bytes);
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(vector).toBeVisible();
+    await rm(join(directory, "east.f64"));
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(dialog.getByRole("alert")).toContainText(/missing|resource/i);
+    await expect(vector).toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-graph-dataset-")) throw new Error("Unsafe scientific fixture cleanup path");
@@ -514,6 +535,9 @@ test("Graphs opens bundled scalar, complex and vector field presets without a fo
     dialog = await openPreset("Planar vortex");
     await expect(dialog).toContainText("Planar vortex · 2D vector field");
     await dialog.getByLabel("Dataset component").selectOption("field:north");
+    await dialog.getByRole("button", { name: "View verified vector field" }).click();
+    await expect(dialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" }))
+      .toContainText("Magnitude");
     await dialog.getByRole("button", { name: "View verified field" }).click();
     await expect(dialog.getByRole("figure", { name: /Verified field plane for Velocity north/ }))
       .toContainText("33 × 33 samples");

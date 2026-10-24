@@ -3,7 +3,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
 import { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane, previewScientificGraphVolume,
-  previewScientificGraphVectorVolume,
+  previewScientificGraphVectorPlane, previewScientificGraphVectorVolume,
   type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
@@ -181,6 +181,23 @@ export function registerScientificSceneIpc(): void {
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
     return previewScientificGraphPlane(source.directory, source.fingerprint, request.datasetId,
       request.component, request.normalAxis, request.fixedIndex);
+  });
+  ipcMain.handle("scientificScenes:previewVectorPlane", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid 2D vector-field request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        !Array.isArray(request.components) || request.components.length !== 2 ||
+        request.components.some(component => typeof component !== "string" ||
+          !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
+        new Set(request.components).size !== 2)
+      throw new TypeError("Invalid 2D vector-field request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphVectorPlane(source.directory, source.fingerprint, request.datasetId,
+      request.components as [string, string]);
   });
   ipcMain.handle("scientificScenes:previewGraphVolume", async (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))

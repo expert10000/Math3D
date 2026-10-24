@@ -84,6 +84,29 @@ export function verifyGraph2DScientificPlane(manifestJson: string, fingerprint: 
   return plane;
 }
 
+/** Reject a partial or mismatched vector transfer before either component is rendered. */
+export function verifyGraph2DScientificVectorPlane(manifestJson: string, fingerprint: string,
+  planes: readonly [Graph2DScientificPlane, Graph2DScientificPlane]): readonly [Graph2DScientificPlane, Graph2DScientificPlane] {
+  const checked = parseScientificSceneManifest(manifestJson);
+  if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+  const [first, second] = planes;
+  const dataset = checked.value.datasets.find(item => item.id === first.datasetId);
+  if (dataset?.semanticType !== "vector-field" || dataset.shape.length !== 2 || dataset.components?.length !== 2 ||
+      first.datasetId !== second.datasetId || first.component === second.component ||
+      first.component !== dataset.components[0]?.name || second.component !== dataset.components[1]?.name ||
+      first.normalAxis !== null || second.normalAxis !== null || first.fixedIndex !== null || second.fixedIndex !== null ||
+      first.shape.some((size, axis) => size !== second.shape[axis]) ||
+      first.planeAxes.some((axis, index) => axis !== second.planeAxes[index]))
+    throw new TypeError("Choose both aligned components of one verified 2D vector field.");
+  verifyGraph2DScientificPlane(manifestJson, fingerprint, first);
+  verifyGraph2DScientificPlane(manifestJson, fingerprint, second);
+  for (let index = 0; index < first.values.length; index++) {
+    if (!Number.isFinite(Math.hypot(first.values[index]!, second.values[index]!)))
+      throw new TypeError("Scientific vector magnitude exceeds the finite display range.");
+  }
+  return planes;
+}
+
 /** Verify one bounded 1D component before copying its values into a Graph point table. */
 export function previewGraph2DScientificDataset(manifestJson: string, fingerprint: string,
   datasetId: string, values: readonly number[], component = "scalar"): Graph2DScientificDatasetPreview {
