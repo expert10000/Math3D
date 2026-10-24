@@ -11,6 +11,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | QWZ | `tests/fixtures/quantum-scene/run-97a132d1d712414bb62bb8c9212f517e.qscene` and its `-bands.qscene` companion | 2D lower-band Berry-curvature samples, Chern result/status/method, reciprocal guides, two band surfaces and worker bulk gap | **Supported**: paired bands/curvature view and exact stored-sample inspection |
 | SSH | `tests/fixtures/quantum-scene/run-145ac3f06cb940c28d457937345b0243.qscene` and its `-bands.qscene` companion | Finite-chain sites, `t1`/`t2` bonds, midgap-pair density, winding result/status/method, two 1D bands and worker bulk gap | **Supported**: paired chain/bands view and exact stored-sample inspection |
 | BHZ | `tests/fixtures/quantum-scene/run-b918512202b94cfaa0e181c9afd1f158-bands.qscene` (added after the v0.1 freeze) | Producer-computed four bulk bands on a 21 × 21 grid, sampled bulk gap, two block Chern values, spin-conserved Z₂ status and exact source coordinates | **Bounded post-v0.1 extension**: read-only four-band view and exact sample inspection; fixed `A=B=1`, `ε=0` lattice slice only |
+| Atlas BHZ continuum and ribbon | `tests/fixtures/quantum-scene/run-c53d91611dd34bac80a93f9b56f0e74e-continuum-bands.qscene` and its `-lattice-bands.qscene` companion | Variable A/B/C/D/M and optional R, four continuum and four lattice bands, conditional inversion Z₂, finite-ribbon eigenvalues and outer-cell weights | **Additive post-v0.1 profile**: two read-only verified views and exact band-sample inspection; the complete eigenvectors remain in the source Theory Lab run |
 | BBH | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Kitaev | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
@@ -82,3 +83,22 @@ Open **File → Verified quantum examples → BHZ → BHZ · four bulk bands**.
 The inspector shows the exact source run/hash, model limits, and selected
 stored `k`/energy values. `scripts/test-quantum-scene-import.mjs` and
 `tests/e2e/quantum-bhz-study.spec.ts` cover import, selection, and tampering.
+
+## Additive Atlas BHZ continuum/lattice admission
+
+Theory Lab's `bhz_general` worker supplies the Atlas continuum four-band
+Hamiltonian with bounded A/B/M and explicit C/D dispersion. The lattice view
+uses a declared `a=1` regularization and optional time-reversal- and
+inversion-symmetric block mixing R. It includes a finite open-y ribbon;
+Math3D displays the supplied eigenvalues and outer-cell weights without
+computing or assigning an edge classification. One verified result produces
+two scenes with separate fingerprints and the same source-run SHA-256. The
+`bhz-general-producer-result.json` fixture records its exact worker result.
+
+Open **File → Verified quantum examples → BHZ → BHZ · Atlas continuum bands**
+or **BHZ · lattice and ribbon**. The inspector states the source parameters,
+units, invariant status and finite-boundary limitation. The importer tests
+compare exact band samples with the producer file and reject changed bytes.
+The original fixed-coefficient BHZ fixture and the frozen QWZ/SSH v0.1
+profile remain unchanged. BBH, Kitaev, Weyl, nodal and Landau/Hall are still
+unsupported until their own independently tested producer scenes exist.

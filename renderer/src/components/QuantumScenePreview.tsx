@@ -441,6 +441,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"unavailable"} · producer status {item.status} · {item.method}.</p>)}
               <p>Edge states, spin mixing, and a general BHZ phase diagram are not supplied. A gap closure or unresolved producer mesh carries no verified Z₂ label.</p>
             </section>}
+            {scene.provenance.model==="bhz_general"&&scene.bands?.kind==="surface"&&<section data-testid="bhz-general-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>BHZ · Atlas bulk and finite-ribbon study</h3>
+              <p>Verified {scene.coordinates.units[0].startsWith("inverse")?"continuum bulk":"a=1 lattice regularization"} view: four producer-supplied energy surfaces and exact momentum samples. Math3D does not compute bands, eigenvectors or topology.</p>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Inputs: {(["A","B","C","D","M","R"] as const).map(key=>`${key}=${scene.provenance.parameters?.[key]}`).join(" · ")}. Grid {scene.bands.grid?.join(" × ")}; k unit {scene.coordinates.units[0]}; energy unit {scene.bands.energyUnit}.</p>
+              {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"unavailable"} · producer status {item.status} · {item.method}.</p>)}
+              {scene.objects.some(object=>object.id==="ribbon-states")?<p>Finite open-ribbon eigenvalues and outer-cell weights are supplied as a read-only point cloud. They do not establish a semi-infinite edge dispersion or classify individual states.</p>:<p>This continuum view has no ribbon object. Open the paired lattice/ribbon example to inspect supplied finite-boundary samples.</p>}
+              <p>Bulk and edge eigenvectors remain in the verified Theory Lab run; this scene exports selected energy and edge-weight arrays. Stored eigenvector phases are gauge-dependent.</p>
+            </section>}
             {qwzRole && <section data-testid="qwz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>QWZ · supplied-result study</h3>
               <p>Current verified view: {qwzRole === "bands" ? "band surfaces" : "Berry curvature"}. Each view retains its own bundle and exact dataset IDs.</p>

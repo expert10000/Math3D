@@ -539,7 +539,12 @@ producer-computed, pinned four-band lattice fixture with exact stored-sample
 inspection and a read-only source-attributed profile. Its `A=B=1`, `ε=0`
 scope, two block Chern values, spin-conserved Z₂ status, and limitations are
 recorded in the [fixture audit](math3d-q08-fixture-audit.md). It is not the
-full Atlas continuum BHZ family. BBH, Kitaev, Weyl, nodal and Landau/Hall
+full Atlas continuum BHZ family. A later additive `bhz_general` producer now
+supplies a paired continuum view and a=1 lattice/ribbon view with variable
+A/B/C/D/M, optional R mixing, conditional inversion Z₂ and finite-edge
+weights. Math3D pins both verified bundles and displays their exact samples;
+it does not compute a BHZ invariant or classify the finite ribbon. The legacy
+fixed BHZ fixture remains available. BBH, Kitaev, Weyl, nodal and Landau/Hall
 profiles still require verified portable fixtures before support claims.
 
 **Scope.** Compose the prior generic primitives into reviewed scenes for QWZ, BHZ,

@@ -1,0 +1,288 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-c53d91611dd34bac80a93f9b56f0e74e-continuum-bands",
+  "title": "BHZ_GENERAL supplied continuum energy bands",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-c53d91611dd34bac80a93f9b56f0e74e",
+    "jobId": "fixture-bhz-general-m2",
+    "model": "bhz_general",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-24T11:57:44.980596+00:00",
+    "resultSha256": "1fa8a544916ad8d8ed3c0fb24d5f8b42b84fcd87e6c20434db43ef2689fbc850",
+    "adapter": "qvis/1",
+    "parameters": {
+      "A": 1,
+      "B": 1,
+      "C": 0,
+      "D": 0,
+      "M": 2,
+      "R": 0.2,
+      "grid": 21,
+      "edgeCells": 12,
+      "edgeSamples": 15,
+      "continuumExtent": 1
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "bhz_general"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "kx",
+      "ky",
+      "energy"
+    ],
+    "units": [
+      "inverse length (a=1)",
+      "inverse length (a=1)",
+      "normalized energy (hbar=1)"
+    ]
+  },
+  "camera": {
+    "position": [
+      11,
+      -10,
+      9
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "band-0",
+      "label": "Occupied 1",
+      "kind": "mesh",
+      "positions": "band-positions-0",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-0",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-1",
+      "label": "Occupied 2",
+      "kind": "mesh",
+      "positions": "band-positions-1",
+      "visible": true,
+      "style": {
+        "color": "#c994d7",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-1",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-2",
+      "label": "Empty 1",
+      "kind": "mesh",
+      "positions": "band-positions-2",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-2",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-3",
+      "label": "Empty 2",
+      "kind": "mesh",
+      "positions": "band-positions-3",
+      "visible": true,
+      "style": {
+        "color": "#7fa8ee",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-3",
+      "indices": "band-triangles"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "band-k",
+      "path": "band-k.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "inverse length (a=1)",
+      "bytes": 10584,
+      "sha256": "c37798de9b7af08a071310c4921b318e0d11c138df65e81d01469dc22601b933"
+    },
+    {
+      "id": "band-triangles",
+      "path": "band-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 800,
+      "unit": "vertex index",
+      "bytes": 19200,
+      "sha256": "33765386810e20f762a1cf1c6591f45ef1f23fb63747a6744bedc146ecece79e"
+    },
+    {
+      "id": "band-energy-0",
+      "path": "band-energy-0.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "0a6ca70f8c12b9920b2c5c33b079b3e2a427e35b4d802ba76e936363d0a27d40"
+    },
+    {
+      "id": "band-positions-0",
+      "path": "band-positions-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "de4e5b164440282f06446a3273fdfb494c08cfe2a352a7dbd9471087257714c4"
+    },
+    {
+      "id": "band-energy-1",
+      "path": "band-energy-1.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "fe5099434fe16f7307c5e0f7c8fe8d2d10b06c1d8db8c5ca3c5a3fee95e51b58"
+    },
+    {
+      "id": "band-positions-1",
+      "path": "band-positions-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "f6677417a64bd5a4c329fe39cd53b2b376807a41b5510576f65b92e77b4d907b"
+    },
+    {
+      "id": "band-energy-2",
+      "path": "band-energy-2.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "9110f1ae2e69ed8981dbe613efa34b797989bb36d45e56f960f6449cffbd16f5"
+    },
+    {
+      "id": "band-positions-2",
+      "path": "band-positions-2.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "6cfaad6c4813fdf2a0579f2681fee6a5c63118d41b70f5f75092b705144b875a"
+    },
+    {
+      "id": "band-energy-3",
+      "path": "band-energy-3.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "a32f355f3cfbdfb54eef85f8500ce5ea35498508b8b0634af1181592758b975d"
+    },
+    {
+      "id": "band-positions-3",
+      "path": "band-positions-3.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "aa3aac590df0257481fd8c074faf4aa8cd0bd26e0116f584e29b2b8f8d460e00"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "band-convention",
+      "text": "Original worker samples. Lines/triangles are display connections, not interpolated scientific values. No periodic seam or topology inference.",
+      "position": [
+        0,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "band-gap",
+      "text": "Atlas continuum and declared lattice regularization are separate views. Worker lattice Z2 1; open-ribbon states are supplied only with the lattice view.",
+      "position": [
+        0,
+        0,
+        -2
+      ]
+    }
+  ],
+  "bands": {
+    "kind": "surface",
+    "coordinates": "band-k",
+    "energies": [
+      "band-energy-0",
+      "band-energy-1",
+      "band-energy-2",
+      "band-energy-3"
+    ],
+    "objects": [
+      "band-0",
+      "band-1",
+      "band-2",
+      "band-3"
+    ],
+    "labels": [
+      "Occupied 1",
+      "Occupied 2",
+      "Empty 1",
+      "Empty 2"
+    ],
+    "energyUnit": "normalized energy (hbar=1)",
+    "bulkGap": 2.6905018119302575,
+    "grid": [
+      21,
+      21
+    ]
+  },
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "z2",
+        "label": "Inversion-parity Z2",
+        "value": 1,
+        "status": "verified",
+        "method": "Producer Fu-Kane TRIM parity with dense-grid gap check; R term preserves time reversal and inversion"
+      }
+    ],
+    "limitations": [
+      "Continuum bulk and a=1 lattice regularization are separate supplied views.",
+      "Stored eigenvector phases are gauge-dependent; edge weights and spin expectations are producer values.",
+      "A finite open ribbon is not a semi-infinite boundary or a universal material prediction."
+    ]
+  }
+}

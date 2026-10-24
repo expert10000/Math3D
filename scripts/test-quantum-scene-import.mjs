@@ -222,8 +222,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 10);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 10);
+  assert.equal(listBundledQuantumSceneExamples().length, 12);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 12);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
@@ -243,8 +243,9 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 5, "Expected four frozen SSH/QWZ bundles plus the producer BHZ bundle");
-  const fixtureNames=allFixtureNames.filter(name=>name!==bundledQuantumSceneExample("bhz-bands").folder);
+  assert.equal(allFixtureNames.length, 7, "Expected four frozen SSH/QWZ bundles and three producer BHZ bundles");
+  const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name));
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
   assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
@@ -340,6 +341,29 @@ try {
   const bhzBandPath=join(bhzChanged,"band-energy-0.f64"),bhzBytes=await readFile(bhzBandPath);
   bhzBytes[0]^=1;await writeFile(bhzBandPath,bhzBytes);
   await assert.rejects(importQuantumSceneBundle(bhzChanged),/integrity|hash/i);
+  const generalBytes=await readFile(join(fixtureRoot,"bhz-general-producer-result.json"));
+  const generalResult=JSON.parse(generalBytes.toString("utf8"));
+  const generalScenes=await Promise.all(["bhz-general-continuum","bhz-general-lattice"].map(id=>
+    importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample(id).folder))));
+  for(const source of generalScenes){
+    assert.equal(source.source.provenance.model,"bhz_general");
+    assert.equal(source.source.provenance.runId,generalResult.runId);
+    assert.equal(source.source.provenance.resultSha256,hash(generalBytes));
+    assert.equal(source.source.bands.objects.length,4);
+    assert.deepEqual(source.source.topology.invariants.map(item=>[item.id,item.value,item.status]),[["z2",1,"verified"]]);
+  }
+  assert.equal(generalScenes[0].source.reciprocal,undefined);
+  assert.ok(generalScenes[1].source.reciprocal);
+  assert.ok(generalScenes[1].source.objects.some(object=>object.id==="ribbon-states"));
+  assert.equal(inspectVerifiedBandSample(generalScenes[0],{fingerprint:sceneFingerprint(generalScenes[0]),objectId:"band-0",sampleIndex:220}).energy,
+    generalResult.analysis.continuumBandEnergies[0][220]);
+  assert.equal(inspectVerifiedBandSample(generalScenes[1],{fingerprint:sceneFingerprint(generalScenes[1]),objectId:"band-0",sampleIndex:220}).energy,
+    generalResult.analysis.latticeBandEnergies[0][220]);
+  const alteredGeneral=join(root,"altered-general.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("bhz-general-lattice").folder),alteredGeneral,{recursive:true});
+  const alteredBand=join(alteredGeneral,"band-energy-0.f64"),alteredBytes=await readFile(alteredBand);
+  alteredBytes[0]^=1;await writeFile(alteredBand,alteredBytes);
+  await assert.rejects(importQuantumSceneBundle(alteredGeneral),/integrity|hash/i);
   const qwzDirectory = join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e.qscene");
   const qwz = await importQuantumSceneBundle(qwzDirectory);
   const display = qwz.document.extensions[qwz.source.schema].topologyDisplay;
