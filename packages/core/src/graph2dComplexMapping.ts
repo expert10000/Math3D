@@ -130,6 +130,7 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
   const realSlice = realOrigin?.slice, imaginarySlice = imaginaryOrigin?.slice;
   if (!realOrigin || !imaginaryOrigin || realOrigin.component !== "real" ||
       imaginaryOrigin.component !== "imaginary" || !realSlice || !imaginarySlice ||
+      "plane" in realSlice || "plane" in imaginarySlice ||
       realOrigin.sceneId !== imaginaryOrigin.sceneId || realOrigin.datasetId !== imaginaryOrigin.datasetId ||
       realOrigin.sceneFingerprint !== imaginaryOrigin.sceneFingerprint ||
       realOrigin.sourceProducer !== imaginaryOrigin.sourceProducer ||

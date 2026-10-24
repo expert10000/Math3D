@@ -901,6 +901,114 @@ test("GRA-13.4 previews saved scalar rows and columns from Project and rechecks 
   }
 });
 
+test("GRA-13.4 imports distinct verified 3D plane lines with complete source coordinates", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-volume-to-graph-"));
+  const directory = join(root, "scalar-volume.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene"), directory, { recursive: true });
+  const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+  manifest.datasets[0].semanticType = "scalar-field";
+  manifest.datasets[0].quantity = { name: "Potential", unit: "V" };
+  manifest.datasets[0].real = "north";
+  delete manifest.datasets[0].components;
+  manifest.resources = manifest.resources.filter((resource: { id: string }) => resource.id === "north");
+  await rm(join(directory, "east.f64"));
+  await rm(join(directory, "up.f64"));
+  const manifestJson = JSON.stringify(manifest);
+  await writeFile(join(directory, "manifest.json"), manifestJson);
+  const bundle = JSON.parse(await readFile(join(directory, "bundle.json"), "utf8"));
+  bundle.manifest.bytes = Buffer.byteLength(manifestJson);
+  bundle.manifest.sha256 = hash(manifestJson);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify(bundle));
+  const resource = join(directory, "north.f64"), original = await readFile(resource);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false,
+      filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importDialog.getByRole("button", { name: "View verified plane" }).click();
+    await expect(importDialog.getByRole("figure", { name: /Verified field plane for Potential scalar/ })).toBeVisible();
+    await importDialog.getByRole("button", { name: "Save field reference" }).click();
+    await importDialog.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-explorer-panel").getByTestId("project-save").click();
+    const fieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "field")?.expected.id as string);
+    expect(fieldId).toBeTruthy();
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    const workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    const line = workspace.getByTestId("scientific-field-line");
+    await expect(line).toContainText("Graph x: x (m); y: Potential (V)");
+    await line.getByLabel("Line plane normal axis").selectOption("2");
+    await line.getByLabel("Plane coordinate z").selectOption("4");
+    await line.getByLabel("Fixed y").selectOption("3");
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("figure", { name: /Preview Graph line/ })).toContainText("21 samples");
+    await expect(line.getByRole("figure", { name: /Preview Graph line/ })).toContainText("z = -1.5 m");
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(resource, changed);
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(workspace.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(line.getByRole("figure", { name: /Preview Graph line/ })).toHaveCount(0);
+    await writeFile(resource, original);
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("figure", { name: /Preview Graph line/ })).toBeVisible();
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line).toContainText("already in Graphs");
+    await line.getByLabel("Plane coordinate z").selectOption("5");
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await line.getByLabel("Fixed y").selectOption("4");
+    await rm(resource);
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(workspace.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+    await expect(line.getByRole("figure", { name: /Preview Graph line/ })).toHaveCount(0);
+    await writeFile(resource, original);
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await workspace.getByRole("button", { name: "Close" }).click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const graphLines = await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
+        .find((entry: { module: string }) => entry.module === "graph2d");
+      const objects = [...graph.replay.payload.transactions].reverse()
+        .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+          transaction.commands[0]?.command.payload.source?.objects)
+        .find((value: unknown) => Array.isArray(value)) ?? graph.checkpoint.source.objects;
+      return objects.filter((object: { kind: string }) => object.kind === "point-series");
+    });
+    expect(graphLines).toHaveLength(3);
+    expect(graphLines.map((object: { origin: { slice: unknown } }) => object.origin.slice)).toMatchObject([
+      { varyingAxis: 0, fixedAxis: 1, fixedIndex: 3, fixedCoordinate: -2.8,
+        plane: { normalAxis: 2, fixedIndex: 4, fixedCoordinate: -1.5 } },
+      { varyingAxis: 0, fixedAxis: 1, fixedIndex: 3,
+        plane: { normalAxis: 2, fixedIndex: 5, fixedCoordinate: -1.125 } },
+      { varyingAxis: 0, fixedAxis: 1, fixedIndex: 4, fixedCoordinate: -2.4,
+        plane: { normalAxis: 2, fixedIndex: 5 } },
+    ]);
+    for (const object of graphLines) expect(object.origin).toMatchObject({
+      sceneFingerprint: hash(manifestJson), resourceSha256: hash(original),
+      locator: { kind: "directory", value: directory }, xName: "x", xUnit: "m", yUnit: "V" });
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-volume-to-graph-"))
+      throw new Error("Unsafe scientific volume fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GRA-13.3 reviews changed and missing sources, then relinks only a matching verified bundle", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-field-relink-"));

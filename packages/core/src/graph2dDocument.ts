@@ -102,7 +102,12 @@ export type Graph2DScientificDatasetOrigin = Readonly<{
   locator?: Graph2DFieldLocator;
   component?: string;
   slice?: Readonly<{ varyingAxis: 0 | 1; fixedIndex: number; fixedCoordinate: number;
-    fixedName: string; fixedUnit: string }>;
+    fixedName: string; fixedUnit: string }> | Readonly<{
+    varyingAxis: 0 | 1 | 2; fixedAxis: 0 | 1 | 2; fixedIndex: number;
+    fixedCoordinate: number; fixedName: string; fixedUnit: string;
+    plane: Readonly<{ normalAxis: 0 | 1 | 2; fixedIndex: number;
+      fixedCoordinate: number; fixedName: string; fixedUnit: string }>;
+  }>;
   sceneFingerprint: string; resourceSha256: string;
   sourceProducer: string; sourceId: string; sourceSchema: string; sourceSha256: string;
   xName: string; xUnit: string; yName: string; yUnit: string;
@@ -338,8 +343,18 @@ export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Gr
     typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&
   (value.component === undefined || typeof value.component === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.component)) &&
   (value.slice === undefined || record(value.slice) &&
-    exact(value.slice, ["varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
-    (value.slice.varyingAxis === 0 || value.slice.varyingAxis === 1) &&
+    (value.slice.plane === undefined ?
+      exact(value.slice, ["varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
+      (value.slice.varyingAxis === 0 || value.slice.varyingAxis === 1) :
+      exact(value.slice, ["varyingAxis", "fixedAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "plane"]) &&
+      [0, 1, 2].includes(value.slice.varyingAxis as number) &&
+      [0, 1, 2].includes(value.slice.fixedAxis as number) &&
+      record(value.slice.plane) && exact(value.slice.plane, ["normalAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
+      [0, 1, 2].includes(value.slice.plane.normalAxis as number) &&
+      new Set([value.slice.varyingAxis, value.slice.fixedAxis, value.slice.plane.normalAxis]).size === 3 &&
+      integerWithin(value.slice.plane.fixedIndex, 0, 255) &&
+      finite(value.slice.plane.fixedCoordinate) && Math.abs(value.slice.plane.fixedCoordinate) <= 1e12 &&
+      bounded(value.slice.plane.fixedName, 160) && bounded(value.slice.plane.fixedUnit, 80)) &&
     integerWithin(value.slice.fixedIndex, 0, 255) && finite(value.slice.fixedCoordinate) &&
     Math.abs(value.slice.fixedCoordinate) <= 1e12 && bounded(value.slice.fixedName, 160) &&
     bounded(value.slice.fixedUnit, 80)) &&

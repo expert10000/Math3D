@@ -211,3 +211,69 @@ export function previewGraph2DScientificSlice(manifestJson: string, fingerprint:
   const label = `${origin.yName.slice(0, Math.max(1, 160 - fixedName.length - suffix.length - 3))} · ${fixedName}${suffix}`;
   return { label, rows, domain: graph2DPointDomain(rows), origin };
 }
+
+/** Verify one line cut through an explicitly selected plane of a 3D scalar grid. */
+export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerprint: string,
+  line: Readonly<{ fingerprint: string; datasetId: string; component: "scalar";
+    shape: readonly [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+    varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
+    sliceSha256: string; values: readonly number[] }>): Graph2DScientificDatasetPreview {
+  if (!/^[a-f0-9]{64}$/.test(fingerprint) || line.fingerprint !== fingerprint ||
+      sha256Checksum(new TextEncoder().encode(manifestJson)) !== `sha256:${fingerprint}`)
+    throw new TypeError("Scientific manifest fingerprint changed or is invalid.");
+  const checked = parseScientificSceneManifest(manifestJson);
+  if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+  const manifest = checked.value;
+  const dataset = manifest.datasets.find(item => item.id === line.datasetId);
+  const coordinate = manifest.coordinates.find(item => item.id === dataset?.coordinateSystem);
+  const resource = manifest.resources.find(item => item.id === dataset?.real);
+  const fixedAxis = ([0, 1, 2] as const).find(axis => axis !== line.normalAxis && axis !== line.varyingAxis);
+  if (!dataset || dataset.semanticType !== "scalar-field" || dataset.shape.length !== 3 ||
+      !coordinate || coordinate.axes.length !== 3 || !resource || line.component !== "scalar" ||
+      !([0, 1, 2] as number[]).includes(line.normalAxis) ||
+      !([0, 1, 2] as number[]).includes(line.varyingAxis) ||
+      line.normalAxis === line.varyingAxis ||
+      line.shape.length !== 3 || line.shape.some((size, axis) => size !== dataset.shape[axis]) ||
+      dataset.shape.some(size => size < 1 || size > 256) || fixedAxis === undefined ||
+      !Number.isSafeInteger(line.planeFixedIndex) || line.planeFixedIndex < 0 ||
+      line.planeFixedIndex >= dataset.shape[line.normalAxis]! ||
+      !Number.isSafeInteger(line.fixedIndex) || line.fixedIndex < 0 ||
+      line.fixedIndex >= dataset.shape[fixedAxis]! || dataset.shape[line.varyingAxis]! < 2 ||
+      line.values.length !== dataset.shape[line.varyingAxis] ||
+      line.resourceSha256 !== resource.sha256 || !/^[a-f0-9]{64}$/.test(line.sliceSha256))
+    throw new TypeError("Choose a verified line from a selected three-dimensional scalar plane.");
+  const bytes = new Uint8Array(line.values.length * 8), view = new DataView(bytes.buffer);
+  line.values.forEach((value, index) => {
+    if (!Number.isFinite(value)) throw new TypeError("Scientific line contains a non-finite value.");
+    view.setFloat64(index * 8, value, true);
+  });
+  if (sha256Checksum(bytes) !== `sha256:${line.sliceSha256}`)
+    throw new TypeError("Scientific line checksum changed.");
+  const at = (axis: number, index: number) =>
+    coordinate.origin[axis]! + coordinate.spacing[axis]! * index;
+  const planeCoordinate = at(line.normalAxis, line.planeFixedIndex);
+  const fixedCoordinate = at(fixedAxis, line.fixedIndex);
+  const rows = line.values.map((value, index) => ({ id: `row_${index + 1}`,
+    x: at(line.varyingAxis, index), y: value }));
+  if (![planeCoordinate, fixedCoordinate, ...rows.map(row => row.x)].every(value =>
+      Number.isFinite(value) && Math.abs(value) <= 1e12))
+    throw new TypeError("Scientific line coordinate is out of range.");
+  const slice = { varyingAxis: line.varyingAxis, fixedAxis, fixedIndex: line.fixedIndex,
+    fixedCoordinate, fixedName: coordinate.axes[fixedAxis]!.name,
+    fixedUnit: coordinate.axes[fixedAxis]!.unit,
+    plane: { normalAxis: line.normalAxis, fixedIndex: line.planeFixedIndex,
+      fixedCoordinate: planeCoordinate, fixedName: coordinate.axes[line.normalAxis]!.name,
+      fixedUnit: coordinate.axes[line.normalAxis]!.unit } };
+  const origin: Graph2DScientificDatasetOrigin = {
+    schema: "scientific-scene/v1", sceneId: manifest.sceneId, datasetId: dataset.id,
+    sceneFingerprint: fingerprint, resourceSha256: resource.sha256,
+    sourceProducer: manifest.source.producer, sourceId: manifest.source.sourceId,
+    sourceSchema: manifest.source.sourceSchema, sourceSha256: manifest.source.sha256,
+    xName: coordinate.axes[line.varyingAxis]!.name, xUnit: coordinate.axes[line.varyingAxis]!.unit,
+    yName: dataset.quantity.name, yUnit: dataset.quantity.unit,
+    slice,
+  };
+  const label = `${origin.yName} · ${slice.plane.fixedName} = ${planeCoordinate} ` +
+    `${slice.plane.fixedUnit} · ${slice.fixedName} = ${fixedCoordinate} ${slice.fixedUnit}`;
+  return { label: label.slice(0, 160), rows, domain: graph2DPointDomain(rows), origin };
+}

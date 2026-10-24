@@ -11,6 +11,11 @@ export type ScientificGraphDatasetSource = {
 export type ScientificGraphSlice = { fingerprint: string; datasetId: string; component: string; varyingAxis: 0 | 1;
   fixedIndex: number; shape: [number, number]; resourceSha256: string; sliceSha256: string; values: number[] };
 
+export type ScientificGraphVolumeLine = { fingerprint: string; datasetId: string; component: "scalar";
+  shape: [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+  varyingAxis: 0 | 1 | 2; fixedIndex: number;
+  resourceSha256: string; sliceSha256: string; values: number[] };
+
 export type ScientificGraphPlane = { fingerprint: string; datasetId: string; component: string;
   sourceShape: number[]; normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null;
   planeAxes: [number, number]; shape: [number, number]; resourceSha256: string; planeSha256: string; values: number[] };
@@ -153,6 +158,42 @@ export async function previewScientificGraphSlice(directory: string, fingerprint
   values.forEach((value, index) => line.writeDoubleLE(value, index * 8));
   return { fingerprint, datasetId, component, varyingAxis, fixedIndex, shape: [dataset.shape[0]!, dataset.shape[1]!],
     resourceSha256: resource.sha256, sliceSha256: createHash("sha256").update(line).digest("hex"), values };
+}
+
+/** Reverify the complete bundle and transfer only one bounded line through a 3D scalar plane. */
+export async function previewScientificGraphVolumeLine(directory: string, fingerprint: string, datasetId: string,
+  normalAxis: 0 | 1 | 2, planeFixedIndex: number, varyingAxis: 0 | 1 | 2,
+  fixedIndex: number): Promise<ScientificGraphVolumeLine> {
+  const bundle = await readScientificSceneBundle(directory);
+  if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+  const dataset = bundle.manifest.datasets.find(item => item.id === datasetId);
+  const coordinate = bundle.manifest.coordinates.find(item => item.id === dataset?.coordinateSystem);
+  const fixedAxis = ([0, 1, 2] as const).find(axis => axis !== normalAxis && axis !== varyingAxis);
+  if (!dataset || dataset.semanticType !== "scalar-field" || dataset.shape.length !== 3 ||
+      coordinate?.axes.length !== 3 || dataset.shape.some(size => size < 1 || size > 256) ||
+      !([0, 1, 2] as number[]).includes(normalAxis) ||
+      !([0, 1, 2] as number[]).includes(varyingAxis) || normalAxis === varyingAxis ||
+      fixedAxis === undefined || dataset.shape[varyingAxis]! < 2 ||
+      !Number.isSafeInteger(planeFixedIndex) || planeFixedIndex < 0 ||
+      planeFixedIndex >= dataset.shape[normalAxis]! ||
+      !Number.isSafeInteger(fixedIndex) || fixedIndex < 0 || fixedIndex >= dataset.shape[fixedAxis]!)
+    throw new TypeError("Choose a valid line through a three-dimensional scalar plane.");
+  const resource = bundle.manifest.resources.find(item => item.id === dataset.real);
+  const buffer = dataset.real ? bundle.resources.get(dataset.real) : undefined;
+  const shape = [...dataset.shape] as [number, number, number];
+  if (!resource || !buffer || buffer.length !== shape[0] * shape[1] * shape[2] * 8)
+    throw new Error("Verified scientific volume bytes are missing.");
+  const values = Array.from({ length: shape[varyingAxis] }, (_, index) => {
+    const axes = [0, 1, 2].map(axis => axis === normalAxis ? planeFixedIndex :
+      axis === varyingAxis ? index : fixedIndex);
+    const offset = ((axes[0]! * shape[1] + axes[1]!) * shape[2] + axes[2]!) * 8;
+    return buffer.readDoubleLE(offset);
+  });
+  const line = Buffer.alloc(values.length * 8);
+  values.forEach((value, index) => line.writeDoubleLE(value, index * 8));
+  return { fingerprint, datasetId, component: "scalar", shape, normalAxis, planeFixedIndex,
+    varyingAxis, fixedIndex, resourceSha256: resource.sha256,
+    sliceSha256: createHash("sha256").update(line).digest("hex"), values };
 }
 
 /** Return bounded 1D components and 2D descriptors; full grids stay in main. */

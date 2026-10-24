@@ -608,6 +608,12 @@ declare global {
       previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
         Promise<{ fingerprint: string; datasetId: string; component: string; varyingAxis: 0 | 1; fixedIndex: number;
           shape: [number, number]; resourceSha256: string; sliceSha256: string; values: number[] }>;
+      previewGraphVolumeLine: (request: { fingerprint: string; datasetId: string;
+        normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+        Promise<{ fingerprint: string; datasetId: string; component: "scalar";
+          shape: [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+          varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
+          sliceSha256: string; values: number[] }>;
       previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
         normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
         Promise<import("@math3d/core").Graph2DScientificPlane>;

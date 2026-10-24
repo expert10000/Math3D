@@ -60,6 +60,7 @@ import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
 import { ScientificFieldWorkspacePanel } from "./ScientificFieldWorkspacePanel";
+import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
 import { VectorField2DPanel } from "./VectorField2DPanel";
@@ -1565,7 +1566,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}{selectedObject.origin.yName} ({selectedObject.origin.yUnit})</dd>
           {selectedObject.origin.slice && <><dt>Grid line</dt><dd>Vary axis {selectedObject.origin.slice.varyingAxis};
             {" "}{selectedObject.origin.slice.fixedName} = {selectedObject.origin.slice.fixedCoordinate} {selectedObject.origin.slice.fixedUnit}
-            {" "}(index {selectedObject.origin.slice.fixedIndex})</dd></>}
+            {" "}(index {selectedObject.origin.slice.fixedIndex})</dd>
+            {"plane" in selectedObject.origin.slice && selectedObject.origin.slice.plane &&
+              <><dt>Source plane</dt><dd>Normal axis {selectedObject.origin.slice.plane.normalAxis};
+                {" "}{selectedObject.origin.slice.plane.fixedName} = {selectedObject.origin.slice.plane.fixedCoordinate}
+                {" "}{selectedObject.origin.slice.plane.fixedUnit}
+                {" "}(index {selectedObject.origin.slice.plane.fixedIndex})</dd></>}</>}
           <dt>Source hashes</dt><dd><code>manifest {selectedObject.origin.sceneFingerprint}<br />resource {selectedObject.origin.resourceSha256}</code></dd>
         </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : inspected.kind === "time-ode" ? "Time domain" : "X domain"}</dt>
@@ -1837,20 +1843,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificFieldOpen && scientificFieldDocument && <ScientificFieldWorkspacePanel
           key={scientificFieldDocument.identity.id} initialDocument={scientificFieldDocument}
           onSaveDocument={field => { setScientificFieldDocument(field); onSaveScientificField?.(field); }}
-          isGraphLineImported={(axis, index) => document.source.objects.some(item =>
+          isGraphLineImported={selection => document.source.objects.some(item =>
             item.kind === "point-series" && item.origin?.sceneFingerprint === scientificFieldDocument.source.reference.sceneFingerprint &&
             item.origin.datasetId === scientificFieldDocument.source.reference.datasetId &&
             (item.origin.component ?? "scalar") === scientificFieldDocument.source.reference.component &&
-            item.origin.slice?.varyingAxis === axis && item.origin.slice.fixedIndex === index)}
-          onAddGraphLine={preview => {
+            scientificFieldLineSelectionMatchesSlice(selection, item.origin.slice))}
+          onAddGraphLine={(preview, selection) => {
             if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
             const reference = scientificFieldDocument.source.reference;
             if (document.source.objects.some(item => item.kind === "point-series" &&
               item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&
               item.origin.datasetId === preview.origin.datasetId &&
               (item.origin.component ?? "scalar") === reference.component &&
-              item.origin.slice?.varyingAxis === preview.origin.slice?.varyingAxis &&
-              item.origin.slice?.fixedIndex === preview.origin.slice?.fixedIndex))
+              scientificFieldLineSelectionMatchesSlice(selection, item.origin.slice)))
               throw new Error("This field line is already in Graphs.");
             const matching = document.source.objects.filter(item => item.kind === "point-series" &&
               item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&

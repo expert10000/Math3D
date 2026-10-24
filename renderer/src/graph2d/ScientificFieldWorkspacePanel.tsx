@@ -6,14 +6,14 @@ import { inspectGraph2DFieldReference, parseScientificSceneManifest, reviseScien
   type Graph2DScientificDatasetPreview, type ScientificFieldDocument, type ScientificFieldDisplay } from "@math3d/core";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
-import { reverifyScientificFieldLine } from "./reverifyScientificFieldLine";
+import { reverifyScientificFieldLine, type ScientificFieldLineSelection } from "./reverifyScientificFieldLine";
 
 export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument, onAddGraphLine,
   isGraphLineImported, onClose, onVerificationStatus }: {
   initialDocument: ScientificFieldDocument;
   onSaveDocument?: (document: ScientificFieldDocument) => void;
-  onAddGraphLine?: (preview: Graph2DScientificDatasetPreview) => void;
-  isGraphLineImported?: (varyingAxis: 0 | 1, fixedIndex: number) => boolean;
+  onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: ScientificFieldLineSelection) => void;
+  isGraphLineImported?: (selection: ScientificFieldLineSelection) => boolean;
   onClose: () => void;
   onVerificationStatus?: (status: "current" | "changed" | "missing") => void;
 }) {
@@ -26,11 +26,35 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("Not verified on this opening");
-  const [varyingAxis, setVaryingAxis] = useState<0 | 1>(initialDocument.source.reference.shape[0]! >= 2 ? 0 : 1);
-  const [lineFixedIndex, setLineFixedIndex] = useState(Math.floor(initialDocument.source.reference.shape[1]! / 2));
+  const [lineNormalAxis, setLineNormalAxis] = useState<0 | 1 | 2>(() => {
+    const shape = initialDocument.source.reference.shape;
+    const preferred = initialDocument.source.display.normalAxis ?? 2;
+    const varying = shape.findIndex(size => size >= 2);
+    return shape.length === 3 && !shape.some((size, axis) => axis !== preferred && size >= 2) ?
+      ([0, 1, 2] as const).find(axis => axis !== varying)! : preferred;
+  });
+  const [linePlaneFixedIndex, setLinePlaneFixedIndex] = useState(() => {
+    const index = initialDocument.source.display.normalAxis === lineNormalAxis ?
+      initialDocument.source.display.fixedIndex : null;
+    return index !== null && index !== undefined && index < initialDocument.source.reference.shape[lineNormalAxis]! ?
+      index : Math.floor(initialDocument.source.reference.shape[lineNormalAxis]! / 2);
+  });
+  const [varyingAxis, setVaryingAxis] = useState<0 | 1 | 2>(() =>
+    initialDocument.source.reference.shape.length === 2 ?
+      (initialDocument.source.reference.shape[0]! >= 2 ? 0 : 1) :
+      ([0, 1, 2] as const).find(axis => axis !== lineNormalAxis &&
+        initialDocument.source.reference.shape[axis]! >= 2) ?? 0);
+  const [lineFixedIndex, setLineFixedIndex] = useState(() => {
+    const shape = initialDocument.source.reference.shape;
+    const normal = lineNormalAxis;
+    const vary = shape.length === 2 ? (shape[0]! >= 2 ? 0 : 1) :
+      ([0, 1, 2] as const).find(axis => axis !== normal && shape[axis]! >= 2) ?? 0;
+    const fixed = shape.length === 2 ? 1 - vary : [0, 1, 2].find(axis => axis !== normal && axis !== vary)!;
+    return Math.floor(shape[fixed]! / 2);
+  });
   const [linePreview, setLinePreview] = useState<Graph2DScientificDatasetPreview | null>(null);
   const [lineBusy, setLineBusy] = useState(false);
-  const [lineStatus, setLineStatus] = useState("Choose a row or column, then preview its Graph line.");
+  const [lineStatus, setLineStatus] = useState("Choose a line, then preview it for Graphs.");
   const epochRef = useRef(0);
   const lineEpochRef = useRef(0);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -97,13 +121,17 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
     try { void verify(reviseScientificFieldDocument(document, { ...document.source, display }), true); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  const selectLine = (axis: 0 | 1, index: number) => {
+  const selectLine = (axis: 0 | 1 | 2, index: number) => {
     lineEpochRef.current++; setLinePreview(null); setLineBusy(false);
     setVaryingAxis(axis); setLineFixedIndex(index);
     setLineStatus("Selection changed. Preview the line again.");
   };
   const runLine = async (add: boolean) => {
-    if (add && (!linePreview || isGraphLineImported?.(varyingAxis, lineFixedIndex))) {
+    const selection: ScientificFieldLineSelection = document.source.reference.shape.length === 2 ?
+      { kind: "grid2d", varyingAxis: varyingAxis as 0 | 1, fixedIndex: lineFixedIndex } :
+      { kind: "plane3d", normalAxis: lineNormalAxis, planeFixedIndex: linePlaneFixedIndex,
+        varyingAxis, fixedIndex: lineFixedIndex };
+    if (add && (!linePreview || isGraphLineImported?.(selection))) {
       setError("Preview an unimported line before adding it to Graphs.");
       return;
     }
@@ -113,19 +141,17 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
     if (!add) setLinePreview(null);
     setLineStatus(add ? "Reverifying source before adding to Graphs…" : "Reverifying source before preview…");
     try {
-      const fresh = await reverifyScientificFieldLine(document, varyingAxis, lineFixedIndex);
+      const fresh = await reverifyScientificFieldLine(document, selection);
       sourceVerified = true;
       if (lineEpochRef.current !== epoch) return;
       if (add) {
-        if (fresh.origin.sceneFingerprint !== linePreview!.origin.sceneFingerprint ||
-            fresh.origin.resourceSha256 !== linePreview!.origin.resourceSha256 ||
-            fresh.origin.slice?.fixedIndex !== linePreview!.origin.slice?.fixedIndex ||
-            fresh.origin.slice?.varyingAxis !== linePreview!.origin.slice?.varyingAxis ||
+        if (JSON.stringify(fresh.origin) !== JSON.stringify(linePreview!.origin) ||
+            fresh.rows.length !== linePreview!.rows.length ||
             fresh.rows.some((row, index) => row.x !== linePreview!.rows[index]?.x || row.y !== linePreview!.rows[index]?.y))
           throw new Error("The source changed since preview. Preview the line again before adding it.");
-        onAddGraphLine?.(fresh);
+        onAddGraphLine?.(fresh, selection);
         setLinePreview(null);
-        setLineStatus(`${fresh.rows.length} verified samples added to Graphs. Select another row or column to continue.`);
+        setLineStatus(`${fresh.rows.length} verified samples added to Graphs. Select another line to continue.`);
       } else {
         setLinePreview(fresh);
         setLineStatus(`${fresh.rows.length} verified samples ready to add to Graphs.`);
@@ -159,9 +185,15 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
   const reference = document.source.reference;
   const label = document.source.quantity.name + " " + reference.component;
   const canExtractLine = reference.semanticType === "scalar-field" && reference.component === "scalar" &&
-    reference.shape.length === 2 && (reference.shape[0]! >= 2 || reference.shape[1]! >= 2);
-  const fixedAxis = (1 - varyingAxis) as 0 | 1;
-  const lineImported = isGraphLineImported?.(varyingAxis, lineFixedIndex) ?? false;
+    (reference.shape.length === 2 || reference.shape.length === 3) &&
+    reference.shape.some(size => size >= 2);
+  const lineFixedAxis = (reference.shape.length === 2 ? 1 - varyingAxis :
+    [0, 1, 2].find(axis => axis !== lineNormalAxis && axis !== varyingAxis)!) as 0 | 1 | 2;
+  const lineSelection: ScientificFieldLineSelection = reference.shape.length === 2 ?
+    { kind: "grid2d", varyingAxis: varyingAxis as 0 | 1, fixedIndex: lineFixedIndex } :
+    { kind: "plane3d", normalAxis: lineNormalAxis, planeFixedIndex: linePlaneFixedIndex,
+      varyingAxis, fixedIndex: lineFixedIndex };
+  const lineImported = isGraphLineImported?.(lineSelection) ?? false;
   const linePoints = linePreview?.rows;
   const linePath = linePoints?.length ? (() => {
     const ys = linePoints.map(row => row.y!), min = Math.min(...ys), max = Math.max(...ys);
@@ -201,21 +233,47 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
       {volume && coordinate && <ScientificFieldVolume volume={volume} coordinate={coordinate} label={label}
         unit={document.source.quantity.unit} transfer={document.source.display.transfer}
         onApplyTransfer={transfer => apply({ ...document.source.display, transfer })} />}
-      {reference.semanticType === "scalar-field" && reference.shape.length === 3 &&
-        <p>Graph row and column extraction is available for saved 2D scalar grids. This 3D field can still show verified planes.</p>}
       {canExtractLine && <section aria-label="Field to Graph line" data-testid="scientific-field-line">
-        <h4>Send a row or column to Graphs</h4>
+        <h4>Send a selected line to Graphs</h4>
+        {reference.shape.length === 3 && <>
+          <label>Line plane normal axis <select value={lineNormalAxis} onChange={event => {
+            const normal = Number(event.target.value) as 0 | 1 | 2;
+            const vary = ([0, 1, 2] as const).find(axis => axis !== normal && reference.shape[axis]! >= 2)!;
+            const fixed = ([0, 1, 2] as const).find(axis => axis !== normal && axis !== vary)!;
+            setLineNormalAxis(normal); setLinePlaneFixedIndex(Math.floor(reference.shape[normal]! / 2));
+            selectLine(vary, Math.floor(reference.shape[fixed]! / 2));
+          }}>
+            {([0, 1, 2] as const).filter(axis => [0, 1, 2].some(other =>
+              other !== axis && reference.shape[other]! >= 2)).map(axis =>
+              <option key={axis} value={axis}>{reference.axes[axis]!.name}</option>)}
+          </select></label>
+          <label>Plane coordinate {reference.axes[lineNormalAxis]!.name} <select value={linePlaneFixedIndex}
+            onChange={event => { setLinePlaneFixedIndex(Number(event.target.value));
+              selectLine(varyingAxis, lineFixedIndex); }}>
+            {Array.from({ length: reference.shape[lineNormalAxis]! }, (_, index) => <option key={index} value={index}>
+              {index} · {reference.axes[lineNormalAxis]!.origin + index * reference.axes[lineNormalAxis]!.spacing} {reference.axes[lineNormalAxis]!.unit}
+            </option>)}
+          </select></label>
+        </>}
         <label>Line direction <select value={varyingAxis} onChange={event => {
-          const axis = Number(event.target.value) as 0 | 1;
-          selectLine(axis, Math.floor(reference.shape[1 - axis]! / 2)); }}>
-          {reference.shape[0]! >= 2 && <option value={0}>Column · vary {reference.axes[0]!.name}</option>}
-          {reference.shape[1]! >= 2 && <option value={1}>Row · vary {reference.axes[1]!.name}</option>}
+          const axis = Number(event.target.value) as 0 | 1 | 2;
+          const fixed = reference.shape.length === 2 ? 1 - axis :
+            [0, 1, 2].find(other => other !== lineNormalAxis && other !== axis)!;
+          selectLine(axis, Math.floor(reference.shape[fixed]! / 2)); }}>
+          {([0, 1, 2] as const).filter(axis => axis < reference.shape.length &&
+            (reference.shape.length === 2 || axis !== lineNormalAxis) && reference.shape[axis]! >= 2)
+            .map(axis => <option key={axis} value={axis}>Vary {reference.axes[axis]!.name}</option>)}
         </select></label>
-        <label>Fixed {reference.axes[fixedAxis]!.name} <select value={lineFixedIndex}
+        <label>Fixed {reference.axes[lineFixedAxis]!.name} <select value={lineFixedIndex}
           onChange={event => selectLine(varyingAxis, Number(event.target.value))}>
-          {Array.from({ length: reference.shape[fixedAxis]! }, (_, index) => <option key={index} value={index}>
-            {index} · {reference.axes[fixedAxis]!.origin + index * reference.axes[fixedAxis]!.spacing} {reference.axes[fixedAxis]!.unit}
+          {Array.from({ length: reference.shape[lineFixedAxis]! }, (_, index) => <option key={index} value={index}>
+            {index} · {reference.axes[lineFixedAxis]!.origin + index * reference.axes[lineFixedAxis]!.spacing} {reference.axes[lineFixedAxis]!.unit}
           </option>)}</select></label>
+        {reference.shape.length === 3 && <p>Plane: {reference.axes[lineNormalAxis]!.name} =
+          {" "}{reference.axes[lineNormalAxis]!.origin + linePlaneFixedIndex * reference.axes[lineNormalAxis]!.spacing}
+          {" "}{reference.axes[lineNormalAxis]!.unit}; line at {reference.axes[lineFixedAxis]!.name} =
+          {" "}{reference.axes[lineFixedAxis]!.origin + lineFixedIndex * reference.axes[lineFixedAxis]!.spacing}
+          {" "}{reference.axes[lineFixedAxis]!.unit}.</p>}
         <p>Graph x: {reference.axes[varyingAxis]!.name} ({reference.axes[varyingAxis]!.unit});
           y: {document.source.quantity.name} ({document.source.quantity.unit}).</p>
         <div className="vector-field2d-actions">
@@ -223,7 +281,7 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
           <button type="button" disabled={busy || lineBusy || !linePreview || lineImported || !onAddGraphLine}
             onClick={() => void runLine(true)}>Add line to Graphs</button>
         </div>
-        <p role="status">{lineImported ? "This row or column is already in Graphs." : lineStatus}</p>
+        <p role="status">{lineImported ? "This field line is already in Graphs." : lineStatus}</p>
         {linePreview && <figure aria-label={`Preview Graph line ${linePreview.label}`}>
           <svg viewBox="0 0 480 156" role="img" aria-label="Verified Graph line preview"
             style={{ width: "100%", maxWidth: 480, height: 156, background: "#f8fbff", border: "1px solid #cbd5e1" }}>
@@ -234,6 +292,10 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
             first ({linePreview.rows[0]?.x}, {linePreview.rows[0]?.y}) ·
             last ({linePreview.rows.at(-1)?.x}, {linePreview.rows.at(-1)?.y})</figcaption>
           <small>Scene {linePreview.origin.sceneFingerprint} · resource {linePreview.origin.resourceSha256}</small>
+          {linePreview.origin.slice && "plane" in linePreview.origin.slice && linePreview.origin.slice.plane &&
+            <small>Plane {linePreview.origin.slice.plane.fixedName} = {linePreview.origin.slice.plane.fixedCoordinate}
+              {" "}{linePreview.origin.slice.plane.fixedUnit}; fixed {linePreview.origin.slice.fixedName} =
+              {" "}{linePreview.origin.slice.fixedCoordinate} {linePreview.origin.slice.fixedUnit}</small>}
         </figure>}
       </section>}
       <div className="vector-field2d-actions">
