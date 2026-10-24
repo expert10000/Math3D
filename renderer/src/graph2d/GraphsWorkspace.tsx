@@ -58,6 +58,7 @@ import { Graph2DPlot } from "./Graph2DPlot";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
+import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
@@ -215,6 +216,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificVectorPlane, setScientificVectorPlane] =
     useState<readonly [Graph2DScientificPlane, Graph2DScientificPlane] | null>(null);
   const [scientificVolume, setScientificVolume] = useState<Graph2DScientificVolume | null>(null);
+  const [scientificTransfer, setScientificTransfer] = useState<ScientificFieldTransfer>(DEFAULT_SCIENTIFIC_FIELD_TRANSFER);
   const [scientificNormalAxis, setScientificNormalAxis] = useState<0 | 1 | 2>(2);
   const [scientificPlaneIndex, setScientificPlaneIndex] = useState(0);
   const scientificPreviewEpoch = useRef(0);
@@ -275,7 +277,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const resetScientificSlice = () => { scientificPreviewEpoch.current += 1; setScientificSlicePreview(null);
     setScientificPlane(null); setScientificVectorPlane(null); setScientificVolume(null); setScientificVaryingAxis(null);
-    setScientificFixedIndex(null); setScientificImportError(""); };
+    setScientificFixedIndex(null); setScientificTransfer(DEFAULT_SCIENTIFIC_FIELD_TRANSFER); setScientificImportError(""); };
   const previewScientificSlice = async () => {
     if (!scientificImport || scientificSelected?.shape?.length !== 2 || scientificVaryingAxis === null || scientificFixedIndex === null ||
         !window.scientificScenes?.previewGraphSlice) return;
@@ -291,18 +293,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
-  const previewScientificPlane = async () => {
+  const previewScientificPlane = async (transfer = scientificTransfer) => {
     if (!scientificImport || !scientificSelected?.shape || !window.scientificScenes?.previewGraphPlane) return;
     const selected = scientificSelected, source = scientificImport;
     const normalAxis = selected.shape.length === 3 ? scientificNormalAxis : null;
     const fixedIndex = selected.shape.length === 3 ? scientificPlaneIndex : null;
     const epoch = ++scientificPreviewEpoch.current;
-    setScientificImportBusy(true); setScientificImportError(""); setScientificPlane(null); setScientificVectorPlane(null);
+    setScientificImportBusy(true); setScientificImportError(""); setScientificPlane(null);
+    setScientificVectorPlane(null); setScientificVolume(null);
     try {
       const plane = await window.scientificScenes.previewGraphPlane({ fingerprint: source.fingerprint,
         datasetId: selected.datasetId, component: selected.component, normalAxis, fixedIndex });
       const verified = verifyGraph2DScientificPlane(source.manifestJson, source.fingerprint, plane);
-      if (scientificPreviewEpoch.current === epoch) setScientificPlane(verified);
+      if (scientificPreviewEpoch.current === epoch) { setScientificTransfer(transfer); setScientificPlane(verified); }
     } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
@@ -337,16 +340,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
-  const previewScientificVolume = async () => {
+  const previewScientificVolume = async (transfer = scientificTransfer) => {
     if (!scientificImport || scientificSelected?.shape?.length !== 3 || !window.scientificScenes?.previewGraphVolume) return;
     const selected = scientificSelected, source = scientificImport;
     const epoch = ++scientificPreviewEpoch.current;
-    setScientificImportBusy(true); setScientificImportError(""); setScientificVolume(null); setScientificVectorPlane(null);
+    setScientificImportBusy(true); setScientificImportError(""); setScientificVolume(null);
+    setScientificVectorPlane(null); setScientificPlane(null);
     try {
       const volume = await window.scientificScenes.previewGraphVolume({ fingerprint: source.fingerprint,
         datasetId: selected.datasetId, component: selected.component });
       const verified = verifyGraph2DScientificVolume(source.manifestJson, source.fingerprint, volume);
-      if (scientificPreviewEpoch.current === epoch) setScientificVolume(verified);
+      if (scientificPreviewEpoch.current === epoch) { setScientificTransfer(transfer); setScientificVolume(verified); }
     } catch (error) { if (scientificPreviewEpoch.current === epoch) setScientificImportError((error as Error).message); }
     finally { if (scientificPreviewEpoch.current === epoch) setScientificImportBusy(false); }
   };
@@ -1907,19 +1911,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                       scientificCoordinate.spacing[scientificNormalAxis]! * index : index}</option>)}
               </select></label>
             </>}
-            <button type="button" disabled={scientificImportBusy} onClick={previewScientificPlane}>
+            <button type="button" disabled={scientificImportBusy} onClick={() => void previewScientificPlane()}>
               {scientificSelected.shape.length === 2 ? "View verified field" : "View verified plane"}</button>
             {scientificSelected.shape.length === 2 && scientificDataset?.semanticType === "vector-field" &&
               scientificDataset.components?.length === 2 &&
               <button type="button" disabled={scientificImportBusy} onClick={previewScientificVectorPlane}>
                 View verified vector field</button>}
             {scientificSelected.shape.length === 3 && <button type="button" disabled={scientificImportBusy}
-              onClick={previewScientificVolume}>View verified volume</button>}
+              onClick={() => void previewScientificVolume()}>View verified volume</button>}
             {scientificPlane && scientificCoordinate && scientificPlane.datasetId === scientificSelected.datasetId &&
               scientificPlane.component === scientificSelected.component &&
               <ScientificFieldPlane plane={scientificPlane} coordinate={scientificCoordinate}
                 label={`${scientificDataset?.quantity.name ?? scientificSelected.datasetId} ${scientificSelected.component}`}
-                unit={scientificDataset?.quantity.unit ?? ""} />}
+                unit={scientificDataset?.quantity.unit ?? ""} transfer={scientificTransfer}
+                onApplyTransfer={transfer => void previewScientificPlane(transfer)} />}
             {scientificVectorPlane && scientificCoordinate &&
               scientificVectorPlane[0].datasetId === scientificSelected.datasetId &&
               <ScientificFieldVectorPlane planes={scientificVectorPlane} coordinate={scientificCoordinate}
@@ -1929,7 +1934,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               scientificVolume.component === scientificSelected.component &&
               <ScientificFieldVolume volume={scientificVolume} coordinate={scientificCoordinate}
                 label={`${scientificDataset?.quantity.name ?? scientificSelected.datasetId} ${scientificSelected.component}`}
-                unit={scientificDataset?.quantity.unit ?? ""} />}
+                unit={scientificDataset?.quantity.unit ?? ""} transfer={scientificTransfer}
+                onApplyTransfer={transfer => void previewScientificVolume(transfer)} />}
           </>}
           {scientificPreview ? <>
             <p>{scientificPreview.rows.length} checked samples · {scientificPreview.origin.xName} ({scientificPreview.origin.xUnit}) →

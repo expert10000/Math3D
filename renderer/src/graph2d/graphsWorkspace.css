@@ -370,6 +370,14 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   border: 1px solid var(--border); border-radius: 8px; }
 .graph2d-scientific-field figcaption, .graph2d-scientific-volume figcaption { font-weight: 700; margin-bottom: 8px; }
 .graph2d-scientific-field p, .graph2d-scientific-volume p { margin: 8px 0; }
+.graph2d-scientific-transfer { max-width: 560px; font-size: 12px; }
+.graph2d-scientific-transfer-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 10px 0; }
+.graph2d-scientific-transfer-controls label { display: grid; gap: 3px; min-width: 120px; }
+.graph2d-scientific-transfer-controls select, .graph2d-scientific-transfer-controls input { width: 100%; box-sizing: border-box; }
+.graph2d-scientific-legend { display: flex; gap: 8px; align-items: center; }
+.graph2d-scientific-legend-scale { display: inline-block; flex: 1; max-width: 240px; height: 14px;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: linear-gradient(90deg, rgb(30 80 235), rgb(140 215 133), rgb(250 80 30)); }
 .graph2d-scientific-vector svg { display: block; max-width: 100%; }
 .graph2d-scientific-vector-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 7px;
   font-size: 12px; color: var(--text); }
