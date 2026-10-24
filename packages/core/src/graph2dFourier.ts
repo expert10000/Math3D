@@ -1,6 +1,6 @@
 import { createAnalysisResultEnvelope, type AnalysisResultEnvelope } from "./analysisResults";
 import { structuralHash } from "./documentIdentity";
-import type { Graph2DDocument, Graph2DPointTableReference } from "./graph2dDocument";
+import type { Graph2DDocument, Graph2DPointTableReference, Graph2DScientificDatasetOrigin } from "./graph2dDocument";
 import { Graph2DPointTableStore, graph2DVerifiedPointTableReference, assertGraph2DAnalysisRowBudget,
   type Graph2DPointRow } from "./graph2dPointSeries";
 import type { ScientificSourceGeneration } from "./scientificJobs";
@@ -140,3 +140,98 @@ export const isGraph2DFourierCurrent = (result: Graph2DFourierResult, document: 
     object?.kind === "point-series" && object.table.id === result.table.id &&
     object.table.checksum === result.table.checksum && object.table.rowCount === result.table.rowCount;
 };
+
+export type Graph2DFourierChannelInput = Readonly<{ objectId: string; rows: readonly Graph2DPointRow[] | null }>;
+export type Graph2DMultiChannelFourierResult = Readonly<{
+  resultId: string; source: ScientificSourceGeneration; options: Graph2DFourierOptions;
+  channels: readonly Readonly<{ objectId: string; label: string; xUnit: string; yUnit: string;
+    origin?: Graph2DScientificDatasetOrigin; spectrum: Graph2DFourierResult }>[];
+  n: number; fftLength: number; sampleInterval: number; nyquist: number; frequencyUnit: string;
+  publication: AnalysisResultEnvelope;
+}>;
+
+const inDomainFourierRows = (rows: readonly Graph2DPointRow[], domain: Graph2DDocument["source"]["objects"][number] &
+  { kind: "point-series" }) => rows.filter(row => row.x >= domain.domain.min && row.x <= domain.domain.max &&
+    (domain.domain.includeMin || row.x !== domain.domain.min) &&
+    (domain.domain.includeMax || row.x !== domain.domain.max)).slice().sort((a, b) => a.x - b.x);
+
+/** Compare one to four complete checked channels on exactly the same coordinate lattice. */
+export const analyzeGraph2DMultiChannelFourier = (input: Readonly<{ document: Graph2DDocument;
+  channels: readonly Graph2DFourierChannelInput[]; options: Graph2DFourierOptions;
+  maxRows?: number }>): Graph2DMultiChannelFourierResult => {
+  const started = Date.now();
+  if (input.channels.length < 1 || input.channels.length > 4 ||
+      new Set(input.channels.map(channel => channel.objectId)).size !== input.channels.length)
+    throw new TypeError("Choose one to four distinct Fourier channels.");
+  const objects = input.channels.map(channel => {
+    const object = input.document.source.objects.find(item => item.id === channel.objectId);
+    if (object?.kind !== "point-series") throw new TypeError("Every Fourier channel must be a point series.");
+    return object;
+  });
+  const declared = objects.map(object => object.origin);
+  if (declared.some(Boolean) && declared.some(origin => !origin))
+    throw new TypeError("Cannot compare channels with declared units to a channel with unknown units.");
+  if (declared[0]) {
+    const { xUnit, yUnit } = declared[0];
+    if (input.options.xUnit !== xUnit || declared.some(origin => origin!.xUnit !== xUnit || origin!.yUnit !== yUnit))
+      throw new TypeError("Fourier channels must have matching x and y units, including the selected x unit.");
+  }
+  const spectra = input.channels.map(channel => analyzeGraph2DFourier({ ...input,
+    objectId: channel.objectId, rows: channel.rows }));
+  const grids = input.channels.map((channel, index) => inDomainFourierRows(channel.rows!, objects[index]!));
+  const first = grids[0]!;
+  if (grids.slice(1).some(rows => rows.length !== first.length ||
+      rows.some((row, index) => row.x !== first[index]!.x)))
+    throw new TypeError("Fourier channels require identical checked x coordinates; resample explicitly before comparison.");
+  const source = spectra[0]!.source;
+  const channels = spectra.map((spectrum, index) => ({ objectId: spectrum.objectId,
+    label: objects[index]!.label, xUnit: declared[index]?.xUnit ?? input.options.xUnit,
+    yUnit: declared[index]?.yUnit ?? "y unit", ...(declared[index] ? { origin: declared[index] } : {}),
+    spectrum }));
+  const resultId = "graph2d.fourier-multichannel." + structuralHash({ source,
+    channels: channels.map(channel => ({ objectId: channel.objectId, checksum: channel.spectrum.table.checksum,
+      xUnit: channel.xUnit, yUnit: channel.yUnit })), options: input.options,
+    algorithm: "aligned-radix2-windowed-v1" }).slice(7);
+  const reference = spectra[0]!;
+  const publication = createAnalysisResultEnvelope({ resultId, status: "numerical", provenance: { source,
+    operation: { type: "graph2d.fourier-multichannel", algorithm: "aligned-radix2-windowed-fft",
+      algorithmVersion: "1", parameters: { options: input.options,
+        channels: channels.map(channel => ({ objectId: channel.objectId, table: channel.spectrum.table,
+          xUnit: channel.xUnit, yUnit: channel.yUnit, origin: channel.origin ?? null })),
+        sampleCount: reference.n, fftLength: reference.fftLength, alignment: "exact checked x coordinates" } },
+    numericContext: { precision: { binaryBits: 53 } }, engine: { name: "math3d-core", version: "1" },
+    elapsedMs: Math.max(0, Date.now() - started) },
+    summary: { channelCount: channels.length, n: reference.n, fftLength: reference.fftLength,
+      sampleInterval: reference.sampleInterval, nyquist: reference.nyquist,
+      frequencyUnit: reference.frequencyUnit, checksums: channels.map(channel => channel.spectrum.table.checksum) },
+    warnings: [...reference.publication.warnings,
+      "Channels share exact checked x coordinates; no alignment or interpolation was inferred.",
+      ...(!declared[0] ? ["Manually imported channels have no declared units; the chosen x unit and generic y unit are user assumptions."] : [])],
+    diagnostics: [], artifacts: [] });
+  return freeze({ resultId, source, options: { ...input.options }, channels,
+    n: reference.n, fftLength: reference.fftLength, sampleInterval: reference.sampleInterval,
+    nyquist: reference.nyquist, frequencyUnit: reference.frequencyUnit, publication });
+};
+
+export const isGraph2DMultiChannelFourierCurrent = (result: Graph2DMultiChannelFourierResult,
+  document: Graph2DDocument) => result.channels.every(channel =>
+    isGraph2DFourierCurrent(channel.spectrum, document));
+
+const metadataText = (value: string) => JSON.stringify(value);
+export const graph2DMultiChannelFourierCsv = (result: Graph2DMultiChannelFourierResult): string => [
+  `# resultId=${result.resultId}`, `# sourceDocument=${result.source.documentId}`,
+  `# sourceRevision=${result.source.revision}`,
+  ...result.channels.flatMap((channel, index) => [
+    `# channel${index + 1}.objectId=${channel.objectId}`,
+    `# channel${index + 1}.datasetChecksum=${channel.spectrum.table.checksum}`,
+    `# channel${index + 1}.xUnit=${metadataText(channel.xUnit)}; yUnit=${metadataText(channel.yUnit)}`,
+    ...(channel.origin ? [`# channel${index + 1}.scene=${channel.origin.sceneId}; dataset=${channel.origin.datasetId}; component=${channel.origin.component ?? "scalar"}; manifest=${channel.origin.sceneFingerprint}; resource=${channel.origin.resourceSha256}; source=${channel.origin.sourceSha256}`] : []),
+  ]),
+  `# window=${result.options.window}; normalization=${result.options.normalization}; detrend=${result.options.detrend}`,
+  `# sampleInterval=${result.sampleInterval}; frequencyUnit=${result.frequencyUnit}`,
+  ["frequency", ...result.channels.flatMap((_, index) => [`channel_${index + 1}_amplitude`,
+    `channel_${index + 1}_phaseRadians`])].join(","),
+  ...result.channels[0]!.spectrum.bins.map((bin, index) => [bin.frequency,
+    ...result.channels.flatMap(channel => [channel.spectrum.bins[index]!.amplitude,
+      channel.spectrum.bins[index]!.phaseRadians])].join(",")),
+].join("\n") + "\n";

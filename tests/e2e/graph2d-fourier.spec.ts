@@ -66,3 +66,37 @@ test("Fourier row cap refuses a full source above the limit without changing the
     await expect(panel).toContainText("2048 samples");
   } finally { await closeSurfaceApp(app); }
 });
+
+test("GRA-16 desktop compares two checked channels without merging their spectra", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    for (const [name, frequency] of [["Eight hertz", 8], ["Twelve hertz", 12]] as const) {
+      await openGraphType(page, "Data series");
+      const editor = graphEditor(page);
+      await editor.getByLabel("Data series name").fill(name);
+      await editor.getByLabel("Data series import").fill(Array.from({ length: 128 }, (_, index) =>
+        `${index / 128},${Math.cos(2 * Math.PI * frequency * index / 128).toPrecision(12)}`).join("\n"));
+      await saveGraphEditor(page);
+    }
+    const panel = page.getByRole("region", { name: "Fourier spectrum", exact: true });
+    await panel.getByLabel("Fourier window").selectOption("rectangular");
+    await panel.getByRole("checkbox").check();
+    await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
+    await expect(panel.getByRole("status")).toHaveText("Current spectrum");
+    await expect(panel).toContainText("2 channels");
+    await expect(panel.getByRole("heading", { name: /Eight hertz/ })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: /Twelve hertz/ })).toBeVisible();
+    await panel.getByLabel("Fourier channel to inspect").selectOption({ label: "Eight hertz" });
+    await panel.getByRole("button", { name: "Strongest 12" }).click();
+    await expect(panel.getByRole("table", { name: "Fourier numerical results" }).locator("tbody"))
+      .toContainText("8.000000");
+    await panel.getByLabel("Fourier channel to inspect").selectOption({ label: "Twelve hertz" });
+    await panel.getByRole("button", { name: "Strongest 12" }).click();
+    await expect(panel.getByRole("table", { name: "Fourier numerical results" }).locator("tbody"))
+      .toContainText("12.00000");
+  } finally { await closeSurfaceApp(app); }
+});
