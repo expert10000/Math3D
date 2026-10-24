@@ -178,7 +178,9 @@ function volumeLineFromVerifiedBundle(bundle: VerifiedScientificSceneBundle, dat
     throw new TypeError("Choose a valid line through a three-dimensional scalar plane.");
   const resourceId = dataset.semanticType === "scalar-field" && component === "scalar" ? dataset.real :
     dataset.semanticType === "vector-field" && dataset.components?.length === 3 ?
-      dataset.components.find(item => item.name === component)?.resource : undefined;
+      dataset.components.find(item => item.name === component)?.resource :
+      dataset.semanticType === "complex-scalar-field" && component === "real" ? dataset.real :
+      dataset.semanticType === "complex-scalar-field" && component === "imaginary" ? dataset.imaginary : undefined;
   const resource = bundle.manifest.resources.find(item => item.id === resourceId);
   const buffer = resourceId ? bundle.resources.get(resourceId) : undefined;
   const shape = [...dataset.shape] as [number, number, number];
@@ -219,6 +221,21 @@ export async function previewScientificGraphVectorVolumeLine(directory: string, 
       dataset.components?.length !== 3 || components.some(name => !dataset.components?.some(part => part.name === name)))
     throw new TypeError("Choose one complete three-component vector dataset.");
   return volumeLineFromVerifiedBundle(bundle, datasetId, component, normalAxis, planeFixedIndex, varyingAxis, fixedIndex);
+}
+
+/** Both complex components are extracted from the same freshly verified 3D bundle. */
+export async function previewScientificGraphComplexVolumeLines(directory: string, fingerprint: string, datasetId: string,
+  normalAxis: 0 | 1 | 2, planeFixedIndex: number, varyingAxis: 0 | 1 | 2,
+  fixedIndex: number): Promise<[ScientificGraphVolumeLine, ScientificGraphVolumeLine]> {
+  const bundle = await readScientificSceneBundle(directory);
+  if (bundle.fingerprint !== fingerprint) throw new Error("Scientific source fingerprint changed");
+  const dataset = bundle.manifest.datasets.find(item => item.id === datasetId);
+  if (dataset?.semanticType !== "complex-scalar-field" || dataset.shape.length !== 3 ||
+      !dataset.real || !dataset.imaginary || dataset.real === dataset.imaginary)
+    throw new TypeError("Choose one complete three-dimensional complex field.");
+  return ["real", "imaginary"].map(component => volumeLineFromVerifiedBundle(bundle, datasetId,
+    component, normalAxis, planeFixedIndex, varyingAxis, fixedIndex)) as
+    [ScientificGraphVolumeLine, ScientificGraphVolumeLine];
 }
 
 /** Return bounded 1D components and 2D descriptors; full grids stay in main. */

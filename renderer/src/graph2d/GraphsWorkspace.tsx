@@ -60,6 +60,7 @@ import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
 import { ScientificFieldWorkspacePanel } from "./ScientificFieldWorkspacePanel";
+import { ScientificComplexVolumeLinesPanel } from "./ScientificComplexVolumeLinesPanel";
 import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
@@ -2049,6 +2050,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 label={`${scientificDataset?.quantity.name ?? scientificSelected.datasetId} ${scientificSelected.component}`}
                 unit={scientificDataset?.quantity.unit ?? ""} transfer={scientificTransfer}
                 onApplyTransfer={transfer => void previewScientificVolume(transfer)} />}
+            {scientificImport && scientificDataset?.semanticType === "complex-scalar-field" &&
+              scientificSelected.shape.length === 3 && scientificCoordinate?.axes.length === 3 &&
+              <ScientificComplexVolumeLinesPanel key={`${scientificImport.fingerprint}:${scientificSelected.datasetId}`}
+                manifestJson={scientificImport.manifestJson} fingerprint={scientificImport.fingerprint}
+                locator={scientificImport.locator} datasetId={scientificSelected.datasetId}
+                shape={scientificSelected.shape as [number, number, number]}
+                axes={scientificCoordinate.axes as [typeof scientificCoordinate.axes[number],
+                  typeof scientificCoordinate.axes[number], typeof scientificCoordinate.axes[number]]}
+                origin={scientificCoordinate.origin as [number, number, number]}
+                spacing={scientificCoordinate.spacing as [number, number, number]}
+                document={document} disabled={scientificImportBusy} onAuthoringCommit={onAuthoringCommit} />}
           </>}
           {scientificPreview ? <>
             <p>{scientificPreview.rows.length} checked samples · {scientificPreview.origin.xName} ({scientificPreview.origin.xUnit}) →

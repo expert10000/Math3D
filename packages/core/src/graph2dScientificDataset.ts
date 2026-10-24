@@ -228,10 +228,12 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
   const coordinate = manifest.coordinates.find(item => item.id === dataset?.coordinateSystem);
   const resourceId = dataset?.semanticType === "scalar-field" && line.component === "scalar" ? dataset.real :
     dataset?.semanticType === "vector-field" && dataset.components?.length === 3 ?
-      dataset.components.find(item => item.name === line.component)?.resource : undefined;
+      dataset.components.find(item => item.name === line.component)?.resource :
+      dataset?.semanticType === "complex-scalar-field" && line.component === "real" ? dataset.real :
+      dataset?.semanticType === "complex-scalar-field" && line.component === "imaginary" ? dataset.imaginary : undefined;
   const resource = manifest.resources.find(item => item.id === resourceId);
   const fixedAxis = ([0, 1, 2] as const).find(axis => axis !== line.normalAxis && axis !== line.varyingAxis);
-  if (!dataset || !["scalar-field", "vector-field"].includes(dataset.semanticType) || dataset.shape.length !== 3 ||
+  if (!dataset || !["scalar-field", "vector-field", "complex-scalar-field"].includes(dataset.semanticType) || dataset.shape.length !== 3 ||
       !coordinate || coordinate.axes.length !== 3 || !resource || !resourceId ||
       !([0, 1, 2] as number[]).includes(line.normalAxis) ||
       !([0, 1, 2] as number[]).includes(line.varyingAxis) ||
@@ -273,9 +275,9 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
     sourceProducer: manifest.source.producer, sourceId: manifest.source.sourceId,
     sourceSchema: manifest.source.sourceSchema, sourceSha256: manifest.source.sha256,
     xName: coordinate.axes[line.varyingAxis]!.name, xUnit: coordinate.axes[line.varyingAxis]!.unit,
-    yName: dataset.semanticType === "vector-field" ? `${dataset.quantity.name} · ${line.component}` : dataset.quantity.name,
+    yName: dataset.semanticType !== "scalar-field" ? `${dataset.quantity.name} · ${line.component}` : dataset.quantity.name,
     yUnit: dataset.quantity.unit,
-    ...(dataset.semanticType === "vector-field" ? { component: line.component } : {}),
+    ...(dataset.semanticType !== "scalar-field" ? { component: line.component } : {}),
     slice,
   };
   const label = `${origin.yName} · ${slice.plane.fixedName} = ${planeCoordinate} ` +

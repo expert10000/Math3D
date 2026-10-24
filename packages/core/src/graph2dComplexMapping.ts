@@ -4,7 +4,7 @@ import { GRAPH2D_DOCUMENT_FORMAT, GRAPH2D_DOCUMENT_SCHEMA_VERSION, type Graph2DD
 import { evaluateGraph2DParametric } from "./graph2dParametric";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { graph2DVerifiedPointTableReference, type Graph2DPointTableStore } from "./graph2dPointSeries";
-import { previewGraph2DScientificSlice } from "./graph2dScientificDataset";
+import { previewGraph2DScientificSlice, previewGraph2DScientificVolumeLine } from "./graph2dScientificDataset";
 import { canonicalJsonStringify } from "./documentIdentity";
 
 export type Graph2DComplexContourOptions = Readonly<{ sampleCount: number; closure: "auto" | "open" | "closed" }>;
@@ -130,7 +130,6 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
   const realSlice = realOrigin?.slice, imaginarySlice = imaginaryOrigin?.slice;
   if (!realOrigin || !imaginaryOrigin || realOrigin.component !== "real" ||
       imaginaryOrigin.component !== "imaginary" || !realSlice || !imaginarySlice ||
-      "plane" in realSlice || "plane" in imaginarySlice ||
       realOrigin.sceneId !== imaginaryOrigin.sceneId || realOrigin.datasetId !== imaginaryOrigin.datasetId ||
       realOrigin.sceneFingerprint !== imaginaryOrigin.sceneFingerprint ||
       realOrigin.sourceProducer !== imaginaryOrigin.sourceProducer ||
@@ -138,9 +137,7 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
       realOrigin.sourceSha256 !== imaginaryOrigin.sourceSha256 ||
       realOrigin.xName !== imaginaryOrigin.xName || realOrigin.xUnit !== imaginaryOrigin.xUnit ||
       realOrigin.yUnit !== imaginaryOrigin.yUnit ||
-      realSlice.varyingAxis !== imaginarySlice.varyingAxis || realSlice.fixedIndex !== imaginarySlice.fixedIndex ||
-      realSlice.fixedCoordinate !== imaginarySlice.fixedCoordinate || realSlice.fixedName !== imaginarySlice.fixedName ||
-      realSlice.fixedUnit !== imaginarySlice.fixedUnit ||
+      canonicalJsonStringify(realSlice) !== canonicalJsonStringify(imaginarySlice) ||
       (realOrigin.locator && imaginaryOrigin.locator &&
         (realOrigin.locator.kind !== imaginaryOrigin.locator.kind || realOrigin.locator.value !== imaginaryOrigin.locator.value)))
     throw new TypeError("Real and imaginary lines must come from the same verified complex-grid slice and axes.");
@@ -164,6 +161,7 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
     varyingAxis: realSlice.varyingAxis, fixedIndex: realSlice.fixedIndex,
     fixedCoordinate: realSlice.fixedCoordinate, fixedName: realSlice.fixedName, fixedUnit: realSlice.fixedUnit,
     varyingName: realOrigin.xName, varyingUnit: realOrigin.xUnit,
+    ...("plane" in realSlice ? { fixedAxis: realSlice.fixedAxis, plane: realSlice.plane } : {}),
   };
   const points = realRows.map((row, index) => ({ re: row.y!, im: imaginaryRows[index]!.y! }));
   return reviewPoints(document, realObjectId, { ...options, sampleCount: points.length }, points,
@@ -173,7 +171,8 @@ export const reviewGraph2DComplexPair = (document: Graph2DDocument, realObjectId
 /** Match freshly re-read bundle slices to both immutable imported Graph tables. */
 export const verifyGraph2DComplexPairBundle = (document: Graph2DDocument, realObjectId: string,
   imaginaryObjectId: string, tables: Graph2DPointTableStore, manifestJson: string, fingerprint: string,
-  lines: readonly [Parameters<typeof previewGraph2DScientificSlice>[2], Parameters<typeof previewGraph2DScientificSlice>[2]],
+  lines: readonly [Parameters<typeof previewGraph2DScientificSlice>[2] | Parameters<typeof previewGraph2DScientificVolumeLine>[2],
+    Parameters<typeof previewGraph2DScientificSlice>[2] | Parameters<typeof previewGraph2DScientificVolumeLine>[2]],
 ): void => {
   const reviewed = reviewGraph2DComplexPair(document, realObjectId, imaginaryObjectId, defaultOptions, tables);
   const provenance = reviewed.target.provenance.graphSource?.scientificSource;
@@ -184,7 +183,8 @@ export const verifyGraph2DComplexPairBundle = (document: Graph2DDocument, realOb
     if (object?.kind !== "point-series" || !object.origin)
       throw new TypeError("A linked scientific Graph line is missing.");
     const line = lines[index]!;
-    const fresh = previewGraph2DScientificSlice(manifestJson, fingerprint, line);
+    const fresh = "normalAxis" in line ? previewGraph2DScientificVolumeLine(manifestJson, fingerprint, line) :
+      previewGraph2DScientificSlice(manifestJson, fingerprint, line);
     const { locator: _locator, ...savedOrigin } = object.origin;
     if (line.component !== (index === 0 ? "real" : "imaginary") ||
         canonicalJsonStringify(fresh.origin) !== canonicalJsonStringify(savedOrigin) ||

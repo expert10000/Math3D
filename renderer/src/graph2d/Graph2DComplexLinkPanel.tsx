@@ -69,6 +69,8 @@ export function Graph2DComplexLinkPanel({ target, source, onRefresh }: { target:
     <p>{link.sampleCount} sampled points · closure {link.closure ?? "auto"} · target revision {target.identity.revision}.</p>
     {link.scientificSource && <p>Complex grid {link.scientificSource.sceneId}/{link.scientificSource.datasetId};
       {" "}{link.scientificSource.fixedName} = {link.scientificSource.fixedCoordinate} {link.scientificSource.fixedUnit};
+      {link.scientificSource.plane && <> plane {link.scientificSource.plane.fixedName} =
+        {" "}{link.scientificSource.plane.fixedCoordinate} {link.scientificSource.plane.fixedUnit};</>}
       {" "}axis {link.scientificSource.varyingAxis} ({link.scientificSource.varyingName}, {link.scientificSource.varyingUnit}).
       Manifest <code>{link.scientificSource.sceneFingerprint}</code>;
       component checksums <code>{link.scientificSource.realResourceSha256}</code> and

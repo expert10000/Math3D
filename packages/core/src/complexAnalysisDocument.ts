@@ -134,9 +134,11 @@ export type ComplexAnalysisDocument = Readonly<{
       mapping: "parametric-xy-to-complex-contour" | "paired-functions-to-complex-contour" | "scientific-complex-line-to-contour";
       scientificSource?: Readonly<{ sceneId: string; datasetId: string; sceneFingerprint: string;
         locator?: Graph2DFieldLocator;
-        realResourceSha256: string; imaginaryResourceSha256: string; varyingAxis: 0 | 1;
+        realResourceSha256: string; imaginaryResourceSha256: string; varyingAxis: 0 | 1 | 2;
         fixedIndex: number; fixedCoordinate: number; fixedName: string; fixedUnit: string;
-        varyingName: string; varyingUnit: string }>;
+        varyingName: string; varyingUnit: string; fixedAxis?: 0 | 1 | 2;
+        plane?: Readonly<{ normalAxis: 0 | 1 | 2; fixedIndex: number;
+          fixedCoordinate: number; fixedName: string; fixedUnit: string }> }>;
       targetStructuralHash: StructuralHash }>;
   }>;
 }>;
@@ -353,7 +355,7 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
           const scientific = link.scientificSource;
           if (!isRecord(scientific)) errors.push("complex.provenance.graphSource.scientificSource is invalid.");
           else {
-            fields(scientific, ["sceneId", "datasetId", "sceneFingerprint", "locator", "realResourceSha256", "imaginaryResourceSha256", "varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "varyingName", "varyingUnit"], "complex.provenance.graphSource.scientificSource", errors);
+            fields(scientific, ["sceneId", "datasetId", "sceneFingerprint", "locator", "realResourceSha256", "imaginaryResourceSha256", "varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "varyingName", "varyingUnit", "fixedAxis", "plane"], "complex.provenance.graphSource.scientificSource", errors);
             if (scientific.locator !== undefined && !isGraph2DFieldLocator(scientific.locator))
               errors.push("complex.provenance.graphSource.scientificSource.locator is invalid.");
             for (const key of ["sceneId", "datasetId", "fixedName", "fixedUnit", "varyingName", "varyingUnit"])
@@ -361,10 +363,30 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
             for (const key of ["sceneFingerprint", "realResourceSha256", "imaginaryResourceSha256"])
               if (typeof scientific[key] !== "string" || !/^[a-f0-9]{64}$/.test(scientific[key] as string))
                 errors.push(`complex.provenance.graphSource.scientificSource.${key} is invalid.`);
-            if (scientific.varyingAxis !== 0 && scientific.varyingAxis !== 1) errors.push("complex.provenance.graphSource.scientificSource.varyingAxis is invalid.");
+            if (![0, 1, 2].includes(scientific.varyingAxis as number) ||
+                (scientific.plane === undefined && scientific.varyingAxis === 2))
+              errors.push("complex.provenance.graphSource.scientificSource.varyingAxis is invalid.");
             if (!Number.isSafeInteger(scientific.fixedIndex) || (scientific.fixedIndex as number) < 0 || (scientific.fixedIndex as number) > 255 ||
                 typeof scientific.fixedCoordinate !== "number" || !Number.isFinite(scientific.fixedCoordinate))
               errors.push("complex.provenance.graphSource.scientificSource fixed coordinate is invalid.");
+            if ((scientific.fixedAxis === undefined) !== (scientific.plane === undefined))
+              errors.push("complex.provenance.graphSource.scientificSource plane metadata is incomplete.");
+            if (scientific.plane !== undefined) {
+              const plane = scientific.plane;
+              if (!isRecord(plane) || ![0, 1, 2].includes(scientific.fixedAxis as number) ||
+                  ![0, 1, 2].includes(plane.normalAxis as number) ||
+                  new Set([scientific.varyingAxis, scientific.fixedAxis, plane.normalAxis]).size !== 3)
+                errors.push("complex.provenance.graphSource.scientificSource plane axes are invalid.");
+              else {
+                fields(plane, ["normalAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"],
+                  "complex.provenance.graphSource.scientificSource.plane", errors);
+                if (!Number.isSafeInteger(plane.fixedIndex) || (plane.fixedIndex as number) < 0 ||
+                    (plane.fixedIndex as number) > 255 || !finite(plane.fixedCoordinate))
+                  errors.push("complex.provenance.graphSource.scientificSource plane coordinate is invalid.");
+                stringValue(plane.fixedName, "complex.provenance.graphSource.scientificSource.plane.fixedName", errors, 160);
+                stringValue(plane.fixedUnit, "complex.provenance.graphSource.scientificSource.plane.fixedUnit", errors, 160);
+              }
+            }
           }
         }
         if (typeof link.targetStructuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.targetStructuralHash)) errors.push("complex.provenance.graphSource.targetStructuralHash is invalid.");

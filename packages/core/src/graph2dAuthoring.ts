@@ -101,6 +101,7 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
+  | Readonly<{ type: "create-point-series-pair"; drafts: readonly [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft] }>
   | Readonly<{ type: "edit-point-series"; objectId: string; draft: Graph2DPointSeriesDraft }>
   | Readonly<{ type: "create-piecewise"; draft: Graph2DPiecewiseDraft }>
   | Readonly<{ type: "edit-piecewise"; objectId: string; draft: Graph2DPiecewiseDraft }>
@@ -560,6 +561,21 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     if (action.type === "create-piecewise") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
+  } else if (action.type === "create-point-series-pair") {
+    if (objects.length > GRAPH2D_MAX_OBJECTS - 2) throw new TypeError("Function limit reached.");
+    for (const draft of action.drafts) {
+      const errors = validateGraph2DPointSeriesDraft(draft);
+      if (errors.length) throw new TypeError(errors.join(" "));
+    }
+    for (const draft of action.drafts) {
+      let serial = 1, id = "series_1";
+      while (objects.some(entry => entry.id === id)) id = "series_" + ++serial;
+      objects.push({ id, kind: "point-series", label: draft.label, table: draft.table,
+        mode: draft.mode, missing: "gap", domain: draft.domain,
+        ...(draft.origin ? { origin: draft.origin } : {}) });
+      displays.push({ objectId: id, ...draft.style });
+      selection = { objectId: id, probe: null };
+    }
   } else if (action.type === "create-point-series" || action.type === "edit-point-series") {
     if (action.type === "edit-point-series" && objects[index]?.kind !== "point-series")
       throw new TypeError("Selected object is not a point series.");

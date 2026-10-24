@@ -3,7 +3,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { inspectScientificHeightSample, openScientificHeightSurface,
   type ScientificHeightSurface } from "../scientificScene/heightSurface";
 import { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphVolumeLine,
-  previewScientificGraphVectorVolumeLine,
+  previewScientificGraphVectorVolumeLine, previewScientificGraphComplexVolumeLines,
   previewScientificGraphPlane, previewScientificGraphVolume,
   previewScientificGraphVectorPlane, previewScientificGraphVectorVolume,
   type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
@@ -211,6 +211,26 @@ export function registerScientificSceneIpc(): void {
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorVolumeLine(source.directory, source.fingerprint, request.datasetId,
       components as [string, string, string], request.component,
+      request.normalAxis as 0 | 1 | 2, request.planeFixedIndex as number,
+      request.varyingAxis as 0 | 1 | 2, request.fixedIndex as number);
+  });
+  ipcMain.handle("scientificScenes:previewGraphComplexVolumeLines", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid Graph complex volume line request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !==
+        "datasetId,fingerprint,fixedIndex,normalAxis,planeFixedIndex,varyingAxis" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        ![0, 1, 2].includes(request.normalAxis as number) ||
+        ![0, 1, 2].includes(request.varyingAxis as number) ||
+        request.normalAxis === request.varyingAxis ||
+        typeof request.planeFixedIndex !== "number" || !Number.isSafeInteger(request.planeFixedIndex) ||
+        typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
+      throw new TypeError("Invalid Graph complex volume line request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphComplexVolumeLines(source.directory, source.fingerprint, request.datasetId,
       request.normalAxis as 0 | 1 | 2, request.planeFixedIndex as number,
       request.varyingAxis as 0 | 1 | 2, request.fixedIndex as number);
   });

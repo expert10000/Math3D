@@ -3,7 +3,8 @@ import { acceptGraph2DComplexContour, applyGraph2DAuthoring, createComplexAnalys
   createEmptyGraph2DDocument, createGraph2DDocument, deserializeComplexAnalysisDocument,
   graph2DComplexContourSourceStatus, refreshGraph2DComplexContour, reviewGraph2DComplexContour,
   reviewGraph2DComplexPair, verifyGraph2DComplexPairBundle, Graph2DPointTableStore, previewGraph2DScientificSlice,
-  serializeComplexAnalysisDocument, sha256Checksum, type ScientificSceneManifest } from "@math3d/core";
+  previewGraph2DScientificVolumeLine, serializeComplexAnalysisDocument, sha256Checksum,
+  type Graph2DPointSeriesDraft, type ScientificSceneManifest } from "@math3d/core";
 import { reverifyComplexFieldSource } from "./reverifyComplexFieldSource";
 
 const path = (xExpression = "cos(t)", yExpression = "sin(t)") => {
@@ -81,6 +82,92 @@ describe("GRA-17 sampled Graph path to Complex Analysis contour", () => {
     const refreshed = refreshGraph2DComplexContour(target, changed);
     expect(refreshed.contours[0]!.closed).toBe(false);
     expect(refreshed.provenance.graphSource?.closure).toBe("open");
+  });
+});
+
+describe("GRA-17 paired 3D complex plane lines", () => {
+  const shape = [17, 2, 3] as const;
+  const values = (component: "real" | "imaginary") => Array.from({ length: 102 }, (_, index) => {
+    const i = Math.floor(index / 6), j = Math.floor(index / 3) % 2, k = index % 3;
+    return (component === "real" ? Math.cos(2 * Math.PI * i / 16) : Math.sin(2 * Math.PI * i / 16)) +
+      j * .02 + k * .1;
+  });
+  const realValues = values("real"), imaginaryValues = values("imaginary");
+  const hashValues = (numbers: readonly number[]) => {
+    const bytes = new Uint8Array(numbers.length * 8), view = new DataView(bytes.buffer);
+    numbers.forEach((number, index) => view.setFloat64(index * 8, number, true));
+    return sha256Checksum(bytes).slice(7);
+  };
+  const manifest: ScientificSceneManifest = { schema: "scientific-scene/v1", sceneId: "complex-volume",
+    title: "Complex volume", source: { producer: "theory-lab", sourceId: "complex-run",
+      sourceSchema: "theory-data/v1", sha256: "a".repeat(64) },
+    resources: [
+      { id: "real-values", path: "real.f64", format: "f64le", count: 102, bytes: 816, sha256: hashValues(realValues) },
+      { id: "imag-values", path: "imag.f64", format: "f64le", count: 102, bytes: 816, sha256: hashValues(imaginaryValues) },
+    ], coordinates: [{ id: "volume", kind: "cartesian", axes: [{ name: "x", unit: "m" },
+      { name: "y", unit: "m" }, { name: "z", unit: "m" }], origin: [-4, 2, -1],
+      spacing: [.5, 2, .5], periodic: [false, false, false] }],
+    datasets: [{ id: "field", semanticType: "complex-scalar-field", coordinateSystem: "volume",
+      shape: [...shape], order: "last-axis-fastest", quantity: { name: "Amplitude", unit: "V" },
+      real: "real-values", imaginary: "imag-values" }], views: [] };
+  const json = JSON.stringify(manifest), fingerprint = sha256Checksum(new TextEncoder().encode(json)).slice(7);
+  const rawLine = (component: "real" | "imaginary", planeFixedIndex = 1) => {
+    const source = component === "real" ? realValues : imaginaryValues;
+    const lineValues = Array.from({ length: 17 }, (_, i) => source[(i * 2 + 1) * 3 + planeFixedIndex]!);
+    return { fingerprint, datasetId: "field", component, shape: [...shape] as [number, number, number],
+      normalAxis: 2 as const, planeFixedIndex, varyingAxis: 0 as const, fixedIndex: 1,
+      resourceSha256: manifest.resources[component === "real" ? 0 : 1]!.sha256,
+      sliceSha256: hashValues(lineValues), values: lineValues };
+  };
+  const locator = { kind: "directory" as const, value: "C:/verified-complex-volume.sscene" };
+  const style = { color: "#2563eb", lineWidth: 2, lineStyle: "solid" as const, visible: true };
+
+  it("imports one undoable pair with plane provenance and maps it after a fresh two-component check", async () => {
+    const previews = ["real", "imaginary"].map(component =>
+      previewGraph2DScientificVolumeLine(json, fingerprint, rawLine(component as "real" | "imaginary"))) as
+      [ReturnType<typeof previewGraph2DScientificVolumeLine>, ReturnType<typeof previewGraph2DScientificVolumeLine>];
+    const store = new Graph2DPointTableStore();
+    const drafts = previews.map(preview => ({ label: preview.label, table: store.publish(preview.rows),
+      mode: "line" as const, domain: preview.domain, origin: { ...preview.origin, locator }, style })) as
+      [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft];
+    const scene = applyGraph2DAuthoring(createEmptyGraph2DDocument("complex-volume-pair"),
+      { type: "create-point-series-pair", drafts });
+    expect(scene.source.objects).toHaveLength(2);
+    const document = createGraph2DDocument({ ...scene, stableKey: "complex-volume-pair" });
+    const [real, imaginary] = document.source.objects;
+    const review = reviewGraph2DComplexPair(document, real!.id, imaginary!.id,
+      { sampleCount: 17, closure: "auto" }, store);
+    expect(review.target.provenance.graphSource?.scientificSource).toMatchObject({
+      varyingAxis: 0, fixedAxis: 1, fixedIndex: 1, fixedCoordinate: 4,
+      plane: { normalAxis: 2, fixedIndex: 1, fixedCoordinate: -.5, fixedName: "z", fixedUnit: "m" },
+      realResourceSha256: manifest.resources[0]!.sha256,
+      imaginaryResourceSha256: manifest.resources[1]!.sha256 });
+    expect(deserializeComplexAnalysisDocument(serializeComplexAnalysisDocument(review.target)).ok).toBe(true);
+    expect(() => verifyGraph2DComplexPairBundle(document, real!.id, imaginary!.id, store,
+      json, fingerprint, [rawLine("real"), rawLine("imaginary")])).not.toThrow();
+    const bridge = { openGraphDatasetReference: vi.fn(async () => ({ ok: true as const,
+      source: { manifestJson: json, fingerprint } })), previewGraphSlice: vi.fn(),
+    previewGraphComplexVolumeLines: vi.fn(async () => [rawLine("real"), rawLine("imaginary")]),
+    closeGraphDataset: vi.fn(async () => true) } as unknown as
+      Pick<NonNullable<typeof window.scientificScenes>,
+        "openGraphDatasetReference" | "previewGraphSlice" | "previewGraphComplexVolumeLines" | "closeGraphDataset">;
+    await expect(reverifyComplexFieldSource(document, real!.id, imaginary!.id, store, bridge)).resolves.toBeUndefined();
+    expect(bridge.previewGraphComplexVolumeLines).toHaveBeenCalledOnce();
+    const changed = { ...bridge, previewGraphComplexVolumeLines: vi.fn(async () =>
+      [rawLine("real"), rawLine("imaginary", 2)]) } as unknown as typeof bridge;
+    await expect(reverifyComplexFieldSource(document, real!.id, imaginary!.id, store, changed))
+      .rejects.toThrow(/line or axes changed/);
+    const missing = { ...bridge, openGraphDatasetReference: vi.fn(async () =>
+      ({ ok: false as const, status: "missing" as const, error: "imaginary resource removed" })) };
+    await expect(reverifyComplexFieldSource(document, real!.id, imaginary!.id, store, missing))
+      .rejects.toThrow(/bundle missing/);
+    const wrong = previewGraph2DScientificVolumeLine(json, fingerprint, rawLine("imaginary", 2));
+    const mismatched = createGraph2DDocument({ ...applyGraph2DAuthoring(document, { type: "edit-point-series",
+      objectId: imaginary!.id, draft: { label: wrong.label, table: store.publish(wrong.rows),
+        mode: "line", domain: wrong.domain, origin: { ...wrong.origin, locator }, style } }),
+      stableKey: "complex-volume-pair" });
+    expect(() => reviewGraph2DComplexPair(mismatched, real!.id, imaginary!.id,
+      { sampleCount: 17, closure: "auto" }, store)).toThrow(/same verified complex-grid slice/);
   });
 });
 
@@ -186,8 +273,9 @@ describe("GRA-17 paired Graph and verified complex-grid sources", () => {
     const bridge = { openGraphDatasetReference: vi.fn(async () => ({ ok: true,
       source: { manifestJson: json, fingerprint } })),
     previewGraphSlice: vi.fn(async (request: { component: "real" | "imaginary" }) =>
-      rawLine(request.component, 1)), closeGraphDataset: close } as unknown as
-      Pick<NonNullable<typeof window.scientificScenes>, "openGraphDatasetReference" | "previewGraphSlice" | "closeGraphDataset">;
+      rawLine(request.component, 1)), previewGraphComplexVolumeLines: vi.fn(), closeGraphDataset: close } as unknown as
+      Pick<NonNullable<typeof window.scientificScenes>,
+        "openGraphDatasetReference" | "previewGraphSlice" | "previewGraphComplexVolumeLines" | "closeGraphDataset">;
     await expect(reverifyComplexFieldSource(document, realObject!.id, imaginaryObject!.id, store, bridge)).resolves.toBeUndefined();
     expect(close).toHaveBeenCalledWith(fingerprint);
     const missing = { ...bridge, openGraphDatasetReference: vi.fn(async () =>

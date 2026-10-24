@@ -25,8 +25,7 @@ export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Gr
       item.kind === "point-series" && item.origin?.component === "imaginary" &&
       item.origin.sceneFingerprint === object.origin.sceneFingerprint &&
       item.origin.datasetId === object.origin.datasetId &&
-      item.origin.slice?.varyingAxis === object.origin.slice?.varyingAxis &&
-      item.origin.slice?.fixedIndex === object.origin.slice?.fixedIndex));
+      JSON.stringify(item.origin.slice) === JSON.stringify(object.origin.slice)));
   const pairId = pairCandidates.some(item => item.id === chosenPairId) ? chosenPairId : pairCandidates[0]?.id ?? "";
   const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}|${object?.id}|${pairId}|${sampleCount}|${closure}`;
   const latestKey = useRef(sourceKey);
@@ -115,6 +114,10 @@ export function Graph2DComplexMappingPanel({ document, onPlace }: { document: Gr
         {" "}{review.target.provenance.graphSource.scientificSource.fixedName} =
         {" "}{review.target.provenance.graphSource.scientificSource.fixedCoordinate}
         {" "}{review.target.provenance.graphSource.scientificSource.fixedUnit};
+        {review.target.provenance.graphSource.scientificSource.plane && <>
+          {" "}plane {review.target.provenance.graphSource.scientificSource.plane.fixedName} =
+          {" "}{review.target.provenance.graphSource.scientificSource.plane.fixedCoordinate}
+          {" "}{review.target.provenance.graphSource.scientificSource.plane.fixedUnit};</>}
         {" "}varying axis {review.target.provenance.graphSource.scientificSource.varyingAxis} (
         {review.target.provenance.graphSource.scientificSource.varyingName},
         {" "}{review.target.provenance.graphSource.scientificSource.varyingUnit}).

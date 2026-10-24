@@ -1,5 +1,7 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve, sep } from "node:path";
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
@@ -102,6 +104,90 @@ test("GRA-17 maps the checked real and imaginary lines of one complex field", as
     await link.getByRole("button", { name: "Verify original bundle" }).click();
     await expect(link).toContainText("Original bundle: verified in this session");
   } finally { await closeSurfaceApp(app); }
+});
+
+test("GRA-17 maps a freshly verified real/imaginary line pair from one 3D complex plane", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-complex-volume-"));
+  const directory = join(root, "complex-volume.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/complex-wave.sscene"), directory, { recursive: true });
+  const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+  manifest.sceneId = "complex-volume";
+  manifest.title = "Complex wave volume";
+  manifest.coordinates[0].axes.push({ name: "z", unit: "m" });
+  manifest.coordinates[0].origin.push(-1);
+  manifest.coordinates[0].spacing.push(.5);
+  manifest.coordinates[0].periodic.push(false);
+  manifest.datasets[0].shape.push(3);
+  for (const [index, component] of ["real", "imaginary"].entries()) {
+    const file = join(directory, `${component}.f64`), base = await readFile(file);
+    const expanded = Buffer.alloc(base.length * 3);
+    for (let cell = 0; cell < base.length / 8; cell++) for (let z = 0; z < 3; z++)
+      expanded.writeDoubleLE(base.readDoubleLE(cell * 8) + (index === 0 ? 1 : -1) * z * .05,
+        (cell * 3 + z) * 8);
+    await writeFile(file, expanded);
+    manifest.resources[index].count = expanded.length / 8;
+    manifest.resources[index].bytes = expanded.length;
+    manifest.resources[index].sha256 = createHash("sha256").update(expanded).digest("hex");
+  }
+  const manifestJson = JSON.stringify(manifest);
+  await writeFile(join(directory, "manifest.json"), manifestJson);
+  const bundle = JSON.parse(await readFile(join(directory, "bundle.json"), "utf8"));
+  bundle.manifest.bytes = Buffer.byteLength(manifestJson);
+  bundle.manifest.sha256 = createHash("sha256").update(manifestJson).digest("hex");
+  await writeFile(join(directory, "bundle.json"), JSON.stringify(bundle));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
+      ({ canceled: false, filePaths: [folder] }); }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    const pair = importer.getByRole("region", { name: "3D complex field lines" });
+    await pair.getByLabel("Complex plane coordinate z").selectOption("1");
+    await pair.getByLabel("Complex fixed y").selectOption("20");
+    await pair.getByRole("button", { name: "Preview real/imaginary lines" }).click();
+    await expect(pair.getByRole("figure", { name: "Verified 3D complex line pair" })).toContainText("41 aligned samples");
+    const imaginaryFile = join(directory, "imaginary.f64"), original = await readFile(imaginaryFile);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(imaginaryFile, changed);
+    await pair.getByRole("button", { name: "Import real/imaginary pair" }).click();
+    await expect(pair.getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await writeFile(imaginaryFile, original);
+    await pair.getByRole("button", { name: "Preview real/imaginary lines" }).click();
+    await expect(pair.getByRole("figure", { name: "Verified 3D complex line pair" })).toContainText("41 aligned samples");
+    await pair.getByRole("button", { name: "Import real/imaginary pair" }).click();
+    await expect(pair).toContainText("already in Graphs");
+    await importer.getByRole("button", { name: "Cancel" }).click();
+    await page.getByLabel("Graph functions", { exact: true })
+      .getByRole("button", { name: /Select Wave amplitude · real/ }).click();
+    const mapping = page.getByRole("region", { name: "Graph to Complex Analysis", exact: true });
+    await expect(mapping.getByLabel("Complex imaginary source")).toHaveValue(/.+/);
+    await writeFile(imaginaryFile, changed);
+    await mapping.getByRole("button", { name: "Preview Complex contour" }).click();
+    await expect(mapping.getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await writeFile(imaginaryFile, original);
+    await mapping.getByRole("button", { name: "Preview Complex contour" }).click();
+    await expect(mapping.getByRole("status")).toContainText("41 points");
+    await expect(mapping).toContainText("plane z = -0.5 m");
+    await mapping.getByRole("button", { name: "Open in Complex Analysis" }).click();
+    const link = page.getByRole("region", { name: "Linked Graph contour", exact: true });
+    await expect(link).toContainText("plane z = -0.5 m");
+    await link.getByRole("button", { name: "Verify original bundle" }).click();
+    await expect(link).toContainText("Original bundle: verified in this session");
+    await rm(join(directory, "real.f64"));
+    await link.getByRole("button", { name: "Verify original bundle" }).click();
+    await expect(link.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-complex-volume-"))
+      throw new Error("Unsafe complex volume fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("GRA-17 places a linked contour and reviews a changed Graph before refresh", async () => {
