@@ -1837,6 +1837,33 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificFieldOpen && scientificFieldDocument && <ScientificFieldWorkspacePanel
           key={scientificFieldDocument.identity.id} initialDocument={scientificFieldDocument}
           onSaveDocument={field => { setScientificFieldDocument(field); onSaveScientificField?.(field); }}
+          isGraphLineImported={(axis, index) => document.source.objects.some(item =>
+            item.kind === "point-series" && item.origin?.sceneFingerprint === scientificFieldDocument.source.reference.sceneFingerprint &&
+            item.origin.datasetId === scientificFieldDocument.source.reference.datasetId &&
+            (item.origin.component ?? "scalar") === scientificFieldDocument.source.reference.component &&
+            item.origin.slice?.varyingAxis === axis && item.origin.slice.fixedIndex === index)}
+          onAddGraphLine={preview => {
+            if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
+            const reference = scientificFieldDocument.source.reference;
+            if (document.source.objects.some(item => item.kind === "point-series" &&
+              item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&
+              item.origin.datasetId === preview.origin.datasetId &&
+              (item.origin.component ?? "scalar") === reference.component &&
+              item.origin.slice?.varyingAxis === preview.origin.slice?.varyingAxis &&
+              item.origin.slice?.fixedIndex === preview.origin.slice?.fixedIndex))
+              throw new Error("This field line is already in Graphs.");
+            const matching = document.source.objects.filter(item => item.kind === "point-series" &&
+              item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&
+              item.origin.datasetId === preview.origin.datasetId &&
+              (item.origin.component ?? "scalar") === reference.component);
+            const table = pointTableStore.publish(preview.rows);
+            onAuthoringCommit({ type: "create-point-series", draft: { label: preview.label,
+              table, mode: "line", domain: preview.domain,
+              origin: { ...preview.origin, locator: reference.locator },
+              style: { color: SCIENTIFIC_GRID_LINE_COLORS[matching.length % SCIENTIFIC_GRID_LINE_COLORS.length],
+                lineWidth: 2, lineStyle: "solid", visible: true } } });
+            setToolHint(`Added ${preview.rows.length} verified field samples to Graphs. Use Fit to view the full line.`);
+          }}
           onVerificationStatus={status => setFieldStatuses(current => ({ ...current,
             [scientificFieldDocument.source.reference.id]: status }))}
           onClose={() => setScientificFieldOpen(false)} />}

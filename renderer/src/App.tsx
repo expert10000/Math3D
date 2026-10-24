@@ -790,6 +790,7 @@ import {
   canonicalJsonByteLength,
   geometryDocumentFromSceneDocument,
   MAX_MIXED_WORKSPACE_REPLAY_BYTES,
+  matchesScientificSourceGeneration,
   viewerSourceFromDocument,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
@@ -77420,7 +77421,13 @@ case "mobius":
         if (entry.kind === "workbook") return { ...entry, source: retainConstructionSource(entry.source, normalizeConstructionLabSeedRecord(entry.source), geometryWorkbookSceneSeeds, true) };
         return entry;
       });
-      const next = createMixedWorkspaceDocument({ ...restored.workspace, entries, activeDocumentIds: [...new Set([...restored.workspace.activeDocumentIds, ...entries.filter((entry) => !restored.workspace.entries.some((saved) => saved.expected.id === entry.expected.id)).map((entry) => entry.expected.id)])], results, relations, artifacts, constructions });
+      const savedSelection = restored.workspace.committedSelection;
+      const selectedEntry = savedSelection && entries.find(entry => entry.expected.id === savedSelection.source.documentId);
+      const committedSelection = savedSelection && selectedEntry &&
+        matchesScientificSourceGeneration(savedSelection.source, viewerSourceFromDocument({ identity: selectedEntry.expected })) ?
+        savedSelection : null;
+      const next = createMixedWorkspaceDocument({ ...restored.workspace, entries,
+        committedSelection, activeDocumentIds: [...new Set([...restored.workspace.activeDocumentIds, ...entries.filter((entry) => !restored.workspace.entries.some((saved) => saved.expected.id === entry.expected.id)).map((entry) => entry.expected.id)])], results, relations, artifacts, constructions });
       restored.workspace = next;
       return next;
     }
