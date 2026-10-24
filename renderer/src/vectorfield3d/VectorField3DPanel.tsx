@@ -4,8 +4,11 @@ import { createVectorField3DDocument, parseVectorField3DDocument, reviseVectorFi
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
   integrateVectorField3DScientificTrajectories,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
-  type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact } from "@math3d/core";
+  type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact,
+  type Graph2DScientificDatasetPreview } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
+import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
+import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 export function createDefaultVectorField3DDocument(): VectorField3DDocument {
@@ -19,9 +22,12 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
   { stableKey: crypto.randomUUID(), title: "3D vector field" });
 }
 
-export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose }: {
+export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose,
+  onAddGraphLine, isGraphLineImported }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
+  onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
+  isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRunRef = useRef<(() => void) | null>(null);
@@ -54,6 +60,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [lineBusy, setLineBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<"render" | "trajectory" | null>(null);
   const [runStatus, setRunStatus] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
@@ -66,7 +73,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : "m/s")) as
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
   const render = async () => {
-    if (busy) return;
+    if (busy || lineBusy) return;
     setBusy(true); setBusyAction("render"); setArtifact(null); setTrajectories(null); setError("");
     let fingerprint: string | null = null;
     try {
@@ -103,7 +110,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const runTrajectories = async () => {
-    if (busy) return;
+    if (busy || lineBusy) return;
     cancelRequested.current = false;
     setBusy(true); setBusyAction("trajectory"); setArtifact(null); setTrajectories(null); setError(""); setRunStatus("Verifying source and preparing trajectory worker…");
     let fingerprint: string | null = null;
@@ -279,13 +286,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         Each trace reports its stop reason; a numerical trace does not certify topology.</p>
     </section>
     </fieldset>
-    <div><button type="button" disabled={busy} onClick={() => void render()}>{busy ? "Verifying…" :
+    <VectorField3DGraphLinePanel key={document.identity.structuralHash} document={document} disabled={busy}
+      onBusyChange={setLineBusy} onAddGraphLine={onAddGraphLine} isGraphLineImported={isGraphLineImported} />
+    <div><button type="button" disabled={busy || lineBusy} onClick={() => void render()}>{busy ? "Verifying…" :
       "Verify & render arrows"}</button> <button type="button" disabled={busy} onClick={save}>Save document</button>
-      {" "}<button type="button" disabled={busy || !document.source.seeds.length}
+      {" "}<button type="button" disabled={busy || lineBusy || !document.source.seeds.length}
         onClick={() => void runTrajectories()}>{busy ? "Integrating…" : "Run trajectories"}</button>
       {busyAction === "trajectory" && <button type="button" onClick={() => { cancelRequested.current = true;
         cancelRunRef.current?.(); setRunStatus("Cancelling trajectory integration…"); }}>Cancel run</button>}
-      {" "}<button type="button" disabled={busy} onClick={reopen}>Open saved document</button>
+      {" "}<button type="button" disabled={busy || lineBusy} onClick={reopen}>Open saved document</button>
       {" "}<button type="button" onClick={onClose}>Close</button></div>
     {runStatus && <p role="status" aria-live="polite" data-testid="vector-field3d-run-status">{runStatus}</p>}
     {saveStatus && <p role="status" data-testid="vector-field3d-save-status">{saveStatus}</p>}

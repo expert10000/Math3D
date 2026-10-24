@@ -63,6 +63,7 @@ import { ScientificFieldWorkspacePanel } from "./ScientificFieldWorkspacePanel";
 import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel } from "../vectorfield3d/VectorField3DPanel";
+import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
@@ -1834,6 +1835,31 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificImportError && !scientificImport && <p className="graph2d-tool-hint" role="alert">{scientificImportError}</p>}
         {vectorField3DOpen && <VectorField3DPanel key={vectorField3DDocument?.identity.id ?? "new"}
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
+          isGraphLineImported={(selection, vectorDocument) => {
+            const field = vectorDocument.source.field;
+            if (field.kind !== "scientific-bundle") return false;
+            return document.source.objects.some(item => item.kind === "point-series" &&
+              item.origin?.sceneFingerprint === field.references[0].sceneFingerprint &&
+              item.origin.datasetId === field.references[0].datasetId &&
+              vectorField3DGraphLineMatches(selection, item.origin));
+          }}
+          onAddGraphLine={(preview, selection) => {
+            if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
+            if (document.source.objects.some(item => item.kind === "point-series" &&
+              item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&
+              item.origin.datasetId === preview.origin.datasetId &&
+              vectorField3DGraphLineMatches(selection, item.origin)))
+              throw new Error("This vector line is already in Graphs.");
+            const matching = document.source.objects.filter(item => item.kind === "point-series" &&
+              item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&
+              item.origin.datasetId === preview.origin.datasetId);
+            const table = pointTableStore.publish(preview.rows);
+            onAuthoringCommit({ type: "create-point-series", draft: { label: preview.label,
+              table, mode: "line", domain: preview.domain, origin: preview.origin,
+              style: { color: SCIENTIFIC_GRID_LINE_COLORS[matching.length % SCIENTIFIC_GRID_LINE_COLORS.length],
+                lineWidth: 2, lineStyle: "solid", visible: true } } });
+            setToolHint(`Added ${preview.rows.length} verified vector samples to Graphs. Use Fit to view the full line.`);
+          }}
           onSaveDocument={onSaveVectorField3D} onClose={() => { setVectorField3DOpen(false);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}
         {vectorField2DOpen && vectorField2DDocument && <VectorField2DPanel

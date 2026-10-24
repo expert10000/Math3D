@@ -115,6 +115,129 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
   }
 });
 
+test("GRA-13.5 imports distinct verified 3D vector plane lines from a saved Project field", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-lines-"));
+  const directory = join(root, "flow.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene"), directory, { recursive: true });
+  const sourceValues: Record<string, Buffer> = Object.fromEntries(await Promise.all(
+    ["east", "north", "up"].map(async component => [component,
+      await readFile(join(directory, `${component}.f64`))])));
+  const sample = (component: string, i: number, j: number, k: number) =>
+    sourceValues[component]!.readDoubleLE(((i * 21 + j) * 17 + k) * 8);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in 3D vector editor" }).click();
+    let editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).focus();
+    await page.keyboard.press("Enter");
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    const fieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "vector3d")?.expected.id as string);
+    expect(fieldId).toBeTruthy();
+    const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id as string);
+    await projectPanel.getByTestId(`project-open-saved-${projectId}`).click();
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    const line = editor.getByTestId("vector-field3d-graph-line");
+    await expect(line).toContainText("Graph x: x (m); y: east (m/s)");
+    await line.getByLabel("Plane coordinate z").selectOption("4");
+    await line.getByLabel("Fixed y").selectOption("3");
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ })).toContainText("21 samples");
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ }))
+      .toContainText(`first (-4, ${sample("east", 0, 3, 4)})`);
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ }))
+      .toContainText(`last (4, ${sample("east", 20, 3, 4)})`);
+    const other = join(directory, "up.f64"), originalOther = await readFile(other);
+    const changed = Buffer.from(originalOther); changed[0] ^= 1;
+    await writeFile(other, changed);
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line.getByRole("alert")).toContainText("up");
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ })).toHaveCount(0);
+    await writeFile(other, originalOther);
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("button", { name: "Add line to Graphs" })).toBeEnabled();
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line).toContainText("already in Graphs");
+    await line.getByLabel("Graph component").selectOption("north");
+    await line.getByLabel("Line plane normal axis").selectOption("0");
+    await line.getByLabel("Plane coordinate x").selectOption("3");
+    await line.getByLabel("Fixed z").selectOption("5");
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ }))
+      .toContainText(`first (-4, ${sample("north", 3, 0, 5)})`);
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ }))
+      .toContainText(`last (4, ${sample("north", 3, 20, 5)})`);
+    await expect(line.getByRole("button", { name: "Add line to Graphs" })).toBeEnabled();
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await line.getByLabel("Graph component").selectOption("up");
+    await line.getByLabel("Line plane normal axis").selectOption("1");
+    await line.getByLabel("Plane coordinate y").selectOption("3");
+    await line.getByLabel("Line direction").selectOption("2");
+    await line.getByLabel("Fixed x").selectOption("5");
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ }))
+      .toContainText(`first (-3, ${sample("up", 5, 3, 0)})`);
+    await expect(line.getByRole("figure", { name: /Preview Graph vector line/ }))
+      .toContainText(`last (3, ${sample("up", 5, 3, 16)})`);
+    await expect(line.getByRole("button", { name: "Add line to Graphs" })).toBeEnabled();
+    await rm(join(directory, "east.f64"));
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+    await writeFile(join(directory, "east.f64"), await readFile(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene/east.f64")));
+    await line.getByRole("button", { name: "Preview Graph line" }).click();
+    await expect(line.getByRole("button", { name: "Add line to Graphs" })).toBeEnabled();
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await editor.getByRole("button", { name: "Close" }).focus();
+    await page.keyboard.press("Enter");
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const graphLines = await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
+        .find((entry: { module: string }) => entry.module === "graph2d");
+      const objects = [...graph.replay.payload.transactions].reverse()
+        .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+          transaction.commands[0]?.command.payload.source?.objects)
+        .find((value: unknown) => Array.isArray(value)) ?? graph.checkpoint.source.objects;
+      return objects.filter((object: { kind: string }) => object.kind === "point-series");
+    });
+    expect(graphLines).toHaveLength(3);
+    expect(graphLines.map((object: { origin: { component: string; slice: unknown } }) =>
+      ({ component: object.origin.component, slice: object.origin.slice }))).toMatchObject([
+      { component: "east", slice: { varyingAxis: 0, fixedAxis: 1, fixedIndex: 3,
+        plane: { normalAxis: 2, fixedIndex: 4 } } },
+      { component: "north", slice: { varyingAxis: 1, fixedAxis: 2, fixedIndex: 5,
+        plane: { normalAxis: 0, fixedIndex: 3 } } },
+      { component: "up", slice: { varyingAxis: 2, fixedAxis: 0, fixedIndex: 5,
+        plane: { normalAxis: 1, fixedIndex: 3 } } },
+    ]);
+    for (const object of graphLines) expect(object.origin).toMatchObject({
+      locator: { kind: "directory", value: directory }, sceneFingerprint: expect.any(String),
+      resourceSha256: expect.any(String), xUnit: "m", yUnit: "m/s" });
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector-lines-"))
+      throw new Error("Unsafe vector-line fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GRA-14 expression editor preserves a saved document and enforces the glyph budget", async () => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();

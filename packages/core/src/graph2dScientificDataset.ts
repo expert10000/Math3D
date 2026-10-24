@@ -214,7 +214,7 @@ export function previewGraph2DScientificSlice(manifestJson: string, fingerprint:
 
 /** Verify one line cut through an explicitly selected plane of a 3D scalar grid. */
 export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerprint: string,
-  line: Readonly<{ fingerprint: string; datasetId: string; component: "scalar";
+  line: Readonly<{ fingerprint: string; datasetId: string; component: string;
     shape: readonly [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
     varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
     sliceSha256: string; values: readonly number[] }>): Graph2DScientificDatasetPreview {
@@ -226,10 +226,13 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
   const manifest = checked.value;
   const dataset = manifest.datasets.find(item => item.id === line.datasetId);
   const coordinate = manifest.coordinates.find(item => item.id === dataset?.coordinateSystem);
-  const resource = manifest.resources.find(item => item.id === dataset?.real);
+  const resourceId = dataset?.semanticType === "scalar-field" && line.component === "scalar" ? dataset.real :
+    dataset?.semanticType === "vector-field" && dataset.components?.length === 3 ?
+      dataset.components.find(item => item.name === line.component)?.resource : undefined;
+  const resource = manifest.resources.find(item => item.id === resourceId);
   const fixedAxis = ([0, 1, 2] as const).find(axis => axis !== line.normalAxis && axis !== line.varyingAxis);
-  if (!dataset || dataset.semanticType !== "scalar-field" || dataset.shape.length !== 3 ||
-      !coordinate || coordinate.axes.length !== 3 || !resource || line.component !== "scalar" ||
+  if (!dataset || !["scalar-field", "vector-field"].includes(dataset.semanticType) || dataset.shape.length !== 3 ||
+      !coordinate || coordinate.axes.length !== 3 || !resource || !resourceId ||
       !([0, 1, 2] as number[]).includes(line.normalAxis) ||
       !([0, 1, 2] as number[]).includes(line.varyingAxis) ||
       line.normalAxis === line.varyingAxis ||
@@ -241,7 +244,7 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
       line.fixedIndex >= dataset.shape[fixedAxis]! || dataset.shape[line.varyingAxis]! < 2 ||
       line.values.length !== dataset.shape[line.varyingAxis] ||
       line.resourceSha256 !== resource.sha256 || !/^[a-f0-9]{64}$/.test(line.sliceSha256))
-    throw new TypeError("Choose a verified line from a selected three-dimensional scalar plane.");
+    throw new TypeError("Choose a verified line from a selected three-dimensional field plane.");
   const bytes = new Uint8Array(line.values.length * 8), view = new DataView(bytes.buffer);
   line.values.forEach((value, index) => {
     if (!Number.isFinite(value)) throw new TypeError("Scientific line contains a non-finite value.");
@@ -270,7 +273,9 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
     sourceProducer: manifest.source.producer, sourceId: manifest.source.sourceId,
     sourceSchema: manifest.source.sourceSchema, sourceSha256: manifest.source.sha256,
     xName: coordinate.axes[line.varyingAxis]!.name, xUnit: coordinate.axes[line.varyingAxis]!.unit,
-    yName: dataset.quantity.name, yUnit: dataset.quantity.unit,
+    yName: dataset.semanticType === "vector-field" ? `${dataset.quantity.name} · ${line.component}` : dataset.quantity.name,
+    yUnit: dataset.quantity.unit,
+    ...(dataset.semanticType === "vector-field" ? { component: line.component } : {}),
     slice,
   };
   const label = `${origin.yName} · ${slice.plane.fixedName} = ${planeCoordinate} ` +

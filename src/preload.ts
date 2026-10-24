@@ -562,6 +562,10 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   previewGraphVolumeLine: (request: { fingerprint: string; datasetId: string;
     normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphVolumeLine", request),
+  previewGraphVectorVolumeLine: (request: { fingerprint: string; datasetId: string;
+    components: [string, string, string]; component: string;
+    normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphVectorVolumeLine", request),
   previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
     normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphPlane", request),
