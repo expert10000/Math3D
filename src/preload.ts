@@ -4,6 +4,7 @@ import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } f
 import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
+import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
 import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, ScientificGraphReferenceOpenResponse, ScientificGraphRelinkPickResponse, Graph2DFieldLocator,
   PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
@@ -532,6 +533,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
   verifyActive: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:verifyActive", fingerprint),
   bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
+  scalarSample: (request: ScalarSampleRequest): Promise<ScalarSample> => ipcRenderer.invoke("quantumScenes:scalarSample", request),
   topologySample: (request: TopologySampleRequest): Promise<TopologySample> => ipcRenderer.invoke("quantumScenes:topologySample", request),
   vectorSample: (request: VectorSampleRequest): Promise<VectorSample> => ipcRenderer.invoke("quantumScenes:vectorSample", request),
   pickMatchingReference: (fingerprint: string): Promise<QuantumSceneRelinkResponse> => ipcRenderer.invoke("quantumScenes:pickMatchingReference", fingerprint),

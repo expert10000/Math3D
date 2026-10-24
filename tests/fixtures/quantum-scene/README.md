@@ -19,3 +19,9 @@ saved result used by both the continuum and lattice/ribbon bundles; each
 scene has its own fingerprint and retains the same result SHA-256. Their
 energy arrays are checked against that result and altered binary bytes are
 refused. None of these generated fixtures contains a Math3D physics solver.
+
+The BBH bands and finite-density pair was exported by Theory Lab's
+`scripts/export-bbh-fixture.ts` from one saved worker run.
+`bbh-producer-result.json` is its exact result. The density is the mean over
+four finite midgap eigenstates, measured per open-lattice cell. This is a
+finite-system observation and supplies no quadrupole invariant.

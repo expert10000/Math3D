@@ -89,7 +89,7 @@ export function QuantumSceneExamples({ onOpened, onOpenedScientific, onClose }: 
       </header>
       {error && <p role="alert">{error}</p>}
       {!examples.length && !error && <p role="status">Loading bundled scenes…</p>}
-      {(["QWZ", "SSH", "BHZ", "Hydrogenic"] as const).map(model => {
+      {(["QWZ", "SSH", "BHZ", "BBH", "Hydrogenic"] as const).map(model => {
         const group = examples.filter(example => example.model === model);
         return group.length ? <section key={model} aria-label={`${model} examples`}>
           <h3>{model}</h3>

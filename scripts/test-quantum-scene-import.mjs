@@ -17,6 +17,7 @@ const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dis
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
 const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
+const { inspectVerifiedScalarSample } = require("../dist/main/quantumScene/scalarSelection.js");
 const { BUNDLED_QUANTUM_SCENE_EXAMPLES, bundledQuantumSceneExample,
   bundledQuantumSceneDirectory, listBundledQuantumSceneExamples } = require("../dist/main/quantumScene/examples.js");
 const { glyphSampleIndices, inspectVerifiedTopologySample, inspectVerifiedVectorSample } =
@@ -222,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 12);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 12);
+  assert.equal(listBundledQuantumSceneExamples().length, 14);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 14);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
@@ -243,11 +244,12 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 7, "Expected four frozen SSH/QWZ bundles and three producer BHZ bundles");
+  assert.equal(allFixtureNames.length, 9, "Expected four frozen SSH/QWZ, three BHZ, and two BBH bundles");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name));
+  const bbhFolders=new Set(["bbh-bands","bbh-finite"].map(id=>bundledQuantumSceneExample(id).folder));
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name));
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
@@ -341,6 +343,33 @@ try {
   const bhzBandPath=join(bhzChanged,"band-energy-0.f64"),bhzBytes=await readFile(bhzBandPath);
   bhzBytes[0]^=1;await writeFile(bhzBandPath,bhzBytes);
   await assert.rejects(importQuantumSceneBundle(bhzChanged),/integrity|hash/i);
+  const bbhBytes=await readFile(join(fixtureRoot,"bbh-producer-result.json"));
+  const bbhResult=JSON.parse(bbhBytes.toString("utf8"));
+  const bbhBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("bbh-bands").folder));
+  const bbhFinite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("bbh-finite").folder));
+  for(const scene of [bbhBands,bbhFinite]){
+    assert.equal(scene.source.provenance.model,"bbh");
+    assert.equal(scene.source.provenance.runId,bbhResult.runId);
+    assert.equal(scene.source.provenance.resultSha256,hash(bbhBytes));
+    assert.equal(scene.source.topology,undefined,"Finite corner density is not a quadrupole invariant");
+  }
+  assert.equal(bbhBands.source.bands.objects.length,4);
+  assert.equal(inspectVerifiedBandSample(bbhBands,{fingerprint:sceneFingerprint(bbhBands),objectId:"band-0",sampleIndex:60}).energy,
+    bbhResult.analysis.bandEnergies[0][60]);
+  const cell=inspectVerifiedScalarSample(bbhFinite,{fingerprint:sceneFingerprint(bbhFinite),objectId:"finite-midgap-cells",sampleIndex:5});
+  assert.equal(cell.value,bbhResult.analysis.finite.midgapDensity[5]);
+  assert.deepEqual(cell.position,[1,1,0]);
+  assert.equal(cell.valueDatasetId,"midgap-density");
+  assert.equal(cell.sampleId,"finite-midgap-cells:sample:5");
+  const displayPoints=bbhFinite.document.geometry.points.filter(point=>point.id?.startsWith("finite-midgap-cells:site:"));
+  assert.equal(displayPoints.length,16);
+  assert.ok(displayPoints[0].size>displayPoints[5].size,"Corner concentration must be visible as display-only marker size");
+  assert.throws(()=>inspectVerifiedScalarSample(bbhFinite,{fingerprint:sceneFingerprint(bbhFinite),objectId:"finite-midgap-cells",sampleIndex:16}),/outside/);
+  const bbhChanged=join(root,"bbh-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("bbh-finite").folder),bbhChanged,{recursive:true});
+  const densityPath=join(bbhChanged,"midgap-density.f64"),densityBytes=await readFile(densityPath);
+  densityBytes[0]^=1;await writeFile(densityPath,densityBytes);
+  await assert.rejects(importQuantumSceneBundle(bbhChanged),/integrity|hash/i);
   const generalBytes=await readFile(join(fixtureRoot,"bhz-general-producer-result.json"));
   const generalResult=JSON.parse(generalBytes.toString("utf8"));
   const generalScenes=await Promise.all(["bhz-general-continuum","bhz-general-lattice"].map(id=>
@@ -613,7 +642,7 @@ try {
   damaged[0] ^= 1;
   await writeFile(artifact, damaged);
   await assert.rejects(importQuantumSceneBundle(copied), /integrity/);
-  console.log("M3D-Q01 four frozen QWZ/SSH bundles plus BHZ, units and tamper refusal passed");
+  console.log("M3D-Q01 four frozen QWZ/SSH bundles plus BHZ and BBH, units and tamper refusal passed");
 
   if (process.argv[2]) {
     const real = await importQuantumSceneBundle(process.argv[2]);

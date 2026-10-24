@@ -20,7 +20,7 @@ type SceneSource = {
     kind?: "geometry-fixture" | "numerical-result"; parameters?: Record<string, number | string> };
   coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
   datasets: { id: string; count: number; components: number; unit: string }[];
-  objects: { id: string; label: string; kind: string; positions: string; values?: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
+  objects: { id: string; label: string; kind: string; positions: string; values?: string; scalars?: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
   lattice?: LatticeGeometryDefinition;
   reciprocal?: ReciprocalDefinition;
   fields?: QuantumField[];
@@ -43,6 +43,7 @@ export type QuantumSceneOpenResponse =
 type OpenedScene = Extract<QuantumSceneOpenResponse, { ok: true }>;
 type SceneTriangle = NonNullable<GeometryScene["triangles"]>[number];
 type PickedBandSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["bandSample"]>>;
+type PickedScalarSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["scalarSample"]>>;
 type PickedTopologySample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["topologySample"]>>;
 type PickedVectorSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["vectorSample"]>>;
 const CURVATURE_COLORS = [0x174f9c, 0x397ec6, 0x8cbadd, 0xb7bdc6, 0xefbe8b, 0xe7824d, 0xb94038];
@@ -195,6 +196,10 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
   const [verifyingBand, setVerifyingBand] = useState(false);
   const bandGeneration = useRef(0);
   const [pickedPrimitive, setPickedPrimitive] = useState<QuantumPrimitive | null>(null);
+  const [pickedScalarSample, setPickedScalarSample] = useState<PickedScalarSample | null>(null);
+  const [scalarError, setScalarError] = useState("");
+  const [verifyingScalar, setVerifyingScalar] = useState(false);
+  const scalarGeneration = useRef(0);
   const [geometrySpace, setGeometrySpace] = useState<"source" | "reciprocal">("source");
   const [reciprocalError, setReciprocalError] = useState("");
   const [verifyingReciprocal, setVerifyingReciprocal] = useState(false);
@@ -224,7 +229,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
   useEffect(() => {
     bandGeneration.current++; setPickedBandSample(null); setPickedPrimitive(null);
     setBandSelectionError(""); setVerifyingBand(false);
-    return () => { bandGeneration.current++; };
+    scalarGeneration.current++; setPickedScalarSample(null); setScalarError(""); setVerifyingScalar(false);
+    return () => { bandGeneration.current++; scalarGeneration.current++; };
   }, [opened.reference.sceneFingerprint]);
   useEffect(() => {
     topologyGeneration.current++; setPickedTopologySample(null); setPickedVectorSample(null);
@@ -259,6 +265,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
   };
   const selectBandSample = (objectId: string, sampleIndex: number) => {
     const current = ++bandGeneration.current;
+    scalarGeneration.current++; setPickedScalarSample(null); setScalarError("");
     topologyGeneration.current++; setPickedTopologySample(null); setPickedVectorSample(null);
     setPickedPrimitive(null); setPickedBandSample(null); setBandSelectionError(""); setVerifyingBand(true);
     void window.quantumScenes!.bandSample({ fingerprint: opened.reference.sceneFingerprint, objectId, sampleIndex })
@@ -269,6 +276,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
         if (bandGeneration.current === current)
           setBandSelectionError(`Band selection refused: ${String((error as Error)?.message ?? error)}`);
       }).finally(() => { if (bandGeneration.current === current) setVerifyingBand(false); });
+  };
+  const selectScalarSample = (objectId: string, sampleIndex: number) => {
+    const current = ++scalarGeneration.current;
+    setPickedScalarSample(null); setScalarError(""); setVerifyingScalar(true);
+    void window.quantumScenes!.scalarSample({ fingerprint: opened.reference.sceneFingerprint, objectId, sampleIndex })
+      .then(sample => { if (current === scalarGeneration.current && sample.fingerprint === opened.reference.sceneFingerprint)
+        setPickedScalarSample(sample); })
+      .catch(error => { if (current === scalarGeneration.current)
+        setScalarError(`Scalar selection refused: ${String((error as Error)?.message ?? error)}`); })
+      .finally(() => { if (current === scalarGeneration.current) setVerifyingScalar(false); });
   };
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
@@ -368,7 +385,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
         const distance = (point: Vector3) => Math.hypot(point.x - info.point.x, point.y - info.point.y, point.z - info.point.z);
         selectBandSample(primitive.objectId, primitive.index + (distance(b) < distance(a) ? 1 : 0));
       }
-      else { setPickedPrimitive(primitive); setPickedBandSample(null); }
+      else {
+        setPickedPrimitive(primitive); setPickedBandSample(null);
+        if (!supercell && scene.objects.find(object => object.id === primitive.objectId)?.scalars)
+          selectScalarSample(primitive.objectId, primitive.index);
+        else { scalarGeneration.current++; setPickedScalarSample(null); setScalarError(""); }
+      }
       return;
     }
     setPickedPrimitive(null);
@@ -424,6 +446,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               overlayLabelSets={visibleLabels} showPlanes={false}
               pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
               onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++; topologyGeneration.current++;
+                scalarGeneration.current++; setPickedScalarSample(null); setScalarError(""); setVerifyingScalar(false);
                 setVerifyingReciprocal(false); setVerifyingBand(false); setBandSelectionError("");
                 setVerifyingTopology(false); setTopologyError(""); setPickedTopologySample(null); setPickedVectorSample(null);
                 setPickedBandSample(null); setPickedPrimitive(null); }}
@@ -449,6 +472,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"unavailable"} · producer status {item.status} · {item.method}.</p>)}
               {scene.objects.some(object=>object.id==="ribbon-states")?<p>Finite open-ribbon eigenvalues and outer-cell weights are supplied as a read-only point cloud. They do not establish a semi-infinite edge dispersion or classify individual states.</p>:<p>This continuum view has no ribbon object. Open the paired lattice/ribbon example to inspect supplied finite-boundary samples.</p>}
               <p>Bulk and edge eigenvectors remain in the verified Theory Lab run; this scene exports selected energy and edge-weight arrays. Stored eigenvector phases are gauge-dependent.</p>
+            </section>}
+            {scene.provenance.model==="bbh"&&<section data-testid="bbh-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>BBH · producer-supplied {scene.bands ? "bulk bands" : "finite open lattice"}</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Inputs: γx={scene.provenance.parameters?.gammaX}, λx={scene.provenance.parameters?.lambdaX}, γy={scene.provenance.parameters?.gammaY}, λy={scene.provenance.parameters?.lambdaY}. {scene.bands ? `Momentum grid ${scene.bands.grid?.join(" × ")}; four stored energy surfaces.` : `Open lattice ${scene.provenance.parameters?.cells} × ${scene.provenance.parameters?.cells}; mean cell density over four finite midgap eigenstates.`}</p>
+              <p>Corner localization is a finite-system observation. No quadrupole invariant, edge classification, or phase boundary is calculated or claimed here.</p>
+              {!scene.bands && <p>Marker size is a display-only mapping of the supplied nonnegative cell density; select a cell for its exact stored value and unit.</p>}
             </section>}
             {qwzRole && <section data-testid="qwz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>QWZ · supplied-result study</h3>
@@ -555,7 +585,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
                   <button type="button" aria-label={`Inspect first sample of ${mesh.id}`} disabled={verifyingReciprocal} onClick={() => {
                     if (geometrySpace === "reciprocal") selectReciprocalPrimitive(mesh.primitivesByFace[0]);
                     else if (!supercell && scene.bands?.objects.includes(mesh.id)) selectBandSample(mesh.id, 0);
-                    else { clearTopologySelection(); setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null); }
+                    else { clearTopologySelection(); setPickedPrimitive(mesh.primitivesByFace[0]); setPickedBandSample(null);
+                      if (scene.objects.find(object => object.id === mesh.id)?.scalars)
+                        selectScalarSample(mesh.id, mesh.primitivesByFace[0].index); }
                   }}>Inspect first</button>{supercell && <button type="button" aria-label={`Inspect last sample of ${mesh.id}`} onClick={() => {
                     clearTopologySelection();
                     setPickedPrimitive(mesh.primitivesByFace.at(-1) ?? null); setPickedBandSample(null);
@@ -575,6 +607,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
                   {" "}({scene.lattice.basis[pickedLatticeSample.basisIndex]?.label}) · {supercell ? "derived instance" : "source sample"} {pickedLatticeSample.sampleIndex}.
                   {pickedDerivedInstance && <div>Source object: {pickedDerivedInstance.sourceObjectId ?? "not supplied"} · dataset: {pickedDerivedInstance.sourceDatasetId} · matching source sample: {pickedDerivedInstance.sourceSampleIndex ?? "outside supplied cells"}.</div>}
                 </div>}
+              </div>}
+              {verifyingScalar && <p role="status">Verifying exact scalar sample…</p>}
+              {scalarError && <p role="alert">{scalarError}</p>}
+              {pickedScalarSample && <div data-testid="quantum-scalar-selection">
+                <b>Exact stored scalar sample:</b> {pickedScalarSample.objectLabel}<br />
+                Sample ID: <code>{pickedScalarSample.sampleId}</code> · dataset index: {pickedScalarSample.sampleIndex}<br />
+                {pickedScalarSample.coordinateAxes.map((axis, index) => <React.Fragment key={axis}>{axis}: {pickedScalarSample.position[index].toPrecision(8)} {pickedScalarSample.coordinateUnits[index]}<br /></React.Fragment>)}
+                Density: {pickedScalarSample.value.toPrecision(10)} {pickedScalarSample.valueUnit}<br />
+                Stored datasets: <code>{pickedScalarSample.positionDatasetId}</code> / <code>{pickedScalarSample.valueDatasetId}</code><br />
+                Source run: <code>{pickedScalarSample.runId}</code> · result SHA-256: <code>{pickedScalarSample.resultSha256}</code>
               </div>}
             </>}
             {scene.lattice && geometrySpace === "source" && <section data-testid="quantum-lattice-inspector">

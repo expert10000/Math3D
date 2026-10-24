@@ -12,7 +12,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | SSH | `tests/fixtures/quantum-scene/run-145ac3f06cb940c28d457937345b0243.qscene` and its `-bands.qscene` companion | Finite-chain sites, `t1`/`t2` bonds, midgap-pair density, winding result/status/method, two 1D bands and worker bulk gap | **Supported**: paired chain/bands view and exact stored-sample inspection |
 | BHZ | `tests/fixtures/quantum-scene/run-b918512202b94cfaa0e181c9afd1f158-bands.qscene` (added after the v0.1 freeze) | Producer-computed four bulk bands on a 21 × 21 grid, sampled bulk gap, two block Chern values, spin-conserved Z₂ status and exact source coordinates | **Bounded post-v0.1 extension**: read-only four-band view and exact sample inspection; fixed `A=B=1`, `ε=0` lattice slice only |
 | Atlas BHZ continuum and ribbon | `tests/fixtures/quantum-scene/run-c53d91611dd34bac80a93f9b56f0e74e-continuum-bands.qscene` and its `-lattice-bands.qscene` companion | Variable A/B/C/D/M and optional R, four continuum and four lattice bands, conditional inversion Z₂, finite-ribbon eigenvalues and outer-cell weights | **Additive post-v0.1 profile**: two read-only verified views and exact band-sample inspection; the complete eigenvectors remain in the source Theory Lab run |
-| BBH | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
+| BBH | `tests/fixtures/quantum-scene/run-4fb258a3692f40479c097181ca9d779a-bands.qscene` and its `-bbh-finite.qscene` companion | Four periodic bulk bands, sampled bulk gap, four finite midgap energies, and exact mean cell densities | **Bounded post-v0.1 extension**: read-only bands and finite open-lattice density; corner localization is an observation, not a quadrupole invariant |
 | Kitaev | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
@@ -47,7 +47,7 @@ alone remains insufficient evidence for any named model.
 
 For **M3D-Q08 topological study profiles**, freeze the supported model set to
 **QWZ and SSH** with their four pinned bundles. This historical v0.1 set is
-unchanged. BHZ was admitted as a bounded post-v0.1 producer-first extension;
+unchanged. BHZ and BBH were admitted as bounded post-v0.1 producer-first extensions;
 all other named families stay
 in the Q08 roadmap as future expansion, not hidden or relabeled as complete.
 The supported claims are limited to the quantities in the table. In
@@ -64,6 +64,22 @@ and stable sample IDs; the independent Math3D importer accepts it; a
 source-backed inspector and negative/tamper test pass; and its browser/desktop
 capabilities are recorded. No Math3D-side physics calculation is an admission
 shortcut.
+
+## Post-v0.1 BBH admission (2026-10-25)
+
+Theory Lab computes a bounded four-orbital BBH Hamiltonian and a finite open
+square lattice. Its worker tests independently assemble the periodic and open
+matrices, verify spectra and boundary conditions, and check exact corner
+localization in the finite sample. Two scenes come from the same immutable
+saved result: four periodic bands and per-cell mean density of the four
+finite midgap eigenstates. `bbh-producer-result.json` retains its result hash.
+
+Open **File → Verified quantum examples → BBH** and choose either view.
+The band inspector reads exact stored momentum/energy samples. The finite
+inspector reads exact stored density samples with cell coordinates and units.
+Each selection re-verifies the source bytes. The view reports finite-system
+corner localization only; it does not calculate or claim a quadrupole
+invariant, edge state classification, or phase boundary.
 
 ## Post-v0.1 BHZ admission (2026-10-24)
 

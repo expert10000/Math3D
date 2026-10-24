@@ -1,0 +1,107 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-4fb258a3692f40479c097181ca9d779a-bbh-finite",
+  "title": "BBH finite open lattice · midgap density",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-4fb258a3692f40479c097181ca9d779a",
+    "jobId": "fixture-bbh-corners",
+    "model": "bbh",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-24T22:29:21.894633+00:00",
+    "resultSha256": "1827a1d178a9897926101a7cfdebd43374e84cc9e0a051e0f0bbdec939cebb1d",
+    "adapter": "qvis/1",
+    "parameters": {
+      "gammaX": 0.5,
+      "lambdaX": 1,
+      "gammaY": 0.5,
+      "lambdaY": 1,
+      "grid": 11,
+      "cells": 4
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "bbh"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "cell x",
+      "cell y",
+      "display z"
+    ],
+    "units": [
+      "cell",
+      "cell",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      7,
+      -7,
+      8
+    ],
+    "target": [
+      1.5,
+      1.5,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "cell-sites",
+      "path": "cell-sites.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 16,
+      "unit": "cell",
+      "bytes": 384,
+      "sha256": "8305cb4a220fb3cb053f5aacfcc6fb57d8a72fb78b7ca97189684cc2ce2fa662"
+    },
+    {
+      "id": "midgap-density",
+      "path": "midgap-density.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 16,
+      "unit": "probability per cell",
+      "bytes": 128,
+      "sha256": "1d695c721a7e4f4cc467bf8ba945ad70db0935475936157bec65729094164984"
+    }
+  ],
+  "objects": [
+    {
+      "id": "finite-midgap-cells",
+      "label": "Mean density of four finite midgap eigenstates",
+      "kind": "point-cloud",
+      "positions": "cell-sites",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "midgap-density"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "finite-status",
+      "text": "Four finite midgap energies; mean corner weight 0.59281. Finite-size localization only; no quadrupole invariant computed.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

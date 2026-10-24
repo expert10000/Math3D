@@ -680,6 +680,13 @@ declare global {
         coordinateDatasetId: string; energyDatasetId: string; k: [number, number, number]; kUnit: string;
         energy: number; energyUnit: string; bulkGap: number; runId: string; resultSha256: string; fingerprint: string;
       }>;
+      scalarSample: (request: { fingerprint: string; objectId: string; sampleIndex: number }) => Promise<{
+        objectId: string; objectLabel: string; sampleIndex: number; sampleId: string;
+        position: [number, number, number]; coordinateAxes: [string, string, string];
+        coordinateUnits: [string, string, string]; positionDatasetId: string;
+        value: number; valueUnit: string; valueDatasetId: string;
+        runId: string; resultSha256: string; fingerprint: string;
+      }>;
       topologySample: (request: { fingerprint: string; quantityId: string; sampleIndex: number }) => Promise<
         { quantityId: string; quantityLabel: string; kind: string; objectId: string; sampleIndex: number; sampleId: string;
           position: [number, number, number]; positionDatasetId: string; coordinateAxes: [string, string, string];

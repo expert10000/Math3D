@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -31,6 +31,12 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "bhz-general-lattice", label: "BHZ · lattice and ribbon", description: "Four lattice bands, inversion Z₂ and producer-supplied open-ribbon samples",
     model: "BHZ", fixtureGroup: "quantum-scene", folder: "run-c53d91611dd34bac80a93f9b56f0e74e-lattice-bands.qscene",
     fingerprint: "da10956e0e91257319d6af296f6cedac55d6597857b9c03e400c9789c1585893" },
+  { id: "bbh-bands", label: "BBH · bulk bands", description: "Four producer-supplied periodic bands and sampled gap; no quadrupole invariant",
+    model: "BBH", fixtureGroup: "quantum-scene", folder: "run-4fb258a3692f40479c097181ca9d779a-bands.qscene",
+    fingerprint: "e9e5c5c1a09ad8c61a042d838c1be418f3d72d4e20352c5f42c057b7b5d999ee" },
+  { id: "bbh-finite", label: "BBH · finite corner density", description: "Exact density samples from four midgap states on an open 4 × 4 lattice",
+    model: "BBH", fixtureGroup: "quantum-scene", folder: "run-4fb258a3692f40479c097181ca9d779a-bbh-finite.qscene",
+    fingerprint: "b3f31f31b4e70ebc93056a19727ae35838cea17485a69e8353cd9908ec706c7b" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },

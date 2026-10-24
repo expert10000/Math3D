@@ -73,7 +73,7 @@ export function buildQuantumPrimitiveMeshes(
       points.forEach((point, index) => {
         const primitive: QuantumPrimitive = { objectId: object.id, objectLabel: object.label,
           sampleId: point.id!, kind: "site", index, position: { x: point.x, y: point.y, z: point.z } };
-        const faces = addSite(positions, point, radius);
+        const faces = addSite(positions, point, radius * ((point.size ?? object.style.size) / object.style.size));
         for (let face = 0; face < faces; face++) primitivesByFace.push(primitive);
       });
     } else {

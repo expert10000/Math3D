@@ -80,8 +80,15 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
       deferredObjectIds.push(object.id); continue;
     }
     if (object.kind === "point-cloud") {
+      // Bounded BBH display scaling helps locate supplied corner concentration.
+      // Exact values remain only in the verified dataset and are inspected separately.
+      const scalarValues = scene.provenance.model === "bbh" && object.id === "finite-midgap-cells" &&
+        object.scalars && count <= 512 ? arrays.get(object.scalars) : undefined;
+      const scalarPeak = scalarValues ? Math.max(0, ...scalarValues) : 0;
       for (let i = 0; i < count; i++) geometry.points!.push({ ...point(positions, i), id: `${object.id}:site:${i}`, label: object.label,
-        color, size: object.style.size, opacity: object.style.opacity });
+        color, size: scalarPeak > 0 && scalarValues ? object.style.size *
+          (0.6 + 2.4 * Math.sqrt(Math.max(0, scalarValues[i]) / scalarPeak)) : object.style.size,
+        opacity: object.style.opacity });
     } else if (object.kind === "polyline" || object.kind === "segments") {
       const step = object.kind === "segments" ? 2 : 1;
       for (let i = 0; i + 1 < count; i += step) {
