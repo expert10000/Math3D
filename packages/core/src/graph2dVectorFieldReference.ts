@@ -24,9 +24,7 @@ export function isGraph2DVectorFieldReference(value: unknown): value is Graph2DV
     first!.component !== second!.component &&
     first!.sceneFingerprint === second!.sceneFingerprint && first!.sceneId === second!.sceneId &&
     first!.datasetId === second!.datasetId && same(first!.locator, second!.locator) &&
-    same(first!.shape, second!.shape) && same(first!.axes, second!.axes) &&
-    value.id === "vector2d_" + sha256Checksum(new TextEncoder().encode(
-      first!.sceneFingerprint + ":" + first!.datasetId)).slice(7, 31);
+    same(first!.shape, second!.shape) && same(first!.axes, second!.axes);
 }
 
 export function createGraph2DVectorFieldReference(manifestJson: string, fingerprint: string,
@@ -58,4 +56,40 @@ export function inspectGraph2DVectorFieldReference(reference: Graph2DVectorField
     return candidate.components.every((part, index) => part.component === reference.components[index]!.component &&
       inspectGraph2DFieldReference(reference.components[index]!, manifestJson) === "current") ? "current" : "changed";
   } catch { return "changed"; }
+}
+
+export type Graph2DVectorFieldRelinkReview = Readonly<{
+  eligible: boolean;
+  differences: readonly Readonly<{ field: string; saved: string; replacement: string;
+    required: boolean; matches: boolean }>[];
+}>;
+
+/** A replacement may move or rename the source, but both ordered vector contracts must match. */
+export function reviewGraph2DVectorFieldRelink(saved: Graph2DVectorFieldReference,
+  replacement: Graph2DVectorFieldReference): Graph2DVectorFieldRelinkReview {
+  if (!isGraph2DVectorFieldReference(saved) || !isGraph2DVectorFieldReference(replacement))
+    throw new TypeError("Invalid paired vector field relink metadata.");
+  const before = saved.components[0]!, after = replacement.components[0]!;
+  const axisText = (reference: Graph2DFieldReference) => reference.axes.map(axis =>
+    `${axis.name} (${axis.unit}): ${axis.origin} + n×${axis.spacing}${axis.periodic ? "; periodic" : ""}`).join(" / ");
+  const entries = [
+    ["Location", `${before.locator.kind}: ${before.locator.value}`,
+      `${after.locator.kind}: ${after.locator.value}`, false],
+    ["Scene", before.sceneId, after.sceneId, false],
+    ["Manifest fingerprint", before.sceneFingerprint, after.sceneFingerprint, false],
+    ["Dataset", before.datasetId, after.datasetId, false],
+    ["Component 1", before.component, after.component, true],
+    ["Component 2", saved.components[1]!.component, replacement.components[1]!.component, true],
+    ["Field type", before.semanticType, after.semanticType, true],
+    ["Shape", before.shape.join(" × "), after.shape.join(" × "), true],
+    ["Axes", axisText(before), axisText(after), true],
+    ["Component 1 resource SHA-256", before.resourceSha256, after.resourceSha256, true],
+    ["Component 2 resource SHA-256", saved.components[1]!.resourceSha256,
+      replacement.components[1]!.resourceSha256, true],
+  ] as const;
+  const differences = entries.map(([field, previous, candidate, required]) => ({
+    field, saved: previous, replacement: candidate, required, matches: previous === candidate,
+  }));
+  return { eligible: differences.every(item => !item.required || item.matches) &&
+    differences.some(item => !item.matches), differences };
 }

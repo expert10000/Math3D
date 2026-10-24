@@ -5,7 +5,8 @@ import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
 import { isGraph2DFieldReference, reviewGraph2DFieldRelink, type Graph2DFieldReference } from "./graph2dFieldReference";
-import { isGraph2DVectorFieldReference, type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
+import { isGraph2DVectorFieldReference, reviewGraph2DVectorFieldRelink,
+  type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -79,6 +80,7 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "relink-field-reference"; referenceId: string; replacement: Graph2DFieldReference }>
   | Readonly<{ type: "remove-field-reference"; referenceId: string }>
   | Readonly<{ type: "save-vector-field-reference"; reference: Graph2DVectorFieldReference }>
+  | Readonly<{ type: "relink-vector-field-reference"; referenceId: string; replacement: Graph2DVectorFieldReference }>
   | Readonly<{ type: "remove-vector-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
@@ -292,6 +294,16 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     if (existing.length >= 8) throw new TypeError("Vector field reference limit reached.");
     return { source: { ...document.source, vectorFieldReferences: [...existing, action.reference] },
       display: document.display, selection: document.selection };
+  }
+  if (action.type === "relink-vector-field-reference") {
+    const existing = document.source.vectorFieldReferences ?? [];
+    const saved = existing.find(item => item.id === action.referenceId);
+    if (!saved) throw new TypeError("Vector field reference does not exist.");
+    if (!reviewGraph2DVectorFieldRelink(saved, action.replacement).eligible)
+      throw new TypeError("Replacement vector components, axes, shape or checksums do not match.");
+    const updated = { ...action.replacement, id: saved.id };
+    return { source: { ...document.source, vectorFieldReferences: existing.map(item =>
+      item.id === saved.id ? updated : item) }, display: document.display, selection: document.selection };
   }
   if (action.type === "remove-vector-field-reference") {
     const existing = document.source.vectorFieldReferences ?? [];

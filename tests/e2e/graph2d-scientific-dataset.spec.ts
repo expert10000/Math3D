@@ -784,3 +784,79 @@ test("GRA-13.3 reviews changed and missing sources, then relinks only a matching
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("GRA-13.3 relinks both saved vector components only after matching and fresh verification", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-relink-"));
+  const fixture = resolve("tests/fixtures/scientific-scene/vortex-flow.sscene");
+  const original = join(root, "original.sscene");
+  const changed = join(root, "changed.sscene");
+  const matching = join(root, "matching.sscene");
+  await cp(fixture, original, { recursive: true });
+  await cp(fixture, changed, { recursive: true });
+  await cp(fixture, matching, { recursive: true });
+  const alteredNorth = Buffer.from(await readFile(join(changed, "north.f64")));
+  alteredNorth[0] ^= 1;
+  await writeFile(join(changed, "north.f64"), alteredNorth);
+  const changedManifest = JSON.parse(await readFile(join(changed, "manifest.json"), "utf8"));
+  changedManifest.resources.find((part: { id: string }) => part.id === "north").sha256 = hash(alteredNorth);
+  const changedJson = JSON.stringify(changedManifest);
+  await writeFile(join(changed, "manifest.json"), changedJson);
+  const changedBundle = JSON.parse(await readFile(join(changed, "bundle.json"), "utf8"));
+  changedBundle.manifest.bytes = Buffer.byteLength(changedJson);
+  changedBundle.manifest.sha256 = hash(changedJson);
+  await writeFile(join(changed, "bundle.json"), JSON.stringify(changedBundle));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, original);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importDialog.getByRole("button", { name: "View verified vector field" }).click();
+    await importDialog.getByRole("button", { name: "Save 2D vector field reference" }).click();
+    await importDialog.getByRole("button", { name: "Cancel" }).click();
+    const saved = page.getByLabel("Graph inspector").getByTestId("graph2d-saved-vector-field");
+    await expect(saved).toContainText("original.sscene");
+    if (!original.startsWith(root + sep)) throw new Error("Unsafe vector fixture cleanup path");
+    await rm(original, { recursive: true, force: true });
+    await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
+    await expect(saved).toContainText("Missing source — arrows unavailable");
+
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, changed);
+    await saved.getByRole("button", { name: "Find vector replacement" }).click();
+    const review = page.getByRole("dialog", { name: "Review replacement 2D vector field" });
+    await expect(review).toContainText("changed.sscene");
+    await expect(review.locator('tr[data-required="yes"][data-match="no"]')).toContainText("Component 2 resource SHA-256");
+    await expect(review.getByRole("button", { name: "Accept verified vector relink" })).toBeDisabled();
+    await review.getByRole("button", { name: "Cancel" }).click();
+    await expect(saved).toContainText("original.sscene");
+
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, matching);
+    await saved.getByRole("button", { name: "Find vector replacement" }).click();
+    await expect(review).toContainText("matching.sscene");
+    await expect(review.locator('tr[data-required="yes"][data-match="no"]')).toHaveCount(0);
+    const north = await readFile(join(matching, "north.f64"));
+    const changedAfterReview = Buffer.from(north);
+    changedAfterReview[0] ^= 1;
+    await writeFile(join(matching, "north.f64"), changedAfterReview);
+    await review.getByRole("button", { name: "Accept verified vector relink" }).click();
+    await expect(review.getByRole("alert")).toContainText("Replacement changed");
+    await expect(saved).toContainText("original.sscene");
+    await writeFile(join(matching, "north.f64"), north);
+    await review.getByRole("button", { name: "Accept verified vector relink" }).click();
+    await expect(review).toBeHidden();
+    await expect(saved).toContainText("matching.sscene");
+    await saved.getByRole("button", { name: "Reverify and view vector field" }).click();
+    await expect(importDialog.getByRole("figure", { name: "Verified 2D vector field for Velocity" })).toBeVisible();
+    await importDialog.getByRole("button", { name: "Cancel" }).click();
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector-relink-"))
+      throw new Error("Unsafe vector fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});

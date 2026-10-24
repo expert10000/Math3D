@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   createGraph2DFieldReference, GRAPH2D_FIELD_REFERENCE_CAPABILITY, inspectGraph2DCompatibility,
   createGraph2DVectorFieldReference, inspectGraph2DVectorFieldReference, isGraph2DVectorFieldReference,
-  GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY,
+  GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY, reviewGraph2DVectorFieldRelink,
   inspectGraph2DFieldReference, reviewGraph2DFieldRelink, parseGraph2DDocument, serializeGraph2DDocument, sha256Checksum } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 
@@ -45,6 +45,49 @@ describe("GRA-13.3 saved field references", () => {
     expect(adapter.redo()?.source.vectorFieldReferences).toHaveLength(1);
     const removed = applyGraph2DAuthoring(reopened, { type: "remove-vector-field-reference", referenceId: reference.id });
     expect(removed.source.vectorFieldReferences).toBeUndefined();
+  });
+  it("reviews both component hashes and relinks the pair as one undoable change", () => {
+    const { manifestJson, fingerprint } = source();
+    const saved = createGraph2DVectorFieldReference(manifestJson, fingerprint,
+      { kind: "preset", value: "vortexFlow" }, "field");
+    const replacement = createGraph2DVectorFieldReference(manifestJson, fingerprint,
+      { kind: "directory", value: "C:\\matching.sscene" }, "field");
+    const review = reviewGraph2DVectorFieldRelink(saved, replacement);
+    expect(review.eligible).toBe(true);
+    expect(review.differences.filter(item => item.required && !item.matches)).toHaveLength(0);
+    expect(review.differences.find(item => item.field === "Location")).toMatchObject({ matches: false, required: false });
+    const modified = JSON.parse(manifestJson);
+    modified.resources.find((part: { id: string }) => part.id === "north").sha256 = "0".repeat(64);
+    const changedJson = JSON.stringify(modified);
+    const changed = createGraph2DVectorFieldReference(changedJson,
+      sha256Checksum(new TextEncoder().encode(changedJson)).slice(7),
+      { kind: "directory", value: "C:\\changed.sscene" }, "field");
+    expect(reviewGraph2DVectorFieldRelink(saved, changed).eligible).toBe(false);
+    expect(reviewGraph2DVectorFieldRelink(saved, changed).differences
+      .find(item => item.field === "Component 2 resource SHA-256")).toMatchObject({ required: true, matches: false });
+    const swapped = { ...replacement, components: [...replacement.components].reverse() };
+    expect(reviewGraph2DVectorFieldRelink(saved, swapped).eligible).toBe(false);
+    const wrongAxes = { ...replacement, components: replacement.components.map(part => ({
+      ...part, axes: [{ ...part.axes[0]!, unit: "cm" }, part.axes[1]!] })) };
+    expect(reviewGraph2DVectorFieldRelink(saved, wrongAxes).eligible).toBe(false);
+    const empty = createEmptyGraph2DDocument("paired-relink");
+    const adapter = new Graph2DCommandAdapter(empty);
+    adapter.commitScene(applyGraph2DAuthoring(empty, { type: "save-vector-field-reference", reference: saved }),
+      "save-vector-field-reference");
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(),
+      { type: "relink-vector-field-reference", referenceId: saved.id, replacement }),
+      "relink-vector-field-reference");
+    const updated = adapter.document().source.vectorFieldReferences![0]!;
+    expect(updated.id).toBe(saved.id);
+    expect(updated.components[0]!.locator).toEqual(replacement.components[0]!.locator);
+    expect(isGraph2DVectorFieldReference(updated)).toBe(true);
+    expect(parseGraph2DDocument(serializeGraph2DDocument(adapter.document())).source.vectorFieldReferences![0])
+      .toEqual(updated);
+    expect(adapter.undo()?.source.vectorFieldReferences![0]).toEqual(saved);
+    expect(adapter.redo()?.source.vectorFieldReferences![0]).toEqual(updated);
+    expect(() => applyGraph2DAuthoring(adapter.document(), {
+      type: "relink-vector-field-reference", referenceId: saved.id, replacement: changed }))
+      .toThrow(/do not match/);
   });
   it("saves a component without grid values and rechecks the original metadata on reopen", () => {
     const { manifestJson, fingerprint } = source();

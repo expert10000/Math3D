@@ -9,6 +9,7 @@ import {
   verifyGraph2DScientificVolume,
   parseScientificSceneManifest, createGraph2DFieldReference, inspectGraph2DFieldReference,
   createGraph2DVectorFieldReference, inspectGraph2DVectorFieldReference,
+  reviewGraph2DVectorFieldRelink,
   reviewGraph2DFieldRelink,
   analyzeGraph2DPolarLocalDifferential, isGraph2DPolarLocalDifferentialCurrent,
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
@@ -180,6 +181,26 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     catch { return null; }
   }, [fieldRelink, relinkSelected]);
   const relinkReview = relinkSaved && relinkCandidate ? reviewGraph2DFieldRelink(relinkSaved, relinkCandidate) : null;
+  const [vectorFieldRelink, setVectorFieldRelink] = useState<{ referenceId: string; source: {
+    manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator };
+    datasetId: string } | null>(null);
+  useEffect(() => setVectorFieldRelink(null), [document.identity.id]);
+  const [vectorFieldRelinkError, setVectorFieldRelinkError] = useState("");
+  const vectorRelinkSaved = document.source.vectorFieldReferences?.find(item => item.id === vectorFieldRelink?.referenceId);
+  const vectorRelinkDatasets = useMemo(() => {
+    if (!vectorFieldRelink) return [];
+    const parsed = parseScientificSceneManifest(vectorFieldRelink.source.manifestJson);
+    return parsed.ok ? parsed.value.datasets.filter(item =>
+      item.semanticType === "vector-field" && item.shape.length === 2 && item.components?.length === 2) : [];
+  }, [vectorFieldRelink]);
+  const vectorRelinkCandidate = useMemo(() => {
+    if (!vectorFieldRelink || !vectorRelinkDatasets.some(item => item.id === vectorFieldRelink.datasetId)) return null;
+    try { return createGraph2DVectorFieldReference(vectorFieldRelink.source.manifestJson,
+      vectorFieldRelink.source.fingerprint, vectorFieldRelink.source.locator, vectorFieldRelink.datasetId); }
+    catch { return null; }
+  }, [vectorFieldRelink, vectorRelinkDatasets]);
+  const vectorRelinkReview = vectorRelinkSaved && vectorRelinkCandidate ?
+    reviewGraph2DVectorFieldRelink(vectorRelinkSaved, vectorRelinkCandidate) : null;
   const [scientificDatasetId, setScientificDatasetId] = useState("");
   const [scientificVaryingAxis, setScientificVaryingAxis] = useState<0 | 1 | null>(null);
   const [scientificFixedIndex, setScientificFixedIndex] = useState<number | null>(null);
@@ -465,6 +486,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const chooseFieldRelink = async (reference: Graph2DFieldReference) => {
     if (!window.scientificScenes?.chooseGraphDatasetRelink || scientificImportBusy) return;
+    setVectorFieldRelink(null);
     setScientificImportBusy(true); setFieldRelinkError("");
     try {
       const picked = await window.scientificScenes.chooseGraphDatasetRelink();
@@ -495,6 +517,47 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         setFieldRelink(null);
       } finally { await window.scientificScenes.closeGraphDataset(opened.source.fingerprint); }
     } catch (error) { setFieldRelinkError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
+  };
+  const chooseVectorFieldRelink = async (reference: Graph2DVectorFieldReference) => {
+    if (!window.scientificScenes?.chooseGraphDatasetRelink || scientificImportBusy) return;
+    setFieldRelink(null); setVectorFieldRelinkError(""); setScientificImportBusy(true);
+    try {
+      const picked = await window.scientificScenes.chooseGraphDatasetRelink();
+      if (!picked.ok) { if (!picked.canceled) setVectorFieldRelinkError(picked.error); return; }
+      const parsed = parseScientificSceneManifest(picked.source.manifestJson);
+      const candidates = parsed.ok ? parsed.value.datasets.filter(item =>
+        item.semanticType === "vector-field" && item.shape.length === 2 && item.components?.length === 2) : [];
+      if (!candidates.length) throw new TypeError("Replacement has no complete two-component 2D vector field.");
+      const preferred = candidates.find(item => item.id === reference.components[0]!.datasetId) ?? candidates[0]!;
+      setVectorFieldRelink({ referenceId: reference.id, source: picked.source, datasetId: preferred.id });
+    } catch (error) { setVectorFieldRelinkError((error as Error).message); }
+    finally { setScientificImportBusy(false); }
+  };
+  const acceptVectorFieldRelink = async () => {
+    if (!vectorFieldRelink || !vectorRelinkSaved || !vectorRelinkReview?.eligible || !onAuthoringCommit ||
+        !window.scientificScenes?.openGraphDatasetReference || !window.scientificScenes.previewVectorPlane ||
+        scientificImportBusy) return;
+    setScientificImportBusy(true); setVectorFieldRelinkError("");
+    try {
+      const opened = await window.scientificScenes.openGraphDatasetReference({
+        locator: vectorFieldRelink.source.locator, sceneFingerprint: vectorFieldRelink.source.fingerprint });
+      if (!opened.ok) throw new Error(`Replacement ${opened.status}: ${opened.error}`);
+      try {
+        const replacement = createGraph2DVectorFieldReference(opened.source.manifestJson, opened.source.fingerprint,
+          opened.source.locator, vectorFieldRelink.datasetId);
+        if (!reviewGraph2DVectorFieldRelink(vectorRelinkSaved, replacement).eligible)
+          throw new Error("Replacement vector components, axes, shape or checksums changed during verification.");
+        const components: [string, string] = [replacement.components[0]!.component, replacement.components[1]!.component];
+        const planes = await window.scientificScenes.previewVectorPlane({ fingerprint: opened.source.fingerprint,
+          datasetId: vectorFieldRelink.datasetId, components });
+        verifyGraph2DScientificVectorPlane(opened.source.manifestJson, opened.source.fingerprint, planes);
+        onAuthoringCommit({ type: "relink-vector-field-reference", referenceId: vectorRelinkSaved.id, replacement });
+        resetScientificSlice(); setScientificImport(null);
+        setFieldStatuses(current => ({ ...current, [vectorRelinkSaved.id]: "current" }));
+        setVectorFieldRelink(null);
+      } finally { await window.scientificScenes.closeGraphDataset(opened.source.fingerprint); }
+    } catch (error) { setVectorFieldRelinkError((error as Error).message); }
     finally { setScientificImportBusy(false); }
   };
   const commitScientificDataset = () => {
@@ -1102,12 +1165,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             "Not reverified on this opening"}</small>
         <div><button type="button" disabled={scientificImportBusy || !window.scientificScenes?.openGraphDatasetReference}
           onClick={() => void openSavedVectorFieldReference(reference)}>Reverify and view vector field</button>
+          <button type="button" disabled={scientificImportBusy || !onAuthoringCommit || !window.scientificScenes?.chooseGraphDatasetRelink}
+            onClick={() => void chooseVectorFieldRelink(reference)}>Find vector replacement…</button>
           <button type="button" disabled={!onAuthoringCommit}
             onClick={() => onAuthoringCommit?.({ type: "remove-vector-field-reference", referenceId: reference.id })}>
             Remove vector reference</button></div>
       </article>;
     })}
     {fieldRelinkError && !fieldRelink && <p role="alert">{fieldRelinkError}</p>}
+    {vectorFieldRelinkError && !vectorFieldRelink && <p role="alert">{vectorFieldRelinkError}</p>}
   </section>;
   const saveTangentButton = (available: boolean) => <button type="button"
     disabled={!available || !document.selection.probe || !onConstructionBatchCommit ||
@@ -1682,6 +1748,35 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             onClick={() => void acceptFieldRelink()}>Accept verified relink</button>
             <button type="button" disabled={scientificImportBusy} onClick={() => { setFieldRelink(null); setFieldRelinkError(""); }}>Cancel</button></div>
           <small>* Required for relinking. Acceptance re-reads and verifies the bundle again; opening it later re-verifies before viewing.</small>
+        </div>}
+        {vectorFieldRelink && <div className="graph2d-scientific-import graph2d-field-relink" role="dialog"
+          aria-label="Review replacement 2D vector field" aria-modal="true">
+          <h3>Review replacement 2D vector field</h3>
+          <p>The candidate bundle was verified. Compare both ordered components before replacing the saved location.
+            No field values are displayed here.</p>
+          <label>Replacement vector dataset <select aria-label="Replacement vector dataset"
+            value={vectorFieldRelink.datasetId}
+            onChange={event => setVectorFieldRelink({ ...vectorFieldRelink, datasetId: event.target.value })}>
+            {vectorRelinkDatasets.map(item => <option key={item.id} value={item.id}>
+              {item.id} · {item.components?.map(part => part.name).join(" + ")} · {item.shape.join(" × ")}</option>)}
+          </select></label>
+          {vectorRelinkReview ? <>
+            <table><thead><tr><th>Property</th><th>Saved</th><th>Replacement</th></tr></thead>
+              <tbody>{vectorRelinkReview.differences.map(item => <tr key={item.field}
+                data-match={item.matches ? "yes" : "no"} data-required={item.required ? "yes" : "no"}>
+                <th scope="row">{item.field}{item.required ? " *" : ""}</th>
+                <td>{item.saved}</td><td>{item.replacement}</td></tr>)}</tbody></table>
+            <p role="status">{vectorRelinkReview.eligible ?
+              "Both component names, field type, shape, axes and resource checksums match. Source details may differ." :
+              "Relink unavailable: a required vector field property differs, or this is already the saved source."}</p>
+          </> : <p role="alert">This replacement has no valid paired vector field.</p>}
+          {vectorFieldRelinkError && <p role="alert">{vectorFieldRelinkError}</p>}
+          <div><button type="button" disabled={!vectorRelinkReview?.eligible || scientificImportBusy}
+            onClick={() => void acceptVectorFieldRelink()}>Accept verified vector relink</button>
+            <button type="button" disabled={scientificImportBusy} onClick={() => {
+              setVectorFieldRelink(null); setVectorFieldRelinkError("");
+            }}>Cancel</button></div>
+          <small>* Required for relinking. Acceptance re-reads the bundle and verifies both component planes again.</small>
         </div>}
         {scientificImport && <div className="graph2d-scientific-import" role="dialog" aria-label="Import verified scientific dataset"
           onPointerDown={event => event.stopPropagation()}>
