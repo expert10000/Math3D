@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -22,6 +22,9 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "ssh-bands", label: "SSH · energy bands", description: "Two supplied bands along a one-dimensional k path",
     model: "SSH", fixtureGroup: "quantum-scene", folder: "run-145ac3f06cb940c28d457937345b0243-bands.qscene",
     fingerprint: "57e56d34e2dfe218f70a2c9bcd6068c6b733ac00abbdb8f72d63b57e9370521b" },
+  { id: "bhz-bands", label: "BHZ · paired-block bulk bands", description: "Four producer-supplied bands and spin-conserved Z₂ with mesh status; no edge-state claim",
+    model: "BHZ", fixtureGroup: "quantum-scene", folder: "run-b918512202b94cfaa0e181c9afd1f158-bands.qscene",
+    fingerprint: "83f2d740e1bae2de189a595a660eb948b5af11b6a5735a8d06f7ac8593491684" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },

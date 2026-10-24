@@ -10,14 +10,14 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | --- | --- | --- | --- |
 | QWZ | `tests/fixtures/quantum-scene/run-97a132d1d712414bb62bb8c9212f517e.qscene` and its `-bands.qscene` companion | 2D lower-band Berry-curvature samples, Chern result/status/method, reciprocal guides, two band surfaces and worker bulk gap | **Supported**: paired bands/curvature view and exact stored-sample inspection |
 | SSH | `tests/fixtures/quantum-scene/run-145ac3f06cb940c28d457937345b0243.qscene` and its `-bands.qscene` companion | Finite-chain sites, `t1`/`t2` bonds, midgap-pair density, winding result/status/method, two 1D bands and worker bulk gap | **Supported**: paired chain/bands view and exact stored-sample inspection |
-| BHZ | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
+| BHZ | `tests/fixtures/quantum-scene/run-b918512202b94cfaa0e181c9afd1f158-bands.qscene` (added after the v0.1 freeze) | Producer-computed four bulk bands on a 21 × 21 grid, sampled bulk gap, two block Chern values, spin-conserved Z₂ status and exact source coordinates | **Bounded post-v0.1 extension**: read-only four-band view and exact sample inspection; fixed `A=B=1`, `ε=0` lattice slice only |
 | BBH | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Kitaev | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Landau/Hall | None | Theory Lab has a Landau–Zener dynamics model, **not** a Landau-level or Hall producer scene | Not supported |
 
-The four QWZ/SSH folders are actual Theory Lab `RunStore.prepareSceneHandoff`
+The four original QWZ/SSH folders are actual Theory Lab `RunStore.prepareSceneHandoff`
 exports from revision `fde58fd`, not hand-authored model illustrations. They
 are listed in `src/main/quantumScene/examples.ts` with fixed fingerprints,
 explained in `tests/fixtures/quantum-scene/README.md`, and imported by
@@ -34,15 +34,20 @@ not another topological family. Generic lattice, reciprocal, Bloch and vector
 contract fixtures and the non-quantum `.sscene` fixtures likewise do not
 establish BHZ/BBH/Kitaev/Weyl/nodal/Landau-Hall physics support.
 
-Theory Lab's scene producer is currently limited by
-`packages/quantum-scene/from-result.ts` and `bands.ts`: its topology adapters
-are SSH and QWZ. A generic contract that can carry supplied objects, bands or
-quantities is not evidence that a named model's numerical producer exists.
+Theory Lab's scene producer in `packages/quantum-scene/from-result.ts` and
+`bands.ts` now also accepts its bounded BHZ worker result. The pinned BHZ
+bundle is a real worker computation exported by `scripts/export-bhz-fixture.ts`;
+the accompanying `bhz-producer-result.json` preserves the exact producer
+result and SHA-256. The independent Math3D importer and UI tests check the
+four bands, source attribution, and changed-byte refusal. A generic contract
+alone remains insufficient evidence for any named model.
 
 ## Agreed v0.1 supported set
 
 For **M3D-Q08 topological study profiles**, freeze the supported model set to
-**QWZ and SSH** with their four pinned bundles. All other named families stay
+**QWZ and SSH** with their four pinned bundles. This historical v0.1 set is
+unchanged. BHZ was admitted as a bounded post-v0.1 producer-first extension;
+all other named families stay
 in the Q08 roadmap as future expansion, not hidden or relabeled as complete.
 The supported claims are limited to the quantities in the table. In
 particular, Math3D does not infer band inversion, edge/bulk phase, nodes,
@@ -58,3 +63,22 @@ and stable sample IDs; the independent Math3D importer accepts it; a
 source-backed inspector and negative/tamper test pass; and its browser/desktop
 capabilities are recorded. No Math3D-side physics calculation is an admission
 shortcut.
+
+## Post-v0.1 BHZ admission (2026-10-24)
+
+The Theory Lab worker independently calculates both 2 × 2 blocks of a
+spin-conserving, time-reversal-paired four-band **lattice** BHZ regularization.
+It tests the four-by-four spectrum and partner pairing against a separately
+assembled Hamiltonian, phase regions and gap closures, and bounded job/schema
+rejection. The producer reports block Chern values using the link-variable
+method and a spin-conserved Z₂ parity only when its mesh phase checks pass.
+The scene carries those producer values and all four supplied band surfaces;
+Math3D does not calculate a topology invariant. The Atlas continuum BHZ model
+is broader than this fixed-coefficient lattice slice, so this does not close
+that Atlas gap or imply support for arbitrary BHZ parameters, edge states,
+eigenvectors, spin mixing, or a phase diagram.
+
+Open **File → Verified quantum examples → BHZ → BHZ · four bulk bands**.
+The inspector shows the exact source run/hash, model limits, and selected
+stored `k`/energy values. `scripts/test-quantum-scene-import.mjs` and
+`tests/e2e/quantum-bhz-study.spec.ts` cover import, selection, and tampering.

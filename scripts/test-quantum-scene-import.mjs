@@ -222,8 +222,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 9);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 9);
+  assert.equal(listBundledQuantumSceneExamples().length, 10);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 10);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
@@ -240,11 +240,13 @@ try {
         pinned.source.datasets.map(dataset => dataset.sha256));
     }
   }
-  const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
+  const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
+  assert.equal(allFixtureNames.length, 5, "Expected four frozen SSH/QWZ bundles plus the producer BHZ bundle");
+  const fixtureNames=allFixtureNames.filter(name=>name!==bundledQuantumSceneExample("bhz-bands").folder);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
@@ -318,6 +320,26 @@ try {
     assert.deepEqual(peers.flatMap(peer => peer.source.topology?.invariants.map(invariant => invariant.id) ?? []),
       [model === "qwz" ? "chern" : "winding"]);
   }
+  const bhzDirectory=join(fixtureRoot,bundledQuantumSceneExample("bhz-bands").folder);
+  const bhz=await importQuantumSceneBundle(bhzDirectory);
+  const bhzResultBytes=await readFile(join(fixtureRoot,"bhz-producer-result.json"));
+  const bhzResult=JSON.parse(bhzResultBytes.toString("utf8"));
+  assert.equal(bhz.source.provenance.model,"bhz");
+  assert.equal(bhz.source.provenance.resultSha256,hash(bhzResultBytes));
+  assert.equal(bhz.source.provenance.runId,bhzResult.runId);
+  assert.equal(bhz.source.bands.objects.length,4);
+  assert.deepEqual(bhz.source.bands.labels,["Block occupied","Partner occupied","Block empty","Partner empty"]);
+  assert.deepEqual(bhz.source.topology.invariants.map(item=>[item.id,item.value,item.status]),
+    [["spin-z2",1,"verified"],["block-chern",1,"supplied"]]);
+  assert.deepEqual(bhz.source.bands.grid,[21,21]);
+  const bhzSample=inspectVerifiedBandSample(bhz,{fingerprint:sceneFingerprint(bhz),objectId:"band-0",sampleIndex:220});
+  assert.equal(bhzSample.energy,bhzResult.analysis.bandEnergies[0][220]);
+  assert.equal(bhzSample.runId,bhzResult.runId);
+  const bhzChanged=join(root,"bhz-changed.qscene");
+  await cp(bhzDirectory,bhzChanged,{recursive:true});
+  const bhzBandPath=join(bhzChanged,"band-energy-0.f64"),bhzBytes=await readFile(bhzBandPath);
+  bhzBytes[0]^=1;await writeFile(bhzBandPath,bhzBytes);
+  await assert.rejects(importQuantumSceneBundle(bhzChanged),/integrity|hash/i);
   const qwzDirectory = join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e.qscene");
   const qwz = await importQuantumSceneBundle(qwzDirectory);
   const display = qwz.document.extensions[qwz.source.schema].topologyDisplay;
@@ -567,7 +589,7 @@ try {
   damaged[0] ^= 1;
   await writeFile(artifact, damaged);
   await assert.rejects(importQuantumSceneBundle(copied), /integrity/);
-  console.log("M3D-Q01 four real Theory Lab bundles, units and tamper refusal passed");
+  console.log("M3D-Q01 four frozen QWZ/SSH bundles plus BHZ, units and tamper refusal passed");
 
   if (process.argv[2]) {
     const real = await importQuantumSceneBundle(process.argv[2]);
