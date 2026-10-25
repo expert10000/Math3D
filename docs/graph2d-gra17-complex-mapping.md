@@ -19,3 +19,5 @@ Acceptance includes a circle round trip through Complex Analysis serialization, 
 The 3D pair has core regression coverage for provenance serialization, mismatched planes, changed and missing bundles, plus an Electron import-to-Complex journey that mutates and removes a component between checks. Android remains deferred.
 
 The saved workspace has Project serialization and validator tests, plus a desktop Project save/reopen journey covering both resource checks, retained coordinates, distinct and duplicate line imports, changed bytes and a missing component.
+
+The saved 3D complex workspace now offers a replacement-bundle picker. Its review displays the real and imaginary component identities and SHA-256 hashes, axes, shape, and the saved plane, varying axis and other fixed coordinate. It enables acceptance only for a matching pair from a moved bundle. Acceptance rereads the candidate and compares it with the reviewed metadata before revising the single Project document; the selected line and reference IDs remain stable. Tests cover matching, changed and missing replacements, mutation after review, and Project save/reopen after relinking.

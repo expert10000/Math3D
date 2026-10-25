@@ -1,6 +1,7 @@
 import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
   isDocumentIdentity, structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
-import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
+import { isGraph2DFieldReference, reviewGraph2DFieldRelink,
+  type Graph2DFieldReference, type Graph2DFieldRelinkReview } from "./graph2dFieldReference";
 import type { ValidationResult } from "./validation";
 
 export const SCIENTIFIC_FIELD_DOCUMENT_FORMAT = "math3d.scientific-field-document" as const;
@@ -30,6 +31,44 @@ export type ScientificFieldDocument = Readonly<{
   source: ScientificFieldSource;
   metadata: Readonly<{ title: string }>;
 }>;
+
+/** Review both verified components and the physical coordinates retained by a saved 3D line. */
+export function reviewScientificComplexField3DRelink(document: ScientificFieldDocument,
+  replacementReal: Graph2DFieldReference, replacementImaginary: Graph2DFieldReference): Graph2DFieldRelinkReview {
+  const checked = normalizeScientificFieldDocument(document);
+  if (!checked.ok || !checked.value.source.paired ||
+      !isGraph2DFieldReference(replacementReal) || !isGraph2DFieldReference(replacementImaginary))
+    throw new TypeError("A valid saved 3D complex pair and verified replacement components are required.");
+  const saved = checked.value.source, paired = saved.paired!, line = paired.line;
+  const real = reviewGraph2DFieldRelink(saved.reference, replacementReal);
+  const imaginary = reviewGraph2DFieldRelink(paired.imaginary, replacementImaginary);
+  const coordinate = (reference: Graph2DFieldReference, axis: number, index: number) => {
+    const entry = reference.axes[axis];
+    return entry ? `${entry.name} = ${entry.origin + index * entry.spacing} ${entry.unit} (index ${index})` : "unavailable";
+  };
+  const fixedAxis = [0, 1, 2].find(axis => axis !== line.normalAxis && axis !== line.varyingAxis)!;
+  const selected = [
+    { field: "Saved plane coordinate", saved: coordinate(saved.reference, line.normalAxis, line.planeFixedIndex),
+      replacement: coordinate(replacementReal, line.normalAxis, line.planeFixedIndex), required: true },
+    { field: "Saved varying axis", saved: `${line.varyingAxis}: ${saved.reference.axes[line.varyingAxis]!.name}`,
+      replacement: `${line.varyingAxis}: ${replacementReal.axes[line.varyingAxis]?.name ?? "unavailable"}`, required: true },
+    { field: "Saved line coordinate", saved: coordinate(saved.reference, fixedAxis, line.fixedIndex),
+      replacement: coordinate(replacementReal, fixedAxis, line.fixedIndex), required: true },
+  ].map(entry => ({ ...entry, matches: entry.saved === entry.replacement }));
+  const differences = [
+    ...real.differences.map(entry => ({ ...entry, field: `Real ${entry.field}` })),
+    ...imaginary.differences.map(entry => ({ ...entry, field: `Imaginary ${entry.field}` })),
+    ...selected,
+  ];
+  const aligned = replacementReal.sceneFingerprint === replacementImaginary.sceneFingerprint &&
+    replacementReal.sceneId === replacementImaginary.sceneId &&
+    replacementReal.datasetId === replacementImaginary.datasetId &&
+    canonicalJsonStringify(replacementReal.locator) === canonicalJsonStringify(replacementImaginary.locator) &&
+    canonicalJsonStringify(replacementReal.shape) === canonicalJsonStringify(replacementImaginary.shape) &&
+    canonicalJsonStringify(replacementReal.axes) === canonicalJsonStringify(replacementImaginary.axes);
+  return { differences, eligible: aligned && differences.every(entry => !entry.required || entry.matches) &&
+    differences.some(entry => !entry.matches) };
+}
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);

@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildProjectExplorer, createGraph2DFieldReference, createMath3DProject,
   createMixedWorkspaceDocument, createScientificFieldDocument, normalizeScientificFieldDocument,
-  parseMath3DProject, reviseScientificFieldDocument, serializeMath3DProject, sha256Checksum } from "@math3d/core";
+  parseMath3DProject, reviewScientificComplexField3DRelink, reviseScientificFieldDocument,
+  serializeMath3DProject, sha256Checksum } from "@math3d/core";
 import { inspectProjectCompatibility } from "./projectTransfer";
 
 const manifest = readFileSync(fileURLToPath(new URL("../../../tests/fixtures/scientific-scene/vortex-flow.sscene/manifest.json", import.meta.url)), "utf8");
@@ -116,5 +117,27 @@ describe("saved 3D complex field pair", () => {
     expect(revised.identity.revision).toBe(original.identity.revision + 1);
     expect(revised.source.paired?.line).toEqual({ normalAxis: 1, planeFixedIndex: 12,
       varyingAxis: 2, fixedIndex: 5 });
+  });
+
+  it("accepts only a moved bundle with both component hashes, axes, shape and saved coordinates", () => {
+    const moved = { kind: "directory" as const, value: "C:\\moved\\complex-wave-volume.sscene" };
+    const movedReal = createGraph2DFieldReference(volumeManifest, volumeFingerprint, moved, "field", "real");
+    const movedImaginary = createGraph2DFieldReference(volumeManifest, volumeFingerprint, moved, "field", "imaginary");
+    const matching = reviewScientificComplexField3DRelink(original, movedReal, movedImaginary);
+    expect(matching.eligible).toBe(true);
+    expect(matching.differences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "Real Resource SHA-256", matches: true, required: true }),
+      expect.objectContaining({ field: "Imaginary Resource SHA-256", matches: true, required: true }),
+      expect.objectContaining({ field: "Saved plane coordinate", saved: "z = 0 m (index 8)", matches: true }),
+      expect.objectContaining({ field: "Saved line coordinate", saved: "y = 0 m (index 20)", matches: true }),
+    ]));
+    expect(reviewScientificComplexField3DRelink(original, movedReal,
+      { ...movedImaginary, resourceSha256: "0".repeat(64) }).eligible).toBe(false);
+    expect(reviewScientificComplexField3DRelink(original,
+      { ...movedReal, shape: [40, 41, 17] }, movedImaginary).eligible).toBe(false);
+    expect(reviewScientificComplexField3DRelink(original,
+      { ...movedReal, axes: movedReal.axes.map((axis, index) => index === 1 ?
+        { ...axis, origin: axis.origin + 1 } : axis) }, movedImaginary).eligible).toBe(false);
+    expect(reviewScientificComplexField3DRelink(original, real, imaginary).eligible).toBe(false);
   });
 });

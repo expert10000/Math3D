@@ -304,6 +304,111 @@ test("GRA-17 saved 3D complex field reopens and imports distinct verified pairs"
   }
 });
 
+test("GRA-17 saved 3D complex pair relinks only a freshly verified matching bundle", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-complex-relink-"));
+  const original = join(root, "original.sscene"), matching = join(root, "matching.sscene");
+  const changed = join(root, "changed.sscene"), missing = join(root, "missing.sscene");
+  const fixture = resolve("tests/fixtures/scientific-scene/complex-wave-volume.sscene");
+  for (const directory of [original, matching, changed]) await cp(fixture, directory, { recursive: true });
+  const changedFile = join(changed, "imaginary.f64"), changedBytes = await readFile(changedFile);
+  changedBytes[0] ^= 1;
+  await writeFile(changedFile, changedBytes);
+  const changedManifest = JSON.parse(await readFile(join(changed, "manifest.json"), "utf8"));
+  changedManifest.resources.find((item: { path: string }) => item.path === "imaginary.f64").sha256 =
+    createHash("sha256").update(changedBytes).digest("hex");
+  const manifestBytes = Buffer.from(JSON.stringify(changedManifest, null, 2) + "\n");
+  await writeFile(join(changed, "manifest.json"), manifestBytes);
+  const changedBundle = JSON.parse(await readFile(join(changed, "bundle.json"), "utf8"));
+  changedBundle.manifest.bytes = manifestBytes.length;
+  changedBundle.manifest.sha256 = createHash("sha256").update(manifestBytes).digest("hex");
+  await writeFile(join(changed, "bundle.json"), JSON.stringify(changedBundle, null, 2) + "\n");
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
+      ({ canceled: false, filePaths: [folder] }); }, original);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    const pair = importer.getByRole("region", { name: "3D complex field lines" });
+    await pair.getByLabel("Complex plane coordinate z").selectOption("4");
+    await pair.getByLabel("Complex fixed y").selectOption("10");
+    await pair.getByRole("button", { name: "Save paired field to Project" }).click();
+    await expect(pair.getByRole("status")).toContainText("saved to Project");
+    await importer.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const fieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "field")?.expected.id as string);
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    let workspace = page.getByRole("dialog", { name: "3D complex field workspace" });
+    await expect(workspace).toContainText("Both source components verified on this opening");
+    await rm(join(original, "real.f64"));
+    await workspace.getByRole("button", { name: "Reverify field" }).click();
+    await expect(workspace.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+    await expect(workspace.getByRole("region", { name: "3D complex field lines" })).toHaveCount(0);
+    const choose = async (directory: string) => {
+      await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
+        ({ canceled: false, filePaths: [folder] }); }, directory);
+      await workspace.getByRole("button", { name: "Choose replacement bundle" }).click();
+    };
+    await choose(missing);
+    await expect(workspace.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+    await choose(changed);
+    const review = workspace.getByRole("group", { name: "Review 3D complex replacement" });
+    await expect(review).toContainText("Replacement does not match");
+    await expect(review.getByRole("row", { name: /Imaginary Resource SHA-256/ })).toContainText("Mismatch");
+    await expect(review.getByRole("button", { name: "Accept verified replacement" })).toBeDisabled();
+    await choose(matching);
+    await expect(review).toContainText("Both components and saved coordinates match");
+    await expect(review.getByRole("row", { name: /Real Resource SHA-256/ })).toContainText("Matches");
+    await expect(review.getByRole("row", { name: /Imaginary Resource SHA-256/ })).toContainText("Matches");
+    await expect(review).toContainText("z = -1 m (index 4)");
+    await expect(review).toContainText("y = -2 m (index 10)");
+    const matchingFile = join(matching, "imaginary.f64"), intact = await readFile(matchingFile);
+    const mutated = Buffer.from(intact); mutated[0] ^= 1;
+    await writeFile(matchingFile, mutated);
+    await review.getByRole("button", { name: "Accept verified replacement" }).click();
+    await expect(workspace.getByTestId("scientific-complex-field3d-relink")
+      .getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await writeFile(matchingFile, intact);
+    await choose(matching);
+    await expect(review.getByRole("button", { name: "Accept verified replacement" })).toBeEnabled();
+    await review.getByRole("button", { name: "Accept verified replacement" }).click();
+    await expect(workspace).toContainText("Both source components verified on this opening");
+    await expect(workspace).toContainText(matching);
+    await workspace.getByRole("button", { name: "Close" }).click();
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    workspace = page.getByRole("dialog", { name: "3D complex field workspace" });
+    await expect(workspace).toContainText("Both source components verified on this opening");
+    await expect(workspace).toContainText(matching);
+    const reopenedPair = workspace.getByRole("region", { name: "3D complex field lines" });
+    await expect(reopenedPair.getByLabel("Complex plane coordinate z")).toHaveValue("4");
+    await expect(reopenedPair.getByLabel("Complex fixed y")).toHaveValue("10");
+    await reopenedPair.getByRole("button", { name: "Preview real/imaginary lines" }).click();
+    await expect(reopenedPair.getByRole("figure", { name: "Verified 3D complex line pair" })).toContainText("41 aligned samples");
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-complex-relink-"))
+      throw new Error("Unsafe complex relink fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GRA-17 places a linked contour and reviews a changed Graph before refresh", async () => {
   const app = await launchSurfaceApp();
   try {
