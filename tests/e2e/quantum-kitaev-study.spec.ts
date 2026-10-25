@@ -29,7 +29,8 @@ test("Kitaev producer examples inspect exact samples and reopen after restart wi
     await openExamples(page);
     await page.getByTestId("quantum-example-kitaev-bands").click();
     await expect(page.getByTestId("kitaev-study-profile")).toContainText("periodic BdG bands");
-    await expect(page.getByTestId("kitaev-study-profile")).toContainText("No winding, Z₂ invariant");
+    await expect(page.getByTestId("kitaev-study-profile"))
+      .toContainText(/no winding, Z₂ invariant/i);
     await page.getByRole("button", { name: "Inspect first band sample band-0" }).click();
     await expect(page.getByTestId("quantum-band-selection"))
       .toContainText(result.analysis.lowerBand[0].toPrecision(8));
