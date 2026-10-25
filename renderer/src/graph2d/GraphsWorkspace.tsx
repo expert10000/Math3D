@@ -1599,6 +1599,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 {" "}(index {selectedObject.origin.slice.plane.fixedIndex})</dd></>}</>}
           <dt>Source hashes</dt><dd><code>manifest {selectedObject.origin.sceneFingerprint}<br />resource {selectedObject.origin.resourceSha256}</code></dd>
         </>}
+        {selectedObject?.kind === "point-series" && selectedObject.analyticOrigin && <>
+          <dt>Analytic field source</dt><dd>{selectedObject.analyticOrigin.documentId} · revision
+            {" "}{selectedObject.analyticOrigin.revision}</dd>
+          <dt>Line coordinates</dt><dd>Vary {selectedObject.analyticOrigin.xName} (axis
+            {" "}{selectedObject.analyticOrigin.varyingAxis}); {selectedObject.analyticOrigin.fixedCoordinates.map(
+              (value, index) => index === selectedObject.analyticOrigin!.varyingAxis ? null :
+                `${["x", "y", "z"][index]} = ${value}`).filter(Boolean).join(" · ")}</dd>
+          <dt>Component and units</dt><dd>{selectedObject.analyticOrigin.component.toUpperCase()};
+            {" "}{selectedObject.analyticOrigin.xUnit} → {selectedObject.analyticOrigin.yUnit}</dd>
+          <dt>Field expressions</dt><dd>{selectedObject.analyticOrigin.expressions.join("; ")}</dd>
+          <dt>Source hash</dt><dd><code>{selectedObject.analyticOrigin.structuralHash}</code></dd>
+        </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : inspected.kind === "time-ode" ? "Time domain" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
         {(selectedObject?.kind === "implicit" || selectedObject?.kind === "inequality" || selectedObject?.kind === "slope-field" || selectedObject?.kind === "phase-portrait") && <><dt>Y domain</dt>
@@ -1885,6 +1897,25 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               style: { color: SCIENTIFIC_GRID_LINE_COLORS[matching.length % SCIENTIFIC_GRID_LINE_COLORS.length],
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${preview.rows.length} verified vector samples to Graphs. Use Fit to view the full line.`);
+          }}
+          onAddAnalyticLine={line => {
+            if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
+            if (document.source.objects.some(item => item.kind === "point-series" &&
+              item.analyticOrigin?.documentId === line.origin.documentId &&
+              item.analyticOrigin.structuralHash === line.origin.structuralHash &&
+              item.analyticOrigin.component === line.origin.component &&
+              item.analyticOrigin.varyingAxis === line.origin.varyingAxis &&
+              item.analyticOrigin.fixedCoordinates.every((value, index) =>
+                value === line.origin.fixedCoordinates[index])))
+              throw new Error("This analytic line is already in Graphs.");
+            const table = pointTableStore.publish(line.rows);
+            const count = document.source.objects.filter(item => item.kind === "point-series" &&
+              item.analyticOrigin).length;
+            onAuthoringCommit({ type: "create-point-series", draft: { label: line.label,
+              table, mode: "line", domain: line.domain, analyticOrigin: line.origin,
+              style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
+                lineWidth: 2, lineStyle: "solid", visible: true } } });
+            setToolHint(`Added ${line.finiteCount} analytic line samples to Graphs. Use Fit to view the full line.`);
           }}
           onSaveDocument={onSaveVectorField3D} onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false);

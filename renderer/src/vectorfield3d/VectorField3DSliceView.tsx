@@ -8,11 +8,17 @@ const color = (value: number | null, min: number, max: number) => {
   return `rgb(${Math.round(35 + 212 * t)}, ${Math.round(105 + 110 * (1 - Math.abs(2 * t - 1)))}, ${Math.round(224 - 184 * t)})`;
 };
 
-export function VectorField3DSliceView({ document, slice, probe, clipBounds, onProbeSelect }: {
+export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoom = 1,
+  center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
+  zoom?: number; onZoomChange?: (zoom: number) => void;
+  center?: readonly [number, number];
+  onCenterChange?: (center: readonly [number, number]) => void;
   onProbeSelect?: (point: readonly [number, number, number]) => void;
+  onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
+    point: readonly [number, number, number]) => void;
 }) {
   const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
   const [first, second] = slice.planeAxes, width = 560, height = 480;
@@ -37,7 +43,25 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, onP
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
-    <svg viewBox="0 0 640 560" role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}>
+    {onZoomChange && <div className="vector-field3d-slice-camera" aria-label={`${firstAxis.label}${secondAxis.label} camera controls`}>
+      <button type="button" aria-label={`Zoom ${firstAxis.label}${secondAxis.label} out`}
+        disabled={zoom <= 1} onClick={() => onZoomChange(zoom / 1.5)}>−</button>
+      <span role="status">{zoom.toPrecision(2)}×</span>
+      <button type="button" aria-label={`Zoom ${firstAxis.label}${secondAxis.label} in`}
+        disabled={zoom >= 8} onClick={() => onZoomChange(zoom * 1.5)}>+</button>
+      <button type="button" aria-label={`Reset ${firstAxis.label}${secondAxis.label} zoom`}
+        onClick={() => { onZoomChange(1); onCenterChange?.([0.5, 0.5]); }}>Reset</button>
+      {onCenterChange && <>
+        {([ ["left", -1, 0], ["right", 1, 0], ["up", 0, -1],
+          ["down", 0, 1] ] as const).map(([name, dx, dy]) =>
+          <button key={name} type="button" aria-label={`Pan ${firstAxis.label}${secondAxis.label} ${name}`}
+            disabled={zoom <= 1} onClick={() => onCenterChange([
+              center[0] + dx * 0.15 / zoom, center[1] + dy * 0.15 / zoom])}>
+            {name}</button>)}
+      </>}
+    </div>}
+    <svg viewBox={`${640 * center[0] - 320 / zoom} ${560 * center[1] - 280 / zoom} ${640 / zoom} ${560 / zoom}`}
+      role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}>
       <rect x="58" y="16" width={width} height={height} fill="#0d1726" />
       {slice.values.map((value, index) => {
         const x = Math.floor(index / slice.shape[1]), y = index % slice.shape[1];
@@ -109,6 +133,10 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, onP
         {" "}{profile.length} bounded samples · {slice.unit} against
         {" "}{document.source.axes[slice.planeAxes[profileDirection]].unit}.
         {slice.sourceHash && ` Source ${slice.sourceHash}.`}</small>
+      {document.source.field.kind === "expressions" && onSendLineToGraphs && <button type="button"
+        onClick={() => onSendLineToGraphs(slice.channel === "magnitude" ? "speed" : slice.channel,
+          slice.planeAxes[profileDirection] as 0 | 1 | 2, probe as [number, number, number])}>
+        Send analytic line to Graphs</button>}
     </section>}
   </figure>;
 }

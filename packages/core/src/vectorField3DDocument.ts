@@ -29,12 +29,19 @@ export type VectorField3DLayer = "arrows" | "trajectories" | "xy" | "xz" | "yz";
 export type VectorField3DCameraPreset = "perspective" | "xy" | "xz" | "yz";
 export type VectorField3DClipBounds = readonly [readonly [number, number],
   readonly [number, number], readonly [number, number]];
+export type VectorField3DCameraState = Readonly<{ position: readonly [number, number, number];
+  target: readonly [number, number, number]; zoom: number }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   layout: "three-pane" | "viewer-focus" | "split" | "quad";
   sliceCoordinates: readonly [number, number, number];
+  viewsLinked: boolean;
+  viewZoom: Readonly<{ xy: number; xz: number; yz: number }>;
+  viewCenter: Readonly<{ xy: readonly [number, number]; xz: readonly [number, number];
+    yz: readonly [number, number] }>;
   probe: readonly [number, number, number] | null;
   clipBounds: VectorField3DClipBounds;
-  cameraPreset: VectorField3DCameraPreset }>;
+  cameraPreset: VectorField3DCameraPreset;
+  cameraState: VectorField3DCameraState | null }>;
 export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOCUMENT_FORMAT;
   schemaVersion: typeof VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION; identity: DocumentIdentity;
   source: VectorField3DSource; metadata: Readonly<{ title: string }>;
@@ -42,6 +49,9 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
+  cameraState: null,
+  viewsLinked: true, viewZoom: { xy: 1, xz: 1, yz: 1 },
+  viewCenter: { xy: [0.5, 0.5], xz: [0.5, 0.5], yz: [0.5, 0.5] },
   clipBounds: source.axes.map(axis => [axis.min, axis.max]) as unknown as VectorField3DClipBounds,
   sliceCoordinates: source.axes.map((axis, index) => {
     if (source.field.kind !== "scientific-bundle") return (axis.min + axis.max) / 2;
@@ -153,12 +163,39 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { clipBounds: defaults.clipBounds } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "cameraPreset") ?
       { cameraPreset: defaults.cameraPreset } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "viewsLinked") ?
+      { viewsLinked: defaults.viewsLinked } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "viewZoom") ?
+      { viewZoom: defaults.viewZoom } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "viewCenter") ?
+      { viewCenter: defaults.viewCenter } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "cameraState") ?
+      { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "layout", "sliceCoordinates", "probe", "clipBounds", "cameraPreset"]) ||
+      ["selectedLayer", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "clipBounds", "cameraPreset", "cameraState"]) ||
       !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
       !["three-pane", "viewer-focus", "split", "quad"].includes(String(workspace.layout)) ||
       !["perspective", "xy", "xz", "yz"].includes(String(workspace.cameraPreset)) ||
+      typeof workspace.viewsLinked !== "boolean" || !record(workspace.viewZoom) ||
+      !exact(workspace.viewZoom, ["xy", "xz", "yz"]) ||
+      ["xy", "xz", "yz"].some(layer => !finite((workspace.viewZoom as Record<string, unknown>)[layer]) ||
+        Number((workspace.viewZoom as Record<string, unknown>)[layer]) < 1 ||
+        Number((workspace.viewZoom as Record<string, unknown>)[layer]) > 8) ||
+      !record(workspace.viewCenter) || !exact(workspace.viewCenter, ["xy", "xz", "yz"]) ||
+      ["xy", "xz", "yz"].some(layer => {
+        const center = (workspace.viewCenter as Record<string, unknown>)[layer];
+        const edge = 0.5 / Number((workspace.viewZoom as Record<string, unknown>)[layer]);
+        return !Array.isArray(center) || center.length !== 2 || center.some(value =>
+          !finite(value) || value < edge || value > 1 - edge);
+      }) ||
+      workspace.cameraState !== null && (!record(workspace.cameraState) ||
+        !exact(workspace.cameraState, ["position", "target", "zoom"]) ||
+        !tuple3(workspace.cameraState.position) || !tuple3(workspace.cameraState.target) ||
+        [...workspace.cameraState.position, ...workspace.cameraState.target].some(value =>
+          !finite(value) || Math.abs(value) > 1e4) ||
+        !finite(workspace.cameraState.zoom) || workspace.cameraState.zoom <= 0 ||
+        workspace.cameraState.zoom > 1e4) ||
       !tuple3(workspace.sliceCoordinates) ||
       !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes) ||
       workspace.probe !== null && (!tuple3(workspace.probe) ||

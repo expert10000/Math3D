@@ -450,6 +450,10 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .vector-field3d-slice { margin: 0; min-width: 0; width: 100%; overflow: auto; padding: 12px;
   box-sizing: border-box; color: #e5efff; }
 .vector-field3d-slice figcaption { margin-bottom: 8px; font-weight: 700; }
+.vector-field3d-slice-camera { display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-bottom: 8px; font-size: 12px; }
+.vector-field3d-slice-camera button { min-height: 28px; padding: 3px 7px; }
+.vector-field3d-slice-camera span { min-width: 3em; text-align: center; }
 .vector-field3d-slice svg { display: block; width: 100%; max-height: calc(100% - 90px); }
 .vector-field3d-slice-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .vector-field3d-slice-legend-bar { display: block; width: min(240px, 48%); height: 10px;

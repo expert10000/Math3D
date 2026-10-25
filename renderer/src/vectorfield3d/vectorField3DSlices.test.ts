@@ -5,6 +5,7 @@ import { createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceD
   createVectorField3DDocument, defaultVectorField3DWorkspace, normalizeVectorField3DDocument,
   parseMath3DProject, parseVectorField3DDocument, reviseVectorField3DWorkspace,
   sampleVectorField3DSlice, sampleVectorField3DProbe, serializeMath3DProject, serializeVectorField3DDocument,
+  integrateVectorField3DScientificTrajectories, reviseVectorField3DDocument,
   sha256Checksum, vectorField3DSliceCoordinates, type Graph2DFieldReference, type VectorField3DSource,
   type VectorField3DVolumes } from "@math3d/core";
 
@@ -40,6 +41,7 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
     const selected = reviseVectorField3DWorkspace(document, { ...view,
       selectedLayer: "xz", layout: "quad", sliceCoordinates: [0, -2, -1.5],
       probe: [0, -2, -1.5], cameraPreset: "yz",
+      cameraState: { position: [4, 1, 2], target: [0.2, 0, 0], zoom: 140 },
       clipBounds: [[-2, 2], [-3, 1], [-2, 0]] });
     const workspace = createMixedWorkspaceDocument({ entries: [{ module: "vector3d", checkpoint: selected,
       expected: selected.identity, replay: null }], activeDocumentIds: [selected.identity.id],
@@ -60,15 +62,34 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
       clipBounds: [[-2, 10], [-3, 1], [-2, 0]] } }).ok).toBe(false);
     expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
       clipBounds: [[2, -2], [-3, 1], [-2, 0]] } }).ok).toBe(false);
+    expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
+      viewZoom: { xy: 2, xz: 1, yz: 1 },
+      viewCenter: { xy: [0.1, 0.5], xz: [0.5, 0.5], yz: [0.5, 0.5] } } }).ok)
+      .toBe(false);
     const previousWorkspace = JSON.parse(serializeVectorField3DDocument(selected));
     delete previousWorkspace.workspace.probe;
     delete previousWorkspace.workspace.clipBounds;
     delete previousWorkspace.workspace.cameraPreset;
+    delete previousWorkspace.workspace.cameraState;
     expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.probe).toBeNull();
     expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.clipBounds)
       .toEqual(view.clipBounds);
     expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.cameraPreset)
       .toBe("perspective");
+    expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.cameraState)
+      .toBeNull();
+    delete previousWorkspace.workspace.viewsLinked;
+    delete previousWorkspace.workspace.viewZoom;
+    delete previousWorkspace.workspace.viewCenter;
+    expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace)
+      .toMatchObject({ viewsLinked: true, viewZoom: { xy: 1, xz: 1, yz: 1 },
+        viewCenter: { xy: [0.5, 0.5], xz: [0.5, 0.5], yz: [0.5, 0.5] } });
+    const independent = reviseVectorField3DWorkspace(selected, { ...selected.workspace!,
+      viewsLinked: false, viewZoom: { xy: 2, xz: 1.5, yz: 1 },
+      viewCenter: { xy: [0.6, 0.5], xz: [0.5, 0.5], yz: [0.5, 0.5] } });
+    expect(parseVectorField3DDocument(serializeVectorField3DDocument(independent)).workspace)
+      .toMatchObject({ viewsLinked: false, viewZoom: { xy: 2, xz: 1.5, yz: 1 },
+        viewCenter: { xy: [0.6, 0.5], xz: [0.5, 0.5], yz: [0.5, 0.5] } });
   });
 
   it("samples XY, XZ and YZ at exact physical coordinates within 1,024 cells", () => {
@@ -135,5 +156,62 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
     expect(() => sampleVectorField3DSlice(document, 2, -1.5,
       { manifestJson, fingerprint, volumes: volumes.slice(0, 2) as unknown as VectorField3DVolumes }))
       .toThrow(/complete 3D vector field/);
+  });
+
+  it("checks an independent component oracle at one point in every verified plane", () => {
+    const point = [0, -2, -1.5] as const;
+    const oracle = [1.3903973060054509, 0, -0.5732250484590314];
+    const verified = { manifestJson, fingerprint, volumes };
+    expect(sampleVectorField3DProbe(document, point, verified).vector).toEqual(oracle);
+    for (const [component, expected] of [["p", oracle[0]], ["q", oracle[1]],
+      ["r", oracle[2]]] as const) {
+      const selected = reviseVectorField3DDocument(document, { ...source,
+        display: { ...source.display, colorBy: component } });
+      for (const normalAxis of [0, 1, 2] as const) {
+        const slice = sampleVectorField3DSlice(selected, normalAxis, point[normalAxis], verified);
+        const [first, second] = slice.planeAxes;
+        const i = slice.coordinates[0].indexOf(point[first]);
+        const j = slice.coordinates[1].indexOf(point[second]);
+        expect(i).toBeGreaterThanOrEqual(0);
+        expect(j).toBeGreaterThanOrEqual(0);
+        expect(slice.values[i * slice.shape[1] + j]).toBeCloseTo(expected!, 13);
+      }
+    }
+  });
+
+  it("rejects axis-order errors, changed checksums and missing components before sampling", () => {
+    const changed = [{ ...volumes[0], values: [...volumes[0].values].reverse() },
+      volumes[1], volumes[2]] as VectorField3DVolumes;
+    expect(() => sampleVectorField3DProbe(document, [0, -2, -1.5],
+      { manifestJson, fingerprint, volumes: changed })).toThrow(/checksum/);
+    const wrongOrder = [{ ...volumes[0], sampleShape: [21, 17, 21] },
+      volumes[1], volumes[2]] as unknown as VectorField3DVolumes;
+    expect(() => sampleVectorField3DSlice(document, 2, -1.5,
+      { manifestJson, fingerprint, volumes: wrongOrder })).toThrow(/verified volume|shape|lattice/i);
+    expect(() => sampleVectorField3DProbe(document, [0, -2, -1.5],
+      { manifestJson, fingerprint, volumes: [volumes[1], volumes[0], volumes[2]] as VectorField3DVolumes }))
+      .toThrow(/component|verified volume/i);
+    for (const normalAxis of [0, 1, 2] as const) {
+      const coordinate = [0, -2, -1.5][normalAxis]!;
+      expect(() => sampleVectorField3DSlice(document, normalAxis, coordinate,
+        { manifestJson, fingerprint, volumes: changed })).toThrow(/checksum/);
+      expect(() => sampleVectorField3DSlice(document, normalAxis, coordinate,
+        { manifestJson, fingerprint, volumes: volumes.slice(0, 2) as VectorField3DVolumes }))
+        .toThrow(/complete 3D vector field/);
+    }
+  });
+
+  it("reports scientific solver stop reasons for stationary, boundary, step-limit and cancellation", () => {
+    const withSeed = (position: readonly [number, number, number], maxSteps = 1000) =>
+      reviseVectorField3DDocument(document, { ...source,
+        seeds: [{ id: "oracle", position }], solver: { ...source.solver, maxSteps } });
+    const stop = (position: readonly [number, number, number], maxSteps?: number,
+      shouldCancel?: () => boolean) => integrateVectorField3DScientificTrajectories(
+        withSeed(position, maxSteps), manifestJson, fingerprint, volumes,
+        { shouldCancel }).trajectories[0]!;
+    expect(stop([0, 0, 0]).stopReason).toBe("stationary");
+    expect(stop([4, 4, 0]).stopReason).toBe("boundary");
+    expect(stop([0, -2, -1.5], 1).stopReason).toBe("step-limit");
+    expect(stop([0, -2, -1.5], 1000, () => true).stopReason).toBe("cancelled");
   });
 });

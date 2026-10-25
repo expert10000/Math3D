@@ -5,6 +5,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   createScientificDatasetLink,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
   sampleVectorField3DSlice, sampleVectorField3DProbe, vectorField3DSliceCoordinates,
+  sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
   integrateVectorField3DScientificTrajectories,
   scientificPointWithinBounds,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
@@ -12,6 +13,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type Graph2DScientificDatasetPreview, type VectorField3DLayer,
   type VectorField3DSliceArtifact, type VectorField3DProbeArtifact,
   type VectorField3DClipBounds, type VectorField3DCameraPreset } from "@math3d/core";
+import type { VectorField3DCameraState } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
 import { VectorField3DSliceView } from "./VectorField3DSliceView";
 import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
@@ -38,12 +40,13 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 }
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
-  onAddGraphLine, isGraphLineImported }: {
+  onAddGraphLine, isGraphLineImported, onAddAnalyticLine }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
+  onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRunRef = useRef<(() => void) | null>(null);
@@ -94,7 +97,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setError("");
   };
   const setSliceCoordinate = (axis: 0 | 1 | 2, coordinate: number) => {
-    if (workspace.probe) {
+    if (workspace.viewsLinked && workspace.probe) {
       const position = [...workspace.probe] as [number, number, number];
       position[axis] = coordinate;
       void selectProbe(position);
@@ -118,7 +121,38 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   };
   const setCameraPreset = (cameraPreset: VectorField3DCameraPreset) => {
     setDocument(current => reviseVectorField3DWorkspace(current,
-      { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), cameraPreset }));
+      { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), cameraPreset,
+        cameraState: null }));
+  };
+  const setCameraState = (cameraState: VectorField3DCameraState) => {
+    setDocument(current => reviseVectorField3DWorkspace(current,
+      { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), cameraState }));
+  };
+  const setViewsLinked = (viewsLinked: boolean) => {
+    const next = reviseVectorField3DWorkspace(document, { ...workspace, viewsLinked,
+      sliceCoordinates: viewsLinked && workspace.probe ? [...workspace.probe] as [number, number, number] :
+        workspace.sliceCoordinates });
+    setDocument(next);
+    if (viewsLinked && workspace.probe) { setSlice(null); setLinkedSlices({}); }
+    setError("");
+  };
+  const setViewZoom = (layer: "xy" | "xz" | "yz", zoom: number) => {
+    setDocument(current => { const view = current.workspace ?? defaultVectorField3DWorkspace(current.source);
+      const bounded = Math.max(1, Math.min(8, zoom));
+      const edge = 0.5 / bounded;
+      const center = view.viewCenter[layer].map(value => Math.max(edge, Math.min(1 - edge, value))) as
+        [number, number];
+      return reviseVectorField3DWorkspace(current, { ...view,
+        viewZoom: { ...view.viewZoom, [layer]: bounded },
+        viewCenter: { ...view.viewCenter, [layer]: center } }); });
+  };
+  const setViewCenter = (layer: "xy" | "xz" | "yz", center: readonly [number, number]) => {
+    setDocument(current => { const view = current.workspace ?? defaultVectorField3DWorkspace(current.source);
+      const edge = 0.5 / view.viewZoom[layer];
+      const bounded = center.map(value => Math.max(edge, Math.min(1 - edge, value))) as
+        [number, number];
+      return reviseVectorField3DWorkspace(current, { ...view,
+        viewCenter: { ...view.viewCenter, [layer]: bounded } }); });
   };
   const setLayout = (layout: typeof workspace.layout) => {
     setDocument(current => reviseVectorField3DWorkspace(current,
@@ -278,13 +312,26 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       const view = next.workspace ?? defaultVectorField3DWorkspace(next.source);
       const revised = reviseVectorField3DWorkspace(next,
         { ...view, probe: [...position] as [number, number, number],
-          sliceCoordinates: [...position] as [number, number, number] });
+          sliceCoordinates: view.viewsLinked ? [...position] as [number, number, number] :
+            view.sliceCoordinates });
       if (slice && (slice.normalAxis === undefined ||
           Math.abs(slice.fixedCoordinate - position[slice.normalAxis]) > 1e-9 ||
           slice.source.structuralHash !== revised.identity.structuralHash)) setSlice(null);
       setDocument(revised); setProbeArtifact(null); setError("");
       if (multiView) await previewLinkedViews(revised);
       else await verifyProbe(revised, position);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const sendAnalyticLine = (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
+    point: readonly [number, number, number]) => {
+    try {
+      const next = currentDocument();
+      if (next.identity.structuralHash !== document.identity.structuralHash)
+        throw new Error("Preview the current formula before sending its line to Graphs.");
+      const line = sampleVectorField3DAnalyticLine(next, component, varyingAxis, point);
+      if (!onAddAnalyticLine) throw new Error("Graph authoring is unavailable.");
+      onAddAnalyticLine(line);
+      setError(""); setRunStatus(`Sent ${line.finiteCount} finite analytic line samples to Graphs.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const addSeed = () => {
@@ -537,6 +584,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </section>
     <section aria-label="Linked field probe" className="vector-field3d-probe">
       <h5>Linked physical-point probe</h5>
+      <label><input type="checkbox" aria-label="Link slice planes to probe"
+        checked={workspace.viewsLinked} disabled={busy || lineBusy}
+        onChange={event => setViewsLinked(event.target.checked)} /> Link slice planes to probe</label>
+      <p>{workspace.viewsLinked ? "A selected point moves all three slice planes to its physical coordinates." :
+        "Slice planes keep independent fixed coordinates; selecting a point still updates the probe."}</p>
       {!workspace.probe ? <button type="button" disabled={busy || lineBusy}
         onClick={() => void selectProbe(workspace.sliceCoordinates)}>Place probe at selected coordinates</button> : <>
         <div className="vector-field3d-probe-coordinates">
@@ -590,7 +642,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }} />}
       </label>
       <button type="button" disabled={busy || lineBusy} onClick={() => void (multiView ?
-        previewLinkedViews() : previewSlice())}>{multiView ? "Preview linked views" : "Preview slice"}</button>
+        previewLinkedViews() : previewSlice())}>{multiView ? "Preview all views" : "Preview slice"}</button>
       {workspace.probe && (slice || Object.keys(linkedSlices).length > 0) &&
         <button type="button" onClick={() => dialogRef.current?.querySelector(
           '.scientific-field-explorer-viewer .vector-field3d-line-profile')?.scrollIntoView(
@@ -610,7 +662,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </details>}
     <div><button type="button" disabled={busy || lineBusy} onClick={() => void (multiView ?
       previewLinkedViews() : render())}>{busy ? "Verifying…" :
-        multiView ? "Preview linked views" : "Verify & render arrows"}</button>
+        multiView ? "Preview all views" : "Verify & render arrows"}</button>
       {" "}<button type="button" disabled={busy} onClick={save}>Save document</button>
       {" "}<button type="button" disabled={busy || lineBusy || !document.source.seeds.length}
         onClick={() => void runTrajectories()}>{busy ? "Integrating…" : "Run trajectories"}</button>
@@ -642,22 +694,33 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
         <div className="vector-field3d-linked-cell">{artifact ?
           <VectorField3DArrowView document={document} artifact={artifact}
-            trajectories={trajectories} probe={workspace.probe} /> :
-          <p role="status">Preview linked views to show the bounded 3D field.</p>}</div>
+            trajectories={trajectories} probe={workspace.probe}
+            onCameraStateChange={setCameraState} /> :
+          <p role="status">Preview all views to show the bounded 3D field.</p>}</div>
         {(workspace.layout === "quad" ? ["xy", "xz", "yz"] as const :
           [normalAxis === 1 ? "xz" : normalAxis === 0 ? "yz" : "xy"] as const).map(layer =>
           <div className="vector-field3d-linked-cell" key={layer}>{linkedSlices[layer] ?
             <VectorField3DSliceView document={document} slice={linkedSlices[layer]!}
               clipBounds={workspace.clipBounds} probe={workspace.probe}
+              zoom={workspace.viewZoom[layer]} onZoomChange={zoom => setViewZoom(layer, zoom)}
+              center={workspace.viewCenter[layer]}
+              onCenterChange={center => setViewCenter(layer, center)}
+              onSendLineToGraphs={sendAnalyticLine}
               onProbeSelect={point => void selectProbe(point)} /> :
-            <p role="status">Preview linked views to show the {layer.toUpperCase()} slice.</p>}</div>)}</div> :
+            <p role="status">Preview all views to show the {layer.toUpperCase()} slice.</p>}</div>)}</div> :
       normalAxis !== undefined ? slice ? <VectorField3DSliceView document={document} slice={slice}
         clipBounds={workspace.clipBounds} probe={workspace.probe}
+        zoom={workspace.viewZoom[workspace.selectedLayer as "xy" | "xz" | "yz"]}
+        onZoomChange={zoom => setViewZoom(workspace.selectedLayer as "xy" | "xz" | "yz", zoom)}
+        center={workspace.viewCenter[workspace.selectedLayer as "xy" | "xz" | "yz"]}
+        onCenterChange={center => setViewCenter(workspace.selectedLayer as "xy" | "xz" | "yz", center)}
+        onSendLineToGraphs={sendAnalyticLine}
         onProbeSelect={point => void selectProbe(point)} /> :
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
           The current source is verified before scientific values appear.</div> :
         artifact ? <VectorField3DArrowView document={document} artifact={artifact}
-          trajectories={trajectories} probe={workspace.probe} /> :
+          trajectories={trajectories} probe={workspace.probe}
+          onCameraStateChange={setCameraState} /> :
         <div role="status" className="scientific-field-explorer-empty">Verify the field to display bounded 3D arrows.
           Saved scientific bundles are reread before any field values appear.</div>}
     </div>

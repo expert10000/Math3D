@@ -245,7 +245,7 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(values).toContainText(`east = ${pointValues[0]!.toPrecision(5)} m/s`);
     await editor.getByRole("button", { name: "Quad views" }).click();
-    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    await editor.getByRole("button", { name: "Preview all views" }).first().click();
     await expect(editor.getByRole("figure", { name: "XY field slice" })).toBeVisible();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toBeVisible();
     const resource = join(directory, "north.f64"), original = await readFile(resource);
@@ -298,11 +298,11 @@ test("SCI-04/07 clip and camera settings persist while split and quad views shar
     await editor.getByRole("group", { name: "3D camera viewport" }).press("Home");
     await expect(editor.getByTestId("vector-field3d-camera-status")).toContainText("distance 4.00");
     await editor.getByRole("button", { name: "Split views" }).click();
-    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    await editor.getByRole("button", { name: "Preview all views" }).first().click();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toBeVisible();
     await expect(editor.getByRole("figure", { name: "XY field slice" })).toBeVisible();
     await editor.getByRole("button", { name: "Quad views" }).click();
-    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    await editor.getByRole("button", { name: "Preview all views" }).first().click();
     for (const name of ["XY", "XZ", "YZ"] as const)
       await expect(editor.getByRole("figure", { name: `${name} field slice` })).toBeVisible();
     await editor.getByRole("figure", { name: "XY field slice" })
@@ -314,6 +314,19 @@ test("SCI-04/07 clip and camera settings persist while split and quad views shar
       .toContainText("x = 1 m · y = -0.6666666666666665 m · z = 0 m");
     await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toHaveCount(3);
     await expect(editor.getByTestId("vector-field3d-3d-probe")).toContainText("x = 1 m");
+    await editor.getByLabel("Link slice planes to probe").uncheck();
+    await editor.getByRole("button", { name: "Zoom xy in" }).click();
+    await editor.getByRole("button", { name: "Zoom xz in" }).click();
+    await editor.getByRole("button", { name: "Zoom xz in" }).click();
+    await editor.getByRole("button", { name: "Pan xz right" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" })
+      .getByRole("status").first()).toContainText("1.5×");
+    await editor.getByRole("figure", { name: "XY field slice" })
+      .locator('[data-probe-cell="18-12"]').click();
+    await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toHaveCount(1);
+    await expect(editor.getByRole("figure", { name: "XZ field slice" }))
+      .toContainText(/y = -0.6666666666666665 m/);
+    await editor.getByRole("button", { name: "Orbit right" }).click();
     await testInfo.attach("scientific-field-explorer-quad.png", {
       body: await editor.screenshot(), contentType: "image/png" });
     await editor.getByRole("button", { name: "Save document" }).click();
@@ -325,16 +338,60 @@ test("SCI-04/07 clip and camera settings persist while split and quad views shar
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
     expect(entry.checkpoint.workspace).toMatchObject({ layout: "quad", cameraPreset: "xy",
-      clipBounds: [[-2, 4], [-4, 4], [-4, 4]] });
+      clipBounds: [[-2, 4], [-4, 4], [-4, 4]], viewsLinked: false,
+      viewZoom: { xy: 1.5, xz: 2.25, yz: 1 } });
+    expect(entry.checkpoint.workspace.viewCenter.xy).toEqual([0.5, 0.5]);
+    expect(entry.checkpoint.workspace.viewCenter.xz[0]).toBeCloseTo(0.5666666667, 8);
+    expect(entry.checkpoint.workspace.cameraState.position).not.toEqual([0, 0, 4]);
     await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
     await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
     editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toHaveAttribute("data-layout", "quad");
     await expect(editor.getByLabel("Clip x min")).toHaveValue("-2");
     await expect(editor.getByLabel("3D camera preset")).toHaveValue("xy");
+    await expect(editor.getByLabel("Link slice planes to probe")).not.toBeChecked();
     await expect(editor.getByTestId("vector-field3d-probe-values")).toHaveCount(0);
-    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
-    await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toHaveCount(3);
+    await editor.getByRole("button", { name: "Preview all views" }).first().click();
+    await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toHaveCount(1);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-07 sends an authored field line profile to Graphs with fixed-coordinate provenance", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Place probe at selected coordinates" }).click();
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    const profile = editor.getByRole("region", { name: "Line profile through probe" });
+    await expect(profile).toContainText("magnitude along x");
+    await profile.getByRole("button", { name: "Send analytic line to Graphs" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status"))
+      .toContainText("Sent 129 finite analytic line samples");
+    await profile.getByRole("button", { name: "Send analytic line to Graphs" }).click();
+    await expect(editor.getByRole("alert")).toContainText("already in Graphs");
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const project = page.getByTestId("project-explorer-panel");
+    await project.getByTestId("project-save").click();
+    await expect(project.getByTestId("project-message")).toContainText("Saved");
+    const origin = await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
+        .find((entry: { module: string }) => entry.module === "graph2d");
+      const objects = [...(graph.replay?.payload?.transactions ?? [])].reverse()
+        .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+          transaction.commands[0]?.command.payload.source?.objects)
+        .find((value: unknown) => Array.isArray(value)) ?? graph.checkpoint.source.objects;
+      return objects.find((item: { analyticOrigin?: unknown }) => item.analyticOrigin)?.analyticOrigin;
+    });
+    expect(origin).toMatchObject({ kind: "vector-field3d-expression-line", component: "speed",
+      varyingAxis: 0, fixedCoordinates: [null, 0, 0], expressions: ["-y", "x", "0"],
+      xName: "x", xUnit: "m", yUnit: "m/s" });
   } finally { await closeSurfaceApp(app); }
 });
 

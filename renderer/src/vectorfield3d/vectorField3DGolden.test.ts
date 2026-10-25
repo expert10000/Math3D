@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   integrateVectorField3DTrajectories, reviseVectorField3DWorkspace,
+  sampleVectorField3DAnalyticLine, validGraph2DAnalyticFieldOrigin,
   sampleVectorField3DArrows, sampleVectorField3DProbe, sampleVectorField3DSlice,
   vectorField3DExpression, type VectorField3DSource } from "@math3d/core";
 
@@ -66,5 +67,22 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
     expect(sampleVectorField3DProbe(clipped, [1, 0, 0]).magnitude).toBe(1);
     expect(unclippedArrows.evaluated).toBeLessThanOrEqual(512);
     expect(unclippedSlice.evaluated).toBeLessThanOrEqual(1024);
+  });
+
+  it("sends a bounded analytic line with physical fixed coordinates and source provenance", () => {
+    const document = field(["-y", "x", "0"], [1, 0, 0]);
+    const line = sampleVectorField3DAnalyticLine(document, "q", 0, [1, 2, 3]);
+    expect(line.rows).toHaveLength(129);
+    expect(line.rows[0]).toMatchObject({ x: -4, y: -4 });
+    expect(line.rows[64]).toMatchObject({ x: 0, y: 0 });
+    expect(line.rows.at(-1)).toMatchObject({ x: 4, y: 4 });
+    expect(line.origin).toMatchObject({ component: "q", varyingAxis: 0,
+      fixedCoordinates: [null, 2, 3], revision: document.identity.revision,
+      structuralHash: document.identity.structuralHash, expressions: ["-y", "x", "0"] });
+    expect(validGraph2DAnalyticFieldOrigin(line.origin)).toBe(true);
+    expect(sampleVectorField3DAnalyticLine(document, "p", 2, [1, 2, 3]).rows[64]?.y).toBe(-2);
+    expect(sampleVectorField3DAnalyticLine(document, "speed", 0, [1, 2, 3]).rows[64]?.y).toBe(2);
+    expect(() => sampleVectorField3DAnalyticLine(document, "q", 0, [1, 20, 3]))
+      .toThrow(/domain/);
   });
 });

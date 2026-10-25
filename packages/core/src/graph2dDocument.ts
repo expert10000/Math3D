@@ -112,6 +112,14 @@ export type Graph2DScientificDatasetOrigin = Readonly<{
   sourceProducer: string; sourceId: string; sourceSchema: string; sourceSha256: string;
   xName: string; xUnit: string; yName: string; yUnit: string;
 }>;
+export type Graph2DAnalyticFieldOrigin = Readonly<{
+  kind: "vector-field3d-expression-line";
+  documentId: string; revision: number; structuralHash: string;
+  component: "p" | "q" | "r" | "speed"; varyingAxis: 0 | 1 | 2;
+  fixedCoordinates: readonly (number | null)[];
+  expressions: readonly string[];
+  xName: string; xUnit: string; yUnit: string;
+}>;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -121,6 +129,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   missing: "gap";
   domain: Graph2DDomain;
   origin?: Graph2DScientificDatasetOrigin;
+  analyticOrigin?: Graph2DAnalyticFieldOrigin;
 }>;
 export type Graph2DPiece = Readonly<{
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
@@ -363,11 +372,29 @@ export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Gr
     typeof item === "string" && /^[a-f0-9]{64}$/.test(item)) &&
   [value.xName, value.yName].every(item => bounded(item, 160)) &&
   [value.xUnit, value.yUnit].every(item => bounded(item, 80));
+export const validGraph2DAnalyticFieldOrigin = (value: unknown): value is Graph2DAnalyticFieldOrigin =>
+  record(value) && exact(value, ["kind", "documentId", "revision", "structuralHash", "component",
+    "varyingAxis", "fixedCoordinates", "expressions", "xName", "xUnit", "yUnit"]) &&
+  value.kind === "vector-field3d-expression-line" && bounded(value.documentId, 160) &&
+  integerWithin(value.revision, 1, 1e9) && typeof value.structuralHash === "string" &&
+  /^sha256:[a-f0-9]{64}$/.test(value.structuralHash) &&
+  ["p", "q", "r", "speed"].includes(String(value.component)) &&
+  [0, 1, 2].includes(value.varyingAxis as number) &&
+  Array.isArray(value.fixedCoordinates) && value.fixedCoordinates.length === 3 &&
+  value.fixedCoordinates.every((item, index) => index === value.varyingAxis ? item === null :
+    finite(item) && Math.abs(item) <= 1e9) &&
+  Array.isArray(value.expressions) && value.expressions.length === 3 &&
+  value.expressions.every(item => bounded(item, 2048)) &&
+  bounded(value.xName, 160) && bounded(value.xUnit, 80) && bounded(value.yUnit, 80);
 const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObject => record(value) &&
-  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain", ...(value.origin === undefined ? [] : ["origin"])]) && objectId(value.id) &&
+  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain",
+    ...(value.origin === undefined ? [] : ["origin"]),
+    ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
-  (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin));
+  !(value.origin !== undefined && value.analyticOrigin !== undefined) &&
+  (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
+  (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
   if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
       value.kind !== "piecewise" || !bounded(value.label, 160) || !Array.isArray(value.pieces) ||

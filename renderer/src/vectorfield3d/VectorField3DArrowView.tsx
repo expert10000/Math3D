@@ -5,24 +5,25 @@ import { OrthographicCamera } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { VectorField3DArrowArtifact, VectorField3DDocument,
   VectorField3DTrajectoryArtifact, VectorField3DCameraPreset,
-  VectorField3DClipBounds } from "@math3d/core";
+  VectorField3DClipBounds, VectorField3DCameraState } from "@math3d/core";
 
 const cameraPositions: Record<VectorField3DCameraPreset, readonly [number, number, number]> = {
   perspective: [2.7, 2.2, 2.7], xy: [0, 0, 4], xz: [0, 4, 0], yz: [4, 0, 0],
 };
-function CameraPreset({ preset, controls, onReady }: { preset: VectorField3DCameraPreset;
+function CameraPreset({ preset, controls, onReady, savedState }: { preset: VectorField3DCameraPreset;
+  savedState: VectorField3DCameraState | null;
   controls: React.RefObject<OrbitControlsImpl | null>;
   onReady: (preset: VectorField3DCameraPreset) => void }) {
   const { camera, invalidate } = useThree();
   useEffect(() => {
-    camera.position.set(...cameraPositions[preset]);
-    if (camera instanceof OrthographicCamera) camera.zoom = 140;
+    camera.position.set(...(savedState?.position ?? cameraPositions[preset]));
+    if (camera instanceof OrthographicCamera) camera.zoom = savedState?.zoom ?? 140;
     const up: readonly [number, number, number] = preset === "xz" || preset === "yz" ?
       [0, 0, 1] : [0, 1, 0];
     camera.up.set(...up);
-    camera.lookAt(0, 0, 0);
+    camera.lookAt(...(savedState?.target ?? [0, 0, 0]));
     camera.updateProjectionMatrix();
-    controls.current?.target.set(0, 0, 0);
+    controls.current?.target.set(...(savedState?.target ?? [0, 0, 0]));
     controls.current?.update();
     invalidate();
     onReady(preset);
@@ -32,10 +33,12 @@ function CameraPreset({ preset, controls, onReady }: { preset: VectorField3DCame
 export const pointInsideFieldClip = (point: readonly number[], clip: VectorField3DClipBounds) =>
   point.every((value, axis) => value >= clip[axis]![0] && value <= clip[axis]![1]);
 
-export function VectorField3DArrowView({ document, artifact, trajectories, probe }: {
+export function VectorField3DArrowView({ document, artifact, trajectories, probe,
+  onCameraStateChange }: {
   document: VectorField3DDocument; artifact: VectorField3DArrowArtifact;
   trajectories?: VectorField3DTrajectoryArtifact | null;
   probe?: readonly [number, number, number] | null;
+  onCameraStateChange?: (state: VectorField3DCameraState) => void;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const workspace = document.workspace;
@@ -51,6 +54,9 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     setCameraStatus(`Camera azimuth ${Math.round(current.getAzimuthalAngle() * 180 / Math.PI)}°, ` +
       `polar ${Math.round(current.getPolarAngle() * 180 / Math.PI)}°, ` +
       `distance ${current.getDistance().toFixed(2)}.`);
+    onCameraStateChange?.({ position: [current.object.position.x, current.object.position.y,
+      current.object.position.z], target: [current.target.x, current.target.y, current.target.z],
+      zoom: current.object.zoom });
   };
   const moveCamera = (action: "left" | "right" | "up" | "down" | "in" | "out" | "reset") => {
     const current = controls.current;
@@ -176,7 +182,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
         orthographic={preset !== "perspective"}
         camera={preset === "perspective" ? { position: cameraPositions[preset], fov: 48 } :
           { position: cameraPositions[preset], zoom: 140 }}>
-        <CameraPreset preset={preset} controls={controls} onReady={onCameraReady} />
+        <CameraPreset preset={preset} controls={controls} onReady={onCameraReady}
+          savedState={workspace?.cameraState ?? null} />
         <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[geometry.positions, 3]} />
