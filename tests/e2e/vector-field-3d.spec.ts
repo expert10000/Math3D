@@ -173,6 +173,88 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
   }
 });
 
+test("SCI-07 links one verified physical probe across slices, 3D and a Graph line", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-linked-probe-"));
+  const directory = join(root, "flow.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene"), directory, { recursive: true });
+  const sourceValues = await Promise.all(["east", "north", "up"].map(async component =>
+    readFile(join(directory, `${component}.f64`))));
+  const pointValues = sourceValues.map(bytes => bytes.readDoubleLE(((10 * 21 + 5) * 17 + 4) * 8));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByLabel("Slice physical coordinate").selectOption("-1.5");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await editor.getByRole("figure", { name: "XY field slice" })
+      .locator('[data-probe-cell="10-5"]').click();
+    const values = editor.getByTestId("vector-field3d-probe-values");
+    await expect(values).toContainText("x = 0 m · y = -2 m · z = -1.5 m");
+    await expect(values).toContainText(`east = ${pointValues[0]!.toPrecision(5)} m/s`);
+    await expect(values).toContainText(`north = ${pointValues[1]!.toPrecision(5)} m/s`);
+    await expect(values).toContainText(`up = ${pointValues[2]!.toPrecision(5)} m/s`);
+    await expect(values).toContainText(/Source sha256:[a-f0-9]{64}; view sha256:[a-f0-9]{64}/);
+    await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
+    for (const name of ["XZ", "YZ"] as const) {
+      await editor.getByRole("button", { name: `${name} slice` }).click();
+      await editor.getByRole("button", { name: "Preview slice" }).click();
+      await expect(editor.getByRole("figure", { name: `${name} field slice` })).toBeVisible();
+      await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
+      await expect(values).toContainText("x = 0 m · y = -2 m · z = -1.5 m");
+    }
+    await editor.getByRole("button", { name: "3D arrows" }).click();
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-3d-probe")).toBeVisible();
+    const line = editor.getByTestId("vector-field3d-graph-line");
+    await line.getByRole("button", { name: "Preview line through probe" }).click();
+    const preview = line.getByRole("figure", { name: /Preview Graph vector line/ });
+    await expect(preview).toContainText("plane z = -1.5 m; fixed y = -2 m");
+    await expect(preview).toContainText(/Source revision [a-f0-9]{64}/);
+    await editor.getByLabel("Probe y").selectOption("-4");
+    await expect(preview).toHaveCount(0);
+    await expect(line.getByRole("button", { name: "Add line to Graphs" })).toBeDisabled();
+    await editor.getByLabel("Probe y").selectOption("-2");
+    await line.getByRole("button", { name: "Preview line through probe" }).click();
+    await expect(preview).toContainText("fixed y = -2 m");
+    await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line).toContainText("already in Graphs");
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Open saved document" }).click();
+    await expect(editor.getByLabel("Probe x")).toHaveValue("0");
+    await expect(editor.getByLabel("Probe y")).toHaveValue("-2");
+    await expect(editor.getByLabel("Probe z")).toHaveValue("-1.5");
+    await expect(values).toHaveCount(0);
+    await editor.getByRole("button", { name: "Reverify probe" }).click();
+    await expect(values).toContainText(`east = ${pointValues[0]!.toPrecision(5)} m/s`);
+    const resource = join(directory, "north.f64"), original = await readFile(resource);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(resource, changed);
+    await editor.getByRole("button", { name: "Reverify probe" }).click();
+    await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await expect(values).toHaveCount(0);
+    await rm(resource);
+    await editor.getByRole("button", { name: "Reverify probe" }).click();
+    await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+    await expect(values).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-linked-probe-"))
+      throw new Error("Unsafe linked-probe fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GRA-13.5 imports distinct verified 3D vector plane lines from a saved Project field", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector-lines-"));
@@ -375,6 +457,9 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     await editor.getByLabel("P(x,y,z)").fill("-y+1");
     await expect(editor.getByRole("figure", { name: "XZ field slice" })).toHaveCount(0);
     await editor.getByLabel("P(x,y,z)").fill("-y");
+    await editor.getByRole("button", { name: "Place probe at selected coordinates" }).click();
+    await expect(editor.getByTestId("vector-field3d-probe-values"))
+      .toContainText("x = 0 m · y = -2 m · z = 0 m");
     await editor.getByRole("button", { name: "Focus viewer" }).click();
     await expect(editor).toHaveAttribute("data-layout", "viewer-focus");
     await editor.getByRole("button", { name: "Show three panes" }).click();
@@ -394,7 +479,7 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     expect(entry?.checkpoint.source.seeds).toEqual([{ id: "seed-1", position: [2, 0, 0] }]);
     expect(entry?.checkpoint.source.solver).toMatchObject({ maxSteps: 57, absoluteTolerance: 0.00001 });
     expect(entry?.checkpoint.workspace).toMatchObject({ selectedLayer: "xz", layout: "viewer-focus",
-      sliceCoordinates: [0, -2, 0] });
+      sliceCoordinates: [0, -2, 0], probe: [0, -2, 0] });
     await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
     await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
     editor = page.getByRole("region", { name: "Scientific Field Explorer" });
@@ -404,10 +489,14 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     await expect(editor).toHaveAttribute("data-layout", "viewer-focus");
     await expect(editor).toContainText("Selected layer: XZ slice");
     await expect(editor.getByLabel("Slice physical coordinate")).toHaveValue("-2");
+    await expect(editor.getByLabel("Probe y")).toHaveValue("-2");
+    await expect(editor.getByTestId("vector-field3d-probe-values")).toHaveCount(0);
     await expect(editor.getByRole("figure", { name: "XZ field slice" })).toHaveCount(0);
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");
+    await expect(editor.getByTestId("vector-field3d-probe-values"))
+      .toContainText("x = 0 m · y = -2 m · z = 0 m");
   } finally { await closeSurfaceApp(app); }
 });
 

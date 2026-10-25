@@ -38,6 +38,8 @@ export type ScientificDerivedView = Readonly<{
     fixed: readonly Readonly<{ axis: number; index: number; coordinate: number; unit: string }>[] }> |
     Readonly<{ kind: "slice"; normalAxis: number; fixedIndex: number;
       fixedCoordinate: number; fixedUnit: string; channel: "magnitude" | string; maxSamples: number }> |
+    Readonly<{ kind: "probe"; indices: readonly number[]; coordinates: readonly number[];
+      units: readonly string[]; components: readonly string[] }> |
     Readonly<{ kind: "glyphs"; components: readonly string[]; density: readonly number[]; maxGlyphs: number }>;
 }>;
 
@@ -47,6 +49,7 @@ export function createScientificDerivedView(link: ScientificDatasetLink,
     fixed: readonly Readonly<{ axis: number; index: number }>[] }> |
     Readonly<{ kind: "slice"; normalAxis: number; fixedIndex: number;
       channel: "magnitude" | string; maxSamples: number }> |
+    Readonly<{ kind: "probe"; indices: readonly number[]; components: readonly string[] }> |
     Readonly<{ kind: "glyphs"; components: readonly string[]; density: readonly number[]; maxGlyphs: number }>):
   ScientificDerivedView {
   const source = { locator: link.locator, sceneFingerprint: link.sceneFingerprint,
@@ -77,6 +80,15 @@ export function createScientificDerivedView(link: ScientificDatasetLink,
     view = { kind: "slice", normalAxis: selection.normalAxis, fixedIndex: selection.fixedIndex,
       fixedCoordinate: scientificAxisCoordinate(axis, selection.fixedIndex), fixedUnit: axis.unit,
       channel: selection.channel, maxSamples: selection.maxSamples };
+  } else if (selection.kind === "probe") {
+    if (selection.indices.length !== link.shape.length ||
+        selection.components.length !== link.components.length ||
+        selection.components.some((name, index) => name !== link.components[index]!.name))
+      throw new TypeError("Invalid verified probe indices or component set.");
+    const coordinates = selection.indices.map((sample, index) => scientificAxisCoordinate(
+      { ...link.axes[index]!, count: link.shape[index]! }, sample));
+    view = { kind: "probe", indices: [...selection.indices], coordinates,
+      units: link.axes.map(axis => axis.unit), components: [...selection.components] };
   } else {
     if (selection.components.length !== link.components.length ||
         selection.components.some((name, index) => name !== link.components[index]!.name) ||

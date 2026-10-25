@@ -28,14 +28,15 @@ export type VectorField3DSource = Readonly<{
 export type VectorField3DLayer = "arrows" | "trajectories" | "xy" | "xz" | "yz";
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   layout: "three-pane" | "viewer-focus";
-  sliceCoordinates: readonly [number, number, number] }>;
+  sliceCoordinates: readonly [number, number, number];
+  probe: readonly [number, number, number] | null }>;
 export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOCUMENT_FORMAT;
   schemaVersion: typeof VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION; identity: DocumentIdentity;
   source: VectorField3DSource; metadata: Readonly<{ title: string }>;
   workspace?: VectorField3DWorkspace }>;
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
-  selectedLayer: "arrows", layout: "three-pane",
+  selectedLayer: "arrows", layout: "three-pane", probe: null,
   sliceCoordinates: source.axes.map((axis, index) => {
     if (source.field.kind !== "scientific-bundle") return (axis.min + axis.max) / 2;
     const reference = source.field.references[0], count = reference.shape[index]!;
@@ -137,13 +138,17 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       !exact(value.metadata, ["title"]) || !text(value.metadata.title, 160))
     return { ok: false, errors: ["Invalid 3D vector-field document source, identity or metadata."] };
   const source = value.source as VectorField3DSource;
-  const workspace = value.workspace ?? defaultVectorField3DWorkspace(source);
-  if (!record(workspace) || !exact(workspace, ["selectedLayer", "layout", "sliceCoordinates"]) ||
+  const legacyWorkspace = value.workspace ?? defaultVectorField3DWorkspace(source);
+  const workspace = record(legacyWorkspace) && !Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ?
+    { ...legacyWorkspace, probe: null } : legacyWorkspace;
+  if (!record(workspace) || !exact(workspace, ["selectedLayer", "layout", "sliceCoordinates", "probe"]) ||
       !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
       !["three-pane", "viewer-focus"].includes(String(workspace.layout)) ||
       !tuple3(workspace.sliceCoordinates) ||
-      !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes))
-    return { ok: false, errors: ["Invalid 3D field workspace layer, layout or slice coordinates."] };
+      !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes) ||
+      workspace.probe !== null && (!tuple3(workspace.probe) ||
+        !scientificPointWithinBounds(workspace.probe as number[], source.axes)))
+    return { ok: false, errors: ["Invalid 3D field workspace layer, layout, slice coordinates or probe."] };
   try {
     const serialized = canonical({ ...value, workspace });
     if (new TextEncoder().encode(serialized).length > VECTOR_FIELD3D_MAX_DOCUMENT_BYTES)

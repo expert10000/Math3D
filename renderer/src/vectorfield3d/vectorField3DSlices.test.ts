@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceDocument,
   createVectorField3DDocument, defaultVectorField3DWorkspace, normalizeVectorField3DDocument,
   parseMath3DProject, parseVectorField3DDocument, reviseVectorField3DWorkspace,
-  sampleVectorField3DSlice, serializeMath3DProject, serializeVectorField3DDocument,
+  sampleVectorField3DSlice, sampleVectorField3DProbe, serializeMath3DProject, serializeVectorField3DDocument,
   sha256Checksum, vectorField3DSliceCoordinates, type Graph2DFieldReference, type VectorField3DSource,
   type VectorField3DVolumes } from "@math3d/core";
 
@@ -38,7 +38,8 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
   it("retains selected layer, layout and physical coordinates in Project without storing samples", () => {
     const view = defaultVectorField3DWorkspace(source);
     const selected = reviseVectorField3DWorkspace(document, { ...view,
-      selectedLayer: "xz", layout: "viewer-focus", sliceCoordinates: [0, -2, 0] });
+      selectedLayer: "xz", layout: "viewer-focus", sliceCoordinates: [0, -2, -1.5],
+      probe: [0, -2, -1.5] });
     const workspace = createMixedWorkspaceDocument({ entries: [{ module: "vector3d", checkpoint: selected,
       expected: selected.identity, replay: null }], activeDocumentIds: [selected.identity.id],
     results: [], artifacts: [], relations: [], committedSelection: null, constructions: [] });
@@ -52,6 +53,11 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
       .toEqual(defaultVectorField3DWorkspace(source));
     expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
       sliceCoordinates: [0, 10, 0] } }).ok).toBe(false);
+    expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
+      probe: [0, 10, 0] } }).ok).toBe(false);
+    const previousWorkspace = JSON.parse(serializeVectorField3DDocument(selected));
+    delete previousWorkspace.workspace.probe;
+    expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.probe).toBeNull();
   });
 
   it("samples XY, XZ and YZ at exact physical coordinates within 1,024 cells", () => {
@@ -84,6 +90,25 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
     const shared = xy.values[x * xy.shape[1] + y];
     expect(xz.values[x * xz.shape[1] + z]).toBe(shared);
     expect(yz.values[y * yz.shape[1] + z]).toBe(shared);
+  });
+
+  it("reads one verified point and binds its exact source revision and coordinates", () => {
+    const first = sampleVectorField3DProbe(document, [0, -2, -1.5],
+      { manifestJson, fingerprint, volumes });
+    const second = sampleVectorField3DProbe(document, [0, -1.6, -1.5],
+      { manifestJson, fingerprint, volumes });
+    expect(first.position).toEqual([0, -2, -1.5]);
+    expect(first.source).toMatchObject({ documentId: document.identity.id,
+      revision: document.identity.revision });
+    expect(first.sourceHash).toBe(second.sourceHash);
+    expect(first.viewHash).not.toBe(second.viewHash);
+    expect(first.componentUnits).toEqual(["m/s", "m/s", "m/s"]);
+    expect(first.vector).toEqual(volumes.map(volume => volume.values[(10 * 21 + 5) * 17 + 4]));
+    expect(() => sampleVectorField3DProbe(document, [0, 10, -1.5],
+      { manifestJson, fingerprint, volumes })).toThrow(/outside/);
+    expect(() => sampleVectorField3DProbe(document, [0, -1.9, -1.5],
+      { manifestJson, fingerprint, volumes })).toThrow(/between grid samples/);
+    expect(() => sampleVectorField3DProbe(document, [0, -2, -1.5])).toThrow(/Reverify/);
   });
 
   it("rejects invalid coordinates, changed components and incomplete transfers", () => {

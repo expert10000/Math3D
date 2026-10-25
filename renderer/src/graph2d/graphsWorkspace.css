@@ -421,6 +421,15 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .scientific-field-explorer-inspector [aria-label="Slice controls"] label { display: grid; gap: 4px; }
 .scientific-field-explorer-inspector [aria-label="Slice controls"] select,
 .scientific-field-explorer-inspector [aria-label="Slice controls"] input { width: 100%; box-sizing: border-box; }
+.vector-field3d-probe { display: grid; gap: 8px; padding: 8px; margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 8px; }
+.vector-field3d-probe h5, .vector-field3d-probe p { margin: 0; }
+.vector-field3d-probe-coordinates { display: grid; gap: 6px; }
+.vector-field3d-probe-coordinates label { display: grid; gap: 3px; }
+.vector-field3d-probe-coordinates select, .vector-field3d-probe-coordinates input {
+  width: 100%; box-sizing: border-box; }
+.vector-field3d-probe [data-testid="vector-field3d-probe-values"] { overflow-wrap: anywhere;
+  background: var(--panel); padding: 8px; border-radius: 6px; }
 .vector-field3d-slice { margin: 0; min-width: 0; width: 100%; overflow: auto; padding: 12px;
   box-sizing: border-box; color: #e5efff; }
 .vector-field3d-slice figcaption { margin-bottom: 8px; font-weight: 700; }

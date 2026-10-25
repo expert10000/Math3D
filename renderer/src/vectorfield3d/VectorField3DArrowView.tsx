@@ -5,9 +5,10 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { VectorField3DArrowArtifact, VectorField3DDocument,
   VectorField3DTrajectoryArtifact } from "@math3d/core";
 
-export function VectorField3DArrowView({ document, artifact, trajectories }: {
+export function VectorField3DArrowView({ document, artifact, trajectories, probe }: {
   document: VectorField3DDocument; artifact: VectorField3DArrowArtifact;
   trajectories?: VectorField3DTrajectoryArtifact | null;
+  probe?: readonly [number, number, number] | null;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const [cameraStatus, setCameraStatus] = useState("Camera ready. Use arrow keys to orbit, + or − to zoom, Home to reset.");
@@ -100,6 +101,10 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
     return new Float32Array(positions);
   }, [document.source.axes]);
   const maximum = Math.max(...artifact.arrows.map(arrow => arrow.magnitude), 0);
+  const probePosition = probe?.map((value, axis) => (value -
+    (document.source.axes[axis]!.min + document.source.axes[axis]!.max) / 2) * 2 /
+    Math.max(...document.source.axes.map(item => item.max - item.min))) as
+    [number, number, number] | undefined;
   const colorLabel = artifact.colorBy === "speed" ? `magnitude 0–${maximum.toPrecision(4)}` :
     `${artifact.colorBy.toUpperCase()} component −${maximum.toPrecision(4)}–${maximum.toPrecision(4)}`;
   return <figure aria-label="3D vector arrow renderer" className="graph2d-scientific-volume">
@@ -125,6 +130,10 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
           <bufferGeometry><bufferAttribute attach="attributes-position" args={[domainBox, 3]} /></bufferGeometry>
           <lineBasicMaterial color="#94a3b8" transparent opacity={0.7} toneMapped={false} />
         </lineSegments>
+        {probePosition && <mesh position={probePosition}>
+          <sphereGeometry args={[0.055, 12, 8]} />
+          <meshBasicMaterial color="#fde047" depthTest={false} />
+        </mesh>}
         {paths.positions.length > 0 && <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[paths.positions, 3]} />
@@ -150,6 +159,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
       `${axis.label} ${axis.min}…${axis.max} ${axis.unit}`).join(" · ")}. Drag to orbit; scroll to zoom. Axes: {document.source.axes.map(axis =>
       `${axis.label} (${axis.unit})`).join(" · ")}. Components: {artifact.componentUnits.join(" · ")}.
       Color: {colorLabel}.</p>
+    {probe && <p data-testid="vector-field3d-3d-probe">Selected probe: {probe.map((value, index) =>
+      `${document.source.axes[index]!.label} = ${value} ${document.source.axes[index]!.unit}`).join(" · ")}.</p>}
     {trajectories && <p>Trajectory overlay: {trajectories.trajectories.length} seed(s),
       {" "}{trajectories.trajectories.map(path => `${path.seedId}: ${path.stopReason}`).join("; ")}.
       Gold/cyan lines show adaptive numerical approximations.</p>}

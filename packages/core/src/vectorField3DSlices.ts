@@ -1,5 +1,6 @@
 import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
-import { scientificAxisCoordinate, scientificCoordinateIndex } from "./scientificDatasetCoordinates";
+import { scientificAxisCoordinate, scientificCoordinateIndex,
+  scientificPointWithinBounds } from "./scientificDatasetCoordinates";
 import { createScientificDatasetLink, createScientificDerivedView } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
@@ -11,6 +12,12 @@ export type VectorField3DSliceArtifact = Readonly<{
   shape: readonly [number, number]; values: readonly (number | null)[];
   channel: "magnitude" | "p" | "q" | "r"; unit: string; min: number; max: number;
   evaluated: number; rejected: number; sourceHash?: string;
+}>;
+export type VectorField3DProbeArtifact = Readonly<{
+  source: Readonly<{ documentId: string; revision: number; structuralHash: string }>;
+  position: readonly [number, number, number]; vector: readonly [number, number, number];
+  magnitude: number; coordinateUnits: readonly [string, string, string];
+  componentUnits: readonly [string, string, string]; sourceHash?: string; viewHash?: string;
 }>;
 
 const checkedDocument = (document: VectorField3DDocument) => {
@@ -112,4 +119,49 @@ export function sampleVectorField3DSlice(document: VectorField3DDocument,
     channel, unit, min: finite.length ? Math.min(...finite) : NaN,
     max: finite.length ? Math.max(...finite) : NaN,
     evaluated: values.length, rejected: values.length - finite.length, sourceHash };
+}
+
+/** One physical point shared by the 3D viewer and all orthogonal planes. No interpolation is implied. */
+export function sampleVectorField3DProbe(document: VectorField3DDocument,
+  position: readonly [number, number, number],
+  scientific?: Readonly<{ manifestJson: string; fingerprint: string; volumes: VectorField3DVolumes }>):
+  VectorField3DProbeArtifact {
+  const checked = checkedDocument(document), field = checked.source.field;
+  if (!scientificPointWithinBounds(position, checked.source.axes))
+    throw new RangeError("Probe is outside the field domain.");
+  let vector: [number, number, number], sourceHash: string | undefined, viewHash: string | undefined;
+  if (field.kind === "scientific-bundle") {
+    if (!scientific) throw new TypeError("Reverify all three scientific components before reading a probe.");
+    const volumes = verifyVectorField3DVolumes(checked, scientific.manifestJson,
+      scientific.fingerprint, scientific.volumes);
+    const reference = field.references[0], indices = position.map((coordinate, axis) =>
+      scientificCoordinateIndex({ ...reference.axes[axis]!, count: reference.shape[axis]! }, coordinate));
+    const sampled = indices.map((index, axis) => sourceSamples(reference.shape[axis]!).indexOf(index));
+    if (sampled.some(index => index < 0))
+      throw new RangeError("Choose a physical coordinate represented by the bounded sample lattice.");
+    const link = createScientificDatasetLink(field.references);
+    const view = createScientificDerivedView(link, { kind: "probe", indices,
+      components: field.references.map(item => item.component) });
+    sourceHash = link.sourceHash; viewHash = view.viewHash;
+    const offset = (sampled[0]! * volumes[0].sampleShape[1] + sampled[1]!) *
+      volumes[0].sampleShape[2] + sampled[2]!;
+    vector = volumes.map(volume => volume.values[offset]!) as [number, number, number];
+  } else {
+    const variables = { x: position[0], y: position[1], z: position[2] };
+    const results = field.components.map(component => evaluateGraph2DExpression(component.ast,
+      variables, { maxEvaluations: 256 }));
+    if (results.some(result => !result.ok))
+      throw new TypeError("The analytic field is undefined at this probe.");
+    vector = results.map(result => result.ok ? result.value : NaN) as [number, number, number];
+  }
+  const magnitude = Math.hypot(...vector);
+  if (!Number.isFinite(magnitude)) throw new TypeError("The field is non-finite at this probe.");
+  const componentUnits = field.kind === "scientific-bundle" ? field.componentUnits :
+    field.components.map(component => component.unit) as [string, string, string];
+  if (new Set(componentUnits).size !== 1)
+    throw new TypeError("Probe magnitude requires matching component units.");
+  return { source: { documentId: checked.identity.id, revision: checked.identity.revision,
+    structuralHash: checked.identity.structuralHash }, position: [...position] as [number, number, number],
+    vector, magnitude, coordinateUnits: checked.source.axes.map(axis => axis.unit) as
+      [string, string, string], componentUnits, sourceHash, viewHash };
 }

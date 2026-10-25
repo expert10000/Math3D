@@ -4,12 +4,13 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   parseVectorField3DDocument, reviseVectorField3DDocument, reviseVectorField3DWorkspace,
   createScientificDatasetLink,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
-  sampleVectorField3DSlice, vectorField3DSliceCoordinates,
+  sampleVectorField3DSlice, sampleVectorField3DProbe, vectorField3DSliceCoordinates,
   integrateVectorField3DScientificTrajectories,
   scientificPointWithinBounds,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
   type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact,
-  type Graph2DScientificDatasetPreview, type VectorField3DLayer, type VectorField3DSliceArtifact } from "@math3d/core";
+  type Graph2DScientificDatasetPreview, type VectorField3DLayer,
+  type VectorField3DSliceArtifact, type VectorField3DProbeArtifact } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
 import { VectorField3DSliceView } from "./VectorField3DSliceView";
 import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
@@ -46,10 +47,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRunRef = useRef<(() => void) | null>(null);
   const cancelRequested = useRef(false);
+  const probeEpoch = useRef(0);
   useEffect(() => {
     const previous = globalThis.document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => { cancelRunRef.current?.(); previous?.focus(); };
+    return () => { cancelRunRef.current?.(); probeEpoch.current++; previous?.focus(); };
   }, []);
   const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -64,6 +66,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     document.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
   const [artifact, setArtifact] = useState<VectorField3DArrowArtifact | null>(null);
   const [slice, setSlice] = useState<VectorField3DSliceArtifact | null>(null);
+  const [probeArtifact, setProbeArtifact] = useState<VectorField3DProbeArtifact | null>(null);
   const [trajectories, setTrajectories] = useState<VectorField3DTrajectoryArtifact | null>(null);
   const [seedDraft, setSeedDraft] = useState<[string, string, string]>(document.source.axes.map(axis =>
     String((axis.min + axis.max) / 2)) as [string, string, string]);
@@ -86,6 +89,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setSlice(null); setError("");
   };
   const setSliceCoordinate = (axis: 0 | 1 | 2, coordinate: number) => {
+    if (workspace.probe) {
+      const position = [...workspace.probe] as [number, number, number];
+      position[axis] = coordinate;
+      void selectProbe(position);
+      return;
+    }
     setDocument(current => { const currentWorkspace = current.workspace ?? defaultVectorField3DWorkspace(current.source);
       const sliceCoordinates = [...currentWorkspace.sliceCoordinates] as [number, number, number];
       sliceCoordinates[axis] = coordinate;
@@ -93,8 +102,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setSlice(null); setError("");
   };
   const updateSource = (source: VectorField3DSource) => {
+    probeEpoch.current++;
     setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setSlice(null);
-    setTrajectories(null); setError(""); setRunStatus("");
+    setProbeArtifact(null); setTrajectories(null); setError(""); setRunStatus("");
   };
   const currentDocument = () => document.source.field.kind === "expressions" ?
     reviseVectorField3DDocument(document, { ...document.source, field: { kind: "expressions",
@@ -103,12 +113,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
   const render = async () => {
     if (busy || lineBusy) return;
-    setBusy(true); setBusyAction("render"); setArtifact(null); setSlice(null); setTrajectories(null); setError("");
+    setBusy(true); setBusyAction("render"); setArtifact(null); setSlice(null);
+    setProbeArtifact(null); setTrajectories(null); setError("");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
       if (next.source.field.kind === "expressions") {
-        setArtifact(sampleVectorField3DArrows(next)); setDocument(next); return;
+        setArtifact(sampleVectorField3DArrows(next));
+        if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe));
+        setDocument(next); return;
       }
       const refs = next.source.field.references;
       const bridge = window.scientificScenes;
@@ -121,6 +134,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
         components: refs.map(ref => ref.component) as [string, string, string] });
       const result = sampleVectorField3DScientificArrows(next, opened.source.manifestJson, fingerprint, volumes);
+      if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
+        { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
       setArtifact(result); setDocument(next);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
@@ -129,12 +144,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const previewSlice = async () => {
     if (busy || lineBusy || normalAxis === undefined) return;
     const coordinate = workspace.sliceCoordinates[normalAxis];
-    setBusy(true); setSlice(null); setError("");
+    setBusy(true); setSlice(null); setProbeArtifact(null); setError("");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
       if (next.source.field.kind === "expressions") {
-        setSlice(sampleVectorField3DSlice(next, normalAxis, coordinate)); setDocument(next); return;
+        setSlice(sampleVectorField3DSlice(next, normalAxis, coordinate));
+        if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe));
+        setDocument(next); return;
       }
       const refs = next.source.field.references, bridge = window.scientificScenes;
       if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
@@ -147,10 +164,62 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         components: refs.map(ref => ref.component) as [string, string, string] });
       setSlice(sampleVectorField3DSlice(next, normalAxis, coordinate,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
+      if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
+        { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
       setDocument(next);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
       setBusy(false); }
+  };
+  const verifyProbe = async (next: VectorField3DDocument,
+    position: readonly [number, number, number]) => {
+    if (busy || lineBusy) return;
+    const epoch = ++probeEpoch.current;
+    setBusy(true); setProbeArtifact(null); setError("");
+    let fingerprint: string | null = null;
+    try {
+      if (next.source.field.kind === "expressions") {
+        const value = sampleVectorField3DProbe(next, position);
+        if (epoch === probeEpoch.current) setProbeArtifact(value);
+        return;
+      }
+      const refs = next.source.field.references, bridge = window.scientificScenes;
+      if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+        throw new Error("Scientific probes require the desktop source verifier.");
+      const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
+        sceneFingerprint: refs[0].sceneFingerprint });
+      if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
+      fingerprint = opened.source.fingerprint;
+      const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
+        components: refs.map(ref => ref.component) as [string, string, string] });
+      const value = sampleVectorField3DProbe(next, position,
+        { manifestJson: opened.source.manifestJson, fingerprint, volumes });
+      if (epoch === probeEpoch.current) setProbeArtifact(value);
+    } catch (cause) { if (epoch === probeEpoch.current)
+      setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      if (epoch === probeEpoch.current) setBusy(false); }
+  };
+  const selectProbe = async (position: readonly [number, number, number]) => {
+    if (busy || lineBusy) return;
+    try {
+      const next = currentDocument();
+      if (!scientificPointWithinBounds(position, next.source.axes))
+        throw new RangeError("Probe is outside the field domain.");
+      if (next.source.field.kind === "scientific-bundle" && position.some((coordinate, axis) =>
+        !vectorField3DSliceCoordinates(next, axis as 0 | 1 | 2).some(sample =>
+          Math.abs(sample - coordinate) < 1e-9)))
+        throw new RangeError("Choose a physical coordinate on the bounded verified sample lattice.");
+      const view = next.workspace ?? defaultVectorField3DWorkspace(next.source);
+      const revised = reviseVectorField3DWorkspace(next,
+        { ...view, probe: [...position] as [number, number, number],
+          sliceCoordinates: [...position] as [number, number, number] });
+      if (slice && (slice.normalAxis === undefined ||
+          Math.abs(slice.fixedCoordinate - position[slice.normalAxis]) > 1e-9 ||
+          slice.source.structuralHash !== revised.identity.structuralHash)) setSlice(null);
+      setDocument(revised); setProbeArtifact(null); setError("");
+      await verifyProbe(revised, position);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const addSeed = () => {
     try {
@@ -168,7 +237,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     if (busy || lineBusy) return;
     cancelRequested.current = false;
     setBusy(true); setBusyAction("trajectory"); setArtifact(null); setSlice(null);
-    setTrajectories(null); setError(""); setRunStatus("Verifying source and preparing trajectory worker…");
+    setProbeArtifact(null); setTrajectories(null); setError(""); setRunStatus("Verifying source and preparing trajectory worker…");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
@@ -190,6 +259,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (next.source.field.kind === "expressions") {
         const arrows = sampleVectorField3DArrows(next);
         const paths = await solve();
+        if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe));
         setDocument(next); setArtifact(arrows); setTrajectories(paths); return;
       }
       const refs = next.source.field.references;
@@ -205,6 +275,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (cancelRequested.current) throw new Error("Trajectory integration cancelled.");
       const arrows = sampleVectorField3DScientificArrows(next, opened.source.manifestJson, fingerprint, volumes);
       const paths = await solve({ manifestJson: opened.source.manifestJson, fingerprint, volumes });
+      if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
+        { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
       setDocument(next); setArtifact(arrows); setTrajectories(paths);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -227,10 +299,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (!saved) throw new Error("No saved 3D vector-field document.");
       const next = typeof saved === "string" ? parseVectorField3DDocument(saved) :
         parseVectorField3DDocument(serializeVectorField3DDocument(saved));
+      probeEpoch.current++;
       setDocument(next); setExpressions(next.source.field.kind === "expressions" ?
         next.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
       setSeedDraft(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as [string, string, string]);
-      setArtifact(null); setSlice(null); setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
+      setArtifact(null); setSlice(null); setProbeArtifact(null);
+      setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   return createPortal(<div className="scientific-field-explorer" role="region"
@@ -262,8 +336,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {(["P(x,y,z)", "Q(x,y,z)", "R(x,y,z)"] as const).map((label, index) => <label key={label}>
           {label} ({document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : ""})
           <input aria-label={label} value={expressions[index]} onChange={event => {
+            probeEpoch.current++;
             const next = [...expressions] as [string, string, string]; next[index] = event.target.value;
-            setExpressions(next); setArtifact(null); setSlice(null); setTrajectories(null); setError(""); }} />
+            setExpressions(next); setArtifact(null); setSlice(null); setProbeArtifact(null);
+            setTrajectories(null); setError(""); }} />
         </label>)}
       </div> : <p>Verified bundle: {document.source.field.references[0].sceneId} · dataset
         {" "}{document.source.field.references[0].datasetId} · components
@@ -357,13 +433,54 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         Each trace reports its stop reason; a numerical trace does not certify topology.</p>
     </details>
     </fieldset>
-    <VectorField3DGraphLinePanel key={document.identity.structuralHash} document={document} disabled={busy}
+    <VectorField3DGraphLinePanel key={document.identity.structuralHash} document={document}
+      probe={workspace.probe} disabled={busy}
       onBusyChange={setLineBusy} onAddGraphLine={onAddGraphLine} isGraphLineImported={isGraphLineImported} />
     </div>
     <div className="scientific-field-explorer-inspector" aria-label="Field status and actions">
     <h4>Inspector</h4>
     <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
+    <section aria-label="Linked field probe" className="vector-field3d-probe">
+      <h5>Linked physical-point probe</h5>
+      {!workspace.probe ? <button type="button" disabled={busy || lineBusy}
+        onClick={() => void selectProbe(workspace.sliceCoordinates)}>Place probe at selected coordinates</button> : <>
+        <div className="vector-field3d-probe-coordinates">
+          {([0, 1, 2] as const).map(axis => <label key={axis}>
+            Probe {document.source.axes[axis].label} ({document.source.axes[axis].unit})
+            {document.source.field.kind === "scientific-bundle" ?
+              <select aria-label={`Probe ${document.source.axes[axis].label}`}
+                value={workspace.probe![axis]} disabled={busy || lineBusy}
+                onChange={event => { const next = [...workspace.probe!] as [number, number, number];
+                  next[axis] = Number(event.target.value); void selectProbe(next); }}>
+                {vectorField3DSliceCoordinates(document, axis).map(coordinate =>
+                  <option key={coordinate} value={coordinate}>{coordinate} {document.source.axes[axis].unit}</option>)}
+              </select> : <input type="number" step="any" aria-label={`Probe ${document.source.axes[axis].label}`}
+                min={document.source.axes[axis].min} max={document.source.axes[axis].max}
+                value={workspace.probe![axis]} disabled={busy || lineBusy}
+                onChange={event => { const next = [...workspace.probe!] as [number, number, number];
+                  next[axis] = Number(event.target.value); void selectProbe(next); }} />}
+          </label>)}</div>
+        <div><button type="button" disabled={busy || lineBusy} onClick={() => {
+          const next = currentDocument(); setDocument(next);
+          void verifyProbe(next, workspace.probe!);
+        }}>Reverify probe</button>{" "}<button type="button" disabled={busy || lineBusy} onClick={() => {
+          setDocument(current => reviseVectorField3DWorkspace(current,
+            { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), probe: null }));
+          setProbeArtifact(null);
+        }}>Clear probe</button></div>
+        {probeArtifact && <div role="status" data-testid="vector-field3d-probe-values">
+          <p>Source revision {probeArtifact.source.revision}; point {probeArtifact.position.map((value, axis) =>
+            `${document.source.axes[axis].label} = ${value} ${probeArtifact.coordinateUnits[axis]}`).join(" · ")}.</p>
+          <p>{probeArtifact.vector.map((value, index) =>
+            `${document.source.field.kind === "scientific-bundle" ?
+              document.source.field.references[index].component : ["P", "Q", "R"][index]} = ${value.toPrecision(5)} ${probeArtifact.componentUnits[index]}`).join(" · ")}.</p>
+          <p>Magnitude {probeArtifact.magnitude.toPrecision(5)} {probeArtifact.componentUnits[0]}.
+            {probeArtifact.sourceHash && ` Source ${probeArtifact.sourceHash}; view ${probeArtifact.viewHash}.`}</p>
+        </div>}
+        {!probeArtifact && <p role="status">Probe values require a fresh source verification.</p>}
+      </>}
+    </section>
     {normalAxis !== undefined && <section aria-label="Slice controls">
       <h5>{workspace.selectedLayer.toUpperCase()} slice</h5>
       <label>Fixed {document.source.axes[normalAxis].label} ({document.source.axes[normalAxis].unit})
@@ -420,11 +537,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </div>}
     </div>
     <div className="scientific-field-explorer-viewer" aria-label="3D field viewer">
-      {normalAxis !== undefined ? slice ? <VectorField3DSliceView document={document} slice={slice} /> :
+      {normalAxis !== undefined ? slice ? <VectorField3DSliceView document={document} slice={slice}
+        probe={workspace.probe} onProbeSelect={point => void selectProbe(point)} /> :
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
           The current source is verified before scientific values appear.</div> :
         artifact ? <VectorField3DArrowView document={document} artifact={artifact}
-          trajectories={trajectories} /> :
+          trajectories={trajectories} probe={workspace.probe} /> :
         <div role="status" className="scientific-field-explorer-empty">Verify the field to display bounded 3D arrows.
           Saved scientific bundles are reread before any field values appear.</div>}
     </div>
