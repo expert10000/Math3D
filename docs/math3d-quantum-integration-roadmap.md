@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 has a frozen v0.1 QWZ/SSH set plus a bounded post-v0.1 producer-backed BHZ four-band view; the broader multi-family milestone remains Partial pending more producer fixtures. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 is complete for the scoped v0.1 QWZ/SSH release profile, desktop/browser matrix and recorded CI/two-app evidence.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 retains its frozen v0.1 QWZ/SSH set and now also has bounded post-v0.1 producer-backed BHZ, BBH and Kitaev views. BBH additionally has a separate nested-Wilson diagnostic scene with a conditional quadrupole; the broader multi-family milestone remains Partial pending Weyl, nodal and Landau/Hall producers. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 is complete for the scoped v0.1 QWZ/SSH release profile, desktop/browser matrix and recorded CI/two-app evidence.
 
 See the [Q08 fixture audit](math3d-q08-fixture-audit.md) and
 [v0.1 release profile](math3d-quantum-v0.1-freeze.md) for the exact supported
@@ -544,8 +544,9 @@ supplies a paired continuum view and a=1 lattice/ribbon view with variable
 A/B/C/D/M, optional R mixing, conditional inversion Z₂ and finite-edge
 weights. Math3D pins both verified bundles and displays their exact samples;
 it does not compute a BHZ invariant or classify the finite ribbon. The legacy
-fixed BHZ fixture remains available. BBH, Kitaev, Weyl, nodal and Landau/Hall
-profiles still require verified portable fixtures before support claims.
+fixed BHZ fixture remains available. BBH and Kitaev now have separate verified
+portable fixtures and bounded read-only profiles. BBH also has a later
+nested-Wilson diagnostic fixture. Weyl, nodal and Landau/Hall remain pending.
 
 **Scope.** Compose the prior generic primitives into reviewed scenes for QWZ, BHZ,
 BBH, Kitaev, Weyl, nodal, and Landau/Hall families. Support supplied band inversion,

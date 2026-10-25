@@ -26,6 +26,14 @@ The BBH bands and finite-density pair was exported by Theory Lab's
 four finite midgap eigenstates, measured per open-lattice cell. This is a
 finite-system observation and supplies no quadrupole invariant.
 
+The separate `bbh-wilson` bundle was exported from a newer, independently
+verified Theory Lab run by `scripts/export-bbh-wilson-fixture.ts`.
+`bbh-wilson-producer-result.json` is its exact saved result. Four occupied
+Wilson-center branches, nested-sector polarizations, and bulk/Wannier gap
+conditions come from the producer. The quadrupole is reported only while the
+required gaps remain open. The older BBH pair remains frozen and still makes
+no invariant claim; Math3D computes none of these quantities.
+
 The Kitaev BdG bands and finite end-density pair was exported by Theory
 Lab's `scripts/export-kitaev-fixture.ts` from one saved worker run.
 `kitaev-producer-result.json` is its exact saved result. The density is the

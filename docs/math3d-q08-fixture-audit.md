@@ -13,6 +13,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | BHZ | `tests/fixtures/quantum-scene/run-b918512202b94cfaa0e181c9afd1f158-bands.qscene` (added after the v0.1 freeze) | Producer-computed four bulk bands on a 21 × 21 grid, sampled bulk gap, two block Chern values, spin-conserved Z₂ status and exact source coordinates | **Bounded post-v0.1 extension**: read-only four-band view and exact sample inspection; fixed `A=B=1`, `ε=0` lattice slice only |
 | Atlas BHZ continuum and ribbon | `tests/fixtures/quantum-scene/run-c53d91611dd34bac80a93f9b56f0e74e-continuum-bands.qscene` and its `-lattice-bands.qscene` companion | Variable A/B/C/D/M and optional R, four continuum and four lattice bands, conditional inversion Z₂, finite-ribbon eigenvalues and outer-cell weights | **Additive post-v0.1 profile**: two read-only verified views and exact band-sample inspection; the complete eigenvectors remain in the source Theory Lab run |
 | BBH | `tests/fixtures/quantum-scene/run-4fb258a3692f40479c097181ca9d779a-bands.qscene` and its `-bbh-finite.qscene` companion | Four periodic bulk bands, sampled bulk gap, four finite midgap energies, and exact mean cell densities | **Bounded post-v0.1 extension**: read-only bands and finite open-lattice density; corner localization is an observation, not a quadrupole invariant |
+| BBH nested Wilson | `tests/fixtures/quantum-scene/run-7f366d57030b42c88d1c4afa89e059fe-bbh-wilson.qscene` | Four occupied Wilson branches, nested sector polarizations, explicit bulk/Wannier gap diagnostics and conditional quadrupole from a newer verified producer run | **Bounded post-v0.1 extension**: read-only exact branch samples and producer invariant/status; no Math3D computation or inference from corners |
 | Kitaev | `tests/fixtures/quantum-scene/run-18145016435540afafc5a2a06870566f-bands.qscene` and its `-kitaev-finite.qscene` companion | Two exact periodic BdG energy paths, bulk gap, and per-site mean density of a finite near-zero pair | **Bounded post-v0.1 extension**: read-only bands and finite open-chain end density; no topological invariant or Majorana classification |
 | Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
@@ -80,6 +81,14 @@ inspector reads exact stored density samples with cell coordinates and units.
 Each selection re-verifies the source bytes. The view reports finite-system
 corner localization only; it does not calculate or claim a quadrupole
 invariant, edge state classification, or phase boundary.
+
+The newer **BBH · nested Wilson quadrupole** example is a third, independent
+producer result and does not retroactively change the frozen bands/corner pair.
+It carries the four occupied Wilson-center branches and the producer's nested
+sector polarizations. The quadrupole is 0 or 1/2 only with open bulk and
+Wannier gaps; it is undefined when those conditions fail. Math3D inspects
+stored branch samples and displays the source result hash, method and status.
+Restart and changed-byte refusal are covered by the BBH Wilson desktop test.
 
 ## Post-v0.1 Kitaev admission (2026-10-25)
 

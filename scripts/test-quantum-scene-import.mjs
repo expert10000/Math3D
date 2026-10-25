@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 16);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 16);
+  assert.equal(listBundledQuantumSceneExamples().length, 17);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 17);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
@@ -244,9 +244,9 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 11, "Expected four frozen SSH/QWZ, three BHZ, two BBH, and two Kitaev bundles");
+  assert.equal(allFixtureNames.length, 12, "Expected four frozen SSH/QWZ, three BHZ, three BBH, and two Kitaev bundles");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
-  const bbhFolders=new Set(["bbh-bands","bbh-finite"].map(id=>bundledQuantumSceneExample(id).folder));
+  const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite"].map(id=>bundledQuantumSceneExample(id).folder));
   const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name));
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
@@ -371,6 +371,22 @@ try {
   const densityPath=join(bbhChanged,"midgap-density.f64"),densityBytes=await readFile(densityPath);
   densityBytes[0]^=1;await writeFile(densityPath,densityBytes);
   await assert.rejects(importQuantumSceneBundle(bbhChanged),/integrity|hash/i);
+  const wilsonBytes=await readFile(join(fixtureRoot,"bbh-wilson-producer-result.json"));
+  const wilsonResult=JSON.parse(wilsonBytes.toString("utf8"));
+  const bbhWilson=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("bbh-wilson").folder));
+  assert.equal(bbhWilson.source.provenance.runId,wilsonResult.runId);
+  assert.equal(bbhWilson.source.provenance.resultSha256,hash(wilsonBytes));
+  assert.equal(bbhWilson.source.topology.invariants.find(item=>item.id==="bbh-quadrupole").value,.5);
+  assert.equal(bbhWilson.source.topology.invariants.find(item=>item.id==="bbh-quadrupole").status,"verified");
+  const center=inspectVerifiedScalarSample(bbhWilson,{fingerprint:sceneFingerprint(bbhWilson),objectId:"wilson-x-negative",sampleIndex:8});
+  assert.equal(center.value,wilsonResult.analysis.wilson.wannierX[0][8]);
+  assert.equal(center.position[0],wilsonResult.analysis.bandKValues[8]);
+  assert.equal(center.valueUnit,"cycle");
+  const alteredWilson=join(root,"bbh-wilson-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("bbh-wilson").folder),alteredWilson,{recursive:true});
+  const alteredCenters=join(alteredWilson,"wilson-x-negative-centers.f64"),centerBytes=await readFile(alteredCenters);
+  centerBytes[0]^=1;await writeFile(alteredCenters,centerBytes);
+  await assert.rejects(importQuantumSceneBundle(alteredWilson),/integrity|hash/i);
   const kitaevBytes=await readFile(join(fixtureRoot,"kitaev-producer-result.json"));
   const kitaevResult=JSON.parse(kitaevBytes.toString("utf8"));
   const kitaevBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-bands").folder));

@@ -474,11 +474,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Bulk and edge eigenvectors remain in the verified Theory Lab run; this scene exports selected energy and edge-weight arrays. Stored eigenvector phases are gauge-dependent.</p>
             </section>}
             {scene.provenance.model==="bbh"&&<section data-testid="bbh-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
-              <h3 style={{ margin: 0 }}>BBH · producer-supplied {scene.bands ? "bulk bands" : "finite open lattice"}</h3>
+              <h3 style={{ margin: 0 }}>BBH · producer-supplied {scene.objects.some(object=>object.id==="wilson-x-negative") ? "nested Wilson diagnostics" : scene.bands ? "bulk bands" : "finite open lattice"}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
-              <p>Inputs: γx={scene.provenance.parameters?.gammaX}, λx={scene.provenance.parameters?.lambdaX}, γy={scene.provenance.parameters?.gammaY}, λy={scene.provenance.parameters?.lambdaY}. {scene.bands ? `Momentum grid ${scene.bands.grid?.join(" × ")}; four stored energy surfaces.` : `Open lattice ${scene.provenance.parameters?.cells} × ${scene.provenance.parameters?.cells}; mean cell density over four finite midgap eigenstates.`}</p>
-              <p>Corner localization is a finite-system observation. No quadrupole invariant, edge classification, or phase boundary is calculated or claimed here.</p>
-              {!scene.bands && <p>Marker size is a display-only mapping of the supplied nonnegative cell density; select a cell for its exact stored value and unit.</p>}
+              <p>Inputs: γx={scene.provenance.parameters?.gammaX}, λx={scene.provenance.parameters?.lambdaX}, γy={scene.provenance.parameters?.gammaY}, λy={scene.provenance.parameters?.lambdaY}. {scene.objects.some(object=>object.id==="wilson-x-negative") ? `Four supplied Wannier-center branches on ${scene.datasets.find(dataset=>dataset.id==="wilson-x-negative-centers")?.count} transverse momentum samples. Select a branch for exact k and center in cycles.` : scene.bands ? `Momentum grid ${scene.bands.grid?.join(" × ")}; four stored energy surfaces.` : `Open lattice ${scene.provenance.parameters?.cells} × ${scene.provenance.parameters?.cells}; mean cell density over four finite midgap eigenstates.`}</p>
+              {scene.objects.some(object=>object.id==="wilson-x-negative") ? <>
+                {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
+                {scene.annotations.map(item=><p key={item.id}>{item.text}</p>)}
+                <p>Math3D displays the supplied occupied and nested Wilson results; it does not solve the Hamiltonian or infer an invariant from finite corner density.</p>
+              </> : <p>Corner localization is a finite-system observation. {scene.topology?.invariants.some(item=>item.id==="bbh-quadrupole") ? "The producer invariant is supplied separately from this view." : "No quadrupole invariant, edge classification, or phase boundary is calculated or claimed here."}</p>}
+              {!scene.bands&&!scene.objects.some(object=>object.id==="wilson-x-negative") && <p>Marker size is a display-only mapping of the supplied nonnegative cell density; select a cell for its exact stored value and unit.</p>}
             </section>}
             {scene.provenance.model==="kitaev_chain"&&<section data-testid="kitaev-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Kitaev · producer-supplied {scene.bands ? "periodic BdG bands" : "finite open-chain end density"}</h3>
@@ -620,7 +624,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
                 <b>Exact stored scalar sample:</b> {pickedScalarSample.objectLabel}<br />
                 Sample ID: <code>{pickedScalarSample.sampleId}</code> · dataset index: {pickedScalarSample.sampleIndex}<br />
                 {pickedScalarSample.coordinateAxes.map((axis, index) => <React.Fragment key={axis}>{axis}: {pickedScalarSample.position[index].toPrecision(8)} {pickedScalarSample.coordinateUnits[index]}<br /></React.Fragment>)}
-                Density: {pickedScalarSample.value.toPrecision(10)} {pickedScalarSample.valueUnit}<br />
+                Value: {pickedScalarSample.value.toPrecision(10)} {pickedScalarSample.valueUnit}<br />
                 Stored datasets: <code>{pickedScalarSample.positionDatasetId}</code> / <code>{pickedScalarSample.valueDatasetId}</code><br />
                 Source run: <code>{pickedScalarSample.runId}</code> · result SHA-256: <code>{pickedScalarSample.resultSha256}</code>
               </div>}
