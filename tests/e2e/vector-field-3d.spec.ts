@@ -240,7 +240,7 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     await expect(values).toContainText(`north = ${pointValues[1]!.toPrecision(5)} m/s`);
     await expect(values).toContainText(`up = ${pointValues[2]!.toPrecision(5)} m/s`);
     await expect(values).toContainText(/Source sha256:[a-f0-9]{64}; view sha256:[a-f0-9]{64}/);
-    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
     const differential = editor.getByTestId("vector-field3d-differential");
     await expect(differential).toContainText("Approximate · bounded-finite-difference");
     await expect(differential).toContainText(/Divergence .* 1\/s/);
@@ -285,7 +285,7 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     const resource = join(directory, "north.f64"), original = await readFile(resource);
     const changed = Buffer.from(original); changed[0] ^= 1;
     await writeFile(resource, changed);
-    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
     await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
     await expect(differential).toHaveCount(0);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
@@ -294,7 +294,7 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     await expect(editor.getByRole("figure", { name: "XY field slice" })).toHaveCount(0);
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await rm(resource);
-    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
     await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
@@ -317,13 +317,13 @@ test("SCI-06 analyzes an authored vortex and reports its boundary stencil", asyn
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await editor.getByRole("button", { name: "Place probe at selected coordinates" }).click();
-    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
     const differential = editor.getByTestId("vector-field3d-differential");
     await expect(differential).toContainText("Divergence 0.00000 1/s");
     await expect(differential).toContainText("Curl (0.00000, 0.00000, 2.00000) 1/s");
     await editor.getByLabel("Probe x").fill("4");
     await expect(differential).toHaveCount(0);
-    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
     await expect(differential).toContainText("x one-sided-three-point");
     await expect(differential).toContainText(/boundary; accuracy is reduced/);
   } finally { await closeSurfaceApp(app); }
@@ -363,6 +363,47 @@ test("SCI-05 RK45 and SCI-06 derived slices persist their controls", async () =>
     await editor.getByRole("button", { name: "Open saved document" }).click();
     await expect(editor.getByLabel("Trajectory solver method")).toHaveValue("rk45");
     await expect(editor.getByLabel("Slice displayed field")).toHaveValue("curl-z");
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-05 normalized ring lines report batch progress and SCI-06 scalar layers", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Add ring (8)" }).click();
+    await expect(editor).toContainText("Trajectory seeds (8/32)");
+    await editor.getByLabel("Trajectory mode").selectOption("normalized-field-line");
+    await editor.getByLabel("Trajectory solver method").selectOption("rk45");
+    await editor.getByLabel("Max normalized line length").fill("3");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByText("Trajectory seeds 8/8")).toBeVisible();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText("line-limit");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText("line parameter");
+    await editor.getByRole("button", { name: "Place probe at selected coordinates" }).click();
+    await editor.getByLabel("Probe x").fill("1");
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
+    await expect(editor.getByTestId("vector-field3d-differential"))
+      .toContainText("Local structure: rotation-dominated");
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByLabel("Slice displayed field").selectOption("grad-speed-x");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("grad-speed-x");
+    await editor.getByLabel("Slice displayed field").selectOption("laplacian-speed");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("laplacian-speed");
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Open saved document" }).click();
+    await expect(editor.getByLabel("Trajectory mode")).toHaveValue("normalized-field-line");
+    await expect(editor.getByLabel("Slice displayed field")).toHaveValue("laplacian-speed");
   } finally { await closeSurfaceApp(app); }
 });
 

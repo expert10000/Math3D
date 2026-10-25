@@ -6,7 +6,7 @@ import { scientificPointWithinBounds } from "./scientificDatasetCoordinates";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DStopReason = "boundary" | "stationary" | "undefined" | "step-limit" |
-  "time-limit" | "length-limit" | "cancelled" | "solver-failure";
+  "time-limit" | "line-limit" | "length-limit" | "cancelled" | "solver-failure";
 export type VectorField3DTrajectory = Readonly<{
   seedId: string; direction: "forward" | "backward";
   points: readonly Readonly<{ position: Vec3; time: number; arcLength: number }>[];
@@ -16,7 +16,9 @@ export type VectorField3DTrajectory = Readonly<{
 }>;
 export type VectorField3DTrajectoryArtifact = Readonly<{
   source: Readonly<{ documentId: string; revision: number; structuralHash: string }>;
-  solver: Readonly<{ method: "adaptive-rk4-step-doubling" | "adaptive-rk45"; absoluteTolerance: number;
+  solver: Readonly<{ method: "adaptive-rk4-step-doubling" | "adaptive-rk45";
+    mode: "time-trajectory" | "normalized-field-line";
+    parameterLimit: number; parameterUnit: string; absoluteTolerance: number;
     relativeTolerance: number; maxSteps: number; maxTime: number; maxArcLength: number;
     maxEvaluations: number }>;
   trajectories: readonly VectorField3DTrajectory[];
@@ -25,6 +27,7 @@ export type VectorField3DTrajectoryArtifact = Readonly<{
 export type VectorField3DTrajectoryOptions = Readonly<{
   direction?: "forward" | "backward";
   shouldCancel?: () => boolean;
+  onProgress?: (completed: number, total: number, trajectory: VectorField3DTrajectory) => void;
 }>;
 
 const add = (a: Vec3, b: Vec3, scale: number): Vec3 =>
@@ -36,6 +39,23 @@ const within = (point: Vec3, axes: VectorField3DSource["axes"]) =>
   scientificPointWithinBounds(point, axes);
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
+export function vectorField3DSeedPreset(source: VectorField3DSource,
+  kind: "ring-8" | "plane-9"): readonly Vec3[] {
+  const centers = source.axes.map(axis => (axis.min + axis.max) / 2);
+  const spans = source.axes.map(axis => axis.max - axis.min);
+  if (kind === "ring-8") {
+    const radius = Math.min(spans[0]!, spans[1]!) / 4;
+    return Array.from({ length: 8 }, (_, index) => {
+      const angle = index * Math.PI / 4;
+      return [centers[0]! + radius * Math.cos(angle),
+        centers[1]! + radius * Math.sin(angle), centers[2]!] as Vec3;
+    });
+  }
+  return [-.25, 0, .25].flatMap(x => [-.25, 0, .25].map(y =>
+    [centers[0]! + spans[0]! * x, centers[1]! + spans[1]! * y,
+      centers[2]!] as Vec3));
+}
+
 type Evaluation = (point: Vec3) => Vec3 | null;
 type Step = { ok: true; point: Vec3 } | { ok: false; reason: "boundary" | "undefined" };
 
@@ -46,6 +66,10 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
   if (new Set(source.axes.map(axis => axis.unit)).size !== 1)
     throw new TypeError("Trajectory arc length requires matching coordinate-axis units.");
   const sign = direction === "forward" ? 1 : -1;
+  const mode = source.solver.mode ?? "time-trajectory";
+  const normalized = mode === "normalized-field-line";
+  const parameterLimit = normalized ? source.solver.maxLineLength ?? 20 : source.solver.maxTime;
+  const parameterUnit = normalized ? source.axes[0].unit : source.timeUnit;
   const maximumSteps = Math.min(source.solver.maxSteps, 2048);
   const maximumArc = source.solver.maxArcLength ?? 1e6;
   const maximumEvaluationsPerSeed = Math.min(150_000, 1 + maximumSteps * 17);
@@ -57,17 +81,20 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
     let evaluations = 0, acceptedSteps = 0, rejectedSteps = 0, maxEstimatedLocalError = 0;
     let point = [...seed.position] as Vec3;
     let elapsed = 0, arcLength = 0;
-    let stepSize = source.solver.maxTime / 32;
-    const minimumStep = Math.max(1e-12, source.solver.maxTime * 1e-12);
+    let stepSize = parameterLimit / 32;
+    const minimumStep = Math.max(1e-12, parameterLimit * 1e-12);
     const points: { position: Vec3; time: number; arcLength: number }[] =
       [{ position: point, time: 0, arcLength: 0 }];
-    const evaluate = (candidate: Vec3): Step & { vector?: Vec3 } => {
+    const evaluate = (candidate: Vec3): Step & { vector?: Vec3; rawSpeed?: number } => {
       if (!within(candidate, source.axes)) return { ok: false, reason: "boundary" };
       if (evaluations >= maximumEvaluationsPerSeed) return { ok: false, reason: "undefined" };
       evaluations++; totalEvaluations++;
       const vector = evaluateField(candidate);
-      return vector && finiteVector(vector) ? { ok: true, point: candidate, vector } :
-        { ok: false, reason: "undefined" };
+      if (!vector || !finiteVector(vector)) return { ok: false, reason: "undefined" };
+      const rawSpeed = Math.hypot(...vector);
+      return { ok: true, point: candidate,
+        vector: normalized && rawSpeed > 0 ? vector.map(value => value / rawSpeed) as
+          unknown as Vec3 : vector, rawSpeed };
     };
     const rk4 = (start: Vec3, dt: number): Step => {
       const a = evaluate(start); if (!a.ok) return a;
@@ -134,13 +161,13 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
     let stopReason: VectorField3DStopReason = "step-limit";
     for (let attempt = 0; attempt < maximumSteps; attempt++) {
       if (options.shouldCancel?.()) { stopReason = "cancelled"; break; }
-      if (elapsed >= source.solver.maxTime) { stopReason = "time-limit"; break; }
+      if (elapsed >= parameterLimit) { stopReason = normalized ? "line-limit" : "time-limit"; break; }
       if (arcLength >= maximumArc) { stopReason = "length-limit"; break; }
       const initial = evaluate(point);
       if (!initial.ok) { stopReason = initial.reason; break; }
-      const speed = Math.hypot(...initial.vector!);
+      const speed = initial.rawSpeed!;
       if (speed <= source.solver.absoluteTolerance) { stopReason = "stationary"; break; }
-      const dt = Math.min(stepSize, source.solver.maxTime - elapsed);
+      const dt = Math.min(stepSize, parameterLimit - elapsed);
       if (dt < minimumStep) { stopReason = "solver-failure"; break; }
       const embedded = useRk45 ? rk45(point, sign * dt) : null;
       const full = useRk45 ? null : rk4(point, sign * dt);
@@ -199,7 +226,7 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
         const dot = previousVector[0] * probe.vector![0] + previousVector[1] * probe.vector![1] +
           previousVector[2] * probe.vector![2];
         if ((previousSpeed > 0 && probeSpeed > 0 && dot < -.25 * previousSpeed * probeSpeed) ||
-            probeSpeed > 8 * Math.max(previousSpeed, speed)) {
+            probeSpeed > 8 * Math.max(previousSpeed, normalized ? 1 : speed)) {
           discontinuity = "solver-failure"; break;
         }
         previousVector = probe.vector!;
@@ -218,22 +245,28 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
       }
       pushPoint(corrected, dt, length); acceptedSteps++;
       stepSize = dt * (error === 0 ? 2 : clamp(.9 * Math.pow(tolerance / error, .2), .2, 2));
-      if (elapsed >= source.solver.maxTime - minimumStep) { stopReason = "time-limit"; break; }
+      if (elapsed >= parameterLimit - minimumStep) {
+        stopReason = normalized ? "line-limit" : "time-limit"; break;
+      }
     }
     const stopDetail = ({ boundary: "A stage or accepted path reached the field boundary.",
       stationary: "Field speed is at or below the absolute tolerance.",
       undefined: "The field is undefined at a required sample.",
       "step-limit": "The bounded attempt count was exhausted.",
       "time-limit": "The configured integration time was reached.",
+      "line-limit": "The configured normalized field-line length was reached.",
       "length-limit": "The configured arc-length limit was reached.",
       cancelled: "The integration was cancelled before another step.",
       "solver-failure": "The minimum step or numerical continuity guard was reached." } as const)[stopReason];
-    trajectories.push({ seedId: seed.id, direction, points, acceptedSteps, rejectedSteps,
-      evaluations, stopReason, maxEstimatedLocalError, stopDetail });
+    const trajectory = { seedId: seed.id, direction, points, acceptedSteps, rejectedSteps,
+      evaluations, stopReason, maxEstimatedLocalError, stopDetail };
+    trajectories.push(trajectory);
+    options.onProgress?.(trajectories.length, source.seeds.length, trajectory);
   }
   return { source: { documentId: document.identity.id, revision: document.identity.revision,
     structuralHash: document.identity.structuralHash },
     solver: { method: useRk45 ? "adaptive-rk45" : "adaptive-rk4-step-doubling",
+      mode, parameterLimit, parameterUnit,
       absoluteTolerance: source.solver.absoluteTolerance,
       relativeTolerance: source.solver.relativeTolerance, maxSteps: maximumSteps,
       maxTime: source.solver.maxTime, maxArcLength: maximumArc, maxEvaluations: maximumEvaluations },

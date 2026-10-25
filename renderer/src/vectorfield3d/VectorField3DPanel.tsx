@@ -9,6 +9,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type VectorField3DDifferentialArtifact,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
   integrateVectorField3DScientificTrajectories,
+  vectorField3DSeedPreset,
   scientificPointWithinBounds,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
   type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact,
@@ -86,6 +87,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [lineBusy, setLineBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<"render" | "trajectory" | null>(null);
   const [runStatus, setRunStatus] = useState("");
+  const [seedProgress, setSeedProgress] = useState<{ completed: number; total: number } | null>(null);
   const [saveStatus, setSaveStatus] = useState("");
   const datasetLink = document.source.field.kind === "scientific-bundle" ?
     createScientificDatasetLink(document.source.field.references) : null;
@@ -167,7 +169,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     probeEpoch.current++;
     setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setSlice(null);
     setLinkedSlices({});
-    setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError(""); setRunStatus("");
+    setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
+    setRunStatus(""); setSeedProgress(null);
   };
   const currentDocument = () => document.source.field.kind === "expressions" ?
     reviseVectorField3DDocument(document, { ...document.source, field: { kind: "expressions",
@@ -389,12 +392,30 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         { id: `seed-${nextIndex}`, position }] });
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
+  const addSeedPreset = (kind: "ring-8" | "plane-9") => {
+    try {
+      const seeds = [...document.source.seeds];
+      let nextIndex = seeds.reduce((highest, seed) =>
+        Math.max(highest, Number(seed.id.replace(/^seed-/, "")) || 0), 0) + 1;
+      for (const position of vectorField3DSeedPreset(document.source, kind)) {
+        if (seeds.length >= 32) break;
+        if (seeds.some(seed => Math.hypot(...seed.position.map((value, axis) =>
+          value - position[axis]!)) < 1e-8)) continue;
+        seeds.push({ id: `seed-${nextIndex++}`, position });
+      }
+      const added = seeds.length - document.source.seeds.length;
+      if (!added) throw new Error("All preset seeds are already present or the 32-seed limit is full.");
+      updateSource({ ...document.source, seeds });
+      setRunStatus(`Added ${added} bounded ${kind === "ring-8" ? "ring" : "plane-grid"} seeds.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
   const runTrajectories = async () => {
     if (busy || lineBusy) return;
     cancelRequested.current = false;
     setBusy(true); setBusyAction("trajectory"); setArtifact(null); setSlice(null); setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     setRunStatus("Verifying source and preparing trajectory worker…");
+    setSeedProgress({ completed: 0, total: document.source.seeds.length });
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
@@ -406,7 +427,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           const worker = new Worker(new URL("./trajectoryWorker.ts", import.meta.url), { type: "module" });
           const finish = () => { worker.terminate(); cancelRunRef.current = null; };
           cancelRunRef.current = () => { finish(); reject(new Error("Trajectory integration cancelled.")); };
-          worker.onmessage = (event: MessageEvent<{ ok: true; result: VectorField3DTrajectoryArtifact } | { ok: false; error: string }>) => {
+          worker.onmessage = (event: MessageEvent<{ progress: { completed: number; total: number;
+            seedId: string; stopReason: string } } | { ok: true; result: VectorField3DTrajectoryArtifact } |
+            { ok: false; error: string }>) => {
+            if ("progress" in event.data) {
+              const { completed, total, seedId, stopReason } = event.data.progress;
+              setSeedProgress({ completed, total });
+              setRunStatus(`Integrated ${completed}/${total} seeds · ${seedId}: ${stopReason}. Cancel is available.`);
+              return;
+            }
             finish(); if (event.data.ok) resolve(event.data.result); else reject(new Error(event.data.error));
           };
           worker.onerror = (event) => { finish(); reject(new Error(event.message || "Trajectory worker failed.")); };
@@ -474,7 +503,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       data-testid="vector-field-3d-editor"
       onPointerDown={event => event.stopPropagation()}>
     <header className="scientific-field-explorer-header"><div><h3>Scientific Field Explorer · {document.metadata.title}</h3>
-    <p>Independent 3D document · bounded arrows and adaptive numerical trajectories.</p></div>
+    <p>Independent 3D document · bounded arrows and adaptive numerical trajectories.</p>
+    {seedProgress && <label role="status">Trajectory seeds {seedProgress.completed}/{seedProgress.total}
+      <progress aria-label="Trajectory seed progress" value={seedProgress.completed}
+        max={Math.max(1, seedProgress.total)} /></label>}</div>
     <div><button type="button" disabled={busy} onClick={() =>
       setLayout(workspace.layout === "viewer-focus" ? "three-pane" : "viewer-focus")}>{
         workspace.layout === "viewer-focus" ? "Show three panes" : "Focus viewer"}</button>
@@ -542,6 +574,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <button type="button" disabled={busy || document.source.seeds.length >= 32} onClick={addSeed}>
           Add seed</button>
       </div>
+      <div className="vector-field3d-seed-presets">
+        <button type="button" disabled={busy || document.source.seeds.length >= 32}
+          onClick={() => addSeedPreset("ring-8")}>Add ring (8)</button>{" "}
+        <button type="button" disabled={busy || document.source.seeds.length >= 32}
+          onClick={() => addSeedPreset("plane-9")}>Add plane grid (9)</button>
+      </div>
       {document.source.seeds.length > 0 && <ul>{document.source.seeds.map(seed => <li key={seed.id}>
         {seed.id}: ({seed.position.join(", ")}) {document.source.axes[0].unit}
         {" "}<button type="button" disabled={busy} aria-label={`Remove ${seed.id}`}
@@ -552,6 +590,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     <details open aria-label="3D trajectory solver">
       <summary>Advanced trajectory solver</summary>
       <div className="vector-field3d-controls">
+        <label>Trajectory mode <select aria-label="Trajectory mode"
+          value={document.source.solver.mode ?? "time-trajectory"}
+          onChange={event => updateSource({ ...document.source, solver: { ...document.source.solver,
+            mode: event.target.value as "time-trajectory" | "normalized-field-line" } })}>
+          <option value="time-trajectory">Time trajectory · dx/dt = F</option>
+          <option value="normalized-field-line">Normalized field line · dx/ds = F/|F|</option>
+        </select></label>
         <label>Method <select aria-label="Trajectory solver method"
           value={document.source.solver.method ?? "rk4-step-doubling"}
           onChange={event => updateSource({ ...document.source, solver: { ...document.source.solver,
@@ -570,12 +615,20 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               maxSteps: Number(event.target.value) } }); }
             catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
           }} /></label>
+        {(document.source.solver.mode ?? "time-trajectory") === "time-trajectory" ?
         <label>Max time ({document.source.timeUnit}) <input type="number" min="0.000001" step="any"
           aria-label="Trajectory max time" value={document.source.solver.maxTime} onChange={event => {
             try { updateSource({ ...document.source, solver: { ...document.source.solver,
               maxTime: Number(event.target.value) } }); }
             catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-          }} /></label>
+          }} /></label> :
+        <label>Max line length ({document.source.axes[0].unit})
+          <input type="number" min="0.000001" step="any" aria-label="Max normalized line length"
+            value={document.source.solver.maxLineLength ?? 20} onChange={event => {
+              try { updateSource({ ...document.source, solver: { ...document.source.solver,
+                maxLineLength: Number(event.target.value) } }); }
+              catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+            }} /></label>}
         <label>Max arc length ({document.source.axes[0].unit})
           <input type="number" min="0.000001" step="any" aria-label="Trajectory max arc length"
             value={document.source.solver.maxArcLength ?? 1e6} onChange={event => {
@@ -600,7 +653,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       </div>
       <p>{document.source.solver.method === "rk45" ? "Adaptive Dormand–Prince RK45" :
         "Adaptive RK4 step doubling"} · at most 2,048 attempted steps per seed in this preview.
-        Each trace reports its stop reason; a numerical trace does not certify topology.</p>
+        {" "}{document.source.solver.mode === "normalized-field-line" ?
+          "Line parameter measures distance, not physical time." : "Time parameter uses the field time unit."}
+        {" "}Each trace reports its stop reason; a numerical trace does not certify topology.</p>
     </details>
     </fieldset>
     <VectorField3DGraphLinePanel key={document.identity.structuralHash} document={document}
@@ -681,10 +736,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {!probeArtifact && <p role="status">Probe values require a fresh source verification.</p>}
       </>}
     </section>
-    <section aria-label="Derived divergence and curl" className="vector-field3d-probe">
-      <h5>Divergence and curl at probe</h5>
+    <section aria-label="Field calculus at probe" className="vector-field3d-probe">
+      <h5>Field calculus at probe</h5>
       <button type="button" disabled={!workspace.probe || busy || lineBusy}
-        onClick={() => void analyzeDifferential()}>Analyze divergence &amp; curl</button>
+        onClick={() => void analyzeDifferential()}>Analyze field calculus</button>
       {!workspace.probe && <p>Place a physical-point probe to analyze this field.</p>}
       {workspace.probe && !differential && <p>Run a bounded local analysis. Scientific bundles are
         reverified before each result.</p>}
@@ -695,6 +750,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           <p>Divergence {differential.divergence!.toPrecision(6)} {differential.divergenceUnit}.</p>
           <p>{differential.curl ? `Curl (${differential.curl.map(value => value.toPrecision(6)).join(", ")}) ${differential.curlUnit}.` :
             "Curl unavailable for differing coordinate units."}</p>
+          <p>Jacobian: {differential.jacobian?.map((row, index) =>
+            `${["P", "Q", "R"][index]} [${row.map((value, axis) =>
+              `${value.toPrecision(5)} ${differential.jacobianUnits[index]?.[axis]}`).join(", ")}]`).join(" · ")}.
+            {" "}Local structure: {differential.localStructure ?? "unavailable"}.</p>
+          <p>Gradient |F|: {differential.magnitudeGradient ?
+            `(${differential.magnitudeGradient.map(value => value.toPrecision(5)).join(", ")}) ${differential.magnitudeGradientUnit}` :
+            "unavailable at this point"}; Laplacian |F|: {differential.magnitudeLaplacian !== null ?
+            `${differential.magnitudeLaplacian.toPrecision(5)} ${differential.magnitudeLaplacianUnit}` :
+            "unavailable at this point"}.</p>
         </> : <p>Numerical result unavailable at this point.</p>}
         <p>{differential.evaluations} bounded field evaluations.
           {" "}Stencils: {differential.stencils.map(item =>
@@ -718,6 +782,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <option value="curl-x">Curl x</option>
         <option value="curl-y">Curl y</option>
         <option value="curl-z">Curl z</option>
+        <option value="grad-speed-magnitude">Gradient |F| magnitude</option>
+        <option value="grad-speed-x">Gradient |F| x</option>
+        <option value="grad-speed-y">Gradient |F| y</option>
+        <option value="grad-speed-z">Gradient |F| z</option>
+        <option value="laplacian-speed">Laplacian |F|</option>
       </select></label>
       <label>Fixed {document.source.axes[normalAxis].label} ({document.source.axes[normalAxis].unit})
         {document.source.field.kind === "scientific-bundle" ?
@@ -772,7 +841,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {trajectories.trajectories.map(path => <p key={path.seedId}>
         {path.seedId}: {path.stopReason} after {path.acceptedSteps} accepted and
         {" "}{path.rejectedSteps} rejected steps; {path.evaluations} evaluations;
-        {" "}time {path.points.at(-1)?.time.toPrecision(5)} {document.source.timeUnit},
+          {" "}{trajectories.solver.mode === "normalized-field-line" ? "line parameter" : "time"}
+          {" "}{path.points.at(-1)?.time.toPrecision(5)} {trajectories.solver.parameterUnit},
         {" "}arc {path.points.at(-1)?.arcLength.toPrecision(5)} {document.source.axes[0].unit}.
           {" "}Largest estimated local error {path.maxEstimatedLocalError.toPrecision(3)}
           {" "}{document.source.axes[0].unit}. {path.stopDetail}

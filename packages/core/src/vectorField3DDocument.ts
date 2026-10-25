@@ -23,6 +23,7 @@ export type VectorField3DSource = Readonly<{
   display: Readonly<{ density: readonly [number, number, number]; maxGlyphs: number;
     magnitudeScale: number; colorBy: "speed" | "p" | "q" | "r" }>;
   solver: Readonly<{ method?: "rk4-step-doubling" | "rk45";
+    mode?: "time-trajectory" | "normalized-field-line"; maxLineLength?: number;
     absoluteTolerance: number; relativeTolerance: number;
     maxSteps: number; maxTime: number; maxArcLength?: number }>;
 }>;
@@ -34,7 +35,8 @@ export type VectorField3DCameraState = Readonly<{ position: readonly [number, nu
   target: readonly [number, number, number]; zoom: number }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   sliceChannel: "component" | "divergence" | "curl-magnitude" |
-    "curl-x" | "curl-y" | "curl-z";
+    "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
+    "grad-speed-z" | "grad-speed-magnitude" | "laplacian-speed";
   layout: "three-pane" | "viewer-focus" | "split" | "quad";
   sliceCoordinates: readonly [number, number, number];
   viewsLinked: boolean;
@@ -139,9 +141,12 @@ const validSource = (source: unknown): source is VectorField3DSource => {
       !["speed", "p", "q", "r"].includes(String(display.colorBy))) return false;
   const solver = source.solver;
   return record(solver) && Object.keys(solver).every(key =>
-    ["method", "absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime", "maxArcLength"].includes(key)) &&
+    ["method", "mode", "maxLineLength", "absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime", "maxArcLength"].includes(key)) &&
     ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime"].every(key => key in solver) &&
     (solver.method === undefined || ["rk4-step-doubling", "rk45"].includes(String(solver.method))) &&
+    (solver.mode === undefined || ["time-trajectory", "normalized-field-line"].includes(String(solver.mode))) &&
+    (solver.maxLineLength === undefined || finite(solver.maxLineLength) &&
+      solver.maxLineLength > 0 && solver.maxLineLength <= 1e9) &&
     finite(solver.absoluteTolerance) && solver.absoluteTolerance >= 1e-12 && solver.absoluteTolerance <= 1 &&
     finite(solver.relativeTolerance) && solver.relativeTolerance >= 1e-12 && solver.relativeTolerance <= 1 &&
     integer(solver.maxSteps, 1, 100000) && finite(solver.maxTime) && solver.maxTime > 0 && solver.maxTime <= 1e6 &&
@@ -182,7 +187,9 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
       ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "clipBounds", "cameraPreset", "cameraState"]) ||
-      !["component", "divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z"]
+      !["component", "divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z",
+        "grad-speed-x", "grad-speed-y", "grad-speed-z", "grad-speed-magnitude",
+        "laplacian-speed"]
         .includes(String(workspace.sliceChannel)) ||
       !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
       !["three-pane", "viewer-focus", "split", "quad"].includes(String(workspace.layout)) ||

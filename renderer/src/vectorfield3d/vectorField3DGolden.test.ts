@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   integrateVectorField3DTrajectories, reviseVectorField3DDocument,
+  vectorField3DSeedPreset,
   reviseVectorField3DWorkspace,
   sampleVectorField3DAnalyticLine, validGraph2DAnalyticFieldOrigin,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
@@ -38,6 +39,78 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
       .trajectories[0]!.stopReason).toBe("boundary");
     expect(integrateVectorField3DTrajectories(rk45(field(["1", "0", "0"], [0, 0, 0])),
       { shouldCancel: () => true }).trajectories[0]!.stopReason).toBe("cancelled");
+  });
+
+  it("distinguishes physical-time paths from normalized field lines and reports seed progress", () => {
+    const base = field(["2", "0", "0"], [0, 0, 0]);
+    const time = integrateVectorField3DTrajectories(reviseVectorField3DDocument(base,
+      { ...base.source, solver: { ...base.source.solver, method: "rk45",
+        mode: "time-trajectory" } }));
+    expect(time.trajectories[0]!.points.at(-1)!.position[0]).toBeCloseTo(2, 6);
+    expect(time.solver.parameterUnit).toBe("s");
+    const lineDocument = reviseVectorField3DDocument(base,
+      { ...base.source, solver: { ...base.source.solver, method: "rk45",
+        mode: "normalized-field-line", maxLineLength: 1 } });
+    const line = integrateVectorField3DTrajectories(lineDocument);
+    expect(line.trajectories[0]!.stopReason).toBe("line-limit");
+    expect(line.trajectories[0]!.points.at(-1)!.position[0]).toBeCloseTo(1, 6);
+    expect(line.solver.parameterUnit).toBe("m");
+    const vortexBase = field(["-y", "x", "0"], [2, 0, 0]);
+    const vortexLine = reviseVectorField3DDocument(vortexBase,
+      { ...vortexBase.source, solver: { ...vortexBase.source.solver, method: "rk45",
+        mode: "normalized-field-line", maxLineLength: 2 } });
+    const vortexTrace = integrateVectorField3DTrajectories(vortexLine).trajectories[0]!;
+    expect(vortexTrace.stopReason).toBe("line-limit");
+    expect(vortexTrace.points.at(-1)!.position[0]).toBeCloseTo(2 * Math.cos(1), 4);
+    expect(vortexTrace.points.at(-1)!.position[1]).toBeCloseTo(2 * Math.sin(1), 4);
+    expect(Math.abs(vortexTrace.points.at(-1)!.arcLength - 2)).toBeLessThan(0.01);
+    const zero = field(["0", "0", "0"], [0, 0, 0]);
+    expect(integrateVectorField3DTrajectories(reviseVectorField3DDocument(zero,
+      { ...zero.source, solver: { ...zero.source.solver,
+        mode: "normalized-field-line", maxLineLength: 1 } }))
+      .trajectories[0]!.stopReason).toBe("stationary");
+    const boundary = field(["1", "0", "0"], [4, 0, 0]);
+    const normalizedBoundary = reviseVectorField3DDocument(boundary,
+      { ...boundary.source, solver: { ...boundary.source.solver,
+        mode: "normalized-field-line", maxLineLength: 2 } });
+    expect(integrateVectorField3DTrajectories(normalizedBoundary).trajectories[0]!.stopReason)
+      .toBe("boundary");
+    expect(integrateVectorField3DTrajectories(vortexLine,
+      { shouldCancel: () => true }).trajectories[0]!.stopReason).toBe("cancelled");
+    const progress: number[] = [];
+    const ring = vectorField3DSeedPreset(base.source, "ring-8");
+    const grid = vectorField3DSeedPreset(base.source, "plane-9");
+    expect(ring).toHaveLength(8);
+    expect(grid).toHaveLength(9);
+    const batch = reviseVectorField3DDocument(base, { ...base.source,
+      seeds: ring.map((position, index) => ({ id: `seed-${index + 1}`, position })),
+      solver: { ...base.source.solver, mode: "normalized-field-line", maxLineLength: 1 } });
+    integrateVectorField3DTrajectories(batch, { onProgress: (completed, total) => {
+      expect(total).toBe(8); progress.push(completed);
+    } });
+    expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("reports Jacobian structure and bounded gradient/Laplacian of field magnitude", () => {
+    const constant = analyzeVectorField3DDifferential(field(["1", "0", "0"], [0, 0, 0]), [1, 0, 0]);
+    expect(constant.localStructure).toBe("balanced");
+    expect(constant.magnitudeGradient).toEqual([0, 0, 0]);
+    expect(constant.magnitudeLaplacian).toBeCloseTo(0, 5);
+    const vortexDocument = field(["-y", "x", "0"], [1, 0, 0]);
+    const vortex = analyzeVectorField3DDifferential(vortexDocument, [1, 0, 0]);
+    expect(vortex.localStructure).toBe("rotation-dominated");
+    expect(vortex.jacobian?.[0]?.[1]).toBeCloseTo(-1, 7);
+    expect(vortex.jacobian?.[1]?.[0]).toBeCloseTo(1, 7);
+    expect(vortex.magnitudeGradient?.[0]).toBeCloseTo(1, 5);
+    expect(vortex.magnitudeLaplacian).toBeCloseTo(1, 2);
+    const origin = analyzeVectorField3DDifferential(vortexDocument, [0, 0, 0]);
+    expect(origin.magnitudeGradient).toBeNull();
+    expect(origin.diagnostics.join(" ")).toMatch(/differentiability is not assumed/);
+    const gradient = sampleVectorField3DDerivedSlice(vortexDocument, 2, 0, "grad-speed-x");
+    const laplacian = sampleVectorField3DDerivedSlice(vortexDocument, 2, 0, "laplacian-speed");
+    expect(gradient.values[15 * 25 + 12]).toBeCloseTo(1, 4);
+    expect(laplacian.values[15 * 25 + 12]).toBeCloseTo(1, 2);
+    expect(laplacian.values[12 * 25 + 12]).toBeNull();
   });
 
   it("maps approximate divergence and curl magnitude across a vortex slice", () => {

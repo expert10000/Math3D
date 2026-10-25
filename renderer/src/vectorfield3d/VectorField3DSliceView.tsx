@@ -135,7 +135,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         {" "}{document.source.axes[slice.planeAxes[profileDirection]].unit}.
         {slice.sourceHash && ` Source ${slice.sourceHash}.`}</small>
       {document.source.field.kind === "expressions" && onSendLineToGraphs &&
-        slice.channel !== "divergence" && !slice.channel.startsWith("curl-") && <button type="button"
+        slice.channel !== "divergence" && !slice.channel.startsWith("curl-") &&
+        !slice.channel.startsWith("grad-speed") && slice.channel !== "laplacian-speed" && <button type="button"
         onClick={() => onSendLineToGraphs(slice.channel === "magnitude" ? "speed" :
           slice.channel as "p" | "q" | "r",
           slice.planeAxes[profileDirection] as 0 | 1 | 2, probe as [number, number, number])}>

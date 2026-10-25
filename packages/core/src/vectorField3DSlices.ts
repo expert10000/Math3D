@@ -11,7 +11,8 @@ export type VectorField3DSliceArtifact = Readonly<{
   planeAxes: readonly [number, number]; coordinates: readonly [readonly number[], readonly number[]];
   shape: readonly [number, number]; values: readonly (number | null)[];
   channel: "magnitude" | "p" | "q" | "r" | "divergence" | "curl-magnitude" |
-    "curl-x" | "curl-y" | "curl-z";
+    "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
+    "grad-speed-z" | "grad-speed-magnitude" | "laplacian-speed";
   unit: string; min: number; max: number;
   method?: "bounded-finite-difference"; boundarySamples?: number;
   evaluated: number; rejected: number; sourceHash?: string;

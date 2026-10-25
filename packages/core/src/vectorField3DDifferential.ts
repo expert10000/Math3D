@@ -18,6 +18,10 @@ export type VectorField3DDifferentialArtifact = Readonly<{
   status: "ready" | "unavailable"; method: "bounded-finite-difference";
   divergence: number | null; curl: Vec3 | null;
   divergenceUnit: string; curlUnit: string | null;
+  jacobian: readonly Vec3[] | null; jacobianUnits: readonly (readonly string[])[];
+  localStructure: "rotation-dominated" | "strain-dominated" | "balanced" | null;
+  magnitudeGradient: Vec3 | null; magnitudeLaplacian: number | null;
+  magnitudeGradientUnit: string | null; magnitudeLaplacianUnit: string | null;
   stencils: readonly VectorField3DDifferentialStencil[];
   evaluations: number; diagnostics: readonly string[];
 }>;
@@ -38,6 +42,13 @@ const firstDerivative = (coordinates: readonly number[], samples: readonly numbe
     derivative += weight * samples[i]!;
   }
   return derivative;
+};
+const secondDerivative = (coordinates: readonly number[], samples: readonly number[]): number | null => {
+  if (coordinates.length !== 3) return null;
+  return 2 * coordinates.reduce((sum, x, i) => {
+    const other = coordinates.filter((_, j) => j !== i);
+    return sum + samples[i]! / ((x - other[0]!) * (x - other[1]!));
+  }, 0);
 };
 
 /** Local numerical divergence and curl; the caller must re-open a saved bundle for every request. */
@@ -61,6 +72,9 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     source: identity, sourceHash, position: [...position] as [number, number, number],
     quality: "approximate", status: "unavailable", method: "bounded-finite-difference",
     divergence: null, curl: null, divergenceUnit: `1/${source.timeUnit}`, curlUnit: null,
+    jacobian: null, jacobianUnits: [], localStructure: null,
+    magnitudeGradient: null, magnitudeLaplacian: null,
+    magnitudeGradientUnit: null, magnitudeLaplacianUnit: null,
     stencils, evaluations, diagnostics: [...diagnostics, message],
   });
   let lattice: readonly (readonly number[])[] | null = null;
@@ -103,6 +117,8 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     return vector.every(Number.isFinite) ? vector : null;
   };
   const jacobian = Array.from({ length: 3 }, () => [0, 0, 0]);
+  const scalarGradient = [0, 0, 0], scalarSecond = [0, 0, 0];
+  let scalarSecondAvailable = true, centerMagnitude: number | null = null;
   for (const axis of [0, 1, 2] as const) {
     const bounds = source.axes[axis], at = position[axis];
     let coordinates: number[], indices: number[] | null = null;
@@ -141,8 +157,14 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
       if (sampleIndices && indices) sampleIndices[axis] = indices[item]!;
       const vector = sample(neighbor, sampleIndices);
       if (!vector) return unavailable(`${bounds.label} derivative is undefined on its ${method} stencil.`);
+      if (Math.abs(coordinates[item]! - at) < 1e-10) centerMagnitude = Math.hypot(...vector);
       vectors.push(vector);
     }
+    const magnitudes = vectors.map(vector => Math.hypot(...vector));
+    scalarGradient[axis] = firstDerivative(coordinates, magnitudes, at);
+    const second = secondDerivative(coordinates, magnitudes);
+    if (second === null || !Number.isFinite(second)) scalarSecondAvailable = false;
+    else scalarSecond[axis] = second;
     for (const component of [0, 1, 2] as const) {
       const derivative = firstDerivative(coordinates, vectors.map(vector => vector[component]), at);
       if (!Number.isFinite(derivative))
@@ -152,15 +174,48 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
   }
   const divergence = jacobian[0]![0]! + jacobian[1]![1]! + jacobian[2]![2]!;
   const uniformUnits = new Set(source.axes.map(axis => axis.unit)).size === 1;
+  const componentUnits = field.kind === "scientific-bundle" ? field.componentUnits :
+    field.components.map(component => component.unit);
+  const uniformComponents = new Set(componentUnits).size === 1;
+  const scalarUnitsAvailable = uniformUnits && uniformComponents;
+  const scalarSmoothCandidate = centerMagnitude !== null &&
+    centerMagnitude > source.solver.absoluteTolerance;
+  const magnitudeGradient = scalarUnitsAvailable && scalarSmoothCandidate &&
+    scalarGradient.every(Number.isFinite) ? scalarGradient as unknown as Vec3 : null;
+  const magnitudeLaplacian = magnitudeGradient && scalarSecondAvailable ?
+    scalarSecond.reduce((sum, value) => sum + value, 0) : null;
+  const jacobianUnits = componentUnits.map(unit => source.axes.map(axis =>
+    `(${unit})/${axis.unit}`));
+  let localStructure: VectorField3DDifferentialArtifact["localStructure"] = null;
+  if (scalarUnitsAvailable) {
+    let rotationNorm2 = 0, strainNorm2 = 0;
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+      const symmetric = (jacobian[i]![j]! + jacobian[j]![i]!) / 2;
+      const skew = (jacobian[i]![j]! - jacobian[j]![i]!) / 2;
+      strainNorm2 += symmetric * symmetric; rotationNorm2 += skew * skew;
+    }
+    localStructure = rotationNorm2 > 1.1 * strainNorm2 ? "rotation-dominated" :
+      strainNorm2 > 1.1 * rotationNorm2 ? "strain-dominated" : "balanced";
+  }
   const curl = uniformUnits ? [jacobian[2]![1]! - jacobian[1]![2]!,
     jacobian[0]![2]! - jacobian[2]![0]!, jacobian[1]![0]! - jacobian[0]![1]!] as
     [number, number, number] : null;
   if (!uniformUnits) diagnostics.push("Curl requires matching physical coordinate units on x, y and z.");
+  if (!scalarUnitsAvailable) diagnostics.push("Scalar magnitude calculus and Jacobian norm classification require matching coordinate and component units.");
+  if (scalarUnitsAvailable && !scalarSmoothCandidate)
+    diagnostics.push("|F| is zero or near zero; its differentiability is not assumed at this point.");
+  if (scalarUnitsAvailable && !scalarSecondAvailable)
+    diagnostics.push("Laplacian |F| requires at least three samples on each axis.");
+  diagnostics.push("Jacobian norm classification compares local rotation and strain; it is not an equilibrium or stability proof.");
   diagnostics.push("Local finite differences are approximate; they do not certify smoothness or global behavior.");
   return { source: identity, sourceHash, position: [...position] as [number, number, number],
     quality: "approximate", status: "ready", method: "bounded-finite-difference",
     divergence, curl, divergenceUnit: `1/${source.timeUnit}`,
     curlUnit: uniformUnits ? `1/${source.timeUnit}` : null,
+    jacobian: jacobian.map(row => row as unknown as Vec3), jacobianUnits, localStructure,
+    magnitudeGradient, magnitudeLaplacian,
+    magnitudeGradientUnit: scalarUnitsAvailable ? `(${componentUnits[0]})/${source.axes[0].unit}` : null,
+    magnitudeLaplacianUnit: scalarUnitsAvailable ? `(${componentUnits[0]})/${source.axes[0].unit}²` : null,
     stencils, evaluations, diagnostics };
 }
 
@@ -170,15 +225,18 @@ export function analyzeVectorField3DDifferential(document: VectorField3DDocument
 }
 
 export type VectorField3DDerivedChannel = "divergence" | "curl-magnitude" |
-  "curl-x" | "curl-y" | "curl-z";
+  "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
+  "grad-speed-z" | "grad-speed-magnitude" | "laplacian-speed";
 /** A bounded derived map; one complete bundle verification precedes all cell calculations. */
 export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
   normalAxis: 0 | 1 | 2, fixedCoordinate: number, channel: VectorField3DDerivedChannel,
   scientific?: ScientificSource): VectorField3DSliceArtifact {
-  if (!["divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z"].includes(channel))
+  if (!["divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z",
+      "grad-speed-x", "grad-speed-y", "grad-speed-z", "grad-speed-magnitude",
+      "laplacian-speed"].includes(channel))
     throw new TypeError("Unsupported derived field channel.");
   if (channel !== "divergence" && new Set(document.source.axes.map(axis => axis.unit)).size !== 1)
-    throw new TypeError("Curl requires matching physical coordinate units on x, y and z.");
+    throw new TypeError("Curl and scalar magnitude calculus require matching physical coordinate units on x, y and z.");
   const base = sampleVectorField3DSlice(document, normalAxis, fixedCoordinate, scientific);
   const verified = scientific ? verifyVectorField3DVolumes(document, scientific.manifestJson,
     scientific.fingerprint, scientific.volumes) : undefined;
@@ -192,13 +250,30 @@ export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
     const result = analyzeAt(document, position, scientific, verified);
     if (result.stencils.some(stencil => stencil.boundary)) boundarySamples++;
     const curlComponent = { "curl-x": 0, "curl-y": 1, "curl-z": 2 } as const;
-    const value = result.status !== "ready" ? null : channel === "divergence" ?
-      result.divergence : result.curl ? channel === "curl-magnitude" ?
-        Math.hypot(...result.curl) : result.curl[curlComponent[channel]] : null;
+    const gradientComponent = { "grad-speed-x": 0, "grad-speed-y": 1,
+      "grad-speed-z": 2 } as const;
+    let value: number | null = null;
+    if (result.status === "ready") {
+      if (channel === "divergence") value = result.divergence;
+      else if (channel === "laplacian-speed") value = result.magnitudeLaplacian;
+      else if (channel === "grad-speed-magnitude") value = result.magnitudeGradient ?
+        Math.hypot(...result.magnitudeGradient) : null;
+      else if (channel in gradientComponent) value = result.magnitudeGradient ?
+        result.magnitudeGradient[gradientComponent[channel as keyof typeof gradientComponent]] : null;
+      else if (result.curl) value = channel === "curl-magnitude" ?
+        Math.hypot(...result.curl) :
+        channel === "curl-x" || channel === "curl-y" || channel === "curl-z" ?
+          result.curl[curlComponent[channel]] : null;
+    }
     values.push(value !== null && Number.isFinite(value) ? value : null);
   }
   const finite = values.filter((value): value is number => value !== null);
-  return { ...base, channel, unit: `1/${document.source.timeUnit}`, values,
+  const componentUnit = document.source.field.kind === "scientific-bundle" ?
+    document.source.field.componentUnits[0] : document.source.field.components[0].unit;
+  const unit = channel === "laplacian-speed" ?
+    `(${componentUnit})/${document.source.axes[0].unit}²` : channel.startsWith("grad-speed") ?
+      `(${componentUnit})/${document.source.axes[0].unit}` : `1/${document.source.timeUnit}`;
+  return { ...base, channel, unit, values,
     min: finite.length ? Math.min(...finite) : NaN,
     max: finite.length ? Math.max(...finite) : NaN,
     evaluated: values.length, rejected: values.length - finite.length,

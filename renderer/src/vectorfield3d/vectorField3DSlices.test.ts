@@ -46,6 +46,12 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
     expect(derived.evaluated).toBeLessThanOrEqual(1024);
     expect(derived.boundarySamples).toBeGreaterThan(0);
     expect(derived.values.some(value => value !== null && value > 0)).toBe(true);
+    const scalar = sampleVectorField3DDerivedSlice(document, 2, -1.5,
+      "laplacian-speed", scientific);
+    expect(scalar.unit).toBe("(m/s)/m²");
+    expect(scalar.evaluated).toBeLessThanOrEqual(1024);
+    expect(scalar.values.some(value => value !== null)).toBe(true);
+    expect(scalar.sourceHash).toBe(derived.sourceHash);
     const changed = volumes.map((volume, index) => index === 1 ?
       { ...volume, values: volume.values.map((value, offset) => offset === 0 ? value + 1 : value) } :
       volume) as VectorField3DVolumes;
