@@ -5,6 +5,8 @@ import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
 import { sampleVectorField3DSlice, type VectorField3DSliceArtifact } from "./vectorField3DSlices";
+import { sampleVectorField3DSparseSlice, verifyVectorField3DSparseSamples,
+  type VectorField3DSparseSamples } from "./vectorField3DSparse";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DDifferentialStencil = Readonly<{
@@ -54,8 +56,11 @@ const secondDerivative = (coordinates: readonly number[], samples: readonly numb
 /** Local numerical divergence and curl; the caller must re-open a saved bundle for every request. */
 type ScientificSource = Readonly<{ manifestJson: string; fingerprint: string;
   volumes: VectorField3DVolumes }>;
+type SparseScientificSource = Readonly<{ manifestJson: string; fingerprint: string;
+  samples: VectorField3DSparseSamples }>;
 function analyzeAt(document: VectorField3DDocument, position: Vec3,
-  scientific?: ScientificSource, verifiedVolumes?: VectorField3DVolumes):
+  scientific?: ScientificSource | SparseScientificSource, verifiedVolumes?: VectorField3DVolumes,
+  sparseLookup?: ReadonlyMap<string, Vec3>):
   VectorField3DDifferentialArtifact {
   const normalized = normalizeVectorField3DDocument(document);
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
@@ -83,11 +88,12 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
   let selectedIndices: readonly number[] | null = null;
   if (field.kind === "scientific-bundle") {
     if (!scientific) throw new TypeError("Reverify all three scientific components before derived analysis.");
-    volumeValues = verifiedVolumes ?? verifyVectorField3DVolumes(checked, scientific.manifestJson,
-      scientific.fingerprint, scientific.volumes);
+    volumeValues = verifiedVolumes ?? ("volumes" in scientific ? verifyVectorField3DVolumes(checked,
+      scientific.manifestJson, scientific.fingerprint, scientific.volumes) : null);
     const reference = field.references[0];
     sourceIndicesByAxis = source.axes.map((_, axis) => {
-      const sourceSize = reference.shape[axis]!, sampleSize = volumeValues![0].sampleShape[axis]!;
+      const sourceSize = reference.shape[axis]!, sampleSize = volumeValues?.[0].sampleShape[axis] ??
+        Math.min(sourceSize, 32);
       return Array.from({ length: sampleSize }, (_, sampleIndex) => sampleSize === 1 ? 0 :
         Math.round(sampleIndex * (sourceSize - 1) / (sampleSize - 1)));
     });
@@ -110,6 +116,7 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
       return values.every(value => value.ok) ? values.map(value => value.ok ? value.value : NaN) as
         [number, number, number] : null;
     }
+    if (sparseLookup) return sparseLookup.get(indices!.join(",")) ?? null;
     const volumes = volumeValues!;
     const offset = (indices![0]! * volumes[0].sampleShape[1] + indices![1]!) *
       volumes[0].sampleShape[2] + indices![2]!;
@@ -230,16 +237,42 @@ export type VectorField3DDerivedChannel = "divergence" | "curl-magnitude" |
 /** A bounded derived map; one complete bundle verification precedes all cell calculations. */
 export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
   normalAxis: 0 | 1 | 2, fixedCoordinate: number, channel: VectorField3DDerivedChannel,
-  scientific?: ScientificSource): VectorField3DSliceArtifact {
+  scientific?: ScientificSource | SparseScientificSource): VectorField3DSliceArtifact {
   if (!["divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z",
       "grad-speed-x", "grad-speed-y", "grad-speed-z", "grad-speed-magnitude",
       "laplacian-speed"].includes(channel))
     throw new TypeError("Unsupported derived field channel.");
   if (channel !== "divergence" && new Set(document.source.axes.map(axis => axis.unit)).size !== 1)
     throw new TypeError("Curl and scalar magnitude calculus require matching physical coordinate units on x, y and z.");
-  const base = sampleVectorField3DSlice(document, normalAxis, fixedCoordinate, scientific);
-  const verified = scientific ? verifyVectorField3DVolumes(document, scientific.manifestJson,
-    scientific.fingerprint, scientific.volumes) : undefined;
+  const sparse = scientific && "samples" in scientific ? scientific : undefined;
+  const full = scientific && "volumes" in scientific ? scientific : undefined;
+  const base = sparse ? sampleVectorField3DSparseSlice(document, normalAxis, fixedCoordinate, sparse) :
+    sampleVectorField3DSlice(document, normalAxis, fixedCoordinate, full);
+  const verified = full ? verifyVectorField3DVolumes(document, full.manifestJson,
+    full.fingerprint, full.volumes) : undefined;
+  const sparseLookup = new Map<string, Vec3>();
+  if (sparse) {
+    const samples = verifyVectorField3DSparseSamples(document, sparse.manifestJson,
+      sparse.fingerprint, sparse.samples);
+    if (samples.selection.kind !== "stencil-slice" || samples.selection.normalAxis !== normalAxis)
+      throw new TypeError("Derived slice requires a verified neighboring-plane stencil.");
+    const shape = samples.sourceShape, lattice = shape.map(size => Array.from({ length: Math.min(size, 32) },
+      (_, index) => size === 1 ? 0 : Math.round(index * (size - 1) / (Math.min(size, 32) - 1))));
+    const index = lattice[normalAxis]!.indexOf(samples.selection.fixedIndex);
+    const layers = lattice[normalAxis]!.length === 1 ? [0] : lattice[normalAxis]!.length === 2 ? [0, 1] :
+      index === 0 ? [0, 1, 2] : index === lattice[normalAxis]!.length - 1 ?
+        [index - 2, index - 1, index] : [index - 1, index, index + 1];
+    const plane = [0, 1, 2].filter(axis => axis !== normalAxis);
+    let offset = 0;
+    for (const layer of layers) for (let a = 0; a < lattice[plane[0]!]!.length; a++)
+      for (let b = 0; b < lattice[plane[1]!]!.length; b++) {
+        const point = [0, 0, 0]; point[normalAxis] = layer;
+        point[plane[0]!] = a; point[plane[1]!] = b;
+        sparseLookup.set(point.join(","), samples.components.map(component =>
+          component.values[offset]!) as [number, number, number]);
+        offset++;
+      }
+  }
   const values: (number | null)[] = [];
   let boundarySamples = 0;
   for (let i = 0; i < base.shape[0]; i++) for (let j = 0; j < base.shape[1]; j++) {
@@ -247,7 +280,8 @@ export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
     position[normalAxis] = fixedCoordinate;
     position[base.planeAxes[0]] = base.coordinates[0][i]!;
     position[base.planeAxes[1]] = base.coordinates[1][j]!;
-    const result = analyzeAt(document, position, scientific, verified);
+    const result = analyzeAt(document, position, scientific, verified,
+      sparse ? sparseLookup : undefined);
     if (result.stencils.some(stencil => stencil.boundary)) boundarySamples++;
     const curlComponent = { "curl-x": 0, "curl-y": 1, "curl-z": 2 } as const;
     const gradientComponent = { "grad-speed-x": 0, "grad-speed-y": 1,

@@ -6,6 +6,8 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { VectorField3DArrowArtifact, VectorField3DDocument,
   VectorField3DTrajectoryArtifact, VectorField3DCameraPreset,
   VectorField3DClipBounds, VectorField3DCameraState } from "@math3d/core";
+import { selectVectorField3DPreview, type VectorField3DPreviewDetail } from
+  "./vectorField3DProgressivePreview";
 
 const cameraPositions: Record<VectorField3DCameraPreset, readonly [number, number, number]> = {
   perspective: [2.7, 2.2, 2.7], xy: [0, 0, 4], xz: [0, 4, 0], yz: [4, 0, 0],
@@ -46,6 +48,33 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     [axis.min, axis.max]) as unknown as VectorField3DClipBounds;
   const preset = workspace?.cameraPreset ?? "perspective";
   const [cameraStatus, setCameraStatus] = useState("Camera ready. Use arrow keys to orbit, + or − to zoom, Home to reset.");
+  const [previewState, setPreviewState] = useState<{
+    artifact: VectorField3DArrowArtifact; detail: VectorField3DPreviewDetail
+  }>({ artifact, detail: "overview" });
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const detail = previewState.artifact === artifact ? previewState.detail : "overview";
+  const preview = useMemo(() => selectVectorField3DPreview(artifact, document.source.axes, detail),
+    [artifact, document.source.axes, detail]);
+  const stopPreviewTimer = useCallback(() => {
+    if (previewTimer.current !== null) clearTimeout(previewTimer.current);
+    previewTimer.current = null;
+  }, []);
+  const refinePreview = useCallback(() => {
+    stopPreviewTimer();
+    previewTimer.current = setTimeout(() => {
+      setPreviewState({ artifact, detail: "full" });
+      previewTimer.current = null;
+    }, 240);
+  }, [artifact, stopPreviewTimer]);
+  useEffect(() => {
+    setPreviewState({ artifact, detail: "overview" });
+    refinePreview();
+    return stopPreviewTimer;
+  }, [artifact, preset, refinePreview, stopPreviewTimer]);
+  const beginCameraMove = () => {
+    stopPreviewTimer();
+    setPreviewState({ artifact, detail: "overview" });
+  };
   const onCameraReady = useCallback((next: VectorField3DCameraPreset) =>
     setCameraStatus(`Camera ready. Use arrow keys to orbit, + or − to zoom, Home to reset. Preset ${next}.`), []);
   const reportCamera = () => {
@@ -61,6 +90,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
   const moveCamera = (action: "left" | "right" | "up" | "down" | "in" | "out" | "reset") => {
     const current = controls.current;
     if (!current) return;
+    beginCameraMove();
     const angle = Math.PI / 12;
     if (action === "left" || action === "right") current.setAzimuthalAngle(current.getAzimuthalAngle() +
       (action === "left" ? -angle : angle));
@@ -80,7 +110,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       current.target.set(0, 0, 0);
       current.object.lookAt(0, 0, 0);
     }
-    current.update(); reportCamera();
+    current.update(); reportCamera(); refinePreview();
   };
   const onCameraKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const action = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down",
@@ -96,7 +126,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     const add = (a: number[], b: number[], color: number[]) => {
       positions.push(...a, ...b); colors.push(...color, ...color);
     };
-    for (const arrow of artifact.arrows) {
+    for (const arrow of preview.arrows) {
       if (!pointInsideFieldClip(arrow.position, clip)) continue;
       const start = arrow.position.map((value, axis) =>
         (value - (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span);
@@ -123,7 +153,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     }
     return { positions: new Float32Array(positions), colors: new Float32Array(colors),
       stationary: new Float32Array(stationary) };
-  }, [document, artifact, clip]);
+  }, [document, artifact, clip, preview]);
   const paths = useMemo(() => {
     const positions: number[] = [], colors: number[] = [];
     const axes = document.source.axes;
@@ -165,7 +195,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       if (!(index & bit)) positions.push(...corners[index]!, ...corners[index | bit]!);
     return new Float32Array(positions);
   }, [clip, document.source.axes]);
-  const visibleCount = artifact.arrows.filter(arrow => pointInsideFieldClip(arrow.position, clip)).length;
+  const visibleCount = preview.arrows.filter(arrow => pointInsideFieldClip(arrow.position, clip)).length;
   const maximum = Math.max(...artifact.arrows.map(arrow => arrow.magnitude), 0);
   const probePosition = probe?.map((value, axis) => (value -
     (document.source.axes[axis]!.min + document.source.axes[axis]!.max) / 2) * 2 /
@@ -173,9 +203,36 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     [number, number, number] | undefined;
   const colorLabel = artifact.colorBy === "speed" ? `magnitude 0–${maximum.toPrecision(4)}` :
     `${artifact.colorBy.toUpperCase()} component −${maximum.toPrecision(4)}–${maximum.toPrecision(4)}`;
+  const fullSampleShape = document.source.field.kind === "scientific-bundle" ?
+    document.source.field.references[0].shape.map(size => Math.min(size, 32)) : null;
+  const completeTransfer = artifact.verifiedSamples?.sampleShape.every((size, axis) =>
+    size === fullSampleShape?.[axis]) ?? false;
   return <figure aria-label="3D vector arrow renderer" className="graph2d-scientific-volume">
     <figcaption>{artifact.accepted} of {artifact.evaluated} bounded samples · {artifact.stationary} stationary ·
       {" "}{artifact.rejected} rejected · density {artifact.density.join(" × ")}</figcaption>
+    <p role="status" aria-live="polite" data-testid="vector-field3d-preview-status">
+      {preview.detail === "overview" ? "Overview" : "Full detail"}: {preview.count} of
+      {" "}{artifact.accepted} evaluated positions selected for display. Camera movement changes display detail only.
+    </p>
+    {artifact.verifiedSamples && <p role="status" aria-live="polite"
+      data-testid="vector-field3d-transfer-status">
+      {completeTransfer ? "Full" : "Initial"} verified transfer lattice:
+      {" "}{artifact.verifiedSamples.sampleShape.join(" × ")} samples per component.
+    </p>}
+    <details aria-label="3D preview provenance"><summary>Preview sample provenance</summary>
+      <p>Document {artifact.source.documentId} · revision {artifact.source.revision} ·
+        source structure <code>{artifact.source.structuralHash}</code>.</p>
+      {artifact.verifiedSamples && <><p>Verified dataset source <code>{artifact.verifiedSamples.sourceHash}</code> ·
+        glyph view <code>{artifact.verifiedSamples.viewHash}</code> · transfer lattice
+        {" "}{artifact.verifiedSamples.sampleShape.join(" × ")}.</p>
+        <ul>{artifact.verifiedSamples.components.map(component => <li key={component.name}>
+          {component.name} transfer sample: <code>{component.sampleSha256}</code>
+          {component.verifiedChunks && ` · ${component.verifiedChunks.loaded} of ${component.verifiedChunks.total} source chunks verified`}
+          {component.verifiedTiles && ` · ${component.verifiedTiles.loaded} of ${component.verifiedTiles.total} source tiles verified`}
+          {component.verifiedOverview && ` · bounded overview verified ${component.verifiedOverview}`}
+        </li>)}</ul></>}
+      <p>Displayed sample selection <code>{preview.selectionHash}</code>.</p>
+    </details>
     <div role="group" aria-label="3D camera viewport" tabIndex={0} onKeyDown={onCameraKey}
       style={{ width: "100%", height: "100%", minHeight: 360, background: "#0d1726" }}>
       <Canvas key={preset === "perspective" ? "perspective" : "orthographic"}
@@ -217,7 +274,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
           <lineBasicMaterial vertexColors toneMapped={false} depthTest={false} />
         </lineSegments>}
         <axesHelper args={[1.15]} />
-        <OrbitControls ref={controls} enablePan enableZoom onEnd={reportCamera} />
+        <OrbitControls ref={controls} enablePan enableZoom onStart={beginCameraMove}
+          onEnd={() => { reportCamera(); refinePreview(); }} />
       </Canvas>
     </div>
     <div role="group" aria-label="3D camera controls" className="vector-field3d-camera-controls">
@@ -231,7 +289,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     </div>
     <p role="status" aria-live="polite" data-testid="vector-field3d-camera-status">{cameraStatus}</p>
     <p role="status" data-testid="vector-field3d-clip-status">Display clip: {visibleCount} of
-      {" "}{artifact.arrows.length} accepted sample positions visible; numerical samples are unchanged.
+      {" "}{preview.count} accepted sample positions visible ({artifact.arrows.length} in the full artifact);
+      numerical samples are unchanged.
       Camera preset {preset}. Clip box: {clip.map((bounds, axis) =>
         `${document.source.axes[axis]!.label} ${bounds[0]}…${bounds[1]} ${document.source.axes[axis]!.unit}`).join(" · ")}.
       {probe && !pointInsideFieldClip(probe, clip) && " The linked probe is outside the display clip; its coordinates and values remain available."}</p>

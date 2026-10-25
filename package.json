@@ -51,6 +51,8 @@
     "test:quantum:browser": "playwright test --config playwright.quantum-browser.config.ts",
     "test:quantum:q09": "playwright test tests/e2e/quantum-q09 --reporter=list",
     "test:scientific-scene": "node scripts/write-scientific-sincos-fixture.mjs --check && node scripts/write-scientific-thermal-fixture.mjs --check && node scripts/write-scientific-graph-presets.mjs --check && npm run build:main && node scripts/test-scientific-scene.mjs",
+    "test:scientific:chunks": "npm run build:main && node scripts/test-scientific-chunks.mjs",
+    "test:scientific:overview": "npm run build:main && node scripts/test-scientific-overview.mjs",
     "build:python-worker": "node scripts/build-python-worker.mjs",
     "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "setup:cgal-worker": "powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1",

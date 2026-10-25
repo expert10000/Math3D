@@ -1,12 +1,16 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { previewVerifiedVectorField3D } from "./previewVerifiedVectorField3D";
 import { createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceDocument,
   createVectorField3DDocument, defaultVectorField3DWorkspace, normalizeVectorField3DDocument,
   parseMath3DProject, parseVectorField3DDocument, reviseVectorField3DWorkspace,
   sampleVectorField3DSlice, sampleVectorField3DProbe, serializeMath3DProject, serializeVectorField3DDocument,
+  sampleVectorField3DSparseSlice, sampleVectorField3DSparseProbe,
+  scientificTileLayout, scientificTileSampleLocation,
   integrateVectorField3DScientificTrajectories, reviseVectorField3DDocument,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
+  sampleVectorField3DScientificArrows,
   searchVectorField3DEquilibria,
   sha256Checksum, vectorField3DSliceCoordinates, type Graph2DFieldReference, type VectorField3DSource,
   type VectorField3DVolumes } from "@math3d/core";
@@ -36,8 +40,287 @@ const volumes = names.map((component, index) => {
     sampleSha256: sha256Checksum(bytes).slice(7),
     values: Array.from({ length: shape[0] * shape[1] * shape[2] }, (_, offset) => bytes.readDoubleLE(offset * 8)) };
 }) as VectorField3DVolumes;
+const coarseVolumes = volumes.map(volume => {
+  const sampleShape = [8, 8, 8] as const;
+  const positions = sampleShape.map((count, axis) => Array.from({ length: count }, (_, index) =>
+    Math.round(index * (volume.sourceShape[axis]! - 1) / (count - 1))));
+  const values: number[] = [];
+  for (const x of positions[0]!) for (const y of positions[1]!) for (const z of positions[2]!)
+    values.push(volume.values[(x * volume.sourceShape[1] + y) * volume.sourceShape[2] + z]!);
+  const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+  values.forEach((value, index) => view.setFloat64(index * 8, value, true));
+  return { ...volume, sampleLimit: 8, sampleShape,
+    sampleSha256: sha256Checksum(bytes).slice(7), values };
+}) as VectorField3DVolumes;
 
 describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
+  it("verifies v3 tile coverage and preserves slice and probe values", () => {
+    const manifest = JSON.parse(manifestJson), tileShape = [8, 8, 8] as const;
+    const layout = scientificTileLayout(shape, tileShape);
+    manifest.schema = "scientific-scene/v3";
+    manifest.resources = manifest.resources.map((resource: { path: string }) => {
+      const logical = readFileSync(`${directory}${resource.path}`), physical = Buffer.alloc(logical.length);
+      const tileSha256: string[] = [];
+      for (const tile of layout) {
+        for (let x = 0; x < tile.size[0]; x++) for (let y = 0; y < tile.size[1]; y++) {
+          const from = (((tile.start[0] + x) * shape[1] + tile.start[1] + y) * shape[2] + tile.start[2]) * 8;
+          const to = tile.offsetBytes + ((x * tile.size[1] + y) * tile.size[2]) * 8;
+          logical.copy(physical, to, from, from + tile.size[2] * 8);
+        }
+        tileSha256.push(sha256Checksum(physical.subarray(tile.offsetBytes,
+          tile.offsetBytes + tile.bytes)).slice(7));
+      }
+      const overview = Buffer.alloc(8 * 8 * 8 * 8);
+      let position = 0;
+      for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) for (let z = 0; z < 8; z++) {
+        const i = Math.round(x * (shape[0] - 1) / 7), j = Math.round(y * (shape[1] - 1) / 7);
+        const k = Math.round(z * (shape[2] - 1) / 7);
+        logical.copy(overview, position * 8, ((i * shape[1] + j) * shape[2] + k) * 8,
+          ((i * shape[1] + j) * shape[2] + k) * 8 + 8);
+        position++;
+      }
+      return { ...resource, sha256: sha256Checksum(physical).slice(7), layout: "tiled-3d",
+        tileShape, tileSha256, overview: { path: resource.path.replace(/\.f64$/, ".overview.f64"),
+          shape: [8, 8, 8], bytes: overview.length, sha256: sha256Checksum(overview).slice(7) } };
+    });
+    const json = JSON.stringify(manifest), hash = sha256Checksum(new TextEncoder().encode(json)).slice(7);
+    const refs = names.map(name => createGraph2DFieldReference(json, hash,
+      { kind: "preset", value: "vortexVolume" }, "field", name)) as typeof references;
+    const doc = createVectorField3DDocument({ ...source, field: { kind: "scientific-bundle",
+      references: refs, componentUnits: ["m/s", "m/s", "m/s"] } }, { stableKey: "tiled-samples" });
+    const make = (selection: { kind: "slice"; normalAxis: 0 | 1 | 2; fixedIndex: number } |
+      { kind: "probe"; indices: [number, number, number] }) => {
+      const points: number[][] = [];
+      if (selection.kind === "probe") points.push(selection.indices);
+      else {
+        const plane = [0, 1, 2].filter(axis => axis !== selection.normalAxis);
+        for (let a = 0; a < shape[plane[0]!]!; a++) for (let b = 0; b < shape[plane[1]!]!; b++) {
+          const point = [0, 0, 0]; point[selection.normalAxis] = selection.fixedIndex;
+          point[plane[0]!] = a; point[plane[1]!] = b; points.push(point);
+        }
+      }
+      const verifiedTiles = [...new Set(points.map(point => scientificTileSampleLocation(shape,
+        tileShape, point, layout).tileIndex))].sort((a, b) => a - b);
+      return { fingerprint: hash, datasetId: "field", sourceShape: shape, selection,
+        components: volumes.map((volume, index) => {
+          const values = points.map(([x, y, z]) => volume.values[(x! * shape[1] + y!) * shape[2] + z!]!);
+          const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+          values.forEach((value, at) => view.setFloat64(at * 8, value, true));
+          return { name: names[index]!, resourceSha256: refs[index]!.resourceSha256,
+            sampleSha256: sha256Checksum(bytes).slice(7), values, verifiedTiles };
+        }) };
+    };
+    for (const axis of [0, 1, 2] as const) {
+      const coordinate = source.axes[axis].min, samples = make({ kind: "slice", normalAxis: axis, fixedIndex: 0 });
+      expect(sampleVectorField3DSparseSlice(doc, axis, coordinate,
+        { manifestJson: json, fingerprint: hash, samples }).values)
+        .toEqual(sampleVectorField3DSlice(document, axis, coordinate,
+          { manifestJson, fingerprint, volumes }).values);
+      expect(sampleVectorField3DSparseSlice(doc, axis, coordinate,
+        { manifestJson: json, fingerprint: hash, samples }).verifiedSamples?.[0]?.verifiedTiles)
+        .toBeGreaterThan(0);
+      expect(() => sampleVectorField3DSparseSlice(doc, axis, coordinate,
+        { manifestJson: json, fingerprint: hash, samples: { ...samples, components: [
+          { ...samples.components[0]!, verifiedTiles: [] }, ...samples.components.slice(1)] } }))
+        .toThrow(/tile coverage/);
+    }
+    const position = source.axes.map(axis => axis.min) as [number, number, number];
+    const probe = make({ kind: "probe", indices: [0, 0, 0] });
+    expect(sampleVectorField3DSparseProbe(doc, position,
+      { manifestJson: json, fingerprint: hash, samples: probe }).vector)
+      .toEqual(volumes.map(volume => volume.values[0]));
+    const tiledVolumes = volumes.map((volume, index) => ({ ...volume, fingerprint: hash,
+      resourceSha256: refs[index]!.resourceSha256,
+      verifiedTiles: layout.map(tile => tile.index) })) as VectorField3DVolumes;
+    expect(sampleVectorField3DScientificArrows(doc, json, hash, tiledVolumes)
+      .verifiedSamples?.components[0]?.verifiedTiles).toEqual({ loaded: layout.length, total: layout.length });
+    const overviewVolumes = volumes.map((volume, index) => {
+      const values: number[] = [];
+      for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) for (let z = 0; z < 8; z++) {
+        const i = Math.round(x * (shape[0] - 1) / 7), j = Math.round(y * (shape[1] - 1) / 7);
+        const k = Math.round(z * (shape[2] - 1) / 7);
+        values.push(volume.values[(i * shape[1] + j) * shape[2] + k]!);
+      }
+      return { ...volume, fingerprint: hash, resourceSha256: refs[index]!.resourceSha256,
+        sampleLimit: 8, sampleShape: [8, 8, 8] as const, values,
+        sampleSha256: manifest.resources[index].overview.sha256,
+        verifiedOverview: manifest.resources[index].overview.sha256 };
+    }) as VectorField3DVolumes;
+    expect(sampleVectorField3DScientificArrows(doc, json, hash, overviewVolumes)
+      .verifiedSamples?.components[0]?.verifiedOverview).toBe(manifest.resources[0].overview.sha256);
+    expect(() => sampleVectorField3DScientificArrows(doc, json, hash,
+      [{ ...overviewVolumes[0], verifiedOverview: "0".repeat(64) },
+        overviewVolumes[1], overviewVolumes[2]])).toThrow(/overview verification/);
+  });
+  it("checks v2 sparse slice and probe identity, digests and chunk coverage", () => {
+    const manifest = JSON.parse(manifestJson);
+    manifest.schema = "scientific-scene/v2";
+    manifest.resources = manifest.resources.map((resource: { path: string }) => {
+      const bytes = readFileSync(`${directory}${resource.path}`), chunkSha256: string[] = [];
+      for (let offset = 0; offset < bytes.length; offset += 4096)
+        chunkSha256.push(sha256Checksum(bytes.subarray(offset, offset + 4096)).slice(7));
+      return { ...resource, chunkBytes: 4096, chunkSha256 };
+    });
+    const json = JSON.stringify(manifest), hash = sha256Checksum(new TextEncoder().encode(json)).slice(7);
+    const refs = names.map(name => createGraph2DFieldReference(json, hash,
+      { kind: "preset", value: "vortexVolume" }, "field", name)) as typeof references;
+    const doc = createVectorField3DDocument({ ...source, field: {
+      kind: "scientific-bundle", references: refs, componentUnits: ["m/s", "m/s", "m/s"],
+    } }, { stableKey: "sparse-samples" });
+    const make = (selection: { kind: "slice" | "stencil-slice"; normalAxis: 0 | 1 | 2; fixedIndex: number } |
+      { kind: "probe"; indices: [number, number, number] }) => {
+      const points: number[][] = [];
+      if (selection.kind === "probe") points.push(selection.indices);
+      else {
+        const plane = [0, 1, 2].filter(axis => axis !== selection.normalAxis);
+        const fixed = selection.fixedIndex, size = shape[selection.normalAxis];
+        const layers = selection.kind === "slice" ? [fixed] : size === 1 ? [0] : size === 2 ? [0, 1] :
+          fixed === 0 ? [0, 1, 2] : fixed === size - 1 ? [size - 3, size - 2, size - 1] :
+            [fixed - 1, fixed, fixed + 1];
+        for (const layer of layers) for (let a = 0; a < shape[plane[0]!]!; a++)
+          for (let b = 0; b < shape[plane[1]!]!; b++) {
+          const point = [0, 0, 0]; point[selection.normalAxis] = layer;
+          point[plane[0]!] = a; point[plane[1]!] = b; points.push(point);
+        }
+      }
+      return { fingerprint: hash, datasetId: "field", sourceShape: shape, selection,
+        components: volumes.map((volume, index) => {
+          const offsets = points.map(([x, y, z]) => ((x! * shape[1] + y!) * shape[2] + z!) * 8);
+          const values = offsets.map(offset => volume.values[offset / 8]!);
+          const bytes = new Uint8Array(values.length * 8), view = new DataView(bytes.buffer);
+          values.forEach((value, at) => view.setFloat64(at * 8, value, true));
+          return { name: names[index]!, resourceSha256: refs[index]!.resourceSha256,
+            sampleSha256: sha256Checksum(bytes).slice(7), values,
+            verifiedChunks: [...new Set(offsets.map(offset => Math.floor(offset / 4096)))].sort((a, b) => a - b) };
+        }) };
+    };
+    for (const axis of [0, 1, 2] as const) {
+      const coordinate = source.axes[axis].min;
+      const sparse = make({ kind: "slice", normalAxis: axis, fixedIndex: 0 });
+      expect(sampleVectorField3DSparseSlice(doc, axis, coordinate,
+        { manifestJson: json, fingerprint: hash, samples: sparse }).verifiedSamples?.[0])
+        .toMatchObject({ name: "east", sampleSha256: sparse.components[0]!.sampleSha256,
+          verifiedChunks: sparse.components[0]!.verifiedChunks.length,
+          totalChunks: manifest.resources[0].chunkSha256.length });
+      expect(sampleVectorField3DSparseSlice(doc, axis, coordinate,
+        { manifestJson: json, fingerprint: hash, samples: sparse }).values)
+        .toEqual(sampleVectorField3DSlice(doc, axis, coordinate, { manifestJson: json,
+          fingerprint: hash, volumes: volumes.map(volume => ({ ...volume, fingerprint: hash,
+            verifiedChunks: Array.from({ length: manifest.resources[0].chunkSha256.length }, (_, i) => i) })) as
+              VectorField3DVolumes }).values);
+      expect(() => sampleVectorField3DSparseSlice(doc, axis, coordinate,
+        { manifestJson: json, fingerprint: hash, samples: { ...sparse, components: [
+          { ...sparse.components[0]!, verifiedChunks: [] }, ...sparse.components.slice(1)] } }))
+        .toThrow(/coverage/);
+      const stencil = make({ kind: "stencil-slice", normalAxis: axis, fixedIndex: 0 });
+      const allChunks = Array.from({ length: manifest.resources[0].chunkSha256.length }, (_, i) => i);
+      const full = { manifestJson: json, fingerprint: hash, volumes: volumes.map(volume => ({ ...volume,
+        fingerprint: hash, verifiedChunks: allChunks })) as VectorField3DVolumes };
+      for (const channel of ["divergence", "curl-magnitude", "laplacian-speed"] as const)
+        expect(sampleVectorField3DDerivedSlice(doc, axis, coordinate, channel,
+          { manifestJson: json, fingerprint: hash, samples: stencil }).values)
+          .toEqual(sampleVectorField3DDerivedSlice(doc, axis, coordinate, channel, full).values);
+    }
+    const middle = make({ kind: "stencil-slice", normalAxis: 0, fixedIndex: 10 });
+    const allChunks = Array.from({ length: manifest.resources[0].chunkSha256.length }, (_, i) => i);
+    expect(sampleVectorField3DDerivedSlice(doc, 0, 0, "divergence",
+      { manifestJson: json, fingerprint: hash, samples: middle }).values)
+      .toEqual(sampleVectorField3DDerivedSlice(doc, 0, 0, "divergence",
+        { manifestJson: json, fingerprint: hash, volumes: volumes.map(volume => ({ ...volume,
+          fingerprint: hash, verifiedChunks: allChunks })) as VectorField3DVolumes }).values);
+    const probe = make({ kind: "probe", indices: [0, 0, 0] });
+    const position = source.axes.map(axis => axis.min) as [number, number, number];
+    expect(sampleVectorField3DSparseProbe(doc, position,
+      { manifestJson: json, fingerprint: hash, samples: probe }).vector)
+      .toEqual(volumes.map(volume => volume.values[0]));
+    expect(sampleVectorField3DSparseProbe(doc, position,
+      { manifestJson: json, fingerprint: hash, samples: probe }).verifiedSamples?.[0]?.verifiedChunks)
+      .toBe(1);
+    expect(() => sampleVectorField3DSparseProbe(doc, position,
+      { manifestJson: json, fingerprint: hash, samples: { ...probe, components: [
+        { ...probe.components[0]!, values: [probe.components[0]!.values[0]! + 1] },
+        ...probe.components.slice(1)] } })).toThrow(/checksum/);
+  });
+  it("requires v2 chunk coverage for every transferred sample", () => {
+    const manifest = JSON.parse(manifestJson);
+    manifest.schema = "scientific-scene/v2";
+    manifest.resources = manifest.resources.map((resource: { path: string }) => {
+      const bytes = readFileSync(`${directory}${resource.path}`), chunkSha256: string[] = [];
+      for (let offset = 0; offset < bytes.length; offset += 4096)
+        chunkSha256.push(sha256Checksum(bytes.subarray(offset, offset + 4096)).slice(7));
+      return { ...resource, chunkBytes: 4096, chunkSha256 };
+    });
+    const json = JSON.stringify(manifest);
+    const v2Fingerprint = sha256Checksum(new TextEncoder().encode(json)).slice(7);
+    const v2References = names.map(name => createGraph2DFieldReference(json, v2Fingerprint,
+      { kind: "preset", value: "vortexVolume" }, "field", name)) as typeof references;
+    const v2Document = createVectorField3DDocument({ ...source, field: {
+      kind: "scientific-bundle", references: v2References,
+      componentUnits: ["m/s", "m/s", "m/s"],
+    } }, { stableKey: "chunked-coverage" });
+    const selected = new Set<number>();
+    for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) for (let z = 0; z < 8; z++) {
+      const i = Math.round(x * 20 / 7), j = Math.round(y * 20 / 7), k = Math.round(z * 16 / 7);
+      selected.add(Math.floor(((i * 21 + j) * 17 + k) * 8 / 4096));
+    }
+    const verifiedChunks = [...selected].sort((a, b) => a - b);
+    const v2Volumes = coarseVolumes.map(volume => ({ ...volume,
+      fingerprint: v2Fingerprint, verifiedChunks })) as VectorField3DVolumes;
+    const artifact = sampleVectorField3DScientificArrows(v2Document, json, v2Fingerprint, v2Volumes);
+    expect(artifact.verifiedSamples?.components[0]?.verifiedChunks).toEqual({
+      loaded: verifiedChunks.length, total: manifest.resources[0].chunkSha256.length,
+    });
+    expect(() => sampleVectorField3DScientificArrows(v2Document, json, v2Fingerprint,
+      [{ ...v2Volumes[0], verifiedChunks: verifiedChunks.slice(1) },
+        v2Volumes[1], v2Volumes[2]])).toThrow(/coverage/);
+  });
+  it("renders a verified small transfer before requesting the full bounded lattice", async () => {
+    const calls: number[] = [], stages: string[] = [];
+    const bridge = { previewVectorVolume: async (request: { sampleLimit?: number }) => {
+      calls.push(request.sampleLimit ?? 32);
+      return request.sampleLimit ? coarseVolumes : volumes;
+    } } as unknown as Pick<NonNullable<Window["scientificScenes"]>, "previewVectorVolume">;
+    const final = await previewVerifiedVectorField3D(document, manifestJson, fingerprint, bridge,
+      initial => {
+        stages.push("initial");
+        expect(calls).toEqual([8]);
+        expect(initial.artifact.verifiedSamples?.sampleShape).toEqual([8, 8, 8]);
+        expect(initial.artifact.accepted).toBe(125);
+      }, async () => { stages.push("paint"); });
+    expect(calls).toEqual([8, 32]);
+    expect(stages).toEqual(["initial", "paint"]);
+    expect(final.artifact.verifiedSamples?.sampleShape).toEqual(shape);
+    expect(final.artifact.verifiedSamples?.sourceHash)
+      .toBe(sampleVectorField3DScientificArrows(document, manifestJson, fingerprint,
+        coarseVolumes).verifiedSamples?.sourceHash);
+    expect(final.artifact.verifiedSamples?.components[0]?.sampleSha256)
+      .not.toBe(coarseVolumes[0].sampleSha256);
+    expect(() => sampleVectorField3DScientificArrows(document, manifestJson, fingerprint,
+      [{ ...coarseVolumes[0], sampleLimit: 7 }, coarseVolumes[1], coarseVolumes[2]]))
+      .toThrow(/verified volume|component/i);
+    const changed = [{ ...volumes[0], values: volumes[0].values.map((value, index) =>
+      index === 0 ? value + 1 : value) }, volumes[1], volumes[2]] as VectorField3DVolumes;
+    let initialShown = false;
+    const changingBridge = { previewVectorVolume: async (request: { sampleLimit?: number }) =>
+      request.sampleLimit ? coarseVolumes : changed } as unknown as
+        Pick<NonNullable<Window["scientificScenes"]>, "previewVectorVolume">;
+    await expect(previewVerifiedVectorField3D(document, manifestJson, fingerprint, changingBridge,
+      () => { initialShown = true; })).rejects.toThrow(/checksum/);
+    expect(initialShown).toBe(true);
+  });
+  it("binds arrow previews to the verified source and transferred component samples", () => {
+    const artifact = sampleVectorField3DScientificArrows(document, manifestJson, fingerprint, volumes);
+    expect(artifact.verifiedSamples?.sourceHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(artifact.verifiedSamples?.viewHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(artifact.verifiedSamples?.components).toEqual(volumes.map(volume => ({
+      name: volume.component, sampleSha256: volume.sampleSha256,
+    })));
+    expect(artifact.accepted).toBe(125);
+    const changed = [{ ...volumes[0], sampleSha256: "0".repeat(64) },
+      volumes[1], volumes[2]] as VectorField3DVolumes;
+    expect(() => sampleVectorField3DScientificArrows(document, manifestJson, fingerprint, changed))
+      .toThrow(/checksum/);
+  });
   it("reverifies all components before a bounded equilibrium search", () => {
     expect(() => searchVectorField3DEquilibria(document)).toThrow(/Reverify/);
     const verified = { manifestJson, fingerprint, volumes };

@@ -6,6 +6,7 @@ import { openScientificGraphDatasets, previewScientificGraphSlice, previewScient
   previewScientificGraphVectorVolumeLine, previewScientificGraphComplexVolumeLines,
   previewScientificGraphPlane, previewScientificGraphVolume,
   previewScientificGraphVectorPlane, previewScientificGraphVectorVolume,
+  previewScientificGraphVectorSamples,
   type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
@@ -289,9 +290,12 @@ export function registerScientificSceneIpc(): void {
     if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
       throw new TypeError("Invalid 3D vector-field request");
     const request = args[0] as Record<string, unknown>;
-    if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint" ||
+    if (!["components,datasetId,fingerprint", "components,datasetId,fingerprint,sampleLimit"]
+      .includes(Object.keys(request).sort().join(",")) ||
         typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
         typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        (request.sampleLimit !== undefined && (!Number.isSafeInteger(request.sampleLimit) ||
+          Number(request.sampleLimit) < 2 || Number(request.sampleLimit) > 32)) ||
         !Array.isArray(request.components) || request.components.length !== 3 ||
         request.components.some(component => typeof component !== "string" ||
           !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
@@ -300,7 +304,34 @@ export function registerScientificSceneIpc(): void {
     const source = graphActive.get(event.sender);
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorVolume(source.directory, source.fingerprint, request.datasetId,
-      request.components as [string, string, string]);
+      request.components as [string, string, string], request.sampleLimit as number | undefined);
+  });
+  ipcMain.handle("scientificScenes:previewVectorSamples", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      throw new TypeError("Invalid sparse vector request");
+    const request = args[0] as Record<string, unknown>;
+    const selection = request.selection as Record<string, unknown> | undefined;
+    const validSelection = selection && typeof selection === "object" && !Array.isArray(selection) &&
+      ((selection.kind === "slice" || selection.kind === "stencil-slice") &&
+        Object.keys(selection).sort().join(",") === "fixedIndex,kind,normalAxis" &&
+        [0, 1, 2].includes(selection.normalAxis as number) && Number.isSafeInteger(selection.fixedIndex) ||
+      selection.kind === "probe" && Object.keys(selection).sort().join(",") === "indices,kind" &&
+        Array.isArray(selection.indices) && selection.indices.length === 3 &&
+        selection.indices.every(Number.isSafeInteger));
+    if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint,selection" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        !Array.isArray(request.components) || request.components.length !== 3 ||
+        request.components.some(component => typeof component !== "string" ||
+          !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
+        new Set(request.components).size !== 3 || !validSelection)
+      throw new TypeError("Invalid sparse vector request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    return previewScientificGraphVectorSamples(source.directory, source.fingerprint, request.datasetId,
+      request.components as [string, string, string], selection as
+        { kind: "slice" | "stencil-slice"; normalAxis: 0 | 1 | 2; fixedIndex: number } |
+          { kind: "probe"; indices: [number, number, number] });
   });
   ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||

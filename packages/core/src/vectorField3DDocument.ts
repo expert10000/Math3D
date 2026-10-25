@@ -305,7 +305,13 @@ export const parseVectorField3DDocument = (serialized: string): VectorField3DDoc
 };
 
 export type VectorField3DArrowArtifact = Readonly<{ source: Readonly<{ documentId: string; revision: number;
-  structuralHash: string }>; density: readonly [number, number, number]; evaluated: number; accepted: number;
+  structuralHash: string }>; verifiedSamples: Readonly<{ sourceHash: string; viewHash: string;
+    sampleShape: readonly [number, number, number];
+    components: readonly Readonly<{ name: string; sampleSha256: string;
+      verifiedChunks?: Readonly<{ loaded: number; total: number }>;
+      verifiedTiles?: Readonly<{ loaded: number; total: number }>;
+      verifiedOverview?: string }>[] }> | null;
+  density: readonly [number, number, number]; evaluated: number; accepted: number;
   rejected: number; stationary: number; arrows: readonly Readonly<{ position: readonly [number, number, number];
     vector: readonly [number, number, number]; magnitude: number; kind: "arrow" | "stationary" }>[];
   coordinateUnits: readonly [string, string, string]; componentUnits: readonly [string, string, string];
@@ -343,7 +349,8 @@ export const sampleVectorField3DArrows = (document: VectorField3DDocument): Vect
     arrows.push({ position, vector, magnitude, kind });
   }
   return { source: { documentId: document.identity.id, revision: document.identity.revision,
-    structuralHash: document.identity.structuralHash }, density, evaluated, accepted: arrows.length, rejected, stationary,
+    structuralHash: document.identity.structuralHash }, verifiedSamples: null,
+    density, evaluated, accepted: arrows.length, rejected, stationary,
     arrows, coordinateUnits: source.axes.map(axis => axis.unit) as [string, string, string],
     componentUnits: source.field.components.map(component => component.unit) as [string, string, string],
     timeUnit: source.timeUnit, magnitudeScale: source.display.magnitudeScale, colorBy: source.display.colorBy };

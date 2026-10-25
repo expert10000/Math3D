@@ -16,12 +16,16 @@ export type VectorField3DSliceArtifact = Readonly<{
   unit: string; min: number; max: number;
   method?: "bounded-finite-difference"; boundarySamples?: number;
   evaluated: number; rejected: number; sourceHash?: string;
+  verifiedSamples?: readonly Readonly<{ name: string; sampleSha256: string;
+    verifiedChunks?: number; totalChunks?: number; verifiedTiles?: number; totalTiles?: number }>[];
 }>;
 export type VectorField3DProbeArtifact = Readonly<{
   source: Readonly<{ documentId: string; revision: number; structuralHash: string }>;
   position: readonly [number, number, number]; vector: readonly [number, number, number];
   magnitude: number; coordinateUnits: readonly [string, string, string];
   componentUnits: readonly [string, string, string]; sourceHash?: string; viewHash?: string;
+  verifiedSamples?: readonly Readonly<{ name: string; sampleSha256: string;
+    verifiedChunks?: number; totalChunks?: number; verifiedTiles?: number; totalTiles?: number }>[];
 }>;
 
 const checkedDocument = (document: VectorField3DDocument) => {

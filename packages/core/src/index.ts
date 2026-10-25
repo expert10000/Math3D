@@ -133,6 +133,7 @@ export * from "./scientificScalarDerivation";
 export * from "./vectorField3DScientific";
 export * from "./vectorField3DEquilibria";
 export * from "./vectorField3DSlices";
+export * from "./vectorField3DSparse";
 export * from "./vectorField3DAnalyticLine";
 export * from "./vectorField3DDifferential";
 export * from "./vectorField3DTrajectories";

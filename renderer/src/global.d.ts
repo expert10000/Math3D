@@ -640,9 +640,12 @@ declare global {
       previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
         Promise<import("@math3d/core").Graph2DScientificVolume>;
       previewVectorVolume: (request: { fingerprint: string; datasetId: string;
-        components: [string, string, string] }) =>
+        components: [string, string, string]; sampleLimit?: number }) =>
         Promise<[import("@math3d/core").Graph2DScientificVolume,
           import("@math3d/core").Graph2DScientificVolume, import("@math3d/core").Graph2DScientificVolume]>;
+      previewVectorSamples: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; selection: import("@math3d/core").VectorField3DSparseSelection }) =>
+        Promise<import("@math3d/core").VectorField3DSparseSamples>;
       closeGraphDataset: (fingerprint: string) => Promise<boolean>;
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;

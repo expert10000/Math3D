@@ -112,6 +112,13 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       {" "}{slice.rejected} invalid of {slice.evaluated} samples. Dimmed cells lie outside the display clip;
       clipping and camera changes do not alter these values.
       {slice.method && ` Approximate · ${slice.method}; ${slice.boundarySamples} boundary stencils have reduced accuracy.`}</p>
+    {slice.verifiedSamples && <details aria-label="Slice sample provenance"><summary>Verified slice samples</summary>
+      <p>Source <code>{slice.sourceHash}</code>.</p>
+      <ul>{slice.verifiedSamples.map(part => <li key={part.name}>{part.name}: <code>{part.sampleSha256}</code> ·
+        {part.verifiedTiles !== undefined ?
+          ` ${part.verifiedTiles} of ${part.totalTiles} source tiles verified` :
+          ` ${part.verifiedChunks} of ${part.totalChunks} source chunks verified`}</li>)}</ul>
+    </details>}
     {profile.length > 0 && <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
       <label>Line direction <select aria-label="Line profile direction" value={profileDirection}
         onChange={event => setProfileDirection(Number(event.target.value) as 0 | 1)}>

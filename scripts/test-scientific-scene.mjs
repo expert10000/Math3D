@@ -8,7 +8,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { readScientificSceneBundle } = require("../dist/main/scientificScene/bundle.js");
 const { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane,
-  previewScientificGraphVolume, previewScientificGraphComplexVolumeLines } =
+  previewScientificGraphVolume, previewScientificGraphVectorVolume,
+  previewScientificGraphComplexVolumeLines } =
   require("../dist/main/scientificScene/graphDataset.js");
 const { adaptVerifiedHeightSurface, openScientificHeightSurface, inspectScientificHeightSample } = require("../dist/main/scientificScene/heightSurface.js");
 const { importQuantumFieldScientificManifest } = require("../dist/main/quantumScene/scientificManifest.js");
@@ -64,6 +65,15 @@ const upVolume = await previewScientificGraphVolume(graphPreset("vortex-volume")
   "field", "up");
 assert.deepEqual(upVolume.sampleShape, [21, 21, 17]);
 assert.equal(upVolume.values[(10 * 21 + 10) * 17 + 12], 0.8);
+const coarseVector = await previewScientificGraphVectorVolume(graphPreset("vortex-volume"),
+  volumeSource.fingerprint, "field", ["east", "north", "up"], 8);
+assert.deepEqual(coarseVector.map(part => part.sampleShape), [[8, 8, 8], [8, 8, 8], [8, 8, 8]]);
+assert.deepEqual(coarseVector.map(part => part.sampleLimit), [8, 8, 8]);
+assert.equal(coarseVector[2].values[0], upVolume.values[0]);
+assert.equal(coarseVector[2].values.at(-1), upVolume.values.at(-1));
+assert.notEqual(coarseVector[2].sampleSha256, upVolume.sampleSha256);
+await assert.rejects(previewScientificGraphVectorVolume(graphPreset("vortex-volume"),
+  volumeSource.fingerprint, "field", ["east", "north", "up"], 33), /sample limit/);
 
 const scalar = await openScientificHeightSurface(fixture);
 assert.equal(normalizeScientificSceneManifest(scalar.manifest).ok, true);
@@ -121,7 +131,7 @@ try {
   };
   await updateManifest(manifest => { manifest.datasets[0].shape = [17, 18]; });
   await assert.rejects(readScientificSceneBundle(directory), /shape|manifest/i);
-  await updateManifest(manifest => { manifest.schema = "scientific-scene/v2"; });
+  await updateManifest(manifest => { manifest.schema = "scientific-scene/v4"; });
   await assert.rejects(readScientificSceneBundle(directory), /unsupported version/);
   await updateManifest(manifest => { manifest.title = "Changed but otherwise valid"; });
   await assert.rejects(inspectScientificHeightSample(directory, scalar.fingerprint, "f", 212), /changed since/);

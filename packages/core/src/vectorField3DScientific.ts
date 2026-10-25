@@ -8,7 +8,7 @@ import { normalizeVectorField3DDocument, type VectorField3DArrowArtifact,
 
 export type VectorField3DVolumes = readonly [Graph2DScientificVolume, Graph2DScientificVolume, Graph2DScientificVolume];
 
-/** The host must re-open and verify one bundle for this complete transfer before calling this function. */
+/** The host verifies every transferred source sample: whole v1 resources or pinned v2 chunks. */
 export function verifyVectorField3DVolumes(document: VectorField3DDocument, manifestJson: string,
   fingerprint: string, volumes: VectorField3DVolumes): VectorField3DVolumes {
   const checked = normalizeVectorField3DDocument(document);
@@ -46,10 +46,12 @@ export function sampleVectorField3DScientificArrows(document: VectorField3DDocum
   const source = document.source, field = source.field;
   if (field.kind !== "scientific-bundle") throw new TypeError("Expected a scientific bundle vector field.");
   const density = source.display.density;
-  createScientificDerivedView(createScientificDatasetLink(field.references), { kind: "glyphs",
+  const view = createScientificDerivedView(createScientificDatasetLink(field.references), { kind: "glyphs",
     components: field.references.map(reference => reference.component), density,
     maxGlyphs: source.display.maxGlyphs });
   const evaluated = density[0] * density[1] * density[2];
+  const parsed = parseScientificSceneManifest(manifestJson);
+  if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
   if (evaluated > source.display.maxGlyphs || density.some((size, axis) => size > checked[0].sampleShape[axis]!))
     throw new TypeError("3D arrow density exceeds the verified sample lattice or glyph budget.");
   const arrows: VectorField3DArrowArtifact["arrows"][number][] = [];
@@ -72,7 +74,21 @@ export function sampleVectorField3DScientificArrows(document: VectorField3DDocum
     arrows.push({ position, vector, magnitude, kind });
   }
   return { source: { documentId: document.identity.id, revision: document.identity.revision,
-    structuralHash: document.identity.structuralHash }, density, evaluated, accepted: arrows.length,
+    structuralHash: document.identity.structuralHash },
+    verifiedSamples: { sourceHash: view.sourceHash, viewHash: view.viewHash,
+      sampleShape: checked[0].sampleShape,
+      components: checked.map((volume, index) => {
+        const dataset = parsed.value.datasets.find(item => item.id === field.references[index].datasetId);
+        const resourceId = dataset?.components?.find(item => item.name === volume.component)?.resource;
+        const resource = parsed.value.resources.find(item => item.id === resourceId);
+        return { name: volume.component, sampleSha256: volume.sampleSha256,
+          ...(volume.verifiedChunks ? { verifiedChunks: { loaded: volume.verifiedChunks.length,
+            total: resource?.chunkSha256?.length ?? 0 } } : {}),
+          ...(volume.verifiedTiles ? { verifiedTiles: { loaded: volume.verifiedTiles.length,
+            total: resource?.tileSha256?.length ?? 0 } } : {}),
+          ...(volume.verifiedOverview ? { verifiedOverview: volume.verifiedOverview } : {}) };
+      }) },
+    density, evaluated, accepted: arrows.length,
     rejected: 0, stationary, arrows, coordinateUnits: source.axes.map(axis => axis.unit) as [string, string, string],
     componentUnits: field.componentUnits, timeUnit: source.timeUnit,
     magnitudeScale: source.display.magnitudeScale, colorBy: source.display.colorBy };

@@ -1,6 +1,6 @@
 import { sha256Checksum } from "./documentIdentity";
 import { graph2DPointDomain, type Graph2DPointRow } from "./graph2dPointSeries";
-import { parseScientificSceneManifest } from "./scientificSceneManifest";
+import { parseScientificSceneManifest, scientificTileLayout, scientificTileSampleLocation } from "./scientificSceneManifest";
 import { scientificAxisCoordinate, validateScientificLineCoordinates } from "./scientificDatasetCoordinates";
 import type { Graph2DScientificDatasetOrigin } from "./graph2dDocument";
 
@@ -18,6 +18,8 @@ export type Graph2DScientificPlane = Readonly<{ fingerprint: string; datasetId: 
 
 export type Graph2DScientificVolume = Readonly<{ fingerprint: string; datasetId: string; component: string;
   sourceShape: readonly [number, number, number]; sampleShape: readonly [number, number, number];
+  sampleLimit?: number; verifiedChunks?: readonly number[]; verifiedTiles?: readonly number[];
+  verifiedOverview?: string;
   resourceSha256: string; sampleSha256: string; values: readonly number[] }>;
 
 export function verifyGraph2DScientificVolume(manifestJson: string, fingerprint: string,
@@ -32,13 +34,59 @@ export function verifyGraph2DScientificVolume(manifestJson: string, fingerprint:
     dataset?.semanticType === "complex-scalar-field" ? volume.component === "real" ? dataset.real :
       volume.component === "imaginary" ? dataset.imaginary : undefined : volume.component === "scalar" ? dataset?.real : undefined;
   const resource = checked.value.resources.find(item => item.id === resourceId);
+  const sampleLimit = volume.sampleLimit ?? 32;
   if (!dataset || dataset.shape.length !== 3 || !resource ||
+      !Number.isSafeInteger(sampleLimit) || sampleLimit < 2 || sampleLimit > 32 ||
       volume.sourceShape.length !== 3 || volume.sourceShape.some((size, axis) => size !== dataset.shape[axis]) ||
-      volume.sampleShape.length !== 3 || volume.sampleShape.some((size, axis) => size !== Math.min(dataset.shape[axis]!, 32)) ||
+      volume.sampleShape.length !== 3 || volume.sampleShape.some((size, axis) => size !== Math.min(dataset.shape[axis]!, sampleLimit)) ||
       volume.values.length !== volume.sampleShape[0] * volume.sampleShape[1] * volume.sampleShape[2] ||
       volume.values.length > 32 ** 3 || volume.resourceSha256 !== resource.sha256 ||
       !/^[a-f0-9]{64}$/.test(volume.sampleSha256))
     throw new TypeError("Choose a verified volume and component.");
+  if (checked.value.schema === "scientific-scene/v2") {
+    if (volume.verifiedTiles !== undefined || volume.verifiedOverview !== undefined)
+      throw new TypeError("Chunked scientific volume cannot claim tile verification.");
+    if (!resource.chunkBytes || !resource.chunkSha256 || !Array.isArray(volume.verifiedChunks))
+      throw new TypeError("Chunked scientific volume is missing verification coverage.");
+    const positions = volume.sampleShape.map((count, axis) => Array.from({ length: count }, (_, index) =>
+      count === 1 ? 0 : Math.round(index * (volume.sourceShape[axis]! - 1) / (count - 1))));
+    const required = new Set<number>();
+    for (const x of positions[0]!) for (const y of positions[1]!) for (const z of positions[2]!)
+      required.add(Math.floor(((x * volume.sourceShape[1] + y) * volume.sourceShape[2] + z) * 8 /
+        resource.chunkBytes));
+    const claimed = volume.verifiedChunks;
+    if (claimed.length !== required.size || new Set(claimed).size !== required.size ||
+        claimed.some(index => !Number.isSafeInteger(index) || !required.has(index) ||
+          !resource.chunkSha256?.[index]))
+      throw new TypeError("Chunked scientific volume verification coverage changed.");
+  } else if (checked.value.schema === "scientific-scene/v3") {
+    if (!resource.tileShape || !resource.tileSha256 || volume.verifiedChunks !== undefined)
+      throw new TypeError("Tiled scientific volume is missing verification coverage.");
+    if (volume.verifiedOverview !== undefined) {
+      if (!resource.overview || sampleLimit !== 8 || volume.verifiedTiles !== undefined ||
+          volume.verifiedOverview !== resource.overview.sha256 ||
+          volume.sampleSha256 !== resource.overview.sha256 ||
+          volume.sampleShape.some((size, axis) => size !== resource.overview!.shape[axis]))
+        throw new TypeError("Scientific overview verification changed.");
+    } else {
+    if (!Array.isArray(volume.verifiedTiles))
+      throw new TypeError("Tiled scientific volume is missing verification coverage.");
+    const positions = volume.sampleShape.map((count, axis) => Array.from({ length: count }, (_, index) =>
+      count === 1 ? 0 : Math.round(index * (volume.sourceShape[axis]! - 1) / (count - 1))));
+    const layout = scientificTileLayout(volume.sourceShape, resource.tileShape);
+    const required = new Set<number>();
+    for (const x of positions[0]!) for (const y of positions[1]!) for (const z of positions[2]!)
+      required.add(scientificTileSampleLocation(volume.sourceShape, resource.tileShape,
+        [x, y, z], layout).tileIndex);
+    const claimed = volume.verifiedTiles;
+    if (claimed.length !== required.size || new Set(claimed).size !== required.size ||
+        claimed.some(index => !Number.isSafeInteger(index) || !required.has(index) ||
+          !resource.tileSha256?.[index]))
+      throw new TypeError("Tiled scientific volume verification coverage changed.");
+    }
+  } else if (volume.verifiedChunks !== undefined || volume.verifiedTiles !== undefined ||
+      volume.verifiedOverview !== undefined)
+    throw new TypeError("Legacy scientific volume cannot claim partial verification.");
   const bytes = new Uint8Array(volume.values.length * 8), view = new DataView(bytes.buffer);
   volume.values.forEach((value, index) => {
     if (!Number.isFinite(value)) throw new TypeError("Scientific volume contains a non-finite value.");

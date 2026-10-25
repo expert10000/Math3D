@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { cp, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { expect, test } from "@playwright/test";
@@ -115,6 +116,10 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await expect(editor).toContainText("north");
     await expect(editor).toContainText("up");
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Initial verified transfer lattice: 8 × 8 × 8");
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Full verified transfer lattice: 21 × 21 × 17");
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
     for (const [name, coordinate, samples] of [
       ["XY slice", "-1.5", "21 × 21"], ["XZ slice", "-2", "21 × 17"],
@@ -223,6 +228,296 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector3d-"))
       throw new Error("Unsafe vector-field fixture cleanup path");
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SCI-04 chunked source renders verified sparse data and rejects a changed sampled chunk", async ({}, testInfo) => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-chunks-"));
+  const directory = join(root, "flow.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene"), directory, { recursive: true });
+  const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")) as {
+    schema: string; resources: { path: string; chunkBytes?: number; chunkSha256?: string[] }[] };
+  manifest.schema = "scientific-scene/v2";
+  for (const resource of manifest.resources) {
+    const bytes = await readFile(join(directory, resource.path));
+    resource.chunkBytes = 4096;
+    resource.chunkSha256 = [];
+    for (let offset = 0; offset < bytes.length; offset += 4096)
+      resource.chunkSha256.push(createHash("sha256").update(bytes.subarray(offset, offset + 4096)).digest("hex"));
+  }
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(join(directory, "manifest.json"), manifestBytes);
+  await writeFile(join(directory, "bundle.json"), JSON.stringify({ schema: "scientific-scene-bundle/v2",
+    manifest: { path: "manifest.json", bytes: manifestBytes.length,
+      sha256: createHash("sha256").update(manifestBytes).digest("hex") } }));
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "YZ slice" }).click();
+    await editor.getByLabel("Slice physical coordinate").selectOption("-4");
+    await editor.evaluate(element => {
+      const button = [...element.querySelectorAll("button")].find(item => item.textContent?.trim() === "Preview slice");
+      if (!button) throw new Error("Slice preview button is missing");
+      const measure = { started: 0, firstView: 0 };
+      (window as unknown as { __m3dFirstSlice?: typeof measure }).__m3dFirstSlice = measure;
+      button.addEventListener("click", () => { measure.started = performance.now(); }, { once: true });
+      const observer = new MutationObserver(() => {
+        if (element.querySelector('figure[aria-label="YZ field slice"]')) {
+          measure.firstView = performance.now(); observer.disconnect();
+        }
+      });
+      observer.observe(element, { childList: true, subtree: true });
+    });
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "YZ field slice" })).toBeVisible();
+    const firstSlice = await page.evaluate(() => (window as unknown as {
+      __m3dFirstSlice: { started: number; firstView: number }
+    }).__m3dFirstSlice);
+    expect(firstSlice.firstView).toBeGreaterThan(firstSlice.started);
+    await editor.evaluate(element => {
+      const cell = element.querySelector('[data-probe-cell="0-0"]');
+      if (!cell) throw new Error("Probe cell is missing");
+      const measure = { started: 0, firstView: 0 };
+      (window as unknown as { __m3dFirstProbe?: typeof measure }).__m3dFirstProbe = measure;
+      cell.addEventListener("click", () => { measure.started = performance.now(); }, { once: true });
+      const observer = new MutationObserver(() => {
+        if (element.querySelector('[data-testid="vector-field3d-probe-values"]')) {
+          measure.firstView = performance.now(); observer.disconnect();
+        }
+      });
+      observer.observe(element, { childList: true, subtree: true });
+    });
+    await editor.getByRole("figure", { name: "YZ field slice" })
+      .locator('[data-probe-cell="0-0"]').click();
+    await expect(editor.getByTestId("vector-field3d-probe-values")).toBeVisible();
+    const firstProbe = await page.evaluate(() => (window as unknown as {
+      __m3dFirstProbe: { started: number; firstView: number }
+    }).__m3dFirstProbe);
+    expect(firstProbe.firstView).toBeGreaterThan(firstProbe.started);
+    await testInfo.attach("chunked-first-slice-probe.json", { body: JSON.stringify({
+      clickToFirstSliceMs: Math.round((firstSlice.firstView - firstSlice.started) * 10) / 10,
+      clickToFirstProbeMs: Math.round((firstProbe.firstView - firstProbe.started) * 10) / 10,
+      sourceShape: [21, 21, 17],
+    }), contentType: "application/json" });
+    console.log(`SCI-04 chunked click-to-first-slice/probe: ` +
+      `${(firstSlice.firstView - firstSlice.started).toFixed(1)} / ` +
+      `${(firstProbe.firstView - firstProbe.started).toFixed(1)} ms`);
+    await editor.getByLabel("Slice displayed field").selectOption("curl-magnitude");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "YZ field slice" }))
+      .toContainText("Approximate · bounded-finite-difference");
+    await editor.getByLabel("Slice displayed field").selectOption("component");
+    await editor.getByRole("button", { name: "3D arrows" }).click();
+    await editor.evaluate(element => {
+      const button = [...element.querySelectorAll("button")].find(item =>
+        item.textContent?.includes("Verify & render arrows"));
+      if (!button) throw new Error("Arrow preview button is missing");
+      const heap = () => (performance as Performance & {
+        memory?: { usedJSHeapSize: number }
+      }).memory?.usedJSHeapSize ?? null;
+      const measurement = { started: 0, firstView: 0, heapBefore: null as number | null,
+        heapAtFirstView: null as number | null };
+      (window as unknown as { __m3dFirstView?: typeof measurement }).__m3dFirstView = measurement;
+      button.addEventListener("click", () => { measurement.started = performance.now();
+        measurement.heapBefore = heap(); }, { once: true });
+      const observer = new MutationObserver(() => {
+        if (element.querySelector('[data-testid="vector-field3d-transfer-status"]')
+          ?.textContent?.includes("Initial verified transfer lattice")) {
+          measurement.firstView = performance.now();
+          measurement.heapAtFirstView = heap();
+          observer.disconnect();
+        }
+      });
+      observer.observe(element, { childList: true, subtree: true, characterData: true });
+    });
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Initial verified transfer lattice: 8 × 8 × 8");
+    const firstView = await page.evaluate(() => (window as unknown as {
+      __m3dFirstView: { started: number; firstView: number;
+        heapBefore: number | null; heapAtFirstView: number | null }
+    }).__m3dFirstView);
+    expect(firstView.started).toBeGreaterThan(0);
+    expect(firstView.firstView).toBeGreaterThan(firstView.started);
+    console.log(`SCI-04 chunked 21³ click-to-first-view: ${(firstView.firstView - firstView.started).toFixed(1)} ms; ` +
+      `renderer heap delta ${firstView.heapBefore === null || firstView.heapAtFirstView === null ?
+        "unavailable" : `${((firstView.heapAtFirstView - firstView.heapBefore) / 1048576).toFixed(1)} MiB`}`);
+    await testInfo.attach("chunked-first-view.json", { body: JSON.stringify({
+      clickToFirstViewMs: Math.round((firstView.firstView - firstView.started) * 10) / 10,
+      rendererHeapDeltaMiB: firstView.heapBefore === null || firstView.heapAtFirstView === null ? null :
+        Math.round((firstView.heapAtFirstView - firstView.heapBefore) / 1048576 * 10) / 10,
+      transferShape: [8, 8, 8], sourceShape: [21, 21, 17],
+    }), contentType: "application/json" });
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Full verified transfer lattice: 21 × 21 × 17");
+    await editor.getByText("Preview sample provenance").click();
+    await expect(editor.getByLabel("3D preview provenance"))
+      .toContainText("source chunks verified");
+    const file = await open(join(directory, "east.f64"), "r+");
+    try {
+      const byte = Buffer.alloc(1);
+      await file.read(byte, 0, 1, 0);
+      byte[0] ^= 1;
+      await file.write(byte, 0, 1, 0);
+    } finally { await file.close(); }
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toContainText("chunk integrity");
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
+    await editor.getByRole("button", { name: "YZ slice" }).click();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toContainText("chunk integrity");
+    await editor.getByRole("button", { name: "Reverify probe" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toContainText("chunk integrity");
+  } finally {
+    await closeSurfaceApp(app);
+    if (resolve(root).startsWith(`${resolve(tmpdir())}${sep}`))
+      await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SCI-04 tiled source previews every orthogonal slice and rejects a changed tile", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-tiles-"));
+  const source = join(root, "source.sscene"), tiled = join(root, "tiled.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/vortex-volume.sscene"), source, { recursive: true });
+  execFileSync(process.execPath, [resolve("scripts/tile-scientific-scene.mjs"), source, tiled,
+    "8", "8", "8"]);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, tiled);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    for (const [name, coordinate] of [["XY", "-3"], ["XZ", "-4"], ["YZ", "-4"]] as const) {
+      await editor.getByRole("button", { name: `${name} slice` }).click();
+      await editor.getByLabel("Slice physical coordinate").selectOption(coordinate);
+      await editor.getByRole("button", { name: "Preview slice" }).click();
+      await expect(editor.getByRole("figure", { name: `${name} field slice` })).toBeVisible();
+      await editor.getByLabel("Slice sample provenance").getByText("Verified slice samples").click();
+      await expect(editor.getByLabel("Slice sample provenance")).toContainText("source tiles verified");
+    }
+    await editor.getByRole("figure", { name: "YZ field slice" })
+      .locator('[data-probe-cell="0-0"]').click();
+    await expect(editor.getByTestId("vector-field3d-probe-values")).toContainText("source tiles verified");
+    await editor.getByLabel("Slice displayed field").selectOption("curl-magnitude");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "YZ field slice" }))
+      .toContainText("Approximate · bounded-finite-difference");
+    await editor.getByRole("button", { name: "3D arrows" }).click();
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Full verified transfer lattice");
+    await editor.getByText("Preview sample provenance").click();
+    await expect(editor.getByLabel("3D preview provenance")).toContainText("source tiles verified");
+    const overviewFile = await open(join(tiled, "east.overview.f64"), "r+");
+    try {
+      const byte = Buffer.alloc(1);
+      await overviewFile.read(byte, 0, 1, 0);
+      byte[0] ^= 1;
+      await overviewFile.write(byte, 0, 1, 0);
+    } finally { await overviewFile.close(); }
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toContainText("overview integrity");
+    const restoredOverview = await open(join(tiled, "east.overview.f64"), "r+");
+    try {
+      const byte = Buffer.alloc(1);
+      await restoredOverview.read(byte, 0, 1, 0);
+      byte[0] ^= 1;
+      await restoredOverview.write(byte, 0, 1, 0);
+    } finally { await restoredOverview.close(); }
+    const file = await open(join(tiled, "east.f64"), "r+");
+    try {
+      const byte = Buffer.alloc(1);
+      await file.read(byte, 0, 1, 0);
+      byte[0] ^= 1;
+      await file.write(byte, 0, 1, 0);
+    } finally { await file.close(); }
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByLabel("Slice physical coordinate").selectOption("-3");
+    await editor.getByLabel("Slice displayed field").selectOption("component");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toContainText("tile integrity");
+    await editor.getByRole("button", { name: "Reverify probe" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toContainText("tile integrity");
+  } finally {
+    await closeSurfaceApp(app);
+    if (resolve(root).startsWith(`${resolve(tmpdir())}${sep}`))
+      await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SCI-04 larger generated scientific field shows verified overview before refinement", async ({}, testInfo) => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-large-vortex-ui-"));
+  const directory = join(root, "large-vortex.sscene");
+  execFileSync(process.execPath, [resolve("scripts/write-scientific-large-vortex.mjs"), directory]);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor).toContainText("shape 80 × 80 × 80");
+    await editor.evaluate(element => {
+      const button = [...element.querySelectorAll("button")].find(item =>
+        item.textContent?.includes("Verify & render arrows"));
+      if (!button) throw new Error("Arrow preview button is missing");
+      const measure = { started: 0, firstView: 0, overviewSeen: false };
+      (window as unknown as { __m3dLargeOverview?: typeof measure }).__m3dLargeOverview = measure;
+      button.addEventListener("click", () => { measure.started = performance.now(); }, { once: true });
+      const observer = new MutationObserver(() => {
+        if (element.querySelector('[data-testid="vector-field3d-transfer-status"]')
+          ?.textContent?.includes("Initial verified transfer lattice: 8 × 8 × 8")) {
+          measure.firstView = performance.now(); measure.overviewSeen = true; observer.disconnect();
+        }
+      });
+      observer.observe(element, { childList: true, subtree: true, characterData: true });
+    });
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Full verified transfer lattice: 32 × 32 × 32");
+    const measure = await page.evaluate(() => (window as unknown as {
+      __m3dLargeOverview: { started: number; firstView: number; overviewSeen: boolean }
+    }).__m3dLargeOverview);
+    expect(measure.overviewSeen).toBe(true);
+    expect(measure.firstView).toBeGreaterThan(measure.started);
+    await testInfo.attach("large-scientific-overview.json", { body: JSON.stringify({
+      shape: [80, 80, 80], clickToFirstOverviewMs: Math.round((measure.firstView - measure.started) * 10) / 10,
+    }), contentType: "application/json" });
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" })).toBeVisible();
+    await editor.getByLabel("Slice sample provenance").getByText("Verified slice samples").click();
+    await expect(editor.getByLabel("Slice sample provenance")).toContainText("source tiles verified");
+  } finally {
+    await closeSurfaceApp(app);
+    if (resolve(root).startsWith(`${resolve(tmpdir())}${sep}`))
+      await rm(root, { recursive: true, force: true });
   }
 });
 
@@ -851,6 +1146,8 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
       const started = Date.now();
       await editor.getByRole("button", { name: "Verify & render arrows" }).click();
       await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("512 of 512 bounded samples");
+      await expect(editor.getByTestId("vector-field3d-preview-status"))
+        .toContainText("Full detail: 512 of 512 evaluated positions");
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       renderTimes.push(Date.now() - started);
     }
@@ -875,6 +1172,13 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
     expect(accessible).toContain("Verify & render arrows");
     expect(accessible).toContain("Camera ready. Use arrow keys to orbit");
     const viewport = editor.getByRole("group", { name: "3D camera viewport" });
+    await viewport.hover();
+    await page.mouse.down();
+    await expect(editor.getByTestId("vector-field3d-preview-status"))
+      .toContainText("Overview:");
+    await page.mouse.up();
+    await expect(editor.getByTestId("vector-field3d-preview-status"))
+      .toContainText("Full detail: 512 of 512 evaluated positions");
     const before = await viewport.boundingBox();
     if (!before) throw new Error("3D camera viewport did not mount");
     await resizeSurfaceAppWindow(app, 760, 700);
