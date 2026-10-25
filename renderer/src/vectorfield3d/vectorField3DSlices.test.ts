@@ -7,6 +7,7 @@ import { createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceD
   sampleVectorField3DSlice, sampleVectorField3DProbe, serializeMath3DProject, serializeVectorField3DDocument,
   integrateVectorField3DScientificTrajectories, reviseVectorField3DDocument,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
+  searchVectorField3DEquilibria,
   sha256Checksum, vectorField3DSliceCoordinates, type Graph2DFieldReference, type VectorField3DSource,
   type VectorField3DVolumes } from "@math3d/core";
 
@@ -37,6 +38,18 @@ const volumes = names.map((component, index) => {
 }) as VectorField3DVolumes;
 
 describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
+  it("reverifies all components before a bounded equilibrium search", () => {
+    expect(() => searchVectorField3DEquilibria(document)).toThrow(/Reverify/);
+    const verified = { manifestJson, fingerprint, volumes };
+    const result = searchVectorField3DEquilibria(document, verified);
+    expect(result.sourceHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(result.status).toMatch(/bounded-incomplete|budget-reached/);
+    expect(result.candidates.some(item => item.residual <= result.residualTolerance)).toBe(true);
+    const changed = [{ ...volumes[0], sampleSha256: "0".repeat(64) },
+      volumes[1], volumes[2]] as VectorField3DVolumes;
+    expect(() => searchVectorField3DEquilibria(document,
+      { manifestJson, fingerprint, volumes: changed })).toThrow(/checksum/);
+  });
   it("derives a bounded verified vortex map and rejects changed source components", () => {
     const scientific = { manifestJson, fingerprint, volumes };
     const derived = sampleVectorField3DDerivedSlice(document, 2, -1.5,

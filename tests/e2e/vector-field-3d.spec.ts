@@ -66,6 +66,31 @@ test("field preview errors stay visible in the viewer", async () => {
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-08 searches, classifies and saves a linked equilibrium in the desktop Explorer", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Equilibria", exact: true }).click();
+    await expect(editor.getByRole("button", { name: "Find equilibria" })).toBeFocused();
+    await expect(editor.getByRole("button", { name: "Find equilibria" })).toBeInViewport();
+    await editor.getByLabel("P(x,y,z)").fill("x");
+    await editor.getByLabel("Q(x,y,z)").fill("2*y");
+    await editor.getByLabel("R(x,y,z)").fill("3*z");
+    await editor.getByRole("button", { name: "Find equilibria" }).click();
+    const results = editor.getByTestId("vector-field3d-equilibria");
+    await expect(results).toContainText("Bounded scan · coverage incomplete");
+    await results.getByRole("button", { name: /source at/ }).first().click();
+    await expect(results).toContainText("Jacobian condition estimate");
+    await results.getByRole("button", { name: "Save construction" }).first().click();
+    await expect(editor.getByText(/Saved linked equilibria \(1\/32\)/)).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or missing bytes", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector3d-"));

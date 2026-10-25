@@ -6,7 +6,9 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
   sampleVectorField3DSlice, sampleVectorField3DProbe, vectorField3DSliceCoordinates,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
+  verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
+  type VectorField3DEquilibriumSearch,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
   integrateVectorField3DScientificTrajectories,
   vectorField3DSeedPreset,
@@ -52,13 +54,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
   const cancelRunRef = useRef<(() => void) | null>(null);
   const cancelRequested = useRef(false);
   const probeEpoch = useRef(0);
   useEffect(() => {
     const previous = globalThis.document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => { cancelRunRef.current?.(); probeEpoch.current++; previous?.focus(); };
+    return () => { cancelRequested.current = true; cancelRunRef.current?.(); probeEpoch.current++; previous?.focus(); };
   }, []);
   const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
@@ -78,6 +81,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     VectorField3DSliceArtifact>>>({});
   const [probeArtifact, setProbeArtifact] = useState<VectorField3DProbeArtifact | null>(null);
   const [differential, setDifferential] = useState<VectorField3DDifferentialArtifact | null>(null);
+  const [equilibriumSearch, setEquilibriumSearch] = useState<VectorField3DEquilibriumSearch | null>(null);
+  const [selectedEquilibrium, setSelectedEquilibrium] = useState<number | null>(null);
   const [trajectories, setTrajectories] = useState<VectorField3DTrajectoryArtifact | null>(null);
   const [seedDraft, setSeedDraft] = useState<[string, string, string]>(document.source.axes.map(axis =>
     String((axis.min + axis.max) / 2)) as [string, string, string]);
@@ -85,7 +90,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
-  const [busyAction, setBusyAction] = useState<"render" | "trajectory" | null>(null);
+  const [busyAction, setBusyAction] = useState<"render" | "trajectory" | "equilibrium" | null>(null);
   const [runStatus, setRunStatus] = useState("");
   const [seedProgress, setSeedProgress] = useState<{ completed: number; total: number } | null>(null);
   const [saveStatus, setSaveStatus] = useState("");
@@ -170,6 +175,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setSlice(null);
     setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
+    setEquilibriumSearch(null); setSelectedEquilibrium(null);
     setRunStatus(""); setSeedProgress(null);
   };
   const currentDocument = () => document.source.field.kind === "expressions" ?
@@ -187,6 +193,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     if (busy || lineBusy) return;
     setBusy(true); setBusyAction("render"); setArtifact(null); setSlice(null); setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
+    setEquilibriumSearch(null); setSelectedEquilibrium(null);
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
@@ -339,6 +346,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (epoch === probeEpoch.current) { setDocument(next); setDifferential(result); }
     } catch (cause) { if (epoch === probeEpoch.current) {
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
+      setEquilibriumSearch(null); setSelectedEquilibrium(null);
       setDifferential(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } }
@@ -472,6 +480,100 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
       setBusy(false); setBusyAction(null); if (!cancelRequested.current) setRunStatus(""); }
   };
+  const findEquilibria = async () => {
+    if (busy || lineBusy) return;
+    cancelRequested.current = false;
+    setBusy(true); setBusyAction("equilibrium"); setError("");
+    setEquilibriumSearch(null); setSelectedEquilibrium(null);
+    setRunStatus("Verifying source before bounded equilibrium search…");
+    let fingerprint: string | null = null;
+    try {
+      const next = currentDocument();
+      let scientific: { manifestJson: string; fingerprint: string;
+        volumes: Parameters<typeof integrateVectorField3DScientificTrajectories>[3] } | undefined;
+      if (next.source.field.kind === "scientific-bundle") {
+        const refs = next.source.field.references, bridge = window.scientificScenes;
+        if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+          throw new Error("Equilibrium search requires the desktop source verifier.");
+        const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
+          sceneFingerprint: refs[0].sceneFingerprint });
+        if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
+        fingerprint = opened.source.fingerprint;
+        const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
+          components: refs.map(ref => ref.component) as [string, string, string] });
+        scientific = { manifestJson: opened.source.manifestJson, fingerprint, volumes };
+      }
+      if (cancelRequested.current) throw new Error("Equilibrium search cancelled.");
+      const result = await new Promise<VectorField3DEquilibriumSearch>((resolve, reject) => {
+        const worker = new Worker(new URL("./equilibriumWorker.ts", import.meta.url), { type: "module" });
+        const finish = () => { worker.terminate(); cancelRunRef.current = null; };
+        cancelRunRef.current = () => { finish(); reject(new Error("Equilibrium search cancelled.")); };
+        worker.onmessage = (event: MessageEvent<{ ok: true; result: VectorField3DEquilibriumSearch } |
+          { ok: false; error: string }>) => {
+          finish(); if (event.data.ok) resolve(event.data.result); else reject(new Error(event.data.error));
+        };
+        worker.onerror = event => { finish(); reject(new Error(event.message || "Equilibrium worker failed.")); };
+        setRunStatus("Searching bounded seeds… Cancel is available.");
+        worker.postMessage({ document: next, scientific });
+      });
+      if (cancelRequested.current) return;
+      setDocument(next); setEquilibriumSearch(result);
+    } catch (cause) {
+      if (!cancelRequested.current) {
+        setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    } finally {
+      if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      setBusy(false); setBusyAction(null);
+      setRunStatus(cancelRequested.current ? "Equilibrium search cancelled; no partial result was published." : "");
+    }
+  };
+  const saveEquilibrium = async (index: number) => {
+    const candidate = equilibriumSearch?.candidates[index];
+    if (!candidate || !equilibriumSearch || busy || lineBusy ||
+        candidate.residual > equilibriumSearch.residualTolerance) return;
+    setBusy(true);
+    let fingerprint: string | null = null;
+    try {
+      const next = currentDocument();
+      if (next.identity.structuralHash !== equilibriumSearch.source.structuralHash ||
+          next.identity.revision !== equilibriumSearch.source.revision)
+        throw new Error("Field source changed since the search. Search again before saving.");
+      if (next.source.field.kind === "scientific-bundle") {
+        const refs = next.source.field.references, bridge = window.scientificScenes;
+        if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+          throw new Error("Saving this equilibrium requires the desktop source verifier.");
+        const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
+          sceneFingerprint: refs[0].sceneFingerprint });
+        if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
+        fingerprint = opened.source.fingerprint;
+        const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
+          components: refs.map(ref => ref.component) as [string, string, string] });
+        verifyVectorField3DVolumes(next, opened.source.manifestJson, fingerprint, volumes);
+      }
+      const view = next.workspace ?? defaultVectorField3DWorkspace(next.source);
+      if (view.equilibriumConstructions.length >= 32) throw new Error("The 32-construction budget is full.");
+      if (view.equilibriumConstructions.some(item => item.sourceStructuralHash === next.identity.structuralHash &&
+          Math.hypot(...item.position.map((value, axis) => value - candidate.position[axis])) < 1e-4))
+        throw new Error("This equilibrium is already saved for this field revision.");
+      const id = `equilibrium-${crypto.randomUUID()}`;
+      setDocument(reviseVectorField3DWorkspace(next, { ...view,
+        equilibriumConstructions: [...view.equilibriumConstructions, { id,
+          position: candidate.position, residual: candidate.residual,
+          classification: candidate.classification, sourceRevision: next.identity.revision,
+          sourceStructuralHash: next.identity.structuralHash, sourceHash: equilibriumSearch.sourceHash }] }));
+      setSaveStatus("Equilibrium linked to this field revision. Save the Project to retain it.");
+      setError("");
+    } catch (cause) {
+      setEquilibriumSearch(null); setSelectedEquilibrium(null);
+      setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      setBusy(false);
+    }
+  };
   const save = () => {
     try { const next = currentDocument(); onSaveDocument?.(next);
       try { window.localStorage.setItem(storageKey, serializeVectorField3DDocument(next)); }
@@ -491,6 +593,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setSeedDraft(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as [string, string, string]);
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
       setDifferential(null);
+      setEquilibriumSearch(null); setSelectedEquilibrium(null);
       setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
@@ -515,6 +618,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     {" "}<button type="button" disabled={busy} aria-pressed={workspace.layout === "quad"}
       onClick={() => setLayout("quad")}>Quad views</button>
     {multiView && <button type="button" disabled={busy} onClick={() => setLayout("three-pane")}>Single view</button>}
+    {" "}<button type="button" aria-controls="field-equilibria" onClick={() => {
+      equilibriaButtonRef.current?.scrollIntoView({ block: "center" });
+      equilibriaButtonRef.current?.focus({ preventScroll: true });
+    }}>Equilibria</button>
     {" "}<button type="button" onClick={onClose}>Back to Graphs</button></div></header>
     <div className="scientific-field-explorer-controls" aria-label="Field controls">
     <nav aria-label="Field layers" className="vector-field3d-layers">
@@ -532,7 +639,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             probeEpoch.current++;
             const next = [...expressions] as [string, string, string]; next[index] = event.target.value;
             setExpressions(next); setArtifact(null); setSlice(null); setProbeArtifact(null);
-            setDifferential(null);
+            setDifferential(null); setEquilibriumSearch(null); setSelectedEquilibrium(null);
             setTrajectories(null); setError(""); }} />
         </label>)}
       </div> : <p>Verified bundle: {document.source.field.references[0].sceneId} · dataset
@@ -766,6 +873,45 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {differential.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
       </div>}
     </section>
+    <section id="field-equilibria" aria-label="Field equilibria" className="vector-field3d-probe">
+      <h5>Equilibria · bounded search</h5>
+      <p>Searches a 5×5×5 seed grid and saved seeds. Results are local candidates, never a complete count.</p>
+      <button ref={equilibriaButtonRef} type="button" disabled={busy || lineBusy}
+        onClick={() => void findEquilibria()}>
+        Find equilibria</button>
+      {equilibriumSearch && <div role="status" data-testid="vector-field3d-equilibria">
+        <p>{equilibriumSearch.status === "budget-reached" ? "Partial scan · budget reached" :
+          "Bounded scan · coverage incomplete"} · {equilibriumSearch.candidates.length} candidates ·
+          {" "}{equilibriumSearch.attemptedSeeds} seeds · {equilibriumSearch.evaluations}/
+          {equilibriumSearch.maxEvaluations} evaluations · {equilibriumSearch.rejectedSeeds} rejected seeds.</p>
+        <p>Residual threshold {equilibriumSearch.residualTolerance.toPrecision(3)} {document.source.field.kind ===
+          "scientific-bundle" ? document.source.field.componentUnits[0] :
+            document.source.field.components[0].unit}. Source revision {equilibriumSearch.source.revision}
+          {equilibriumSearch.sourceHash && ` · hash ${equilibriumSearch.sourceHash}`}.</p>
+        {equilibriumSearch.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
+        <ol>{equilibriumSearch.candidates.map((candidate, index) => <li key={index}>
+          <button type="button" aria-pressed={selectedEquilibrium === index}
+            onClick={() => setSelectedEquilibrium(index)}>
+            {candidate.classification} at ({candidate.position.map(value => value.toPrecision(5)).join(", ")})
+          </button>{" "}<button type="button" disabled={busy || lineBusy ||
+            document.identity.structuralHash !== equilibriumSearch.source.structuralHash}
+            onClick={() => void saveEquilibrium(index)}>Save construction</button>
+          {selectedEquilibrium === index && <p>Residual {candidate.residual.toExponential(2)};
+            {" "}Jacobian condition estimate {candidate.conditionEstimate?.toPrecision(4) ?? "unavailable"};
+            {" "}eigenvalue real parts {candidate.eigenvalueRealParts?.map(value => value.toPrecision(4)).join(", ") ??
+              "unavailable"}. {candidate.diagnostics.join(" ")}</p>}
+        </li>)}</ol>
+      </div>}
+      {workspace.equilibriumConstructions.length > 0 && <details>
+        <summary>Saved linked equilibria ({workspace.equilibriumConstructions.length}/32)</summary>
+        <ul>{workspace.equilibriumConstructions.map(item => <li key={item.id}>
+          {item.classification} at ({item.position.map(value => value.toPrecision(5)).join(", ")}) ·
+          {" "}residual {item.residual.toExponential(2)} · source revision {item.sourceRevision} ·
+          {" "}{item.sourceStructuralHash === document.identity.structuralHash ?
+            "linked; reverify before new analysis" : "stale field revision"}
+        </li>)}</ul>
+      </details>}
+    </section>
     {normalAxis !== undefined && <section aria-label="Slice controls">
       <h5>{workspace.selectedLayer.toUpperCase()} slice</h5>
       <label>Displayed field <select aria-label="Slice displayed field"
@@ -828,6 +974,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onClick={() => void runTrajectories()}>{busy ? "Integrating…" : "Run trajectories"}</button>
       {busyAction === "trajectory" && <button type="button" onClick={() => { cancelRequested.current = true;
         cancelRunRef.current?.(); setRunStatus("Cancelling trajectory integration…"); }}>Cancel run</button>}
+      {busyAction === "equilibrium" && <button type="button" onClick={() => { cancelRequested.current = true;
+        cancelRunRef.current?.(); setRunStatus("Cancelling equilibrium search…"); }}>Cancel search</button>}
       {" "}<button type="button" disabled={busy || lineBusy} onClick={reopen}>Open saved document</button>
       {" "}<button type="button" onClick={onClose}>Close</button></div>
     {runStatus && <p role="status" aria-live="polite" data-testid="vector-field3d-run-status">{runStatus}</p>}
@@ -859,7 +1007,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
         <div className="vector-field3d-linked-cell">{artifact ?
           <VectorField3DArrowView document={document} artifact={artifact}
-            trajectories={trajectories} probe={workspace.probe}
+            trajectories={trajectories} probe={selectedEquilibrium !== null ?
+              equilibriumSearch?.candidates[selectedEquilibrium]?.position ?? workspace.probe : workspace.probe}
             onCameraStateChange={setCameraState} /> :
           <p role="status">Preview all views to show the bounded 3D field.</p>}</div>
         {(workspace.layout === "quad" ? ["xy", "xz", "yz"] as const :
@@ -884,7 +1033,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
           Saved scientific bundles are reverified before values appear.</div> :
         artifact ? <VectorField3DArrowView document={document} artifact={artifact}
-          trajectories={trajectories} probe={workspace.probe}
+          trajectories={trajectories} probe={selectedEquilibrium !== null ?
+            equilibriumSearch?.candidates[selectedEquilibrium]?.position ?? workspace.probe : workspace.probe}
           onCameraStateChange={setCameraState} /> :
         <div role="status" className="scientific-field-explorer-empty">Verify the field to display bounded 3D arrows.
           Saved scientific bundles are reread before any field values appear.</div>}

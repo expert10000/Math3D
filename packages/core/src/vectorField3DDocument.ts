@@ -33,6 +33,11 @@ export type VectorField3DClipBounds = readonly [readonly [number, number],
   readonly [number, number], readonly [number, number]];
 export type VectorField3DCameraState = Readonly<{ position: readonly [number, number, number];
   target: readonly [number, number, number]; zoom: number }>;
+export type VectorField3DEquilibriumConstruction = Readonly<{
+  id: string; position: readonly [number, number, number]; residual: number;
+  classification: "source" | "sink" | "saddle" | "degenerate/uncertain";
+  sourceRevision: number; sourceStructuralHash: string; sourceHash: string | null;
+}>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   sliceChannel: "component" | "divergence" | "curl-magnitude" |
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
@@ -44,6 +49,7 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
   viewCenter: Readonly<{ xy: readonly [number, number]; xz: readonly [number, number];
     yz: readonly [number, number] }>;
   probe: readonly [number, number, number] | null;
+  equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
   clipBounds: VectorField3DClipBounds;
   cameraPreset: VectorField3DCameraPreset;
   cameraState: VectorField3DCameraState | null }>;
@@ -54,6 +60,7 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
+  equilibriumConstructions: [],
   sliceChannel: "component",
   cameraState: null,
   viewsLinked: true, viewZoom: { xy: 1, xz: 1, yz: 1 },
@@ -172,6 +179,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "sliceChannel") ?
       { sliceChannel: defaults.sliceChannel } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ? { probe: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "equilibriumConstructions") ?
+      { equilibriumConstructions: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "clipBounds") ?
       { clipBounds: defaults.clipBounds } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "cameraPreset") ?
@@ -186,7 +195,7 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "equilibriumConstructions", "clipBounds", "cameraPreset", "cameraState"]) ||
       !["component", "divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z",
         "grad-speed-x", "grad-speed-y", "grad-speed-z", "grad-speed-magnitude",
         "laplacian-speed"]
@@ -217,6 +226,19 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes) ||
       workspace.probe !== null && (!tuple3(workspace.probe) ||
         !scientificPointWithinBounds(workspace.probe as number[], source.axes)) ||
+      !Array.isArray(workspace.equilibriumConstructions) ||
+      workspace.equilibriumConstructions.length > 32 ||
+      workspace.equilibriumConstructions.some((item: unknown) => !record(item) ||
+        !exact(item, ["id", "position", "residual", "classification", "sourceRevision", "sourceStructuralHash", "sourceHash"]) ||
+        !text(item.id, 64) || !tuple3(item.position) ||
+        item.position.some(value => !finite(value) || Math.abs(value) > 1e9) ||
+        !finite(item.residual) || item.residual < 0 ||
+        !["source", "sink", "saddle", "degenerate/uncertain"].includes(String(item.classification)) ||
+        !integer(item.sourceRevision, 1, Number.MAX_SAFE_INTEGER) ||
+        !text(item.sourceStructuralHash, 160) ||
+        item.sourceHash !== null && !text(item.sourceHash, 160)) ||
+      new Set((workspace.equilibriumConstructions as { id: string }[]).map(item => item.id)).size !==
+        workspace.equilibriumConstructions.length ||
       !tuple3(workspace.clipBounds) ||
       workspace.clipBounds.some((bounds: unknown, axis: number) =>
         !Array.isArray(bounds) || bounds.length !== 2 || !finite(bounds[0]) || !finite(bounds[1]) ||
