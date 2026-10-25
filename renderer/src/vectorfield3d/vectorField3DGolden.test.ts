@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createVectorField3DDocument, defaultVectorField3DWorkspace,
-  integrateVectorField3DTrajectories, reviseVectorField3DWorkspace,
+  integrateVectorField3DTrajectories, reviseVectorField3DDocument,
+  reviseVectorField3DWorkspace,
   sampleVectorField3DAnalyticLine, validGraph2DAnalyticFieldOrigin,
-  analyzeVectorField3DDifferential,
+  analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   sampleVectorField3DArrows, sampleVectorField3DProbe, sampleVectorField3DSlice,
   vectorField3DExpression, type VectorField3DSource } from "@math3d/core";
 
@@ -18,6 +19,42 @@ const field = (components: readonly [string, string, string], seed: readonly [nu
       maxSteps: 1000, maxTime: 1, maxArcLength: 10 } }, { stableKey: components.join("|") });
 
 describe("SCI-12 analytic vector-field numerical oracles", () => {
+  it("compares bounded RK45 with constant and vortex oracles and reports stops", () => {
+    const rk45 = (document: ReturnType<typeof field>) => reviseVectorField3DDocument(document,
+      { ...document.source, solver: { ...document.source.solver, method: "rk45" } });
+    const constant = integrateVectorField3DTrajectories(rk45(field(["1", "0", "0"], [0, 0, 0])));
+    expect(constant.solver.method).toBe("adaptive-rk45");
+    expect(constant.trajectories[0]!.stopReason).toBe("time-limit");
+    expect(constant.trajectories[0]!.points.at(-1)!.position[0]).toBeCloseTo(1, 6);
+    expect(constant.trajectories[0]!.maxEstimatedLocalError).toBeLessThan(1e-6);
+    const vortex = integrateVectorField3DTrajectories(rk45(field(["-y", "x", "0"], [1, 0, 0])));
+    const end = vortex.trajectories[0]!.points.at(-1)!;
+    expect(end.position[0]).toBeCloseTo(Math.cos(end.time), 4);
+    expect(end.position[1]).toBeCloseTo(Math.sin(end.time), 4);
+    expect(vortex.trajectories[0]!.stopDetail).toMatch(/integration time/);
+    expect(integrateVectorField3DTrajectories(rk45(field(["0", "0", "0"], [0, 0, 0])))
+      .trajectories[0]!.stopReason).toBe("stationary");
+    expect(integrateVectorField3DTrajectories(rk45(field(["1", "0", "0"], [4, 0, 0])))
+      .trajectories[0]!.stopReason).toBe("boundary");
+    expect(integrateVectorField3DTrajectories(rk45(field(["1", "0", "0"], [0, 0, 0])),
+      { shouldCancel: () => true }).trajectories[0]!.stopReason).toBe("cancelled");
+  });
+
+  it("maps approximate divergence and curl magnitude across a vortex slice", () => {
+    const document = field(["-y", "x", "0"], [1, 0, 0]);
+    const divergence = sampleVectorField3DDerivedSlice(document, 2, 0, "divergence");
+    const curls = ([0, 1, 2] as const).map(axis =>
+      sampleVectorField3DDerivedSlice(document, axis, 0, "curl-magnitude"));
+    expect(divergence.unit).toBe("1/s");
+    expect(divergence.method).toBe("bounded-finite-difference");
+    expect(divergence.boundarySamples).toBeGreaterThan(0);
+    expect(Math.max(...divergence.values.filter((value): value is number => value !== null)
+      .map(Math.abs))).toBeLessThan(1e-8);
+    for (const curl of curls) {
+      expect(curl.values[12 * 25 + 12]).toBeCloseTo(2, 7);
+      expect(curl.evaluated).toBeLessThanOrEqual(1024);
+    }
+  });
   it("keeps exact constant-field values and a bounded straight trajectory", () => {
     const document = field(["1", "0", "0"], [0, 0, 0]);
     expect(sampleVectorField3DProbe(document, [2, -1, 3]).vector).toEqual([1, 0, 0]);

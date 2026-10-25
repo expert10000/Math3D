@@ -102,6 +102,11 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
       await expect(editor.getByRole("figure", { name: /field slice/ })).toContainText("m/s");
       await expect(editor.getByRole("img", { name: /Color legend/ })).toBeVisible();
     }
+    await editor.getByLabel("Slice displayed field").selectOption("curl-magnitude");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: /field slice/ }))
+      .toContainText("Approximate · bounded-finite-difference");
+    await editor.getByLabel("Slice displayed field").selectOption("component");
     await editor.getByRole("button", { name: "3D arrows" }).click();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("Domain box:");
 
@@ -321,6 +326,39 @@ test("SCI-06 analyzes an authored vortex and reports its boundary stencil", asyn
     await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
     await expect(differential).toContainText("x one-sided-three-point");
     await expect(differential).toContainText(/boundary; accuracy is reduced/);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-05 RK45 and SCI-06 derived slices persist their controls", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByLabel("Trajectory solver method").selectOption("rk45");
+    await editor.getByLabel("Seed x").fill("1");
+    await editor.getByRole("button", { name: "Add seed" }).click();
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText("adaptive-rk45");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText("Largest estimated local error");
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByLabel("Slice displayed field").selectOption("divergence");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("boundary stencils have reduced accuracy");
+    await editor.getByLabel("Slice displayed field").selectOption("curl-magnitude");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("curl-magnitude");
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Open saved document" }).click();
+    await expect(editor.getByLabel("Trajectory solver method")).toHaveValue("rk45");
+    await expect(editor.getByLabel("Slice displayed field")).toHaveValue("curl-magnitude");
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -705,6 +743,7 @@ test("GRA-14 trajectory Cancel terminates a pending worker and publishes no part
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByLabel("Trajectory solver method").selectOption("rk45");
     await editor.getByLabel("Seed x").fill("2");
     await editor.getByRole("button", { name: "Add seed" }).click();
     await page.evaluate(() => {

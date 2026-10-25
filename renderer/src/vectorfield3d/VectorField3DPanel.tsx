@@ -5,7 +5,8 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   createScientificDatasetLink,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
   sampleVectorField3DSlice, sampleVectorField3DProbe, vectorField3DSliceCoordinates,
-  analyzeVectorField3DDifferential, type VectorField3DDifferentialArtifact,
+  analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
+  type VectorField3DDifferentialArtifact,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
   integrateVectorField3DScientificTrajectories,
   scientificPointWithinBounds,
@@ -173,6 +174,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       components: expressions.map((source, index) => vectorField3DExpression(source,
         document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : "m/s")) as
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
+  const sampleSelectedSlice = (next: VectorField3DDocument, axis: 0 | 1 | 2,
+    coordinate: number, scientific?: Parameters<typeof sampleVectorField3DSlice>[3]) => {
+    const channel = next.workspace?.sliceChannel ?? "component";
+    return channel === "component" ? sampleVectorField3DSlice(next, axis, coordinate, scientific) :
+      sampleVectorField3DDerivedSlice(next, axis, coordinate, channel, scientific);
+  };
   const render = async () => {
     if (busy || lineBusy) return;
     setBusy(true); setBusyAction("render"); setArtifact(null); setSlice(null); setLinkedSlices({});
@@ -211,7 +218,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     try {
       const next = currentDocument();
       if (next.source.field.kind === "expressions") {
-        setSlice(sampleVectorField3DSlice(next, normalAxis, coordinate));
+        setSlice(sampleSelectedSlice(next, normalAxis, coordinate));
         if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe));
         setDocument(next); return;
       }
@@ -224,7 +231,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       fingerprint = opened.source.fingerprint;
       const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
         components: refs.map(ref => ref.component) as [string, string, string] });
-      setSlice(sampleVectorField3DSlice(next, normalAxis, coordinate,
+      setSlice(sampleSelectedSlice(next, normalAxis, coordinate,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
       if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
@@ -241,9 +248,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     try {
       const next = requested ?? currentDocument();
       const make = (scientific?: Parameters<typeof sampleVectorField3DSlice>[3]) => ({
-        xy: sampleVectorField3DSlice(next, 2, next.workspace!.sliceCoordinates[2], scientific),
-        xz: sampleVectorField3DSlice(next, 1, next.workspace!.sliceCoordinates[1], scientific),
-        yz: sampleVectorField3DSlice(next, 0, next.workspace!.sliceCoordinates[0], scientific),
+        xy: sampleSelectedSlice(next, 2, next.workspace!.sliceCoordinates[2], scientific),
+        xz: sampleSelectedSlice(next, 1, next.workspace!.sliceCoordinates[1], scientific),
+        yz: sampleSelectedSlice(next, 0, next.workspace!.sliceCoordinates[0], scientific),
       });
       if (next.source.field.kind === "expressions") {
         const arrows = sampleVectorField3DArrows(next), views = make();
@@ -545,6 +552,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     <details open aria-label="3D trajectory solver">
       <summary>Advanced trajectory solver</summary>
       <div className="vector-field3d-controls">
+        <label>Method <select aria-label="Trajectory solver method"
+          value={document.source.solver.method ?? "rk4-step-doubling"}
+          onChange={event => updateSource({ ...document.source, solver: { ...document.source.solver,
+            method: event.target.value as "rk4-step-doubling" | "rk45" } })}>
+          <option value="rk4-step-doubling">RK4 step doubling</option>
+          <option value="rk45">Dormand–Prince RK45</option>
+        </select></label>
         <label>Direction <select aria-label="Trajectory direction" value={direction}
           onChange={event => { setDirection(event.target.value as "forward" | "backward");
             setTrajectories(null); }}>
@@ -584,7 +598,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
           }} /></label>
       </div>
-      <p>Adaptive RK4 step doubling · at most 2,048 attempted steps per seed in this preview.
+      <p>{document.source.solver.method === "rk45" ? "Adaptive Dormand–Prince RK45" :
+        "Adaptive RK4 step doubling"} · at most 2,048 attempted steps per seed in this preview.
         Each trace reports its stop reason; a numerical trace does not certify topology.</p>
     </details>
     </fieldset>
@@ -689,6 +704,18 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </section>
     {normalAxis !== undefined && <section aria-label="Slice controls">
       <h5>{workspace.selectedLayer.toUpperCase()} slice</h5>
+      <label>Displayed field <select aria-label="Slice displayed field"
+        value={workspace.sliceChannel} disabled={busy}
+        onChange={event => {
+          setDocument(current => reviseVectorField3DWorkspace(current,
+            { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
+              sliceChannel: event.target.value as typeof workspace.sliceChannel }));
+          setSlice(null); setLinkedSlices({}); setError("");
+        }}>
+        <option value="component">Magnitude or selected component</option>
+        <option value="divergence">Divergence</option>
+        <option value="curl-magnitude">Curl magnitude</option>
+      </select></label>
       <label>Fixed {document.source.axes[normalAxis].label} ({document.source.axes[normalAxis].unit})
         {document.source.field.kind === "scientific-bundle" ?
           <select aria-label="Slice physical coordinate" value={workspace.sliceCoordinates[normalAxis]}
@@ -709,7 +736,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             { behavior: "smooth", block: "nearest" })}>Show line profile through point</button>}
       <p>Each preview checks the current three-component source. The map uses at most 1,024 samples.</p>
       {slice && <p role="status">{slice.shape.join(" × ")} samples; {slice.rejected} invalid;
-        {" "}{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit}.</p>}
+        {" "}{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit}.
+        {slice.method && ` ${slice.method}; ${slice.boundarySamples} boundary stencils with reduced accuracy.`}</p>}
     </section>}
     <p>{datasetLink ? "Verified dataset link" : "Expression field"} ·
       {datasetLink ? ` ${datasetLink.shape.join(" × ")} samples` : " bounded authored domain"}</p>
@@ -743,8 +771,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {" "}{path.rejectedSteps} rejected steps; {path.evaluations} evaluations;
         {" "}time {path.points.at(-1)?.time.toPrecision(5)} {document.source.timeUnit},
         {" "}arc {path.points.at(-1)?.arcLength.toPrecision(5)} {document.source.axes[0].unit}.
+          {" "}Largest estimated local error {path.maxEstimatedLocalError.toPrecision(3)}
+          {" "}{document.source.axes[0].unit}. {path.stopDetail}
       </p>)}
-      <small>Numerical approximation · absolute tolerance {trajectories.solver.absoluteTolerance},
+      <small>{trajectories.solver.method} · numerical approximation ·
+        {" "}absolute tolerance {trajectories.solver.absoluteTolerance},
         relative tolerance {trajectories.solver.relativeTolerance}.</small>
     </div>}
     </div>

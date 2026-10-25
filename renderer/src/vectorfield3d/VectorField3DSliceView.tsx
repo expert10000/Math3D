@@ -110,7 +110,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     </div>
     <p role="status">{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit};
       {" "}{slice.rejected} invalid of {slice.evaluated} samples. Dimmed cells lie outside the display clip;
-      clipping and camera changes do not alter these values.</p>
+      clipping and camera changes do not alter these values.
+      {slice.method && ` Approximate · ${slice.method}; ${slice.boundarySamples} boundary stencils have reduced accuracy.`}</p>
     {profile.length > 0 && <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
       <label>Line direction <select aria-label="Line profile direction" value={profileDirection}
         onChange={event => setProfileDirection(Number(event.target.value) as 0 | 1)}>
@@ -133,8 +134,10 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         {" "}{profile.length} bounded samples · {slice.unit} against
         {" "}{document.source.axes[slice.planeAxes[profileDirection]].unit}.
         {slice.sourceHash && ` Source ${slice.sourceHash}.`}</small>
-      {document.source.field.kind === "expressions" && onSendLineToGraphs && <button type="button"
-        onClick={() => onSendLineToGraphs(slice.channel === "magnitude" ? "speed" : slice.channel,
+      {document.source.field.kind === "expressions" && onSendLineToGraphs &&
+        slice.channel !== "divergence" && slice.channel !== "curl-magnitude" && <button type="button"
+        onClick={() => onSendLineToGraphs(slice.channel === "magnitude" ? "speed" :
+          slice.channel as "p" | "q" | "r",
           slice.planeAxes[profileDirection] as 0 | 1 | 2, probe as [number, number, number])}>
         Send analytic line to Graphs</button>}
     </section>}

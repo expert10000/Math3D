@@ -4,6 +4,7 @@ import { scientificAxisCoordinate, scientificCoordinateIndex,
 import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
+import { sampleVectorField3DSlice, type VectorField3DSliceArtifact } from "./vectorField3DSlices";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DDifferentialStencil = Readonly<{
@@ -40,8 +41,10 @@ const firstDerivative = (coordinates: readonly number[], samples: readonly numbe
 };
 
 /** Local numerical divergence and curl; the caller must re-open a saved bundle for every request. */
-export function analyzeVectorField3DDifferential(document: VectorField3DDocument, position: Vec3,
-  scientific?: Readonly<{ manifestJson: string; fingerprint: string; volumes: VectorField3DVolumes }>):
+type ScientificSource = Readonly<{ manifestJson: string; fingerprint: string;
+  volumes: VectorField3DVolumes }>;
+function analyzeAt(document: VectorField3DDocument, position: Vec3,
+  scientific?: ScientificSource, verifiedVolumes?: VectorField3DVolumes):
   VectorField3DDifferentialArtifact {
   const normalized = normalizeVectorField3DDocument(document);
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
@@ -66,7 +69,7 @@ export function analyzeVectorField3DDifferential(document: VectorField3DDocument
   let selectedIndices: readonly number[] | null = null;
   if (field.kind === "scientific-bundle") {
     if (!scientific) throw new TypeError("Reverify all three scientific components before derived analysis.");
-    volumeValues = verifyVectorField3DVolumes(checked, scientific.manifestJson,
+    volumeValues = verifiedVolumes ?? verifyVectorField3DVolumes(checked, scientific.manifestJson,
       scientific.fingerprint, scientific.volumes);
     const reference = field.references[0];
     sourceIndicesByAxis = source.axes.map((_, axis) => {
@@ -159,4 +162,42 @@ export function analyzeVectorField3DDifferential(document: VectorField3DDocument
     divergence, curl, divergenceUnit: `1/${source.timeUnit}`,
     curlUnit: uniformUnits ? `1/${source.timeUnit}` : null,
     stencils, evaluations, diagnostics };
+}
+
+export function analyzeVectorField3DDifferential(document: VectorField3DDocument, position: Vec3,
+  scientific?: ScientificSource): VectorField3DDifferentialArtifact {
+  return analyzeAt(document, position, scientific);
+}
+
+export type VectorField3DDerivedChannel = "divergence" | "curl-magnitude";
+/** A bounded derived map; one complete bundle verification precedes all cell calculations. */
+export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
+  normalAxis: 0 | 1 | 2, fixedCoordinate: number, channel: VectorField3DDerivedChannel,
+  scientific?: ScientificSource): VectorField3DSliceArtifact {
+  if (channel !== "divergence" && channel !== "curl-magnitude")
+    throw new TypeError("Unsupported derived field channel.");
+  if (channel === "curl-magnitude" && new Set(document.source.axes.map(axis => axis.unit)).size !== 1)
+    throw new TypeError("Curl requires matching physical coordinate units on x, y and z.");
+  const base = sampleVectorField3DSlice(document, normalAxis, fixedCoordinate, scientific);
+  const verified = scientific ? verifyVectorField3DVolumes(document, scientific.manifestJson,
+    scientific.fingerprint, scientific.volumes) : undefined;
+  const values: (number | null)[] = [];
+  let boundarySamples = 0;
+  for (let i = 0; i < base.shape[0]; i++) for (let j = 0; j < base.shape[1]; j++) {
+    const position = [0, 0, 0] as [number, number, number];
+    position[normalAxis] = fixedCoordinate;
+    position[base.planeAxes[0]] = base.coordinates[0][i]!;
+    position[base.planeAxes[1]] = base.coordinates[1][j]!;
+    const result = analyzeAt(document, position, scientific, verified);
+    if (result.stencils.some(stencil => stencil.boundary)) boundarySamples++;
+    const value = result.status !== "ready" ? null : channel === "divergence" ?
+      result.divergence : result.curl ? Math.hypot(...result.curl) : null;
+    values.push(value !== null && Number.isFinite(value) ? value : null);
+  }
+  const finite = values.filter((value): value is number => value !== null);
+  return { ...base, channel, unit: `1/${document.source.timeUnit}`, values,
+    min: finite.length ? Math.min(...finite) : NaN,
+    max: finite.length ? Math.max(...finite) : NaN,
+    evaluated: values.length, rejected: values.length - finite.length,
+    method: "bounded-finite-difference", boundarySamples };
 }

@@ -10,7 +10,9 @@ export type VectorField3DSliceArtifact = Readonly<{
   normalAxis: 0 | 1 | 2; fixedCoordinate: number; fixedUnit: string;
   planeAxes: readonly [number, number]; coordinates: readonly [readonly number[], readonly number[]];
   shape: readonly [number, number]; values: readonly (number | null)[];
-  channel: "magnitude" | "p" | "q" | "r"; unit: string; min: number; max: number;
+  channel: "magnitude" | "p" | "q" | "r" | "divergence" | "curl-magnitude";
+  unit: string; min: number; max: number;
+  method?: "bounded-finite-difference"; boundarySamples?: number;
   evaluated: number; rejected: number; sourceHash?: string;
 }>;
 export type VectorField3DProbeArtifact = Readonly<{

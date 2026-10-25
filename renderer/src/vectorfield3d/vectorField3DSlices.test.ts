@@ -6,7 +6,7 @@ import { createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceD
   parseMath3DProject, parseVectorField3DDocument, reviseVectorField3DWorkspace,
   sampleVectorField3DSlice, sampleVectorField3DProbe, serializeMath3DProject, serializeVectorField3DDocument,
   integrateVectorField3DScientificTrajectories, reviseVectorField3DDocument,
-  analyzeVectorField3DDifferential,
+  analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   sha256Checksum, vectorField3DSliceCoordinates, type Graph2DFieldReference, type VectorField3DSource,
   type VectorField3DVolumes } from "@math3d/core";
 
@@ -37,6 +37,24 @@ const volumes = names.map((component, index) => {
 }) as VectorField3DVolumes;
 
 describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
+  it("derives a bounded verified vortex map and rejects changed source components", () => {
+    const scientific = { manifestJson, fingerprint, volumes };
+    const derived = sampleVectorField3DDerivedSlice(document, 2, -1.5,
+      "curl-magnitude", scientific);
+    expect(derived.sourceHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(derived.unit).toBe("1/s");
+    expect(derived.evaluated).toBeLessThanOrEqual(1024);
+    expect(derived.boundarySamples).toBeGreaterThan(0);
+    expect(derived.values.some(value => value !== null && value > 0)).toBe(true);
+    const changed = volumes.map((volume, index) => index === 1 ?
+      { ...volume, values: volume.values.map((value, offset) => offset === 0 ? value + 1 : value) } :
+      volume) as VectorField3DVolumes;
+    expect(() => sampleVectorField3DDerivedSlice(document, 2, -1.5, "divergence",
+      { manifestJson, fingerprint, volumes: changed })).toThrow(/checksum|integrity|changed/i);
+    expect(() => sampleVectorField3DDerivedSlice(document, 2, -1.5, "divergence",
+      { manifestJson, fingerprint, volumes: volumes.slice(0, 2) as VectorField3DVolumes }))
+      .toThrow(/complete|component|volume/i);
+  });
   it("retains selected layer, layout and physical coordinates in Project without storing samples", () => {
     const view = defaultVectorField3DWorkspace(source);
     const selected = reviseVectorField3DWorkspace(document, { ...view,

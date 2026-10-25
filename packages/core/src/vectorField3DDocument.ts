@@ -22,7 +22,8 @@ export type VectorField3DSource = Readonly<{
   seeds: readonly Readonly<{ id: string; position: readonly [number, number, number] }>[];
   display: Readonly<{ density: readonly [number, number, number]; maxGlyphs: number;
     magnitudeScale: number; colorBy: "speed" | "p" | "q" | "r" }>;
-  solver: Readonly<{ absoluteTolerance: number; relativeTolerance: number;
+  solver: Readonly<{ method?: "rk4-step-doubling" | "rk45";
+    absoluteTolerance: number; relativeTolerance: number;
     maxSteps: number; maxTime: number; maxArcLength?: number }>;
 }>;
 export type VectorField3DLayer = "arrows" | "trajectories" | "xy" | "xz" | "yz";
@@ -32,6 +33,7 @@ export type VectorField3DClipBounds = readonly [readonly [number, number],
 export type VectorField3DCameraState = Readonly<{ position: readonly [number, number, number];
   target: readonly [number, number, number]; zoom: number }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
+  sliceChannel: "component" | "divergence" | "curl-magnitude";
   layout: "three-pane" | "viewer-focus" | "split" | "quad";
   sliceCoordinates: readonly [number, number, number];
   viewsLinked: boolean;
@@ -49,6 +51,7 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
+  sliceChannel: "component",
   cameraState: null,
   viewsLinked: true, viewZoom: { xy: 1, xz: 1, yz: 1 },
   viewCenter: { xy: [0.5, 0.5], xz: [0.5, 0.5], yz: [0.5, 0.5] },
@@ -134,8 +137,10 @@ const validSource = (source: unknown): source is VectorField3DSource => {
       display.magnitudeScale <= 0 || display.magnitudeScale > 1e9 ||
       !["speed", "p", "q", "r"].includes(String(display.colorBy))) return false;
   const solver = source.solver;
-  return record(solver) && (exact(solver, ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime"]) ||
-    exact(solver, ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime", "maxArcLength"])) &&
+  return record(solver) && Object.keys(solver).every(key =>
+    ["method", "absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime", "maxArcLength"].includes(key)) &&
+    ["absoluteTolerance", "relativeTolerance", "maxSteps", "maxTime"].every(key => key in solver) &&
+    (solver.method === undefined || ["rk4-step-doubling", "rk45"].includes(String(solver.method))) &&
     finite(solver.absoluteTolerance) && solver.absoluteTolerance >= 1e-12 && solver.absoluteTolerance <= 1 &&
     finite(solver.relativeTolerance) && solver.relativeTolerance >= 1e-12 && solver.relativeTolerance <= 1 &&
     integer(solver.maxSteps, 1, 100000) && finite(solver.maxTime) && solver.maxTime > 0 && solver.maxTime <= 1e6 &&
@@ -158,6 +163,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
   const defaults = defaultVectorField3DWorkspace(source);
   const workspace = record(legacyWorkspace) ? {
     ...legacyWorkspace,
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "sliceChannel") ?
+      { sliceChannel: defaults.sliceChannel } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ? { probe: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "clipBounds") ?
       { clipBounds: defaults.clipBounds } : {}),
@@ -173,7 +180,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "clipBounds", "cameraPreset", "cameraState"]) ||
+      !["component", "divergence", "curl-magnitude"].includes(String(workspace.sliceChannel)) ||
       !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
       !["three-pane", "viewer-focus", "split", "quad"].includes(String(workspace.layout)) ||
       !["perspective", "xy", "xz", "yz"].includes(String(workspace.cameraPreset)) ||
