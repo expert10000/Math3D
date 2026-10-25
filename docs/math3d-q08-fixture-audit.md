@@ -16,7 +16,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | BBH nested Wilson | `tests/fixtures/quantum-scene/run-7f366d57030b42c88d1c4afa89e059fe-bbh-wilson.qscene` | Four occupied Wilson branches, nested sector polarizations, explicit bulk/Wannier gap diagnostics and conditional quadrupole from a newer verified producer run | **Bounded post-v0.1 extension**: read-only exact branch samples and producer invariant/status; no Math3D computation or inference from corners |
 | Kitaev | `tests/fixtures/quantum-scene/run-18145016435540afafc5a2a06870566f-bands.qscene` and its `-kitaev-finite.qscene` companion | Two exact periodic BdG energy paths, bulk gap, and per-site mean density of a finite near-zero pair | **Bounded post-v0.1 extension**: read-only bands and finite open-chain end density; no topological invariant or Majorana classification |
 | Kitaev bulk invariant | `tests/fixtures/quantum-scene/run-75fb3f43371e40d58fc0eda2e8c14fa1-kitaev-invariant.qscene` | Producer Pfaffian signs, conditional parity and sampled real-pairing winding, exact BdG curve and momentum samples | **Bounded post-v0.1 extension**: read-only exact inspection; undefined at a bulk gap closure; no finite-end inference |
-| Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
+| Weyl local cone | `tests/fixtures/quantum-scene/run-f8bf5412469c49b7bb878b8001d341cf-weyl.qscene` | Producer-supplied enclosing sphere, occupied-band Berry vectors, Wilson face flux, local chirality and conditional occupied Chern | **Bounded post-v0.1 extension**: read-only exact sample inspection; no periodic lattice, partner node, surface band or Fermi arc |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Landau/Hall | None | Theory Lab has a Landau–Zener dynamics model, **not** a Landau-level or Hall producer scene | Not supported |
 
@@ -49,7 +49,7 @@ alone remains insufficient evidence for any named model.
 
 For **M3D-Q08 topological study profiles**, freeze the supported model set to
 **QWZ and SSH** with their four pinned bundles. This historical v0.1 set is
-unchanged. BHZ, BBH and Kitaev were admitted as bounded post-v0.1 producer-first extensions;
+unchanged. BHZ, BBH, Kitaev and the local Weyl cone were admitted as bounded post-v0.1 producer-first extensions;
 all other named families stay
 in the Q08 roadmap as future expansion, not hidden or relabeled as complete.
 The supported claims are limited to the quantities in the table. In
@@ -150,5 +150,21 @@ or **BHZ · lattice and ribbon**. The inspector states the source parameters,
 units, invariant status and finite-boundary limitation. The importer tests
 compare exact band samples with the producer file and reject changed bytes.
 The original fixed-coefficient BHZ fixture and the frozen QWZ/SSH v0.1
-profile remain unchanged. Weyl, nodal and Landau/Hall are still
-unsupported until their own independently tested producer scenes exist.
+profile remain unchanged. Nodal and Landau/Hall are still unsupported until
+their own independently tested producer scenes exist.
+
+## Post-v0.1 local Weyl admission (2026-10-25)
+
+Theory Lab evaluates its pinned Atlas linearization `Hχ(q)=χv q·σ` on a
+bounded, outward-oriented sphere. Worker Wilson face phases give the lower
+band's enclosing flux; an independent geometric solid-angle check validates
+every saved face before the run is accepted. The verified fixture uses
+`χ=+1`, `v=1`, radius `1`, and 162 sphere samples. Its occupied Chern is
+`-1`, while the node chirality is `+1` under the declared convention.
+
+Open **File → Verified quantum examples → Weyl → Weyl · local enclosed node**.
+The mesh and Berry arrows are producer data. Select a sphere sample to inspect
+its exact `q` and radial Berry value in source units. The viewer rechecks the
+bundle on opening, selection and restart; changed bytes are refused. The
+local continuum model supplies no Brillouin zone, lattice partner, surface
+states or Fermi arcs. Math3D does not compute the charge.

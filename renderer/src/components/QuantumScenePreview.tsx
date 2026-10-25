@@ -484,6 +484,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               </> : <p>Corner localization is a finite-system observation. {scene.topology?.invariants.some(item=>item.id==="bbh-quadrupole") ? "The producer invariant is supplied separately from this view." : "No quadrupole invariant, edge classification, or phase boundary is calculated or claimed here."}</p>}
               {!scene.bands&&!scene.objects.some(object=>object.id==="wilson-x-negative") && <p>Marker size is a display-only mapping of the supplied nonnegative cell density; select a cell for its exact stored value and unit.</p>}
             </section>}
+            {scene.provenance.model==="weyl_minimal"&&<section data-testid="weyl-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Weyl · verified local cone</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Atlas linearization Hχ(q)=χv q·σ. Velocity {scene.provenance.parameters?.velocity}; chirality {scene.provenance.parameters?.chirality}; enclosing radius {scene.provenance.parameters?.radius} inverse length. The sphere excludes the degeneracy at q=0.</p>
+              {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
+              <p>The mesh, arrows and markers use producer-supplied samples. Inspect a sphere sample for its exact q and radial occupied-band Berry value. Math3D calculates no topological charge. The local model supplies no lattice partner, surface band or Fermi arc.</p>
+            </section>}
             {scene.provenance.model==="kitaev_chain"&&<section data-testid="kitaev-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Kitaev · producer-supplied {scene.topology?.invariants.some(item=>item.id==="kitaev-pfaffian-parity") ? "bulk invariant diagnostics" : scene.bands ? "periodic BdG bands" : "finite open-chain end density"}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>

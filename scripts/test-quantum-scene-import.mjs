@@ -223,9 +223,28 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 18);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 18);
+  assert.equal(listBundledQuantumSceneExamples().length, 19);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 19);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
+  const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
+  const weyl=await importQuantumSceneBundle(weylFolder);
+  const weylResultBytes=await readFile(join(fixtureRoot,"weyl-local-producer-result.json"));
+  const weylResult=JSON.parse(weylResultBytes.toString("utf8"));
+  assert.equal(weyl.source.provenance.model,"weyl_minimal");
+  assert.equal(weyl.source.topology.invariants.find(item=>item.id==="local-chirality").value,1);
+  assert.equal(weyl.source.topology.invariants.find(item=>item.id==="occupied-chern").value,-1);
+  assert.equal(weyl.source.provenance.resultSha256,hash(weylResultBytes));
+  assert.equal(weyl.document.geometry.triangles.length,320);
+  assert.equal(weyl.document.geometry.points.length,163);
+  const weylFirst=inspectVerifiedScalarSample(weyl,{fingerprint:sceneFingerprint(weyl),objectId:"weyl-samples",sampleIndex:0});
+  assert.deepEqual(weylFirst.position,weylResult.analysis.positions[0]);
+  assert.equal(weylFirst.value,-0.5);
+  assert.equal(weylFirst.valueUnit,"inverse length squared");
+  const changedWeyl=join(root,"weyl-changed.qscene");
+  await cp(weylFolder,changedWeyl,{recursive:true});
+  const weylBytes=await readFile(join(changedWeyl,"radial-berry.f64"));
+  weylBytes[0]^=1;await writeFile(join(changedWeyl,"radial-berry.f64"),weylBytes);
+  await assert.rejects(importQuantumSceneBundle(changedWeyl),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -244,13 +263,14 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 13, "Expected four frozen SSH/QWZ, three BHZ, three BBH, and three Kitaev bundles");
+  assert.equal(allFixtureNames.length, 14, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev and one Weyl bundle");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name));
+  const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },

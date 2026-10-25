@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -49,6 +49,9 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "kitaev-invariant", label: "Kitaev · bulk Pfaffian and winding", description: "Producer-supplied BdG chiral curve and conditional bulk invariant; finite end density stays separate",
     model: "Kitaev", fixtureGroup: "quantum-scene", folder: "run-75fb3f43371e40d58fc0eda2e8c14fa1-kitaev-invariant.qscene",
     fingerprint: "aeb6f86c4cce213919d8cbe70a52f95028470999e1136918c03ef848fec92515" },
+  { id: "weyl-local", label: "Weyl · local enclosed node", description: "Verified enclosing-sphere Berry flux and exact supplied samples; no lattice or Fermi arcs",
+    model: "Weyl", fixtureGroup: "quantum-scene", folder: "run-f8bf5412469c49b7bb878b8001d341cf-weyl.qscene",
+    fingerprint: "e9aa57785442e2ddb1d8c8bd4caebdfbdc0caa55bd75955b225af47bae05f80c" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },
