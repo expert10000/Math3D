@@ -40,3 +40,10 @@ Lab's `scripts/export-kitaev-fixture.ts` from one saved worker run.
 mean particle/hole probability of two finite near-zero eigenstates at each
 open-chain site. End weight is a finite-system observation; no winding or
 Z₂ invariant, Majorana classification, or material conclusion is supplied.
+
+The newer `kitaev-invariant-producer-result.json` and its `-kitaev-invariant.qscene`
+bundle come from Theory Lab's `scripts/export-kitaev-invariant-fixture.ts`.
+The producer independently checks Pfaffian signs and the sampled real-pairing
+chiral winding. The pinned scene carries exact BdG curve and momentum samples,
+their source hash, conditional values and validity status. Math3D only inspects
+these supplied values. The older bands and finite-density bundles stay frozen.

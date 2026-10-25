@@ -15,6 +15,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | BBH | `tests/fixtures/quantum-scene/run-4fb258a3692f40479c097181ca9d779a-bands.qscene` and its `-bbh-finite.qscene` companion | Four periodic bulk bands, sampled bulk gap, four finite midgap energies, and exact mean cell densities | **Bounded post-v0.1 extension**: read-only bands and finite open-lattice density; corner localization is an observation, not a quadrupole invariant |
 | BBH nested Wilson | `tests/fixtures/quantum-scene/run-7f366d57030b42c88d1c4afa89e059fe-bbh-wilson.qscene` | Four occupied Wilson branches, nested sector polarizations, explicit bulk/Wannier gap diagnostics and conditional quadrupole from a newer verified producer run | **Bounded post-v0.1 extension**: read-only exact branch samples and producer invariant/status; no Math3D computation or inference from corners |
 | Kitaev | `tests/fixtures/quantum-scene/run-18145016435540afafc5a2a06870566f-bands.qscene` and its `-kitaev-finite.qscene` companion | Two exact periodic BdG energy paths, bulk gap, and per-site mean density of a finite near-zero pair | **Bounded post-v0.1 extension**: read-only bands and finite open-chain end density; no topological invariant or Majorana classification |
+| Kitaev bulk invariant | `tests/fixtures/quantum-scene/run-75fb3f43371e40d58fc0eda2e8c14fa1-kitaev-invariant.qscene` | Producer Pfaffian signs, conditional parity and sampled real-pairing winding, exact BdG curve and momentum samples | **Bounded post-v0.1 extension**: read-only exact inspection; undefined at a bulk gap closure; no finite-end inference |
 | Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Landau/Hall | None | Theory Lab has a Landau–Zener dynamics model, **not** a Landau-level or Hall producer scene | Not supported |
@@ -105,6 +106,14 @@ source bytes. Project/recent reopening also rechecks the same fingerprint.
 The profile labels end localization as a finite-chain observation. It makes
 no winding, Z₂, Majorana, or material-specific claim. Math3D performs no
 BdG calculation.
+
+A newer **Kitaev · bulk Pfaffian and winding** example is a third, independent
+source-linked view. It displays the producer's periodic BdG chiral curve and
+conditional Pfaffian parity and real-pairing winding. Select a curve sample to
+inspect its exact momentum and BdG coordinates. The producer withholds both
+claims at a bulk gap closure and the winding on an unresolved mesh. The older
+bands/end-density pair remains frozen with its original no-invariant label.
+Restart and changed-byte refusal are covered by the invariant desktop test.
 
 ## Post-v0.1 BHZ admission (2026-10-24)
 

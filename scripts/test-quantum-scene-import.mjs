@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 17);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 17);
+  assert.equal(listBundledQuantumSceneExamples().length, 18);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 18);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
@@ -244,10 +244,10 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 12, "Expected four frozen SSH/QWZ, three BHZ, three BBH, and two Kitaev bundles");
+  assert.equal(allFixtureNames.length, 13, "Expected four frozen SSH/QWZ, three BHZ, three BBH, and three Kitaev bundles");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
-  const kitaevFolders=new Set(["kitaev-bands","kitaev-finite"].map(id=>bundledQuantumSceneExample(id).folder));
+  const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
   const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name));
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
   assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev")
@@ -415,6 +415,23 @@ try {
   const kitaevDensityPath=join(kitaevChanged,"near-zero-density.f64"),kitaevDensityBytes=await readFile(kitaevDensityPath);
   kitaevDensityBytes[0]^=1;await writeFile(kitaevDensityPath,kitaevDensityBytes);
   await assert.rejects(importQuantumSceneBundle(kitaevChanged),/integrity|hash/i);
+  const invariantBytes=await readFile(join(fixtureRoot,"kitaev-invariant-producer-result.json"));
+  const invariantResult=JSON.parse(invariantBytes.toString("utf8"));
+  const invariantScene=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-invariant").folder));
+  assert.equal(invariantScene.source.provenance.model,"kitaev_chain");
+  assert.equal(invariantScene.source.provenance.runId,invariantResult.runId);
+  assert.equal(invariantScene.source.provenance.resultSha256,hash(invariantBytes));
+  assert.equal(invariantScene.source.topology.invariants[0].value,invariantResult.analysis.invariant.parity);
+  assert.equal(invariantScene.source.topology.invariants[1].value,invariantResult.analysis.invariant.winding);
+  const curve=inspectVerifiedScalarSample(invariantScene,{fingerprint:sceneFingerprint(invariantScene),objectId:"kitaev-bdg-curve",sampleIndex:25});
+  assert.deepEqual(curve.position,[invariantResult.analysis.invariant.curveX[25],invariantResult.analysis.invariant.curveY[25],0]);
+  assert.equal(curve.value,invariantResult.analysis.kValues[25]);
+  assert.equal(curve.valueDatasetId,"momentum-samples");
+  const changedInvariant=join(root,"kitaev-invariant-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("kitaev-invariant").folder),changedInvariant,{recursive:true});
+  const curvePath=join(changedInvariant,"bdg-chiral-curve.f64"),curveBytes=await readFile(curvePath);
+  curveBytes[0]^=1;await writeFile(curvePath,curveBytes);
+  await assert.rejects(importQuantumSceneBundle(changedInvariant),/integrity|hash/i);
   const generalBytes=await readFile(join(fixtureRoot,"bhz-general-producer-result.json"));
   const generalResult=JSON.parse(generalBytes.toString("utf8"));
   const generalScenes=await Promise.all(["bhz-general-continuum","bhz-general-lattice"].map(id=>
