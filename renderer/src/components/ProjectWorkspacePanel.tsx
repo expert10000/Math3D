@@ -883,7 +883,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (failure) { setExampleMessage(`Samsung collection import failed: ${(failure as Error).message}`); }
     finally { setBusy(false); }
   };
-  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false, inspectedForThisOpen = false) => {
+  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false,
+    inspectedForThisOpen = false, preferredVectorDocumentId?: string) => {
     if (!candidate || busy) return false;
     setBusy(true);
     const activationToken = ++importSequence.current;
@@ -926,7 +927,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
         previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
         throw new Error("The workspace changed during source verification. Retry opening the Project.");
-      const choice = openWorkspace ? selectProjectDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY)) : null;
+      const preferred = preferredVectorDocumentId ? prepared.project.workspace.entries.find(entry =>
+        entry.expected.id === preferredVectorDocumentId && entry.module === "vector3d" &&
+        !prepared.project.metadata.documents?.[entry.expected.id]?.archived) : null;
+      if (preferredVectorDocumentId && !preferred) throw new Error("Saved 3D field is unavailable in this Project.");
+      const choice = openWorkspace ? preferred ? { selected: preferred, recovery: null } :
+        selectProjectDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY)) : null;
       const rollback = () => { rollbackTables?.(); if (hostRestored && previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources, previousOwner ?? undefined); };
       const commitStart = performance.now();
       setLibrary(await commitProjectResources(prepared.project, resources, () => {
@@ -971,7 +977,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); return false; }
     finally { setBusy(false); }
   };
-  const openLibraryProject = async (id: string, showDetails = false) => {
+  const openLibraryProject = async (id: string, showDetails = false, preferredVectorDocumentId?: string) => {
     if (busy) return;
     const sequence = ++importSequence.current;
     setBusy(true);
@@ -985,7 +991,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setMessage("This saved project has preview support. Review its compatibility details below.");
         return;
       }
-      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true);
+      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true,
+        preferredVectorDocumentId);
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -1517,6 +1524,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
             <button type="button" data-testid={`project-view-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>View with Project</button>
+            {document.module === "vector3d" && <button type="button"
+              data-testid={`project-open-field-explorer-${document.id}`}
+              disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}
+              onClick={() => { if (preview && project) void openLibraryProject(project.identity.id, false, document.id);
+                else navigate(document.id, document.module); }}>Open Field Explorer</button>}
             {preview && !document.archived && <small> · open project first</small>}
             <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
             <button type="button" data-testid={`project-inspect-${document.id}`} onClick={() => { setInspectedId(document.id); setInspectionOpen(true); }}>Inspect dependencies</button>

@@ -407,6 +407,28 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   min-height: 0; height: 100%; box-sizing: border-box; overflow: hidden; }
 .scientific-field-explorer-viewer .graph2d-scientific-volume [aria-label="3D camera viewport"] {
   min-width: 0; max-width: 100%; box-sizing: border-box; }
+.scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-content {
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 285px); }
+.scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-controls { display: none; }
+.scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-viewer { grid-column: 1; }
+.scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-inspector { grid-column: 2; }
+.vector-field3d-layers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.vector-field3d-layers button[aria-pressed="true"] { border-color: var(--accent); background: var(--panel); font-weight: 700; }
+.scientific-field-explorer-inspector [aria-label="Slice controls"] { display: grid; gap: 8px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 8px; }
+.scientific-field-explorer-inspector [aria-label="Slice controls"] h5,
+.scientific-field-explorer-inspector [aria-label="Slice controls"] p { margin: 0; }
+.scientific-field-explorer-inspector [aria-label="Slice controls"] label { display: grid; gap: 4px; }
+.scientific-field-explorer-inspector [aria-label="Slice controls"] select,
+.scientific-field-explorer-inspector [aria-label="Slice controls"] input { width: 100%; box-sizing: border-box; }
+.vector-field3d-slice { margin: 0; min-width: 0; width: 100%; overflow: auto; padding: 12px;
+  box-sizing: border-box; color: #e5efff; }
+.vector-field3d-slice figcaption { margin-bottom: 8px; font-weight: 700; }
+.vector-field3d-slice svg { display: block; width: 100%; max-height: calc(100% - 90px); }
+.vector-field3d-slice-legend { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.vector-field3d-slice-legend-bar { display: block; width: min(240px, 48%); height: 10px;
+  border: 1px solid #cbd5e1; border-radius: 4px;
+  background: linear-gradient(90deg, rgb(35,105,224), rgb(141,215,132), rgb(247,105,40)); }
 .scientific-field-explorer-empty { place-self: center; max-width: 32rem; padding: 20px; color: #e5efff; text-align: center; }
 @media (max-width: 960px) {
   .scientific-field-explorer { overflow: auto; }
@@ -416,6 +438,10 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   .scientific-field-explorer-controls { grid-column: 1; grid-row: 2; max-height: 40vh; }
   .scientific-field-explorer-viewer { grid-column: 1; grid-row: 3; }
   .scientific-field-explorer-inspector { grid-column: 1; grid-row: 4; max-height: 35vh; }
+  .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-content {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(320px, 55vh) auto; }
+  .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-viewer { grid-column: 1; grid-row: 2; }
+  .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-inspector { grid-column: 1; grid-row: 3; }
 }
 .vector-field3d-editor { position: relative; top: auto; left: auto; transform: none;
   width: min(900px, 100%); max-height: calc(100vh - 24px); overflow: auto;

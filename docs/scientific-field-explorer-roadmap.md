@@ -7,8 +7,9 @@
 | Milestone | Delivered desktop slice | Remaining scope |
 | --- | --- | --- |
 | SCI-01 | Shared regular-grid index/coordinate and finite-domain validation now runs in Graph line previews/imports, saved paired-field validation, vector seeds and trajectories. Unit tests distinguish index 10 from its physical coordinate and reject out-of-range and nonuniform selections. | The `.sscene/v1` source contract supports regular axes only. Coordinate-array support, locale-aware physical-coordinate entry and broader dimensional analysis require separate schema/UI work. |
-| SCI-03 | A deterministic immutable dataset link groups verified component references; line and glyph view specs bind to its source hash without embedding field values. Existing Project documents reconstruct those links on reopen, so no document migration is needed for this slice. | General derived-result cache, other module adapters and source-revision dependency graph remain open. |
-| SCI-02 | The 3D vector editor now opens as an in-app three-pane Scientific Field Explorer. It retains the authored session across module switches, exposes source provenance, and uses the existing Project document save/reopen path. | A general dataset library, scalar/complex layers, linked probes, adjustable docks and full screen-reader spoken-output acceptance remain open. |
+| SCI-03 | A deterministic immutable dataset link groups verified component references; line, glyph and bounded slice specs bind to its source hash without embedding field values. Existing Project documents reconstruct those links on reopen, so no document migration is needed for this slice. | General derived-result cache, other module adapters and source-revision dependency graph remain open. |
+| SCI-02 | The 3D vector field has an in-app three-pane Explorer with a layer list, contextual slice Inspector, viewer-focus layout, session retention, and a direct saved-Project entry. Selected layer, physical slice coordinates and layout round-trip with the Project document; values are not persisted. | A general dataset library, scalar/complex layers, freely adjustable docks and full screen-reader spoken-output acceptance remain open. |
+| SCI-04 | The desktop Explorer shows a 3D domain box and XY/XZ/YZ component or magnitude maps. Slice coordinates use the bounded verified transfer lattice; every scientific preview re-verifies all three components. Core tests cover all planes, bounds and the 1,024-cell cap. | Clipping, sampled probes, camera presets, progressive refinement and physical-device performance remain open. |
 
 **Full implementation roadmap | SCI-01–SCI-24 | October 2026**
 
@@ -1039,7 +1040,7 @@ The Scientific Field Explorer initiative can be considered mature when:
 6. Add persistence/migration tests and demonstrate one source feeding two derived views.
 7. Show exact changed files, unit test results, integration screenshots and any remaining risks.
 
-**Second assignment: complete SCI-02, then SCI-04 + SCI-07.** Extend the delivered three-pane vector workspace with scalar/complex layers, orthogonal slices and synchronized probes. Keep the existing preset path working as a backward-compatible entry point. Packaged desktop Narrator spoken-output review remains a human release gate; Android device acceptance remains deferred.
+**Next assignment: SCI-07 linked probes, then remaining SCI-04 controls.** Connect the delivered orthogonal slices to one physical-point selection and exact Graph line provenance. Add clipping, sampled probes and camera presets before broader scalar/complex layers. Packaged desktop Narrator spoken-output review remains a human release gate; Android device acceptance remains deferred.
 
 **Third assignment: SCI-12 + SCI-05 + SCI-06.** Implement mathematical golden fixtures before expanding solver methods and derived operations; report explicit tolerances and stopping behavior.
 

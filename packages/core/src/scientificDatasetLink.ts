@@ -36,6 +36,8 @@ export type ScientificDerivedView = Readonly<{
   schema: "math3d.scientific-derived-view/v1"; sourceHash: string; viewHash: string;
   selection: Readonly<{ kind: "line"; component: string; varyingAxis: number;
     fixed: readonly Readonly<{ axis: number; index: number; coordinate: number; unit: string }>[] }> |
+    Readonly<{ kind: "slice"; normalAxis: number; fixedIndex: number;
+      fixedCoordinate: number; fixedUnit: string; channel: "magnitude" | string; maxSamples: number }> |
     Readonly<{ kind: "glyphs"; components: readonly string[]; density: readonly number[]; maxGlyphs: number }>;
 }>;
 
@@ -43,6 +45,8 @@ export type ScientificDerivedView = Readonly<{
 export function createScientificDerivedView(link: ScientificDatasetLink,
   selection: Readonly<{ kind: "line"; component: string; varyingAxis: number;
     fixed: readonly Readonly<{ axis: number; index: number }>[] }> |
+    Readonly<{ kind: "slice"; normalAxis: number; fixedIndex: number;
+      channel: "magnitude" | string; maxSamples: number }> |
     Readonly<{ kind: "glyphs"; components: readonly string[]; density: readonly number[]; maxGlyphs: number }>):
   ScientificDerivedView {
   const source = { locator: link.locator, sceneFingerprint: link.sceneFingerprint,
@@ -63,6 +67,16 @@ export function createScientificDerivedView(link: ScientificDatasetLink,
     view = { kind: "line", component: selection.component, varyingAxis: selection.varyingAxis,
       fixed: selection.fixed.map(item => ({ ...item,
         coordinate: scientificAxisCoordinate(axes[item.axis]!, item.index), unit: axes[item.axis]!.unit })) };
+  } else if (selection.kind === "slice") {
+    if (link.shape.length !== 3 || !Number.isSafeInteger(selection.normalAxis) ||
+        selection.normalAxis < 0 || selection.normalAxis > 2 ||
+        !link.components.some(item => item.name === selection.channel) && selection.channel !== "magnitude" ||
+        !Number.isSafeInteger(selection.maxSamples) || selection.maxSamples < 1 || selection.maxSamples > 1024)
+      throw new TypeError("Invalid scientific slice axis, channel or sample budget.");
+    const axis = { ...link.axes[selection.normalAxis]!, count: link.shape[selection.normalAxis]! };
+    view = { kind: "slice", normalAxis: selection.normalAxis, fixedIndex: selection.fixedIndex,
+      fixedCoordinate: scientificAxisCoordinate(axis, selection.fixedIndex), fixedUnit: axis.unit,
+      channel: selection.channel, maxSamples: selection.maxSamples };
   } else {
     if (selection.components.length !== link.components.length ||
         selection.components.some((name, index) => name !== link.components[index]!.name) ||

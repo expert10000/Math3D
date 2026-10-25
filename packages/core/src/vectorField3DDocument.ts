@@ -2,7 +2,7 @@ import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity
   isDocumentIdentity, structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
 import { evaluateGraph2DExpression, parseGraph2DExpression, type Graph2DExpressionAst } from "./mathExpressionRealAst";
 import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
-import { scientificPointWithinBounds, scientificVelocityUnit } from "./scientificDatasetCoordinates";
+import { scientificAxisCoordinate, scientificPointWithinBounds, scientificVelocityUnit } from "./scientificDatasetCoordinates";
 import type { ValidationResult } from "./validation";
 
 export const VECTOR_FIELD3D_DOCUMENT_FORMAT = "math3d.vector-field3d-document" as const;
@@ -25,9 +25,25 @@ export type VectorField3DSource = Readonly<{
   solver: Readonly<{ absoluteTolerance: number; relativeTolerance: number;
     maxSteps: number; maxTime: number; maxArcLength?: number }>;
 }>;
+export type VectorField3DLayer = "arrows" | "trajectories" | "xy" | "xz" | "yz";
+export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
+  layout: "three-pane" | "viewer-focus";
+  sliceCoordinates: readonly [number, number, number] }>;
 export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOCUMENT_FORMAT;
   schemaVersion: typeof VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION; identity: DocumentIdentity;
-  source: VectorField3DSource; metadata: Readonly<{ title: string }> }>;
+  source: VectorField3DSource; metadata: Readonly<{ title: string }>;
+  workspace?: VectorField3DWorkspace }>;
+
+export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
+  selectedLayer: "arrows", layout: "three-pane",
+  sliceCoordinates: source.axes.map((axis, index) => {
+    if (source.field.kind !== "scientific-bundle") return (axis.min + axis.max) / 2;
+    const reference = source.field.references[0], count = reference.shape[index]!;
+    const samples = Math.min(count, 32), middle = Math.floor(samples / 2);
+    const sourceIndex = samples === 1 ? 0 : Math.round(middle * (count - 1) / (samples - 1));
+    return scientificAxisCoordinate({ ...reference.axes[index]!, count }, sourceIndex);
+  }) as [number, number, number],
+});
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -114,13 +130,22 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
   if (!record(value) || value.format !== VECTOR_FIELD3D_DOCUMENT_FORMAT ||
       value.schemaVersion !== VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION)
     return { ok: false, errors: ["Unsupported 3D vector-field document format or version."] };
-  if (!exact(value, ["format", "schemaVersion", "identity", "source", "metadata"]) ||
+  if (!(exact(value, ["format", "schemaVersion", "identity", "source", "metadata"]) ||
+      exact(value, ["format", "schemaVersion", "identity", "source", "metadata", "workspace"])) ||
       !isDocumentIdentity(value.identity) || !value.identity.id.startsWith("math3d:vector-field3d:") ||
       !validSource(value.source) || !record(value.metadata) ||
       !exact(value.metadata, ["title"]) || !text(value.metadata.title, 160))
     return { ok: false, errors: ["Invalid 3D vector-field document source, identity or metadata."] };
+  const source = value.source as VectorField3DSource;
+  const workspace = value.workspace ?? defaultVectorField3DWorkspace(source);
+  if (!record(workspace) || !exact(workspace, ["selectedLayer", "layout", "sliceCoordinates"]) ||
+      !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
+      !["three-pane", "viewer-focus"].includes(String(workspace.layout)) ||
+      !tuple3(workspace.sliceCoordinates) ||
+      !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes))
+    return { ok: false, errors: ["Invalid 3D field workspace layer, layout or slice coordinates."] };
   try {
-    const serialized = canonical(value);
+    const serialized = canonical({ ...value, workspace });
     if (new TextEncoder().encode(serialized).length > VECTOR_FIELD3D_MAX_DOCUMENT_BYTES)
       return { ok: false, errors: ["3D vector-field document exceeds size limit."] };
     const document = JSON.parse(serialized) as VectorField3DDocument;
@@ -136,11 +161,13 @@ export const vectorField3DExpression = (source: string, unit: string): VectorFie
   return { source, ast: parsed.ast, unit };
 };
 export const createVectorField3DDocument = (source: VectorField3DSource,
-  options: Readonly<{ stableKey: CanonicalJsonValue; title?: string; identity?: DocumentIdentity }>): VectorField3DDocument => {
+  options: Readonly<{ stableKey: CanonicalJsonValue; title?: string; identity?: DocumentIdentity;
+    workspace?: VectorField3DWorkspace }>): VectorField3DDocument => {
   const checked = JSON.parse(canonical(source)) as VectorField3DSource;
   const candidate = { format: VECTOR_FIELD3D_DOCUMENT_FORMAT, schemaVersion: VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION,
     identity: options.identity ?? createDocumentIdentity(createStableDocumentId("vector-field3d", options.stableKey), checked),
-    source: checked, metadata: { title: options.title ?? "3D vector field" } };
+    source: checked, metadata: { title: options.title ?? "3D vector field" },
+    workspace: options.workspace ?? defaultVectorField3DWorkspace(checked) };
   const normalized = normalizeVectorField3DDocument(candidate);
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
   return normalized.value;
@@ -152,7 +179,16 @@ export const reviseVectorField3DDocument = (document: VectorField3DDocument,
   const nextSource = JSON.parse(canonical(source)) as VectorField3DSource;
   return createVectorField3DDocument(nextSource, { stableKey: checked.value.identity.id,
     title: checked.value.metadata.title,
-    identity: advanceDocumentIdentity(checked.value.identity, nextSource) });
+    identity: advanceDocumentIdentity(checked.value.identity, nextSource),
+    workspace: checked.value.workspace });
+};
+export const reviseVectorField3DWorkspace = (document: VectorField3DDocument,
+  workspace: VectorField3DWorkspace): VectorField3DDocument => {
+  const checked = normalizeVectorField3DDocument(document);
+  if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+  const candidate = normalizeVectorField3DDocument({ ...checked.value, workspace });
+  if (!candidate.ok) throw new TypeError(candidate.errors.join(" "));
+  return candidate.value;
 };
 export const serializeVectorField3DDocument = (document: VectorField3DDocument): string => {
   const checked = normalizeVectorField3DDocument(document);

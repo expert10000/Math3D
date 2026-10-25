@@ -68,6 +68,19 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await expect(editor).toContainText("up");
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
+    for (const [name, coordinate, samples] of [
+      ["XY slice", "-1.5", "21 × 21"], ["XZ slice", "-2", "21 × 17"],
+      ["YZ slice", "-2", "21 × 17"],
+    ] as const) {
+      await editor.getByRole("button", { name }).click();
+      await editor.getByLabel("Slice physical coordinate").selectOption(coordinate);
+      await editor.getByRole("button", { name: "Preview slice" }).click();
+      await expect(editor.getByRole("figure", { name: /field slice/ })).toContainText(samples);
+      await expect(editor.getByRole("figure", { name: /field slice/ })).toContainText("m/s");
+      await expect(editor.getByRole("img", { name: /Color legend/ })).toBeVisible();
+    }
+    await editor.getByRole("button", { name: "3D arrows" }).click();
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("Domain box:");
 
     await editor.getByLabel("Seed x").fill("2");
     await editor.getByRole("button", { name: "Add seed" }).click();
@@ -137,6 +150,10 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
     await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await expect(editor.getByRole("figure", { name: "XY field slice" })).toHaveCount(0);
 
     await rm(resource);
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
@@ -145,6 +162,9 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
     await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
+    await expect(editor.getByRole("figure", { name: "XY field slice" })).toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector3d-"))
@@ -348,8 +368,20 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     await editor.getByRole("button", { name: "Add seed" }).click();
     await editor.getByLabel("Trajectory max steps").fill("57");
     await editor.getByLabel("Absolute tolerance").fill("0.00001");
+    await editor.getByRole("button", { name: "XZ slice" }).click();
+    await editor.getByLabel("Slice physical coordinate").fill("-2");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XZ field slice" })).toContainText("25 × 25 bounded samples");
+    await editor.getByLabel("P(x,y,z)").fill("-y+1");
+    await expect(editor.getByRole("figure", { name: "XZ field slice" })).toHaveCount(0);
+    await editor.getByLabel("P(x,y,z)").fill("-y");
+    await editor.getByRole("button", { name: "Focus viewer" }).click();
+    await expect(editor).toHaveAttribute("data-layout", "viewer-focus");
+    await editor.getByRole("button", { name: "Show three panes" }).click();
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");
+    await editor.getByRole("button", { name: "XZ slice" }).click();
+    await editor.getByRole("button", { name: "Focus viewer" }).click();
     await editor.getByRole("button", { name: "Save document" }).click();
     await expect(editor.getByTestId("vector-field3d-save-status")).toContainText("Project workspace");
     await editor.getByRole("button", { name: "Close" }).click();
@@ -361,13 +393,18 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
     expect(entry?.checkpoint.source.seeds).toEqual([{ id: "seed-1", position: [2, 0, 0] }]);
     expect(entry?.checkpoint.source.solver).toMatchObject({ maxSteps: 57, absoluteTolerance: 0.00001 });
-    await projectPanel.getByTestId(`project-open-saved-${saved.identity.id}`).click();
-    await expect(projectPanel.getByTestId("project-viewer-document")).toBeVisible();
-    await projectPanel.getByTestId("project-viewer-document").selectOption(entry.expected.id);
+    expect(entry?.checkpoint.workspace).toMatchObject({ selectedLayer: "xz", layout: "viewer-focus",
+      sliceCoordinates: [0, -2, 0] });
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
     editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toContainText("seed-1: (2, 0, 0)");
     await expect(editor.getByLabel("Trajectory max steps")).toHaveValue("57");
     await expect(editor.getByLabel("Absolute tolerance")).toHaveValue("0.00001");
+    await expect(editor).toHaveAttribute("data-layout", "viewer-focus");
+    await expect(editor).toContainText("Selected layer: XZ slice");
+    await expect(editor.getByLabel("Slice physical coordinate")).toHaveValue("-2");
+    await expect(editor.getByRole("figure", { name: "XZ field slice" })).toHaveCount(0);
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");

@@ -88,6 +88,17 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
     });
     return { positions: new Float32Array(positions), colors: new Float32Array(colors) };
   }, [document, trajectories]);
+  const domainBox = useMemo(() => {
+    const axes = document.source.axes, span = Math.max(...axes.map(axis => axis.max - axis.min));
+    const half = axes.map(axis => (axis.max - axis.min) / span);
+    const corners = Array.from({ length: 8 }, (_, index) => [
+      (index & 1 ? 1 : -1) * half[0]!, (index & 2 ? 1 : -1) * half[1]!,
+      (index & 4 ? 1 : -1) * half[2]!] as const);
+    const positions: number[] = [];
+    for (let index = 0; index < 8; index++) for (const bit of [1, 2, 4])
+      if (!(index & bit)) positions.push(...corners[index]!, ...corners[index | bit]!);
+    return new Float32Array(positions);
+  }, [document.source.axes]);
   const maximum = Math.max(...artifact.arrows.map(arrow => arrow.magnitude), 0);
   const colorLabel = artifact.colorBy === "speed" ? `magnitude 0–${maximum.toPrecision(4)}` :
     `${artifact.colorBy.toUpperCase()} component −${maximum.toPrecision(4)}–${maximum.toPrecision(4)}`;
@@ -110,6 +121,10 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
           </bufferGeometry>
           <pointsMaterial color="#f8b44c" size={0.055} sizeAttenuation />
         </points>
+        <lineSegments>
+          <bufferGeometry><bufferAttribute attach="attributes-position" args={[domainBox, 3]} /></bufferGeometry>
+          <lineBasicMaterial color="#94a3b8" transparent opacity={0.7} toneMapped={false} />
+        </lineSegments>
         {paths.positions.length > 0 && <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[paths.positions, 3]} />
@@ -131,7 +146,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
       <button type="button" onClick={() => moveCamera("reset")}>Reset camera</button>
     </div>
     <p role="status" aria-live="polite" data-testid="vector-field3d-camera-status">{cameraStatus}</p>
-    <p>Drag to orbit; scroll to zoom. Axes: {document.source.axes.map(axis =>
+    <p>Domain box: {document.source.axes.map(axis =>
+      `${axis.label} ${axis.min}…${axis.max} ${axis.unit}`).join(" · ")}. Drag to orbit; scroll to zoom. Axes: {document.source.axes.map(axis =>
       `${axis.label} (${axis.unit})`).join(" · ")}. Components: {artifact.componentUnits.join(" · ")}.
       Color: {colorLabel}.</p>
     {trajectories && <p>Trajectory overlay: {trajectories.trajectories.length} seed(s),
