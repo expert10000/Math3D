@@ -69,7 +69,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   }, [document]);
   const [expressions, setExpressions] = useState<[string, string, string]>(document.source.field.kind === "expressions" ?
     document.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
-  const [artifact, setArtifact] = useState<VectorField3DArrowArtifact | null>(null);
+  const [artifact, setArtifact] = useState<VectorField3DArrowArtifact | null>(() =>
+    document.source.field.kind === "expressions" ? sampleVectorField3DArrows(document) : null);
   const [slice, setSlice] = useState<VectorField3DSliceArtifact | null>(null);
   const [linkedSlices, setLinkedSlices] = useState<Partial<Record<"xy" | "xz" | "yz",
     VectorField3DSliceArtifact>>>({});

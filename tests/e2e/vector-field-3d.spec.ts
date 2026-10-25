@@ -19,6 +19,8 @@ test("SCI-02 opens a docked field explorer with bounded narrow-window layout", a
     const viewer = explorer.getByLabel("3D field viewer");
     const inspector = explorer.getByLabel("Field status and actions");
     await expect(explorer).toBeVisible();
+    await expect(viewer.getByRole("figure", { name: "3D vector arrow renderer" }))
+      .toContainText("125 of 125 bounded samples");
     await expect(page.getByTestId("main-viewer")).toBeHidden();
     const [left, middle, right] = await Promise.all([
       controls.boundingBox(), viewer.boundingBox(), inspector.boundingBox()]);
