@@ -121,10 +121,14 @@ export function searchVectorField3DEquilibria(document: VectorField3DDocument,
       if (right[axis] - left[axis] <= Number.EPSILON * Math.max(1, Math.abs(point[axis]))) return null;
       const l = sample(left), r = sample(right);
       if (!l || !r) return null;
-      columns.push(r.map((value, i) => (value - l[i]) / (right[axis] - left[axis])) as [number, number, number]);
+      const width = right[axis] - left[axis];
+      columns.push([(r[0] - l[0]) / width, (r[1] - l[1]) / width, (r[2] - l[2]) / width]);
     }
-    return [0, 1, 2].map(row => columns.map(column => column[row]) as [number, number, number]) as
-      [Vec3, Vec3, Vec3];
+    return [
+      [columns[0]![0], columns[1]![0], columns[2]![0]],
+      [columns[0]![1], columns[1]![1], columns[2]![1]],
+      [columns[0]![2], columns[1]![2], columns[2]![2]],
+    ];
   };
   const smoothStencil = (point: Vec3, center: Vec3, j: Matrix3): boolean => {
     const scale = Math.max(1, infinityNorm(j));
