@@ -24,6 +24,63 @@ const document = (operation: "gradient-x" | "gradient-y" | "gradient-magnitude" 
   { stableKey: ["sincos-derived", operation] });
 
 describe("independent verified scalar calculus", () => {
+  it("matches the bundled scalar preset oracles after checksum verification", () => {
+    for (const [name, expected] of [["quadratic-potential", 4], ["saddle-potential", 0]] as const) {
+      const folder = fileURLToPath(new URL(`../../../tests/fixtures/scientific-scene/${name}.sscene/`, import.meta.url));
+      const manifest = readFileSync(`${folder}manifest.json`, "utf8");
+      const hash = sha256Checksum(new TextEncoder().encode(manifest)).slice(7);
+      const ref = createGraph2DFieldReference(manifest, hash, { kind: "preset", value: name }, "field", "scalar");
+      const data = readFileSync(`${folder}scalar.f64`);
+      const values = Array.from({ length: ref.shape[0] * ref.shape[1] }, (_, index) => data.readDoubleLE(index * 8));
+      const source = createScientificFieldDocument({ reference: ref, derivation: { operation: "laplacian" },
+        quantity: { name: "Potential", unit: "V" },
+        display: { view: "plane", normalAxis: null, fixedIndex: null, transfer: { mode: "data" } } },
+      { stableKey: name });
+      const result = deriveVerifiedScientificScalarPlane(source, manifest, hash, {
+        fingerprint: hash, datasetId: "field", component: "scalar", sourceShape: ref.shape,
+        normalAxis: null, fixedIndex: null, planeAxes: [0, 1], shape: [ref.shape[0], ref.shape[1]],
+        resourceSha256: ref.resourceSha256, planeSha256: sha256Checksum(data).slice(7), values });
+      expect(result.plane.values.every(value => Math.abs(value - expected) < 1e-9)).toBe(true);
+      expect(result.unit).toBe("(V)/m²");
+    }
+    const folder = fileURLToPath(new URL("../../../tests/fixtures/scientific-scene/gaussian-bump.sscene/", import.meta.url));
+    const manifest = readFileSync(`${folder}manifest.json`, "utf8");
+    const hash = sha256Checksum(new TextEncoder().encode(manifest)).slice(7);
+    const ref = createGraph2DFieldReference(manifest, hash, { kind: "preset", value: "gaussianBump" },
+      "field", "scalar");
+    const data = readFileSync(`${folder}scalar.f64`);
+    const values = Array.from({ length: 41 * 41 }, (_, index) => data.readDoubleLE(index * 8));
+    const source = createScientificFieldDocument({ reference: ref, derivation: { operation: "laplacian" },
+      quantity: { name: "Amplitude", unit: "1" },
+      display: { view: "plane", normalAxis: null, fixedIndex: null, transfer: { mode: "data" } } },
+    { stableKey: "gaussian-bump" });
+    const result = deriveVerifiedScientificScalarPlane(source, manifest, hash, {
+      fingerprint: hash, datasetId: "field", component: "scalar", sourceShape: ref.shape,
+      normalAxis: null, fixedIndex: null, planeAxes: [0, 1], shape: [41, 41],
+      resourceSha256: ref.resourceSha256, planeSha256: sha256Checksum(data).slice(7), values });
+    expect(result.plane.values[20 * 41 + 20]).toBeLessThan(-1.9);
+    expect(result.plane.values[20 * 41 + 20]).toBeGreaterThan(-2.1);
+  });
+
+  it("matches the bundled 3D quadratic Laplacian on its verified volume", () => {
+    const folder = fileURLToPath(new URL("../../../tests/fixtures/scientific-scene/quadratic-volume.sscene/", import.meta.url));
+    const manifest = readFileSync(`${folder}manifest.json`, "utf8");
+    const hash = sha256Checksum(new TextEncoder().encode(manifest)).slice(7);
+    const ref = createGraph2DFieldReference(manifest, hash, { kind: "preset", value: "quadraticVolume" },
+      "field", "scalar");
+    const data = readFileSync(`${folder}scalar.f64`);
+    const values = Array.from({ length: 17 ** 3 }, (_, index) => data.readDoubleLE(index * 8));
+    const source = createScientificFieldDocument({ reference: ref, derivation: { operation: "laplacian" },
+      quantity: { name: "Potential", unit: "V" },
+      display: { view: "volume", normalAxis: 2, fixedIndex: 8, transfer: { mode: "data" } } },
+    { stableKey: "quadratic-volume" });
+    const result = deriveVerifiedScientificScalarVolume(source, manifest, hash, {
+      fingerprint: hash, datasetId: "field", component: "scalar", sourceShape: [17, 17, 17],
+      sampleShape: [17, 17, 17], resourceSha256: ref.resourceSha256,
+      sampleSha256: sha256Checksum(data).slice(7), values });
+    expect(result.volume.values.every(value => Math.abs(value - 6) < 1e-9)).toBe(true);
+    expect(result.unit).toBe("(V)/m²");
+  });
   it("uses physical coordinates and quadratic boundary stencils on 2D and 3D fields", () => {
     const xy = [-2, -1, 0, 1, 2], values2d = xy.flatMap(x => xy.map(y => x * x + y * y));
     const gradient = calculateScientificScalarDerivative(values2d, [xy, xy], "gradient-x");

@@ -595,7 +595,8 @@ declare global {
           datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
             { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
-      openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "complexWaveVolume" | "vortexFlow" | "vortexVolume") =>
+      openGraphDatasetPreset: (id: "sincos" | "thermal" | "quadraticPotential" | "saddlePotential" |
+        "gaussianBump" | "quadraticVolume" | "complexWave" | "complexWaveVolume" | "vortexFlow" | "vortexVolume") =>
         ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>;
       openGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string }) =>
         Promise<{ ok: true; source: Awaited<ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>> extends infer R ?

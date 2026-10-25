@@ -41,6 +41,10 @@ const PINNED_SINCOS_MANIFEST = "6666afe57ad2876575b77c341bb8e8c6959d4a6cee14cc23
 const GRAPH_DATASET_PRESETS = {
   sincos: { directory: "sincos.sscene", fingerprint: PINNED_SINCOS_MANIFEST },
   thermal: { directory: "thermal-gradient.sscene", fingerprint: "bbcc6be51d2194a5e81498f0ad6bd7556c11a87c9d764d8c84a32be497a7320a" },
+  quadraticPotential: { directory: "quadratic-potential.sscene", fingerprint: "5529e6f934f7b3a56dabcb5b8ab7ed199396501f7cad054689e278cb54a77add" },
+  saddlePotential: { directory: "saddle-potential.sscene", fingerprint: "9d23dee2b7ffb0db2207235de66e25ac0c3ebb18ead3c53aaac49d04c0c095c1" },
+  gaussianBump: { directory: "gaussian-bump.sscene", fingerprint: "a4172c7733fecf949d16b35251593bc7dd5764504069c54af460cdb2b4b761fd" },
+  quadraticVolume: { directory: "quadratic-volume.sscene", fingerprint: "db00ba11b3cfa5aa22cb01aed988608bdbd226b859de5a9d79e571f9074a93b1" },
   complexWave: { directory: "complex-wave.sscene", fingerprint: "30861be84fbb0d762d55b21e2554fcd60c7bf543fb9689aeae5d3e9df9682135" },
   complexWaveVolume: { directory: "complex-wave-volume.sscene", fingerprint: "207290452e2066b36460e1b61e3bc09c18150ee147d5e2d3c9dd4fe4d92de0b4" },
   vortexFlow: { directory: "vortex-flow.sscene", fingerprint: "f06c249796ccd55de39ca3d27ce401e46ac1d34a6c469207613423383961fd01" },

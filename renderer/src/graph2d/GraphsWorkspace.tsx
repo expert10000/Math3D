@@ -97,12 +97,16 @@ import "./graphsWorkspace.css";
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
 const SCIENTIFIC_GRID_LINE_COLORS = ["#2563eb", "#ea580c", "#059669", "#9333ea", "#e11d48", "#0d9488"] as const;
 const SCIENTIFIC_FIELD_PRESETS = [
-  { id: "sincos", title: "Sine–cosine grid", detail: "2D scalar · compare lines and inspect the full field" },
-  { id: "thermal", title: "Thermal gradient", detail: "2D scalar · temperature in kelvin across time and distance" },
-  { id: "complexWave", title: "Complex wave packet", detail: "2D complex · real and imaginary wave components" },
-  { id: "complexWaveVolume", title: "Complex wave volume", detail: "3D complex · paired real and imaginary plane lines" },
-  { id: "vortexFlow", title: "Planar vortex", detail: "2D vector · east and north velocity components" },
-  { id: "vortexVolume", title: "Swirling flow volume", detail: "3D vector · rotate volume and inspect exact planes" },
+  { id: "sincos", kind: "scalar", title: "Sine–cosine grid", detail: "2D · oscillatory, dimensionless scalar" },
+  { id: "thermal", kind: "scalar", title: "Thermal gradient", detail: "2D · temperature over time and distance; mixed axis units" },
+  { id: "quadraticPotential", kind: "scalar", title: "Quadratic potential", detail: "2D · u = x² + y²; Laplacian = 4 V/m²" },
+  { id: "saddlePotential", kind: "scalar", title: "Saddle potential", detail: "2D · u = x² − y²; Laplacian = 0 V/m²" },
+  { id: "gaussianBump", kind: "scalar", title: "Gaussian bump", detail: "2D · localized peak with varying curvature" },
+  { id: "quadraticVolume", kind: "scalar", title: "Quadratic potential volume", detail: "3D · u = x² + y² + z²; Laplacian = 6 V/m²" },
+  { id: "vortexFlow", kind: "vector", title: "Planar vortex", detail: "2D · east and north velocity components" },
+  { id: "vortexVolume", kind: "vector", title: "Swirling flow volume", detail: "3D · rotate volume and inspect exact planes" },
+  { id: "complexWave", kind: "complex", title: "Complex wave packet", detail: "2D · real and imaginary wave components" },
+  { id: "complexWaveVolume", kind: "complex", title: "Complex wave volume", detail: "3D · paired real and imaginary plane lines" },
 ] as const;
 type ScientificFieldPresetId = typeof SCIENTIFIC_FIELD_PRESETS[number]["id"];
 
@@ -235,6 +239,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
+  const [scientificPresetKind, setScientificPresetKind] = useState<"all" | "scalar" | "vector" | "complex">("all");
   const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(readFieldExplorerSession);
   const [vectorField3DOpen, setVectorField3DOpen] = useState(() => readFieldExplorerSession() !== null);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<VectorField2DDocument | null>(null);
@@ -1968,8 +1973,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificPresetOpen && <div className="graph2d-scientific-import graph2d-scientific-presets" role="dialog"
           aria-label="Scientific field presets" onPointerDown={event => event.stopPropagation()}>
           <h3>Scientific field presets</h3>
-          <p>Choose a verified sample dataset. You can preview its components before importing a line.</p>
-          {SCIENTIFIC_FIELD_PRESETS.map(preset => <div key={preset.id} className="graph2d-scientific-preset-option">
+          <p>Choose a verified sample dataset. Preview a field, save its reference, or import a line.</p>
+          <label>Data type <select aria-label="Preset data type" value={scientificPresetKind}
+            onChange={event => setScientificPresetKind(event.target.value as typeof scientificPresetKind)}>
+            <option value="all">All data types</option><option value="scalar">Scalar fields</option>
+            <option value="vector">Vector fields</option><option value="complex">Complex fields</option>
+          </select></label>
+          {SCIENTIFIC_FIELD_PRESETS.filter(preset => scientificPresetKind === "all" ||
+            preset.kind === scientificPresetKind).map(preset => <div key={preset.id} className="graph2d-scientific-preset-option">
             <button type="button" disabled={scientificImportBusy} onClick={() => void openScientificDataset(preset.id)}>
               {preset.title}</button><small>{preset.detail}</small>
           </div>)}

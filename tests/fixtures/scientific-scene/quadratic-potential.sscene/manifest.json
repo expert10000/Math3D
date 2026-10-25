@@ -1,0 +1,67 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "quadratic-potential",
+  "title": "Quadratic potential · 2D scalar field",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "quadratic-potential-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "4613babb008c0ca114a5ad7e593292359f5de98fa6345f04283fd7ddc9773356"
+  },
+  "resources": [
+    {
+      "id": "scalar",
+      "path": "scalar.f64",
+      "format": "f64le",
+      "count": 289,
+      "bytes": 2312,
+      "sha256": "4613babb008c0ca114a5ad7e593292359f5de98fa6345f04283fd7ddc9773356"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "plane",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4
+      ],
+      "spacing": [
+        0.5,
+        0.5
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "scalar-field",
+      "coordinateSystem": "plane",
+      "shape": [
+        17,
+        17
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Potential",
+        "unit": "V"
+      },
+      "real": "scalar"
+    }
+  ],
+  "views": []
+}

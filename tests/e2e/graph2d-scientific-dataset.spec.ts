@@ -597,6 +597,56 @@ test("Graphs opens bundled scalar, complex and vector field presets without a fo
   }
 });
 
+test("SCI-06 opens varied scalar presets and derives the quadratic volume", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => {
+      throw new Error("Preset must not open a folder picker");
+    }; });
+    for (const [name, title, shape] of [
+      ["Quadratic potential", "Quadratic potential · 2D scalar field", "shape [17, 17]"],
+      ["Saddle potential", "Saddle potential · 2D scalar field", "shape [17, 17]"],
+      ["Gaussian bump", "Gaussian bump · 2D scalar field", "shape [41, 41]"],
+    ] as const) {
+      await page.locator(".graph2d-toolbar-menu > summary").click();
+      await page.getByRole("button", { name: "Scientific field presets" }).click();
+      const chooser = page.getByRole("dialog", { name: "Scientific field presets" });
+      await chooser.getByLabel("Preset data type").selectOption("scalar");
+      await chooser.getByRole("button", { name, exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+      await expect(dialog).toContainText(title);
+      await expect(dialog).toContainText(shape);
+      await dialog.getByRole("button", { name: "View verified field" }).click();
+      await expect(dialog.getByRole("figure", { name: /Verified field plane/ })).toBeVisible();
+      await dialog.getByRole("button", { name: "Cancel" }).click();
+    }
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    const chooser = page.getByRole("dialog", { name: "Scientific field presets" });
+    await chooser.getByLabel("Preset data type").selectOption("scalar");
+    await chooser.getByRole("button", { name: "Quadratic potential volume" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await expect(dialog).toContainText("Quadratic potential · 3D scalar field");
+    await dialog.getByRole("button", { name: "View verified volume" }).click();
+    await expect(dialog.getByRole("figure", { name: /Verified volume for Potential scalar/ }))
+      .toContainText("17 × 17 × 17 displayed samples");
+    await dialog.getByRole("button", { name: "Save field reference" }).click();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields")
+      .getByRole("button", { name: "Open field workspace" }).click();
+    const workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await workspace.getByLabel("Scalar calculation").selectOption("laplacian");
+    await workspace.getByRole("button", { name: "Preview and save derived field" }).click();
+    await expect(workspace.getByRole("figure", { name: /Verified volume for Laplacian Potential/ }))
+      .toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-13.3 saves one paired 2D vector reference and re-verifies both components after Project reopen", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector-reference-"));

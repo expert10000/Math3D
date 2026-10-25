@@ -67,6 +67,22 @@ const config = {
       to: "scientific-scenes/thermal-gradient.sscene",
     },
     {
+      from: "tests/fixtures/scientific-scene/quadratic-potential.sscene",
+      to: "scientific-scenes/quadratic-potential.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/saddle-potential.sscene",
+      to: "scientific-scenes/saddle-potential.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/gaussian-bump.sscene",
+      to: "scientific-scenes/gaussian-bump.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/quadratic-volume.sscene",
+      to: "scientific-scenes/quadratic-volume.sscene",
+    },
+    {
       from: "tests/fixtures/scientific-scene/complex-wave.sscene",
       to: "scientific-scenes/complex-wave.sscene",
     },

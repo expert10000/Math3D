@@ -51,8 +51,48 @@ const volume = (i, j, k) => {
   const envelope = Math.exp(-(x * x + y * y) / 18) * (0.55 + 0.45 * Math.cos(z * Math.PI / 6));
   return [-y * envelope, x * envelope, 0.8 * Math.sin(z * Math.PI / 3) * Math.exp(-(x * x + y * y) / 12)];
 };
+const scalarShape = [17, 17], scalarOrigin = [-4, -4], scalarSpacing = [0.5, 0.5];
+const scalarPosition = (i, j) => [scalarOrigin[0] + i * scalarSpacing[0],
+  scalarOrigin[1] + j * scalarSpacing[1]];
+const scalarAxes = [{ name: "x", unit: "m" }, { name: "y", unit: "m" }];
+const scalarVolumeShape = [17, 17, 17], scalarVolumeOrigin = [-4, -4, -4];
+const scalarVolumeSpacing = [0.5, 0.5, 0.5];
+const bumpShape = [41, 41], bumpOrigin = [-4, -4], bumpSpacing = [0.2, 0.2];
 
 const presets = [
+  { directory: "quadratic-potential.sscene", sceneId: "quadratic-potential",
+    title: "Quadratic potential · 2D scalar field", shape: scalarShape,
+    coordinate: coordinates("plane", scalarAxes, scalarOrigin, scalarSpacing),
+    quantity: { name: "Potential", unit: "V" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j) => {
+      const [x, y] = scalarPosition(i, j); return [x * x + y * y];
+    } },
+  { directory: "saddle-potential.sscene", sceneId: "saddle-potential",
+    title: "Saddle potential · 2D scalar field", shape: scalarShape,
+    coordinate: coordinates("plane", scalarAxes, scalarOrigin, scalarSpacing),
+    quantity: { name: "Potential", unit: "V" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j) => {
+      const [x, y] = scalarPosition(i, j); return [x * x - y * y];
+    } },
+  { directory: "gaussian-bump.sscene", sceneId: "gaussian-bump",
+    title: "Gaussian bump · 2D scalar field", shape: bumpShape,
+    coordinate: coordinates("plane", scalarAxes, bumpOrigin, bumpSpacing),
+    quantity: { name: "Amplitude", unit: "1" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j) => {
+      const x = bumpOrigin[0] + i * bumpSpacing[0], y = bumpOrigin[1] + j * bumpSpacing[1];
+      return [Math.exp(-(x * x + y * y) / 2)];
+    } },
+  { directory: "quadratic-volume.sscene", sceneId: "quadratic-volume",
+    title: "Quadratic potential · 3D scalar field", shape: scalarVolumeShape,
+    coordinate: coordinates("space", [...scalarAxes, { name: "z", unit: "m" }],
+      scalarVolumeOrigin, scalarVolumeSpacing),
+    quantity: { name: "Potential", unit: "V" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j, k) => {
+      const x = scalarVolumeOrigin[0] + i * scalarVolumeSpacing[0];
+      const y = scalarVolumeOrigin[1] + j * scalarVolumeSpacing[1];
+      const z = scalarVolumeOrigin[2] + k * scalarVolumeSpacing[2];
+      return [x * x + y * y + z * z];
+    } },
   { directory: "complex-wave.sscene", sceneId: "complex-wave", title: "Complex wave packet · 2D",
     shape: complexShape, coordinate: coordinates("plane", [{ name: "x", unit: "m" }, { name: "y", unit: "m" }],
       complexOrigin, complexSpacing), quantity: { name: "Wave amplitude", unit: "1" },
@@ -84,7 +124,8 @@ for (const preset of presets) {
   const dataset = { id: "field", semanticType: preset.semanticType, coordinateSystem: preset.coordinate.id,
     shape: preset.shape, order: "last-axis-fastest", quantity: preset.quantity,
     ...(preset.semanticType === "complex-scalar-field" ? { real: "real", imaginary: "imaginary" } :
-      { components: preset.components.map(name => ({ name, resource: name })) }) };
+      preset.semanticType === "scalar-field" ? { real: "scalar" } :
+        { components: preset.components.map(name => ({ name, resource: name })) }) };
   const manifest = { schema: "scientific-scene/v1", sceneId: preset.sceneId, title: preset.title,
     source: { producer: "math3d-fixture", sourceId: `${preset.sceneId}-v1`, sourceSchema: "scientific-fixture/v1",
       sha256: sha256(sourceBytes) },
