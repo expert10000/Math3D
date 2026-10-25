@@ -169,14 +169,15 @@ export function analyzeVectorField3DDifferential(document: VectorField3DDocument
   return analyzeAt(document, position, scientific);
 }
 
-export type VectorField3DDerivedChannel = "divergence" | "curl-magnitude";
+export type VectorField3DDerivedChannel = "divergence" | "curl-magnitude" |
+  "curl-x" | "curl-y" | "curl-z";
 /** A bounded derived map; one complete bundle verification precedes all cell calculations. */
 export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
   normalAxis: 0 | 1 | 2, fixedCoordinate: number, channel: VectorField3DDerivedChannel,
   scientific?: ScientificSource): VectorField3DSliceArtifact {
-  if (channel !== "divergence" && channel !== "curl-magnitude")
+  if (!["divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z"].includes(channel))
     throw new TypeError("Unsupported derived field channel.");
-  if (channel === "curl-magnitude" && new Set(document.source.axes.map(axis => axis.unit)).size !== 1)
+  if (channel !== "divergence" && new Set(document.source.axes.map(axis => axis.unit)).size !== 1)
     throw new TypeError("Curl requires matching physical coordinate units on x, y and z.");
   const base = sampleVectorField3DSlice(document, normalAxis, fixedCoordinate, scientific);
   const verified = scientific ? verifyVectorField3DVolumes(document, scientific.manifestJson,
@@ -190,8 +191,10 @@ export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
     position[base.planeAxes[1]] = base.coordinates[1][j]!;
     const result = analyzeAt(document, position, scientific, verified);
     if (result.stencils.some(stencil => stencil.boundary)) boundarySamples++;
+    const curlComponent = { "curl-x": 0, "curl-y": 1, "curl-z": 2 } as const;
     const value = result.status !== "ready" ? null : channel === "divergence" ?
-      result.divergence : result.curl ? Math.hypot(...result.curl) : null;
+      result.divergence : result.curl ? channel === "curl-magnitude" ?
+        Math.hypot(...result.curl) : result.curl[curlComponent[channel]] : null;
     values.push(value !== null && Number.isFinite(value) ? value : null);
   }
   const finite = values.filter((value): value is number => value !== null);

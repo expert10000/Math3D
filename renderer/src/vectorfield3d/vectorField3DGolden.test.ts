@@ -54,6 +54,10 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
       expect(curl.values[12 * 25 + 12]).toBeCloseTo(2, 7);
       expect(curl.evaluated).toBeLessThanOrEqual(1024);
     }
+    expect(sampleVectorField3DDerivedSlice(document, 2, 0, "curl-z")
+      .values[12 * 25 + 12]).toBeCloseTo(2, 7);
+    expect(sampleVectorField3DDerivedSlice(document, 2, 0, "curl-x")
+      .values[12 * 25 + 12]).toBeCloseTo(0, 7);
   });
   it("keeps exact constant-field values and a bounded straight trajectory", () => {
     const document = field(["1", "0", "0"], [0, 0, 0]);

@@ -33,7 +33,8 @@ export type VectorField3DClipBounds = readonly [readonly [number, number],
 export type VectorField3DCameraState = Readonly<{ position: readonly [number, number, number];
   target: readonly [number, number, number]; zoom: number }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
-  sliceChannel: "component" | "divergence" | "curl-magnitude";
+  sliceChannel: "component" | "divergence" | "curl-magnitude" |
+    "curl-x" | "curl-y" | "curl-z";
   layout: "three-pane" | "viewer-focus" | "split" | "quad";
   sliceCoordinates: readonly [number, number, number];
   viewsLinked: boolean;
@@ -181,7 +182,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
       ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "clipBounds", "cameraPreset", "cameraState"]) ||
-      !["component", "divergence", "curl-magnitude"].includes(String(workspace.sliceChannel)) ||
+      !["component", "divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z"]
+        .includes(String(workspace.sliceChannel)) ||
       !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
       !["three-pane", "viewer-focus", "split", "quad"].includes(String(workspace.layout)) ||
       !["perspective", "xy", "xz", "yz"].includes(String(workspace.cameraPreset)) ||

@@ -715,6 +715,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <option value="component">Magnitude or selected component</option>
         <option value="divergence">Divergence</option>
         <option value="curl-magnitude">Curl magnitude</option>
+        <option value="curl-x">Curl x</option>
+        <option value="curl-y">Curl y</option>
+        <option value="curl-z">Curl z</option>
       </select></label>
       <label>Fixed {document.source.axes[normalAxis].label} ({document.source.axes[normalAxis].unit})
         {document.source.field.kind === "scientific-bundle" ?

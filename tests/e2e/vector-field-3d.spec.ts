@@ -355,10 +355,14 @@ test("SCI-05 RK45 and SCI-06 derived slices persist their controls", async () =>
     await editor.getByRole("button", { name: "Preview slice" }).click();
     await expect(editor.getByRole("figure", { name: "XY field slice" }))
       .toContainText("curl-magnitude");
+    await editor.getByLabel("Slice displayed field").selectOption("curl-z");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("curl-z");
     await editor.getByRole("button", { name: "Save document" }).click();
     await editor.getByRole("button", { name: "Open saved document" }).click();
     await expect(editor.getByLabel("Trajectory solver method")).toHaveValue("rk45");
-    await expect(editor.getByLabel("Slice displayed field")).toHaveValue("curl-magnitude");
+    await expect(editor.getByLabel("Slice displayed field")).toHaveValue("curl-z");
   } finally { await closeSurfaceApp(app); }
 });
 
