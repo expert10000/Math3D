@@ -132,6 +132,7 @@ export * from "./scientificFieldDocument";
 export * from "./vectorField3DScientific";
 export * from "./vectorField3DSlices";
 export * from "./vectorField3DAnalyticLine";
+export * from "./vectorField3DDifferential";
 export * from "./vectorField3DTrajectories";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";

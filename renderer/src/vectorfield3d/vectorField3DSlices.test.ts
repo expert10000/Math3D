@@ -6,6 +6,7 @@ import { createGraph2DFieldReference, createMath3DProject, createMixedWorkspaceD
   parseMath3DProject, parseVectorField3DDocument, reviseVectorField3DWorkspace,
   sampleVectorField3DSlice, sampleVectorField3DProbe, serializeMath3DProject, serializeVectorField3DDocument,
   integrateVectorField3DScientificTrajectories, reviseVectorField3DDocument,
+  analyzeVectorField3DDifferential,
   sha256Checksum, vectorField3DSliceCoordinates, type Graph2DFieldReference, type VectorField3DSource,
   type VectorField3DVolumes } from "@math3d/core";
 
@@ -213,5 +214,31 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
     expect(stop([4, 4, 0]).stopReason).toBe("boundary");
     expect(stop([0, -2, -1.5], 1).stopReason).toBe("step-limit");
     expect(stop([0, -2, -1.5], 1000, () => true).stopReason).toBe("cancelled");
+  });
+
+  it("derives verified-grid vortex divergence and curl and rejects stale components", () => {
+    const verified = { manifestJson, fingerprint, volumes };
+    const center = analyzeVectorField3DDifferential(document, [0, 0, 0], verified);
+    expect(center).toMatchObject({ status: "ready", quality: "approximate",
+      divergenceUnit: "1/s", curlUnit: "1/s" });
+    // The fixture's vertical component is 0.8 sin(zπ/3): use its grid-spacing oracle.
+    expect(center.divergence).toBeCloseTo(0.8 * Math.sin(Math.PI / 8) / 0.375, 12);
+    expect(center.curl![0]).toBeCloseTo(0, 12);
+    expect(center.curl![1]).toBeCloseTo(0, 12);
+    expect(center.curl![2]).toBeCloseTo(2 * Math.exp(-0.4 * 0.4 / 18), 10);
+    expect(center.evaluations).toBeLessThanOrEqual(9);
+    expect(center.sourceHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(() => analyzeVectorField3DDifferential(document, [0, -1.9, 0], verified))
+      .toThrow(/between grid samples/);
+    const edge = analyzeVectorField3DDifferential(document, [4, 0, 0], verified);
+    expect(edge.stencils[0]).toMatchObject({ method: "one-sided-three-point", boundary: true });
+    expect(edge.diagnostics.join(" ")).toMatch(/boundary.*accuracy is reduced/i);
+    const changed = [{ ...volumes[0], sampleSha256: "0".repeat(64) },
+      volumes[1], volumes[2]] as VectorField3DVolumes;
+    expect(() => analyzeVectorField3DDifferential(document, [0, 0, 0],
+      { manifestJson, fingerprint, volumes: changed })).toThrow(/checksum/);
+    expect(() => analyzeVectorField3DDifferential(document, [0, 0, 0],
+      { manifestJson, fingerprint, volumes: volumes.slice(0, 2) as VectorField3DVolumes }))
+      .toThrow(/complete 3D vector field/);
   });
 });

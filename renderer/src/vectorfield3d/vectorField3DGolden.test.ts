@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   integrateVectorField3DTrajectories, reviseVectorField3DWorkspace,
   sampleVectorField3DAnalyticLine, validGraph2DAnalyticFieldOrigin,
+  analyzeVectorField3DDifferential,
   sampleVectorField3DArrows, sampleVectorField3DProbe, sampleVectorField3DSlice,
   vectorField3DExpression, type VectorField3DSource } from "@math3d/core";
 
@@ -84,5 +85,38 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
     expect(sampleVectorField3DAnalyticLine(document, "speed", 0, [1, 2, 3]).rows[64]?.y).toBe(2);
     expect(() => sampleVectorField3DAnalyticLine(document, "q", 0, [1, 20, 3]))
       .toThrow(/domain/);
+  });
+
+  it("reports local divergence and curl with units and honest boundary stencils", () => {
+    const vortex = field(["-y", "x", "0"], [1, 0, 0]);
+    const center = analyzeVectorField3DDifferential(vortex, [0, 0, 0]);
+    expect(center).toMatchObject({ status: "ready", quality: "approximate",
+      divergenceUnit: "1/s", curlUnit: "1/s", divergence: 0 });
+    expect(center.curl![0]).toBeCloseTo(0, 10);
+    expect(center.curl![1]).toBeCloseTo(0, 10);
+    expect(center.curl![2]).toBeCloseTo(2, 10);
+    expect(center.evaluations).toBeLessThanOrEqual(9);
+    expect(center.stencils.every(item => item.method === "centered-three-point")).toBe(true);
+    const edge = analyzeVectorField3DDifferential(vortex, [4, 0, 0]);
+    expect(edge.status).toBe("ready");
+    expect(edge.stencils[0]).toMatchObject({ axis: "x", method: "one-sided-three-point",
+      boundary: true });
+    expect(edge.diagnostics.join(" ")).toMatch(/boundary.*accuracy is reduced/i);
+    const source = field(["x", "y", "z"], [0, 0, 0]);
+    expect(analyzeVectorField3DDifferential(source, [1, 2, 3]).divergence).toBeCloseTo(3, 10);
+    const singular = analyzeVectorField3DDifferential(field(["1/x", "0", "0"], [1, 0, 0]),
+      [0, 0, 0]);
+    expect(singular.status).toBe("unavailable");
+    expect(singular.divergence).toBeNull();
+    expect(singular.diagnostics.join(" ")).toMatch(/undefined/);
+    const mixed = createVectorField3DDocument({ ...vortex.source,
+      axes: [{ ...axes[0] }, { ...axes[1], unit: "cm" }, { ...axes[2] }],
+      field: { kind: "expressions", components: [
+        vectorField3DExpression("0", "m/s"), vectorField3DExpression("0", "cm/s"),
+        vectorField3DExpression("0", "m/s")] } }, { stableKey: "mixed-curl-units" });
+    const mixedResult = analyzeVectorField3DDifferential(mixed, [0, 0, 0]);
+    expect(mixedResult.divergence).toBe(0);
+    expect(mixedResult.curl).toBeNull();
+    expect(mixedResult.diagnostics.join(" ")).toMatch(/matching physical coordinate units/);
   });
 });

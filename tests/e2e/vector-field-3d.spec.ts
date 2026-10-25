@@ -212,6 +212,12 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     await expect(values).toContainText(`north = ${pointValues[1]!.toPrecision(5)} m/s`);
     await expect(values).toContainText(`up = ${pointValues[2]!.toPrecision(5)} m/s`);
     await expect(values).toContainText(/Source sha256:[a-f0-9]{64}; view sha256:[a-f0-9]{64}/);
+    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    const differential = editor.getByTestId("vector-field3d-differential");
+    await expect(differential).toContainText("Approximate · bounded-finite-difference");
+    await expect(differential).toContainText(/Divergence .* 1\/s/);
+    await expect(differential).toContainText(/Curl .* 1\/s/);
+    await expect(differential).toContainText(/source sha256:[a-f0-9]{64}/);
     await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
     for (const name of ["XZ", "YZ"] as const) {
       await editor.getByRole("button", { name: `${name} slice` }).click();
@@ -251,12 +257,17 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     const resource = join(directory, "north.f64"), original = await readFile(resource);
     const changed = Buffer.from(original); changed[0] ^= 1;
     await writeFile(resource, changed);
+    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
+    await expect(differential).toHaveCount(0);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
     await expect(values).toHaveCount(0);
     await expect(editor.getByRole("figure", { name: "XY field slice" })).toHaveCount(0);
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await rm(resource);
+    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
     await expect(values).toHaveCount(0);
@@ -266,6 +277,28 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
       throw new Error("Unsafe linked-probe fixture cleanup path");
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("SCI-06 analyzes an authored vortex and reports its boundary stencil", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Place probe at selected coordinates" }).click();
+    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    const differential = editor.getByTestId("vector-field3d-differential");
+    await expect(differential).toContainText("Divergence 0.00000 1/s");
+    await expect(differential).toContainText("Curl (0.00000, 0.00000, 2.00000) 1/s");
+    await editor.getByLabel("Probe x").fill("4");
+    await expect(differential).toHaveCount(0);
+    await editor.getByRole("button", { name: "Analyze divergence & curl" }).click();
+    await expect(differential).toContainText("x one-sided-three-point");
+    await expect(differential).toContainText(/boundary; accuracy is reduced/);
+  } finally { await closeSurfaceApp(app); }
 });
 
 test("SCI-04/07 clip and camera settings persist while split and quad views share one probe", async ({}, testInfo) => {
