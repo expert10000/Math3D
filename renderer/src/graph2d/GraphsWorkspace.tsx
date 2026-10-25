@@ -524,7 +524,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const openSavedFieldReference = async (reference: Graph2DFieldReference) => {
     if (!window.scientificScenes?.openGraphDatasetReference || scientificImportBusy) return;
     const savedScientificField = savedScientificFields.find(item => item.source.reference.id === reference.id &&
-      item.source.reference.sceneFingerprint === reference.sceneFingerprint);
+      item.source.reference.sceneFingerprint === reference.sceneFingerprint && !item.source.derivation);
     if (savedScientificField) {
       resetScientificSlice(); setScientificImport(null);
       setScientificFieldDocument(savedScientificField); setScientificFieldOpen(true); return;
@@ -637,7 +637,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         if (!parsed.ok) throw new Error(parsed.errors.join(" "));
         const quantity = parsed.value.datasets.find(item => item.id === replacement.datasetId)?.quantity;
         if (!quantity) throw new Error("Replacement field quantity metadata is unavailable.");
-        const savedWorkspace = savedScientificFields.find(item => item.source.reference.id === relinkSaved.id);
+        const savedWorkspace = savedScientificFields.find(item => item.source.reference.id === relinkSaved.id &&
+          !item.source.derivation);
         const revisedWorkspace = savedWorkspace ? reviseScientificFieldDocument(savedWorkspace, {
           ...savedWorkspace.source, reference: { ...replacement, id: relinkSaved.id },
           quantity: { name: quantity.name, unit: quantity.unit } }) : null;

@@ -32,7 +32,6 @@ test("GRA-10 explicitly imports a verified 1D scientific dataset and rejects cha
   try {
     const page = app.page;
     await resetSurfaceAppState(page);
-    await page.setViewportSize({ width: 1440, height: 850 });
     await page.getByTestId("workspace-nav-graphs").click();
     await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
     await page.locator(".graph2d-toolbar-menu > summary").click();
@@ -104,6 +103,7 @@ test("GRA-10 imports checked complex and vector components as separate Graph ser
   try {
     const page = app.page;
     await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
     await page.getByTestId("workspace-nav-graphs").click();
     await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, directory);
     await page.locator(".graph2d-toolbar-menu > summary").click();
@@ -812,6 +812,67 @@ test("GRA-13.3 saves a field component reference and revalidates it after Graphs
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-06 saves an independent Laplacian document and reverifies its Project preview", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 850 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    await page.getByRole("dialog", { name: "Scientific field presets" })
+      .getByRole("button", { name: "Sine–cosine grid" }).click();
+    const importDialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importDialog.getByRole("button", { name: "View verified field" }).click();
+    await importDialog.getByRole("button", { name: "Save field reference" }).click();
+    await importDialog.getByRole("button", { name: "Cancel" }).click();
+    await page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields")
+      .getByRole("button", { name: "Open field workspace" }).click();
+    let workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await workspace.getByLabel("Scalar calculation").selectOption("gradient-x");
+    await workspace.getByRole("button", { name: "Preview and save derived field" }).click();
+    workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(workspace.getByRole("figure", { name: /Verified field plane for Gradient x of scalar value/ }))
+      .toBeVisible();
+    await workspace.getByRole("button", { name: "Close" }).click();
+    await page.getByLabel("Graph inspector").getByTestId("graph2d-saved-fields")
+      .getByRole("button", { name: "Open field workspace" }).click();
+    workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await workspace.getByLabel("Scalar calculation").selectOption("laplacian");
+    await workspace.getByRole("button", { name: "Preview and save derived field" }).click();
+    workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(workspace.getByRole("figure", { name: /Verified field plane for Laplacian scalar value/ }))
+      .toBeVisible();
+    await expect(workspace.getByTestId("scientific-derived-provenance"))
+      .toContainText("verified source sample");
+    await workspace.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("kernel-workspace-save").click();
+    const fieldDocuments = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.mixed-workspace.v1")!)
+      .entries.filter((entry: { module: string }) => entry.module === "field"));
+    expect(fieldDocuments).toHaveLength(3);
+    expect(fieldDocuments.some((entry: { checkpoint: { source: { derivation?: { operation: string } } } }) =>
+      entry.checkpoint.source.derivation?.operation === "gradient-x")).toBe(true);
+    const derived = fieldDocuments.find((entry: { checkpoint: { source: { derivation?: { operation: string } } } }) =>
+      entry.checkpoint.source.derivation?.operation === "laplacian");
+    expect(derived).toBeTruthy();
+    expect(JSON.stringify(derived.checkpoint)).not.toContain('"values"');
+    await page.getByTestId("kernel-workspace-toggle").click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(derived.expected.id);
+    workspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(workspace.getByRole("figure", { name: /Verified field plane for Laplacian scalar value/ }))
+      .toBeVisible();
+    await expect(workspace).toContainText("Source verified; derived preview recomputed");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-13.4 previews saved scalar rows and columns from Project and rechecks before adding Graph lines", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-field-to-graph-"));
@@ -1015,6 +1076,23 @@ test("GRA-13.4 imports distinct verified 3D plane lines with complete source coo
     for (const object of graphLines) expect(object.origin).toMatchObject({
       sceneFingerprint: hash(manifestJson), resourceSha256: hash(original),
       locator: { kind: "directory", value: directory }, xName: "x", xUnit: "m", yUnit: "V" });
+    await projectPanel.getByTestId("project-detail-tab-documents").click();
+    await projectPanel.getByTestId(`project-view-${fieldId}`).click();
+    let derivedWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await derivedWorkspace.getByLabel("Scalar calculation").selectOption("laplacian");
+    await derivedWorkspace.getByRole("button", { name: "Preview and save derived field" }).click();
+    derivedWorkspace = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(derivedWorkspace.getByRole("figure", { name: /Verified volume for Laplacian Potential/ }))
+      .toBeVisible();
+    await expect(derivedWorkspace.getByTestId("scientific-derived-provenance"))
+      .toContainText("bounded displayed sample lattice");
+    const changedSource = Buffer.from(original); changedSource[0] ^= 1;
+    await writeFile(resource, changedSource);
+    await derivedWorkspace.getByRole("button", { name: "Reverify field" }).click();
+    await expect(derivedWorkspace.getByRole("alert")).toContainText("resource integrity failed");
+    await expect(derivedWorkspace.getByRole("figure", { name: /Verified volume for Laplacian Potential/ }))
+      .toHaveCount(0);
+    await writeFile(resource, original);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-volume-to-graph-"))

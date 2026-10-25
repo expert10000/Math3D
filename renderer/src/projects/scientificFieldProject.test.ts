@@ -18,6 +18,50 @@ const field = () => createScientificFieldDocument({ reference,
 { stableKey: reference.id, title: "Velocity · north" });
 
 describe("scientific scalar field Project workspace", () => {
+  it("keeps mixed-axis units out of scalar Laplacian and gradient-magnitude documents", () => {
+    const thermalManifest = readFileSync(fileURLToPath(new URL(
+      "../../../tests/fixtures/scientific-scene/thermal-gradient.sscene/manifest.json", import.meta.url)), "utf8");
+    const thermalFingerprint = sha256Checksum(new TextEncoder().encode(thermalManifest)).slice(7);
+    const thermalReference = createGraph2DFieldReference(thermalManifest, thermalFingerprint,
+      { kind: "preset", value: "thermal-gradient" }, "temperature", "scalar");
+    const source = { reference: thermalReference, quantity: { name: "Temperature", unit: "K" },
+      display: { view: "plane" as const, normalAxis: null, fixedIndex: null,
+        transfer: { mode: "data" as const } } };
+    expect(createScientificFieldDocument({ ...source, derivation: { operation: "gradient-x" } },
+      { stableKey: "thermal-time-gradient" }).source.derivation?.operation).toBe("gradient-x");
+    expect(() => createScientificFieldDocument({ ...source, derivation: { operation: "gradient-magnitude" } },
+      { stableKey: "thermal-gradient-magnitude" })).toThrow();
+    expect(() => createScientificFieldDocument({ ...source, derivation: { operation: "laplacian" } },
+      { stableKey: "thermal-laplacian" })).toThrow();
+  });
+  it("stores independent gradient and Laplacian recipes beside their scalar source", () => {
+    const scalarManifest = readFileSync(fileURLToPath(new URL(
+      "../../../tests/fixtures/scientific-scene/sincos.sscene/manifest.json", import.meta.url)), "utf8");
+    const scalarFingerprint = sha256Checksum(new TextEncoder().encode(scalarManifest)).slice(7);
+    const scalarReference = createGraph2DFieldReference(scalarManifest, scalarFingerprint,
+      { kind: "preset", value: "sincos" }, "f", "scalar");
+    const source = { reference: scalarReference, quantity: { name: "scalar value", unit: "1" },
+      display: { view: "plane" as const, normalAxis: null, fixedIndex: null,
+        transfer: { mode: "data" as const } } };
+    const base = createScientificFieldDocument(source, { stableKey: "scalar-source" });
+    const gradient = createScientificFieldDocument({ ...source,
+      derivation: { operation: "gradient-x" } }, { stableKey: [base.identity.id, "gradient-x"],
+      title: "Gradient x" });
+    const laplacian = createScientificFieldDocument({ ...source,
+      derivation: { operation: "laplacian" } }, { stableKey: [base.identity.id, "laplacian"],
+      title: "Laplacian" });
+    const entries = [base, gradient, laplacian].map(checkpoint => ({ module: "field" as const,
+      checkpoint, expected: checkpoint.identity, replay: null }));
+    const workspace = createMixedWorkspaceDocument({ entries,
+      activeDocumentIds: entries.map(entry => entry.expected.id), results: [], artifacts: [],
+      relations: [], committedSelection: null, constructions: [] });
+    const saved = serializeMath3DProject(createMath3DProject(workspace, { stableKey: "scalar-derivatives" }));
+    expect(saved).not.toContain('"values"');
+    const restored = parseMath3DProject(saved);
+    expect(restored.workspace.entries.map(entry => (entry.checkpoint as typeof base).source.derivation?.operation))
+      .toEqual([undefined, "gradient-x", "laplacian"]);
+    expect(new Set(restored.workspace.entries.map(entry => entry.expected.id)).size).toBe(3);
+  });
   it("round-trips a range setting and reference without storing field values", () => {
     const authored = reviseScientificFieldDocument(field(), { ...field().source,
       display: { view: "plane", normalAxis: null, fixedIndex: null,

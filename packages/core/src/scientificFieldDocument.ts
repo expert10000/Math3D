@@ -17,8 +17,11 @@ export type ScientificFieldDisplay = Readonly<{
   fixedIndex: number | null;
   transfer: ScientificFieldTransfer;
 }>;
+export type ScientificScalarDerivation = Readonly<{ operation:
+  "gradient-x" | "gradient-y" | "gradient-z" | "gradient-magnitude" | "laplacian" }>;
 export type ScientificFieldSource = Readonly<{
   reference: Graph2DFieldReference;
+  derivation?: ScientificScalarDerivation;
   paired?: Readonly<{ imaginary: Graph2DFieldReference;
     line: Readonly<{ normalAxis: 0 | 1 | 2; planeFixedIndex: number;
       varyingAxis: 0 | 1 | 2; fixedIndex: number }> }>;
@@ -85,12 +88,26 @@ const validTransfer = (value: unknown): value is ScientificFieldTransfer =>
     Number.isFinite(value.min) && Number.isFinite(value.max) && value.min < value.max);
 const validSource = (value: unknown): value is ScientificFieldSource => {
   if (!record(value) || !(exact(value, ["reference", "quantity", "display"]) ||
-      exact(value, ["reference", "paired", "quantity", "display"])) ||
+      exact(value, ["reference", "paired", "quantity", "display"]) ||
+      exact(value, ["reference", "derivation", "quantity", "display"])) ||
       !isGraph2DFieldReference(value.reference) || !record(value.quantity) ||
       !exact(value.quantity, ["name", "unit"]) || !text(value.quantity.name) || !text(value.quantity.unit, 80) ||
       !record(value.display) || !exact(value.display, ["view", "normalAxis", "fixedIndex", "transfer"]) ||
       !validTransfer(value.display.transfer)) return false;
   const { reference, display } = value as unknown as ScientificFieldSource;
+  if (value.derivation !== undefined) {
+    const derivation = value.derivation;
+    if (!record(derivation) || !exact(derivation, ["operation"]) ||
+        !["gradient-x", "gradient-y", "gradient-z", "gradient-magnitude", "laplacian"]
+          .includes(String(derivation.operation)) ||
+        reference.semanticType !== "scalar-field" || reference.component !== "scalar" ||
+        ![2, 3].includes(reference.shape.length) ||
+        derivation.operation === "gradient-z" && reference.shape.length !== 3 ||
+        ["gradient-magnitude", "laplacian"].includes(String(derivation.operation)) &&
+          new Set(reference.axes.map(axis => axis.unit)).size !== 1 ||
+        reference.shape.some(size => size < (derivation.operation === "laplacian" ? 3 : 2)) ||
+        reference.shape.length === 3 && display.view !== "volume") return false;
+  }
   if (value.paired !== undefined) {
     const paired = value.paired;
     if (!record(paired) || !exact(paired, ["imaginary", "line"]) ||

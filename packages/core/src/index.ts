@@ -129,6 +129,7 @@ export * from "./graph2dComplexMapping";
 export * from "./vectorField3DDocument";
 export * from "./vectorField2DDocument";
 export * from "./scientificFieldDocument";
+export * from "./scientificScalarDerivation";
 export * from "./vectorField3DScientific";
 export * from "./vectorField3DEquilibria";
 export * from "./vectorField3DSlices";

@@ -21,7 +21,7 @@ export function ScientificFieldVolume({ volume, coordinate, label, unit, transfe
       const indices = [i, j, k], output = next * 3;
       for (let axis = 0; axis < 3; axis++) {
         const count = volume.sampleShape[axis]!, source = volume.sourceShape[axis]!;
-        const original = count === 1 ? 0 : indices[axis]! * (source - 1) / (count - 1);
+        const original = count === 1 ? 0 : Math.round(indices[axis]! * (source - 1) / (count - 1));
         positions[output + axis] = (original - (source - 1) / 2) * coordinate.spacing[axis]! * 2 / scale;
       }
       const color = scientificFieldColor(volume.values[next]!, range);
