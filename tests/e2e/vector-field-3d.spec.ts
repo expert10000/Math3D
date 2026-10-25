@@ -5,6 +5,44 @@ import { join, resolve, sep } from "node:path";
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, resizeSurfaceAppWindow } from "./helpers/surfaceAppHarness";
 
+test("SCI-02 opens a docked field explorer with bounded narrow-window layout", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const controls = explorer.getByLabel("Field controls");
+    const viewer = explorer.getByLabel("3D field viewer");
+    const inspector = explorer.getByLabel("Field status and actions");
+    await expect(explorer).toBeVisible();
+    await expect(page.getByTestId("main-viewer")).toBeHidden();
+    const [left, middle, right] = await Promise.all([
+      controls.boundingBox(), viewer.boundingBox(), inspector.boundingBox()]);
+    expect(left && middle && right).toBeTruthy();
+    expect(middle!.x).toBeGreaterThan(left!.x + left!.width - 2);
+    expect(middle!.width).toBeGreaterThan(400);
+    expect(right!.x).toBeGreaterThan(middle!.x + middle!.width - 2);
+    await page.setViewportSize({ width: 760, height: 700 });
+    await expect(explorer).toBeVisible();
+    const narrow = await explorer.evaluate(element => ({ width: element.clientWidth,
+      scroll: element.scrollWidth }));
+    expect(narrow.scroll).toBeLessThanOrEqual(narrow.width + 2);
+    await explorer.getByLabel("Seed x").fill("1");
+    await explorer.getByRole("button", { name: "Add seed" }).click();
+    await expect(explorer).toContainText("seed-1: (1");
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await expect(page.getByRole("region", { name: "Scientific Field Explorer" }))
+      .toContainText("seed-1: (1");
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await expect(page.getByTestId("main-viewer")).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or missing bytes", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector3d-"));
@@ -23,8 +61,8 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await page.getByRole("button", { name: "Import scientific dataset" }).click();
     const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
     await expect(importer).toContainText("shape [21, 21, 17]");
-    await importer.getByRole("button", { name: "Open in 3D vector editor" }).click();
-    let editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await importer.getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toContainText("east");
     await expect(editor).toContainText("north");
     await expect(editor).toContainText("up");
@@ -62,7 +100,7 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await panel.getByTestId(`project-open-saved-${projectId}`).click();
     await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
     await panel.getByTestId("project-viewer-document").selectOption(fieldId);
-    editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toContainText("seed-1: (2");
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
@@ -137,21 +175,22 @@ test("GRA-13.5 imports distinct verified 3D vector plane lines from a saved Proj
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Import scientific dataset" }).click();
     await page.getByRole("dialog", { name: "Import verified scientific dataset" })
-      .getByRole("button", { name: "Open in 3D vector editor" }).click();
-    let editor = page.getByRole("dialog", { name: "3D vector field editor" });
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await editor.getByRole("button", { name: "Save document" }).click();
     await editor.getByRole("button", { name: "Close" }).focus();
     await page.keyboard.press("Enter");
     await page.getByTestId("projects-toggle").click();
     const projectPanel = page.getByTestId("project-explorer-panel");
     await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
     const fieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
       .workspace.entries.find((entry: { module: string }) => entry.module === "vector3d")?.expected.id as string);
     expect(fieldId).toBeTruthy();
     const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id as string);
     await projectPanel.getByTestId(`project-open-saved-${projectId}`).click();
     await page.getByTestId("project-viewer-document").selectOption(fieldId);
-    editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     const line = editor.getByTestId("vector-field3d-graph-line");
     await expect(line).toContainText("Graph x: x (m); y: east (m/s)");
     await line.getByLabel("Plane coordinate z").selectOption("4");
@@ -202,6 +241,7 @@ test("GRA-13.5 imports distinct verified 3D vector plane lines from a saved Proj
     await line.getByRole("button", { name: "Preview Graph line" }).click();
     await expect(line.getByRole("button", { name: "Add line to Graphs" })).toBeEnabled();
     await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line).toContainText("already in Graphs");
     await editor.getByRole("button", { name: "Close" }).focus();
     await page.keyboard.press("Enter");
     if (!await projectPanel.getByTestId("project-save").isVisible())
@@ -247,8 +287,8 @@ test("GRA-14 expression editor preserves a saved document and enforces the glyph
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "3D vector field editor" }).click();
-    const editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor.getByLabel("P(x,y,z)")).toHaveValue("-y");
     await editor.getByRole("button", { name: "Verify & render arrows" }).click();
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
@@ -274,8 +314,8 @@ test("GRA-14 trajectory editor reports stationary, boundary, undefined and step-
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "3D vector field editor" }).click();
-    const editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await editor.getByRole("button", { name: "Add seed" }).click();
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("stationary");
@@ -302,8 +342,8 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     await resetSurfaceAppState(page);
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "3D vector field editor" }).click();
-    let editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await editor.getByLabel("Seed x").fill("2");
     await editor.getByRole("button", { name: "Add seed" }).click();
     await editor.getByLabel("Trajectory max steps").fill("57");
@@ -324,7 +364,7 @@ test("GRA-14 Project save and reopen retains 3D seeds and solver policy without 
     await projectPanel.getByTestId(`project-open-saved-${saved.identity.id}`).click();
     await expect(projectPanel.getByTestId("project-viewer-document")).toBeVisible();
     await projectPanel.getByTestId("project-viewer-document").selectOption(entry.expected.id);
-    editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toContainText("seed-1: (2, 0, 0)");
     await expect(editor.getByLabel("Trajectory max steps")).toHaveValue("57");
     await expect(editor.getByLabel("Absolute tolerance")).toHaveValue("0.00001");
@@ -341,8 +381,8 @@ test("GRA-14 trajectory Cancel terminates a pending worker and publishes no part
     await resetSurfaceAppState(page);
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "3D vector field editor" }).click();
-    const editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await editor.getByLabel("Seed x").fill("2");
     await editor.getByRole("button", { name: "Add seed" }).click();
     await page.evaluate(() => {
@@ -372,8 +412,8 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
     await resizeSurfaceAppWindow(app, 1440, 900);
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "3D vector field editor" }).click();
-    const editor = page.getByRole("dialog", { name: "3D vector field editor" });
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     for (const axis of ["x", "y", "z"]) await editor.getByLabel(`Density ${axis}`).fill("8");
     const renderTimes: number[] = [];
     for (let pass = 0; pass < 3; pass++) {
@@ -400,7 +440,7 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
     await expect(editor.getByTestId("vector-field3d-render-status")).toContainText("vector units m/s, m/s, m/s");
     await expect(editor.getByTestId("vector-field3d-render-status")).toHaveAttribute("role", "status");
     const accessible = await editor.ariaSnapshot();
-    expect(accessible).toContain("3D vector field editor");
+    expect(accessible).toContain("Scientific Field Explorer");
     expect(accessible).toContain("Verify & render arrows");
     expect(accessible).toContain("Camera ready. Use arrow keys to orbit");
     const viewport = editor.getByRole("group", { name: "3D camera viewport" });
@@ -409,7 +449,9 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
     await resizeSurfaceAppWindow(app, 760, 700);
     const after = await viewport.boundingBox();
     if (!after) throw new Error("3D camera viewport did not survive resize");
-    expect(after.width).toBeLessThan(before.width);
+    expect(after.width).toBeGreaterThan(300);
+    const explorerWidth = await editor.evaluate(element => element.clientWidth);
+    expect(after.width).toBeLessThanOrEqual(explorerWidth + 2);
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("512 of 512 bounded samples");
     await testInfo.attach("vector-field3d-760px.png", { body: await editor.screenshot(), contentType: "image/png" });
     await viewport.focus();

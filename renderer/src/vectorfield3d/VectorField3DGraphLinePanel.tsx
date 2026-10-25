@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { Graph2DScientificDatasetPreview, VectorField3DDocument, VectorField3DSource } from "@math3d/core";
+import { createScientificDatasetLink, createScientificDerivedView,
+  type Graph2DScientificDatasetPreview, type VectorField3DDocument,
+  type VectorField3DSource } from "@math3d/core";
 import { reverifyVectorField3DGraphLine, type VectorField3DGraphLineSelection } from
   "./reverifyVectorField3DGraphLine";
 
@@ -51,6 +53,11 @@ function VectorField3DGraphLineContent({ document, field, disabled, onBusyChange
     setStatus(add ? "Reverifying all vector components before import…" :
       "Reverifying all vector components before preview…");
     try {
+      createScientificDerivedView(createScientificDatasetLink(field.references), { kind: "line",
+        component: request.component, varyingAxis: request.varyingAxis,
+        fixed: [{ axis: request.normalAxis, index: request.planeFixedIndex },
+          { axis: ([0, 1, 2] as const).find(axis => axis !== request.normalAxis &&
+              axis !== request.varyingAxis)!, index: request.fixedIndex }] });
       const fresh = await reverifyVectorField3DGraphLine(document, request);
       if (current !== epoch.current) return;
       if (add) {

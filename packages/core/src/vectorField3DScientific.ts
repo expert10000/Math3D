@@ -2,6 +2,7 @@ import { canonicalJsonStringify } from "./documentIdentity";
 import { createGraph2DFieldReference } from "./graph2dFieldReference";
 import { verifyGraph2DScientificVolume, type Graph2DScientificVolume } from "./graph2dScientificDataset";
 import { parseScientificSceneManifest } from "./scientificSceneManifest";
+import { createScientificDatasetLink, createScientificDerivedView } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DArrowArtifact,
   type VectorField3DDocument } from "./vectorField3DDocument";
 
@@ -14,6 +15,7 @@ export function verifyVectorField3DVolumes(document: VectorField3DDocument, mani
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
   const field = checked.value.source.field;
   if (field.kind !== "scientific-bundle") throw new TypeError("Expected a scientific bundle vector field.");
+  createScientificDatasetLink(field.references);
   const manifest = parseScientificSceneManifest(manifestJson);
   if (!manifest.ok) throw new TypeError(manifest.errors.join(" "));
   const dataset = manifest.value.datasets.find(item => item.id === field.references[0].datasetId);
@@ -44,6 +46,9 @@ export function sampleVectorField3DScientificArrows(document: VectorField3DDocum
   const source = document.source, field = source.field;
   if (field.kind !== "scientific-bundle") throw new TypeError("Expected a scientific bundle vector field.");
   const density = source.display.density;
+  createScientificDerivedView(createScientificDatasetLink(field.references), { kind: "glyphs",
+    components: field.references.map(reference => reference.component), density,
+    maxGlyphs: source.display.maxGlyphs });
   const evaluated = density[0] * density[1] * density[2];
   if (evaluated > source.display.maxGlyphs || density.some((size, axis) => size > checked[0].sampleShape[axis]!))
     throw new TypeError("3D arrow density exceeds the verified sample lattice or glyph budget.");

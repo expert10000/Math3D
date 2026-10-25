@@ -95,7 +95,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories }: {
     <figcaption>{artifact.accepted} of {artifact.evaluated} bounded samples · {artifact.stationary} stationary ·
       {" "}{artifact.rejected} rejected · density {artifact.density.join(" × ")}</figcaption>
     <div role="group" aria-label="3D camera viewport" tabIndex={0} onKeyDown={onCameraKey}
-      style={{ width: "100%", height: 360, background: "#0d1726" }}>
+      style={{ width: "100%", height: "100%", minHeight: 360, background: "#0d1726" }}>
       <Canvas camera={{ position: [2.7, 2.2, 2.7], fov: 48 }}>
         <lineSegments>
           <bufferGeometry>

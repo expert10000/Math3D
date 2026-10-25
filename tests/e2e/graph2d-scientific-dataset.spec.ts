@@ -938,6 +938,8 @@ test("GRA-13.4 imports distinct verified 3D plane lines with complete source coo
     await importDialog.getByRole("button", { name: "Cancel" }).click();
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-explorer-panel").getByTestId("project-save").click();
+    await expect(page.getByTestId("project-explorer-panel").getByTestId("project-message"))
+      .toContainText("Saved");
     const fieldId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
       .workspace.entries.find((entry: { module: string }) => entry.module === "field")?.expected.id as string);
     expect(fieldId).toBeTruthy();
@@ -966,6 +968,7 @@ test("GRA-13.4 imports distinct verified 3D plane lines with complete source coo
     await line.getByLabel("Plane coordinate z").selectOption("5");
     await line.getByRole("button", { name: "Preview Graph line" }).click();
     await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line).toContainText("already in Graphs");
     await line.getByLabel("Fixed y").selectOption("4");
     await rm(resource);
     await line.getByRole("button", { name: "Preview Graph line" }).click();
@@ -974,12 +977,23 @@ test("GRA-13.4 imports distinct verified 3D plane lines with complete source coo
     await writeFile(resource, original);
     await line.getByRole("button", { name: "Preview Graph line" }).click();
     await line.getByRole("button", { name: "Add line to Graphs" }).click();
+    await expect(line).toContainText("already in Graphs");
+    await expect(page.getByTestId("graphs-workspace")).toContainText("Graph objects (3)");
     await workspace.getByRole("button", { name: "Close" }).click();
     const projectPanel = page.getByTestId("project-explorer-panel");
     if (!await projectPanel.getByTestId("project-save").isVisible())
       await projectPanel.getByTestId("project-gallery-layout-toggle").click();
     await projectPanel.getByTestId("project-save").click();
     await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    await expect.poll(() => page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
+        .find((entry: { module: string }) => entry.module === "graph2d");
+      const objects = [...graph.replay.payload.transactions].reverse()
+        .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+          transaction.commands[0]?.command.payload.source?.objects)
+        .find((value: unknown) => Array.isArray(value)) ?? graph.checkpoint.source.objects;
+      return objects.filter((object: { kind: string }) => object.kind === "point-series").length;
+    })).toBe(3);
     const graphLines = await page.evaluate(() => {
       const graph = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
         .find((entry: { module: string }) => entry.module === "graph2d");

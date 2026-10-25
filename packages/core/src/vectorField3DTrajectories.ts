@@ -2,6 +2,7 @@ import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
 import { normalizeVectorField3DDocument, type VectorField3DDocument,
   type VectorField3DSource } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
+import { scientificPointWithinBounds } from "./scientificDatasetCoordinates";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DStopReason = "boundary" | "stationary" | "undefined" | "step-limit" |
@@ -31,7 +32,7 @@ const distance = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2]
 const finiteVector = (vector: readonly number[]): vector is Vec3 =>
   vector.length === 3 && vector.every(Number.isFinite);
 const within = (point: Vec3, axes: VectorField3DSource["axes"]) =>
-  point.every((value, index) => value >= axes[index]!.min && value <= axes[index]!.max);
+  scientificPointWithinBounds(point, axes);
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
 type Evaluation = (point: Vec3) => Vec3 | null;

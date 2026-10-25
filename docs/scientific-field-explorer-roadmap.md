@@ -2,6 +2,14 @@
 
 > **Repository reconciliation, 25 October 2026.** This proposal is retained as a future-facing design plan. Its “current implementation baseline” reflects screenshots and is not a completion audit. The [Graphs field roadmap](graph2d-fields-fitting-fourier-complex-roadmap.md), [3D vector-field contract](graph3d-vector-field-contract.md), and [GRA-17 mapping record](graph2d-gra17-complex-mapping.md) are the status records for existing work. In particular, desktop verified 2D/3D previews, native Project field references, 3D vector glyphs and bounded trajectories, paired 3D complex-field lines, Graphs-to-Complex mapping, and verified relinking of a moved saved 3D complex pair already exist. SCI-01 should audit and tighten their coordinate and unit behavior; SCI-02 and SCI-03 remain the main new architecture work, not a reason to reimplement those delivered slices. SCI-04/05/07/12/18 have partial foundations and require a gap audit against their detailed acceptance criteria. The Android physical-device work and mobile trajectories remain deferred. The immediate critical path is an auditable SCI-01 correctness pass, then a scoped SCI-02/SCI-03 explorer and dataset contract, then the linked-view and regression gates.
 
+### Implementation checkpoint
+
+| Milestone | Delivered desktop slice | Remaining scope |
+| --- | --- | --- |
+| SCI-01 | Shared regular-grid index/coordinate and finite-domain validation now runs in Graph line previews/imports, saved paired-field validation, vector seeds and trajectories. Unit tests distinguish index 10 from its physical coordinate and reject out-of-range and nonuniform selections. | The `.sscene/v1` source contract supports regular axes only. Coordinate-array support, locale-aware physical-coordinate entry and broader dimensional analysis require separate schema/UI work. |
+| SCI-03 | A deterministic immutable dataset link groups verified component references; line and glyph view specs bind to its source hash without embedding field values. Existing Project documents reconstruct those links on reopen, so no document migration is needed for this slice. | General derived-result cache, other module adapters and source-revision dependency graph remain open. |
+| SCI-02 | The 3D vector editor now opens as an in-app three-pane Scientific Field Explorer. It retains the authored session across module switches, exposes source provenance, and uses the existing Project document save/reopen path. | A general dataset library, scalar/complex layers, linked probes, adjustable docks and full screen-reader spoken-output acceptance remain open. |
+
 **Full implementation roadmap | SCI-01–SCI-24 | October 2026**
 
 **Scope:** Graphs · Curves · Surfaces · Geometry · Mesh · Volume · Projects · Theory Lab · Scientific Runtimes
@@ -25,7 +33,7 @@ MATH3D should evolve its current scientific-field presets, dataset import dialog
 
 ### Recommended critical path
 
-**SCI-01 → SCI-02 → SCI-03 → SCI-04 → SCI-07 → SCI-12**, with SCI-05 and SCI-06 following once the dataset/view boundary is stable. Complete the visible end-to-end vortex demo before adding many file formats or heavy volume rendering.
+**SCI-01 → SCI-03 → SCI-02 → SCI-04 → SCI-07 → SCI-12**, with SCI-05 and SCI-06 following once the dataset/view boundary is stable. Complete the visible end-to-end vortex demo before adding many file formats or heavy volume rendering.
 
 ---
 
@@ -1021,7 +1029,7 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 ## 17. Immediate actionable handoff for Codex
 
-**First assignment: SCI-01 + SCI-03 discovery and implementation.**
+**First assignment: SCI-01 correctness, then the SCI-03 minimum contract.** The desktop slices in the implementation checkpoint have been delivered; extend their acceptance coverage before broadening the schema.
 
 1. Locate current scientific preset definition, verification manifest, vector field import modal, 3D editor, Graphs line-extraction code and Project document contracts.
 2. Inventory existing types/workers/serialization rather than creating parallel structures.
@@ -1031,7 +1039,7 @@ The Scientific Field Explorer initiative can be considered mature when:
 6. Add persistence/migration tests and demonstrate one source feeding two derived views.
 7. Show exact changed files, unit test results, integration screenshots and any remaining risks.
 
-**Second assignment: SCI-02 + SCI-04 + SCI-07.** Build the workspace with readable 3D glyphs, orthogonal slices and synchronized probes. Keep the existing preset path working as a backward-compatible entry point.
+**Second assignment: complete SCI-02, then SCI-04 + SCI-07.** Extend the delivered three-pane vector workspace with scalar/complex layers, orthogonal slices and synchronized probes. Keep the existing preset path working as a backward-compatible entry point. Packaged desktop Narrator spoken-output review remains a human release gate; Android device acceptance remains deferred.
 
 **Third assignment: SCI-12 + SCI-05 + SCI-06.** Implement mathematical golden fixtures before expanding solver methods and derived operations; report explicit tolerances and stopping behavior.
 

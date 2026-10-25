@@ -2,6 +2,7 @@ import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity
   isDocumentIdentity, structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
 import { evaluateGraph2DExpression, parseGraph2DExpression, type Graph2DExpressionAst } from "./mathExpressionRealAst";
 import { isGraph2DFieldReference, type Graph2DFieldReference } from "./graph2dFieldReference";
+import { scientificPointWithinBounds, scientificVelocityUnit } from "./scientificDatasetCoordinates";
 import type { ValidationResult } from "./validation";
 
 export const VECTOR_FIELD3D_DOCUMENT_FORMAT = "math3d.vector-field3d-document" as const;
@@ -46,8 +47,7 @@ const validAxis = (axis: unknown, role: VectorField3DAxis["role"]): axis is Vect
   record(axis) && exact(axis, ["role", "label", "unit", "min", "max"]) && axis.role === role &&
   text(axis.label, 160) && text(axis.unit) && finite(axis.min) && finite(axis.max) &&
   axis.min < axis.max && Math.abs(axis.min) <= 1e9 && Math.abs(axis.max) <= 1e9;
-const expectedUnit = (axisUnit: string, timeUnit: string) =>
-  `${axisUnit}/${timeUnit}`;
+const expectedUnit = scientificVelocityUnit;
 const validExpression = (candidate: unknown, expected: string): candidate is VectorField3DExpression => {
   if (!record(candidate) || !exact(candidate, ["source", "ast", "unit"]) ||
       !text(candidate.source, 2048) || candidate.unit !== expected) return false;
@@ -92,7 +92,7 @@ const validSource = (source: unknown): source is VectorField3DSource => {
   if (!Array.isArray(source.seeds) || source.seeds.length > 32 ||
       source.seeds.some((seed: unknown) => !record(seed) || !exact(seed, ["id", "position"]) ||
         !text(seed.id, 64) || !tuple3(seed.position) ||
-        seed.position.some((value, index) => !finite(value) || value < axes[index]!.min || value > axes[index]!.max)) ||
+        !scientificPointWithinBounds(seed.position as number[], axes)) ||
       new Set((source.seeds as { id: string }[]).map(seed => seed.id)).size !== source.seeds.length) return false;
   const display = source.display;
   if (!record(display) || !exact(display, ["density", "maxGlyphs", "magnitudeScale", "colorBy"]) ||

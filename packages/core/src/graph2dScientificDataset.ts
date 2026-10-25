@@ -1,6 +1,7 @@
 import { sha256Checksum } from "./documentIdentity";
 import { graph2DPointDomain, type Graph2DPointRow } from "./graph2dPointSeries";
 import { parseScientificSceneManifest } from "./scientificSceneManifest";
+import { scientificAxisCoordinate, validateScientificLineCoordinates } from "./scientificDatasetCoordinates";
 import type { Graph2DScientificDatasetOrigin } from "./graph2dDocument";
 
 export type Graph2DScientificDatasetPreview = Readonly<{
@@ -133,8 +134,10 @@ export function previewGraph2DScientificDataset(manifestJson: string, fingerprin
   });
   if (sha256Checksum(bytes) !== `sha256:${resource.sha256}`)
     throw new TypeError("Scientific dataset resource hash does not match the declared bytes.");
+  const axis = { ...coordinate.axes[0]!, origin: coordinate.origin[0]!,
+    spacing: coordinate.spacing[0]!, count: dataset.shape[0]! };
   const rows = values.map((value, index) => ({ id: `row_${index + 1}`,
-    x: coordinate.origin[0]! + coordinate.spacing[0]! * index, y: value }));
+    x: scientificAxisCoordinate(axis, index), y: value }));
   const componentSuffix = component === "scalar" ? "" : ` ${component}`;
   const yName = `${dataset.quantity.name.slice(0, 160 - componentSuffix.length)}${componentSuffix}`;
   const origin: Graph2DScientificDatasetOrigin = {
@@ -168,6 +171,11 @@ export function previewGraph2DScientificSlice(manifestJson: string, fingerprint:
     dataset?.semanticType === "complex-scalar-field" ? component === "real" ? dataset.real :
       component === "imaginary" ? dataset.imaginary : undefined : component === "scalar" ? dataset?.real : undefined;
   const resource = manifest.resources.find(item => item.id === resourceId);
+  if (dataset?.shape.length === 2 && coordinate?.axes.length === 2 &&
+      (line.varyingAxis === 0 || line.varyingAxis === 1))
+    validateScientificLineCoordinates(coordinate.axes.map((axis, index) => ({ ...axis,
+      origin: coordinate.origin[index]!, spacing: coordinate.spacing[index]!, count: dataset.shape[index]! })),
+    line.varyingAxis, [{ axis: 1 - line.varyingAxis, index: line.fixedIndex }]);
   if (!dataset || !coordinate || !resource ||
       dataset.shape.length !== 2 || coordinate.axes.length !== 2 ||
       line.shape.length !== 2 || line.shape.some((size, index) => size !== dataset.shape[index]) ||
@@ -187,12 +195,11 @@ export function previewGraph2DScientificSlice(manifestJson: string, fingerprint:
     throw new TypeError("Scientific line checksum changed.");
   const axis = coordinate.axes[line.varyingAxis]!;
   const fixedAxis = 1 - line.varyingAxis;
-  const fixedCoordinate = coordinate.origin[fixedAxis]! + coordinate.spacing[fixedAxis]! * line.fixedIndex;
-  if (!Number.isFinite(fixedCoordinate) || Math.abs(fixedCoordinate) > 1e12)
-    throw new TypeError("Scientific fixed coordinate is out of range.");
+  const at = (index: number, sample: number) => scientificAxisCoordinate({ ...coordinate.axes[index]!,
+    origin: coordinate.origin[index]!, spacing: coordinate.spacing[index]!, count: dataset.shape[index]! }, sample);
+  const fixedCoordinate = at(fixedAxis, line.fixedIndex);
   const rows = line.values.map((value, index) => ({ id: `row_${index + 1}`,
-    x: coordinate.origin[line.varyingAxis]! + coordinate.spacing[line.varyingAxis]! * index, y: value }));
-  if (rows.some(row => !Number.isFinite(row.x))) throw new TypeError("Scientific line coordinate is not finite.");
+    x: at(line.varyingAxis, index), y: value }));
   const slice = { varyingAxis: line.varyingAxis, fixedIndex: line.fixedIndex, fixedCoordinate,
     fixedName: coordinate.axes[fixedAxis]!.name, fixedUnit: coordinate.axes[fixedAxis]!.unit };
   const origin: Graph2DScientificDatasetOrigin = {
@@ -233,6 +240,13 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
       dataset?.semanticType === "complex-scalar-field" && line.component === "imaginary" ? dataset.imaginary : undefined;
   const resource = manifest.resources.find(item => item.id === resourceId);
   const fixedAxis = ([0, 1, 2] as const).find(axis => axis !== line.normalAxis && axis !== line.varyingAxis);
+  if (dataset?.shape.length === 3 && coordinate?.axes.length === 3 && fixedAxis !== undefined &&
+      ([0, 1, 2] as number[]).includes(line.normalAxis) && ([0, 1, 2] as number[]).includes(line.varyingAxis) &&
+      line.normalAxis !== line.varyingAxis)
+    validateScientificLineCoordinates(coordinate.axes.map((axis, index) => ({ ...axis,
+      origin: coordinate.origin[index]!, spacing: coordinate.spacing[index]!, count: dataset.shape[index]! })),
+    line.varyingAxis, [{ axis: line.normalAxis, index: line.planeFixedIndex },
+      { axis: fixedAxis, index: line.fixedIndex }]);
   if (!dataset || !["scalar-field", "vector-field", "complex-scalar-field"].includes(dataset.semanticType) || dataset.shape.length !== 3 ||
       !coordinate || coordinate.axes.length !== 3 || !resource || !resourceId ||
       !([0, 1, 2] as number[]).includes(line.normalAxis) ||
@@ -254,8 +268,8 @@ export function previewGraph2DScientificVolumeLine(manifestJson: string, fingerp
   });
   if (sha256Checksum(bytes) !== `sha256:${line.sliceSha256}`)
     throw new TypeError("Scientific line checksum changed.");
-  const at = (axis: number, index: number) =>
-    coordinate.origin[axis]! + coordinate.spacing[axis]! * index;
+  const at = (axis: number, index: number) => scientificAxisCoordinate({ ...coordinate.axes[axis]!,
+    origin: coordinate.origin[axis]!, spacing: coordinate.spacing[axis]!, count: dataset.shape[axis]! }, index);
   const planeCoordinate = at(line.normalAxis, line.planeFixedIndex);
   const fixedCoordinate = at(fixedAxis, line.fixedIndex);
   const rows = line.values.map((value, index) => ({ id: `row_${index + 1}`,

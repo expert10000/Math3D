@@ -2,6 +2,7 @@ import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity
   isDocumentIdentity, structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
 import { isGraph2DFieldReference, reviewGraph2DFieldRelink,
   type Graph2DFieldReference, type Graph2DFieldRelinkReview } from "./graph2dFieldReference";
+import { scientificAxisCoordinate, validateScientificLineCoordinates } from "./scientificDatasetCoordinates";
 import type { ValidationResult } from "./validation";
 
 export const SCIENTIFIC_FIELD_DOCUMENT_FORMAT = "math3d.scientific-field-document" as const;
@@ -116,6 +117,18 @@ const validSource = (value: unknown): value is ScientificFieldSource => {
         (line.fixedIndex as number) >= reference.shape[fixed]! ||
         display.view !== "plane" || display.normalAxis !== normal ||
         display.fixedIndex !== line.planeFixedIndex) return false;
+    try {
+      validateScientificLineCoordinates(reference.axes.map((axis, index) => ({ ...axis,
+        count: reference.shape[index]! })), varying,
+      [{ axis: normal, index: line.planeFixedIndex as number },
+        { axis: fixed, index: line.fixedIndex as number }]);
+    } catch { return false; }
+  }
+  if (reference.shape.length === 3 && typeof display.normalAxis === "number" &&
+      typeof display.fixedIndex === "number") {
+    try { scientificAxisCoordinate({ ...reference.axes[display.normalAxis]!,
+      count: reference.shape[display.normalAxis]! }, display.fixedIndex); }
+    catch { return false; }
   }
   return reference.shape.length === 2 ? display.view === "plane" && display.normalAxis === null &&
     display.fixedIndex === null :

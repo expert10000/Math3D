@@ -248,7 +248,7 @@ describe("GRA-10 explicit 2D scalar lines", () => {
   it("rejects wrong fingerprints, selections, hashes, values and singleton varying axes", () => {
     const { json, fingerprint, line } = gridFixture();
     expect(() => previewGraph2DScientificSlice(json + " ", fingerprint, line(0, 1))).toThrow(/fingerprint/);
-    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), fixedIndex: 4 })).toThrow(/verified line/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), fixedIndex: 4 })).toThrow(/outside/);
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), varyingAxis: 2 as 0 })).toThrow(/verified line/);
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), shape: [4, 3] })).toThrow(/verified line/);
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), resourceSha256: "b".repeat(64) })).toThrow(/verified line/);
@@ -256,7 +256,7 @@ describe("GRA-10 explicit 2D scalar lines", () => {
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), values: [1, NaN, 9] })).toThrow(/non-finite/);
     const singleton = gridFixture([1, 4]);
     expect(() => previewGraph2DScientificSlice(singleton.json, singleton.fingerprint, singleton.line(0, 0)))
-      .toThrow(/verified line/);
+      .toThrow(/one varying axis/);
     expect(previewGraph2DScientificSlice(singleton.json, singleton.fingerprint, singleton.line(1, 0)).rows).toHaveLength(4);
     const malformed = JSON.parse(json);
     malformed.datasets[0].shape = [3, 5];

@@ -118,6 +118,8 @@ export * from "./graph2dPresets/guided";
 export * from "./graph2dPresets/preview";
 export * from "./scientificJobs";
 export * from "./scientificSceneManifest";
+export * from "./scientificDatasetCoordinates";
+export * from "./scientificDatasetLink";
 export * from "./graph2dFieldReference";
 export * from "./graph2dVectorFieldReference";
 export * from "./graph2dNonlinearRegression";

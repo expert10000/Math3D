@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildProjectExplorer, createGraph2DFieldReference, createMath3DProject,
+  createScientificDatasetLink, createScientificDerivedView,
   createMixedWorkspaceDocument, createScientificFieldDocument, normalizeScientificFieldDocument,
   parseMath3DProject, reviewScientificComplexField3DRelink, reviseScientificFieldDocument,
   serializeMath3DProject, sha256Checksum } from "@math3d/core";
@@ -102,6 +103,15 @@ describe("saved 3D complex field pair", () => {
       paired: { imaginary: { component: "imaginary", resourceSha256: imaginary.resourceSha256 },
         line: { normalAxis: 2, planeFixedIndex: 8, varyingAxis: 0, fixedIndex: 20 } } } });
     expect(serializeMath3DProject(reopened)).not.toContain('"values"');
+    const restored = reopened.workspace.entries[0]!.checkpoint as typeof original;
+    const link = createScientificDatasetLink([restored.source.reference, restored.source.paired!.imaginary]);
+    const view = createScientificDerivedView(link, { kind: "line", component: "real",
+      varyingAxis: restored.source.paired!.line.varyingAxis,
+      fixed: [{ axis: restored.source.paired!.line.normalAxis,
+        index: restored.source.paired!.line.planeFixedIndex }, { axis: 1,
+        index: restored.source.paired!.line.fixedIndex }] });
+    expect(view.sourceHash).toBe(link.sourceHash);
+    expect(view.selection).toMatchObject({ fixed: [{ coordinate: 0 }, { coordinate: 0 }] });
   });
 
   it("rejects a mismatched companion and invalid line, and preserves a revised selection", () => {

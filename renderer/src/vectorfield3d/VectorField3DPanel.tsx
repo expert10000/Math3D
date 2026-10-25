@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { createVectorField3DDocument, parseVectorField3DDocument, reviseVectorField3DDocument,
+  createScientificDatasetLink,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
   integrateVectorField3DScientificTrajectories,
+  scientificPointWithinBounds,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
   type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact,
   type Graph2DScientificDatasetPreview } from "@math3d/core";
@@ -11,6 +13,14 @@ import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
 import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
 
 const storageKey = "math3d.vector-field3d.document.v1";
+export const fieldExplorerSessionKey = "math3d.scientific-field-explorer.session.v1";
+export function readFieldExplorerSession(): VectorField3DDocument | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.sessionStorage.getItem(fieldExplorerSessionKey);
+    return raw ? parseVectorField3DDocument(raw) : null;
+  } catch { return null; }
+}
 export function createDefaultVectorField3DDocument(): VectorField3DDocument {
   const axes = (["x", "y", "z"] as const).map(role => ({ role, label: role, unit: "m", min: -4, max: 4 })) as
     unknown as VectorField3DSource["axes"];
@@ -22,10 +32,11 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
   { stableKey: crypto.randomUUID(), title: "3D vector field" });
 }
 
-export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose,
+export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
+  mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
 }) {
@@ -38,19 +49,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     return () => { cancelRunRef.current?.(); previous?.focus(); };
   }, []);
   const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    event.stopPropagation();
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
-      "button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex='0']") ?? []);
-    if (!focusable.length) return;
-    const first = focusable[0]!, last = focusable.at(-1)!;
-    if (event.shiftKey && globalThis.document.activeElement === first) {
-      event.preventDefault(); last.focus();
-    } else if (!event.shiftKey && globalThis.document.activeElement === last) {
-      event.preventDefault(); first.focus();
-    }
   };
   const [document, setDocument] = useState(initialDocument ?? createDefaultVectorField3DDocument);
+  useEffect(() => {
+    try { window.sessionStorage.setItem(fieldExplorerSessionKey, serializeVectorField3DDocument(document)); }
+    catch { /* Project save remains available when session storage is unavailable. */ }
+  }, [document]);
   const [expressions, setExpressions] = useState<[string, string, string]>(document.source.field.kind === "expressions" ?
     document.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
   const [artifact, setArtifact] = useState<VectorField3DArrowArtifact | null>(null);
@@ -64,6 +70,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [busyAction, setBusyAction] = useState<"render" | "trajectory" | null>(null);
   const [runStatus, setRunStatus] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
+  const datasetLink = document.source.field.kind === "scientific-bundle" ?
+    createScientificDatasetLink(document.source.field.references) : null;
   const updateSource = (source: VectorField3DSource) => {
     setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setTrajectories(null); setError(""); setRunStatus("");
   };
@@ -100,9 +108,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const addSeed = () => {
     try {
       const position = seedDraft.map(Number) as [number, number, number];
-      if (seedDraft.some(value => !value.trim()) || position.some((value, index) =>
-        !Number.isFinite(value) || value < document.source.axes[index].min ||
-          value > document.source.axes[index].max)) throw new TypeError("Seed must lie inside all three axis bounds.");
+      if (seedDraft.some(value => !value.trim()) ||
+          !scientificPointWithinBounds(position, document.source.axes))
+        throw new TypeError("Seed must lie inside all three axis bounds.");
       const nextIndex = document.source.seeds.reduce((highest, seed) =>
         Math.max(highest, Number(seed.id.replace(/^seed-/, "")) || 0), 0) + 1;
       updateSource({ ...document.source, seeds: [...document.source.seeds,
@@ -177,14 +185,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setArtifact(null); setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  return createPortal(<div className="vector-field3d-backdrop" onPointerDown={event => {
-    event.stopPropagation(); if (event.target === event.currentTarget) onClose(); }}>
-    <div role="dialog" aria-modal="true" aria-label="3D vector field editor"
+  return createPortal(<div className="scientific-field-explorer" role="region"
+    aria-label="Scientific Field Explorer" data-testid="scientific-field-explorer">
+    <div
       ref={dialogRef} onKeyDown={onDialogKey}
-      className="graph2d-scientific-import vector-field3d-editor" data-testid="vector-field-3d-editor"
+      className="graph2d-scientific-import vector-field3d-editor scientific-field-explorer-content"
+      data-testid="vector-field-3d-editor"
       onPointerDown={event => event.stopPropagation()}>
-    <h3>3D vector field · {document.metadata.title}</h3>
-    <p>Independent 3D document · bounded arrows and adaptive numerical trajectories.</p>
+    <header className="scientific-field-explorer-header"><div><h3>Scientific Field Explorer · {document.metadata.title}</h3>
+    <p>Independent 3D document · bounded arrows and adaptive numerical trajectories.</p></div>
+    <button type="button" onClick={onClose}>Back to Graphs</button></header>
+    <div className="scientific-field-explorer-controls" aria-label="Field controls">
     <fieldset className="vector-field3d-form" disabled={busy}>
     {document.source.field.kind === "expressions" ?
       <div role="group" aria-label="Vector components" className="vector-field3d-controls">
@@ -240,8 +251,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             seeds: document.source.seeds.filter(item => item.id !== seed.id) })}>Remove</button>
       </li>)}</ul>}
     </section>
-    <section aria-label="3D trajectory solver">
-      <h4>Adaptive trajectory solver</h4>
+    <details open aria-label="3D trajectory solver">
+      <summary>Advanced trajectory solver</summary>
       <div className="vector-field3d-controls">
         <label>Direction <select aria-label="Trajectory direction" value={direction}
           onChange={event => { setDirection(event.target.value as "forward" | "backward");
@@ -284,10 +295,22 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       </div>
       <p>Adaptive RK4 step doubling · at most 2,048 attempted steps per seed in this preview.
         Each trace reports its stop reason; a numerical trace does not certify topology.</p>
-    </section>
+    </details>
     </fieldset>
     <VectorField3DGraphLinePanel key={document.identity.structuralHash} document={document} disabled={busy}
       onBusyChange={setLineBusy} onAddGraphLine={onAddGraphLine} isGraphLineImported={isGraphLineImported} />
+    </div>
+    <div className="scientific-field-explorer-inspector" aria-label="Field status and actions">
+    <h4>Inspector</h4>
+    <p>{datasetLink ? "Verified dataset link" : "Expression field"} ·
+      {datasetLink ? ` ${datasetLink.shape.join(" × ")} samples` : " bounded authored domain"}</p>
+    {datasetLink && <details aria-label="Dataset provenance"><summary>Dataset provenance</summary>
+      <p>Source hash <code>{datasetLink.sourceHash}</code></p>
+      <p>Scene {datasetLink.sceneId} · dataset {datasetLink.datasetId}</p>
+      <ul>{datasetLink.components.map(component => <li key={component.name}>
+        {component.name}: <code>{component.resourceSha256}</code></li>)}</ul>
+      <p>Axes: {datasetLink.axes.map(axis => `${axis.name} (${axis.unit})`).join(" · ")}</p>
+    </details>}
     <div><button type="button" disabled={busy || lineBusy} onClick={() => void render()}>{busy ? "Verifying…" :
       "Verify & render arrows"}</button> <button type="button" disabled={busy} onClick={save}>Save document</button>
       {" "}<button type="button" disabled={busy || lineBusy || !document.source.seeds.length}
@@ -314,7 +337,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <small>Numerical approximation · absolute tolerance {trajectories.solver.absoluteTolerance},
         relative tolerance {trajectories.solver.relativeTolerance}.</small>
     </div>}
-    {artifact && <VectorField3DArrowView document={document} artifact={artifact} trajectories={trajectories} />}
     </div>
-  </div>, globalThis.document.body);
+    <div className="scientific-field-explorer-viewer" aria-label="3D field viewer">
+      {artifact ? <VectorField3DArrowView document={document} artifact={artifact} trajectories={trajectories} /> :
+        <div role="status" className="scientific-field-explorer-empty">Verify the field to display bounded 3D arrows.
+          Saved scientific bundles are reread before any field values appear.</div>}
+    </div>
+    </div>
+  </div>, mount ?? globalThis.document.body);
 }
