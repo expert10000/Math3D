@@ -402,8 +402,11 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
 .scientific-field-explorer-controls { grid-column: 1; grid-row: 2; }
 .scientific-field-explorer-inspector { grid-column: 3; grid-row: 2; }
-.scientific-field-explorer-viewer { grid-column: 2; grid-row: 2; display: grid; min-width: 0; min-height: 0;
+.scientific-field-explorer-viewer { grid-column: 2; grid-row: 2; display: grid; position: relative; min-width: 0; min-height: 0;
   overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #0d1726; }
+.scientific-field-explorer-viewer-error { position: absolute; z-index: 3; top: 12px; left: 12px; right: 12px;
+  padding: 10px 12px; border: 1px solid #f6a5a5; border-radius: 7px; color: #fff;
+  background: #782323; box-shadow: 0 3px 12px #0008; overflow-wrap: anywhere; }
 .scientific-field-explorer-viewer .graph2d-scientific-volume { margin: 0; min-width: 0; width: 100%;
   min-height: 0; height: 100%; box-sizing: border-box; overflow: hidden; }
 .scientific-field-explorer-viewer .graph2d-scientific-volume [aria-label="3D camera viewport"] {

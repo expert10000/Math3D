@@ -43,6 +43,27 @@ test("SCI-02 opens a docked field explorer with bounded narrow-window layout", a
   } finally { await closeSurfaceApp(app); }
 });
 
+test("field preview errors stay visible in the viewer", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "XZ slice" }).click();
+    await expect(editor.getByLabel("3D field viewer")).toContainText("preview this slice");
+    await editor.getByLabel("P(x,y,z)").fill("sin(");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toBeVisible();
+    await editor.getByLabel("P(x,y,z)").fill("-y");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByTestId("vector-field3d-viewer-error")).toHaveCount(0);
+    await expect(editor.getByRole("figure", { name: /field slice/ })).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or missing bytes", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector3d-"));

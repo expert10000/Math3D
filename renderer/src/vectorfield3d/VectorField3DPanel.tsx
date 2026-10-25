@@ -731,7 +731,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {" "}<button type="button" onClick={onClose}>Close</button></div>
     {runStatus && <p role="status" aria-live="polite" data-testid="vector-field3d-run-status">{runStatus}</p>}
     {saveStatus && <p role="status" data-testid="vector-field3d-save-status">{saveStatus}</p>}
-    {error && <p role="alert">{error}</p>}
     {artifact && <p role="status" aria-live="polite" data-testid="vector-field3d-render-status">
       Rendered {artifact.accepted} of {artifact.evaluated} 3D samples; {artifact.stationary} stationary,
       {" "}{artifact.rejected} rejected. Source revision {artifact.source.revision}.
@@ -750,6 +749,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </div>
     <div className="scientific-field-explorer-viewer" aria-label="3D field viewer"
       data-multiview={multiView ? workspace.layout : undefined}>
+      {error && <div role="alert" className="scientific-field-explorer-viewer-error"
+        data-testid="vector-field3d-viewer-error">{error}</div>}
       {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
         <div className="vector-field3d-linked-cell">{artifact ?
           <VectorField3DArrowView document={document} artifact={artifact}
@@ -776,7 +777,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onSendLineToGraphs={sendAnalyticLine}
         onProbeSelect={point => void selectProbe(point)} /> :
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
-          The current source is verified before scientific values appear.</div> :
+          Saved scientific bundles are reverified before values appear.</div> :
         artifact ? <VectorField3DArrowView document={document} artifact={artifact}
           trajectories={trajectories} probe={workspace.probe}
           onCameraStateChange={setCameraState} /> :
