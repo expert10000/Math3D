@@ -1,0 +1,224 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-404460538ac24288b4b1c0ee240551ee-nodal",
+  "title": "Continuum nodal ring · linking Berry loop",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-404460538ac24288b4b1c0ee240551ee",
+    "jobId": "fixture-nodal-ring",
+    "model": "nodal_line_two_band",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-25T22:40:52.139813+00:00",
+    "resultSha256": "b3ef7153c4a501788173f1a44c0eb8607787ab2d1b832e9c486f3c322dad00e3",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mass": 1,
+      "curvature": 1,
+      "velocity": 1,
+      "loopCenter": 1,
+      "loopRadius": 0.25,
+      "samples": 64
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "nodal_line_two_band"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "kx",
+      "ky",
+      "kz"
+    ],
+    "units": [
+      "inverse length",
+      "inverse length",
+      "inverse length"
+    ]
+  },
+  "camera": {
+    "position": [
+      3,
+      -3.75,
+      2.5
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "ring-positions",
+      "path": "ring-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 65,
+      "unit": "inverse length",
+      "bytes": 1560,
+      "sha256": "f1c5d8b65725c9fdaa469900fec6a92e109d3c6a833cca4d0f977003b0ed3640"
+    },
+    {
+      "id": "ring-samples",
+      "path": "ring-samples.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 64,
+      "unit": "inverse length",
+      "bytes": 1536,
+      "sha256": "68f3268a9a1a211e75e2cd210a96d6b4dbeb309ac1f104146932ee3cf3281c3c"
+    },
+    {
+      "id": "loop-positions",
+      "path": "loop-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 65,
+      "unit": "inverse length",
+      "bytes": 1560,
+      "sha256": "d38e8727e1f1bf1430048a783fd5e692cc33d4665a4f10ae5611a371322f13ef"
+    },
+    {
+      "id": "loop-samples",
+      "path": "loop-samples.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 64,
+      "unit": "inverse length",
+      "bytes": 1536,
+      "sha256": "24aa5e7183c37940f3071639f516abb9037a3497fb6e4afaf17ad658dc42ef15"
+    },
+    {
+      "id": "loop-lower-band",
+      "path": "loop-lower-band.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 64,
+      "unit": "normalized energy",
+      "bytes": 512,
+      "sha256": "d967a49eb718c5d7065b0a8de521c551b423b5f1491173e644c3b935dd7c8c63"
+    },
+    {
+      "id": "loop-upper-band",
+      "path": "loop-upper-band.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 64,
+      "unit": "normalized energy",
+      "bytes": 512,
+      "sha256": "a30c8a138a9556446cb37e6f9bccfcf45c6250ff912324ea2b6e51587e883f3b"
+    }
+  ],
+  "objects": [
+    {
+      "id": "nodal-ring",
+      "label": "Producer-supplied nodal ring",
+      "kind": "polyline",
+      "positions": "ring-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "nodal-ring-samples",
+      "label": "Stored ring coordinates",
+      "kind": "point-cloud",
+      "positions": "ring-samples",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.056249999999999994
+      }
+    },
+    {
+      "id": "linking-loop",
+      "label": "Producer-supplied closed radial-z path",
+      "kind": "polyline",
+      "positions": "loop-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "linking-loop-samples",
+      "label": "Exact stored loop samples (color = upper band)",
+      "kind": "point-cloud",
+      "positions": "loop-samples",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.075
+      },
+      "scalars": "loop-upper-band"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "continuum-scope",
+      "text": "Atlas continuum two-band model. Ring and loop are producer-supplied samples; no surface or drumhead state is calculated.",
+      "position": [
+        0,
+        0,
+        1.5625
+      ]
+    },
+    {
+      "id": "loop-diagnostic",
+      "text": "Loop Berry phase 3.141593; status defined; minimum gap 0.5000000.",
+      "position": [
+        0,
+        0,
+        -1
+      ]
+    },
+    {
+      "id": "sample-energy",
+      "text": "Exact lower and upper energies are stored in loop-lower-band and loop-upper-band; select a loop sample to inspect its supplied value.",
+      "position": [
+        1,
+        0,
+        0.5
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "linking-berry-phase",
+        "label": "Occupied-band linking-loop Berry phase",
+        "value": 3.141592653589793,
+        "status": "verified",
+        "method": "Gauge-invariant occupied-band Wilson loop; independent d-vector winding; doubled-sample convergence"
+      },
+      {
+        "id": "d-vector-winding",
+        "label": "Independent loop d-vector winding",
+        "value": -1,
+        "status": "verified",
+        "method": "Unwrapped polar angle of (m-B k_perp², v kz) on the declared radial-z loop"
+      }
+    ],
+    "limitations": [
+      "Continuum bulk model only; no surface or drumhead-state calculation.",
+      "At a loop degeneracy the occupied-band phase is undefined."
+    ]
+  }
+}

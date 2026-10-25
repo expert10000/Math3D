@@ -17,6 +17,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | Kitaev | `tests/fixtures/quantum-scene/run-18145016435540afafc5a2a06870566f-bands.qscene` and its `-kitaev-finite.qscene` companion | Two exact periodic BdG energy paths, bulk gap, and per-site mean density of a finite near-zero pair | **Bounded post-v0.1 extension**: read-only bands and finite open-chain end density; no topological invariant or Majorana classification |
 | Kitaev bulk invariant | `tests/fixtures/quantum-scene/run-75fb3f43371e40d58fc0eda2e8c14fa1-kitaev-invariant.qscene` | Producer Pfaffian signs, conditional parity and sampled real-pairing winding, exact BdG curve and momentum samples | **Bounded post-v0.1 extension**: read-only exact inspection; undefined at a bulk gap closure; no finite-end inference |
 | Weyl local cone | `tests/fixtures/quantum-scene/run-f8bf5412469c49b7bb878b8001d341cf-weyl.qscene` | Producer-supplied enclosing sphere, occupied-band Berry vectors, Wilson face flux, local chirality and conditional occupied Chern | **Bounded post-v0.1 extension**: read-only exact sample inspection; no periodic lattice, partner node, surface band or Fermi arc |
+| Nodal continuum ring | `tests/fixtures/quantum-scene/run-404460538ac24288b4b1c0ee240551ee-nodal.qscene` | Producer-supplied ring, radial-z loop, both band energies and conditional linking-loop Berry phase | **Bounded post-v0.1 extension**: read-only exact sample inspection; no surface or drumhead state |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Landau/Hall | None | Theory Lab has a Landau–Zener dynamics model, **not** a Landau-level or Hall producer scene | Not supported |
 
@@ -168,3 +169,19 @@ its exact `q` and radial Berry value in source units. The viewer rechecks the
 bundle on opening, selection and restart; changed bytes are refused. The
 local continuum model supplies no Brillouin zone, lattice partner, surface
 states or Fermi arcs. Math3D does not compute the charge.
+
+## Post-v0.1 continuum nodal-ring admission (2026-10-25)
+
+Theory Lab evaluates the pinned Atlas two-band continuum Hamiltonian
+`[m−B(kx²+ky²)]σx+vkzσz`. The source run stores 64 ring positions and a
+64-sample radial-z loop with both band energies. Its gauge-invariant
+occupied-band Berry phase is π for the linked fixture, checked against
+independent d-vector winding and a doubled sample grid. At a loop/node
+intersection the producer marks the phase undefined.
+
+Open **File → Verified quantum examples → Nodal → Nodal · continuum ring and
+Berry loop**. Inspect a loop marker for its exact supplied momentum and
+upper-band energy. The lower band remains in the verified bundle. Import,
+restart, selection and tamper tests reject changed source bytes. This
+continuum model contains no surface calculation or drumhead state; Math3D
+does not calculate the Berry phase.

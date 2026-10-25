@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 19);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 19);
+  assert.equal(listBundledQuantumSceneExamples().length, 20);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 20);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -245,6 +245,32 @@ try {
   const weylBytes=await readFile(join(changedWeyl,"radial-berry.f64"));
   weylBytes[0]^=1;await writeFile(join(changedWeyl,"radial-berry.f64"),weylBytes);
   await assert.rejects(importQuantumSceneBundle(changedWeyl),/integrity|hash/i);
+  const nodalFolder=join(fixtureRoot,bundledQuantumSceneExample("nodal-ring").folder);
+  const nodal=await importQuantumSceneBundle(nodalFolder);
+  const nodalResultBytes=await readFile(join(fixtureRoot,"nodal-ring-producer-result.json"));
+  const nodalResult=JSON.parse(nodalResultBytes.toString("utf8"));
+  assert.equal(nodal.source.provenance.model,"nodal_line_two_band");
+  assert.equal(nodal.source.provenance.resultSha256,hash(nodalResultBytes));
+  assert.equal(nodal.source.topology.invariants.find(item=>item.id==="linking-berry-phase").value,Math.PI);
+  assert.equal(nodal.source.topology.invariants.find(item=>item.id==="linking-berry-phase").status,"verified");
+  assert.deepEqual(Array.from(nodal.arrays.get("ring-samples")),nodalResult.analysis.ringPositions.flat());
+  assert.deepEqual(Array.from(nodal.arrays.get("loop-samples")),nodalResult.analysis.loopPositions.flat());
+  assert.deepEqual(Array.from(nodal.arrays.get("loop-lower-band")),nodalResult.analysis.lowerBand);
+  assert.deepEqual(Array.from(nodal.arrays.get("loop-upper-band")),nodalResult.analysis.upperBand);
+  const nodalFirst=inspectVerifiedScalarSample(nodal,{fingerprint:sceneFingerprint(nodal),objectId:"linking-loop-samples",sampleIndex:0});
+  assert.deepEqual(nodalFirst.position,nodalResult.analysis.loopPositions[0]);
+  assert.equal(nodalFirst.value,nodalResult.analysis.upperBand[0]);
+  assert.equal(nodalFirst.valueUnit,"normalized energy");
+  const changedNodal=join(root,"nodal-changed.qscene");
+  await cp(nodalFolder,changedNodal,{recursive:true});
+  const nodalBytes=await readFile(join(changedNodal,"loop-upper-band.f64"));
+  nodalBytes[0]^=1;await writeFile(join(changedNodal,"loop-upper-band.f64"),nodalBytes);
+  await assert.rejects(importQuantumSceneBundle(changedNodal),/integrity|hash/i);
+  const changedRing=join(root,"nodal-ring-changed.qscene");
+  await cp(nodalFolder,changedRing,{recursive:true});
+  const ringBytes=await readFile(join(changedRing,"ring-samples.f64"));
+  ringBytes[0]^=1;await writeFile(join(changedRing,"ring-samples.f64"),ringBytes);
+  await assert.rejects(importQuantumSceneBundle(changedRing),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -263,14 +289,15 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 14, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev and one Weyl bundle");
+  assert.equal(allFixtureNames.length, 15, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev, Weyl and Nodal bundles");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName);
+  const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },

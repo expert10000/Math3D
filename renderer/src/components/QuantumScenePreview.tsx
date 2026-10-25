@@ -491,6 +491,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
               <p>The mesh, arrows and markers use producer-supplied samples. Inspect a sphere sample for its exact q and radial occupied-band Berry value. Math3D calculates no topological charge. The local model supplies no lattice partner, surface band or Fermi arc.</p>
             </section>}
+            {scene.provenance.model==="nodal_line_two_band"&&<section data-testid="nodal-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Nodal ring · verified continuum loop</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Atlas H(k)=[m−B(kx²+ky²)]σx+vkzσz. Inputs: m={scene.provenance.parameters?.mass}, B={scene.provenance.parameters?.curvature}, v={scene.provenance.parameters?.velocity}; radial-z loop center {scene.provenance.parameters?.loopCenter}, radius {scene.provenance.parameters?.loopRadius}, {scene.provenance.parameters?.samples} stored samples. Coordinates use inverse length; band scalars use normalized energy.</p>
+              {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
+              <p>Ring, loop and energy samples are supplied by Theory Lab. Select a loop marker to inspect its exact position and upper-band energy. The lower band remains in the verified bundle. Math3D calculates no Berry phase and makes no drumhead-state or surface claim.</p>
+            </section>}
             {scene.provenance.model==="kitaev_chain"&&<section data-testid="kitaev-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Kitaev · producer-supplied {scene.topology?.invariants.some(item=>item.id==="kitaev-pfaffian-parity") ? "bulk invariant diagnostics" : scene.bands ? "periodic BdG bands" : "finite open-chain end density"}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>

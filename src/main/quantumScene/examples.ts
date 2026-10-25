@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -52,6 +52,9 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "weyl-local", label: "Weyl · local enclosed node", description: "Verified enclosing-sphere Berry flux and exact supplied samples; no lattice or Fermi arcs",
     model: "Weyl", fixtureGroup: "quantum-scene", folder: "run-f8bf5412469c49b7bb878b8001d341cf-weyl.qscene",
     fingerprint: "e9aa57785442e2ddb1d8c8bd4caebdfbdc0caa55bd75955b225af47bae05f80c" },
+  { id: "nodal-ring", label: "Nodal · continuum ring and Berry loop", description: "Exact producer-supplied ring, loop and band samples; no drumhead-state claim",
+    model: "Nodal", fixtureGroup: "quantum-scene", folder: "run-404460538ac24288b4b1c0ee240551ee-nodal.qscene",
+    fingerprint: "d36aacadbdce37feb960a1bbda3c41840500a41c50ad79c9d468f77db9a55342" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },
