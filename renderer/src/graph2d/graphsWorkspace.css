@@ -397,6 +397,7 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .scientific-field-explorer-header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 4px 10px; border-bottom: 1px solid var(--border); }
 .scientific-field-explorer-header h3, .scientific-field-explorer-header p { margin: 0 0 4px; }
+.scientific-field-explorer-header > div:last-child { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
 .scientific-field-explorer-controls, .scientific-field-explorer-inspector { min-width: 0; min-height: 0;
   overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
 .scientific-field-explorer-controls { grid-column: 1; grid-row: 2; }
@@ -407,6 +408,15 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   min-height: 0; height: 100%; box-sizing: border-box; overflow: hidden; }
 .scientific-field-explorer-viewer .graph2d-scientific-volume [aria-label="3D camera viewport"] {
   min-width: 0; max-width: 100%; box-sizing: border-box; }
+.scientific-field-explorer-viewer[data-multiview] { display: block; overflow: auto; }
+.vector-field3d-linked-grid { display: grid; gap: 8px; min-width: 0; min-height: 100%; padding: 8px; box-sizing: border-box; }
+.vector-field3d-linked-grid-split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vector-field3d-linked-grid-quad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vector-field3d-linked-cell { min-width: 0; min-height: 340px; overflow: auto; border: 1px solid #475569;
+  border-radius: 8px; background: #0d1726; color: #e5efff; }
+.vector-field3d-linked-cell > p { padding: 24px; }
+.vector-field3d-linked-cell .graph2d-scientific-volume [aria-label="3D camera viewport"] { min-height: 260px !important; }
+.vector-field3d-linked-cell .vector-field3d-slice { height: 100%; }
 .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-content {
   grid-template-columns: minmax(0, 1fr) minmax(230px, 285px); }
 .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-controls { display: none; }
@@ -430,6 +440,13 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   width: 100%; box-sizing: border-box; }
 .vector-field3d-probe [data-testid="vector-field3d-probe-values"] { overflow-wrap: anywhere;
   background: var(--panel); padding: 8px; border-radius: 6px; }
+.vector-field3d-view-controls { display: grid; gap: 7px; padding: 8px; margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 8px; }
+.vector-field3d-view-controls h5, .vector-field3d-view-controls p { margin: 0; }
+.vector-field3d-view-controls label { display: grid; gap: 3px; }
+.vector-field3d-view-controls input, .vector-field3d-view-controls select { min-width: 0; width: 100%; box-sizing: border-box; }
+.vector-field3d-clip-error { color: #b91c1c; font-weight: 700; }
+.vector-field3d-clip-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .vector-field3d-slice { margin: 0; min-width: 0; width: 100%; overflow: auto; padding: 12px;
   box-sizing: border-box; color: #e5efff; }
 .vector-field3d-slice figcaption { margin-bottom: 8px; font-weight: 700; }
@@ -438,8 +455,14 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .vector-field3d-slice-legend-bar { display: block; width: min(240px, 48%); height: 10px;
   border: 1px solid #cbd5e1; border-radius: 4px;
   background: linear-gradient(90deg, rgb(35,105,224), rgb(141,215,132), rgb(247,105,40)); }
+.vector-field3d-line-profile { display: grid; gap: 6px; margin-top: 12px; padding: 10px;
+  border: 1px solid #64748b; border-radius: 8px; background: #13243b; }
+.vector-field3d-line-profile p { margin: 0; }
+.vector-field3d-line-profile label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.vector-field3d-line-profile svg { width: 100%; max-height: 150px; }
 .scientific-field-explorer-empty { place-self: center; max-width: 32rem; padding: 20px; color: #e5efff; text-align: center; }
 @media (max-width: 960px) {
+  .vector-field3d-linked-grid-split, .vector-field3d-linked-grid-quad { grid-template-columns: minmax(0, 1fr); }
   .scientific-field-explorer { overflow: auto; }
   .scientific-field-explorer-content { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(320px, 45vh) auto;
     height: auto; min-height: 100%; overflow: visible; }

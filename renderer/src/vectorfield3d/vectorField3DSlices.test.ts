@@ -38,8 +38,9 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
   it("retains selected layer, layout and physical coordinates in Project without storing samples", () => {
     const view = defaultVectorField3DWorkspace(source);
     const selected = reviseVectorField3DWorkspace(document, { ...view,
-      selectedLayer: "xz", layout: "viewer-focus", sliceCoordinates: [0, -2, -1.5],
-      probe: [0, -2, -1.5] });
+      selectedLayer: "xz", layout: "quad", sliceCoordinates: [0, -2, -1.5],
+      probe: [0, -2, -1.5], cameraPreset: "yz",
+      clipBounds: [[-2, 2], [-3, 1], [-2, 0]] });
     const workspace = createMixedWorkspaceDocument({ entries: [{ module: "vector3d", checkpoint: selected,
       expected: selected.identity, replay: null }], activeDocumentIds: [selected.identity.id],
     results: [], artifacts: [], relations: [], committedSelection: null, constructions: [] });
@@ -55,9 +56,19 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
       sliceCoordinates: [0, 10, 0] } }).ok).toBe(false);
     expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
       probe: [0, 10, 0] } }).ok).toBe(false);
+    expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
+      clipBounds: [[-2, 10], [-3, 1], [-2, 0]] } }).ok).toBe(false);
+    expect(normalizeVectorField3DDocument({ ...selected, workspace: { ...selected.workspace,
+      clipBounds: [[2, -2], [-3, 1], [-2, 0]] } }).ok).toBe(false);
     const previousWorkspace = JSON.parse(serializeVectorField3DDocument(selected));
     delete previousWorkspace.workspace.probe;
+    delete previousWorkspace.workspace.clipBounds;
+    delete previousWorkspace.workspace.cameraPreset;
     expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.probe).toBeNull();
+    expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.clipBounds)
+      .toEqual(view.clipBounds);
+    expect(parseVectorField3DDocument(JSON.stringify(previousWorkspace)).workspace?.cameraPreset)
+      .toBe("perspective");
   });
 
   it("samples XY, XZ and YZ at exact physical coordinates within 1,024 cells", () => {

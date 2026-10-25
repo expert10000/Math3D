@@ -26,17 +26,23 @@ export type VectorField3DSource = Readonly<{
     maxSteps: number; maxTime: number; maxArcLength?: number }>;
 }>;
 export type VectorField3DLayer = "arrows" | "trajectories" | "xy" | "xz" | "yz";
+export type VectorField3DCameraPreset = "perspective" | "xy" | "xz" | "yz";
+export type VectorField3DClipBounds = readonly [readonly [number, number],
+  readonly [number, number], readonly [number, number]];
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
-  layout: "three-pane" | "viewer-focus";
+  layout: "three-pane" | "viewer-focus" | "split" | "quad";
   sliceCoordinates: readonly [number, number, number];
-  probe: readonly [number, number, number] | null }>;
+  probe: readonly [number, number, number] | null;
+  clipBounds: VectorField3DClipBounds;
+  cameraPreset: VectorField3DCameraPreset }>;
 export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOCUMENT_FORMAT;
   schemaVersion: typeof VECTOR_FIELD3D_DOCUMENT_SCHEMA_VERSION; identity: DocumentIdentity;
   source: VectorField3DSource; metadata: Readonly<{ title: string }>;
   workspace?: VectorField3DWorkspace }>;
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
-  selectedLayer: "arrows", layout: "three-pane", probe: null,
+  selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
+  clipBounds: source.axes.map(axis => [axis.min, axis.max]) as unknown as VectorField3DClipBounds,
   sliceCoordinates: source.axes.map((axis, index) => {
     if (source.field.kind !== "scientific-bundle") return (axis.min + axis.max) / 2;
     const reference = source.field.references[0], count = reference.shape[index]!;
@@ -139,16 +145,30 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
     return { ok: false, errors: ["Invalid 3D vector-field document source, identity or metadata."] };
   const source = value.source as VectorField3DSource;
   const legacyWorkspace = value.workspace ?? defaultVectorField3DWorkspace(source);
-  const workspace = record(legacyWorkspace) && !Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ?
-    { ...legacyWorkspace, probe: null } : legacyWorkspace;
-  if (!record(workspace) || !exact(workspace, ["selectedLayer", "layout", "sliceCoordinates", "probe"]) ||
+  const defaults = defaultVectorField3DWorkspace(source);
+  const workspace = record(legacyWorkspace) ? {
+    ...legacyWorkspace,
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ? { probe: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "clipBounds") ?
+      { clipBounds: defaults.clipBounds } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "cameraPreset") ?
+      { cameraPreset: defaults.cameraPreset } : {}),
+  } : legacyWorkspace;
+  if (!record(workspace) || !exact(workspace,
+      ["selectedLayer", "layout", "sliceCoordinates", "probe", "clipBounds", "cameraPreset"]) ||
       !["arrows", "trajectories", "xy", "xz", "yz"].includes(String(workspace.selectedLayer)) ||
-      !["three-pane", "viewer-focus"].includes(String(workspace.layout)) ||
+      !["three-pane", "viewer-focus", "split", "quad"].includes(String(workspace.layout)) ||
+      !["perspective", "xy", "xz", "yz"].includes(String(workspace.cameraPreset)) ||
       !tuple3(workspace.sliceCoordinates) ||
       !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes) ||
       workspace.probe !== null && (!tuple3(workspace.probe) ||
-        !scientificPointWithinBounds(workspace.probe as number[], source.axes)))
-    return { ok: false, errors: ["Invalid 3D field workspace layer, layout, slice coordinates or probe."] };
+        !scientificPointWithinBounds(workspace.probe as number[], source.axes)) ||
+      !tuple3(workspace.clipBounds) ||
+      workspace.clipBounds.some((bounds: unknown, axis: number) =>
+        !Array.isArray(bounds) || bounds.length !== 2 || !finite(bounds[0]) || !finite(bounds[1]) ||
+        bounds[0] < source.axes[axis]!.min || bounds[1] > source.axes[axis]!.max ||
+        bounds[0] >= bounds[1]))
+    return { ok: false, errors: ["Invalid 3D field workspace layer, layout, probe, clip bounds or camera preset."] };
   try {
     const serialized = canonical({ ...value, workspace });
     if (new TextEncoder().encode(serialized).length > VECTOR_FIELD3D_MAX_DOCUMENT_BYTES)

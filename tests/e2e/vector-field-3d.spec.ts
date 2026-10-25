@@ -199,6 +199,13 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     await editor.getByRole("button", { name: "Preview slice" }).click();
     await editor.getByRole("figure", { name: "XY field slice" })
       .locator('[data-probe-cell="10-5"]').click();
+    const profile = editor.getByRole("figure", { name: "XY field slice" })
+      .getByRole("region", { name: "Line profile through probe" });
+    await editor.getByRole("button", { name: "Show line profile through point" }).click();
+    await expect(profile).toBeVisible();
+    await expect(profile).toContainText("magnitude along x");
+    await profile.getByLabel("Line profile direction").selectOption("1");
+    await expect(profile).toContainText("magnitude along y");
     const values = editor.getByTestId("vector-field3d-probe-values");
     await expect(values).toContainText("x = 0 m · y = -2 m · z = -1.5 m");
     await expect(values).toContainText(`east = ${pointValues[0]!.toPrecision(5)} m/s`);
@@ -237,12 +244,18 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
     await expect(values).toHaveCount(0);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(values).toContainText(`east = ${pointValues[0]!.toPrecision(5)} m/s`);
+    await editor.getByRole("button", { name: "Quad views" }).click();
+    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" })).toBeVisible();
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toBeVisible();
     const resource = join(directory, "north.f64"), original = await readFile(resource);
     const changed = Buffer.from(original); changed[0] ^= 1;
     await writeFile(resource, changed);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(editor.getByRole("alert")).toContainText(/changed|integrity failed/i);
     await expect(values).toHaveCount(0);
+    await expect(editor.getByRole("figure", { name: "XY field slice" })).toHaveCount(0);
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
     await rm(resource);
     await editor.getByRole("button", { name: "Reverify probe" }).click();
     await expect(editor.getByRole("alert")).toContainText(/missing|ENOENT|not found/i);
@@ -253,6 +266,76 @@ test("SCI-07 links one verified physical probe across slices, 3D and a Graph lin
       throw new Error("Unsafe linked-probe fixture cleanup path");
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("SCI-04/07 clip and camera settings persist while split and quad views share one probe", async ({}, testInfo) => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Place probe at selected coordinates" }).click();
+    const originalValue = await editor.getByTestId("vector-field3d-probe-values").innerText();
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-clip-status"))
+      .toContainText("125 of 125 accepted sample positions visible");
+    await editor.getByLabel("Clip x min").fill("-2");
+    await expect(editor.getByTestId("vector-field3d-clip-status"))
+      .toContainText("100 of 125 accepted sample positions visible");
+    expect(await editor.getByTestId("vector-field3d-probe-values").innerText()).toBe(originalValue);
+    await editor.getByLabel("Clip x max").fill("7");
+    await expect(editor.getByRole("alert")).toContainText(/clip bounds/i);
+    await expect(editor.getByLabel("Clip x max")).toHaveValue("4");
+    await editor.getByLabel("3D camera preset").selectOption("xy");
+    await expect(editor.getByTestId("vector-field3d-clip-status")).toContainText("Camera preset xy");
+    await expect(editor.getByTestId("vector-field3d-camera-status")).toContainText("Preset xy.");
+    await editor.getByRole("group", { name: "3D camera viewport" }).focus();
+    await editor.getByRole("group", { name: "3D camera viewport" }).press("ArrowRight");
+    await editor.getByRole("group", { name: "3D camera viewport" }).press("Home");
+    await expect(editor.getByTestId("vector-field3d-camera-status")).toContainText("distance 4.00");
+    await editor.getByRole("button", { name: "Split views" }).click();
+    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toBeVisible();
+    await expect(editor.getByRole("figure", { name: "XY field slice" })).toBeVisible();
+    await editor.getByRole("button", { name: "Quad views" }).click();
+    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    for (const name of ["XY", "XZ", "YZ"] as const)
+      await expect(editor.getByRole("figure", { name: `${name} field slice` })).toBeVisible();
+    await editor.getByRole("figure", { name: "XY field slice" })
+      .locator('[data-probe-cell="15-10"]').click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" })
+      .getByRole("region", { name: "Line profile through probe" }))
+      .toContainText("magnitude along x");
+    await expect(editor.getByTestId("vector-field3d-probe-values"))
+      .toContainText("x = 1 m · y = -0.6666666666666665 m · z = 0 m");
+    await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toHaveCount(3);
+    await expect(editor.getByTestId("vector-field3d-3d-probe")).toContainText("x = 1 m");
+    await testInfo.attach("scientific-field-explorer-quad.png", {
+      body: await editor.screenshot(), contentType: "image/png" });
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry.checkpoint.workspace).toMatchObject({ layout: "quad", cameraPreset: "xy",
+      clipBounds: [[-2, 4], [-4, 4], [-4, 4]] });
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor).toHaveAttribute("data-layout", "quad");
+    await expect(editor.getByLabel("Clip x min")).toHaveValue("-2");
+    await expect(editor.getByLabel("3D camera preset")).toHaveValue("xy");
+    await expect(editor.getByTestId("vector-field3d-probe-values")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Preview linked views" }).first().click();
+    await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toHaveCount(3);
+  } finally { await closeSurfaceApp(app); }
 });
 
 test("GRA-13.5 imports distinct verified 3D vector plane lines from a saved Project field", async () => {

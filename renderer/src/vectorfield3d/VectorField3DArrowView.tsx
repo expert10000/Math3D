@@ -1,9 +1,36 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
+import { OrthographicCamera } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { VectorField3DArrowArtifact, VectorField3DDocument,
-  VectorField3DTrajectoryArtifact } from "@math3d/core";
+  VectorField3DTrajectoryArtifact, VectorField3DCameraPreset,
+  VectorField3DClipBounds } from "@math3d/core";
+
+const cameraPositions: Record<VectorField3DCameraPreset, readonly [number, number, number]> = {
+  perspective: [2.7, 2.2, 2.7], xy: [0, 0, 4], xz: [0, 4, 0], yz: [4, 0, 0],
+};
+function CameraPreset({ preset, controls, onReady }: { preset: VectorField3DCameraPreset;
+  controls: React.RefObject<OrbitControlsImpl | null>;
+  onReady: (preset: VectorField3DCameraPreset) => void }) {
+  const { camera, invalidate } = useThree();
+  useEffect(() => {
+    camera.position.set(...cameraPositions[preset]);
+    if (camera instanceof OrthographicCamera) camera.zoom = 140;
+    const up: readonly [number, number, number] = preset === "xz" || preset === "yz" ?
+      [0, 0, 1] : [0, 1, 0];
+    camera.up.set(...up);
+    camera.lookAt(0, 0, 0);
+    camera.updateProjectionMatrix();
+    controls.current?.target.set(0, 0, 0);
+    controls.current?.update();
+    invalidate();
+    onReady(preset);
+  }, [camera, controls, invalidate, onReady, preset]);
+  return null;
+}
+export const pointInsideFieldClip = (point: readonly number[], clip: VectorField3DClipBounds) =>
+  point.every((value, axis) => value >= clip[axis]![0] && value <= clip[axis]![1]);
 
 export function VectorField3DArrowView({ document, artifact, trajectories, probe }: {
   document: VectorField3DDocument; artifact: VectorField3DArrowArtifact;
@@ -11,7 +38,13 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
   probe?: readonly [number, number, number] | null;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
+  const workspace = document.workspace;
+  const clip = workspace?.clipBounds ?? document.source.axes.map(axis =>
+    [axis.min, axis.max]) as unknown as VectorField3DClipBounds;
+  const preset = workspace?.cameraPreset ?? "perspective";
   const [cameraStatus, setCameraStatus] = useState("Camera ready. Use arrow keys to orbit, + or − to zoom, Home to reset.");
+  const onCameraReady = useCallback((next: VectorField3DCameraPreset) =>
+    setCameraStatus(`Camera ready. Use arrow keys to orbit, + or − to zoom, Home to reset. Preset ${next}.`), []);
   const reportCamera = () => {
     const current = controls.current;
     if (!current) return;
@@ -29,7 +62,18 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       current.getPolarAngle() + (action === "up" ? -angle : angle))));
     else if (action === "in") current.dollyIn(1.25);
     else if (action === "out") current.dollyOut(1.25);
-    else current.reset();
+    else {
+      current.object.position.set(...cameraPositions[preset]);
+      if (current.object instanceof OrthographicCamera) {
+        current.object.zoom = 140;
+        current.object.updateProjectionMatrix();
+      }
+      const up: readonly [number, number, number] = preset === "xz" || preset === "yz" ?
+        [0, 0, 1] : [0, 1, 0];
+      current.object.up.set(...up);
+      current.target.set(0, 0, 0);
+      current.object.lookAt(0, 0, 0);
+    }
     current.update(); reportCamera();
   };
   const onCameraKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -47,6 +91,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       positions.push(...a, ...b); colors.push(...color, ...color);
     };
     for (const arrow of artifact.arrows) {
+      if (!pointInsideFieldClip(arrow.position, clip)) continue;
       const start = arrow.position.map((value, axis) =>
         (value - (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span);
       if (arrow.kind !== "arrow") { stationary.push(...start); continue; }
@@ -72,7 +117,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     }
     return { positions: new Float32Array(positions), colors: new Float32Array(colors),
       stationary: new Float32Array(stationary) };
-  }, [document, artifact]);
+  }, [document, artifact, clip]);
   const paths = useMemo(() => {
     const positions: number[] = [], colors: number[] = [];
     const axes = document.source.axes;
@@ -80,6 +125,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     trajectories?.trajectories.forEach((trajectory, trajectoryIndex) => {
       const color = trajectoryIndex % 2 === 0 ? [1, .79, .23] : [.38, .97, .77];
       for (let index = 1; index < trajectory.points.length; index++) {
+        if (!pointInsideFieldClip(trajectory.points[index - 1]!.position, clip) ||
+            !pointInsideFieldClip(trajectory.points[index]!.position, clip)) continue;
         for (const point of [trajectory.points[index - 1]!, trajectory.points[index]!]) {
           positions.push(...point.position.map((value, axis) =>
             (value - (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span));
@@ -88,7 +135,7 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       }
     });
     return { positions: new Float32Array(positions), colors: new Float32Array(colors) };
-  }, [document, trajectories]);
+  }, [document, trajectories, clip]);
   const domainBox = useMemo(() => {
     const axes = document.source.axes, span = Math.max(...axes.map(axis => axis.max - axis.min));
     const half = axes.map(axis => (axis.max - axis.min) / span);
@@ -100,6 +147,19 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       if (!(index & bit)) positions.push(...corners[index]!, ...corners[index | bit]!);
     return new Float32Array(positions);
   }, [document.source.axes]);
+  const clipBox = useMemo(() => {
+    const axes = document.source.axes, span = Math.max(...axes.map(axis => axis.max - axis.min));
+    const ends = clip.map((bounds, axis) => bounds.map(value =>
+      (value - (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span));
+    const corners = Array.from({ length: 8 }, (_, index) => [
+      ends[0]![index & 1 ? 1 : 0]!, ends[1]![index & 2 ? 1 : 0]!,
+      ends[2]![index & 4 ? 1 : 0]!] as const);
+    const positions: number[] = [];
+    for (let index = 0; index < 8; index++) for (const bit of [1, 2, 4])
+      if (!(index & bit)) positions.push(...corners[index]!, ...corners[index | bit]!);
+    return new Float32Array(positions);
+  }, [clip, document.source.axes]);
+  const visibleCount = artifact.arrows.filter(arrow => pointInsideFieldClip(arrow.position, clip)).length;
   const maximum = Math.max(...artifact.arrows.map(arrow => arrow.magnitude), 0);
   const probePosition = probe?.map((value, axis) => (value -
     (document.source.axes[axis]!.min + document.source.axes[axis]!.max) / 2) * 2 /
@@ -112,7 +172,11 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       {" "}{artifact.rejected} rejected · density {artifact.density.join(" × ")}</figcaption>
     <div role="group" aria-label="3D camera viewport" tabIndex={0} onKeyDown={onCameraKey}
       style={{ width: "100%", height: "100%", minHeight: 360, background: "#0d1726" }}>
-      <Canvas camera={{ position: [2.7, 2.2, 2.7], fov: 48 }}>
+      <Canvas key={preset === "perspective" ? "perspective" : "orthographic"}
+        orthographic={preset !== "perspective"}
+        camera={preset === "perspective" ? { position: cameraPositions[preset], fov: 48 } :
+          { position: cameraPositions[preset], zoom: 140 }}>
+        <CameraPreset preset={preset} controls={controls} onReady={onCameraReady} />
         <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[geometry.positions, 3]} />
@@ -129,6 +193,10 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
         <lineSegments>
           <bufferGeometry><bufferAttribute attach="attributes-position" args={[domainBox, 3]} /></bufferGeometry>
           <lineBasicMaterial color="#94a3b8" transparent opacity={0.7} toneMapped={false} />
+        </lineSegments>
+        <lineSegments>
+          <bufferGeometry><bufferAttribute attach="attributes-position" args={[clipBox, 3]} /></bufferGeometry>
+          <lineBasicMaterial color="#22d3ee" transparent opacity={0.9} toneMapped={false} />
         </lineSegments>
         {probePosition && <mesh position={probePosition}>
           <sphereGeometry args={[0.055, 12, 8]} />
@@ -155,6 +223,11 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       <button type="button" onClick={() => moveCamera("reset")}>Reset camera</button>
     </div>
     <p role="status" aria-live="polite" data-testid="vector-field3d-camera-status">{cameraStatus}</p>
+    <p role="status" data-testid="vector-field3d-clip-status">Display clip: {visibleCount} of
+      {" "}{artifact.arrows.length} accepted sample positions visible; numerical samples are unchanged.
+      Camera preset {preset}. Clip box: {clip.map((bounds, axis) =>
+        `${document.source.axes[axis]!.label} ${bounds[0]}…${bounds[1]} ${document.source.axes[axis]!.unit}`).join(" · ")}.
+      {probe && !pointInsideFieldClip(probe, clip) && " The linked probe is outside the display clip; its coordinates and values remain available."}</p>
     <p>Domain box: {document.source.axes.map(axis =>
       `${axis.label} ${axis.min}…${axis.max} ${axis.unit}`).join(" · ")}. Drag to orbit; scroll to zoom. Axes: {document.source.axes.map(axis =>
       `${axis.label} (${axis.unit})`).join(" · ")}. Components: {artifact.componentUnits.join(" · ")}.

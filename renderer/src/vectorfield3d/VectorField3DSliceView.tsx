@@ -1,4 +1,6 @@
-import type { VectorField3DDocument, VectorField3DSliceArtifact } from "@math3d/core";
+import { useState } from "react";
+import type { VectorField3DDocument, VectorField3DSliceArtifact,
+  VectorField3DClipBounds } from "@math3d/core";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -6,11 +8,13 @@ const color = (value: number | null, min: number, max: number) => {
   return `rgb(${Math.round(35 + 212 * t)}, ${Math.round(105 + 110 * (1 - Math.abs(2 * t - 1)))}, ${Math.round(224 - 184 * t)})`;
 };
 
-export function VectorField3DSliceView({ document, slice, probe, onProbeSelect }: {
+export function VectorField3DSliceView({ document, slice, probe, clipBounds, onProbeSelect }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
+  clipBounds?: VectorField3DClipBounds;
   onProbeSelect?: (point: readonly [number, number, number]) => void;
 }) {
+  const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
   const [first, second] = slice.planeAxes, width = 560, height = 480;
   const cellWidth = width / slice.shape[0], cellHeight = height / slice.shape[1];
   const firstAxis = document.source.axes[first], secondAxis = document.source.axes[second];
@@ -18,6 +22,18 @@ export function VectorField3DSliceView({ document, slice, probe, onProbeSelect }
   const probeOnPlane = probe && Math.abs(probe[slice.normalAxis] - slice.fixedCoordinate) < 1e-9;
   const probeFirst = probeOnPlane ? slice.coordinates[0].findIndex(value => Math.abs(value - probe[first]) < 1e-9) : -1;
   const probeSecond = probeOnPlane ? slice.coordinates[1].findIndex(value => Math.abs(value - probe[second]) < 1e-9) : -1;
+  const profile = probeFirst >= 0 && probeSecond >= 0 ?
+    slice.coordinates[profileDirection].map((coordinate, index) => ({ coordinate,
+      value: profileDirection === 0 ? slice.values[index * slice.shape[1] + probeSecond] :
+        slice.values[probeFirst * slice.shape[1] + index] })) : [];
+  const finiteProfile = profile.map(row => row.value).filter((value): value is number =>
+    value !== null && value !== undefined && Number.isFinite(value));
+  const profileMin = Math.min(...finiteProfile), profileMax = Math.max(...finiteProfile);
+  const profileSpan = profileMax - profileMin || 1;
+  const profilePath = profile.map((row, index) => row.value === null || row.value === undefined ? "" :
+    `${index === 0 || profile[index - 1]?.value == null ? "M" : "L"}${
+      24 + index * 272 / Math.max(profile.length - 1, 1)},${
+      104 - (row.value - profileMin) * 80 / profileSpan}`).join(" ");
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
@@ -25,9 +41,16 @@ export function VectorField3DSliceView({ document, slice, probe, onProbeSelect }
       <rect x="58" y="16" width={width} height={height} fill="#0d1726" />
       {slice.values.map((value, index) => {
         const x = Math.floor(index / slice.shape[1]), y = index % slice.shape[1];
+        const clipped = clipBounds && (slice.fixedCoordinate < clipBounds[slice.normalAxis]![0] ||
+          slice.fixedCoordinate > clipBounds[slice.normalAxis]![1] ||
+          slice.coordinates[0][x]! < clipBounds[first]![0] ||
+          slice.coordinates[0][x]! > clipBounds[first]![1] ||
+          slice.coordinates[1][y]! < clipBounds[second]![0] ||
+          slice.coordinates[1][y]! > clipBounds[second]![1]);
         return <rect key={index} data-probe-cell={`${x}-${y}`}
           x={58 + x * cellWidth} y={16 + (slice.shape[1] - 1 - y) * cellHeight}
           width={cellWidth + .3} height={cellHeight + .3} fill={color(value, slice.min, slice.max)}
+          opacity={clipped ? .2 : 1}
           style={{ cursor: onProbeSelect ? "crosshair" : undefined }} onClick={() => {
             if (!onProbeSelect) return;
             const point = [0, 0, 0] as [number, number, number];
@@ -40,9 +63,11 @@ export function VectorField3DSliceView({ document, slice, probe, onProbeSelect }
       {probeFirst >= 0 && probeSecond >= 0 && <g data-testid="vector-field3d-slice-crosshair"
         stroke="#fff" strokeWidth="2" pointerEvents="none">
         <line x1={58 + (probeFirst + .5) * cellWidth} y1="16"
-          x2={58 + (probeFirst + .5) * cellWidth} y2={16 + height} />
+          x2={58 + (probeFirst + .5) * cellWidth} y2={16 + height}
+          stroke={profileDirection === 1 ? "#fde047" : "#fff"} />
         <line x1="58" y1={16 + (slice.shape[1] - probeSecond - .5) * cellHeight}
-          x2={58 + width} y2={16 + (slice.shape[1] - probeSecond - .5) * cellHeight} />
+          x2={58 + width} y2={16 + (slice.shape[1] - probeSecond - .5) * cellHeight}
+          stroke={profileDirection === 0 ? "#fde047" : "#fff"} />
       </g>}
       <rect x="58" y="16" width={width} height={height} fill="none" stroke="#dbeafe" />
       <g fill="#dbeafe" fontSize="14" fontFamily="system-ui, sans-serif">
@@ -60,6 +85,30 @@ export function VectorField3DSliceView({ document, slice, probe, onProbeSelect }
       <span>{slice.max.toPrecision(4)} {slice.unit}</span>
     </div>
     <p role="status">{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit};
-      {" "}{slice.rejected} invalid of {slice.evaluated} samples. Camera changes do not alter these values.</p>
+      {" "}{slice.rejected} invalid of {slice.evaluated} samples. Dimmed cells lie outside the display clip;
+      clipping and camera changes do not alter these values.</p>
+    {profile.length > 0 && <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
+      <label>Line direction <select aria-label="Line profile direction" value={profileDirection}
+        onChange={event => setProfileDirection(Number(event.target.value) as 0 | 1)}>
+        <option value="0">Vary {firstAxis.label}</option>
+        <option value="1">Vary {secondAxis.label}</option>
+      </select></label>
+      <p>{slice.channel} along {document.source.axes[slice.planeAxes[profileDirection]].label};
+        {" "}{document.source.axes[slice.planeAxes[1 - profileDirection]].label} fixed at
+        {" "}{probe![slice.planeAxes[1 - profileDirection]]} {document.source.axes[slice.planeAxes[1 - profileDirection]].unit};
+        {" "}{normalAxis.label} fixed at {slice.fixedCoordinate} {normalAxis.unit}.</p>
+      <svg viewBox="0 0 320 130" role="img" aria-label={`${slice.channel} line profile, ${
+        finiteProfile.length} finite of ${profile.length} samples; ${
+        Number.isFinite(profileMin) ? profileMin.toPrecision(4) : "no finite minimum"} to ${
+        Number.isFinite(profileMax) ? profileMax.toPrecision(4) : "no finite maximum"} ${slice.unit}`}>
+        <rect x="0" y="0" width="320" height="130" fill="#13243b" rx="6" />
+        <path d="M24 24V104H296" fill="none" stroke="#94a3b8" />
+        <path d={profilePath} fill="none" stroke="#fde047" strokeWidth="2" />
+      </svg>
+      <small>Current slice preview · document revision {slice.source.revision} ·
+        {" "}{profile.length} bounded samples · {slice.unit} against
+        {" "}{document.source.axes[slice.planeAxes[profileDirection]].unit}.
+        {slice.sourceHash && ` Source ${slice.sourceHash}.`}</small>
+    </section>}
   </figure>;
 }
