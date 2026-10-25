@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 14);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 14);
+  assert.equal(listBundledQuantumSceneExamples().length, 16);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 16);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
@@ -244,12 +244,13 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 9, "Expected four frozen SSH/QWZ, three BHZ, and two BBH bundles");
+  assert.equal(allFixtureNames.length, 11, "Expected four frozen SSH/QWZ, three BHZ, two BBH, and two Kitaev bundles");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite"].map(id=>bundledQuantumSceneExample(id).folder));
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name));
+  const kitaevFolders=new Set(["kitaev-bands","kitaev-finite"].map(id=>bundledQuantumSceneExample(id).folder));
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name));
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
@@ -370,6 +371,34 @@ try {
   const densityPath=join(bbhChanged,"midgap-density.f64"),densityBytes=await readFile(densityPath);
   densityBytes[0]^=1;await writeFile(densityPath,densityBytes);
   await assert.rejects(importQuantumSceneBundle(bbhChanged),/integrity|hash/i);
+  const kitaevBytes=await readFile(join(fixtureRoot,"kitaev-producer-result.json"));
+  const kitaevResult=JSON.parse(kitaevBytes.toString("utf8"));
+  const kitaevBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-bands").folder));
+  const kitaevFinite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-finite").folder));
+  for(const imported of [kitaevBands,kitaevFinite]){
+    assert.equal(imported.source.provenance.model,"kitaev_chain");
+    assert.equal(imported.source.provenance.runId,kitaevResult.runId);
+    assert.equal(imported.source.provenance.resultSha256,hash(kitaevBytes));
+    assert.equal(imported.source.topology,undefined,"Finite end density is not a topological invariant");
+  }
+  assert.equal(kitaevBands.source.bands.kind,"path");
+  assert.equal(kitaevBands.source.bands.objects.length,2);
+  const kSample=inspectVerifiedBandSample(kitaevBands,{fingerprint:sceneFingerprint(kitaevBands),objectId:"band-0",sampleIndex:25});
+  assert.equal(kSample.k[0],kitaevResult.analysis.kValues[25]);
+  assert.equal(kSample.energy,kitaevResult.analysis.lowerBand[25]);
+  assert.equal(kSample.sampleId,"band-0:sample:25");
+  const site=inspectVerifiedScalarSample(kitaevFinite,{fingerprint:sceneFingerprint(kitaevFinite),objectId:"finite-end-sites",sampleIndex:0});
+  assert.equal(site.value,kitaevResult.analysis.finite.siteDensity[0]);
+  assert.deepEqual(site.position,[0,0,0]);
+  assert.equal(site.valueDatasetId,"near-zero-density");
+  assert.equal(site.sampleId,"finite-end-sites:sample:0");
+  assert.equal(kitaevFinite.document.geometry.points.filter(point=>point.id?.startsWith("finite-end-sites:site:")).length,16);
+  assert.throws(()=>inspectVerifiedScalarSample(kitaevFinite,{fingerprint:sceneFingerprint(kitaevFinite),objectId:"finite-end-sites",sampleIndex:16}),/outside/);
+  const kitaevChanged=join(root,"kitaev-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("kitaev-finite").folder),kitaevChanged,{recursive:true});
+  const kitaevDensityPath=join(kitaevChanged,"near-zero-density.f64"),kitaevDensityBytes=await readFile(kitaevDensityPath);
+  kitaevDensityBytes[0]^=1;await writeFile(kitaevDensityPath,kitaevDensityBytes);
+  await assert.rejects(importQuantumSceneBundle(kitaevChanged),/integrity|hash/i);
   const generalBytes=await readFile(join(fixtureRoot,"bhz-general-producer-result.json"));
   const generalResult=JSON.parse(generalBytes.toString("utf8"));
   const generalScenes=await Promise.all(["bhz-general-continuum","bhz-general-lattice"].map(id=>
@@ -642,7 +671,7 @@ try {
   damaged[0] ^= 1;
   await writeFile(artifact, damaged);
   await assert.rejects(importQuantumSceneBundle(copied), /integrity/);
-  console.log("M3D-Q01 four frozen QWZ/SSH bundles plus BHZ and BBH, units and tamper refusal passed");
+  console.log("M3D-Q01 four frozen QWZ/SSH bundles plus BHZ, BBH and Kitaev, units and tamper refusal passed");
 
   if (process.argv[2]) {
     const real = await importQuantumSceneBundle(process.argv[2]);

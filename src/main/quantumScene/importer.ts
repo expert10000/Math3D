@@ -80,9 +80,10 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
       deferredObjectIds.push(object.id); continue;
     }
     if (object.kind === "point-cloud") {
-      // Bounded BBH display scaling helps locate supplied corner concentration.
+      // Bounded finite-density display scaling helps locate supplied end/corner concentration.
       // Exact values remain only in the verified dataset and are inspected separately.
-      const scalarValues = scene.provenance.model === "bbh" && object.id === "finite-midgap-cells" &&
+      const scalarValues = ((scene.provenance.model === "bbh" && object.id === "finite-midgap-cells") ||
+        (scene.provenance.model === "kitaev_chain" && object.id === "finite-end-sites")) &&
         object.scalars && count <= 512 ? arrays.get(object.scalars) : undefined;
       const scalarPeak = scalarValues ? Math.max(0, ...scalarValues) : 0;
       for (let i = 0; i < count; i++) geometry.points!.push({ ...point(positions, i), id: `${object.id}:site:${i}`, label: object.label,

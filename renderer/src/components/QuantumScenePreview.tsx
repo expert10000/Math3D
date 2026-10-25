@@ -480,6 +480,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Corner localization is a finite-system observation. No quadrupole invariant, edge classification, or phase boundary is calculated or claimed here.</p>
               {!scene.bands && <p>Marker size is a display-only mapping of the supplied nonnegative cell density; select a cell for its exact stored value and unit.</p>}
             </section>}
+            {scene.provenance.model==="kitaev_chain"&&<section data-testid="kitaev-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Kitaev · producer-supplied {scene.bands ? "periodic BdG bands" : "finite open-chain end density"}</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Inputs: μ={scene.provenance.parameters?.mu}, t={scene.provenance.parameters?.hopping}, real Δ={scene.provenance.parameters?.pairing}; {scene.provenance.parameters?.cells} open sites. {scene.bands ? `${scene.bands.coordinates} stores exact momentum samples; ${scene.bands.energies.length} energy paths, ${scene.bands.energyUnit}.` : "Marker positions are site indices; color/size is a display-only mapping of stored nonnegative density."}</p>
+              <p>Spinless nearest-neighbor model with real pairing and separate periodic/open boundaries. End localization is a finite-chain observation. No winding, Z₂ invariant, Majorana classification, or material claim is supplied. Math3D only inspects the verified arrays.</p>
+            </section>}
             {qwzRole && <section data-testid="qwz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>QWZ · supplied-result study</h3>
               <p>Current verified view: {qwzRole === "bands" ? "band surfaces" : "Berry curvature"}. Each view retains its own bundle and exact dataset IDs.</p>

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -37,6 +37,12 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "bbh-finite", label: "BBH · finite corner density", description: "Exact density samples from four midgap states on an open 4 × 4 lattice",
     model: "BBH", fixtureGroup: "quantum-scene", folder: "run-4fb258a3692f40479c097181ca9d779a-bbh-finite.qscene",
     fingerprint: "b3f31f31b4e70ebc93056a19727ae35838cea17485a69e8353cd9908ec706c7b" },
+  { id: "kitaev-bands", label: "Kitaev · supplied BdG bands", description: "Periodic spinless real-pairing bands and source bulk gap; no invariant",
+    model: "Kitaev", fixtureGroup: "quantum-scene", folder: "run-18145016435540afafc5a2a06870566f-bands.qscene",
+    fingerprint: "470c081952dc2f574d2166469e32e801db4b3c1b4269f0d2434c468ca4776a4f" },
+  { id: "kitaev-finite", label: "Kitaev · finite end-site density", description: "Exact mean density of the near-zero pair on 16 open sites",
+    model: "Kitaev", fixtureGroup: "quantum-scene", folder: "run-18145016435540afafc5a2a06870566f-kitaev-finite.qscene",
+    fingerprint: "a6ae2fc98ab5f19c07452262c829cb3de07b37c4126844a4c749de3680d8356f" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },

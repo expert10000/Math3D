@@ -25,3 +25,10 @@ The BBH bands and finite-density pair was exported by Theory Lab's
 `bbh-producer-result.json` is its exact result. The density is the mean over
 four finite midgap eigenstates, measured per open-lattice cell. This is a
 finite-system observation and supplies no quadrupole invariant.
+
+The Kitaev BdG bands and finite end-density pair was exported by Theory
+Lab's `scripts/export-kitaev-fixture.ts` from one saved worker run.
+`kitaev-producer-result.json` is its exact saved result. The density is the
+mean particle/hole probability of two finite near-zero eigenstates at each
+open-chain site. End weight is a finite-system observation; no winding or
+Z₂ invariant, Majorana classification, or material conclusion is supplied.

@@ -13,7 +13,7 @@ Hamiltonians that Math3D can compute. Math3D remains a read-only consumer.
 | BHZ | `tests/fixtures/quantum-scene/run-b918512202b94cfaa0e181c9afd1f158-bands.qscene` (added after the v0.1 freeze) | Producer-computed four bulk bands on a 21 × 21 grid, sampled bulk gap, two block Chern values, spin-conserved Z₂ status and exact source coordinates | **Bounded post-v0.1 extension**: read-only four-band view and exact sample inspection; fixed `A=B=1`, `ε=0` lattice slice only |
 | Atlas BHZ continuum and ribbon | `tests/fixtures/quantum-scene/run-c53d91611dd34bac80a93f9b56f0e74e-continuum-bands.qscene` and its `-lattice-bands.qscene` companion | Variable A/B/C/D/M and optional R, four continuum and four lattice bands, conditional inversion Z₂, finite-ribbon eigenvalues and outer-cell weights | **Additive post-v0.1 profile**: two read-only verified views and exact band-sample inspection; the complete eigenvectors remain in the source Theory Lab run |
 | BBH | `tests/fixtures/quantum-scene/run-4fb258a3692f40479c097181ca9d779a-bands.qscene` and its `-bbh-finite.qscene` companion | Four periodic bulk bands, sampled bulk gap, four finite midgap energies, and exact mean cell densities | **Bounded post-v0.1 extension**: read-only bands and finite open-lattice density; corner localization is an observation, not a quadrupole invariant |
-| Kitaev | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
+| Kitaev | `tests/fixtures/quantum-scene/run-18145016435540afafc5a2a06870566f-bands.qscene` and its `-kitaev-finite.qscene` companion | Two exact periodic BdG energy paths, bulk gap, and per-site mean density of a finite near-zero pair | **Bounded post-v0.1 extension**: read-only bands and finite open-chain end density; no topological invariant or Majorana classification |
 | Weyl | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Nodal families | None | No Theory Lab QVIS result-to-scene adapter or pinned Math3D bundle | Not supported |
 | Landau/Hall | None | Theory Lab has a Landau–Zener dynamics model, **not** a Landau-level or Hall producer scene | Not supported |
@@ -47,7 +47,7 @@ alone remains insufficient evidence for any named model.
 
 For **M3D-Q08 topological study profiles**, freeze the supported model set to
 **QWZ and SSH** with their four pinned bundles. This historical v0.1 set is
-unchanged. BHZ and BBH were admitted as bounded post-v0.1 producer-first extensions;
+unchanged. BHZ, BBH and Kitaev were admitted as bounded post-v0.1 producer-first extensions;
 all other named families stay
 in the Q08 roadmap as future expansion, not hidden or relabeled as complete.
 The supported claims are limited to the quantities in the table. In
@@ -80,6 +80,22 @@ inspector reads exact stored density samples with cell coordinates and units.
 Each selection re-verifies the source bytes. The view reports finite-system
 corner localization only; it does not calculate or claim a quadrupole
 invariant, edge state classification, or phase boundary.
+
+## Post-v0.1 Kitaev admission (2026-10-25)
+
+Theory Lab independently tests a spinless nearest-neighbor BdG periodic
+Hamiltonian and a finite open-chain matrix, including particle–hole symmetry,
+boundary truncation, and bulk gap closing. Two `.qscene` views come from one
+immutable saved result: exact periodic momentum/energy samples and the mean
+site density of a finite near-zero particle-hole pair. The pinned
+`kitaev-producer-result.json` preserves that result's exact bytes and hash.
+
+Open **File → Verified quantum examples → Kitaev** and choose either view.
+Band and site inspectors select the exact stored sample and reverify its
+source bytes. Project/recent reopening also rechecks the same fingerprint.
+The profile labels end localization as a finite-chain observation. It makes
+no winding, Z₂, Majorana, or material-specific claim. Math3D performs no
+BdG calculation.
 
 ## Post-v0.1 BHZ admission (2026-10-24)
 
@@ -116,5 +132,5 @@ or **BHZ · lattice and ribbon**. The inspector states the source parameters,
 units, invariant status and finite-boundary limitation. The importer tests
 compare exact band samples with the producer file and reject changed bytes.
 The original fixed-coefficient BHZ fixture and the frozen QWZ/SSH v0.1
-profile remain unchanged. BBH, Kitaev, Weyl, nodal and Landau/Hall are still
+profile remain unchanged. Weyl, nodal and Landau/Hall are still
 unsupported until their own independently tested producer scenes exist.
