@@ -13,16 +13,19 @@ let continuation: VectorField3DEquilibriumContinuation | undefined;
 let tileBatchRequests = 0, completedSeedsKept = 0;
 let prefetchQueue: (readonly [number, number, number])[] | null = null;
 let prefetchedTiles = 0;
+let workerStarted = 0, workerAdmissionMs = 0, workerComputeMs = 0;
 const requestPrefetch = () => {
   if (!prefetchQueue) return;
   if (!prefetchQueue.length) { prefetchQueue = null; tileRun?.(); return; }
   self.postMessage({ tileRequests: { indices: prefetchQueue.splice(0, 32) } });
 };
-self.onmessage = (event: MessageEvent<Request>) => {
+self.onmessage = async (event: MessageEvent<Request>) => {
   try {
     if ("tilesResponse" in event.data) {
       if (!tileCache || !tileRun) throw new Error("Unexpected verified tile response.");
-      event.data.tilesResponse.forEach(tile => tileCache!.add(tile));
+      const admissionStarted = performance.now();
+      for (const tile of event.data.tilesResponse) await tileCache.addAsync(tile);
+      workerAdmissionMs += performance.now() - admissionStarted;
       tileBatchRequests++;
       if (prefetchQueue) {
         prefetchedTiles += event.data.tilesResponse.length;
@@ -31,16 +34,22 @@ self.onmessage = (event: MessageEvent<Request>) => {
       return;
     }
     const document = event.data.document;
+    workerStarted = performance.now();
     if (event.data.scientific?.tileMode) {
       tileCache = new VectorField3DVerifiedTileCache(document,
         event.data.scientific.manifestJson, event.data.scientific.fingerprint);
       tileRun = () => {
+        const computeStarted = performance.now();
         try {
           const result = searchVectorField3DVerifiedTileEquilibria(document, tileCache!, {}, continuation);
+          workerComputeMs += performance.now() - computeStarted;
           self.postMessage({ ok: true, result: { ...result, verifiedTiles: tileCache!.provenance,
             residentTileBytes: tileCache!.residentBytes, tileBatchRequests,
-            completedSeedsKept, prefetchedTiles } });
+            completedSeedsKept, prefetchedTiles,
+            profile: { workerAdmissionMs, workerComputeMs,
+              workerWallMs: performance.now() - workerStarted } } });
         } catch (cause) {
+          workerComputeMs += performance.now() - computeStarted;
           if (cause instanceof VectorField3DEquilibriumNeedsTiles) {
             continuation = cause.continuation;
             completedSeedsKept = Math.max(completedSeedsKept, continuation.nextSeedIndex);

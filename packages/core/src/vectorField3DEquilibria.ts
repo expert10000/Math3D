@@ -24,6 +24,9 @@ export type VectorField3DEquilibriumSearch = Readonly<{
     tileSha256: readonly string[]; tileSetSha256: string }>[];
   residentTileBytes?: number;
   tileBatchRequests?: number; completedSeedsKept?: number; prefetchedTiles?: number;
+  profile?: Readonly<{ tileRoundTripMs: number; rendererForwardMs: number;
+    workerAdmissionMs: number; workerComputeMs: number; workerWallMs: number;
+    totalWorkerWallMs: number }>;
 }>;
 export type VectorField3DEquilibriumContinuation = Readonly<{
   sourceStructuralHash: string; nextSeedIndex: number; attemptedSeeds: number;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   integrateVectorField3DTrajectories, reviseVectorField3DDocument,
   vectorField3DSeedPreset,
+  parseVectorField3DDocument, serializeVectorField3DDocument,
   reviseVectorField3DWorkspace,
   sampleVectorField3DAnalyticLine, validGraph2DAnalyticFieldOrigin,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
@@ -79,8 +80,10 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
       { shouldCancel: () => true }).trajectories[0]!.stopReason).toBe("cancelled");
     const progress: number[] = [];
     const ring = vectorField3DSeedPreset(base.source, "ring-8");
+    const seedLine = vectorField3DSeedPreset(base.source, "line-5");
     const grid = vectorField3DSeedPreset(base.source, "plane-9");
     expect(ring).toHaveLength(8);
+    expect(seedLine).toEqual([[-2, 0, 0], [-1, 0, 0], [0, 0, 0], [1, 0, 0], [2, 0, 0]]);
     expect(grid).toHaveLength(9);
     const batch = reviseVectorField3DDocument(base, { ...base.source,
       seeds: ring.map((position, index) => ({ id: `seed-${index + 1}`, position })),
@@ -89,6 +92,40 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
       expect(total).toBe(8); progress.push(completed);
     } });
     expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("persists seed groups and view-only visibility through document reopen", () => {
+    const base = field(["-y", "x", "0"], [1, 0, 0]);
+    const grouped = reviseVectorField3DDocument(base, { ...base.source,
+      seeds: vectorField3DSeedPreset(base.source, "line-5").map((position, index) =>
+        ({ id: `line-${index}`, position, group: "line-1" })) });
+    const hidden = reviseVectorField3DWorkspace(grouped, {
+      ...grouped.workspace!, hiddenSeedGroups: ["line-1"] });
+    expect(hidden.identity.structuralHash).toBe(grouped.identity.structuralHash);
+    const reopened = parseVectorField3DDocument(serializeVectorField3DDocument(hidden));
+    expect(reopened.source.seeds.map(seed => seed.group)).toEqual(Array(5).fill("line-1"));
+    expect(reopened.workspace?.hiddenSeedGroups).toEqual(["line-1"]);
+    const traces = integrateVectorField3DTrajectories(reopened);
+    expect(traces.trajectories).toHaveLength(5);
+    expect(traces.trajectories.map(path => path.seedId)).toEqual(
+      ["line-0", "line-1", "line-2", "line-3", "line-4"]);
+  });
+
+  it("reports a numerical failure for one seed while continuing the batch", () => {
+    const base = field(["1/x", "0", "0"], [0, 0, 0]);
+    const batch = reviseVectorField3DDocument(base, { ...base.source,
+      seeds: [{ id: "pole", position: [0, 0, 0], group: "line-1" },
+        { id: "regular", position: [1, 0, 0], group: "line-1" }] });
+    const result = integrateVectorField3DTrajectories(batch);
+    expect(result.trajectories.map(path => path.seedId)).toEqual(["pole", "regular"]);
+    expect(result.trajectories[0]!.stopReason).toBe("undefined");
+    expect(result.trajectories[1]!.stopReason).toBe("time-limit");
+    expect(result.trajectories[1]!.points.at(-1)!.position[0]).toBeCloseTo(Math.sqrt(3), 3);
+    const selected = integrateVectorField3DTrajectories(batch, { seedIds: ["regular"] });
+    expect(selected.trajectories.map(path => path.seedId)).toEqual(["regular"]);
+    expect(selected.source.structuralHash).toBe(batch.identity.structuralHash);
+    expect(() => integrateVectorField3DTrajectories(batch, { seedIds: ["missing"] }))
+      .toThrow(/seed selection/);
   });
 
   it("reports Jacobian structure and bounded gradient/Laplacian of field magnitude", () => {

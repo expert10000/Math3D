@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
   VectorField3DClipBounds } from "@math3d/core";
+import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -10,7 +11,8 @@ const color = (value: number | null, min: number, max: number) => {
 
 export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoom = 1,
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
-  onSendDerivedLineToGraphs, derivedLineBusy }: {
+  onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
+  seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -18,6 +20,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   center?: readonly [number, number];
   onCenterChange?: (center: readonly [number, number]) => void;
   onProbeSelect?: (point: readonly [number, number, number]) => void;
+  seedPlacementActive?: boolean;
+  seedPlacementDisabled?: boolean;
+  onSeedPlacementToggle?: () => void;
+  onSeedPropose?: (point: readonly [number, number, number] | null) => void;
+  proposedSeed?: readonly [number, number, number] | null;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
   onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
@@ -25,7 +32,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   derivedLineBusy?: boolean;
 }) {
   const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
-  const [first, second] = slice.planeAxes, width = 560, height = 480;
+  const [first, second] = slice.planeAxes;
+  const { left, top, width, height } = slicePlot;
   const cellWidth = width / slice.shape[0], cellHeight = height / slice.shape[1];
   const firstAxis = document.source.axes[first], secondAxis = document.source.axes[second];
   const normalAxis = document.source.axes[slice.normalAxis];
@@ -44,9 +52,15 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     `${index === 0 || profile[index - 1]?.value == null ? "M" : "L"}${
       24 + index * 272 / Math.max(profile.length - 1, 1)},${
       104 - (row.value - profileMin) * 80 / profileSpan}`).join(" ");
+  const seedMarker = proposedSeed ? sliceSeedMarkerAtPoint(slice, proposedSeed) : null;
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
+    {onSeedPlacementToggle && <button type="button"
+      aria-label={`Place seed on ${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} slice`}
+      aria-pressed={seedPlacementActive} disabled={seedPlacementDisabled}
+      onClick={onSeedPlacementToggle}>
+      {seedPlacementActive ? "Click the map to propose a seed" : "Place seed on this slice"}</button>}
     {onZoomChange && <div className="vector-field3d-slice-camera" aria-label={`${firstAxis.label}${secondAxis.label} camera controls`}>
       <button type="button" aria-label={`Zoom ${firstAxis.label}${secondAxis.label} out`}
         disabled={zoom <= 1} onClick={() => onZoomChange(zoom / 1.5)}>−</button>
@@ -65,8 +79,15 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       </>}
     </div>}
     <svg viewBox={`${640 * center[0] - 320 / zoom} ${560 * center[1] - 280 / zoom} ${640 / zoom} ${560 / zoom}`}
-      role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}>
-      <rect x="58" y="16" width={width} height={height} fill="#0d1726" />
+      role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}
+      onClick={event => {
+        if (!seedPlacementActive || !onSeedPropose) return;
+        const transform = event.currentTarget.getScreenCTM();
+        if (!transform) { onSeedPropose(null); return; }
+        const local = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
+        onSeedPropose(sliceSeedPointAtSvgPosition(slice, local.x, local.y));
+      }}>
+      <rect x={left} y={top} width={width} height={height} fill="#0d1726" />
       {slice.values.map((value, index) => {
         const x = Math.floor(index / slice.shape[1]), y = index % slice.shape[1];
         const clipped = clipBounds && (slice.fixedCoordinate < clipBounds[slice.normalAxis]![0] ||
@@ -76,11 +97,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           slice.coordinates[1][y]! < clipBounds[second]![0] ||
           slice.coordinates[1][y]! > clipBounds[second]![1]);
         return <rect key={index} data-probe-cell={`${x}-${y}`}
-          x={58 + x * cellWidth} y={16 + (slice.shape[1] - 1 - y) * cellHeight}
+          x={left + x * cellWidth} y={top + (slice.shape[1] - 1 - y) * cellHeight}
           width={cellWidth + .3} height={cellHeight + .3} fill={color(value, slice.min, slice.max)}
           opacity={clipped ? .2 : 1}
-          style={{ cursor: onProbeSelect ? "crosshair" : undefined }} onClick={() => {
-            if (!onProbeSelect) return;
+          style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
+            if (!onProbeSelect || seedPlacementActive) return;
             const point = [0, 0, 0] as [number, number, number];
             point[slice.normalAxis] = slice.fixedCoordinate;
             point[first] = slice.coordinates[0][x]!;
@@ -96,6 +117,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         <line x1="58" y1={16 + (slice.shape[1] - probeSecond - .5) * cellHeight}
           x2={58 + width} y2={16 + (slice.shape[1] - probeSecond - .5) * cellHeight}
           stroke={profileDirection === 0 ? "#fde047" : "#fff"} />
+      </g>}
+      {seedMarker && <g data-testid="vector-field3d-proposed-seed-marker" pointerEvents="none">
+        <circle cx={seedMarker[0]} cy={seedMarker[1]} r="8" fill="#f59e0b"
+          stroke="#fff" strokeWidth="2" />
+        <circle cx={seedMarker[0]} cy={seedMarker[1]} r="2" fill="#0d1726" />
       </g>}
       <rect x="58" y="16" width={width} height={height} fill="none" stroke="#dbeafe" />
       <g fill="#dbeafe" fontSize="14" fontFamily="system-ui, sans-serif">

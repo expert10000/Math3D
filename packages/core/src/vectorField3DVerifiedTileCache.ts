@@ -6,10 +6,11 @@ import { parseScientificSceneManifest, scientificTileLayout,
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 
 type Vec3 = readonly [number, number, number];
+const NATIVE_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 export type VectorField3DVerifiedTile = Readonly<{ fingerprint: string; datasetId: string;
   indices: Vec3; components: readonly Readonly<{ name: string; resourceSha256: string;
     tileIndex: number; tileSha256: string; start: Vec3; size: Vec3;
-    values: readonly number[] }>[] }>;
+    bytes: Uint8Array }>[] }>;
 export class VectorField3DNeededTile extends Error {
   readonly indices: Vec3;
   readonly indicesBatch: readonly Vec3[];
@@ -18,6 +19,8 @@ export class VectorField3DNeededTile extends Error {
     this.indices = indicesBatch[0]!; this.indicesBatch = indicesBatch;
   }
 }
+type PreparedTile = { component: number; tileIndex: number; tileBytes: number;
+  expectedSha256: string; bytes: Uint8Array };
 
 /** Worker-side cache. Every admitted tile is pinned to the saved manifest and checked again. */
 export class VectorField3DVerifiedTileCache {
@@ -29,10 +32,10 @@ export class VectorField3DVerifiedTileCache {
   private readonly referenceAxes: readonly { origin: number; spacing: number }[];
   private readonly layouts: ReturnType<typeof scientificTileLayout>[];
   private readonly resources: readonly { sha256: string; tileSha256: readonly string[];
-    tileShape: Vec3 }[];
+    tileShape: Vec3; tileGrid: Vec3 }[];
   private readonly names: readonly string[];
-  private readonly tiles = [new Map<number, readonly number[]>(), new Map<number, readonly number[]>(),
-    new Map<number, readonly number[]>()];
+  private readonly tiles = [new Map<number, Float64Array>(), new Map<number, Float64Array>(),
+    new Map<number, Float64Array>()];
   private cachedBytes = 0;
   constructor(document: VectorField3DDocument, manifestJson: string,
     fingerprint: string, maxBytes = 64 * 1024 * 1024) {
@@ -64,19 +67,22 @@ export class VectorField3DVerifiedTileCache {
       if (!resource?.tileShape || !resource.tileSha256 || resource.sha256 !== saved.resourceSha256)
         throw new TypeError("Verified tile cache component changed.");
       return { sha256: resource.sha256, tileSha256: resource.tileSha256,
-        tileShape: resource.tileShape as Vec3 };
+        tileShape: resource.tileShape as Vec3,
+        tileGrid: this.shape.map((size, axis) =>
+          Math.ceil(size / resource.tileShape![axis]!)) as unknown as Vec3 };
     });
     this.layouts = this.resources.map(resource => scientificTileLayout(this.shape, resource.tileShape));
     this.sourceHash = createScientificDatasetLink(field.references).sourceHash;
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1024 || maxBytes > 256 * 1024 * 1024)
       throw new RangeError("Invalid verified tile cache budget.");
   }
-  add(transfer: VectorField3DVerifiedTile): void {
+  private prepare(transfer: VectorField3DVerifiedTile): PreparedTile[] {
     if (transfer.fingerprint !== this.fingerprint ||
         transfer.datasetId !== this.datasetId || transfer.components.length !== 3 ||
         transfer.indices.some((index, axis) => !Number.isSafeInteger(index) ||
           index < 0 || index >= this.shape[axis]!))
       throw new TypeError("Verified tile transfer source changed.");
+    const prepared: PreparedTile[] = [];
     for (let component = 0; component < 3; component++) {
       const part = transfer.components[component]!, resource = this.resources[component]!;
       const location = scientificTileSampleLocation(this.shape, resource.tileShape,
@@ -86,19 +92,50 @@ export class VectorField3DVerifiedTileCache {
           part.tileIndex !== tile.index || part.tileSha256 !== resource.tileSha256[tile.index] ||
           canonicalJsonStringify(part.start) !== canonicalJsonStringify(tile.start) ||
           canonicalJsonStringify(part.size) !== canonicalJsonStringify(tile.size) ||
-          part.values.length !== tile.bytes / 8 || !part.values.every(Number.isFinite))
+          !(part.bytes instanceof Uint8Array) || part.bytes.byteLength !== tile.bytes)
         throw new TypeError("Verified tile transfer coverage changed.");
-      const bytes = new Uint8Array(tile.bytes), view = new DataView(bytes.buffer);
-      part.values.forEach((value, index) => view.setFloat64(index * 8, value, true));
-      if (sha256Checksum(bytes) !== `sha256:${part.tileSha256}`)
-        throw new TypeError("Verified tile transfer checksum changed.");
-      if (!this.tiles[component]!.has(tile.index)) {
-        if (this.cachedBytes + tile.bytes > this.maxBytes)
-          throw new RangeError("Verified tile cache memory budget reached.");
-        this.tiles[component]!.set(tile.index, part.values);
-        this.cachedBytes += tile.bytes;
-      }
+      // Own the bytes before verification so a caller cannot mutate an admitted tile.
+      const bytes = new Uint8Array(part.bytes), view = new DataView(bytes.buffer);
+      for (let index = 0; index < bytes.byteLength; index += 8)
+        if (!Number.isFinite(view.getFloat64(index, true)))
+          throw new TypeError("Verified tile transfer contains non-finite values.");
+      prepared.push({ component, tileIndex: tile.index, tileBytes: tile.bytes,
+        expectedSha256: part.tileSha256, bytes });
     }
+    return prepared;
+  }
+  private admit(prepared: readonly PreparedTile[]): void {
+    const requiredBytes = prepared.reduce((sum, part) => sum +
+      (this.tiles[part.component]!.has(part.tileIndex) ? 0 : part.tileBytes), 0);
+    if (this.cachedBytes + requiredBytes > this.maxBytes)
+      throw new RangeError("Verified tile cache memory budget reached.");
+    for (const part of prepared) {
+      if (this.tiles[part.component]!.has(part.tileIndex)) continue;
+      const view = new DataView(part.bytes.buffer);
+      const values = NATIVE_LITTLE_ENDIAN ? new Float64Array(part.bytes.buffer) :
+        Float64Array.from({ length: part.bytes.byteLength / 8 }, (_, index) =>
+          view.getFloat64(index * 8, true));
+      this.tiles[part.component]!.set(part.tileIndex, values);
+      this.cachedBytes += part.tileBytes;
+    }
+  }
+  add(transfer: VectorField3DVerifiedTile): void {
+    const prepared = this.prepare(transfer);
+    if (prepared.some(part => sha256Checksum(part.bytes) !== `sha256:${part.expectedSha256}`))
+      throw new TypeError("Verified tile transfer checksum changed.");
+    this.admit(prepared);
+  }
+  /** Browser workers use native SHA-256 while retaining the same manifest-pinned check. */
+  async addAsync(transfer: VectorField3DVerifiedTile): Promise<void> {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) { this.add(transfer); return; }
+    const prepared = this.prepare(transfer);
+    const hashes = await Promise.all(prepared.map(async part =>
+      Array.from(new Uint8Array(await subtle.digest("SHA-256", part.bytes.buffer as ArrayBuffer)),
+        byte => byte.toString(16).padStart(2, "0")).join("")));
+    if (hashes.some((hash, index) => hash !== prepared[index]!.expectedSha256))
+      throw new TypeError("Verified tile transfer checksum changed.");
+    this.admit(prepared);
   }
   get residentBytes(): number { return this.cachedBytes; }
   /** Prefetch only when the regular seed lattice spans most of a small, equally tiled field. */
@@ -158,27 +195,39 @@ export class VectorField3DVerifiedTileCache {
       const low = Math.min(this.shape[axis]! - 2, Math.max(0, Math.floor(continuous)));
       lower.push(low); fraction.push(Math.max(0, Math.min(1, continuous - low)));
     }
-    const missing = new Map<string, Vec3>();
+    const tileIndices: number[] = [], offsets: number[] = [];
+    let missing: Map<string, Vec3> | null = null;
     for (let corner = 0; corner < 8; corner++) {
-      const point = lower.map((low, axis) => low + ((corner >> axis) & 1)) as [number, number, number];
-      const tileIndices = this.resources.map((resource, component) =>
-        scientificTileSampleLocation(this.shape, resource.tileShape, point,
-          this.layouts[component]!).tileIndex);
-      if (tileIndices.some((tileIndex, component) => !this.tiles[component]!.has(tileIndex)))
-        missing.set(tileIndices.join(","), point);
+      const x = lower[0]! + (corner & 1), y = lower[1]! + ((corner >> 1) & 1);
+      const z = lower[2]! + ((corner >> 2) & 1);
+      let absent = false;
+      for (let component = 0; component < 3; component++) {
+        const resource = this.resources[component]!, grid = resource.tileGrid;
+        const tileIndex = (Math.floor(x / resource.tileShape[0]) * grid[1] +
+          Math.floor(y / resource.tileShape[1])) * grid[2] +
+          Math.floor(z / resource.tileShape[2]);
+        const tile = this.layouts[component]![tileIndex]!;
+        const at = corner * 3 + component;
+        tileIndices[at] = tileIndex;
+        offsets[at] = ((x - tile.start[0]) * tile.size[1] +
+          y - tile.start[1]) * tile.size[2] + z - tile.start[2];
+        if (!this.tiles[component]!.has(tileIndex)) absent = true;
+      }
+      if (absent) {
+        missing ??= new Map<string, Vec3>();
+        missing.set(tileIndices.slice(corner * 3, corner * 3 + 3).join(","), [x, y, z]);
+      }
     }
-    if (missing.size) throw new VectorField3DNeededTile([...missing.values()]);
+    if (missing) throw new VectorField3DNeededTile([...missing.values()]);
     const result = [0, 0, 0];
     for (let corner = 0; corner < 8; corner++) {
-      const point = lower.map((low, axis) => low + ((corner >> axis) & 1)) as [number, number, number];
-      const weight = fraction.reduce((product, value, axis) => product *
-        ((corner >> axis) & 1 ? value : 1 - value), 1);
+      let weight = 1;
+      for (let axis = 0; axis < 3; axis++)
+        weight *= (corner >> axis) & 1 ? fraction[axis]! : 1 - fraction[axis]!;
       for (let component = 0; component < 3; component++) {
-        const resource = this.resources[component]!;
-        const location = scientificTileSampleLocation(this.shape, resource.tileShape,
-          point, this.layouts[component]!);
-        const values = this.tiles[component]!.get(location.tileIndex);
-        result[component] += weight * values![location.offsetBytes / 8]!;
+        const at = corner * 3 + component;
+        const values = this.tiles[component]!.get(tileIndices[at]!);
+        result[component] += weight * values![offsets[at]!]!;
       }
     }
     return result.every(Number.isFinite) ? result as [number, number, number] : null;

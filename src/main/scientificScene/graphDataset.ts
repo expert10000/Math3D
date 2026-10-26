@@ -46,7 +46,7 @@ export type ScientificVectorSamples = { fingerprint: string; datasetId: string;
 export type ScientificVectorTile = { fingerprint: string; datasetId: string;
   indices: [number, number, number]; components: {
     name: string; resourceSha256: string; tileIndex: number; tileSha256: string;
-    start: [number, number, number]; size: [number, number, number]; values: number[] }[] };
+    start: [number, number, number]; size: [number, number, number]; bytes: Uint8Array }[] };
 
 const boundedPositions = (size: number) => Array.from({ length: Math.min(size, 32) }, (_, index) =>
   size === 1 ? 0 : Math.round(index * (size - 1) / (Math.min(size, 32) - 1)));
@@ -135,15 +135,13 @@ export async function previewScientificGraphVectorTiles(directory: string, finge
       resource.tileShape!, indices, layout));
     const required = [...new Set(locations.map(location => location.tileIndex))].sort((a, b) => a - b);
     const bytesByTile = await readScientificSceneTiles(metadata, resourceId, required);
-    const valuesByTile = new Map(required.map(index => {
-      const bytes = bytesByTile.get(index)!;
-      return [index, Array.from({ length: bytes.length / 8 }, (_, at) => bytes.readDoubleLE(at * 8))] as const;
-    }));
+    const transferBytes = new Map(required.map(index =>
+      [index, Uint8Array.from(bytesByTile.get(index)!)] as const));
     return locations.map(location => {
       const tile = layout[location.tileIndex]!;
       return { name, resourceSha256: resource.sha256, tileIndex: tile.index,
         tileSha256: resource.tileSha256![tile.index]!, start: tile.start, size: tile.size,
-        values: valuesByTile.get(tile.index)! };
+        bytes: transferBytes.get(tile.index)! };
     });
   }));
   return indicesBatch.map((indices, at) => ({ fingerprint, datasetId, indices,

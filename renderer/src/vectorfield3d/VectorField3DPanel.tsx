@@ -21,7 +21,8 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact,
   type Graph2DScientificDatasetPreview, type VectorField3DLayer,
   type VectorField3DSliceArtifact, type VectorField3DProbeArtifact,
-  type VectorField3DClipBounds, type VectorField3DCameraPreset } from "@math3d/core";
+  type VectorField3DClipBounds, type VectorField3DCameraPreset,
+  type VectorField3DVerifiedTile } from "@math3d/core";
 import type { VectorField3DCameraState } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
 import { VectorField3DSliceView } from "./VectorField3DSliceView";
@@ -33,6 +34,16 @@ import { cachedVerifiedVectorField3DSlice, invalidateVerifiedDerivedResults } fr
   "./verifiedDerivedResultCache";
 
 const storageKey = "math3d.vector-field3d.document.v1";
+const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
+  const buffers = new Set<ArrayBuffer>();
+  for (const tile of tiles) for (const part of tile.components)
+    if (part.bytes.buffer instanceof ArrayBuffer) buffers.add(part.bytes.buffer);
+  return [...buffers];
+};
+const trajectoryHasError = (reason: string) =>
+  reason === "undefined" || reason === "solver-failure" || reason === "step-limit" ||
+  reason === "cancelled";
+type SeedSliceLayer = "xy" | "xz" | "yz";
 export const fieldExplorerSessionKey = "math3d.scientific-field-explorer.session.v1";
 export function readFieldExplorerSession(): VectorField3DDocument | null {
   try {
@@ -97,6 +108,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [trajectories, setTrajectories] = useState<VectorField3DTrajectoryArtifact | null>(null);
   const [seedDraft, setSeedDraft] = useState<[string, string, string]>(document.source.axes.map(axis =>
     String((axis.min + axis.max) / 2)) as [string, string, string]);
+  const [seedPlacementLayer, setSeedPlacementLayer] = useState<SeedSliceLayer | null>(null);
+  const [seedProposal, setSeedProposal] = useState<{ layer: SeedSliceLayer;
+    position: readonly [number, number, number]; fixedCoordinate: number;
+    sourceRevision: number; sourceStructuralHash: string } | null>(null);
+  const [seedGroupChoice, setSeedGroupChoice] = useState("manual");
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -108,6 +124,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const datasetLink = document.source.field.kind === "scientific-bundle" ?
     createScientificDatasetLink(document.source.field.references) : null;
   const workspace = document.workspace ?? defaultVectorField3DWorkspace(document.source);
+  const seedGroups = [...new Set(document.source.seeds.map(seed => seed.group ?? "manual"))]
+    .map(id => ({ id, seeds: document.source.seeds.filter(seed =>
+      (seed.group ?? "manual") === id) }));
+  const visibleTrajectories = trajectories ? { ...trajectories,
+    trajectories: trajectories.trajectories.filter(path => {
+      const group = document.source.seeds.find(seed => seed.id === path.seedId)?.group ?? "manual";
+      return !workspace.hiddenSeedGroups.includes(group);
+    }) } : null;
   const multiView = workspace.layout === "split" || workspace.layout === "quad";
   const normalAxis = ({ xy: 2, xz: 1, yz: 0 } as const)[workspace.selectedLayer as "xy" | "xz" | "yz"];
   const sliceOptions = normalAxis === undefined ? [] :
@@ -116,9 +140,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), selectedLayer }));
     if (!multiView) setSlice(null);
+    setSeedPlacementLayer(null); setSeedProposal(null);
     setError("");
   };
   const setSliceCoordinate = (axis: 0 | 1 | 2, coordinate: number) => {
+    setSeedProposal(null);
     if (workspace.viewsLinked && workspace.probe) {
       const position = [...workspace.probe] as [number, number, number];
       position[axis] = coordinate;
@@ -179,16 +205,24 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const setLayout = (layout: typeof workspace.layout) => {
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), layout }));
-    setArtifact(null); setSlice(null); setLinkedSlices({}); setError("");
+    setArtifact(null); setSlice(null); setLinkedSlices({});
+    setSeedPlacementLayer(null); setSeedProposal(null); setError("");
   };
   const updateSource = (source: VectorField3DSource) => {
     probeEpoch.current++; previewEpoch.current++;
     invalidateVerifiedDerivedResults(document.identity.id);
-    setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setSlice(null);
+    const revised = reviseVectorField3DDocument(document, source);
+    const view = revised.workspace ?? defaultVectorField3DWorkspace(source);
+    const activeGroups = new Set(source.seeds.map(seed => seed.group ?? "manual"));
+    const hiddenSeedGroups = view.hiddenSeedGroups.filter(group => activeGroups.has(group));
+    setDocument(hiddenSeedGroups.length === view.hiddenSeedGroups.length ? revised :
+      reviseVectorField3DWorkspace(revised, { ...view, hiddenSeedGroups }));
+    setArtifact(null); setSlice(null);
     setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     setEquilibriumSearch(null); setSelectedEquilibrium(null);
     setRunStatus(""); setSeedProgress(null);
+    setSeedPlacementLayer(null); setSeedProposal(null); setSeedGroupChoice("manual");
   };
   const currentDocument = () => document.source.field.kind === "expressions" ?
     reviseVectorField3DDocument(document, { ...document.source, field: { kind: "expressions",
@@ -217,6 +251,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const render = async () => {
     if (busy || lineBusy) return;
     const epoch = ++previewEpoch.current;
+    setSeedPlacementLayer(null); setSeedProposal(null);
     setBusy(true); setBusyAction("render"); setArtifact(null); setSlice(null); setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     setEquilibriumSearch(null); setSelectedEquilibrium(null);
@@ -252,6 +287,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const previewSlice = async () => {
     if (busy || lineBusy || normalAxis === undefined) return;
     const coordinate = workspace.sliceCoordinates[normalAxis];
+    setSeedProposal(null);
     setBusy(true); setSlice(null); setProbeArtifact(null); setDifferential(null); setError("");
     let fingerprint: string | null = null;
     try {
@@ -301,6 +337,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const previewLinkedViews = async (requested?: VectorField3DDocument) => {
     if (busy || lineBusy) return;
     const epoch = ++previewEpoch.current;
+    setSeedProposal(null);
     setBusy(true); setArtifact(null); setSlice(null); setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     let fingerprint: string | null = null;
@@ -459,6 +496,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   };
   const selectProbe = async (position: readonly [number, number, number]) => {
     if (busy || lineBusy) return;
+    setSeedProposal(null);
     try {
       const next = currentDocument();
       if (!scientificPointWithinBounds(position, next.source.axes))
@@ -519,26 +557,86 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         { id: `seed-${nextIndex}`, position }] });
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  const addSeedPreset = (kind: "ring-8" | "plane-9") => {
+  const addSeedPreset = (kind: "ring-8" | "line-5" | "plane-9") => {
     try {
-      const seeds = [...document.source.seeds];
-      let nextIndex = seeds.reduce((highest, seed) =>
+      const positions = vectorField3DSeedPreset(document.source, kind);
+      if (document.source.seeds.length + positions.length > 32)
+        throw new RangeError(`The ${positions.length}-seed batch exceeds the 32-seed limit.`);
+      let nextIndex = document.source.seeds.reduce((highest, seed) =>
         Math.max(highest, Number(seed.id.replace(/^seed-/, "")) || 0), 0) + 1;
-      for (const position of vectorField3DSeedPreset(document.source, kind)) {
-        if (seeds.length >= 32) break;
-        if (seeds.some(seed => Math.hypot(...seed.position.map((value, axis) =>
-          value - position[axis]!)) < 1e-8)) continue;
-        seeds.push({ id: `seed-${nextIndex++}`, position });
+      const prefix = kind.split("-")[0]!;
+      const used = new Set(document.source.seeds.map(seed => seed.group ?? "manual"));
+      let groupNumber = 1;
+      while (used.has(`${prefix}-${groupNumber}`)) groupNumber++;
+      const group = `${prefix}-${groupNumber}`;
+      const seeds = positions.map(position => ({ id: `seed-${nextIndex++}`, position, group }));
+      updateSource({ ...document.source, seeds: [...document.source.seeds, ...seeds] });
+      setRunStatus(`Added ${seeds.length} seeds in ${group}.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const toggleSliceSeedPlacement = (layer: SeedSliceLayer) => {
+    if (busy || lineBusy || document.source.seeds.length >= 32) return;
+    setSeedPlacementLayer(current => current === layer ? null : layer);
+    setSeedProposal(null); setError("");
+  };
+  const proposeSliceSeed = (layer: SeedSliceLayer, shown: VectorField3DSliceArtifact,
+    position: readonly [number, number, number] | null) => {
+    try {
+      if (seedPlacementLayer !== layer) return;
+      if (!position) throw new RangeError("Click inside the displayed slice plot to place a seed.");
+      if (document.source.seeds.length >= 32) throw new RangeError("The 32-seed limit is full.");
+      if (shown.source.structuralHash !== document.identity.structuralHash ||
+          shown.source.revision !== document.identity.revision ||
+          shown.normalAxis !== (layer === "xy" ? 2 : layer === "xz" ? 1 : 0))
+        throw new TypeError("Preview the current slice before placing a seed.");
+      if (!scientificPointWithinBounds(position, document.source.axes))
+        throw new RangeError("Seed is outside the field domain.");
+      setSeedProposal({ layer, position, fixedCoordinate: shown.fixedCoordinate,
+        sourceRevision: shown.source.revision,
+        sourceStructuralHash: shown.source.structuralHash });
+      setError("");
+    } catch (cause) {
+      setSeedProposal(null); setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+  const addProposedSeed = () => {
+    try {
+      if (!seedProposal) throw new TypeError("Click a slice before adding its seed.");
+      if (document.source.seeds.length >= 32) throw new RangeError("The 32-seed limit is full.");
+      const shown = multiView ? linkedSlices[seedProposal.layer] : slice;
+      if (!shown || shown.source.revision !== seedProposal.sourceRevision ||
+          shown.source.structuralHash !== seedProposal.sourceStructuralHash ||
+          shown.normalAxis !== (seedProposal.layer === "xy" ? 2 :
+            seedProposal.layer === "xz" ? 1 : 0) ||
+          document.identity.revision !== seedProposal.sourceRevision ||
+          document.identity.structuralHash !== seedProposal.sourceStructuralHash ||
+          shown.fixedCoordinate !== seedProposal.fixedCoordinate)
+        throw new TypeError("The slice changed; propose the seed again from the current preview.");
+      if (!scientificPointWithinBounds(seedProposal.position, document.source.axes))
+        throw new RangeError("Seed is outside the field domain.");
+      let group: string | undefined;
+      if (seedGroupChoice === "") {
+        const used = new Set(document.source.seeds.map(seed => seed.group ?? "manual"));
+        let groupNumber = 1;
+        while (used.has(`slice-${groupNumber}`)) groupNumber++;
+        group = `slice-${groupNumber}`;
+      } else if (seedGroupChoice !== "manual") {
+        if (!seedGroups.some(item => item.id === seedGroupChoice))
+          throw new TypeError("Choose an existing seed group or create a new one.");
+        group = seedGroupChoice;
       }
-      const added = seeds.length - document.source.seeds.length;
-      if (!added) throw new Error("All preset seeds are already present or the 32-seed limit is full.");
-      updateSource({ ...document.source, seeds });
-      setRunStatus(`Added ${added} bounded ${kind === "ring-8" ? "ring" : "plane-grid"} seeds.`);
+      const nextIndex = document.source.seeds.reduce((highest, seed) =>
+        Math.max(highest, Number(seed.id.replace(/^seed-/, "")) || 0), 0) + 1;
+      updateSource({ ...document.source, seeds: [...document.source.seeds,
+        { id: `seed-${nextIndex}`, position: seedProposal.position, ...(group ? { group } : {}) }] });
+      setRunStatus(`Added seed-${nextIndex} at the ${seedProposal.layer.toUpperCase()} slice point` +
+        ` to ${group ?? "manual"}. Preview the revised field before tracing it.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const runTrajectories = async () => {
     if (busy || lineBusy) return;
     cancelRequested.current = false;
+    setSeedPlacementLayer(null); setSeedProposal(null);
     setBusy(true); setBusyAction("trajectory"); setArtifact(null); setSlice(null); setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     setRunStatus("Verifying source and preparing trajectory worker…");
@@ -567,7 +665,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               void window.scientificScenes.previewVectorTile({ fingerprint: scientific.fingerprint,
                 datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
                   [string, string, string], indices: event.data.tileRequest.indices })
-                .then(tile => { if (!finished) worker.postMessage({ tileResponse: tile }); })
+                .then(tile => { if (!finished) worker.postMessage({ tileResponse: tile },
+                  tileTransferBuffers([tile])); })
                 .catch(cause => { if (!finished) { finish(); reject(cause); } });
               return;
             }
@@ -662,6 +761,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       }
       if (cancelRequested.current) throw new Error("Equilibrium search cancelled.");
       const result = await new Promise<VectorField3DEquilibriumSearch>((resolve, reject) => {
+        const workerStarted = performance.now();
+        let tileRoundTripMs = 0, rendererForwardMs = 0;
         const worker = new Worker(new URL("./equilibriumWorker.ts", import.meta.url), { type: "module" });
         let finished = false;
         const finish = () => { finished = true; worker.terminate(); cancelRunRef.current = null; };
@@ -674,15 +775,29 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             if (!scientific || !refs || !window.scientificScenes?.previewVectorTiles) {
               finish(); reject(new Error("Verified source tile service is unavailable.")); return;
             }
+            const readStarted = performance.now();
             void window.scientificScenes.previewVectorTiles({ fingerprint: scientific.fingerprint,
               datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
                 [string, string, string], indicesBatch: event.data.tileRequests.indices.map(point =>
                   [...point] as [number, number, number]) })
-              .then(tiles => { if (!finished) worker.postMessage({ tilesResponse: tiles }); })
+              .then(tiles => {
+                tileRoundTripMs += performance.now() - readStarted;
+                if (!finished) {
+                  const forwardStarted = performance.now();
+                  worker.postMessage({ tilesResponse: tiles }, tileTransferBuffers(tiles));
+                  rendererForwardMs += performance.now() - forwardStarted;
+                }
+              })
               .catch(cause => { if (!finished) { finish(); reject(cause); } });
             return;
           }
-          finish(); if (event.data.ok) resolve(event.data.result); else reject(new Error(event.data.error));
+          const totalWorkerWallMs = performance.now() - workerStarted;
+          finish();
+          if (event.data.ok) {
+            const profile = event.data.result.profile;
+            resolve(profile ? { ...event.data.result, profile: { ...profile,
+              tileRoundTripMs, rendererForwardMs, totalWorkerWallMs } } : event.data.result);
+          } else reject(new Error(event.data.error));
         };
         worker.onerror = event => { finish(); reject(new Error(event.message || "Equilibrium worker failed.")); };
         setRunStatus("Searching bounded seeds… Cancel is available.");
@@ -763,6 +878,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setDocument(next); setExpressions(next.source.field.kind === "expressions" ?
         next.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
       setSeedDraft(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as [string, string, string]);
+      setSeedPlacementLayer(null); setSeedProposal(null); setSeedGroupChoice("manual");
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
       setDifferential(null);
       setEquilibriumSearch(null); setSelectedEquilibrium(null);
@@ -857,14 +973,47 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <button type="button" disabled={busy || document.source.seeds.length >= 32}
           onClick={() => addSeedPreset("ring-8")}>Add ring (8)</button>{" "}
         <button type="button" disabled={busy || document.source.seeds.length >= 32}
+          onClick={() => addSeedPreset("line-5")}>Add line (5)</button>{" "}
+        <button type="button" disabled={busy || document.source.seeds.length >= 32}
           onClick={() => addSeedPreset("plane-9")}>Add plane grid (9)</button>
       </div>
-      {document.source.seeds.length > 0 && <ul>{document.source.seeds.map(seed => <li key={seed.id}>
-        {seed.id}: ({seed.position.join(", ")}) {document.source.axes[0].unit}
-        {" "}<button type="button" disabled={busy} aria-label={`Remove ${seed.id}`}
-          onClick={() => updateSource({ ...document.source,
-            seeds: document.source.seeds.filter(item => item.id !== seed.id) })}>Remove</button>
-      </li>)}</ul>}
+      {seedPlacementLayer && !seedProposal && <p role="status" data-testid="vector-field3d-seed-placement-hint">
+        Click inside the {seedPlacementLayer.toUpperCase()} slice map to propose a physical seed point.
+      </p>}
+      {seedProposal && <section className="vector-field3d-seed-proposal"
+        aria-label="Proposed slice seed" data-testid="vector-field3d-seed-proposal">
+        <p>Proposed {seedProposal.layer.toUpperCase()} seed: {seedProposal.position.map((value, axis) =>
+          `${document.source.axes[axis].label} = ${value.toPrecision(8)} ${document.source.axes[axis].unit}`)
+          .join(" · ")}.</p>
+        <label>Seed group <select aria-label="Proposed seed group" value={seedGroupChoice}
+          onChange={event => setSeedGroupChoice(event.target.value)}>
+          <option value="manual">Manual</option>
+          {seedGroups.filter(group => group.id !== "manual").map(group =>
+            <option key={group.id} value={group.id}>{group.id}</option>)}
+          <option value="">New slice group</option>
+        </select></label>
+        <button type="button" disabled={busy || document.source.seeds.length >= 32}
+          onClick={addProposedSeed}>Add proposed seed</button>{" "}
+        <button type="button" onClick={() => setSeedProposal(null)}>Cancel proposal</button>
+      </section>}
+      {seedGroups.map(group => <section key={group.id} className="vector-field3d-seed-group"
+        aria-label={`Seed group ${group.id}`}>
+        <label><input type="checkbox" aria-label={`Show ${group.id} seed group`}
+          checked={!workspace.hiddenSeedGroups.includes(group.id)}
+          onChange={event => { const show = event.currentTarget.checked; setDocument(current => {
+            const view = current.workspace ?? defaultVectorField3DWorkspace(current.source);
+            const hiddenSeedGroups = show ?
+              view.hiddenSeedGroups.filter(id => id !== group.id) :
+              [...view.hiddenSeedGroups, group.id];
+            return reviseVectorField3DWorkspace(current, { ...view, hiddenSeedGroups });
+          }); }} />Show {group.id} ({group.seeds.length})</label>
+        <ul>{group.seeds.map(seed => <li key={seed.id}>
+          {seed.id}: ({seed.position.join(", ")}) {document.source.axes[0].unit}
+          {" "}<button type="button" disabled={busy} aria-label={`Remove ${seed.id}`}
+            onClick={() => updateSource({ ...document.source,
+              seeds: document.source.seeds.filter(item => item.id !== seed.id) })}>Remove</button>
+        </li>)}</ul>
+      </section>)}
     </section>
     <details open aria-label="3D trajectory solver">
       <summary>Advanced trajectory solver</summary>
@@ -1080,7 +1229,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <button ref={equilibriaButtonRef} type="button" disabled={busy || lineBusy}
         onClick={() => void findEquilibria()}>
         Find equilibria</button>
-      {equilibriumSearch && <div role="status" data-testid="vector-field3d-equilibria">
+      {equilibriumSearch && <div role="status" data-testid="vector-field3d-equilibria"
+        data-equilibrium-profile={equilibriumSearch.profile ?
+          JSON.stringify(equilibriumSearch.profile) : undefined}>
         <p>{equilibriumSearch.status === "budget-reached" ? "Partial scan · budget reached" :
           "Bounded scan · coverage incomplete"} · {equilibriumSearch.candidates.length} candidates ·
           {" "}{equilibriumSearch.attemptedSeeds} seeds · {equilibriumSearch.evaluations}/
@@ -1128,6 +1279,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
               sliceChannel: event.target.value as typeof workspace.sliceChannel }));
           setSlice(null); setLinkedSlices({}); setError("");
+          setSeedProposal(null);
         }}>
         <option value="component">Magnitude or selected component</option>
         <option value="divergence">Divergence</option>
@@ -1193,8 +1345,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       Coordinate units {artifact.coordinateUnits.join(", ")}; vector units {artifact.componentUnits.join(", ")}.
     </p>}
     {trajectories && <div role="status" aria-live="polite" data-testid="vector-field3d-trajectory-status">
-      {trajectories.trajectories.map(path => <p key={path.seedId}>
-        {path.seedId}: {path.stopReason} after {path.acceptedSteps} accepted and
+      <p>Showing {visibleTrajectories?.trajectories.length ?? 0}/{trajectories.trajectories.length}
+        {" "}trajectory results.</p>
+      {visibleTrajectories?.trajectories.map(path => <p key={path.seedId}
+        data-seed-outcome={trajectoryHasError(path.stopReason) ? "error" : "result"}>
+        {path.seedId}: {trajectoryHasError(path.stopReason) ? "error" : "result"} ·
+        {" "}{path.stopReason} after {path.acceptedSteps} accepted and
         {" "}{path.rejectedSteps} rejected steps; {path.evaluations} evaluations;
           {" "}{trajectories.solver.mode === "normalized-field-line" ? "line parameter" : "time"}
           {" "}{path.points.at(-1)?.time.toPrecision(5)} {trajectories.solver.parameterUnit},
@@ -1217,7 +1373,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
         <div className="vector-field3d-linked-cell">{artifact ?
           <VectorField3DArrowView document={document} artifact={artifact}
-            trajectories={trajectories} probe={selectedEquilibrium !== null ?
+            trajectories={visibleTrajectories} probe={selectedEquilibrium !== null ?
               equilibriumSearch?.candidates[selectedEquilibrium]?.position ?? workspace.probe : workspace.probe}
             onCameraStateChange={setCameraState} /> :
           <p role="status">Preview all views to show the bounded 3D field.</p>}</div>
@@ -1226,6 +1382,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           <div className="vector-field3d-linked-cell" key={layer}>{linkedSlices[layer] ?
             <VectorField3DSliceView document={document} slice={linkedSlices[layer]!}
               clipBounds={workspace.clipBounds} probe={workspace.probe}
+              seedPlacementActive={seedPlacementLayer === layer}
+              seedPlacementDisabled={busy || lineBusy || document.source.seeds.length >= 32}
+              onSeedPlacementToggle={() => toggleSliceSeedPlacement(layer)}
+              onSeedPropose={point => proposeSliceSeed(layer, linkedSlices[layer]!, point)}
+              proposedSeed={seedProposal?.layer === layer ? seedProposal.position : null}
               zoom={workspace.viewZoom[layer]} onZoomChange={zoom => setViewZoom(layer, zoom)}
               center={workspace.viewCenter[layer]}
               onCenterChange={center => setViewCenter(layer, center)}
@@ -1236,6 +1397,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               {" "}the {layer.toUpperCase()} slice.</p>}</div>)}</div> :
       normalAxis !== undefined ? slice ? <VectorField3DSliceView document={document} slice={slice}
         clipBounds={workspace.clipBounds} probe={workspace.probe}
+        seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}
+        seedPlacementDisabled={busy || lineBusy || document.source.seeds.length >= 32}
+        onSeedPlacementToggle={() => toggleSliceSeedPlacement(workspace.selectedLayer as SeedSliceLayer)}
+        onSeedPropose={point => proposeSliceSeed(workspace.selectedLayer as SeedSliceLayer, slice, point)}
+        proposedSeed={seedProposal?.layer === workspace.selectedLayer ? seedProposal.position : null}
         zoom={workspace.viewZoom[workspace.selectedLayer as "xy" | "xz" | "yz"]}
         onZoomChange={zoom => setViewZoom(workspace.selectedLayer as "xy" | "xz" | "yz", zoom)}
         center={workspace.viewCenter[workspace.selectedLayer as "xy" | "xz" | "yz"]}
@@ -1246,7 +1412,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
           Saved scientific bundles are reverified before values appear.</div> :
         artifact ? <VectorField3DArrowView document={document} artifact={artifact}
-          trajectories={trajectories} probe={selectedEquilibrium !== null ?
+          trajectories={visibleTrajectories} probe={selectedEquilibrium !== null ?
             equilibriumSearch?.candidates[selectedEquilibrium]?.position ?? workspace.probe : workspace.probe}
           onCameraStateChange={setCameraState} /> :
         <div role="status" className="scientific-field-explorer-empty">Verify the field to display bounded 3D arrows.

@@ -31,6 +31,7 @@ export type VectorField3DTrajectoryArtifact = Readonly<{
 }>;
 export type VectorField3DTrajectoryOptions = Readonly<{
   direction?: "forward" | "backward";
+  seedIds?: readonly string[];
   shouldCancel?: () => boolean;
   onProgress?: (completed: number, total: number, trajectory: VectorField3DTrajectory) => void;
 }>;
@@ -58,9 +59,12 @@ const within = (point: Vec3, axes: VectorField3DSource["axes"]) =>
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
 export function vectorField3DSeedPreset(source: VectorField3DSource,
-  kind: "ring-8" | "plane-9"): readonly Vec3[] {
+  kind: "ring-8" | "line-5" | "plane-9"): readonly Vec3[] {
   const centers = source.axes.map(axis => (axis.min + axis.max) / 2);
   const spans = source.axes.map(axis => axis.max - axis.min);
+  if (kind === "line-5")
+    return [-.25, -.125, 0, .125, .25].map(fraction =>
+      [centers[0]! + spans[0]! * fraction, centers[1]!, centers[2]!] as Vec3);
   if (kind === "ring-8") {
     const radius = Math.min(spans[0]!, spans[1]!) / 4;
     return Array.from({ length: 8 }, (_, index) => {
@@ -89,13 +93,17 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
   const parameterLimit = normalized ? source.solver.maxLineLength ?? 20 : source.solver.maxTime;
   const parameterUnit = normalized ? source.axes[0].unit : source.timeUnit;
   const maximumSteps = Math.min(source.solver.maxSteps, 2048);
+  const selected = options.seedIds ? new Set(options.seedIds) : null;
+  const seeds = selected ? source.seeds.filter(seed => selected.has(seed.id)) : source.seeds;
+  if (selected && (seeds.length !== selected.size || !seeds.length))
+    throw new TypeError("Trajectory seed selection does not match the document.");
   const maximumArc = source.solver.maxArcLength ?? 1e6;
   const maximumEvaluationsPerSeed = Math.min(150_000, 1 + maximumSteps * 17);
-  const maximumEvaluations = maximumEvaluationsPerSeed * Math.max(source.seeds.length, 1);
+  const maximumEvaluations = maximumEvaluationsPerSeed * Math.max(seeds.length, 1);
   const useRk45 = source.solver.method === "rk45";
   let totalEvaluations = 0;
   const trajectories: VectorField3DTrajectory[] = [];
-  for (const seed of source.seeds) {
+  for (const seed of seeds) {
     let evaluations = 0, acceptedSteps = 0, rejectedSteps = 0, maxEstimatedLocalError = 0;
     let point = [...seed.position] as Vec3;
     let elapsed = 0, arcLength = 0;
@@ -279,7 +287,7 @@ function integrateWith(document: VectorField3DDocument, evaluateField: Evaluatio
     const trajectory = { seedId: seed.id, direction, points, acceptedSteps, rejectedSteps,
       evaluations, stopReason, maxEstimatedLocalError, stopDetail };
     trajectories.push(trajectory);
-    options.onProgress?.(trajectories.length, source.seeds.length, trajectory);
+    options.onProgress?.(trajectories.length, seeds.length, trajectory);
   }
   return { source: { documentId: document.identity.id, revision: document.identity.revision,
     structuralHash: document.identity.structuralHash },

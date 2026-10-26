@@ -27,6 +27,10 @@ try {
     ["80³ analytic vortex", "output/scientific-vortex-80-overview.sscene", ["east", "north", "up"]],
     ["measured Burgers", "output/scientific-burgers-horizontal-level1.sscene", ["vx", "vy", "vz"]],
   ];
+  const expectedEquilibria = new Map([
+    ["80³ analytic vortex", "0fb12674d2b8f392ae28eacb2a2e57d13fdade3a0594b538d4c325cdbe9446a9"],
+    ["measured Burgers", "3a96a13b7e4f2c98a6271461c2fed12308676f6814ea89fc7e70818884d6aadd"],
+  ]);
   const results = [];
   for (const [label, relative, names] of fixtures) {
     const directory = resolve(root, relative);
@@ -64,26 +68,40 @@ try {
         const cache = new core.VectorField3DVerifiedTileCache(document, manifestJson, fingerprint);
         const tileStart = performance.now();
         let result, requests = 0, continuation;
+        let transferMs = 0, admissionMs = 0, computeMs = 0;
         if (variant === "adaptive-prefetch") {
           const plan = cache.equilibriumPrefetchPlan(document);
           if (!plan) throw new Error(`Expected a dense prefetch plan: ${label}`);
           for (let at = 0; at < plan.length; at += 32) {
+            const readStart = performance.now();
             const tiles = await host.previewScientificGraphVectorTiles(directory, fingerprint,
               "field", names, plan.slice(at, at + 32));
-            tiles.forEach(tile => cache.add(tile)); requests++;
+            transferMs += performance.now() - readStart;
+            const admissionStart = performance.now();
+            for (const tile of tiles) await cache.addAsync(tile);
+            requests++;
+            admissionMs += performance.now() - admissionStart;
           }
         }
         for (;;) {
+          const computeStart = performance.now();
           try {
             result = mode === "trajectory" ?
               core.integrateVectorField3DVerifiedTileTrajectories(document, cache) :
               core.searchVectorField3DVerifiedTileEquilibria(document, cache, {}, continuation);
+            computeMs += performance.now() - computeStart;
             break;
           } catch (cause) {
+            computeMs += performance.now() - computeStart;
             if (mode === "trajectory" && cause instanceof core.VectorField3DNeededTile) {
+              const readStart = performance.now();
               const tile = await host.previewScientificGraphVectorTile(directory, fingerprint,
                 "field", names, cause.indices);
-              cache.add(tile); requests++; continue;
+              transferMs += performance.now() - readStart;
+              const admissionStart = performance.now();
+              await cache.addAsync(tile); requests++;
+              admissionMs += performance.now() - admissionStart;
+              continue;
             }
             if (!(cause instanceof core.VectorField3DEquilibriumNeedsTiles)) throw cause;
             if (variant === "adaptive-prefetch")
@@ -94,21 +112,34 @@ try {
                 continuation = { ...checkpoint, attemptedSeeds: checkpoint.attemptedSeeds - 1,
                   evaluations: activeSeed.startEvaluations };
               } else continuation = cause.continuation;
+              const readStart = performance.now();
               const tiles = await host.previewScientificGraphVectorTiles(directory, fingerprint,
                 "field", names, cause.indicesBatch);
-              tiles.forEach(tile => cache.add(tile)); requests++;
+              transferMs += performance.now() - readStart;
+              const admissionStart = performance.now();
+              for (const tile of tiles) await cache.addAsync(tile);
+              requests++;
+              admissionMs += performance.now() - admissionStart;
             } else {
+              const readStart = performance.now();
               const tile = await host.previewScientificGraphVectorTile(directory, fingerprint,
                 "field", names, cause.indicesBatch[0]);
-              cache.add(tile); requests++;
+              transferMs += performance.now() - readStart;
+              const admissionStart = performance.now();
+              await cache.addAsync(tile); requests++;
+              admissionMs += performance.now() - admissionStart;
             }
           }
         }
-        variants.push({ variant, firstResultMs: +(performance.now() - tileStart).toFixed(1), requests,
+        variants.push({ variant, firstResultMs: +(performance.now() - tileStart).toFixed(1),
+          transferMs: +transferMs.toFixed(1), admissionMs: +admissionMs.toFixed(1),
+          computeMs: +computeMs.toFixed(1), requests,
           residentTileBytes: cache.residentBytes,
           verifiedTilesPerComponent: cache.provenance.map(part => part.verifiedTiles),
           resultCount: mode === "trajectory" ? result.trajectories.length : result.candidates.length,
           candidates: mode === "equilibria" ? result.candidates : undefined,
+          candidateSha256: mode === "equilibria" ?
+            createHash("sha256").update(JSON.stringify(result.candidates)).digest("hex") : undefined,
           evaluations: mode === "equilibria" ? result.evaluations : undefined,
           attemptedSeeds: mode === "equilibria" ? result.attemptedSeeds : undefined,
           rejectedSeeds: mode === "equilibria" ? result.rejectedSeeds : undefined });
@@ -120,6 +151,9 @@ try {
             variants[0].attemptedSeeds !== variant.attemptedSeeds ||
             variants[0].rejectedSeeds !== variant.rejectedSeeds))
         throw new Error(`Resumed equilibrium candidates differ: ${label}`);
+      if (mode === "equilibria" && variants.some(variant =>
+          variant.candidateSha256 !== expectedEquilibria.get(label)))
+        throw new Error(`Equilibrium candidates changed from the pre-optimization baseline: ${label}`);
       methods.push({ operation: mode,
         bounded: { firstResultMs: +boundedMs.toFixed(1),
           transferredValueBytes: volumes[0].values.length * 8 * 3,
@@ -129,7 +163,7 @@ try {
     }
     results.push({ fixture: label, shape, methods });
   }
-  process.stdout.write(`${JSON.stringify({ note: "Sequential local run; disk cache and JIT affect time. Resident tile bytes are deterministic, not process peak RSS.", results }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ note: "Sequential direct host/core run without Electron IPC or worker serialization; disk cache and JIT affect time. Transfer is host read plus tile-byte preparation, admission includes worker-side native hash verification, and compute is the core search. Resident tile bytes are deterministic, not process peak RSS.", results }, null, 2)}\n`);
 } finally {
   if (!resolve(temporary).startsWith(`${resolve(tmpdir())}${sep}`) ||
       !basename(temporary).startsWith("math3d-tile-solvers-benchmark-"))

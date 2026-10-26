@@ -68,3 +68,45 @@ One sequential local benchmark measured:
 | Measured Burgers | 69.4 ms | 269.1 ms | 161.6 ms | 63 → 3 | 72/72 |
 
 All tile-search modes returned identical candidates, evaluations, attempted seeds and rejected seeds. Prefetch improves these broad searches but still reads every tile and remains slower than the bounded-volume path. The bounded path samples a 32³ transfer, while the tile path interpolates the source grid; timings include transfer and calculation and vary with cache and process load.
+
+## Equilibrium sampler profile
+
+The v3 tile sampler now computes each interpolation corner's tile index and offset once, reusing it for the missing-tile check and weighted value lookup. It retains the same corner and component accumulation order, supports independently tiled components, and keeps the manifest-pinned tile checks and 64 MiB limit. An independent cubic-field test covers mixed tile shapes, partial edge tiles, tile seams and domain boundaries. The benchmark pins candidate SHA-256 values from before the change for both fixtures.
+
+| Scene | Sampler | Host transfer | Verified cache admission | Search calculation | First result |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 80³ vortex | Previous | 79.1 ms | 274.5 ms | 13.6 ms | 368.1 ms |
+| 80³ vortex | Optimized | 86.3 ms | 274.4 ms | 3.3 ms | 364.9 ms |
+| Measured Burgers | Previous | 35.1 ms | 117.9 ms | 18.3 ms | 171.8 ms |
+| Measured Burgers | Optimized | 37.1 ms | 122.8 ms | 3.7 ms | 164.1 ms |
+
+These are separate sequential local runs of the direct host and core path, timed after cache construction and without Electron IPC or worker serialization. They show where the same core calculation spends time; they are not precise UI latency measurements. Disk cache, JIT and process load affect each run. Search calculation became much cheaper, while first-result time changed little because reading and rechecking tiles dominate. Both optimized searches returned the same candidates and evaluation counts as the previous sampler.
+
+## Electron equilibrium tile transfer and admission
+
+The desktop search now profiles renderer-to-main tile requests, renderer-to-worker forwarding, worker tile admission, worker calculation, and click-to-first-result time. V3 tile replies carry the verified little-endian f64 bytes directly. The renderer transfers their buffers to the worker; the worker owns a copy, checks finite values and the manifest-pinned SHA-256 again, then samples through f64 views. Its asynchronous admission uses native WebCrypto SHA-256 when available and retains the same checksum check through the synchronous fallback. V1 and v2 continue through their existing bounded-volume path. The 64 MiB tile budget and source/tile provenance are unchanged.
+
+One Windows Electron run before this change and one after it measured:
+
+| Scene | Transfer | Click to result | Worker admission | Worker calculation | Tile round trip | Renderer forwarding | Renderer working-set delta | Resident tile bytes |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 80³ vortex | Number arrays | 7,908 ms | 7,047 ms | — | — | — | +115 MB | 12,288,000 |
+| 80³ vortex | f64 bytes + native hash | 453 ms | 111 ms | 24 ms | 85 ms | 0.9 ms | +27 MB | 12,288,000 |
+| Measured Burgers | Number arrays | 3,067 ms | 2,721 ms | — | — | — | +65 MB | 5,273,400 |
+| Measured Burgers | f64 bytes + native hash | 334 ms | 49 ms | 30 ms | 50 ms | 0.8 ms | +15 MB | 5,273,400 |
+
+In another number-array run, tile round trip and renderer forwarding took 217/43 ms for the vortex and 105/18 ms for Burgers. Working-set delta is the renderer process's OS memory immediately before and after the search, not a peak or a complete Electron process-tree measurement. It can vary with garbage collection and other renderer activity. Timings are single desktop runs with warm file cache; rerun `npx playwright test tests/e2e/vector-field-3d.spec.ts -g "profiles Electron v3 equilibrium"` for local profiles. The direct benchmark now reports host transfer, native-hash admission, and core calculation separately; in its adaptive-prefetch mode it measured 59.5 ms for the vortex and 33.0 ms for Burgers, without Electron IPC. Both fixtures retained their pinned candidate hashes and evaluation counts. Unit and desktop tests cover corrupt tile rejection, cancellation, v2 rendering, provenance, and the cache cap.
+
+## Bounded seed batches
+
+Field Explorer has deterministic five-point line and nine-point XY plane seed patterns, alongside the existing eight-point ring. Each added pattern receives a stable group ID and is admitted as a complete batch under the 32-seed document limit. Group checkboxes control trajectory visibility; hidden groups still participate in integration. Visibility lives in the Project workspace, so toggling it does not change the field's structural hash. Older documents without groups open with their seeds in the manual group.
+
+The v3 trajectory worker keeps one 64 MiB manifest-pinned tile cache for the batch and resumes at the next seed after a completed trajectory. Missing tiles can replay the active seed but no longer replay prior seeds. Each seed reports a terminal reason and its own trajectory; undefined field values, solver failure, and exhausted step budgets are labeled as errors. A corrupted tile or changed source still rejects the entire run, and cancellation terminates the worker without publishing partial results. V1/v2 and authored fields retain their existing interpolation paths.
+
+The committed 80³ vortex fixture checks all five line seeds against the analytic circular flow, including the stationary center, with a 0.03 m endpoint tolerance. A separate analytic pole fixture confirms that an undefined seed does not suppress the next seed's valid result. The measured Burgers desktop test runs a 14-seed line-plus-plane batch, verifies source and tile provenance and the 64 MiB cap, hides the plane trajectories, saves and reopens the Project, reruns from the saved source, and checks cancellation. The existing Burgers test still checks changed-tile rejection.
+
+## Slice click-to-seed
+
+Each verified XY, XZ and YZ slice has an explicit seed placement mode. A click in the plot maps from SVG space through the current zoom/pan transform to the slice's physical coordinates. The displayed cell centers match their sampled coordinates; clicks between centers interpolate continuously between those coordinates. The third coordinate is the displayed plane's fixed physical coordinate. A marker and the full coordinate tuple appear as a proposal before the user chooses the manual group, an existing group, or a new slice group and adds the seed. Ordinary clicks continue to place probes outside placement mode.
+
+The proposal is rejected outside the plot or field bounds, when the slice/source revision changes, or when adding it would exceed 32 document seeds. Source edits and plane changes clear pending proposals. Only the confirmed seed enters the document; saved source references and group membership then follow the normal Project path. The 80³ fixture checks axis order, upward vertical orientation, fixed coordinates, between-sample interpolation, marker position, and plot-boundary rejection for all three planes. The desktop test exercises those interactions, including zoomed placement and the 32-seed limit; the measured Burgers scene verifies slice provenance, trajectory source hash, group membership, and Project reopen.

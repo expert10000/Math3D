@@ -1053,6 +1053,14 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **Adaptive equilibrium prefetch.** Broad v3 searches whose predicted seed coverage spans most tiles and whose complete tile set fits in 64 MiB now fetch verified tiles in batches of up to 32. Smaller searches retain on-demand reads. [Measurements](scientific-source-grid-stencils.md#adaptive-equilibrium-tile-prefetch) show fewer host calls and faster first results on both 80³ and measured Burgers, with the same candidates and evaluation counts. Both still touch every tile and remain slower than bounded-volume search.
 
+**Equilibrium sampler profile.** [Phase measurements](scientific-source-grid-stencils.md#equilibrium-sampler-profile) separate host transfer, verified cache admission, and search calculation. Reusing interpolation corner locations cuts calculation time on both fixtures while preserving candidate hashes, but tile admission and transfer dominate first-result latency.
+
+**Electron equilibrium transfer profile.** [Full desktop measurements](scientific-source-grid-stencils.md#electron-equilibrium-tile-transfer-and-admission) include IPC, worker admission, calculation, first-result time, and renderer working-set change. V3 now transfers verified f64 tile bytes and uses native SHA-256 for the worker's independent hash check. In one Electron run, the vortex first result fell from 7.9 s to 0.45 s and measured Burgers from 3.1 s to 0.33 s. Candidate hashes, evaluation counts, provenance, tamper rejection, cancellation, and the 64 MiB cache limit are covered; v1/v2 keep their prior paths.
+
+**SCI-13 bounded seed batches.** [Line, plane, and ring batches](scientific-source-grid-stencils.md#bounded-seed-batches) now have stable groups and saved view-only visibility. V3 runs each seed against a shared verified tile cache and retains completed seed results as later seeds request tiles. The 80³ oracle checks line endpoints; the measured Burgers desktop test covers group visibility, provenance, cancellation, and Project reopen. The document remains limited to 32 seeds and the worker cache to 64 MiB.
+
+**SCI-13 slice seed placement.** [Verified slice click-to-seed](scientific-source-grid-stencils.md#slice-click-to-seed) converts XY/XZ/YZ clicks into physical coordinates, uses the displayed plane's fixed coordinate, and previews the point before a group is selected and the seed is committed. The 80³ orientation tests and measured Burgers Project round trip cover bounds, provenance, and saved placement.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

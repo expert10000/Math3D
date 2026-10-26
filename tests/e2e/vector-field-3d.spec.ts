@@ -779,6 +779,266 @@ test("SCI-12 measured Burgers trajectories and equilibria use verified v3 tiles"
   }
 });
 
+test("SCI-13 measured Burgers seed batches retain grouping, provenance and cancellation through Project reopen", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-burgers-horizontal-level1.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Add line (5)" }).click();
+    await editor.getByRole("button", { name: "Add plane grid (9)" }).click();
+    await expect(editor).toContainText("Trajectory seeds (14/32)");
+    await editor.getByLabel("Show plane-1 seed group").uncheck();
+    await editor.getByLabel("Trajectory max time").fill("0.05");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const status = editor.getByTestId("vector-field3d-trajectory-status");
+    await expect(status).toContainText("Showing 5/14 trajectory results");
+    await expect(status.locator("[data-seed-outcome]")).toHaveCount(5);
+    await expect(status).toContainText(/vx \d+\/72/);
+    await expect(status).toContainText(/source sha256:[a-f0-9]{64}/);
+    const resident = Number((await status.innerText()).match(/Resident cache (\d+) bytes/)?.[1]);
+    expect(resident).toBeGreaterThan(0);
+    expect(resident).toBeLessThanOrEqual(64 * 1024 * 1024);
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" }))
+      .toContainText("Trajectory overlay: 5 seed");
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry?.checkpoint.source.seeds).toHaveLength(14);
+    expect(entry?.checkpoint.source.seeds.filter((seed: { group: string }) =>
+      seed.group === "line-1")).toHaveLength(5);
+    expect(entry?.checkpoint.source.seeds.filter((seed: { group: string }) =>
+      seed.group === "plane-1")).toHaveLength(9);
+    expect(entry?.checkpoint.workspace.hiddenSeedGroups).toEqual(["plane-1"]);
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByLabel("Show plane-1 seed group")).not.toBeChecked();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText("Showing 5/14 trajectory results");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText(/source sha256:[a-f0-9]{64}/);
+    await page.evaluate(() => {
+      const originalPost = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function(message) {
+        window.setTimeout(() => originalPost.call(this, message), 1200);
+      };
+    });
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await editor.getByRole("button", { name: "Cancel run" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status"))
+      .toContainText("cancelled; no partial result");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 places oriented 80³ slice seeds only after a physical-coordinate proposal", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-vortex-80-overview.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const expected = (index: number) => -4 + 8 * Math.round(index * 79 / 31) / 79;
+    for (const [plane, axes, fixedAxis] of [
+      ["XY", ["x", "y"], "z"], ["XZ", ["x", "z"], "y"],
+      ["YZ", ["y", "z"], "x"],
+    ] as const) {
+      await editor.getByRole("button", { name: `${plane} slice` }).click();
+      await editor.getByRole("button", { name: "Preview slice" }).click();
+      const figure = editor.getByRole("figure", { name: `${plane} field slice` });
+      const fixed = Number(await editor.getByLabel("Slice physical coordinate").inputValue());
+      await figure.getByRole("button", { name: `Place seed on ${plane} slice` }).click();
+      await figure.locator('[data-probe-cell="6-20"]').click();
+      const proposal = editor.getByTestId("vector-field3d-seed-proposal");
+      await expect(proposal).toBeVisible();
+      const proposedText = await proposal.innerText();
+      for (const [axis, index] of [[axes[0], 6], [axes[1], 20]] as const) {
+        const value = Number(proposedText.match(new RegExp(`\\b${axis} = (-?[\\d.]+) m`))?.[1]);
+        expect(Math.abs(value - expected(index))).toBeLessThan(0.06);
+      }
+      await expect(proposal).toContainText(`${fixedAxis} = ${fixed.toPrecision(8)} m`);
+      await expect(figure.getByTestId("vector-field3d-proposed-seed-marker")).toHaveCount(1);
+      await expect(editor).toContainText("Trajectory seeds (0/32)");
+      if (plane === "XY") {
+        await figure.locator("svg[role=img]").first().evaluate(svg => {
+          const point = (svg as SVGSVGElement).createSVGPoint();
+          point.x = 50; point.y = 260;
+          const screen = point.matrixTransform((svg as SVGSVGElement).getScreenCTM()!);
+          svg.dispatchEvent(new MouseEvent("click", { bubbles: true,
+            clientX: screen.x, clientY: screen.y }));
+        });
+        await expect(editor.getByRole("alert").filter({ hasText: /inside the displayed slice plot/i }))
+          .toBeVisible();
+        await expect(proposal).toHaveCount(0);
+        await figure.getByRole("button", { name: "Zoom xy in" }).click();
+        await figure.locator('[data-probe-cell="16-16"]').click();
+        await expect(proposal).toBeVisible();
+        const zoomedText = await proposal.innerText();
+        for (const axis of ["x", "y"] as const) {
+          const value = Number(zoomedText.match(new RegExp(`\\b${axis} = (-?[\\d.]+) m`))?.[1]);
+          expect(Math.abs(value - expected(16))).toBeLessThan(0.06);
+        }
+      }
+      if (plane === "YZ") {
+        await proposal.getByLabel("Proposed seed group").selectOption("");
+        await proposal.getByRole("button", { name: "Add proposed seed" }).click();
+        await expect(editor).toContainText("Trajectory seeds (1/32)");
+        await expect(editor.getByRole("region", { name: "Seed group slice-1" })).toBeVisible();
+      }
+    }
+    for (let index = 0; index < 3; index++)
+      await editor.getByRole("button", { name: "Add ring (8)" }).click();
+    await editor.getByRole("button", { name: "Add line (5)" }).click();
+    await editor.getByRole("button", { name: "Add seed", exact: true }).click();
+    await editor.getByRole("button", { name: "Add seed", exact: true }).click();
+    await expect(editor).toContainText("Trajectory seeds (32/32)");
+    await expect(editor.getByRole("button", { name: "Add seed", exact: true })).toBeDisabled();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "YZ field slice" })
+      .getByRole("button", { name: "Place seed on YZ slice" })).toBeDisabled();
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 measured Burgers slice seed keeps its verified source through Project reopen", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-burgers-horizontal-level1.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    const fixed = Number(await editor.getByLabel("Slice physical coordinate").inputValue());
+    const figure = editor.getByRole("figure", { name: "XY field slice" });
+    await expect(figure.getByLabel("Slice sample provenance")).toContainText(/source tiles verified/);
+    await figure.getByRole("button", { name: "Place seed on XY slice" }).click();
+    await figure.locator('[data-probe-cell="11-17"]').click();
+    const proposal = editor.getByTestId("vector-field3d-seed-proposal");
+    await expect(proposal).toContainText(`z = ${fixed.toPrecision(8)} m`);
+    await proposal.getByLabel("Proposed seed group").selectOption("");
+    await proposal.getByRole("button", { name: "Add proposed seed" }).click();
+    await expect(editor.getByRole("region", { name: "Seed group slice-1" })).toContainText("seed-1");
+    await editor.getByLabel("Trajectory max time").fill("0.05");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const status = editor.getByTestId("vector-field3d-trajectory-status");
+    await expect(status).toContainText(/source sha256:[a-f0-9]{64}/);
+    const firstSourceHash = (await status.innerText()).match(/source (sha256:[a-f0-9]{64})/)?.[1];
+    expect(firstSourceHash).toBeDefined();
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry?.checkpoint.source.seeds).toHaveLength(1);
+    expect(entry?.checkpoint.source.seeds[0].group).toBe("slice-1");
+    expect(entry?.checkpoint.source.seeds[0].position[2]).toBe(fixed);
+    expect(entry?.checkpoint.source.field.references[0].sceneFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByRole("region", { name: "Seed group slice-1" })).toContainText("seed-1");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText(`source ${firstSourceHash}`);
+  } finally { await closeSurfaceApp(app); }
+});
+
+for (const [name, folder] of [
+  ["80³ analytic vortex", "output/scientific-vortex-80-overview.sscene"],
+  ["measured Burgers", "output/scientific-burgers-horizontal-level1.sscene"],
+] as const) {
+  test(`SCI-12 profiles Electron v3 equilibrium ${name}`, async ({}, testInfo) => {
+    test.setTimeout(180_000);
+    const app = await launchSurfaceApp();
+    try {
+      const page = app.page;
+      await resetSurfaceAppState(page);
+      await page.getByTestId("workspace-nav-graphs").click();
+      await app.app.evaluate(({ dialog }, directory) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+      }, resolve(folder));
+      await page.locator(".graph2d-toolbar-menu > summary").click();
+      await page.getByRole("button", { name: "Import scientific dataset" }).click();
+      await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+        .getByRole("button", { name: "Open in Field Explorer" }).click();
+      const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+      const rendererPid = await app.app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]!.webContents.getOSProcessId());
+      const workingSet = () => {
+        if (!Number.isSafeInteger(rendererPid) || rendererPid <= 0) return null;
+        const bytes = process.platform === "win32" ?
+          execFileSync("powershell", ["-NoProfile", "-Command",
+            `(Get-Process -Id ${rendererPid}).WorkingSet64`], { encoding: "utf8" }) :
+          execFileSync("ps", ["-o", "rss=", "-p", String(rendererPid)], { encoding: "utf8" });
+        const value = Number(bytes.trim());
+        return Number.isFinite(value) ? value * (process.platform === "win32" ? 1 : 1024) : null;
+      };
+      const memoryBefore = workingSet();
+      const started = await page.evaluate(() => performance.now());
+      await editor.getByRole("button", { name: "Find equilibria" }).click();
+      const result = editor.getByTestId("vector-field3d-equilibria");
+      await expect(result).toContainText("Verified source tiles:");
+      const clickToResultMs = await page.evaluate(start => performance.now() - start, started);
+      const memoryAfter = workingSet();
+      const profile = JSON.parse((await result.getAttribute("data-equilibrium-profile")) ?? "null") as
+        { tileRoundTripMs: number; rendererForwardMs: number; workerAdmissionMs: number;
+          workerComputeMs: number; workerWallMs: number; totalWorkerWallMs: number } | null;
+      expect(profile).not.toBeNull();
+      expect(profile!.tileRoundTripMs).toBeGreaterThan(0);
+      expect(profile!.workerAdmissionMs).toBeGreaterThan(0);
+      expect(profile!.workerComputeMs).toBeGreaterThan(0);
+      const text = await result.innerText();
+      const residentTileBytes = Number(text.match(/Resident cache (\d+) bytes/)?.[1]);
+      expect(residentTileBytes).toBeGreaterThan(0);
+      expect(residentTileBytes).toBeLessThanOrEqual(64 * 1024 * 1024);
+      const measured = { fixture: name, clickToResultMs: +clickToResultMs.toFixed(1),
+        residentTileBytes, rendererWorkingSetDeltaBytes: memoryBefore !== null && memoryAfter !== null ?
+          memoryAfter - memoryBefore : null,
+        profile };
+      console.log(`SCI-12 Electron equilibrium profile: ${JSON.stringify(measured)}`);
+      await testInfo.attach("electron-equilibrium-profile.json", {
+        body: JSON.stringify(measured, null, 2), contentType: "application/json" });
+    } finally { await closeSurfaceApp(app); }
+  });
+}
+
 test("SCI-07 links one verified physical probe across slices, 3D and a Graph line", async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-linked-probe-"));

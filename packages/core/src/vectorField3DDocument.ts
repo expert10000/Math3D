@@ -19,7 +19,8 @@ export type VectorField3DField = Readonly<{ kind: "expressions";
 export type VectorField3DSource = Readonly<{
   axes: readonly [VectorField3DAxis, VectorField3DAxis, VectorField3DAxis]; timeUnit: string;
   field: VectorField3DField;
-  seeds: readonly Readonly<{ id: string; position: readonly [number, number, number] }>[];
+  seeds: readonly Readonly<{ id: string; position: readonly [number, number, number];
+    group?: string }>[];
   display: Readonly<{ density: readonly [number, number, number]; maxGlyphs: number;
     magnitudeScale: number; colorBy: "speed" | "p" | "q" | "r" }>;
   solver: Readonly<{ method?: "rk4-step-doubling" | "rk45";
@@ -49,6 +50,7 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
   viewCenter: Readonly<{ xy: readonly [number, number]; xz: readonly [number, number];
     yz: readonly [number, number] }>;
   probe: readonly [number, number, number] | null;
+  hiddenSeedGroups: readonly string[];
   equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
   clipBounds: VectorField3DClipBounds;
   cameraPreset: VectorField3DCameraPreset;
@@ -61,6 +63,7 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
   equilibriumConstructions: [],
+  hiddenSeedGroups: [],
   sliceChannel: "component",
   cameraState: null,
   viewsLinked: true, viewZoom: { xy: 1, xz: 1, yz: 1 },
@@ -136,8 +139,10 @@ const validSource = (source: unknown): source is VectorField3DSource => {
         unit === expectedUnit(axes[index]!.unit, source.timeUnit as string)) ||
       !validBundle(source.field.references, axes)) return false;
   if (!Array.isArray(source.seeds) || source.seeds.length > 32 ||
-      source.seeds.some((seed: unknown) => !record(seed) || !exact(seed, ["id", "position"]) ||
+      source.seeds.some((seed: unknown) => !record(seed) ||
+        !(exact(seed, ["id", "position"]) || exact(seed, ["id", "position", "group"])) ||
         !text(seed.id, 64) || !tuple3(seed.position) ||
+        (seed.group !== undefined && !text(seed.group, 64)) ||
         !scientificPointWithinBounds(seed.position as number[], axes)) ||
       new Set((source.seeds as { id: string }[]).map(seed => seed.id)).size !== source.seeds.length) return false;
   const display = source.display;
@@ -179,6 +184,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "sliceChannel") ?
       { sliceChannel: defaults.sliceChannel } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ? { probe: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "hiddenSeedGroups") ?
+      { hiddenSeedGroups: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "equilibriumConstructions") ?
       { equilibriumConstructions: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "clipBounds") ?
@@ -195,7 +202,10 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "equilibriumConstructions", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "hiddenSeedGroups", "equilibriumConstructions", "clipBounds", "cameraPreset", "cameraState"]) ||
+      !Array.isArray(workspace.hiddenSeedGroups) || workspace.hiddenSeedGroups.length > 32 ||
+      workspace.hiddenSeedGroups.some((group: unknown) => !text(group, 64)) ||
+      new Set(workspace.hiddenSeedGroups).size !== workspace.hiddenSeedGroups.length ||
       !["component", "divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z",
         "grad-speed-x", "grad-speed-y", "grad-speed-z", "grad-speed-magnitude",
         "laplacian-speed"]

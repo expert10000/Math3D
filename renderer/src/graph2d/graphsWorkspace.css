@@ -494,6 +494,15 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .vector-field3d-editor .vector-field3d-controls label { display: grid; gap: 4px; font-weight: 600; }
 .vector-field3d-editor .vector-field3d-controls input,
 .vector-field3d-editor .vector-field3d-controls select { min-width: 0; width: 100%; box-sizing: border-box; padding: 6px 8px; }
+.vector-field3d-seed-group { border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; margin: 8px 0; }
+.vector-field3d-seed-group > label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.vector-field3d-seed-group ul { margin: 6px 0 0; padding-left: 22px; }
+.vector-field3d-seed-proposal { border: 2px solid #f59e0b; border-radius: 8px;
+  padding: 10px; margin: 10px 0; }
+.vector-field3d-seed-proposal p { margin: 0 0 8px; }
+.vector-field3d-seed-proposal label { display: inline-flex; align-items: center;
+  gap: 6px; margin-right: 8px; }
 .vector-field3d-camera-controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .graph2d-plot { position: absolute; inset: 0; width: 100%; height: 100%; }
 .graph2d-plot [data-graph2d-draggable-point] { cursor: grab; touch-action: none; }
