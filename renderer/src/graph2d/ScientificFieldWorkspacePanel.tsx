@@ -4,6 +4,7 @@ import { createScientificFieldDocument, deriveVerifiedScientificScalarPlane,
   deriveVerifiedScientificScalarVolume, inspectGraph2DFieldReference,
   parseScientificSceneManifest, reviseScientificFieldDocument,
   scientificScalarDerivationLabel, scientificScalarDerivationUnit,
+  structuralHash,
   verifyGraph2DScientificPlane, verifyGraph2DScientificVolume,
   type Graph2DScientificPlane, type Graph2DScientificVolume, type ScientificCoordinateSystem,
   type Graph2DScientificDatasetPreview, type ScientificFieldDocument, type ScientificFieldDisplay,
@@ -11,6 +12,8 @@ import { createScientificFieldDocument, deriveVerifiedScientificScalarPlane,
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
 import { reverifyScientificFieldLine, type ScientificFieldLineSelection } from "./reverifyScientificFieldLine";
+import { cacheVerifiedScientificFieldResult,
+  invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 
 export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument, onAddGraphLine,
   isGraphLineImported, onClose, onVerificationStatus }: {
@@ -96,8 +99,13 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
           component: reference.component, normalAxis: current.source.display.normalAxis,
           fixedIndex: current.source.display.fixedIndex });
         const checked = verifyGraph2DScientificPlane(opened.source.manifestJson, fingerprint, fresh);
-        const derived = current.source.derivation ? deriveVerifiedScientificScalarPlane(current,
-          opened.source.manifestJson, fingerprint, checked) : null;
+        const derived = current.source.derivation ? cacheVerifiedScientificFieldResult(current,
+          { kind: "scalar-derived-plane/v1", operation: current.source.derivation.operation,
+            normalAxis: checked.normalAxis, fixedIndex: checked.fixedIndex },
+          structuralHash({ fingerprint, resourceSha256: checked.resourceSha256,
+            planeSha256: checked.planeSha256 }),
+          () => deriveVerifiedScientificScalarPlane(current,
+            opened.source.manifestJson, fingerprint!, checked)) : null;
         if (epochRef.current === epoch) {
           setPlane(derived?.plane ?? checked);
           if (derived) setDerivedInfo(derived);
@@ -106,8 +114,16 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
         const fresh = await bridge.previewGraphVolume({ fingerprint, datasetId: reference.datasetId,
           component: reference.component });
         const checked = verifyGraph2DScientificVolume(opened.source.manifestJson, fingerprint, fresh);
-        const derived = current.source.derivation ? deriveVerifiedScientificScalarVolume(current,
-          opened.source.manifestJson, fingerprint, checked) : null;
+        const derived = current.source.derivation ? cacheVerifiedScientificFieldResult(current,
+          { kind: "scalar-derived-volume/v1", operation: current.source.derivation.operation,
+            sampleShape: checked.sampleShape },
+          structuralHash({ fingerprint, resourceSha256: checked.resourceSha256,
+            sampleSha256: checked.sampleSha256,
+            ...(checked.verifiedChunks ? { verifiedChunks: checked.verifiedChunks } : {}),
+            ...(checked.verifiedTiles ? { verifiedTiles: checked.verifiedTiles } : {}),
+            ...(checked.verifiedOverview ? { verifiedOverview: checked.verifiedOverview } : {}) }),
+          () => deriveVerifiedScientificScalarVolume(current,
+            opened.source.manifestJson, fingerprint!, checked)) : null;
         if (epochRef.current === epoch) {
           setVolume(derived?.volume ?? checked);
           if (derived) setDerivedInfo(derived);
@@ -138,7 +154,8 @@ export function ScientificFieldWorkspacePanel({ initialDocument, onSaveDocument,
     return () => { epochRef.current++; lineEpochRef.current++; previous?.focus(); };
   }, []);
   const apply = (display: ScientificFieldDisplay) => {
-    try { void verify(reviseScientificFieldDocument(document, { ...document.source, display }), true); }
+    try { invalidateVerifiedScientificFieldResults(document.identity.id);
+      void verify(reviseScientificFieldDocument(document, { ...document.source, display }), true); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const createDerived = () => {

@@ -3,6 +3,8 @@ import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity
 import { isGraph2DFieldReference, reviewGraph2DFieldRelink,
   type Graph2DFieldReference, type Graph2DFieldRelinkReview } from "./graph2dFieldReference";
 import { scientificAxisCoordinate, validateScientificLineCoordinates } from "./scientificDatasetCoordinates";
+import { createScientificDatasetLink } from "./scientificDatasetLink";
+import type { Graph2DScientificDatasetOrigin } from "./graph2dDocument";
 import type { ValidationResult } from "./validation";
 
 export const SCIENTIFIC_FIELD_DOCUMENT_FORMAT = "math3d.scientific-field-document" as const;
@@ -35,6 +37,39 @@ export type ScientificFieldDocument = Readonly<{
   source: ScientificFieldSource;
   metadata: Readonly<{ title: string }>;
 }>;
+
+/** Binds a Graph snapshot to the saved field revision and all verified components. */
+export function scientificFieldResultBinding(document: ScientificFieldDocument):
+  NonNullable<Graph2DScientificDatasetOrigin["fieldDocument"]> {
+  const checked = normalizeScientificFieldDocument(document);
+  if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+  const { identity, source } = checked.value;
+  const references = source.paired ? [source.reference, source.paired.imaginary] : [source.reference];
+  return { id: identity.id, revision: identity.revision,
+    structuralHash: identity.structuralHash,
+    sourceHash: createScientificDatasetLink(references).sourceHash };
+}
+
+/** Saved Graph rows stay inspectable, but a revised or missing field makes them stale. */
+export function scientificFieldGraphResultState(origin: Graph2DScientificDatasetOrigin,
+  documents: readonly ScientificFieldDocument[]): "current" | "stale" | "unbound" {
+  const binding = origin.fieldDocument;
+  if (!binding) return "unbound";
+  const document = documents.find(item => item.identity.id === binding.id);
+  if (!document) return "stale";
+  const current = scientificFieldResultBinding(document);
+  const reference = document.source.reference;
+  const component = origin.component ?? "scalar";
+  const matchesComponent = reference.component === component ||
+    document.source.paired?.imaginary.component === component;
+  return current.revision === binding.revision &&
+    current.structuralHash === binding.structuralHash &&
+    current.sourceHash === binding.sourceHash &&
+    reference.sceneFingerprint === origin.sceneFingerprint &&
+    reference.datasetId === origin.datasetId && matchesComponent &&
+    (component === reference.component ? reference.resourceSha256 :
+      document.source.paired?.imaginary.resourceSha256) === origin.resourceSha256 ? "current" : "stale";
+}
 
 /** Review both verified components and the physical coordinates retained by a saved 3D line. */
 export function reviewScientificComplexField3DRelink(document: ScientificFieldDocument,

@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { createGraph2DFieldReference, createScientificFieldDocument, sha256Checksum,
-  validGraph2DScientificDatasetOrigin } from "@math3d/core";
+  parseScientificFieldDocument, reviseScientificFieldDocument,
+  serializeScientificFieldDocument, validGraph2DScientificDatasetOrigin } from "@math3d/core";
 import { reverifyScientificFieldLine, scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
+import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 
 const fixture = new URL("../../../tests/fixtures/scientific-scene/thermal-gradient.sscene/", import.meta.url);
 const manifestJson = readFileSync(fileURLToPath(new URL("manifest.json", fixture)), "utf8");
@@ -35,6 +37,30 @@ const bridgeFor = () => {
 };
 
 describe("saved scalar field to Graph line", () => {
+  it("reuses only freshly verified matching revisions and invalidates on relink or reopen", async () => {
+    const selection = { kind: "grid2d" as const, varyingAxis: 0 as const, fixedIndex: 1 };
+    const bridge = bridgeFor();
+    const first = await reverifyScientificFieldLine(document, selection, bridge);
+    const reopened = parseScientificFieldDocument(serializeScientificFieldDocument(document));
+    const second = await reverifyScientificFieldLine(reopened, selection, bridge);
+    expect(second).toBe(first);
+    expect(bridge.openGraphDatasetReference).toHaveBeenCalledTimes(2);
+    expect(bridge.previewGraphSlice).toHaveBeenCalledTimes(2);
+    const moved = createGraph2DFieldReference(manifestJson, fingerprint,
+      { kind: "directory", value: "C:\\moved\\thermal.sscene" }, "temperature", "scalar");
+    const relinked = reviseScientificFieldDocument(reopened, { ...reopened.source,
+      reference: { ...moved, id: reopened.source.reference.id } });
+    const afterRelink = await reverifyScientificFieldLine(relinked, selection, bridge);
+    expect(afterRelink).not.toBe(first);
+    invalidateVerifiedScientificFieldResults(relinked.identity.id);
+    expect(await reverifyScientificFieldLine(relinked, selection, bridge)).not.toBe(afterRelink);
+    const tampered = bridgeFor();
+    vi.mocked(tampered.previewGraphSlice).mockImplementationOnce(async request => ({
+      fingerprint, datasetId: "temperature", component: "scalar", varyingAxis: request.varyingAxis,
+      fixedIndex: request.fixedIndex, shape: [5, 7], resourceSha256: reference.resourceSha256,
+      sliceSha256: "0".repeat(64), values: [1, 2, 3, 4, 5] }));
+    await expect(reverifyScientificFieldLine(relinked, selection, tampered)).rejects.toThrow(/checksum/);
+  });
   it("reopens the source and preserves both row and column coordinates, units and hashes", async () => {
     const bridge = bridgeFor();
     const column = await reverifyScientificFieldLine(document,

@@ -27,6 +27,24 @@ const fixture = () => {
 };
 
 describe("GRA-10 verified scientific dataset adapter", () => {
+  it("preserves optional saved field revision bindings in Graph documents", () => {
+    const { json, fingerprint, values } = fixture();
+    const preview = previewGraph2DScientificDataset(json, fingerprint, "amplitude", values);
+    const binding = { id: "math3d:scientific-field:fixture", revision: 2,
+      structuralHash: `sha256:${"a".repeat(64)}`, sourceHash: `sha256:${"b".repeat(64)}` };
+    const origin = { ...preview.origin, fieldDocument: binding };
+    const store = new Graph2DPointTableStore(), table = store.publish(preview.rows);
+    const source = applyGraph2DAuthoring(createEmptyGraph2DDocument("bound-field"), {
+      type: "create-point-series", draft: { label: preview.label, table, mode: "line", domain: preview.domain,
+        origin, style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } },
+    });
+    const document = createGraph2DDocument({ ...source, stableKey: "bound-field" });
+    expect(parseGraph2DDocument(serializeGraph2DDocument(document)).source.objects[0])
+      .toMatchObject({ origin: { fieldDocument: binding } });
+    expect(normalizeGraph2DDocument({ ...document, source: { ...document.source,
+      objects: [{ ...document.source.objects[0], origin: { ...origin,
+        fieldDocument: { ...binding, sourceHash: "bad" } } }] } }).ok).toBe(false);
+  });
   it("imports immutable verified 1D values as a point series with units and provenance", () => {
     const { json, fingerprint, values } = fixture();
     const preview = previewGraph2DScientificDataset(json, fingerprint, "amplitude", values);
