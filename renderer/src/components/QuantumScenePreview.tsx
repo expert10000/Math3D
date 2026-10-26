@@ -498,6 +498,14 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
               <p>Ring, loop and energy samples are supplied by Theory Lab. Select a loop marker to inspect its exact position and upper-band energy. The lower band remains in the verified bundle. Math3D calculates no Berry phase and makes no drumhead-state or surface claim.</p>
             </section>}
+            {scene.provenance.model==="hofstadter_flux_sweep"&&<section data-testid="hofstadter-butterfly-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{margin:0}}>Hofstadter · verified flux sweep</h3>
+              <p>Study <code>{scene.provenance.runId}</code> · result SHA-256 <code>{scene.provenance.resultSha256}</code>. Hopping t={scene.provenance.parameters?.hopping}; momentum grid {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid}; reduced denominators through {scene.provenance.parameters?.maxDenominator}; filling {scene.provenance.parameters?.occupiedBands}.</p>
+              <p>Each colored column is an independent hash-verified periodic Harper run. Teal means a producer-supplied Hall value at a resolved global gap; amber means no conditional Hall value. Click a point or use Inspect first below to read exact flux, energy, sample index and source hash. Source labels use S:Y/N for sampling convergence; gap codes D, C, U mean defined, closed and mesh-unresolved; H is the conditional Hall value in e²/h.</p>
+              <div data-testid="hofstadter-butterfly-sources">{scene.annotations.map(note=><p key={note.id}>{note.text}</p>)}</div>
+              {pickedScalarSample?.objectId.startsWith("flux-")&&<p data-testid="hofstadter-butterfly-selection">{scene.annotations.find(note=>note.id===`source-${pickedScalarSample.objectId.slice(5)}`)?.text}</p>}
+              <p>The third coordinate is a display plane. This is an ideal clean-model spectrum and conditional bulk Hall map. No experimental plateau or individual finite-strip edge classification is supplied; Math3D calculates no Harper result.</p>
+            </section>}
             {scene.provenance.model==="hofstadter"&&scene.objects.some(object=>object.id==="strip-left")&&<section data-testid="hofstadter-strip-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Hofstadter · verified finite Harper strip</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
@@ -584,7 +592,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}
             </button>
             {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
-            {scene.provenance.kind !== "geometry-fixture" && <>
+            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && <>
               <button type="button" data-testid="quantum-open-source-run" disabled={openingRun}
                 onClick={() => void openSourceRun()}>
                 {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}

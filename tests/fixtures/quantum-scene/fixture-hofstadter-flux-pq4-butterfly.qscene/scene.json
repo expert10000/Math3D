@@ -1,0 +1,310 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "fixture-hofstadter-flux-pq4-butterfly",
+  "title": "Hofstadter flux sweep · supplied periodic spectrum",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "fixture-hofstadter-flux-pq4",
+    "jobId": "fixture-hofstadter-flux-pq4",
+    "model": "hofstadter_flux_sweep",
+    "engine": "native",
+    "engineVersion": "verified individual runs",
+    "computedAt": "2026-10-26T13:25:29.554Z",
+    "resultSha256": "7739a5cb40a2de0edefe0b1d7043cbc49e103bac92db93f6a57603509358ab62",
+    "adapter": "qvis/1",
+    "parameters": {
+      "hopping": 1,
+      "grid": 7,
+      "maxDenominator": 4,
+      "occupiedBands": 1
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "flux p/q",
+      "energy",
+      "display depth"
+    ],
+    "units": [
+      "flux quanta per plaquette",
+      "hopping energy",
+      "display only"
+    ]
+  },
+  "camera": {
+    "position": [
+      1.5,
+      -1.5,
+      16
+    ],
+    "target": [
+      0.5,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "datasets": [
+    {
+      "id": "flux-0-positions",
+      "path": "flux-0-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 49,
+      "unit": "flux, energy, display depth",
+      "bytes": 1176,
+      "sha256": "b74225db862dec311f95aa87448f7669960213b105ec8d01e38424497875a728"
+    },
+    {
+      "id": "flux-0-energy",
+      "path": "flux-0-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 49,
+      "unit": "hopping energy",
+      "bytes": 392,
+      "sha256": "3c1fbf3f8a8e3521d62f2f8176b67658919e6570e7d2e5fc552c887e95454d4a"
+    },
+    {
+      "id": "flux-1-positions",
+      "path": "flux-1-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 196,
+      "unit": "flux, energy, display depth",
+      "bytes": 4704,
+      "sha256": "9e68a1ffaa014bf375147640e8df8eccd27143725b86aa2ba95f5164d5203653"
+    },
+    {
+      "id": "flux-1-energy",
+      "path": "flux-1-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 196,
+      "unit": "hopping energy",
+      "bytes": 1568,
+      "sha256": "7e84db95d990abea47005b0e347ccd0d4b4a6b2738694ff2d380fea049cac506"
+    },
+    {
+      "id": "flux-2-positions",
+      "path": "flux-2-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 147,
+      "unit": "flux, energy, display depth",
+      "bytes": 3528,
+      "sha256": "973e443a912175779256dfd69b4d9025683d1aa45b64fdf3234b34cbb39ae76f"
+    },
+    {
+      "id": "flux-2-energy",
+      "path": "flux-2-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 147,
+      "unit": "hopping energy",
+      "bytes": 1176,
+      "sha256": "254750ab4830c23205871d5df69ebf9b8e13c139b8952f57e86bd2a276f21160"
+    },
+    {
+      "id": "flux-3-positions",
+      "path": "flux-3-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 98,
+      "unit": "flux, energy, display depth",
+      "bytes": 2352,
+      "sha256": "770214d182c3096106b38764b7519a7ed059f409cbf1305b587516c93897a371"
+    },
+    {
+      "id": "flux-3-energy",
+      "path": "flux-3-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 98,
+      "unit": "hopping energy",
+      "bytes": 784,
+      "sha256": "bc42b038901f9322605895536929b0e581fdff1f098a4bf1ce78c3a4cf7d12fc"
+    },
+    {
+      "id": "flux-4-positions",
+      "path": "flux-4-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 147,
+      "unit": "flux, energy, display depth",
+      "bytes": 3528,
+      "sha256": "47a6a8920e3a903c53c2ae8a837c563973b594a3447d980ec91369c939134d5d"
+    },
+    {
+      "id": "flux-4-energy",
+      "path": "flux-4-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 147,
+      "unit": "hopping energy",
+      "bytes": 1176,
+      "sha256": "5807c594105a94ddee61609a71df908db2337b75ef4480d65b5398a8d09d7b83"
+    },
+    {
+      "id": "flux-5-positions",
+      "path": "flux-5-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 196,
+      "unit": "flux, energy, display depth",
+      "bytes": 4704,
+      "sha256": "0e3deb82376daa4a327ad17c8322b6d5b3692ebfde92d66dbe66e9d0260942be"
+    },
+    {
+      "id": "flux-5-energy",
+      "path": "flux-5-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 196,
+      "unit": "hopping energy",
+      "bytes": 1568,
+      "sha256": "6918cbb6f15dc6320c3c91700375bb21ed676eaf83303963d2cc7b65b914bebd"
+    }
+  ],
+  "objects": [
+    {
+      "id": "flux-0",
+      "label": "Flux 0/1 · 1 bands",
+      "kind": "point-cloud",
+      "positions": "flux-0-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.9,
+        "size": 0.06
+      },
+      "scalars": "flux-0-energy"
+    },
+    {
+      "id": "flux-1",
+      "label": "Flux 1/4 · 4 bands",
+      "kind": "point-cloud",
+      "positions": "flux-1-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.9,
+        "size": 0.06
+      },
+      "scalars": "flux-1-energy"
+    },
+    {
+      "id": "flux-2",
+      "label": "Flux 1/3 · 3 bands",
+      "kind": "point-cloud",
+      "positions": "flux-2-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.9,
+        "size": 0.06
+      },
+      "scalars": "flux-2-energy"
+    },
+    {
+      "id": "flux-3",
+      "label": "Flux 1/2 · 2 bands",
+      "kind": "point-cloud",
+      "positions": "flux-3-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.9,
+        "size": 0.06
+      },
+      "scalars": "flux-3-energy"
+    },
+    {
+      "id": "flux-4",
+      "label": "Flux 2/3 · 3 bands",
+      "kind": "point-cloud",
+      "positions": "flux-4-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.9,
+        "size": 0.06
+      },
+      "scalars": "flux-4-energy"
+    },
+    {
+      "id": "flux-5",
+      "label": "Flux 3/4 · 4 bands",
+      "kind": "point-cloud",
+      "positions": "flux-5-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.9,
+        "size": 0.06
+      },
+      "scalars": "flux-5-energy"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "source-0",
+      "position": [
+        0,
+        -4.3,
+        0
+      ],
+      "text": "0/1 · run run-9147e1833761475a88869feee2ae5491 · SHA-256 56fba7539dcdcd41b38e3d1170156ce745cf71ede8a97dd43601cc375e1e9f3e · S:Y · G:none · H:undefined e²/h"
+    },
+    {
+      "id": "source-1",
+      "position": [
+        0.25,
+        -4.3,
+        0
+      ],
+      "text": "1/4 · run run-9ef5410e7c0d44359575ec1cf8acaf7a · SHA-256 d77180f67d5d2b118848e2dee6955eda0e3be2a84f0b0989d092a2584bb84667 · S:Y · G:1D,2C,3D · H:-1 e²/h"
+    },
+    {
+      "id": "source-2",
+      "position": [
+        0.3333333333333333,
+        -4.3,
+        0
+      ],
+      "text": "1/3 · run run-3b22d6e5fd0e4d26b217f513cdf04948 · SHA-256 42c487c082c6c27ce669124a325d6cac846515264bc2e58e043932689990c79f · S:Y · G:1D,2D · H:-1 e²/h"
+    },
+    {
+      "id": "source-3",
+      "position": [
+        0.5,
+        -4.3,
+        0
+      ],
+      "text": "1/2 · run run-c65aa0634d0f4891a044684ea1d2365a · SHA-256 da65925499f03c06332525892c5b0117fc6c70e9ae2f9accdc032bdda118f9a5 · S:N · G:1C · H:undefined e²/h"
+    },
+    {
+      "id": "source-4",
+      "position": [
+        0.6666666666666666,
+        -4.3,
+        0
+      ],
+      "text": "2/3 · run run-c22079bb873a49e3846780a649ebd80b · SHA-256 459d71d98cbe0e5f27fc6c5a8b70c1c04272e14759160fed7051f7dfcc0bc714 · S:Y · G:1D,2D · H:1 e²/h"
+    },
+    {
+      "id": "source-5",
+      "position": [
+        0.75,
+        -4.3,
+        0
+      ],
+      "text": "3/4 · run run-59ce07720d0948809edbf422ecbc406f · SHA-256 2705ab9448b335781d072bbe1e22056e86555a62340212c75c5908c5781a7e36 · S:Y · G:1D,2C,3D · H:1 e²/h"
+    }
+  ]
+}
