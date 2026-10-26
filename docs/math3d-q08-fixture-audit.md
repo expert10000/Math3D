@@ -262,3 +262,20 @@ Import, restart, exact sample inspection and changed-byte refusal have
 desktop acceptance coverage. This finite-strip localization is distinct from
 the periodic occupied-gap Chern result. No filling, Hall response, plateau,
 or edge-channel classification is supplied or inferred by Math3D.
+
+## Specified-filling Harper Hall admission (2026-10-26)
+
+Theory Lab now supplies a separate pinned periodic Harper run with one of four
+magnetic bands occupied. Its source result records a coarse and fine **global**
+gap, a Fermi energy in that gap, the occupied FHS Chern number, a magnetic
+Diophantine sign check, and the conditional ideal bulk conductance `−1 e²/h`
+for reduced flux `1/4`. Math3D displays these exact source values beside the
+verified band surfaces; it calculates no Hall response. The pinned result is
+`tests/fixtures/quantum-scene/hofstadter-hall-producer-result.json`.
+
+Open **File → Verified quantum examples → Hofstadter → Hofstadter · filled bulk
+Hall response**. Selecting a band point reveals its exact stored energy,
+momentum, dataset index, source run and hash. Restart and changed-byte refusal
+are covered by the import and Electron tests. The existing finite strip stays
+separate. This is an ideal clean-model bulk value, with no experimental plateau
+or classification of individual finite-strip edge channels.

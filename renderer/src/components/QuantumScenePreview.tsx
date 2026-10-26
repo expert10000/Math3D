@@ -510,6 +510,11 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
               <p>Square-lattice reduced magnetic flux p/q={scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}; hopping t={scene.provenance.parameters?.hopping}; {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid} stored k samples. Momentum is in rad / lattice constant; energy is in hopping energy units.</p>
               <p>Each band surface displays supplied samples in the magnetic zone. Select a band point for its exact stored k, energy, dataset index and source run. The displayed gap is a minimum adjacent-band separation on this grid.</p>
+              {scene.topology?.invariants.find(item=>item.id==="filled-hall-conductance")&&<div data-testid="hofstadter-hall-profile">
+                <p>Selected filling: {scene.provenance.parameters?.occupiedBands} occupied magnetic bands. The producer compares the global maximum occupied energy with the global minimum empty energy on coarse and finer grids.</p>
+                {scene.topology.invariants.filter(item=>item.id==="filled-global-gap"||item.id==="filled-hall-conductance").map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
+                <p>Conductance uses the producer's TKNN/FHS kx-ky sign convention in e²/h. This is an ideal clean-model bulk value conditional on the global gap, not an experimental plateau or a classification of individual strip channels. Math3D only displays the verified source.</p>
+              </div>}
               {scene.topology?.invariants.length ? <>
                 <p data-testid="hofstadter-chern-status">Producer occupied-gap Chern values: {scene.topology.invariants.map(item=>`${item.label} ${item.value??"undefined"} (${item.status})`).join(" · ")}. A touching middle gap remains undefined.</p>
                 <p>The separate FHS plaquette meshes use a z=0 display plane. Select a flux sample below to inspect its exact supplied k, phase in radians, dataset index and source run. Math3D computes no Harper spectrum, Berry flux, Chern number or edge state.</p>
