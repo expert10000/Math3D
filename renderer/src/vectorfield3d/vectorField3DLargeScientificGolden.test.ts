@@ -4,10 +4,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
   createVectorField3DDocument, integrateVectorField3DScientificTrajectories,
+  integrateVectorField3DVerifiedTileTrajectories, VectorField3DNeededTile,
+  VectorField3DVerifiedTileCache,
   sampleVectorField3DDerivedSlice, sampleVectorField3DProbe, sampleVectorField3DSlice,
   createVectorField3DDerivedLine, validGraph2DDerivedFieldOrigin,
   scientificTileLayout, scientificTileSampleLocation, sha256Checksum,
-  vectorField3DSourceStencilPoints, type VectorField3DSparseSamples,
+  vectorField3DSourceStencilPoints, vectorField3DSourceProbeStencilPoints,
+  type VectorField3DSparseSamples,
   type Graph2DFieldReference, type VectorField3DSource, type VectorField3DVolumes } from "@math3d/core";
 
 const directory = fileURLToPath(new URL("../../../output/scientific-vortex-80-overview.sscene/", import.meta.url));
@@ -82,6 +85,26 @@ const sparseTransfer = (kind: "stencil-slice" | "source-stencil-slice", fixedInd
     }) };
 };
 
+const sparseProbeTransfer = (indices: readonly [number, number, number]):
+  VectorField3DSparseSamples => {
+  const points = vectorField3DSourceProbeStencilPoints(shape, indices);
+  return { fingerprint, datasetId: "field", sourceShape: shape,
+    selection: { kind: "source-stencil-probe", indices },
+    components: names.map(name => {
+      const resource = manifest.resources.find(item => item.id === name)!;
+      const bytes = readFileSync(`${directory}${resource.path}`);
+      const layout = scientificTileLayout(shape, resource.tileShape);
+      const locations = points.map(point => scientificTileSampleLocation(shape,
+        resource.tileShape, point, layout));
+      const values = locations.map(item => bytes.readDoubleLE(
+        layout[item.tileIndex]!.offsetBytes + item.offsetBytes));
+      const transferred = Buffer.alloc(values.length * 8);
+      values.forEach((value, index) => transferred.writeDoubleLE(value, index * 8));
+      return { name, resourceSha256: resource.sha256, sampleSha256: hash(transferred), values,
+        verifiedTiles: [...new Set(locations.map(item => item.tileIndex))].sort((a, b) => a - b) };
+    }) };
+};
+
 // Independent derivatives of F=(-y*a,x*a,sin(z)/4), a=16/(16+x²+y²).
 function oracle([x, y, z]: readonly [number, number, number]) {
   const r2 = x * x + y * y, denominator = 16 + r2;
@@ -92,6 +115,11 @@ function oracle([x, y, z]: readonly [number, number, number]) {
   const qLaplacian = 1024 * (256 - 64 * r2 + r2 * r2) / denominator ** 4 +
     Math.cos(2 * z) / 8;
   return { divergence: Math.cos(z) / 4, curl: [0, 0, 512 / denominator ** 2],
+    jacobian: [[32 * x * y / denominator ** 2, -16 / denominator +
+      32 * y * y / denominator ** 2, 0],
+    [16 / denominator - 32 * x * x / denominator ** 2,
+      -32 * x * y / denominator ** 2, 0],
+    [0, 0, Math.cos(z) / 4]],
     gradient: qGradient.map(value => value / (2 * speed)),
     laplacian: qLaplacian / (2 * speed) -
       qGradient.reduce((sum, value) => sum + value * value, 0) / (4 * speed ** 3),
@@ -106,6 +134,39 @@ const close = (actual: number | null | undefined, expected: number, tolerance: n
 };
 
 describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
+  it("uses source-grid probe stencils for all point calculus outputs and rejects changed samples", () => {
+    for (const indices of [[positions[8]!, positions[13]!, positions[9]!],
+      [positions[0]!, positions[12]!, positions[17]!]] as const) {
+      const point = indices.map(coordinate) as [number, number, number];
+      const expected = oracle(point);
+      const samples = sparseProbeTransfer(indices);
+      const result = analyzeVectorField3DDifferential(document, point,
+        { manifestJson, fingerprint, samples });
+      expect(result.status).toBe("ready");
+      expect(result.stencilGrid).toBe("source");
+      expect(result.sourceHash).toBeDefined();
+      expect(result.verifiedSamples).toHaveLength(3);
+      expect(result.verifiedSamples?.every(part => part.verifiedTiles! < part.totalTiles!)).toBe(true);
+      expect(samples.components.every(part => part.values.length <= 9)).toBe(true);
+      expect(result.stencils.filter(stencil => stencil.boundary)).toHaveLength(indices[0] === 0 ? 1 : 0);
+      close(result.divergence, expected.divergence, 0.001);
+      for (let axis = 0; axis < 3; axis++) {
+        close(result.curl?.[axis], expected.curl[axis]!, 0.004);
+        close(result.magnitudeGradient?.[axis], expected.gradient[axis]!, 0.006);
+        for (let component = 0; component < 3; component++)
+          close(result.jacobian?.[component]?.[axis], expected.jacobian[component]![axis]!, 0.004);
+      }
+      close(result.magnitudeLaplacian, expected.laplacian, 0.05);
+      const changed = { ...samples, components: [{ ...samples.components[0]!,
+        values: samples.components[0]!.values.map((value, index) => index === 0 ? value + 1 : value) },
+        samples.components[1]!, samples.components[2]!] };
+      expect(() => analyzeVectorField3DDifferential(document, point,
+        { manifestJson, fingerprint, samples: changed })).toThrow(/checksum/);
+      expect(() => analyzeVectorField3DDifferential(document,
+        [point[0], point[1], coordinate(positions[18]!)],
+        { manifestJson, fingerprint, samples })).toThrow(/does not match the selected probe/);
+    }
+  });
   it("checks divergence, signed curl, |F| gradient and Laplacian at interior points", () => {
     for (const indices of [[8, 13, 9], [12, 23, 18], [24, 16, 26]] as const) {
       const point = at(...indices), expected = oracle(point);
@@ -270,4 +331,42 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
     expect(boundary.stopReason).toBe("boundary");
     close(boundary.points.at(-1)!.position[1], 4, 1e-10);
   });
+
+  it("traces both 80³ oracle modes from only the verified tiles they visit", () => {
+    const transfer = (indices: readonly [number, number, number]) => ({ fingerprint,
+      datasetId: "field", indices, components: names.map(name => {
+        const resource = manifest.resources.find(item => item.id === name)!;
+        const bytes = readFileSync(`${directory}${resource.path}`);
+        const layout = scientificTileLayout(shape, resource.tileShape);
+        const location = scientificTileSampleLocation(shape, resource.tileShape, indices, layout);
+        const tile = layout[location.tileIndex]!;
+        const tileBytes = bytes.subarray(tile.offsetBytes, tile.offsetBytes + tile.bytes);
+        return { name, resourceSha256: resource.sha256, tileIndex: tile.index,
+          tileSha256: resource.tileSha256[tile.index]!, start: tile.start, size: tile.size,
+          values: Array.from({ length: tile.bytes / 8 }, (_, index) =>
+            tileBytes.readDoubleLE(index * 8)) };
+      }) });
+    for (const mode of ["time-trajectory", "normalized-field-line"] as const) {
+      const seeded = createVectorField3DDocument({ ...source,
+        seeds: [{ id: "orbit", position: [1, 0, 0] }],
+        solver: { ...source.solver, mode, maxTime: 1, maxLineLength: 1 } },
+      { stableKey: `large-vortex-tile-${mode}` });
+      const cache = new VectorField3DVerifiedTileCache(seeded, manifestJson, fingerprint);
+      let result: ReturnType<typeof integrateVectorField3DVerifiedTileTrajectories>;
+      for (;;) {
+        try { result = integrateVectorField3DVerifiedTileTrajectories(seeded, cache); break; }
+        catch (cause) {
+          if (!(cause instanceof VectorField3DNeededTile)) throw cause;
+          cache.add(transfer(cause.indices));
+        }
+      }
+      const last = result.trajectories[0]!.points.at(-1)!;
+      expect(result.trajectories[0]!.stopReason).toBe(mode === "time-trajectory" ?
+        "time-limit" : "line-limit");
+      close(last.position[0], Math.cos(mode === "time-trajectory" ? 16 / 17 : 1), 0.02);
+      close(last.position[1], Math.sin(mode === "time-trajectory" ? 16 / 17 : 1), 0.02);
+      expect(cache.provenance.every(part => part.verifiedTiles < part.totalTiles)).toBe(true);
+      expect(cache.residentBytes).toBeLessThan(64 * 1024 * 1024);
+    }
+  }, 30_000);
 });

@@ -134,6 +134,7 @@ export * from "./vectorField3DScientific";
 export * from "./vectorField3DEquilibria";
 export * from "./vectorField3DSlices";
 export * from "./vectorField3DSparse";
+export * from "./vectorField3DVerifiedTileCache";
 export * from "./vectorField3DAnalyticLine";
 export * from "./vectorField3DDerivedLine";
 export * from "./vectorField3DDifferential";

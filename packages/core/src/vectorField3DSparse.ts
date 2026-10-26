@@ -8,7 +8,8 @@ import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./ve
 import type { VectorField3DSliceArtifact, VectorField3DProbeArtifact } from "./vectorField3DSlices";
 
 export type VectorField3DSparseSelection = Readonly<{ kind: "slice" | "stencil-slice" | "source-stencil-slice"; normalAxis: 0 | 1 | 2;
-  fixedIndex: number } | { kind: "probe"; indices: readonly [number, number, number] }>;
+  fixedIndex: number } | { kind: "probe" | "source-stencil-probe";
+    indices: readonly [number, number, number] }>;
 export type VectorField3DSparseSamples = Readonly<{ fingerprint: string; datasetId: string;
   sourceShape: readonly [number, number, number]; selection: VectorField3DSparseSelection;
   components: readonly Readonly<{ name: string; resourceSha256: string; sampleSha256: string;
@@ -42,7 +43,27 @@ export function vectorField3DSourceStencilPoints(shape: readonly [number, number
   return [...unique.values()];
 }
 
-const sampleProvenance = (manifestJson: string, samples: VectorField3DSparseSamples) => {
+/** Center plus the immediate source-grid neighbors needed for three-axis calculus. */
+export function vectorField3DSourceProbeStencilPoints(shape: readonly [number, number, number],
+  indices: readonly [number, number, number]): readonly (readonly [number, number, number])[] {
+  if (shape.some((size, axis) => !Number.isSafeInteger(size) || size < 2 || size > 256 ||
+      !lattice(size).includes(indices[axis])))
+    throw new RangeError("Source stencil probe is outside the bounded sample lattice.");
+  const center = [...indices] as [number, number, number];
+  const unique = new Map<string, [number, number, number]>([[center.join(","), center]]);
+  for (const axis of [0, 1, 2] as const) {
+    const at = indices[axis], size = shape[axis];
+    const neighbors = size === 2 ? [0, 1] : at === 0 ? [0, 1, 2] :
+      at === size - 1 ? [size - 3, size - 2, size - 1] : [at - 1, at, at + 1];
+    for (const index of neighbors) {
+      const point = [...center] as [number, number, number]; point[axis] = index;
+      unique.set(point.join(","), point);
+    }
+  }
+  return [...unique.values()];
+}
+
+export const vectorField3DSparseProvenance = (manifestJson: string, samples: VectorField3DSparseSamples) => {
   const parsed = parseScientificSceneManifest(manifestJson);
   if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
   const dataset = parsed.value.datasets.find(item => item.id === samples.datasetId);
@@ -100,11 +121,15 @@ export function verifyVectorField3DSparseSamples(document: VectorField3DDocument
     if (selection.kind === "source-stencil-slice")
       points = vectorField3DSourceStencilPoints(dataset.shape as [number, number, number],
         selection.normalAxis, selection.fixedIndex).map(point => [...point]);
-  } else if (selection.kind === "probe") {
+  } else if (selection.kind === "probe" || selection.kind === "source-stencil-probe") {
     if (!Array.isArray(selection.indices) || selection.indices.length !== 3 ||
         selection.indices.some((index, axis) => !Number.isSafeInteger(index) || !positions[axis]?.includes(index)))
       throw new TypeError("Probe index is outside the verified lattice.");
-    points = [[...selection.indices]];
+    if (selection.kind === "source-stencil-probe" && manifest.schema !== "scientific-scene/v3")
+      throw new TypeError("Source-grid probe stencils require v3 tiles.");
+    points = selection.kind === "source-stencil-probe" ?
+      vectorField3DSourceProbeStencilPoints(dataset.shape as [number, number, number],
+        selection.indices).map(point => [...point]) : [[...selection.indices]];
   } else throw new TypeError("Invalid sparse sample selection.");
   const offsets = points.map(([x, y, z]) => ((x! * dataset.shape[1]! + y!) * dataset.shape[2]! + z!) * 8);
   field.references.forEach((saved, index) => {
@@ -202,7 +227,7 @@ export function sampleVectorField3DSparseSlice(document: VectorField3DDocument, 
     shape: [coordinates[0].length, coordinates[1].length], values, channel,
     unit: field.componentUnits[componentIndex]!, min: Math.min(...values), max: Math.max(...values),
     evaluated: values.length, rejected: 0, sourceHash: link.sourceHash,
-    verifiedSamples: sampleProvenance(scientific.manifestJson, samples) };
+    verifiedSamples: vectorField3DSparseProvenance(scientific.manifestJson, samples) };
 }
 
 export function sampleVectorField3DSparseProbe(document: VectorField3DDocument,
@@ -230,5 +255,5 @@ export function sampleVectorField3DSparseProbe(document: VectorField3DDocument,
     structuralHash: checked.value.identity.structuralHash }, position: [...position] as [number, number, number],
     vector, magnitude, coordinateUnits: checked.value.source.axes.map(axis => axis.unit) as
       [string, string, string], componentUnits: field.componentUnits, sourceHash: link.sourceHash,
-    viewHash: view.viewHash, verifiedSamples: sampleProvenance(scientific.manifestJson, samples) };
+    viewHash: view.viewHash, verifiedSamples: vectorField3DSparseProvenance(scientific.manifestJson, samples) };
 }

@@ -6,7 +6,8 @@ import { openScientificGraphDatasets, previewScientificGraphSlice, previewScient
   previewScientificGraphVectorVolumeLine, previewScientificGraphComplexVolumeLines,
   previewScientificGraphPlane, previewScientificGraphVolume,
   previewScientificGraphVectorPlane, previewScientificGraphVectorVolume,
-  previewScientificGraphVectorSamples,
+  previewScientificGraphVectorSamples, previewScientificGraphVectorTile,
+  previewScientificGraphVectorTiles,
   type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
@@ -316,7 +317,8 @@ export function registerScientificSceneIpc(): void {
         selection.kind === "source-stencil-slice") &&
         Object.keys(selection).sort().join(",") === "fixedIndex,kind,normalAxis" &&
         [0, 1, 2].includes(selection.normalAxis as number) && Number.isSafeInteger(selection.fixedIndex) ||
-      selection.kind === "probe" && Object.keys(selection).sort().join(",") === "indices,kind" &&
+      (selection.kind === "probe" || selection.kind === "source-stencil-probe") &&
+        Object.keys(selection).sort().join(",") === "indices,kind" &&
         Array.isArray(selection.indices) && selection.indices.length === 3 &&
         selection.indices.every(Number.isSafeInteger));
     if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint,selection" ||
@@ -333,7 +335,50 @@ export function registerScientificSceneIpc(): void {
       request.components as [string, string, string], selection as
         { kind: "slice" | "stencil-slice" | "source-stencil-slice";
           normalAxis: 0 | 1 | 2; fixedIndex: number } |
-          { kind: "probe"; indices: [number, number, number] });
+          { kind: "probe" | "source-stencil-probe"; indices: [number, number, number] });
+  });
+  ipcMain.handle("scientificScenes:previewVectorTile", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" ||
+        Array.isArray(args[0])) throw new TypeError("Invalid vector tile request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint,indices" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        !Array.isArray(request.components) || request.components.length !== 3 ||
+        request.components.some(name => typeof name !== "string" ||
+          !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(name)) ||
+        new Set(request.components).size !== 3 ||
+        !Array.isArray(request.indices) || request.indices.length !== 3 ||
+        request.indices.some(index => !Number.isSafeInteger(index)))
+      throw new TypeError("Invalid vector tile request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint)
+      throw new Error("Graph scientific source is not active");
+    return previewScientificGraphVectorTile(source.directory, source.fingerprint, request.datasetId,
+      request.components as [string, string, string], request.indices as [number, number, number]);
+  });
+  ipcMain.handle("scientificScenes:previewVectorTiles", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" ||
+        Array.isArray(args[0])) throw new TypeError("Invalid vector tile batch request");
+    const request = args[0] as Record<string, unknown>;
+    if (Object.keys(request).sort().join(",") !== "components,datasetId,fingerprint,indicesBatch" ||
+        typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) ||
+        typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
+        !Array.isArray(request.components) || request.components.length !== 3 ||
+        request.components.some(name => typeof name !== "string" ||
+          !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(name)) ||
+        new Set(request.components).size !== 3 ||
+        !Array.isArray(request.indicesBatch) || request.indicesBatch.length < 1 ||
+        request.indicesBatch.length > 8 || request.indicesBatch.some(indices =>
+          !Array.isArray(indices) || indices.length !== 3 ||
+          indices.some(index => !Number.isSafeInteger(index))))
+      throw new TypeError("Invalid vector tile batch request");
+    const source = graphActive.get(event.sender);
+    if (!source || source.fingerprint !== request.fingerprint)
+      throw new Error("Graph scientific source is not active");
+    return previewScientificGraphVectorTiles(source.directory, source.fingerprint, request.datasetId,
+      request.components as [string, string, string],
+      request.indicesBatch as [number, number, number][]);
   });
   ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||

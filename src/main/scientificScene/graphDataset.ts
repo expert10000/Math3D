@@ -38,11 +38,15 @@ export type ScientificGraphVolume = { fingerprint: string; datasetId: string; co
 
 export type ScientificVectorSelection = { kind: "slice" | "stencil-slice" | "source-stencil-slice";
   normalAxis: 0 | 1 | 2; fixedIndex: number } |
-  { kind: "probe"; indices: [number, number, number] };
+  { kind: "probe" | "source-stencil-probe"; indices: [number, number, number] };
 export type ScientificVectorSamples = { fingerprint: string; datasetId: string;
   sourceShape: [number, number, number]; selection: ScientificVectorSelection;
   components: { name: string; resourceSha256: string; sampleSha256: string;
     verifiedChunks?: number[]; verifiedTiles?: number[]; values: number[] }[] };
+export type ScientificVectorTile = { fingerprint: string; datasetId: string;
+  indices: [number, number, number]; components: {
+    name: string; resourceSha256: string; tileIndex: number; tileSha256: string;
+    start: [number, number, number]; size: [number, number, number]; values: number[] }[] };
 
 const boundedPositions = (size: number) => Array.from({ length: Math.min(size, 32) }, (_, index) =>
   size === 1 ? 0 : Math.round(index * (size - 1) / (Math.min(size, 32) - 1)));
@@ -68,6 +72,22 @@ const sourceStencilPoints = (shape: [number, number, number], normalAxis: 0 | 1 
   return [...unique.values()];
 };
 
+const sourceProbeStencilPoints = (shape: [number, number, number],
+  indices: [number, number, number]): [number, number, number][] => {
+  const center = [...indices] as [number, number, number];
+  const unique = new Map<string, [number, number, number]>([[center.join(","), center]]);
+  for (const axis of [0, 1, 2] as const) {
+    const at = indices[axis], size = shape[axis];
+    const neighbors = size === 2 ? [0, 1] : at === 0 ? [0, 1, 2] :
+      at === size - 1 ? [size - 3, size - 2, size - 1] : [at - 1, at, at + 1];
+    for (const index of neighbors) {
+      const point = [...center] as [number, number, number]; point[axis] = index;
+      unique.set(point.join(","), point);
+    }
+  }
+  return [...unique.values()];
+};
+
 const tiledValues = async (metadata: ScientificSceneBundleMetadata, resourceId: string,
   shape: [number, number, number], points: readonly [number, number, number][]) => {
   const resource = metadata.manifest.resources.find(item => item.id === resourceId);
@@ -79,6 +99,56 @@ const tiledValues = async (metadata: ScientificSceneBundleMetadata, resourceId: 
   const values = locations.map(item => tiles.get(item.tileIndex)!.readDoubleLE(item.offsetBytes));
   return { resource, verifiedTiles, values };
 };
+
+/** One verified physical tile per component containing the requested source-grid cell. */
+export async function previewScientificGraphVectorTile(directory: string, fingerprint: string,
+  datasetId: string, components: readonly [string, string, string],
+  indices: [number, number, number]): Promise<ScientificVectorTile> {
+  return (await previewScientificGraphVectorTiles(directory, fingerprint,
+    datasetId, components, [indices]))[0]!;
+}
+
+/** One metadata check and one resource read per component for up to eight missing corners. */
+export async function previewScientificGraphVectorTiles(directory: string, fingerprint: string,
+  datasetId: string, components: readonly [string, string, string],
+  indicesBatch: readonly [number, number, number][]): Promise<ScientificVectorTile[]> {
+  const metadata = await readScientificSceneBundleMetadata(directory);
+  if (metadata.fingerprint !== fingerprint || metadata.bundleSchema !== "scientific-scene-bundle/v3")
+    throw new Error("Verified source tiles require the saved v3 scene.");
+  const dataset = metadata.manifest.datasets.find(item => item.id === datasetId);
+  if (dataset?.semanticType !== "vector-field" || dataset.shape.length !== 3 ||
+      dataset.components?.length !== 3 || new Set(components).size !== 3 ||
+      components.some(name => !dataset.components?.some(part => part.name === name)) ||
+      !Array.isArray(indicesBatch) || indicesBatch.length < 1 || indicesBatch.length > 8 ||
+      indicesBatch.some(indices => !Array.isArray(indices) || indices.length !== 3 ||
+        indices.some((index, axis) => !Number.isSafeInteger(index) ||
+          index < 0 || index >= dataset.shape[axis]!)))
+    throw new TypeError("Invalid vector tile location or components.");
+  const shape = dataset.shape as [number, number, number];
+  const perComponent = await Promise.all(components.map(async name => {
+    const resourceId = dataset.components!.find(part => part.name === name)!.resource;
+    const resource = metadata.manifest.resources.find(item => item.id === resourceId);
+    if (!resource?.tileShape || !resource.tileSha256)
+      throw new TypeError("Tiled vector component is missing.");
+    const layout = scientificTileLayout(shape, resource.tileShape);
+    const locations = indicesBatch.map(indices => scientificTileSampleLocation(shape,
+      resource.tileShape!, indices, layout));
+    const required = [...new Set(locations.map(location => location.tileIndex))].sort((a, b) => a - b);
+    const bytesByTile = await readScientificSceneTiles(metadata, resourceId, required);
+    const valuesByTile = new Map(required.map(index => {
+      const bytes = bytesByTile.get(index)!;
+      return [index, Array.from({ length: bytes.length / 8 }, (_, at) => bytes.readDoubleLE(at * 8))] as const;
+    }));
+    return locations.map(location => {
+      const tile = layout[location.tileIndex]!;
+      return { name, resourceSha256: resource.sha256, tileIndex: tile.index,
+        tileSha256: resource.tileSha256![tile.index]!, start: tile.start, size: tile.size,
+        values: valuesByTile.get(tile.index)! };
+    });
+  }));
+  return indicesBatch.map((indices, at) => ({ fingerprint, datasetId, indices,
+    components: perComponent.map(parts => parts[at]!) }));
+}
 
 /** A single plane or point, in deterministic plane-axis order, from manifest-pinned resources. */
 export async function previewScientificGraphVectorSamples(directory: string, fingerprint: string,
@@ -119,11 +189,15 @@ export async function previewScientificGraphVectorSamples(directory: string, fin
     }
     if (selection.kind === "source-stencil-slice")
       points = sourceStencilPoints(sourceShape, axis, selection.fixedIndex);
-  } else if (selection.kind === "probe") {
+  } else if (selection.kind === "probe" || selection.kind === "source-stencil-probe") {
     if (!Array.isArray(selection.indices) || selection.indices.length !== 3 ||
         selection.indices.some((index, axis) => !Number.isSafeInteger(index) || !lattice[axis]?.includes(index)))
       throw new RangeError("Probe is outside the bounded sample lattice.");
-    points = [[...selection.indices]];
+    if (selection.kind === "source-stencil-probe" &&
+        metadata.bundleSchema !== "scientific-scene-bundle/v3")
+      throw new TypeError("Source-grid probe stencils require v3 tiles.");
+    points = selection.kind === "source-stencil-probe" ?
+      sourceProbeStencilPoints(sourceShape, selection.indices) : [[...selection.indices]];
   } else throw new TypeError("Invalid sparse vector selection.");
   const offsets = points.map(([x, y, z]) => ((x * sourceShape[1] + y) * sourceShape[2] + z) * 8);
   const transferred = await Promise.all(components.map(async name => {

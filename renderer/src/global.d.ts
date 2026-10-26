@@ -646,6 +646,12 @@ declare global {
       previewVectorSamples: (request: { fingerprint: string; datasetId: string;
         components: [string, string, string]; selection: import("@math3d/core").VectorField3DSparseSelection }) =>
         Promise<import("@math3d/core").VectorField3DSparseSamples>;
+      previewVectorTile: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; indices: [number, number, number] }) =>
+        Promise<import("@math3d/core").VectorField3DVerifiedTile>;
+      previewVectorTiles: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; indicesBatch: [number, number, number][] }) =>
+        Promise<import("@math3d/core").VectorField3DVerifiedTile[]>;
       closeGraphDataset: (fingerprint: string) => Promise<boolean>;
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;

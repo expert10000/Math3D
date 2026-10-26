@@ -420,12 +420,26 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         return;
       }
       const refs = next.source.field.references, bridge = window.scientificScenes;
-      if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+      if (!bridge?.openGraphDatasetReference)
         throw new Error("Scientific derived analysis requires the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
         sceneFingerprint: refs[0].sceneFingerprint });
       if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
       fingerprint = opened.source.fingerprint;
+      if (JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3") {
+        if (!bridge.previewVectorSamples)
+          throw new Error("Source-grid calculus requires the desktop tile verifier.");
+        const samples = await bridge.previewVectorSamples({ fingerprint,
+          datasetId: refs[0].datasetId, components: componentNames(next),
+          selection: { kind: "source-stencil-probe", indices: position.map((value, axis) =>
+            sourceIndex(next, axis, value)) as [number, number, number] } });
+        const result = analyzeVectorField3DDifferential(next, position,
+          { manifestJson: opened.source.manifestJson, fingerprint, samples });
+        if (epoch === probeEpoch.current) { setDocument(next); setDifferential(result); }
+        return;
+      }
+      if (!bridge.previewVectorVolume)
+        throw new Error("Scientific derived analysis requires the desktop source verifier.");
       const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
         components: refs.map(ref => ref.component) as [string, string, string] });
       const result = analyzeVectorField3DDifferential(next, position,
@@ -531,15 +545,29 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       const next = currentDocument();
       if (!next.source.seeds.length) throw new TypeError("Add at least one seed before integrating trajectories.");
       const solve = (scientific?: { manifestJson: string; fingerprint: string;
-        volumes: Parameters<typeof integrateVectorField3DScientificTrajectories>[3] }) =>
+        volumes?: Parameters<typeof integrateVectorField3DScientificTrajectories>[3]; tileMode?: boolean }) =>
         new Promise<VectorField3DTrajectoryArtifact>((resolve, reject) => {
           if (cancelRequested.current) { reject(new Error("Trajectory integration cancelled.")); return; }
           const worker = new Worker(new URL("./trajectoryWorker.ts", import.meta.url), { type: "module" });
-          const finish = () => { worker.terminate(); cancelRunRef.current = null; };
+          let finished = false;
+          const finish = () => { finished = true; worker.terminate(); cancelRunRef.current = null; };
           cancelRunRef.current = () => { finish(); reject(new Error("Trajectory integration cancelled.")); };
-          worker.onmessage = (event: MessageEvent<{ progress: { completed: number; total: number;
+          worker.onmessage = (event: MessageEvent<{ tileRequest: { indices: [number, number, number] } } |
+            { progress: { completed: number; total: number;
             seedId: string; stopReason: string } } | { ok: true; result: VectorField3DTrajectoryArtifact } |
             { ok: false; error: string }>) => {
+            if ("tileRequest" in event.data) {
+              const refs = next.source.field.kind === "scientific-bundle" ? next.source.field.references : null;
+              if (!scientific || !refs || !window.scientificScenes?.previewVectorTile) {
+                finish(); reject(new Error("Verified source tile service is unavailable.")); return;
+              }
+              void window.scientificScenes.previewVectorTile({ fingerprint: scientific.fingerprint,
+                datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
+                  [string, string, string], indices: event.data.tileRequest.indices })
+                .then(tile => { if (!finished) worker.postMessage({ tileResponse: tile }); })
+                .catch(cause => { if (!finished) { finish(); reject(cause); } });
+              return;
+            }
             if ("progress" in event.data) {
               const { completed, total, seedId, stopReason } = event.data.progress;
               setSeedProgress({ completed, total });
@@ -560,12 +588,28 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       }
       const refs = next.source.field.references;
       const bridge = window.scientificScenes;
-      if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+      if (!bridge?.openGraphDatasetReference)
         throw new Error("Scientific vector trajectories require the desktop source verifier.");
       const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
         sceneFingerprint: refs[0].sceneFingerprint });
       if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
       fingerprint = opened.source.fingerprint;
+      if (JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3") {
+        if (!bridge.previewVectorTile) throw new Error("Verified source tile service is unavailable.");
+        const paths = await solve({ manifestJson: opened.source.manifestJson, fingerprint,
+          tileMode: true });
+        if (cancelRequested.current) throw new Error("Trajectory integration cancelled.");
+        const pathOnly: VectorField3DArrowArtifact = { source: paths.source,
+          verifiedSamples: null, density: next.source.display.density, evaluated: 0, accepted: 0,
+          rejected: 0, stationary: 0, arrows: [],
+          coordinateUnits: next.source.axes.map(axis => axis.unit) as [string, string, string],
+          componentUnits: next.source.field.componentUnits, timeUnit: next.source.timeUnit,
+          magnitudeScale: next.source.display.magnitudeScale, colorBy: next.source.display.colorBy };
+        setDocument(next); setArtifact(pathOnly); setTrajectories(paths);
+        return;
+      }
+      if (!bridge.previewVectorVolume)
+        throw new Error("Scientific vector trajectories require the desktop source verifier.");
       const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
         components: refs.map(ref => ref.component) as [string, string, string] });
       if (cancelRequested.current) throw new Error("Trajectory integration cancelled.");
@@ -592,26 +636,49 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     try {
       const next = currentDocument();
       let scientific: { manifestJson: string; fingerprint: string;
-        volumes: Parameters<typeof integrateVectorField3DScientificTrajectories>[3] } | undefined;
+        volumes?: Parameters<typeof integrateVectorField3DScientificTrajectories>[3];
+        tileMode?: boolean } | undefined;
       if (next.source.field.kind === "scientific-bundle") {
         const refs = next.source.field.references, bridge = window.scientificScenes;
-        if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume)
+        if (!bridge?.openGraphDatasetReference)
           throw new Error("Equilibrium search requires the desktop source verifier.");
         const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
           sceneFingerprint: refs[0].sceneFingerprint });
         if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
         fingerprint = opened.source.fingerprint;
-        const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
-          components: refs.map(ref => ref.component) as [string, string, string] });
-        scientific = { manifestJson: opened.source.manifestJson, fingerprint, volumes };
+        if (JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3") {
+          if (!bridge.previewVectorTiles) throw new Error("Verified source tile service is unavailable.");
+          scientific = { manifestJson: opened.source.manifestJson, fingerprint, tileMode: true };
+        } else {
+          if (!bridge.previewVectorVolume)
+            throw new Error("Equilibrium search requires the desktop source verifier.");
+          const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
+            components: refs.map(ref => ref.component) as [string, string, string] });
+          scientific = { manifestJson: opened.source.manifestJson, fingerprint, volumes };
+        }
       }
       if (cancelRequested.current) throw new Error("Equilibrium search cancelled.");
       const result = await new Promise<VectorField3DEquilibriumSearch>((resolve, reject) => {
         const worker = new Worker(new URL("./equilibriumWorker.ts", import.meta.url), { type: "module" });
-        const finish = () => { worker.terminate(); cancelRunRef.current = null; };
+        let finished = false;
+        const finish = () => { finished = true; worker.terminate(); cancelRunRef.current = null; };
         cancelRunRef.current = () => { finish(); reject(new Error("Equilibrium search cancelled.")); };
-        worker.onmessage = (event: MessageEvent<{ ok: true; result: VectorField3DEquilibriumSearch } |
+        worker.onmessage = (event: MessageEvent<{ tileRequests: { indices: readonly (readonly [number, number, number])[] } } |
+          { ok: true; result: VectorField3DEquilibriumSearch } |
           { ok: false; error: string }>) => {
+          if ("tileRequests" in event.data) {
+            const refs = next.source.field.kind === "scientific-bundle" ? next.source.field.references : null;
+            if (!scientific || !refs || !window.scientificScenes?.previewVectorTiles) {
+              finish(); reject(new Error("Verified source tile service is unavailable.")); return;
+            }
+            void window.scientificScenes.previewVectorTiles({ fingerprint: scientific.fingerprint,
+              datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
+                [string, string, string], indicesBatch: event.data.tileRequests.indices.map(point =>
+                  [...point] as [number, number, number]) })
+              .then(tiles => { if (!finished) worker.postMessage({ tilesResponse: tiles }); })
+              .catch(cause => { if (!finished) { finish(); reject(cause); } });
+            return;
+          }
           finish(); if (event.data.ok) resolve(event.data.result); else reject(new Error(event.data.error));
         };
         worker.onerror = event => { finish(); reject(new Error(event.message || "Equilibrium worker failed.")); };
@@ -970,10 +1037,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <button type="button" disabled={!workspace.probe || busy || lineBusy}
         onClick={() => void analyzeDifferential()}>Analyze field calculus</button>
       {!workspace.probe && <p>Place a physical-point probe to analyze this field.</p>}
-      {workspace.probe && !differential && <p>Run a bounded local analysis. Scientific bundles are
+      {workspace.probe && !differential && <p>Run a local analysis. Scientific bundles are
         reverified before each result.</p>}
       {differential && <div role="status" data-testid="vector-field3d-differential">
-        <p>Approximate · {differential.method} · source revision {differential.source.revision}
+        <p>Approximate · {differential.method}{differential.stencilGrid === "source" ? " on the source grid" : ""} · source revision {differential.source.revision}
           {differential.sourceHash && ` · source ${differential.sourceHash}`}.</p>
         {differential.status === "ready" ? <>
           <p>Divergence {differential.divergence!.toPrecision(6)} {differential.divergenceUnit}.</p>
@@ -989,7 +1056,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             `${differential.magnitudeLaplacian.toPrecision(5)} ${differential.magnitudeLaplacianUnit}` :
             "unavailable at this point"}.</p>
         </> : <p>Numerical result unavailable at this point.</p>}
-        <p>{differential.evaluations} bounded field evaluations.
+        <p>{differential.evaluations} verified field evaluations.
           {" "}Stencils: {differential.stencils.map(item =>
             `${item.axis} ${item.method} (${item.coordinates.map(value => value.toPrecision(5)).join(", ")} ${item.coordinateUnit})`).join(" · ")}.</p>
         {differential.verifiedSamples && <details aria-label="Field calculus sample provenance">
@@ -1019,6 +1086,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           "scientific-bundle" ? document.source.field.componentUnits[0] :
             document.source.field.components[0].unit}. Source revision {equilibriumSearch.source.revision}
           {equilibriumSearch.sourceHash && ` · hash ${equilibriumSearch.sourceHash}`}.</p>
+        {equilibriumSearch.verifiedTiles && <p>Verified source tiles: {equilibriumSearch.verifiedTiles.map(part =>
+          `${part.name} ${part.verifiedTiles}/${part.totalTiles} (${part.tileSetSha256})`).join(" · ")}.
+          Resident cache {equilibriumSearch.residentTileBytes} bytes.
+          Batched tile reads: {equilibriumSearch.tileBatchRequests}; completed seeds kept:
+          {" "}{equilibriumSearch.completedSeedsKept}.</p>}
         {equilibriumSearch.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
         <ol>{equilibriumSearch.candidates.map((candidate, index) => <li key={index}>
           <button type="button" aria-pressed={selectedEquilibrium === index}
@@ -1111,7 +1183,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {" "}<button type="button" onClick={onClose}>Close</button></div>
     {runStatus && <p role="status" aria-live="polite" data-testid="vector-field3d-run-status">{runStatus}</p>}
     {saveStatus && <p role="status" data-testid="vector-field3d-save-status">{saveStatus}</p>}
-    {artifact && <p role="status" aria-live="polite" data-testid="vector-field3d-render-status">
+    {artifact && artifact.evaluated > 0 && <p role="status" aria-live="polite" data-testid="vector-field3d-render-status">
       Rendered {artifact.accepted} of {artifact.evaluated} 3D samples; {artifact.stationary} stationary,
       {" "}{artifact.rejected} rejected. Source revision {artifact.source.revision}.
       Coordinate units {artifact.coordinateUnits.join(", ")}; vector units {artifact.componentUnits.join(", ")}.
@@ -1129,6 +1201,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <small>{trajectories.solver.method} · numerical approximation ·
         {" "}absolute tolerance {trajectories.solver.absoluteTolerance},
         relative tolerance {trajectories.solver.relativeTolerance}.</small>
+      {trajectories.verifiedTiles && <p>Verified source tiles: {trajectories.verifiedTiles.map(part =>
+        `${part.name} ${part.verifiedTiles}/${part.totalTiles} (${part.tileSetSha256})`).join(" · ")}.
+        Resident cache {trajectories.residentTileBytes} bytes; source {trajectories.sourceHash}.</p>}
     </div>}
     </div>
     <div className="scientific-field-explorer-viewer" aria-label="3D field viewer"

@@ -3,6 +3,7 @@ import { normalizeVectorField3DDocument, type VectorField3DDocument,
   type VectorField3DSource } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
 import { scientificPointWithinBounds } from "./scientificDatasetCoordinates";
+import { VectorField3DVerifiedTileCache } from "./vectorField3DVerifiedTileCache";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DStopReason = "boundary" | "stationary" | "undefined" | "step-limit" |
@@ -23,6 +24,10 @@ export type VectorField3DTrajectoryArtifact = Readonly<{
     maxEvaluations: number }>;
   trajectories: readonly VectorField3DTrajectory[];
   totalEvaluations: number;
+  verifiedTiles?: readonly Readonly<{ name: string; resourceSha256: string;
+    verifiedTiles: number; totalTiles: number; tileIndices: readonly number[];
+    tileSha256: readonly string[]; tileSetSha256: string }>[];
+  sourceHash?: string; residentTileBytes?: number;
 }>;
 export type VectorField3DTrajectoryOptions = Readonly<{
   direction?: "forward" | "backward";
@@ -337,4 +342,15 @@ export function integrateVectorField3DScientificTrajectories(document: VectorFie
     });
     return finiteVector(vector) ? vector : null;
   }, options);
+}
+
+/** The caller supplies a manifest-pinned, tile-verified source-grid sampler. */
+export function integrateVectorField3DVerifiedTileTrajectories(document: VectorField3DDocument,
+  cache: VectorField3DVerifiedTileCache,
+  options: VectorField3DTrajectoryOptions = {}): VectorField3DTrajectoryArtifact {
+  const checked = normalizeVectorField3DDocument(document);
+  if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+  if (checked.value.source.field.kind !== "scientific-bundle" || !cache.matches(checked.value))
+    throw new TypeError("Verified tile trajectories require a scientific vector field.");
+  return integrateWith(checked.value, point => cache.sample(point), options);
 }

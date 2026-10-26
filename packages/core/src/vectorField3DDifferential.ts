@@ -7,7 +7,8 @@ import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorF
 import { sampleVectorField3DSlice, vectorField3DVolumeProvenance,
   type VectorField3DSliceArtifact } from "./vectorField3DSlices";
 import { sampleVectorField3DSparseSlice, verifyVectorField3DSparseSamples,
-  vectorField3DSourceStencilPoints, type VectorField3DSparseSamples } from "./vectorField3DSparse";
+  vectorField3DSourceStencilPoints, vectorField3DSourceProbeStencilPoints,
+  vectorField3DSparseProvenance, type VectorField3DSparseSamples } from "./vectorField3DSparse";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DDifferentialStencil = Readonly<{
@@ -19,6 +20,7 @@ export type VectorField3DDifferentialArtifact = Readonly<{
   source: Readonly<{ documentId: string; revision: number; structuralHash: string }>;
   sourceHash: string | null; position: Vec3; quality: "approximate";
   status: "ready" | "unavailable"; method: "bounded-finite-difference";
+  stencilGrid?: "source";
   divergence: number | null; curl: Vec3 | null;
   divergenceUnit: string; curlUnit: string | null;
   jacobian: readonly Vec3[] | null; jacobianUnits: readonly (readonly string[])[];
@@ -74,11 +76,15 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
   const diagnostics: string[] = [], stencils: VectorField3DDifferentialStencil[] = [];
   const sourceHash = field.kind === "scientific-bundle" ?
     createScientificDatasetLink(field.references).sourceHash : null;
+  const sourceGrid = scientific && "samples" in scientific &&
+    (scientific.samples.selection.kind === "source-stencil-slice" ||
+      scientific.samples.selection.kind === "source-stencil-probe");
   let evaluations = 0;
   let verifiedSamples: VectorField3DSliceArtifact["verifiedSamples"];
   const unavailable = (message: string): VectorField3DDifferentialArtifact => ({
     source: identity, sourceHash, position: [...position] as [number, number, number],
     quality: "approximate", status: "unavailable", method: "bounded-finite-difference",
+    ...(sourceGrid ? { stencilGrid: "source" as const } : {}),
     divergence: null, curl: null, divergenceUnit: `1/${source.timeUnit}`, curlUnit: null,
     jacobian: null, jacobianUnits: [], localStructure: null,
     magnitudeGradient: null, magnitudeLaplacian: null,
@@ -96,8 +102,6 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     if (volumeValues && !verifiedVolumes)
       verifiedSamples = vectorField3DVolumeProvenance(scientific.manifestJson, volumeValues);
     const reference = field.references[0];
-    const sourceGrid = "samples" in scientific &&
-      scientific.samples.selection.kind === "source-stencil-slice";
     sourceIndicesByAxis = source.axes.map((_, axis) => {
       const sourceSize = reference.shape[axis]!, sampleSize = volumeValues?.[0].sampleShape[axis] ??
         (sourceGrid ? sourceSize : Math.min(sourceSize, 32));
@@ -224,6 +228,7 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
   diagnostics.push("Local finite differences are approximate; they do not certify smoothness or global behavior.");
   return { source: identity, sourceHash, position: [...position] as [number, number, number],
     quality: "approximate", status: "ready", method: "bounded-finite-difference",
+    ...(sourceGrid ? { stencilGrid: "source" as const } : {}),
     divergence, curl, divergenceUnit: `1/${source.timeUnit}`,
     curlUnit: uniformUnits ? `1/${source.timeUnit}` : null,
     jacobian: jacobian.map(row => row as unknown as Vec3), jacobianUnits, localStructure,
@@ -234,7 +239,25 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
 }
 
 export function analyzeVectorField3DDifferential(document: VectorField3DDocument, position: Vec3,
-  scientific?: ScientificSource): VectorField3DDifferentialArtifact {
+  scientific?: ScientificSource | SparseScientificSource): VectorField3DDifferentialArtifact {
+  if (scientific && "samples" in scientific) {
+    const samples = verifyVectorField3DSparseSamples(document, scientific.manifestJson,
+      scientific.fingerprint, scientific.samples);
+    if (samples.selection.kind !== "source-stencil-probe" ||
+        document.source.field.kind !== "scientific-bundle")
+      throw new TypeError("Point calculus requires a verified source-grid probe stencil.");
+    const reference = document.source.field.references[0];
+    const indices = position.map((coordinate, axis) => scientificCoordinateIndex({
+      ...reference.axes[axis]!, count: reference.shape[axis]! }, coordinate));
+    if (samples.selection.indices.some((index, axis) => index !== indices[axis]))
+      throw new TypeError("Point calculus stencil does not match the selected probe.");
+    const lookup = new Map<string, Vec3>();
+    vectorField3DSourceProbeStencilPoints(samples.sourceShape, samples.selection.indices)
+      .forEach((point, index) => lookup.set(point.join(","), samples.components.map(component =>
+        component.values[index]!) as [number, number, number]));
+    return { ...analyzeAt(document, position, scientific, undefined, lookup),
+      verifiedSamples: vectorField3DSparseProvenance(scientific.manifestJson, samples) };
+  }
   return analyzeAt(document, position, scientific);
 }
 

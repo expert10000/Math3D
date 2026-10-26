@@ -56,6 +56,8 @@
     "test:scientific:golden": "npm --prefix renderer test -- src/vectorfield3d/vectorField3DLargeScientificGolden.test.ts src/vectorfield3d/vectorField3DGolden.test.ts src/vectorfield3d/vectorField3DSlices.test.ts",
     "test:scientific:measured": "npm run build:main && node scripts/test-bco-dmo-vortex.mjs",
     "benchmark:scientific:derived": "npm run build:main && node scripts/benchmark-scientific-derived-profile.mjs",
+    "benchmark:scientific:probe": "npm run build:main && node scripts/benchmark-scientific-probe-calculus.mjs",
+    "benchmark:scientific:tile-solvers": "npm run build:main && node scripts/benchmark-scientific-tile-solvers.mjs",
     "build:python-worker": "node scripts/build-python-worker.mjs",
     "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "setup:cgal-worker": "powershell -ExecutionPolicy Bypass -File scripts/setup-cgal-python-worker.ps1",

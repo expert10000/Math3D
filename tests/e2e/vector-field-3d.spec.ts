@@ -313,6 +313,14 @@ test("SCI-04 chunked source renders verified sparse data and rejects a changed s
     console.log(`SCI-04 chunked click-to-first-slice/probe: ` +
       `${(firstSlice.firstView - firstSlice.started).toFixed(1)} / ` +
       `${(firstProbe.firstView - firstProbe.started).toFixed(1)} ms`);
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
+    const chunkedCalculus = editor.getByTestId("vector-field3d-differential");
+    await expect(chunkedCalculus).toContainText("Approximate · bounded-finite-difference");
+    await expect(chunkedCalculus).not.toContainText("on the source grid");
+    await editor.getByLabel("Field calculus sample provenance")
+      .getByText("Verified calculus samples").click();
+    await expect(editor.getByLabel("Field calculus sample provenance"))
+      .toContainText("source chunks verified");
     await editor.getByLabel("Slice displayed field").selectOption("curl-magnitude");
     await editor.getByRole("button", { name: "Preview slice" }).click();
     await expect(editor.getByRole("figure", { name: "YZ field slice" }))
@@ -364,6 +372,15 @@ test("SCI-04 chunked source renders verified sparse data and rejects a changed s
     await editor.getByText("Preview sample provenance").click();
     await expect(editor.getByLabel("3D preview provenance"))
       .toContainText("source chunks verified");
+    await editor.getByLabel("Seed x").fill("1");
+    await editor.getByRole("button", { name: "Add seed" }).click();
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toContainText("seed-1:");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .not.toContainText("Verified source tiles:");
+    await editor.getByRole("button", { name: "Find equilibria" }).click();
+    await expect(editor.getByLabel("Field equilibria")).toContainText("Source revision");
+    await expect(editor.getByLabel("Field equilibria")).not.toContainText("Verified source tiles:");
     const file = await open(join(directory, "east.f64"), "r+");
     try {
       const byte = Buffer.alloc(1);
@@ -567,6 +584,37 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
       ["vz", -0.000459]] as const)
       await expect(probe).toContainText(`${name} = ${value.toPrecision(5)} m/s`);
     await expect(probe).toContainText("source tiles verified");
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
+    const calculusResult = editor.getByTestId("vector-field3d-differential");
+    await expect(calculusResult).toContainText("bounded-finite-difference on the source grid");
+    await expect(calculusResult).toContainText("Jacobian:");
+    await expect(calculusResult).toContainText(/source sha256:[a-f0-9]{64}/);
+    const calculusProvenance = editor.getByLabel("Field calculus sample provenance");
+    await calculusProvenance.getByText("Verified calculus samples").click();
+    for (const name of ["vx", "vy", "vz"])
+      await expect(calculusProvenance).toContainText(new RegExp(`${name}:\\s*[a-f0-9]{64}`));
+    await expect(calculusProvenance).toContainText("source tiles verified");
+    const calculusResource = join(directory, "vx.f64");
+    const calculusOriginal = await readFile(calculusResource);
+    const calculusChanged = Buffer.from(calculusOriginal);
+    const sceneManifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+    const tileShape = sceneManifest.resources.find((item: { id: string }) => item.id === "vx").tileShape as number[];
+    const datasetShape = [47, 85, 55];
+    const tileCounts = datasetShape.map((size, axis) => Math.ceil(size / tileShape[axis]!));
+    let tileOffset = 0;
+    for (let x = 0; x < tileCounts[0]!; x++)
+      for (let y = 0; y < tileCounts[1]!; y++)
+        for (let z = 0; z < tileCounts[2]!; z++) {
+          if (x === 1 && y === 2 && z === 1) { calculusChanged[tileOffset] ^= 1; break; }
+          tileOffset += Math.min(tileShape[0]!, datasetShape[0]! - x * tileShape[0]!) *
+            Math.min(tileShape[1]!, datasetShape[1]! - y * tileShape[1]!) *
+            Math.min(tileShape[2]!, datasetShape[2]! - z * tileShape[2]!) * 8;
+        }
+    await writeFile(calculusResource, calculusChanged);
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
+    await expect(editor.getByRole("alert").filter({ hasText: /changed|checksum|integrity/i }))
+      .toBeVisible();
+    await writeFile(calculusResource, calculusOriginal);
     await editor.getByLabel("Slice displayed field").selectOption("curl-z");
     await editor.getByRole("button", { name: "Preview slice" }).click();
     await expect(editor.getByRole("figure", { name: "XY field slice" }))
@@ -628,6 +676,102 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-derived-"))
+      throw new Error("Unsafe Burgers fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SCI-12 measured Burgers trajectories and equilibria use verified v3 tiles", async ({}, testInfo) => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-burgers-tile-solvers-"));
+  const directory = join(root, "burgers.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory, { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    for (const [axis, value] of [["x", "-0.0017678"], ["y", "-0.0011839"],
+      ["z", "0.0096958"]] as const)
+      await editor.getByLabel(`Seed ${axis}`).fill(value);
+    await editor.getByRole("button", { name: "Add seed" }).click();
+    const started = await page.evaluate(() => performance.now());
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const trajectory = editor.getByTestId("vector-field3d-trajectory-status");
+    await expect(trajectory).toContainText("Verified source tiles:");
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" }))
+      .toContainText("Trajectory overlay: 1 seed");
+    const firstTrajectoryMs = await page.evaluate(start => performance.now() - start, started);
+    const trajectoryText = await trajectory.innerText();
+    expect(trajectoryText).toMatch(/vx \d+\/72/);
+    expect(trajectoryText).toMatch(/source sha256:[a-f0-9]{64}/);
+    const residentTileBytes = Number(trajectoryText.match(/Resident cache (\d+) bytes/)?.[1]);
+    expect(residentTileBytes).toBeGreaterThan(0);
+    expect(residentTileBytes).toBeLessThanOrEqual(64 * 1024 * 1024);
+    await testInfo.attach("burgers-first-tile-trajectory.json", { body: JSON.stringify({
+      firstTrajectoryMs: Math.round(firstTrajectoryMs * 10) / 10, residentTileBytes,
+      provenance: trajectoryText,
+    }), contentType: "application/json" });
+    const resource = join(directory, "vx.f64"), original = await readFile(resource);
+    const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+    const tileShape = manifest.resources.find((item: { id: string }) => item.id === "vx").tileShape as number[];
+    const sourceShape = [47, 85, 55];
+    let centerTileOffset = 0;
+    tileScan: for (let x = 0; x < 3; x++) for (let y = 0; y < 6; y++) for (let z = 0; z < 4; z++) {
+      if (x === 1 && y === 2 && z === 1) break tileScan;
+      centerTileOffset += Math.min(tileShape[0]!, sourceShape[0]! - x * tileShape[0]!) *
+        Math.min(tileShape[1]!, sourceShape[1]! - y * tileShape[1]!) *
+        Math.min(tileShape[2]!, sourceShape[2]! - z * tileShape[2]!) * 8;
+    }
+    const changedCenter = Buffer.from(original); changedCenter[centerTileOffset] ^= 1;
+    await writeFile(resource, changedCenter);
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByRole("alert").filter({ hasText: /integrity|checksum/i })).toBeVisible();
+    await writeFile(resource, original);
+    await editor.getByRole("button", { name: "Find equilibria" }).click();
+    await expect(editor.getByLabel("Field equilibria"))
+      .toContainText("Verified source tiles:");
+    await expect(editor.getByLabel("Field equilibria"))
+      .toContainText(/vx \d+\/72/);
+    const equilibriumText = await editor.getByLabel("Field equilibria").innerText();
+    const verifiedTileCount = Number(equilibriumText.match(/vx (\d+)\/72/)?.[1]);
+    const tileBatchCount = Number(equilibriumText.match(/Batched tile reads: (\d+)/)?.[1]);
+    const retainedSeedCount = Number(equilibriumText.match(/completed seeds kept:\s*(\d+)/)?.[1]);
+    expect(tileBatchCount).toBeLessThan(verifiedTileCount);
+    expect(retainedSeedCount).toBeGreaterThan(0);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(resource, changed);
+    await editor.getByRole("button", { name: "Find equilibria" }).click();
+    await expect(editor.getByRole("alert").filter({ hasText: /integrity|checksum/i })).toBeVisible();
+    await writeFile(resource, original);
+    await page.evaluate(() => {
+      const originalPost = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function(message) {
+        window.setTimeout(() => originalPost.call(this, message), 1200);
+      };
+    });
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await editor.getByRole("button", { name: "Cancel run" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status"))
+      .toContainText("cancelled; no partial result");
+    await expect(editor.getByTestId("vector-field3d-trajectory-status")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Find equilibria" }).click();
+    await editor.getByRole("button", { name: "Cancel search" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status"))
+      .toContainText("Equilibrium search cancelled; no partial result");
+    await expect(editor.getByLabel("Field equilibria"))
+      .not.toContainText("Verified source tiles:");
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-tile-solvers-"))
       throw new Error("Unsafe Burgers fixture cleanup path");
     await rm(root, { recursive: true, force: true });
   }
