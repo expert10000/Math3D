@@ -1051,6 +1051,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **Tile-backed solver checkpoint, 26 October 2026.** V3 trajectories and the bounded equilibrium search use the same manifest-pinned, 64 MiB verified tile cache; v1/v2 keep bounded volumes. The [tile-solver measurements](scientific-source-grid-stencils.md#tile-backed-trajectories-and-equilibrium-search) show a faster first trajectory on the 80³ and measured Burgers fixtures. Equilibrium search batches missing corner tiles and now resumes within the interrupted Newton iteration, retaining prior sampled stencil values. It matches seed-level resume and full restart candidates and evaluation counts. The observed time change is small and varies by run; domain-wide seeds still touch every tile and the tile path remains slower than bounded-volume search.
 
+**Adaptive equilibrium prefetch.** Broad v3 searches whose predicted seed coverage spans most tiles and whose complete tile set fits in 64 MiB now fetch verified tiles in batches of up to 32. Smaller searches retain on-demand reads. [Measurements](scientific-source-grid-stencils.md#adaptive-equilibrium-tile-prefetch) show fewer host calls and faster first results on both 80³ and measured Burgers, with the same candidates and evaluation counts. Both still touch every tile and remain slower than bounded-volume search.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

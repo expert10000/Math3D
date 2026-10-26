@@ -369,7 +369,7 @@ export function registerScientificSceneIpc(): void {
           !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(name)) ||
         new Set(request.components).size !== 3 ||
         !Array.isArray(request.indicesBatch) || request.indicesBatch.length < 1 ||
-        request.indicesBatch.length > 8 || request.indicesBatch.some(indices =>
+        request.indicesBatch.length > 32 || request.indicesBatch.some(indices =>
           !Array.isArray(indices) || indices.length !== 3 ||
           indices.some(index => !Number.isSafeInteger(index))))
       throw new TypeError("Invalid vector tile batch request");

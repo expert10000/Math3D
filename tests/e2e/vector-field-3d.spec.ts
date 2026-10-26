@@ -744,9 +744,11 @@ test("SCI-12 measured Burgers trajectories and equilibria use verified v3 tiles"
     const equilibriumText = await editor.getByLabel("Field equilibria").innerText();
     const verifiedTileCount = Number(equilibriumText.match(/vx (\d+)\/72/)?.[1]);
     const tileBatchCount = Number(equilibriumText.match(/Batched tile reads: (\d+)/)?.[1]);
+    const prefetchedTileCount = Number(equilibriumText.match(/prefetched tiles:\s*(\d+)/)?.[1]);
     const retainedSeedCount = Number(equilibriumText.match(/completed seeds kept:\s*(\d+)/)?.[1]);
     expect(tileBatchCount).toBeLessThan(verifiedTileCount);
-    expect(retainedSeedCount).toBeGreaterThan(0);
+    expect(prefetchedTileCount).toBe(verifiedTileCount);
+    expect(retainedSeedCount).toBe(0);
     const changed = Buffer.from(original); changed[0] ^= 1;
     await writeFile(resource, changed);
     await editor.getByRole("button", { name: "Find equilibria" }).click();

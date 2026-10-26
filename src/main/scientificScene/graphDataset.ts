@@ -108,7 +108,7 @@ export async function previewScientificGraphVectorTile(directory: string, finger
     datasetId, components, [indices]))[0]!;
 }
 
-/** One metadata check and one resource read per component for up to eight missing corners. */
+/** One metadata check and one resource read per component for a bounded tile batch. */
 export async function previewScientificGraphVectorTiles(directory: string, fingerprint: string,
   datasetId: string, components: readonly [string, string, string],
   indicesBatch: readonly [number, number, number][]): Promise<ScientificVectorTile[]> {
@@ -119,7 +119,7 @@ export async function previewScientificGraphVectorTiles(directory: string, finge
   if (dataset?.semanticType !== "vector-field" || dataset.shape.length !== 3 ||
       dataset.components?.length !== 3 || new Set(components).size !== 3 ||
       components.some(name => !dataset.components?.some(part => part.name === name)) ||
-      !Array.isArray(indicesBatch) || indicesBatch.length < 1 || indicesBatch.length > 8 ||
+      !Array.isArray(indicesBatch) || indicesBatch.length < 1 || indicesBatch.length > 32 ||
       indicesBatch.some(indices => !Array.isArray(indices) || indices.length !== 3 ||
         indices.some((index, axis) => !Number.isSafeInteger(index) ||
           index < 0 || index >= dataset.shape[axis]!)))

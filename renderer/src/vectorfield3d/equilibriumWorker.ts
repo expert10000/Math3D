@@ -11,12 +11,24 @@ let tileCache: VectorField3DVerifiedTileCache | null = null;
 let tileRun: (() => void) | null = null;
 let continuation: VectorField3DEquilibriumContinuation | undefined;
 let tileBatchRequests = 0, completedSeedsKept = 0;
+let prefetchQueue: (readonly [number, number, number])[] | null = null;
+let prefetchedTiles = 0;
+const requestPrefetch = () => {
+  if (!prefetchQueue) return;
+  if (!prefetchQueue.length) { prefetchQueue = null; tileRun?.(); return; }
+  self.postMessage({ tileRequests: { indices: prefetchQueue.splice(0, 32) } });
+};
 self.onmessage = (event: MessageEvent<Request>) => {
   try {
     if ("tilesResponse" in event.data) {
       if (!tileCache || !tileRun) throw new Error("Unexpected verified tile response.");
       event.data.tilesResponse.forEach(tile => tileCache!.add(tile));
-      tileBatchRequests++; tileRun(); return;
+      tileBatchRequests++;
+      if (prefetchQueue) {
+        prefetchedTiles += event.data.tilesResponse.length;
+        requestPrefetch();
+      } else tileRun();
+      return;
     }
     const document = event.data.document;
     if (event.data.scientific?.tileMode) {
@@ -27,7 +39,7 @@ self.onmessage = (event: MessageEvent<Request>) => {
           const result = searchVectorField3DVerifiedTileEquilibria(document, tileCache!, {}, continuation);
           self.postMessage({ ok: true, result: { ...result, verifiedTiles: tileCache!.provenance,
             residentTileBytes: tileCache!.residentBytes, tileBatchRequests,
-            completedSeedsKept } });
+            completedSeedsKept, prefetchedTiles } });
         } catch (cause) {
           if (cause instanceof VectorField3DEquilibriumNeedsTiles) {
             continuation = cause.continuation;
@@ -37,7 +49,10 @@ self.onmessage = (event: MessageEvent<Request>) => {
           else throw cause;
         }
       };
-      tileRun(); return;
+      const plan = tileCache.equilibriumPrefetchPlan(document);
+      if (plan) { prefetchQueue = [...plan]; requestPrefetch(); }
+      else tileRun();
+      return;
     }
     self.postMessage({ ok: true, result: searchVectorField3DEquilibria(event.data.document,
       event.data.scientific?.volumes ? { ...event.data.scientific,

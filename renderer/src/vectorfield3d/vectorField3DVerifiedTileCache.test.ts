@@ -12,8 +12,9 @@ const shape = [9, 9, 9] as const, tileShape = [3, 3, 3] as const;
 const names = ["east", "north", "up"] as const;
 const coordinate = (index: number) => -1 + index / 4;
 
-function fixture(signs: readonly [number, number, number], power: 1 | 3 = 1) {
-  const layout = scientificTileLayout(shape, tileShape);
+function fixture(signs: readonly [number, number, number], power: 1 | 3 = 1,
+  chosenTileShape: readonly [number, number, number] = tileShape) {
+  const layout = scientificTileLayout(shape, chosenTileShape);
   const payloads = names.map((name, component) => {
     const tiles = layout.map(tile => {
       const bytes = Buffer.alloc(tile.bytes);
@@ -27,7 +28,7 @@ function fixture(signs: readonly [number, number, number], power: 1 | 3 = 1) {
     });
     const resource = { id: name, path: `${name}.f64`, format: "f64le", count: 729,
       bytes: 729 * 8, sha256: sha(Buffer.concat(tiles)), layout: "tiled-3d",
-      tileShape, tileSha256: tiles.map(sha) };
+      tileShape: chosenTileShape, tileSha256: tiles.map(sha) };
     return { resource, tiles };
   });
   const manifestJson = JSON.stringify({ schema: "scientific-scene/v3", sceneId: "analytic-equilibrium",
@@ -54,7 +55,7 @@ function fixture(signs: readonly [number, number, number], power: 1 | 3 = 1) {
   { stableKey: `field-${power}-${signs.join("-")}` });
   const transfer = (indices: readonly [number, number, number]): VectorField3DVerifiedTile => ({
     fingerprint, datasetId: "field", indices, components: payloads.map(({ resource, tiles }, component) => {
-      const location = scientificTileSampleLocation(shape, tileShape, indices, layout);
+      const location = scientificTileSampleLocation(shape, chosenTileShape, indices, layout);
       const tile = layout[location.tileIndex]!, bytes = tiles[location.tileIndex]!;
       return { name: names[component]!, resourceSha256: resource.sha256,
         tileIndex: tile.index, tileSha256: resource.tileSha256[tile.index]!,
@@ -175,4 +176,22 @@ it("batches all missing interpolation-corner tiles at a three-axis tile boundary
     cause.indicesBatch.forEach(indices => cache.add(scene.transfer(indices)));
   }
   expect(cache.sample([-.375, -.375, -.375])).toEqual([-.375, -.75, -1.125]);
+});
+
+it("prefetches a dense seed lattice only when all tiles fit the verified cache", () => {
+  const scene = fixture([1, 1, 1]);
+  const cache = new VectorField3DVerifiedTileCache(scene.document,
+    scene.manifestJson, scene.fingerprint);
+  const plan = cache.equilibriumPrefetchPlan(scene.document);
+  expect(plan).toHaveLength(27);
+  expect(new Set(plan!.map(indices => indices.join(","))).size).toBe(27);
+  expect(cache.equilibriumPrefetchPlan(scene.document, 5, 100)).toBeNull();
+  const small = new VectorField3DVerifiedTileCache(scene.document,
+    scene.manifestJson, scene.fingerprint, 1024);
+  expect(small.equilibriumPrefetchPlan(scene.document)).toBeNull();
+  const sparseScene = fixture([1, 1, 1], 1, [2, 2, 2]);
+  const sparseCache = new VectorField3DVerifiedTileCache(sparseScene.document,
+    sparseScene.manifestJson, sparseScene.fingerprint);
+  expect(sparseCache.equilibriumPrefetchPlan(sparseScene.document, 3)).toBeNull();
+  expect(sparseCache.equilibriumPrefetchPlan(sparseScene.document, 5)).toHaveLength(125);
 });

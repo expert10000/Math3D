@@ -1089,7 +1089,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {equilibriumSearch.verifiedTiles && <p>Verified source tiles: {equilibriumSearch.verifiedTiles.map(part =>
           `${part.name} ${part.verifiedTiles}/${part.totalTiles} (${part.tileSetSha256})`).join(" · ")}.
           Resident cache {equilibriumSearch.residentTileBytes} bytes.
-          Batched tile reads: {equilibriumSearch.tileBatchRequests}; completed seeds kept:
+          Batched tile reads: {equilibriumSearch.tileBatchRequests}; prefetched tiles:
+          {" "}{equilibriumSearch.prefetchedTiles ?? 0}; completed seeds kept:
           {" "}{equilibriumSearch.completedSeedsKept}.</p>}
         {equilibriumSearch.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
         <ol>{equilibriumSearch.candidates.map((candidate, index) => <li key={index}>

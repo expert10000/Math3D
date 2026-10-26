@@ -55,3 +55,16 @@ The next benchmark run compared the preceding seed-level checkpoint with the New
 | Measured Burgers | 78.0 ms | 308.9 ms | 285.2 ms | 63 | 72/72 | 5,273,400 B |
 
 Both methods returned the same candidates, evaluation counts (2,829 for the vortex, 3,411 for Burgers), attempted seeds and rejected seeds. The iteration checkpoint saved 26.8 ms and 23.7 ms in this run. A second sequential run measured 591.2→574.1 ms for the vortex and 280.9→286.6 ms for Burgers. This is a small change relative to run-to-run variation. Domain-wide search still reads every tile and remains slower than the bounded-volume path. Disk cache, JIT and process load affect these timings.
+
+## Adaptive equilibrium tile prefetch
+
+For v3 fields whose three components share a tile shape, the search estimates how much of the tile grid its regular seeds cover. If coverage is at least 70%, all tiles fit within the 64 MiB cache, and the evaluation budget is large enough for a broad search, the worker fetches the manifest-pinned tiles in batches of at most 32 before starting Newton iterations. Other fields keep the on-demand tile path. Host reads verify each tile hash, and the worker verifies the transferred values again when adding them to the cache. Cancellation discards the worker and any in-flight response.
+
+One sequential local benchmark measured:
+
+| Scene | Bounded volume | Newton resume on demand | Adaptive prefetch | Tile requests | Verified tiles per component |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 80³ vortex | 90.9 ms | 576.2 ms | 366.4 ms | 122 → 4 | 125/125 |
+| Measured Burgers | 69.4 ms | 269.1 ms | 161.6 ms | 63 → 3 | 72/72 |
+
+All tile-search modes returned identical candidates, evaluations, attempted seeds and rejected seeds. Prefetch improves these broad searches but still reads every tile and remains slower than the bounded-volume path. The bounded path samples a 32³ transfer, while the tile path interpolates the source grid; timings include transfer and calculation and vary with cache and process load.

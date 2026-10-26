@@ -101,6 +101,37 @@ export class VectorField3DVerifiedTileCache {
     }
   }
   get residentBytes(): number { return this.cachedBytes; }
+  /** Prefetch only when the regular seed lattice spans most of a small, equally tiled field. */
+  equilibriumPrefetchPlan(document: VectorField3DDocument,
+    seedResolution: 3 | 5 = 5, maxEvaluations = 40000): readonly Vec3[] | null {
+    if (!this.matches(document) || ![3, 5].includes(seedResolution) ||
+        this.resources.some(resource => resource.tileShape.some((size, axis) =>
+          size !== this.resources[0]!.tileShape[axis])) ||
+        this.layouts[0]!.length > 4096 ||
+        this.layouts.reduce((sum, layout) => sum + layout.reduce((bytes, tile) =>
+          bytes + tile.bytes, 0), 0) > this.maxBytes)
+      return null;
+    const checked = normalizeVectorField3DDocument(document);
+    if (!checked.ok || maxEvaluations < seedResolution ** 3 * 12) return null;
+    const axes = checked.value.source.axes;
+    const seeds = [...checked.value.source.seeds.map(seed => seed.position),
+      ...Array.from({ length: seedResolution ** 3 }, (_, index) => {
+        const coordinates = [Math.floor(index / seedResolution ** 2),
+          Math.floor(index / seedResolution) % seedResolution, index % seedResolution]
+          .map((step, axis) => axes[axis]!.min +
+            (axes[axis]!.max - axes[axis]!.min) * step / (seedResolution - 1));
+        return [coordinates[0]!, coordinates[1]!, coordinates[2]!] as Vec3;
+      })];
+    const touched = new Set(seeds.map(position => {
+      const indices = position.map((coordinate, axis) => Math.min(this.shape[axis]! - 1,
+        Math.max(0, Math.round((coordinate - this.referenceAxes[axis]!.origin) /
+          this.referenceAxes[axis]!.spacing)))) as [number, number, number];
+      return scientificTileSampleLocation(this.shape, this.resources[0]!.tileShape,
+        indices, this.layouts[0]!).tileIndex;
+    }));
+    if (touched.size / this.layouts[0]!.length < 0.7) return null;
+    return this.layouts[0]!.map(tile => tile.start);
+  }
   matches(document: VectorField3DDocument): boolean {
     return document.source.field.kind === "scientific-bundle" &&
       document.source.field.references[0].sceneFingerprint === this.fingerprint &&

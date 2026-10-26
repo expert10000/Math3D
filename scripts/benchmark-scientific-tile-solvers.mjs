@@ -60,10 +60,19 @@ try {
       const boundedMs = performance.now() - boundedStart;
       const variants = [];
       for (const variant of mode === "equilibria" ?
-        ["restart", "seed-resume-batch", "newton-resume-batch"] : ["single"]) {
+        ["restart", "seed-resume-batch", "newton-resume-batch", "adaptive-prefetch"] : ["single"]) {
         const cache = new core.VectorField3DVerifiedTileCache(document, manifestJson, fingerprint);
         const tileStart = performance.now();
         let result, requests = 0, continuation;
+        if (variant === "adaptive-prefetch") {
+          const plan = cache.equilibriumPrefetchPlan(document);
+          if (!plan) throw new Error(`Expected a dense prefetch plan: ${label}`);
+          for (let at = 0; at < plan.length; at += 32) {
+            const tiles = await host.previewScientificGraphVectorTiles(directory, fingerprint,
+              "field", names, plan.slice(at, at + 32));
+            tiles.forEach(tile => cache.add(tile)); requests++;
+          }
+        }
         for (;;) {
           try {
             result = mode === "trajectory" ?
@@ -77,6 +86,8 @@ try {
               cache.add(tile); requests++; continue;
             }
             if (!(cause instanceof core.VectorField3DEquilibriumNeedsTiles)) throw cause;
+            if (variant === "adaptive-prefetch")
+              throw new Error(`Prefetched equilibrium field still missed a tile: ${label}`);
             if (variant !== "restart") {
               if (variant === "seed-resume-batch") {
                 const { activeSeed, ...checkpoint } = cause.continuation;
