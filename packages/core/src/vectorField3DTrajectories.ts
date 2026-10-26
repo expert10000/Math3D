@@ -30,6 +30,19 @@ export type VectorField3DTrajectoryOptions = Readonly<{
   onProgress?: (completed: number, total: number, trajectory: VectorField3DTrajectory) => void;
 }>;
 
+export const vectorField3DTolerancePresets = {
+  exploratory: { absoluteTolerance: 1e-4, relativeTolerance: 1e-4 },
+  balanced: { absoluteTolerance: 1e-6, relativeTolerance: 1e-6 },
+  precise: { absoluteTolerance: 1e-8, relativeTolerance: 1e-8 },
+} as const;
+export type VectorField3DTolerancePreset = keyof typeof vectorField3DTolerancePresets;
+export function vectorField3DTolerancePresetOf(solver: VectorField3DSource["solver"]):
+  VectorField3DTolerancePreset | "custom" {
+  return (Object.keys(vectorField3DTolerancePresets) as VectorField3DTolerancePreset[])
+    .find(name => solver.absoluteTolerance === vectorField3DTolerancePresets[name].absoluteTolerance &&
+      solver.relativeTolerance === vectorField3DTolerancePresets[name].relativeTolerance) ?? "custom";
+}
+
 const add = (a: Vec3, b: Vec3, scale: number): Vec3 =>
   [a[0] + scale * b[0], a[1] + scale * b[1], a[2] + scale * b[2]];
 const distance = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);

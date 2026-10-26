@@ -36,7 +36,8 @@ export type ScientificGraphVolume = { fingerprint: string; datasetId: string; co
   verifiedOverview?: string;
   resourceSha256: string; sampleSha256: string; values: number[] };
 
-export type ScientificVectorSelection = { kind: "slice" | "stencil-slice"; normalAxis: 0 | 1 | 2; fixedIndex: number } |
+export type ScientificVectorSelection = { kind: "slice" | "stencil-slice" | "source-stencil-slice";
+  normalAxis: 0 | 1 | 2; fixedIndex: number } |
   { kind: "probe"; indices: [number, number, number] };
 export type ScientificVectorSamples = { fingerprint: string; datasetId: string;
   sourceShape: [number, number, number]; selection: ScientificVectorSelection;
@@ -45,6 +46,27 @@ export type ScientificVectorSamples = { fingerprint: string; datasetId: string;
 
 const boundedPositions = (size: number) => Array.from({ length: Math.min(size, 32) }, (_, index) =>
   size === 1 ? 0 : Math.round(index * (size - 1) / (Math.min(size, 32) - 1)));
+
+const sourceStencilPoints = (shape: [number, number, number], normalAxis: 0 | 1 | 2,
+  fixedIndex: number): [number, number, number][] => {
+  const plane = [0, 1, 2].filter(axis => axis !== normalAxis);
+  const unique = new Map<string, [number, number, number]>();
+  const add = (point: [number, number, number]) => unique.set(point.join(","), point);
+  for (const first of boundedPositions(shape[plane[0]!]!))
+    for (const second of boundedPositions(shape[plane[1]!]!)) {
+      const center = [0, 0, 0] as [number, number, number];
+      center[normalAxis] = fixedIndex; center[plane[0]!] = first; center[plane[1]!] = second;
+      add(center);
+      for (const axis of [0, 1, 2] as const) {
+        const index = center[axis], size = shape[axis];
+        const neighbors = size === 2 ? [0, 1] : index === 0 ? [0, 1, 2] :
+          index === size - 1 ? [size - 3, size - 2, size - 1] : [index - 1, index, index + 1];
+        for (const neighbor of neighbors) { const point = [...center] as [number, number, number];
+          point[axis] = neighbor; add(point); }
+      }
+    }
+  return [...unique.values()];
+};
 
 const tiledValues = async (metadata: ScientificSceneBundleMetadata, resourceId: string,
   shape: [number, number, number], points: readonly [number, number, number][]) => {
@@ -75,11 +97,15 @@ export async function previewScientificGraphVectorSamples(directory: string, fin
   const sourceShape = [...dataset.shape] as [number, number, number];
   const lattice = sourceShape.map(boundedPositions);
   let points: [number, number, number][];
-  if (selection.kind === "slice" || selection.kind === "stencil-slice") {
+  if (selection.kind === "slice" || selection.kind === "stencil-slice" ||
+      selection.kind === "source-stencil-slice") {
     const axis = selection.normalAxis;
     if (![0, 1, 2].includes(axis) || !Number.isSafeInteger(selection.fixedIndex) ||
         !lattice[axis]?.includes(selection.fixedIndex))
       throw new RangeError("Slice is outside the bounded sample lattice.");
+    if (selection.kind === "source-stencil-slice" &&
+        metadata.bundleSchema !== "scientific-scene-bundle/v3")
+      throw new TypeError("Source-grid stencils require v3 tiles.");
     const plane = [0, 1, 2].filter(item => item !== axis);
     points = [];
     const index = lattice[axis]!.indexOf(selection.fixedIndex);
@@ -91,6 +117,8 @@ export async function previewScientificGraphVectorSamples(directory: string, fin
       point[axis] = lattice[axis]![layer]!; point[plane[0]!] = first; point[plane[1]!] = second;
       points.push(point);
     }
+    if (selection.kind === "source-stencil-slice")
+      points = sourceStencilPoints(sourceShape, axis, selection.fixedIndex);
   } else if (selection.kind === "probe") {
     if (!Array.isArray(selection.indices) || selection.indices.length !== 3 ||
         selection.indices.some((index, axis) => !Number.isSafeInteger(index) || !lattice[axis]?.includes(index)))

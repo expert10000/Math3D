@@ -9,7 +9,8 @@ const color = (value: number | null, min: number, max: number) => {
 };
 
 export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoom = 1,
-  center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs }: {
+  center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
+  onSendDerivedLineToGraphs, derivedLineBusy }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -19,6 +20,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onProbeSelect?: (point: readonly [number, number, number]) => void;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
+  onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
+    profileFixedCoordinate: number) => void;
+  derivedLineBusy?: boolean;
 }) {
   const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
   const [first, second] = slice.planeAxes, width = 560, height = 480;
@@ -111,13 +115,16 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     <p role="status">{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit};
       {" "}{slice.rejected} invalid of {slice.evaluated} samples. Dimmed cells lie outside the display clip;
       clipping and camera changes do not alter these values.
-      {slice.method && ` Approximate · ${slice.method}; ${slice.boundarySamples} boundary stencils have reduced accuracy.`}</p>
+      {slice.method && ` Approximate · ${slice.method}${slice.stencilGrid === "source" ?
+        " on the source grid" : " on the bounded preview grid"}; ${slice.boundarySamples} boundary stencils have reduced accuracy.`}</p>
     {slice.verifiedSamples && <details aria-label="Slice sample provenance"><summary>Verified slice samples</summary>
       <p>Source <code>{slice.sourceHash}</code>.</p>
       <ul>{slice.verifiedSamples.map(part => <li key={part.name}>{part.name}: <code>{part.sampleSha256}</code> ·
         {part.verifiedTiles !== undefined ?
           ` ${part.verifiedTiles} of ${part.totalTiles} source tiles verified` :
-          ` ${part.verifiedChunks} of ${part.totalChunks} source chunks verified`}</li>)}</ul>
+          part.verifiedChunks !== undefined ?
+            ` ${part.verifiedChunks} of ${part.totalChunks} source chunks verified` :
+            " complete source resource verified"}</li>)}</ul>
     </details>}
     {profile.length > 0 && <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
       <label>Line direction <select aria-label="Line profile direction" value={profileDirection}
@@ -148,6 +155,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           slice.channel as "p" | "q" | "r",
           slice.planeAxes[profileDirection] as 0 | 1 | 2, probe as [number, number, number])}>
         Send analytic line to Graphs</button>}
+      {document.source.field.kind === "scientific-bundle" && onSendDerivedLineToGraphs &&
+        ["divergence", "curl-x", "curl-y", "curl-z", "grad-speed-x", "grad-speed-y",
+          "grad-speed-z", "grad-speed-magnitude", "laplacian-speed"].includes(slice.channel) &&
+        <button type="button" data-testid="vector-field3d-send-derived-line"
+          disabled={derivedLineBusy} onClick={() => onSendDerivedLineToGraphs(slice,
+            slice.planeAxes[profileDirection] as 0 | 1 | 2,
+            probe![slice.planeAxes[1 - profileDirection]])}>
+          {derivedLineBusy ? "Verifying derived line…" : "Send derived line to Graphs"}</button>}
     </section>}
   </figure>;
 }

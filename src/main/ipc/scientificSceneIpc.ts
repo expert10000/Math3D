@@ -312,7 +312,8 @@ export function registerScientificSceneIpc(): void {
     const request = args[0] as Record<string, unknown>;
     const selection = request.selection as Record<string, unknown> | undefined;
     const validSelection = selection && typeof selection === "object" && !Array.isArray(selection) &&
-      ((selection.kind === "slice" || selection.kind === "stencil-slice") &&
+      ((selection.kind === "slice" || selection.kind === "stencil-slice" ||
+        selection.kind === "source-stencil-slice") &&
         Object.keys(selection).sort().join(",") === "fixedIndex,kind,normalAxis" &&
         [0, 1, 2].includes(selection.normalAxis as number) && Number.isSafeInteger(selection.fixedIndex) ||
       selection.kind === "probe" && Object.keys(selection).sort().join(",") === "indices,kind" &&
@@ -330,7 +331,8 @@ export function registerScientificSceneIpc(): void {
     if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorSamples(source.directory, source.fingerprint, request.datasetId,
       request.components as [string, string, string], selection as
-        { kind: "slice" | "stencil-slice"; normalAxis: 0 | 1 | 2; fixedIndex: number } |
+        { kind: "slice" | "stencil-slice" | "source-stencil-slice";
+          normalAxis: 0 | 1 | 2; fixedIndex: number } |
           { kind: "probe"; indices: [number, number, number] });
   });
   ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {

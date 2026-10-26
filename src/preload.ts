@@ -582,7 +582,8 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
     components: [string, string, string]; sampleLimit?: number }) =>
     ipcRenderer.invoke("scientificScenes:previewVectorVolume", request),
   previewVectorSamples: (request: { fingerprint: string; datasetId: string;
-    components: [string, string, string]; selection: { kind: "slice" | "stencil-slice"; normalAxis: 0 | 1 | 2;
+    components: [string, string, string]; selection: { kind: "slice" | "stencil-slice" |
+      "source-stencil-slice"; normalAxis: 0 | 1 | 2;
       fixedIndex: number } | { kind: "probe"; indices: [number, number, number] } }) =>
     ipcRenderer.invoke("scientificScenes:previewVectorSamples", request),
   closeGraphDataset: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:closeGraphDataset", fingerprint),

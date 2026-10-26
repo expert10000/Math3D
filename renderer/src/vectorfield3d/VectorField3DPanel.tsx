@@ -11,8 +11,10 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type VectorField3DDifferentialArtifact,
   type VectorField3DEquilibriumSearch,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
+  createVectorField3DDerivedLine, type VectorField3DDerivedLine,
   integrateVectorField3DScientificTrajectories,
-  vectorField3DSeedPreset,
+  vectorField3DSeedPreset, vectorField3DTolerancePresets, vectorField3DTolerancePresetOf,
+  type VectorField3DTolerancePreset,
   scientificPointWithinBounds,
   scientificCoordinateIndex,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
@@ -26,6 +28,7 @@ import { VectorField3DSliceView } from "./VectorField3DSliceView";
 import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
 import { previewVerifiedVectorField3D } from "./previewVerifiedVectorField3D";
 import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
+import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerivedLine";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 export const fieldExplorerSessionKey = "math3d.scientific-field-explorer.session.v1";
@@ -48,13 +51,14 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 }
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
-  onAddGraphLine, isGraphLineImported, onAddAnalyticLine }: {
+  onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
+  onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
@@ -261,8 +265,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       fingerprint = opened.source.fingerprint;
       if (isChunked(opened.source.manifestJson)) {
         const channel = next.workspace?.sliceChannel ?? "component";
+        const tiled = JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3";
         const samples = await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
-          components: componentNames(next), selection: { kind: channel === "component" ? "slice" : "stencil-slice", normalAxis,
+          components: componentNames(next), selection: { kind: channel === "component" ? "slice" :
+            tiled ? "source-stencil-slice" : "stencil-slice", normalAxis,
             fixedIndex: sourceIndex(next, normalAxis, coordinate) } });
         const scientific = { manifestJson: opened.source.manifestJson, fingerprint, samples };
         setSlice(channel === "component" ? sampleVectorField3DSparseSlice(next, normalAxis, coordinate, scientific) :
@@ -316,11 +322,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       fingerprint = opened.source.fingerprint;
       if (isChunked(opened.source.manifestJson)) {
         const channel = next.workspace?.sliceChannel ?? "component";
+        const tiled = JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3";
         const axes = [2, 1, 0] as const;
         const slices = await Promise.all(axes.map(async axis => {
           const coordinate = next.workspace!.sliceCoordinates[axis];
           const samples = await bridge.previewVectorSamples({ fingerprint: fingerprint!, datasetId: refs[0].datasetId,
-            components: componentNames(next), selection: { kind: channel === "component" ? "slice" : "stencil-slice", normalAxis: axis,
+            components: componentNames(next), selection: { kind: channel === "component" ? "slice" :
+              tiled ? "source-stencil-slice" : "stencil-slice", normalAxis: axis,
               fixedIndex: sourceIndex(next, axis, coordinate) } });
           const scientific = { manifestJson: opened.source.manifestJson, fingerprint: fingerprint!, samples };
           return channel === "component" ? sampleVectorField3DSparseSlice(next, axis, coordinate, scientific) :
@@ -466,6 +474,21 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       onAddAnalyticLine(line);
       setError(""); setRunStatus(`Sent ${line.finiteCount} finite analytic line samples to Graphs.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const sendDerivedLine = async (sourceSlice: VectorField3DSliceArtifact,
+    varyingAxis: 0 | 1 | 2, profileFixedCoordinate: number) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      const next = currentDocument();
+      const preview = createVectorField3DDerivedLine(next, sourceSlice, varyingAxis,
+        profileFixedCoordinate);
+      const fresh = await reverifyVectorField3DDerivedLine(preview.origin);
+      if (!onAddDerivedLine) throw new Error("Graph authoring is unavailable.");
+      onAddDerivedLine(fresh);
+      setRunStatus(`Sent ${fresh.rows.length} verified ${fresh.origin.operation} samples to Graphs.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLineBusy(false); }
   };
   const addSeed = () => {
     try {
@@ -790,6 +813,19 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           <option value="rk4-step-doubling">RK4 step doubling</option>
           <option value="rk45">Dormand–Prince RK45</option>
         </select></label>
+        <label>Tolerance preset <select aria-label="Trajectory tolerance preset"
+          value={vectorField3DTolerancePresetOf(document.source.solver)}
+          onChange={event => {
+            const name = event.target.value as VectorField3DTolerancePreset | "custom";
+            if (name === "custom") return;
+            updateSource({ ...document.source, solver: { ...document.source.solver,
+              ...vectorField3DTolerancePresets[name] } });
+          }}>
+          <option value="exploratory">Exploratory · 1e-4</option>
+          <option value="balanced">Balanced · 1e-6</option>
+          <option value="precise">Precise · 1e-8</option>
+          <option value="custom">Custom</option>
+        </select></label>
         <label>Direction <select aria-label="Trajectory direction" value={direction}
           onChange={event => { setDirection(event.target.value as "forward" | "backward");
             setTrajectories(null); }}>
@@ -841,6 +877,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         "Adaptive RK4 step doubling"} · at most 2,048 attempted steps per seed in this preview.
         {" "}{document.source.solver.mode === "normalized-field-line" ?
           "Line parameter measures distance, not physical time." : "Time parameter uses the field time unit."}
+        {" "}The tolerance controls integration error, not the resolution of sampled source data.
         {" "}Each trace reports its stop reason; a numerical trace does not certify topology.</p>
     </details>
     </fieldset>
@@ -921,7 +958,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           {probeArtifact.verifiedSamples && <p>{probeArtifact.verifiedSamples.map(part =>
             `${part.name}: ${part.verifiedTiles !== undefined ?
               `${part.verifiedTiles}/${part.totalTiles} source tiles` :
-              `${part.verifiedChunks}/${part.totalChunks} source chunks`} verified; sample ${part.sampleSha256}`).join(" · ")}.</p>}
+              part.verifiedChunks !== undefined ?
+                `${part.verifiedChunks}/${part.totalChunks} source chunks` :
+                "complete source resource"} verified; sample ${part.sampleSha256}`).join(" · ")}.</p>}
         </div>}
         {!probeArtifact && <p role="status">Probe values require a fresh source verification.</p>}
       </>}
@@ -953,6 +992,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <p>{differential.evaluations} bounded field evaluations.
           {" "}Stencils: {differential.stencils.map(item =>
             `${item.axis} ${item.method} (${item.coordinates.map(value => value.toPrecision(5)).join(", ")} ${item.coordinateUnit})`).join(" · ")}.</p>
+        {differential.verifiedSamples && <details aria-label="Field calculus sample provenance">
+          <summary>Verified calculus samples</summary>
+          <ul>{differential.verifiedSamples.map(part => <li key={part.name}>{part.name}:
+            {" "}<code>{part.sampleSha256}</code> · {part.verifiedTiles !== undefined ?
+              `${part.verifiedTiles} of ${part.totalTiles} source tiles verified` :
+              part.verifiedChunks !== undefined ?
+                `${part.verifiedChunks} of ${part.totalChunks} source chunks verified` :
+                "complete source resource verified"}</li>)}</ul>
+        </details>}
         {differential.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
       </div>}
     </section>
@@ -1103,6 +1151,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               center={workspace.viewCenter[layer]}
               onCenterChange={center => setViewCenter(layer, center)}
               onSendLineToGraphs={sendAnalyticLine}
+              onSendDerivedLineToGraphs={sendDerivedLine} derivedLineBusy={lineBusy || busy}
               onProbeSelect={point => void selectProbe(point)} /> :
             <p role="status">{busy ? "Verifying" : "Preview all views to show"}
               {" "}the {layer.toUpperCase()} slice.</p>}</div>)}</div> :
@@ -1113,6 +1162,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         center={workspace.viewCenter[workspace.selectedLayer as "xy" | "xz" | "yz"]}
         onCenterChange={center => setViewCenter(workspace.selectedLayer as "xy" | "xz" | "yz", center)}
         onSendLineToGraphs={sendAnalyticLine}
+        onSendDerivedLineToGraphs={sendDerivedLine} derivedLineBusy={lineBusy || busy}
         onProbeSelect={point => void selectProbe(point)} /> :
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
           Saved scientific bundles are reverified before values appear.</div> :

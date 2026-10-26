@@ -514,10 +514,122 @@ test("SCI-04 larger generated scientific field shows verified overview before re
     await expect(editor.getByRole("figure", { name: "XY field slice" })).toBeVisible();
     await editor.getByLabel("Slice sample provenance").getByText("Verified slice samples").click();
     await expect(editor.getByLabel("Slice sample provenance")).toContainText("source tiles verified");
+    await editor.getByLabel("Slice displayed field").selectOption("curl-z");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    const figure = editor.getByRole("figure", { name: "XY field slice" });
+    await expect(figure).toContainText("Approximate · bounded-finite-difference");
+    await figure.locator('[data-probe-cell="15-15"]').click();
+    await expect(editor.getByTestId("vector-field3d-probe-values"))
+      .toContainText("source tiles verified");
+    await editor.getByRole("button", { name: "Analyze field calculus" }).click();
+    const calculus = editor.getByLabel("Field calculus sample provenance");
+    await calculus.getByText("Verified calculus samples").click();
+    await expect(calculus).toContainText("source tiles verified");
+    await editor.getByLabel("Trajectory tolerance preset").selectOption("precise");
+    await expect(editor.getByLabel("Trajectory absolute tolerance")).toHaveValue("1e-8");
+    await expect(editor.getByLabel("Trajectory relative tolerance")).toHaveValue("1e-8");
   } finally {
     await closeSurfaceApp(app);
     if (resolve(root).startsWith(`${resolve(tmpdir())}${sep}`))
       await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("SCI-12 measured Burgers vortex keeps source axes and values across Explorer views", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-burgers-derived-"));
+  const directory = join(root, "burgers.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory, { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor).toContainText("shape 47 × 85 × 55");
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-transfer-status"))
+      .toContainText("Full verified transfer lattice: 32 × 32 × 32");
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByLabel("Slice physical coordinate").selectOption({ index: 15 });
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await editor.getByRole("figure", { name: "XY field slice" })
+      .locator('[data-probe-cell="15-16"]').click();
+    const probe = editor.getByTestId("vector-field3d-probe-values");
+    for (const [name, value] of [["vx", 0.000005], ["vy", -0.000163],
+      ["vz", -0.000459]] as const)
+      await expect(probe).toContainText(`${name} = ${value.toPrecision(5)} m/s`);
+    await expect(probe).toContainText("source tiles verified");
+    await editor.getByLabel("Slice displayed field").selectOption("curl-z");
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("Approximate · bounded-finite-difference");
+    await expect(editor.getByRole("figure", { name: "XY field slice" }))
+      .toContainText("on the source grid");
+    for (const plane of ["XZ", "YZ"] as const) {
+      await editor.getByRole("button", { name: `${plane} slice` }).click();
+      await editor.getByRole("button", { name: "Preview slice" }).click();
+      await expect(editor.getByRole("figure", { name: `${plane} field slice` })).toBeVisible();
+      await expect(editor.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
+      await expect(probe).toContainText("vx = 0.0000050000 m/s");
+    }
+    await editor.getByRole("button", { name: "XY slice" }).click();
+    await editor.getByRole("button", { name: "Preview slice" }).click();
+    await editor.getByRole("button", { name: "Show line profile through point" }).click();
+    const profile = editor.getByRole("region", { name: "Line profile through probe" });
+    await profile.getByTestId("vector-field3d-send-derived-line").click();
+    await expect(editor.getByTestId("vector-field3d-run-status"))
+      .toContainText("verified curl-z samples");
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id as string);
+    await projectPanel.getByTestId(`project-open-saved-${projectId}`).click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    const origin = await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
+        .find((entry: { module: string }) => entry.module === "graph2d");
+      const objects = [...(graph.replay?.payload?.transactions ?? [])].reverse()
+        .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+          transaction.commands[0]?.command.payload.source?.objects)
+        .find((value: unknown) => Array.isArray(value)) ?? graph.checkpoint.source.objects;
+      return objects.find((item: { derivedOrigin?: unknown }) => item.derivedOrigin)?.derivedOrigin;
+    });
+    expect(origin).toMatchObject({ kind: "vector-field3d-derived-line", operation: "curl-z",
+      stencilGrid: "source",
+      normalAxis: 2, varyingAxis: 0, xUnit: "m", yUnit: "1/s",
+      verifiedSamples: [{ name: "vx", sampleSha256: expect.any(String) },
+        { name: "vy", sampleSha256: expect.any(String) },
+        { name: "vz", sampleSha256: expect.any(String) }] });
+    expect(origin.sourceDocumentJson).toContain(directory.replace(/\\/g, "\\\\"));
+    const graphInspector = page.getByLabel("Graph inspector");
+    const compactInspector = page.locator(".graph2d-compact-panels > details:has(> summary:text-is('Inspector'))");
+    if (!await graphInspector.isVisible()) await compactInspector.locator(":scope > summary").click();
+    const visibleInspector = await graphInspector.isVisible() ? graphInspector : compactInspector;
+    await visibleInspector.getByTestId("graph2d-reverify-derived-line").click();
+    await expect(visibleInspector.getByRole("status").filter({ hasText: "Verified against saved source." }))
+      .toBeVisible();
+    const resource = join(directory, "vx.f64"), original = await readFile(resource);
+    const changed = Buffer.from(original); changed[16 * 16 * 16 * 8] ^= 1;
+    await writeFile(resource, changed);
+    await visibleInspector.getByTestId("graph2d-reverify-derived-line").click();
+    await expect(visibleInspector.getByRole("status").filter({ hasText: /changed|checksum|integrity/i }))
+      .toBeVisible();
+    await writeFile(resource, original);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-derived-"))
+      throw new Error("Unsafe Burgers fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
   }
 });
 

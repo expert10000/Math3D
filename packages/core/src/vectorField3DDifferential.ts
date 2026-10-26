@@ -4,9 +4,10 @@ import { scientificAxisCoordinate, scientificCoordinateIndex,
 import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
-import { sampleVectorField3DSlice, type VectorField3DSliceArtifact } from "./vectorField3DSlices";
+import { sampleVectorField3DSlice, vectorField3DVolumeProvenance,
+  type VectorField3DSliceArtifact } from "./vectorField3DSlices";
 import { sampleVectorField3DSparseSlice, verifyVectorField3DSparseSamples,
-  type VectorField3DSparseSamples } from "./vectorField3DSparse";
+  vectorField3DSourceStencilPoints, type VectorField3DSparseSamples } from "./vectorField3DSparse";
 
 type Vec3 = readonly [number, number, number];
 export type VectorField3DDifferentialStencil = Readonly<{
@@ -24,6 +25,7 @@ export type VectorField3DDifferentialArtifact = Readonly<{
   localStructure: "rotation-dominated" | "strain-dominated" | "balanced" | null;
   magnitudeGradient: Vec3 | null; magnitudeLaplacian: number | null;
   magnitudeGradientUnit: string | null; magnitudeLaplacianUnit: string | null;
+  verifiedSamples?: VectorField3DSliceArtifact["verifiedSamples"];
   stencils: readonly VectorField3DDifferentialStencil[];
   evaluations: number; diagnostics: readonly string[];
 }>;
@@ -73,6 +75,7 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
   const sourceHash = field.kind === "scientific-bundle" ?
     createScientificDatasetLink(field.references).sourceHash : null;
   let evaluations = 0;
+  let verifiedSamples: VectorField3DSliceArtifact["verifiedSamples"];
   const unavailable = (message: string): VectorField3DDifferentialArtifact => ({
     source: identity, sourceHash, position: [...position] as [number, number, number],
     quality: "approximate", status: "unavailable", method: "bounded-finite-difference",
@@ -80,7 +83,7 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     jacobian: null, jacobianUnits: [], localStructure: null,
     magnitudeGradient: null, magnitudeLaplacian: null,
     magnitudeGradientUnit: null, magnitudeLaplacianUnit: null,
-    stencils, evaluations, diagnostics: [...diagnostics, message],
+    stencils, evaluations, diagnostics: [...diagnostics, message], verifiedSamples,
   });
   let lattice: readonly (readonly number[])[] | null = null;
   let sourceIndicesByAxis: readonly (readonly number[])[] | null = null;
@@ -90,10 +93,14 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     if (!scientific) throw new TypeError("Reverify all three scientific components before derived analysis.");
     volumeValues = verifiedVolumes ?? ("volumes" in scientific ? verifyVectorField3DVolumes(checked,
       scientific.manifestJson, scientific.fingerprint, scientific.volumes) : null);
+    if (volumeValues && !verifiedVolumes)
+      verifiedSamples = vectorField3DVolumeProvenance(scientific.manifestJson, volumeValues);
     const reference = field.references[0];
+    const sourceGrid = "samples" in scientific &&
+      scientific.samples.selection.kind === "source-stencil-slice";
     sourceIndicesByAxis = source.axes.map((_, axis) => {
       const sourceSize = reference.shape[axis]!, sampleSize = volumeValues?.[0].sampleShape[axis] ??
-        Math.min(sourceSize, 32);
+        (sourceGrid ? sourceSize : Math.min(sourceSize, 32));
       return Array.from({ length: sampleSize }, (_, sampleIndex) => sampleSize === 1 ? 0 :
         Math.round(sampleIndex * (sourceSize - 1) / (sampleSize - 1)));
     });
@@ -223,7 +230,7 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     magnitudeGradient, magnitudeLaplacian,
     magnitudeGradientUnit: scalarUnitsAvailable ? `(${componentUnits[0]})/${source.axes[0].unit}` : null,
     magnitudeLaplacianUnit: scalarUnitsAvailable ? `(${componentUnits[0]})/${source.axes[0].unit}²` : null,
-    stencils, evaluations, diagnostics };
+    stencils, evaluations, diagnostics, verifiedSamples };
 }
 
 export function analyzeVectorField3DDifferential(document: VectorField3DDocument, position: Vec3,
@@ -254,8 +261,16 @@ export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
   if (sparse) {
     const samples = verifyVectorField3DSparseSamples(document, sparse.manifestJson,
       sparse.fingerprint, sparse.samples);
-    if (samples.selection.kind !== "stencil-slice" || samples.selection.normalAxis !== normalAxis)
+    if ((samples.selection.kind !== "stencil-slice" &&
+        samples.selection.kind !== "source-stencil-slice") ||
+        samples.selection.normalAxis !== normalAxis)
       throw new TypeError("Derived slice requires a verified neighboring-plane stencil.");
+    if (samples.selection.kind === "source-stencil-slice") {
+      vectorField3DSourceStencilPoints(samples.sourceShape, normalAxis,
+        samples.selection.fixedIndex).forEach((point, index) =>
+        sparseLookup.set(point.join(","), samples.components.map(component =>
+          component.values[index]!) as [number, number, number]));
+    } else {
     const shape = samples.sourceShape, lattice = shape.map(size => Array.from({ length: Math.min(size, 32) },
       (_, index) => size === 1 ? 0 : Math.round(index * (size - 1) / (Math.min(size, 32) - 1))));
     const index = lattice[normalAxis]!.indexOf(samples.selection.fixedIndex);
@@ -272,6 +287,7 @@ export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
           component.values[offset]!) as [number, number, number]);
         offset++;
       }
+    }
   }
   const values: (number | null)[] = [];
   let boundarySamples = 0;
@@ -308,6 +324,7 @@ export function sampleVectorField3DDerivedSlice(document: VectorField3DDocument,
     `(${componentUnit})/${document.source.axes[0].unit}²` : channel.startsWith("grad-speed") ?
       `(${componentUnit})/${document.source.axes[0].unit}` : `1/${document.source.timeUnit}`;
   return { ...base, channel, unit, values,
+    ...(sparse?.samples.selection.kind === "source-stencil-slice" ? { stencilGrid: "source" as const } : {}),
     min: finite.length ? Math.min(...finite) : NaN,
     max: finite.length ? Math.max(...finite) : NaN,
     evaluated: values.length, rejected: values.length - finite.length,

@@ -2,6 +2,7 @@ import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
 import { scientificAxisCoordinate, scientificCoordinateIndex,
   scientificPointWithinBounds } from "./scientificDatasetCoordinates";
 import { createScientificDatasetLink, createScientificDerivedView } from "./scientificDatasetLink";
+import { parseScientificSceneManifest } from "./scientificSceneManifest";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
 
@@ -14,6 +15,7 @@ export type VectorField3DSliceArtifact = Readonly<{
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
     "grad-speed-z" | "grad-speed-magnitude" | "laplacian-speed";
   unit: string; min: number; max: number;
+  stencilGrid?: "source";
   method?: "bounded-finite-difference"; boundarySamples?: number;
   evaluated: number; rejected: number; sourceHash?: string;
   verifiedSamples?: readonly Readonly<{ name: string; sampleSha256: string;
@@ -37,6 +39,22 @@ const sourceSamples = (count: number) => {
   const size = Math.min(count, 32);
   return Array.from({ length: size }, (_, index) =>
     size === 1 ? 0 : Math.round(index * (count - 1) / (size - 1)));
+};
+
+export const vectorField3DVolumeProvenance = (manifestJson: string, volumes: VectorField3DVolumes):
+  NonNullable<VectorField3DSliceArtifact["verifiedSamples"]> => {
+  const parsed = parseScientificSceneManifest(manifestJson);
+  if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
+  const dataset = parsed.value.datasets.find(item => item.id === volumes[0].datasetId);
+  return volumes.map(volume => {
+    const resourceId = dataset?.components?.find(item => item.name === volume.component)?.resource;
+    const resource = parsed.value.resources.find(item => item.id === resourceId);
+    return { name: volume.component, sampleSha256: volume.sampleSha256,
+      ...(volume.verifiedChunks ? { verifiedChunks: volume.verifiedChunks.length,
+        totalChunks: resource?.chunkSha256?.length ?? 0 } : {}),
+      ...(volume.verifiedTiles ? { verifiedTiles: volume.verifiedTiles.length,
+        totalTiles: resource?.tileSha256?.length ?? 0 } : {}) };
+  });
 };
 
 /** Only coordinates represented by the bounded transfer lattice are offered for verified bundles. */
@@ -63,10 +81,12 @@ export function sampleVectorField3DSlice(document: VectorField3DDocument,
   const planeAxes = [0, 1, 2].filter(axis => axis !== normalAxis) as [number, number];
   let coordinates: [number[], number[]], shape: [number, number], at: (i: number, j: number) =>
     [number, number, number] | null, sourceHash: string | undefined;
+  let verifiedSamples: VectorField3DSliceArtifact["verifiedSamples"];
   if (field.kind === "scientific-bundle") {
     if (!scientific) throw new TypeError("Reverify all three scientific components before previewing a slice.");
     const volumes = verifyVectorField3DVolumes(checked, scientific.manifestJson,
       scientific.fingerprint, scientific.volumes);
+    verifiedSamples = vectorField3DVolumeProvenance(scientific.manifestJson, volumes);
     const reference = field.references[0], gridAxis = reference.axes[normalAxis]!;
     const fixedIndex = scientificCoordinateIndex({ ...gridAxis, count: reference.shape[normalAxis]! },
       fixedCoordinate);
@@ -126,7 +146,8 @@ export function sampleVectorField3DSlice(document: VectorField3DDocument,
     fixedUnit: checked.source.axes[normalAxis].unit, planeAxes, coordinates, shape, values,
     channel, unit, min: finite.length ? Math.min(...finite) : NaN,
     max: finite.length ? Math.max(...finite) : NaN,
-    evaluated: values.length, rejected: values.length - finite.length, sourceHash };
+    evaluated: values.length, rejected: values.length - finite.length, sourceHash,
+    verifiedSamples };
 }
 
 /** One physical point shared by the 3D viewer and all orthogonal planes. No interpolation is implied. */
@@ -138,10 +159,12 @@ export function sampleVectorField3DProbe(document: VectorField3DDocument,
   if (!scientificPointWithinBounds(position, checked.source.axes))
     throw new RangeError("Probe is outside the field domain.");
   let vector: [number, number, number], sourceHash: string | undefined, viewHash: string | undefined;
+  let verifiedSamples: VectorField3DProbeArtifact["verifiedSamples"];
   if (field.kind === "scientific-bundle") {
     if (!scientific) throw new TypeError("Reverify all three scientific components before reading a probe.");
     const volumes = verifyVectorField3DVolumes(checked, scientific.manifestJson,
       scientific.fingerprint, scientific.volumes);
+    verifiedSamples = vectorField3DVolumeProvenance(scientific.manifestJson, volumes);
     const reference = field.references[0], indices = position.map((coordinate, axis) =>
       scientificCoordinateIndex({ ...reference.axes[axis]!, count: reference.shape[axis]! }, coordinate));
     const sampled = indices.map((index, axis) => sourceSamples(reference.shape[axis]!).indexOf(index));
@@ -171,5 +194,5 @@ export function sampleVectorField3DProbe(document: VectorField3DDocument,
   return { source: { documentId: checked.identity.id, revision: checked.identity.revision,
     structuralHash: checked.identity.structuralHash }, position: [...position] as [number, number, number],
     vector, magnitude, coordinateUnits: checked.source.axes.map(axis => axis.unit) as
-      [string, string, string], componentUnits, sourceHash, viewHash };
+      [string, string, string], componentUnits, sourceHash, viewHash, verifiedSamples };
 }

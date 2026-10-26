@@ -7,7 +7,7 @@ import { createScientificDatasetLink, createScientificDerivedView } from "./scie
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import type { VectorField3DSliceArtifact, VectorField3DProbeArtifact } from "./vectorField3DSlices";
 
-export type VectorField3DSparseSelection = Readonly<{ kind: "slice" | "stencil-slice"; normalAxis: 0 | 1 | 2;
+export type VectorField3DSparseSelection = Readonly<{ kind: "slice" | "stencil-slice" | "source-stencil-slice"; normalAxis: 0 | 1 | 2;
   fixedIndex: number } | { kind: "probe"; indices: readonly [number, number, number] }>;
 export type VectorField3DSparseSamples = Readonly<{ fingerprint: string; datasetId: string;
   sourceShape: readonly [number, number, number]; selection: VectorField3DSparseSelection;
@@ -17,6 +17,30 @@ export type VectorField3DSparseSamples = Readonly<{ fingerprint: string; dataset
 
 const lattice = (size: number) => Array.from({ length: Math.min(size, 32) }, (_, index) =>
   size === 1 ? 0 : Math.round(index * (size - 1) / (Math.min(size, 32) - 1)));
+
+/** Deterministic source-grid neighbors for every bounded output cell, in transfer order. */
+export function vectorField3DSourceStencilPoints(shape: readonly [number, number, number],
+  normalAxis: 0 | 1 | 2, fixedIndex: number): readonly (readonly [number, number, number])[] {
+  if (![0, 1, 2].includes(normalAxis) || !lattice(shape[normalAxis]).includes(fixedIndex) ||
+    shape.some(size => !Number.isSafeInteger(size) || size < 2 || size > 256))
+    throw new RangeError("Source stencil slice is outside the bounded output lattice.");
+  const plane = [0, 1, 2].filter(axis => axis !== normalAxis);
+  const unique = new Map<string, [number, number, number]>();
+  const add = (point: [number, number, number]) => unique.set(point.join(","), point);
+  for (const first of lattice(shape[plane[0]!]!)) for (const second of lattice(shape[plane[1]!]!)) {
+    const center = [0, 0, 0] as [number, number, number];
+    center[normalAxis] = fixedIndex; center[plane[0]!] = first; center[plane[1]!] = second;
+    add(center);
+    for (const axis of [0, 1, 2] as const) {
+      const index = center[axis], size = shape[axis];
+      const neighbors = size === 2 ? [0, 1] : index === 0 ? [0, 1, 2] :
+        index === size - 1 ? [size - 3, size - 2, size - 1] : [index - 1, index, index + 1];
+      for (const neighbor of neighbors) { const point = [...center] as [number, number, number];
+        point[axis] = neighbor; add(point); }
+    }
+  }
+  return [...unique.values()];
+}
 
 const sampleProvenance = (manifestJson: string, samples: VectorField3DSparseSamples) => {
   const parsed = parseScientificSceneManifest(manifestJson);
@@ -55,10 +79,13 @@ export function verifyVectorField3DSparseSamples(document: VectorField3DDocument
   const positions = dataset.shape.map(lattice);
   let points: number[][];
   const selection = samples.selection;
-  if (selection.kind === "slice" || selection.kind === "stencil-slice") {
+  if (selection.kind === "slice" || selection.kind === "stencil-slice" ||
+      selection.kind === "source-stencil-slice") {
     if (![0, 1, 2].includes(selection.normalAxis) || !Number.isSafeInteger(selection.fixedIndex) ||
         !positions[selection.normalAxis]?.includes(selection.fixedIndex))
       throw new TypeError("Slice index is outside the verified lattice.");
+    if (selection.kind === "source-stencil-slice" && manifest.schema !== "scientific-scene/v3")
+      throw new TypeError("Source-grid stencils require v3 tiles.");
     const axes = [0, 1, 2].filter(axis => axis !== selection.normalAxis);
     points = [];
     const index = positions[selection.normalAxis]!.indexOf(selection.fixedIndex);
@@ -70,6 +97,9 @@ export function verifyVectorField3DSparseSamples(document: VectorField3DDocument
       const point = [0, 0, 0]; point[selection.normalAxis] = positions[selection.normalAxis]![layer]!;
       point[axes[0]!] = first; point[axes[1]!] = second; points.push(point);
     }
+    if (selection.kind === "source-stencil-slice")
+      points = vectorField3DSourceStencilPoints(dataset.shape as [number, number, number],
+        selection.normalAxis, selection.fixedIndex).map(point => [...point]);
   } else if (selection.kind === "probe") {
     if (!Array.isArray(selection.indices) || selection.indices.length !== 3 ||
         selection.indices.some((index, axis) => !Number.isSafeInteger(index) || !positions[axis]?.includes(index)))
@@ -128,7 +158,8 @@ export function sampleVectorField3DSparseSlice(document: VectorField3DDocument, 
     scientific.fingerprint, scientific.samples);
   const ref = field.references[0], fixedIndex = scientificCoordinateIndex({ ...ref.axes[normalAxis]!,
     count: ref.shape[normalAxis]! }, fixedCoordinate);
-  if ((samples.selection.kind !== "slice" && samples.selection.kind !== "stencil-slice") ||
+  if ((samples.selection.kind !== "slice" && samples.selection.kind !== "stencil-slice" &&
+      samples.selection.kind !== "source-stencil-slice") ||
       samples.selection.normalAxis !== normalAxis ||
       samples.selection.fixedIndex !== fixedIndex) throw new TypeError("Sparse slice selection changed.");
   const planeAxes = [0, 1, 2].filter(axis => axis !== normalAxis) as [number, number];
@@ -149,8 +180,17 @@ export function sampleVectorField3DSparseSlice(document: VectorField3DDocument, 
         sampleIndex === lattice(ref.shape[normalAxis]!).length - 1 ?
           [sampleIndex - 2, sampleIndex - 1, sampleIndex] : [sampleIndex - 1, sampleIndex, sampleIndex + 1];
   const start = layers.indexOf(sampleIndex) * planeCount;
+  const sourceOffsets = samples.selection.kind === "source-stencil-slice" ?
+    new Map(vectorField3DSourceStencilPoints(ref.shape as readonly [number, number, number],
+      normalAxis, fixedIndex)
+      .map((point, index) => [point.join(","), index])) : null;
   const values = Array.from({ length: planeCount }, (_, offset) => {
-    const index = start + offset;
+    const firstIndex = Math.floor(offset / coordinates[1].length);
+    const secondIndex = offset % coordinates[1].length;
+    const point = [0, 0, 0]; point[normalAxis] = fixedIndex;
+    point[planeAxes[0]] = lattice(ref.shape[planeAxes[0]]!)[firstIndex]!;
+    point[planeAxes[1]] = lattice(ref.shape[planeAxes[1]]!)[secondIndex]!;
+    const index = sourceOffsets ? sourceOffsets.get(point.join(","))! : start + offset;
     return channel === "magnitude" ?
       Math.hypot(...samples.components.map(component => component.values[index]!)) :
       samples.components[componentIndex]!.values[index]!;

@@ -1,0 +1,273 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
+  createVectorField3DDocument, integrateVectorField3DScientificTrajectories,
+  sampleVectorField3DDerivedSlice, sampleVectorField3DProbe, sampleVectorField3DSlice,
+  createVectorField3DDerivedLine, validGraph2DDerivedFieldOrigin,
+  scientificTileLayout, scientificTileSampleLocation, sha256Checksum,
+  vectorField3DSourceStencilPoints, type VectorField3DSparseSamples,
+  type Graph2DFieldReference, type VectorField3DSource, type VectorField3DVolumes } from "@math3d/core";
+
+const directory = fileURLToPath(new URL("../../../output/scientific-vortex-80-overview.sscene/", import.meta.url));
+const manifestJson = readFileSync(`${directory}manifest.json`, "utf8");
+const manifest = JSON.parse(manifestJson) as { resources: {
+  id: string; path: string; sha256: string; tileShape: [number, number, number];
+  tileSha256: string[] }[] };
+const fingerprint = sha256Checksum(new TextEncoder().encode(manifestJson)).slice(7);
+const shape = [80, 80, 80] as const;
+const names = ["east", "north", "up"] as const;
+const positions = Array.from({ length: 32 }, (_, index) => Math.round(index * 79 / 31));
+const coordinate = (index: number) => -4 + 8 * index / 79;
+const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+
+// Rebuild the same bounded transfer as the desktop verifier from the committed physical tiles.
+// Check every physical tile before giving core a verifiedTiles claim.
+const volumes = names.map(name => {
+  const resource = manifest.resources.find(item => item.id === name)!;
+  const bytes = readFileSync(`${directory}${resource.path}`);
+  expect(hash(bytes)).toBe(resource.sha256);
+  const layout = scientificTileLayout(shape, resource.tileShape);
+  for (const tile of layout)
+    expect(hash(bytes.subarray(tile.offsetBytes, tile.offsetBytes + tile.bytes)))
+      .toBe(resource.tileSha256[tile.index]);
+  const values: number[] = [];
+  for (const x of positions) for (const y of positions) for (const z of positions) {
+    const location = scientificTileSampleLocation(shape, resource.tileShape, [x, y, z], layout);
+    values.push(bytes.readDoubleLE(layout[location.tileIndex]!.offsetBytes + location.offsetBytes));
+  }
+  const sample = Buffer.alloc(values.length * 8);
+  values.forEach((value, index) => sample.writeDoubleLE(value, index * 8));
+  return { fingerprint, datasetId: "field", component: name, sourceShape: shape,
+    sampleShape: [32, 32, 32] as const, sampleLimit: 32,
+    resourceSha256: resource.sha256, sampleSha256: hash(sample), values,
+    verifiedTiles: layout.map(tile => tile.index) };
+}) as VectorField3DVolumes;
+const references = names.map(name => createGraph2DFieldReference(manifestJson, fingerprint,
+  { kind: "preset", value: "large-vortex-80" }, "field", name)) as
+  [Graph2DFieldReference, Graph2DFieldReference, Graph2DFieldReference];
+const source: VectorField3DSource = {
+  axes: (["x", "y", "z"] as const).map(role =>
+    ({ role, label: role, unit: "m", min: -4, max: 4 })) as VectorField3DSource["axes"],
+  timeUnit: "s", field: { kind: "scientific-bundle", references,
+    componentUnits: ["m/s", "m/s", "m/s"] }, seeds: [],
+  display: { density: [5, 5, 5], maxGlyphs: 512, magnitudeScale: 1, colorBy: "speed" },
+  solver: { method: "rk45", absoluteTolerance: 1e-6, relativeTolerance: 1e-6,
+    maxSteps: 1000, maxTime: 1 },
+};
+const document = createVectorField3DDocument(source, { stableKey: "large-vortex-golden" });
+const scientific = { manifestJson, fingerprint, volumes };
+const sparseTransfer = (kind: "stencil-slice" | "source-stencil-slice", fixedIndex: number):
+  VectorField3DSparseSamples => {
+  const layers = [positions.indexOf(fixedIndex) - 1, positions.indexOf(fixedIndex),
+    positions.indexOf(fixedIndex) + 1].map(index => positions[index]!);
+  const points = kind === "source-stencil-slice" ?
+    vectorField3DSourceStencilPoints(shape, 2, fixedIndex) :
+    layers.flatMap(z => positions.flatMap(x => positions.map(y => [x, y, z] as const)));
+  return { fingerprint, datasetId: "field", sourceShape: shape,
+    selection: { kind, normalAxis: 2, fixedIndex },
+    components: names.map(name => {
+      const resource = manifest.resources.find(item => item.id === name)!;
+      const bytes = readFileSync(`${directory}${resource.path}`);
+      const layout = scientificTileLayout(shape, resource.tileShape);
+      const locations = points.map(point => scientificTileSampleLocation(shape,
+        resource.tileShape, point, layout));
+      const values = locations.map(item => bytes.readDoubleLE(
+        layout[item.tileIndex]!.offsetBytes + item.offsetBytes));
+      const transferred = Buffer.alloc(values.length * 8);
+      values.forEach((value, index) => transferred.writeDoubleLE(value, index * 8));
+      return { name, resourceSha256: resource.sha256, sampleSha256: hash(transferred), values,
+        verifiedTiles: [...new Set(locations.map(item => item.tileIndex))].sort((a, b) => a - b) };
+    }) };
+};
+
+// Independent derivatives of F=(-y*a,x*a,sin(z)/4), a=16/(16+x²+y²).
+function oracle([x, y, z]: readonly [number, number, number]) {
+  const r2 = x * x + y * y, denominator = 16 + r2;
+  const a = 16 / denominator, q = r2 * a * a + Math.sin(z) ** 2 / 16;
+  const speed = Math.sqrt(q);
+  const qRadial = 256 * (16 - r2) / denominator ** 3;
+  const qGradient = [2 * x * qRadial, 2 * y * qRadial, Math.sin(2 * z) / 16];
+  const qLaplacian = 1024 * (256 - 64 * r2 + r2 * r2) / denominator ** 4 +
+    Math.cos(2 * z) / 8;
+  return { divergence: Math.cos(z) / 4, curl: [0, 0, 512 / denominator ** 2],
+    gradient: qGradient.map(value => value / (2 * speed)),
+    laplacian: qLaplacian / (2 * speed) -
+      qGradient.reduce((sum, value) => sum + value * value, 0) / (4 * speed ** 3),
+    speed };
+}
+const at = (x: number, y: number, z: number) =>
+  [coordinate(positions[x]!), coordinate(positions[y]!), coordinate(positions[z]!)] as const;
+const close = (actual: number | null | undefined, expected: number, tolerance: number) => {
+  expect(actual).not.toBeNull();
+  expect(actual).toBeDefined();
+  expect(Math.abs(actual! - expected)).toBeLessThanOrEqual(tolerance);
+};
+
+describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
+  it("checks divergence, signed curl, |F| gradient and Laplacian at interior points", () => {
+    for (const indices of [[8, 13, 9], [12, 23, 18], [24, 16, 26]] as const) {
+      const point = at(...indices), expected = oracle(point);
+      const result = analyzeVectorField3DDifferential(document, point, scientific);
+      expect(result.status).toBe("ready");
+      expect(result.stencils.every(item => item.method === "centered-three-point")).toBe(true);
+      expect(result.divergenceUnit).toBe("1/s");
+      expect(result.magnitudeLaplacianUnit).toBe("(m/s)/m²");
+      expect(result.verifiedSamples?.every(part => part.verifiedTiles === 125)).toBe(true);
+      close(result.divergence, expected.divergence, 0.004);
+      for (let axis = 0; axis < 3; axis++) {
+        close(result.curl?.[axis], expected.curl[axis]!, 0.015);
+        close(result.magnitudeGradient?.[axis], expected.gradient[axis]!, 0.018);
+      }
+      close(result.magnitudeLaplacian, expected.laplacian, 0.12);
+    }
+  });
+
+  it("labels one-sided boundary stencils and keeps their errors within stated limits", () => {
+    for (const indices of [[0, 12, 17], [16, 31, 11], [21, 10, 0]] as const) {
+      const point = at(...indices), expected = oracle(point);
+      const result = analyzeVectorField3DDifferential(document, point, scientific);
+      expect(result.status).toBe("ready");
+      expect(result.stencils.filter(item => item.boundary)).toHaveLength(1);
+      expect(result.diagnostics.join(" ")).toMatch(/boundary; accuracy is reduced/);
+      close(result.divergence, expected.divergence, 0.012);
+      close(result.curl?.[2], expected.curl[2]!, 0.035);
+      for (let axis = 0; axis < 3; axis++)
+        close(result.magnitudeGradient?.[axis], expected.gradient[axis]!, 0.055);
+      close(result.magnitudeLaplacian, expected.laplacian, 0.3);
+    }
+  });
+
+  it("carries verified transfer provenance into source and derived views", () => {
+    const point = at(12, 21, 16);
+    const probe = sampleVectorField3DProbe(document, point, scientific);
+    expect(probe.verifiedSamples).toHaveLength(3);
+    expect(probe.verifiedSamples?.every(part => part.verifiedTiles === 125 &&
+      part.totalTiles === 125)).toBe(true);
+    const slice = sampleVectorField3DSlice(document, 2, point[2], scientific);
+    expect(slice.verifiedSamples?.map(part => part.sampleSha256))
+      .toEqual(volumes.map(volume => volume.sampleSha256));
+    expect(() => sampleVectorField3DDerivedSlice(document, 2, point[2], "curl-z",
+      { ...scientific, volumes: [{ ...volumes[0], verifiedTiles: [] },
+        volumes[1], volumes[2]] as VectorField3DVolumes })).toThrow(/verification coverage/);
+  });
+
+  it("extends the same oracle to XY, XZ and YZ derived maps", () => {
+    const cases = [
+      { axis: 0 as const, fixed: 12, channel: "curl-z" as const, sample: [12, 21, 16] as const,
+        expected: (point: readonly [number, number, number]) => oracle(point).curl[2]!, tolerance: 0.015 },
+      { axis: 1 as const, fixed: 13, channel: "grad-speed-z" as const,
+        sample: [20, 13, 18] as const,
+        expected: (point: readonly [number, number, number]) => oracle(point).gradient[2]!, tolerance: 0.018 },
+      { axis: 2 as const, fixed: 11, channel: "laplacian-speed" as const,
+        sample: [22, 18, 11] as const,
+        expected: (point: readonly [number, number, number]) => oracle(point).laplacian, tolerance: 0.12 },
+    ];
+    for (const item of cases) {
+      const point = at(...item.sample);
+      const slice = sampleVectorField3DDerivedSlice(document, item.axis, point[item.axis],
+        item.channel, scientific);
+      const plane = [0, 1, 2].filter(axis => axis !== item.axis);
+      const offset = item.sample[plane[0]!]! * slice.shape[1] + item.sample[plane[1]!]!;
+      close(slice.values[offset], item.expected(point), item.tolerance);
+      expect(slice.method).toBe("bounded-finite-difference");
+      expect(slice.boundarySamples).toBeGreaterThan(0);
+      expect(slice.sourceHash).toBeDefined();
+      expect(slice.verifiedSamples?.every(part => part.verifiedTiles === 125)).toBe(true);
+    }
+  });
+
+  it("exports physical derived profiles with numerical oracle values and source hashes", () => {
+    const z = at(0, 0, 16)[2], y = at(0, 21, 0)[1];
+    const cases = [
+      ["divergence", (p: readonly [number, number, number]) => oracle(p).divergence, 0.004],
+      ["curl-z", (p: readonly [number, number, number]) => oracle(p).curl[2]!, 0.015],
+      ["grad-speed-x", (p: readonly [number, number, number]) => oracle(p).gradient[0]!, 0.018],
+      ["grad-speed-magnitude", (p: readonly [number, number, number]) =>
+        Math.hypot(...oracle(p).gradient), 0.025],
+      ["laplacian-speed", (p: readonly [number, number, number]) => oracle(p).laplacian, 0.12],
+    ] as const;
+    for (const [channel, expected, tolerance] of cases) {
+      const slice = sampleVectorField3DDerivedSlice(document, 2, z, channel, scientific);
+      const line = createVectorField3DDerivedLine(document, slice, 0, y);
+      expect(line.rows).toHaveLength(32);
+      expect(line.origin).toMatchObject({ operation: channel, normalAxis: 2,
+        fixedCoordinate: z, varyingAxis: 0, profileFixedCoordinate: y,
+        xUnit: "m", yUnit: slice.unit, sourceHash: slice.sourceHash });
+      expect(line.origin.verifiedSamples.map(part => part.sampleSha256))
+        .toEqual(volumes.map(volume => volume.sampleSha256));
+      expect(validGraph2DDerivedFieldOrigin(line.origin)).toBe(true);
+      for (const index of [0, 8, 16, 24, 31])
+        close(line.rows[index]!.y, expected([line.rows[index]!.x, y, z]),
+          index === 0 || index === 31 ? tolerance * 3 : tolerance);
+      expect(validGraph2DDerivedFieldOrigin({ ...line.origin,
+        verifiedSamples: [{ ...line.origin.verifiedSamples[0]!, sampleSha256: "bad" },
+          ...line.origin.verifiedSamples.slice(1)] })).toBe(false);
+    }
+  });
+
+  it("uses verified source-grid neighbors for more accurate v3 profiles", () => {
+    const z = at(0, 0, 16)[2], y = at(0, 21, 0)[1];
+    const fixedIndex = positions[16]!;
+    const bounded = sparseTransfer("stencil-slice", fixedIndex);
+    const source = sparseTransfer("source-stencil-slice", fixedIndex);
+    expect(source.components[0]!.values.length).toBeGreaterThan(bounded.components[0]!.values.length);
+    expect(source.components.every(part => part.verifiedTiles!.length < 125)).toBe(true);
+    const cases = [
+      ["divergence", (p: readonly [number, number, number]) => oracle(p).divergence, 0.001],
+      ["curl-z", (p: readonly [number, number, number]) => oracle(p).curl[2]!, 0.004],
+      ["grad-speed-x", (p: readonly [number, number, number]) => oracle(p).gradient[0]!, 0.006],
+      ["laplacian-speed", (p: readonly [number, number, number]) => oracle(p).laplacian, 0.05],
+    ] as const;
+    for (const [channel, expected, tolerance] of cases) {
+      const oldSlice = sampleVectorField3DDerivedSlice(document, 2, z, channel,
+        { manifestJson, fingerprint, samples: bounded });
+      const newSlice = sampleVectorField3DDerivedSlice(document, 2, z, channel,
+        { manifestJson, fingerprint, samples: source });
+      expect(newSlice.stencilGrid).toBe("source");
+      const line = createVectorField3DDerivedLine(document, newSlice, 0, y);
+      expect(line.origin.stencilGrid).toBe("source");
+      for (const index of [0, 8, 16, 24, 31]) {
+        const point = [line.rows[index]!.x, y, z] as const;
+        const sourceError = Math.abs(line.rows[index]!.y! - expected(point));
+        const boundedError = Math.abs(oldSlice.values[index * 32 + 21]! - expected(point));
+        expect(sourceError).toBeLessThanOrEqual(tolerance);
+        expect(sourceError).toBeLessThanOrEqual(boundedError + 1e-10);
+      }
+    }
+    const changed = { ...source, components: [{ ...source.components[0]!,
+      values: source.components[0]!.values.map((value, index) => index === 0 ? value + 1 : value) },
+      source.components[1]!, source.components[2]!] };
+    expect(() => sampleVectorField3DDerivedSlice(document, 2, z, "curl-z",
+      { manifestJson, fingerprint, samples: changed })).toThrow(/checksum/);
+  }, 30_000);
+
+  it("checks physical-time and normalized-line trajectories against circular motion", () => {
+    const seeded = createVectorField3DDocument({ ...source,
+      seeds: [{ id: "orbit", position: [1, 0, 0] }] }, { stableKey: "large-vortex-orbit" });
+    const physical = integrateVectorField3DScientificTrajectories(seeded,
+      manifestJson, fingerprint, volumes).trajectories[0]!;
+    expect(physical.stopReason).toBe("time-limit");
+    const last = physical.points.at(-1)!;
+    close(last.time, 1, 1e-10);
+    close(last.position[0], Math.cos(16 / 17), 0.02);
+    close(last.position[1], Math.sin(16 / 17), 0.02);
+    close(last.position[2], 0, 1e-10);
+    const normalized = createVectorField3DDocument({ ...source,
+      seeds: [{ id: "orbit", position: [1, 0, 0] }],
+      solver: { ...source.solver, mode: "normalized-field-line", maxLineLength: 1 } },
+    { stableKey: "large-vortex-normalized" });
+    const line = integrateVectorField3DScientificTrajectories(normalized,
+      manifestJson, fingerprint, volumes).trajectories[0]!;
+    expect(line.stopReason).toBe("line-limit");
+    close(line.points.at(-1)!.position[0], Math.cos(1), 0.02);
+    close(line.points.at(-1)!.position[1], Math.sin(1), 0.02);
+    const nearBoundary = createVectorField3DDocument({ ...source,
+      seeds: [{ id: "edge", position: [3.9, 3.9, 0] }] }, { stableKey: "large-vortex-edge" });
+    const boundary = integrateVectorField3DScientificTrajectories(nearBoundary,
+      manifestJson, fingerprint, volumes).trajectories[0]!;
+    expect(boundary.stopReason).toBe("boundary");
+    close(boundary.points.at(-1)!.position[1], 4, 1e-10);
+  });
+});

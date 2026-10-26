@@ -1,8 +1,8 @@
 import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDatasetOrigin,
-  validGraph2DAnalyticFieldOrigin,
+  validGraph2DAnalyticFieldOrigin, validGraph2DDerivedFieldOrigin,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
   type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin,
-  type Graph2DAnalyticFieldOrigin } from "./graph2dDocument";
+  type Graph2DAnalyticFieldOrigin, type Graph2DDerivedFieldOrigin } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
@@ -70,6 +70,7 @@ export type Graph2DPointSeriesDraft = Readonly<{
   domain: Graph2DDomain;
   origin?: Graph2DScientificDatasetOrigin;
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
+  derivedOrigin?: Graph2DDerivedFieldOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
 export type Graph2DPiecewiseDraft = Readonly<{
@@ -248,7 +249,9 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
   if (draft.origin !== undefined && !validGraph2DScientificDatasetOrigin(draft.origin)) errors.push("Scientific dataset provenance is invalid.");
   if (draft.analyticOrigin !== undefined && !validGraph2DAnalyticFieldOrigin(draft.analyticOrigin))
     errors.push("Analytic field provenance is invalid.");
-  if (draft.origin !== undefined && draft.analyticOrigin !== undefined)
+  if (draft.derivedOrigin !== undefined && !validGraph2DDerivedFieldOrigin(draft.derivedOrigin))
+    errors.push("Derived field provenance is invalid.");
+  if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin].filter(item => item !== undefined).length > 1)
     errors.push("Choose one provenance source for the point series.");
   return errors;
 };
@@ -598,7 +601,8 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     const object = { id, kind: "point-series" as const, label: action.draft.label,
       table: action.draft.table, mode: action.draft.mode, missing: "gap" as const, domain: action.draft.domain,
       ...(action.draft.origin ? { origin: action.draft.origin } : {}),
-      ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}) };
+      ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}),
+      ...(action.draft.derivedOrigin ? { derivedOrigin: action.draft.derivedOrigin } : {}) };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-point-series") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }

@@ -23,6 +23,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DScientificDatasetPreview,
+  type VectorField3DDerivedLine,
   type Graph2DScientificPlane,
   type Graph2DScientificVolume,
   type Graph2DFieldLocator, type Graph2DFieldReference,
@@ -43,7 +44,7 @@ import {
   isGraph2DRegressionCurrent, graph2DRegressionResidualTable, graph2DRegressionCurveTable, graph2DPublicationAnalysisTable,
   type Graph2DRegression, type Graph2DRegressionModel,
   projectGraph2DGrid, projectGraph2DPolarGrid,
-  structuralHash,
+  structuralHash, canonicalJsonStringify,
   createVectorField3DDocument, type VectorField3DDocument, type VectorField3DSource,
   createVectorField2DDocument, reviseVectorField2DDocument, type VectorField2DDocument,
   createScientificFieldDocument, reviseScientificFieldDocument, type ScientificFieldDocument,
@@ -67,6 +68,7 @@ import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFi
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
+import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
@@ -183,6 +185,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     }
   }, [analysisRequest, document.identity.id]);
   const [toolHint, setToolHint] = useState("");
+  const [derivedLineStatus, setDerivedLineStatus] = useState<{ id: string; message: string } | null>(null);
   const [scientificImport, setScientificImport] = useState<{
     manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator;
     datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
@@ -1340,6 +1343,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       <button type="button" disabled={!selectedObject || !onAuthoringCommit} onClick={() => {
         if (selectedObject) setEditRequest(previous => ({ objectId: selectedObject.id, sequence: (previous?.sequence ?? 0) + 1 }));
       }}>Edit graph</button>
+      {selectedObject?.kind === "point-series" && selectedObject.derivedOrigin &&
+        <><button type="button" data-testid="graph2d-reverify-derived-line"
+          onClick={() => { const selected = selectedObject;
+            setDerivedLineStatus({ id: selected.id, message: "Verifying…" });
+            void reverifyVectorField3DDerivedLine(selected.derivedOrigin!).then(fresh => {
+              const stored = pointTableStore.resolve(selected.table);
+              if (!stored || canonicalJsonStringify(stored) !== canonicalJsonStringify(fresh.rows))
+                throw new Error("Saved Graphs line differs from the verified source.");
+              setDerivedLineStatus({ id: selected.id, message: "Verified against saved source." });
+            }).catch(cause => setDerivedLineStatus({ id: selected.id,
+              message: cause instanceof Error ? cause.message : String(cause) }));
+          }}>Reverify derived line</button>
+          {derivedLineStatus?.id === selectedObject.id &&
+            <span role="status">{derivedLineStatus.message}</span>}</>}
     </header>
     {constructions}
     {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression}
@@ -1616,6 +1633,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}{selectedObject.analyticOrigin.xUnit} → {selectedObject.analyticOrigin.yUnit}</dd>
           <dt>Field expressions</dt><dd>{selectedObject.analyticOrigin.expressions.join("; ")}</dd>
           <dt>Source hash</dt><dd><code>{selectedObject.analyticOrigin.structuralHash}</code></dd>
+        </>}
+        {selectedObject?.kind === "point-series" && selectedObject.derivedOrigin && <>
+          <dt>Derived operation</dt><dd>{selectedObject.derivedOrigin.operation}</dd>
+          <dt>Stencil grid</dt><dd>{selectedObject.derivedOrigin.stencilGrid === "source" ?
+            "Source grid" : "Bounded preview grid"}</dd>
+          <dt>Physical line</dt><dd>Vary {selectedObject.derivedOrigin.xName} (axis {selectedObject.derivedOrigin.varyingAxis});
+            {" "}plane axis {selectedObject.derivedOrigin.normalAxis} = {selectedObject.derivedOrigin.fixedCoordinate};
+            {" "}other axis = {selectedObject.derivedOrigin.profileFixedCoordinate}</dd>
+          <dt>Units</dt><dd>{selectedObject.derivedOrigin.xUnit} → {selectedObject.derivedOrigin.yUnit}</dd>
+          <dt>Verified source samples</dt><dd>{selectedObject.derivedOrigin.verifiedSamples.map(part =>
+            <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}</dd>
+          <dt>Source and line hashes</dt><dd><code>{selectedObject.derivedOrigin.sourceHash}<br />
+            {selectedObject.derivedOrigin.lineSha256}</code></dd>
         </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : inspected.kind === "time-ode" ? "Time domain" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
@@ -1922,6 +1952,25 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${line.finiteCount} analytic line samples to Graphs. Use Fit to view the full line.`);
+          }}
+          onAddDerivedLine={(line: VectorField3DDerivedLine) => {
+            if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
+            if (document.source.objects.some(item => item.kind === "point-series" &&
+              item.derivedOrigin?.sourceHash === line.origin.sourceHash &&
+              item.derivedOrigin.operation === line.origin.operation &&
+              item.derivedOrigin.normalAxis === line.origin.normalAxis &&
+              item.derivedOrigin.fixedCoordinate === line.origin.fixedCoordinate &&
+              item.derivedOrigin.varyingAxis === line.origin.varyingAxis &&
+              item.derivedOrigin.profileFixedCoordinate === line.origin.profileFixedCoordinate))
+              throw new Error("This derived line is already in Graphs.");
+            const count = document.source.objects.filter(item => item.kind === "point-series" &&
+              item.derivedOrigin).length;
+            const table = pointTableStore.publish(line.rows);
+            onAuthoringCommit({ type: "create-point-series", draft: { label: line.label,
+              table, mode: "line", domain: line.domain, derivedOrigin: line.origin,
+              style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
+                lineWidth: 2, lineStyle: "solid", visible: true } } });
+            setToolHint(`Added ${line.rows.length} verified ${line.origin.operation} samples to Graphs.`);
           }}
           onSaveDocument={onSaveVectorField3D} onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false);

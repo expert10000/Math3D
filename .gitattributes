@@ -13,3 +13,5 @@ tests/fixtures/scientific-scene/**/*.json -text
 tests/fixtures/scientific-scene/**/*.f64 -text
 output/scientific-vortex-80-overview.sscene/*.json -text
 output/scientific-vortex-80-overview.sscene/*.f64 -text
+output/scientific-burgers-horizontal-level1.sscene/*.json -text
+output/scientific-burgers-horizontal-level1.sscene/*.f64 -text

@@ -11,6 +11,7 @@ import { isGraph2DFieldReference, isGraph2DFieldLocator,
   type Graph2DFieldReference, type Graph2DFieldLocator } from "./graph2dFieldReference";
 import { isGraph2DVectorFieldReference, type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 import { isGraph2DViewport } from "./graph2dViewport";
+import { parseVectorField3DDocument } from "./vectorField3DDocument";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
   type Graph2DConstructionSet } from "./graph2dConstructions";
@@ -120,6 +121,20 @@ export type Graph2DAnalyticFieldOrigin = Readonly<{
   expressions: readonly string[];
   xName: string; xUnit: string; yUnit: string;
 }>;
+export type Graph2DDerivedFieldOrigin = Readonly<{
+  kind: "vector-field3d-derived-line";
+  sourceDocumentJson: string;
+  operation: "divergence" | "curl-x" | "curl-y" | "curl-z" |
+    "grad-speed-x" | "grad-speed-y" | "grad-speed-z" | "grad-speed-magnitude" |
+    "laplacian-speed";
+  normalAxis: 0 | 1 | 2; fixedCoordinate: number;
+  varyingAxis: 0 | 1 | 2; profileFixedCoordinate: number;
+  stencilGrid?: "source";
+  xName: string; xUnit: string; yUnit: string;
+  sourceHash: string; lineSha256: string;
+  verifiedSamples: readonly Readonly<{ name: string; sampleSha256: string;
+    verifiedChunks?: number; totalChunks?: number; verifiedTiles?: number; totalTiles?: number }>[];
+}>;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -130,6 +145,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   domain: Graph2DDomain;
   origin?: Graph2DScientificDatasetOrigin;
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
+  derivedOrigin?: Graph2DDerivedFieldOrigin;
 }>;
 export type Graph2DPiece = Readonly<{
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
@@ -386,15 +402,47 @@ export const validGraph2DAnalyticFieldOrigin = (value: unknown): value is Graph2
   Array.isArray(value.expressions) && value.expressions.length === 3 &&
   value.expressions.every(item => bounded(item, 2048)) &&
   bounded(value.xName, 160) && bounded(value.xUnit, 80) && bounded(value.yUnit, 80);
+export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2DDerivedFieldOrigin => {
+  if (!record(value) || !exact(value, ["kind", "sourceDocumentJson", "operation", "normalAxis",
+    "fixedCoordinate", "varyingAxis", "profileFixedCoordinate", "xName", "xUnit", "yUnit",
+    "sourceHash", "lineSha256", "verifiedSamples",
+    ...(value.stencilGrid === undefined ? [] : ["stencilGrid"])]) ||
+    value.kind !== "vector-field3d-derived-line" ||
+    !["divergence", "curl-x", "curl-y", "curl-z", "grad-speed-x", "grad-speed-y",
+      "grad-speed-z", "grad-speed-magnitude", "laplacian-speed"].includes(String(value.operation)) ||
+    ![0, 1, 2].includes(value.normalAxis as number) ||
+    ![0, 1, 2].includes(value.varyingAxis as number) || value.normalAxis === value.varyingAxis ||
+    (value.stencilGrid !== undefined && value.stencilGrid !== "source") ||
+    !finite(value.fixedCoordinate) || !finite(value.profileFixedCoordinate) ||
+    !bounded(value.xName, 160) || !bounded(value.xUnit, 80) || !bounded(value.yUnit, 80) ||
+    typeof value.sourceHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.sourceHash) ||
+    typeof value.lineSha256 !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.lineSha256) ||
+    !Array.isArray(value.verifiedSamples) || value.verifiedSamples.length !== 3 ||
+    !value.verifiedSamples.every((part: unknown) => record(part) &&
+      exact(part, ["name", "sampleSha256", ...(part.verifiedChunks === undefined ? [] :
+        ["verifiedChunks", "totalChunks"]), ...(part.verifiedTiles === undefined ? [] :
+        ["verifiedTiles", "totalTiles"])]) && bounded(part.name, 64) &&
+      typeof part.sampleSha256 === "string" && /^[a-f0-9]{64}$/.test(part.sampleSha256) &&
+      (part.verifiedChunks === undefined || integerWithin(part.verifiedChunks, 1, 1e6) &&
+        integerWithin(part.totalChunks, 1, 1e6)) &&
+      (part.verifiedTiles === undefined || integerWithin(part.verifiedTiles, 1, 1e6) &&
+        integerWithin(part.totalTiles, 1, 1e6)))) return false;
+  if (typeof value.sourceDocumentJson !== "string" || value.sourceDocumentJson.length > 256 * 1024)
+    return false;
+  try { return parseVectorField3DDocument(value.sourceDocumentJson).source.field.kind === "scientific-bundle"; }
+  catch { return false; }
+};
 const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObject => record(value) &&
   exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain",
     ...(value.origin === undefined ? [] : ["origin"]),
-    ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"])]) && objectId(value.id) &&
+    ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"]),
+    ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
-  !(value.origin !== undefined && value.analyticOrigin !== undefined) &&
+  [value.origin, value.analyticOrigin, value.derivedOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
-  (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin));
+  (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
+  (value.derivedOrigin === undefined || validGraph2DDerivedFieldOrigin(value.derivedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
   if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
       value.kind !== "piecewise" || !bounded(value.label, 160) || !Array.isArray(value.pieces) ||
