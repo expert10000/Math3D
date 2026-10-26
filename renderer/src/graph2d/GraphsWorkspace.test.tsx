@@ -37,11 +37,13 @@ describe("Graphs workspace shell", () => {
     const graph = createGraph2DDocument({ stableKey: "bound-thermal", source: source.source,
       display: source.display, selection: { objectId: source.source.objects[0]!.id, probe: null } });
     expect(renderToStaticMarkup(<GraphsWorkspace document={graph} dockLayout={dockLayout}
-      savedScientificFields={[field]} />)).toContain("Saved rows; source not yet verified on this opening");
+      savedScientificFields={[field]} />)).toContain("Saved rows; reverify against the source after Project reopen");
     const revised = reviseScientificFieldDocument(field, { ...field.source,
       display: { ...field.source.display, transfer: { mode: "percentile" } } });
     expect(renderToStaticMarkup(<GraphsWorkspace document={graph} dockLayout={dockLayout}
       savedScientificFields={[revised]} />)).toContain("Stale — saved field source or revision changed");
+    expect(renderToStaticMarkup(<GraphsWorkspace document={graph} dockLayout={dockLayout}
+      savedScientificFields={[revised]} />)).toContain("Reverify Graph line");
   });
   it("renders document-backed empty, loading, and error states", () => {
     const empty = renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} />);

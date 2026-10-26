@@ -66,6 +66,7 @@ import { ScientificComplexVolumeLinesPanel } from "./ScientificComplexVolumeLine
 import { ScientificComplexField3DWorkspacePanel } from "./ScientificComplexField3DWorkspacePanel";
 import type { ScientificComplexVolumeLineSelection } from "./ScientificComplexVolumeLinesPanel";
 import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
+import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResultControls";
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
@@ -1113,8 +1114,6 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const selectedFieldOrigin = selectedObject?.kind === "point-series" ? selectedObject.origin : undefined;
   const selectedSavedField = savedScientificFields.find(item =>
     item.identity.id === selectedFieldOrigin?.fieldDocument?.id);
-  const selectedFieldResultState = selectedFieldOrigin?.fieldDocument ?
-    scientificFieldGraphResultState(selectedFieldOrigin, savedScientificFields) : null;
   const selectedFieldVerification = selectedSavedField ?
     fieldStatuses[selectedSavedField.source.reference.id] : undefined;
   const phaseObject = sampledDocument.source.objects.find((item) => item.id === document.selection.objectId);
@@ -1619,13 +1618,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <dt>Graph object</dt><dd>{inspected.label}</dd>
         <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
         {selectedObject?.kind === "point-series" && selectedObject.origin && <>
-          {selectedObject.origin.fieldDocument && <><dt>Saved field result</dt><dd role="status">{
-            selectedFieldResultState === "stale" || selectedFieldVerification === "changed" ||
-              selectedFieldVerification === "missing" || selectedFieldVerification === "error" ?
-              "Stale — saved field source or revision changed. Reimport from the verified source." :
-              selectedFieldVerification === "current" ?
-                "Source verified on this opening" : "Saved rows; source not yet verified on this opening"
-          }</dd></>}
+          {selectedObject.origin.fieldDocument && <><dt>Saved field result</dt><dd>
+            <ScientificFieldGraphResultControls graph={document} object={selectedObject}
+              fields={savedScientificFields} sourceStatus={selectedFieldVerification}
+              onCommit={onAuthoringCommit}
+              onVerificationStatus={status => {
+                if (selectedSavedField) setFieldStatuses(current => ({ ...current,
+                  [selectedSavedField.source.reference.id]: status }));
+              }} />
+          </dd></>}
           <dt>Scientific source</dt><dd>{selectedObject.origin.sourceProducer}/{selectedObject.origin.sourceId} ·
             {" "}{selectedObject.origin.sceneId}/{selectedObject.origin.datasetId}</dd>
           <dt>Units</dt><dd>{selectedObject.origin.xName} ({selectedObject.origin.xUnit}) →
