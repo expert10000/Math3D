@@ -151,8 +151,8 @@ or **BHZ · lattice and ribbon**. The inspector states the source parameters,
 units, invariant status and finite-boundary limitation. The importer tests
 compare exact band samples with the producer file and reject changed bytes.
 The original fixed-coefficient BHZ fixture and the frozen QWZ/SSH v0.1
-profile remain unchanged. Nodal and Landau/Hall are still unsupported until
-their own independently tested producer scenes exist.
+profile remain unchanged. Later nodal and Landau-level admissions are recorded
+below; Hall transport remains unsupported.
 
 ## Post-v0.1 local Weyl admission (2026-10-25)
 
@@ -185,3 +185,40 @@ upper-band energy. The lower band remains in the verified bundle. Import,
 restart, selection and tamper tests reject changed source bytes. This
 continuum model contains no surface calculation or drumhead state; Math3D
 does not calculate the Berry phase.
+
+## Post-v0.1 continuum Landau-level admission (2026-10-26)
+
+Theory Lab solves a bounded 2D charged-particle uniform-field model. Its worker
+checks a Landau-gauge finite-difference spectrum against the analytic ladder,
+including charge and field reversals and a doubled-grid convergence check. An
+immutable run records the signed field samples, exact level energies, units,
+and both coarse and fine errors. The `.qscene` exports those values as five
+level paths with exact sample markers and a source result hash.
+
+Open **File → Verified quantum examples → Landau → Landau · continuum level
+fan**, or **Open in Math3D** from the corresponding Theory Lab Scenes view.
+Select a level marker to inspect its exact signed B, integer level index and
+stored energy. The bundled producer result is
+`tests/fixtures/quantum-scene/landau-producer-result.json`. Import, restart,
+selection and changed-byte refusal are tested in both repositories. Math3D
+does not calculate the levels. No filling, Hall conductivity, edge channel or
+plateau is claimed; the Hofstadter lattice model is a separate future producer.
+
+## Post-v0.1 Hofstadter magnetic-band admission (2026-10-26)
+
+Theory Lab independently calculates a bounded square-lattice Harper matrix at
+reduced magnetic flux `p/q`. The worker checks band count, flux reversal,
+zero flux and a finer momentum grid. The pinned `p/q=1/4` source run saves four
+bands on a 9 × 9 magnetic-zone grid with exact `p`, `q`, hopping `t`, momentum
+and energy units, sampled gap and convergence diagnostics. Its `.qscene`
+retains the immutable result hash and binary dataset hashes.
+
+Open **File → Verified quantum examples → Hofstadter → Hofstadter · Harper
+magnetic bands**, or **Open in Math3D** from the saved Theory Lab Scenes view.
+Selecting a band surface gives the exact source `kx`, `ky`, energy, band and
+dataset indices. The pinned producer result is
+`tests/fixtures/quantum-scene/hofstadter-producer-result.json`. Import,
+restart, exact selection and changed-byte refusal have desktop acceptance
+coverage. Math3D only renders supplied bands. Chern numbers, edge spectra and
+Hall response remain future producer work; the displayed bulk gap is a sampled
+adjacent-band separation, not a topological invariant.

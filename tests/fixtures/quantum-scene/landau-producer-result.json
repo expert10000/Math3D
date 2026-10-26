@@ -1,0 +1,140 @@
+{
+  "schema": "quantum-result/v1",
+  "jobId": "fixture-landau-fan",
+  "runId": "run-6758e75a58594f6d98ee98e7c9ac5e03",
+  "status": "completed",
+  "operation": "topology",
+  "model": {
+    "type": "landau_continuum",
+    "source": {
+      "sourceRepository": "https://github.com/expert10000/theory/tree/48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "sourceModule": "data/hamiltonian_atlas/registry/hall_many_body_superconducting.yaml",
+      "volume": "VIII",
+      "exampleId": "Atlas landau_continuum"
+    },
+    "parameters": {
+      "mass": 1,
+      "charge": -1,
+      "fieldStart": 0.5,
+      "fieldStop": 2,
+      "fieldSamples": 7,
+      "levels": 5,
+      "grid": 64
+    }
+  },
+  "engine": {
+    "name": "native",
+    "version": "1.18.1"
+  },
+  "analysis": {
+    "kind": "landau_continuum",
+    "fieldValues": [
+      0.5,
+      0.75,
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "levelIndices": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "energies": [
+      [
+        0.25,
+        0.75,
+        1.25,
+        1.75,
+        2.25
+      ],
+      [
+        0.375,
+        1.125,
+        1.875,
+        2.625,
+        3.375
+      ],
+      [
+        0.5,
+        1.5,
+        2.5,
+        3.5,
+        4.5
+      ],
+      [
+        0.625,
+        1.875,
+        3.125,
+        4.375,
+        5.625
+      ],
+      [
+        0.75,
+        2.25,
+        3.75,
+        5.25,
+        6.75
+      ],
+      [
+        0.875,
+        2.625,
+        4.375,
+        6.125,
+        7.875
+      ],
+      [
+        1,
+        3,
+        5,
+        7,
+        9
+      ]
+    ],
+    "cyclotronFrequencies": [
+      0.5,
+      0.75,
+      1,
+      1.25,
+      1.5,
+      1.75,
+      2
+    ],
+    "coarseMaxErrors": [
+      0.01335962071200747,
+      0.020039431068014313,
+      0.02671924142401494,
+      0.03339905178002134,
+      0.0400788621360304,
+      0.04675867249202881,
+      0.05343848284802988
+    ],
+    "fineMaxErrors": [
+      0.003327172670224421,
+      0.00499075900533974,
+      0.006654345340448842,
+      0.008317931675566825,
+      0.00998151801067948,
+      0.011645104345815227,
+      0.013308690680897683
+    ],
+    "converged": true,
+    "units": {
+      "field": "normalized magnetic field",
+      "energy": "normalized energy",
+      "hbar": "1",
+      "mass": "normalized mass",
+      "charge": "elementary charge"
+    }
+  },
+  "provenance": {
+    "pythonVersion": "3.12.2",
+    "workerVersion": "0.1.0",
+    "computedAt": "2026-10-26T09:33:17.512499+00:00",
+    "durationMs": 2.246000000013737
+  }
+}
