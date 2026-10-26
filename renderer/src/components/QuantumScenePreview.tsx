@@ -498,6 +498,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
               <p>Ring, loop and energy samples are supplied by Theory Lab. Select a loop marker to inspect its exact position and upper-band energy. The lower band remains in the verified bundle. Math3D calculates no Berry phase and makes no drumhead-state or surface claim.</p>
             </section>}
+            {scene.provenance.model==="landau_continuum"&&<section data-testid="landau-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Landau · verified continuum level fan</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>2D uniform-field continuum, ħ=1. Stored inputs: mass {scene.provenance.parameters?.mass} normalized mass; charge {scene.provenance.parameters?.charge} elementary charge; signed B from {scene.provenance.parameters?.fieldStart} to {scene.provenance.parameters?.fieldStop} normalized magnetic field; {scene.provenance.parameters?.fieldSamples} field samples, {scene.provenance.parameters?.levels} levels, finite-difference grid {scene.provenance.parameters?.grid}.</p>
+              {scene.annotations.map(item=><p key={item.id}>{item.text}</p>)}
+              <p>Lines and markers show supplied results only. Select a marker for its exact signed B, level index and energy in the stated source units. Math3D runs no Landau solver. This result supplies no Hall conductivity, edge channel or plateau.</p>
+            </section>}
             {scene.provenance.model==="kitaev_chain"&&<section data-testid="kitaev-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Kitaev · producer-supplied {scene.topology?.invariants.some(item=>item.id==="kitaev-pfaffian-parity") ? "bulk invariant diagnostics" : scene.bands ? "periodic BdG bands" : "finite open-chain end density"}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>

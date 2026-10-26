@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 20);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 20);
+  assert.equal(listBundledQuantumSceneExamples().length, 21);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 21);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -271,6 +271,26 @@ try {
   const ringBytes=await readFile(join(changedRing,"ring-samples.f64"));
   ringBytes[0]^=1;await writeFile(join(changedRing,"ring-samples.f64"),ringBytes);
   await assert.rejects(importQuantumSceneBundle(changedRing),/integrity|hash/i);
+  const landauFolder=join(fixtureRoot,bundledQuantumSceneExample("landau-levels").folder);
+  const landau=await importQuantumSceneBundle(landauFolder);
+  const landauResultBytes=await readFile(join(fixtureRoot,"landau-producer-result.json"));
+  const landauResult=JSON.parse(landauResultBytes.toString("utf8"));
+  assert.equal(landau.source.provenance.model,"landau_continuum");
+  assert.equal(landau.source.provenance.resultSha256,hash(landauResultBytes));
+  assert.deepEqual(landau.source.coordinates.axes,["signed B","level index n","energy E_n"]);
+  assert.equal(landau.source.coordinates.units[0],landauResult.analysis.units.field);
+  assert.equal(landau.document.geometry.points.length,35);
+  assert.deepEqual(Array.from(landau.arrays.get("level-3-positions")),landauResult.analysis.fieldValues.flatMap((field,i)=>[field,3,landauResult.analysis.energies[i][3]]));
+  assert.deepEqual(Array.from(landau.arrays.get("level-3-energy")),landauResult.analysis.energies.map(row=>row[3]));
+  const landauSample=inspectVerifiedScalarSample(landau,{fingerprint:sceneFingerprint(landau),objectId:"level-3-samples",sampleIndex:2});
+  assert.deepEqual(landauSample.position,[landauResult.analysis.fieldValues[2],3,landauResult.analysis.energies[2][3]]);
+  assert.equal(landauSample.value,landauResult.analysis.energies[2][3]);
+  assert.equal(landauSample.valueUnit,landauResult.analysis.units.energy);
+  const changedLandau=join(root,"landau-changed.qscene");
+  await cp(landauFolder,changedLandau,{recursive:true});
+  const landauBytes=await readFile(join(changedLandau,"level-3-energy.f64"));
+  landauBytes[0]^=1;await writeFile(join(changedLandau,"level-3-energy.f64"),landauBytes);
+  await assert.rejects(importQuantumSceneBundle(changedLandau),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -289,15 +309,16 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 15, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev, Weyl and Nodal bundles");
+  assert.equal(allFixtureNames.length, 16, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev, Weyl, Nodal and Landau bundles");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName);
+  const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
