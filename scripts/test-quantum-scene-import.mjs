@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 27);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 27);
+  assert.equal(listBundledQuantumSceneExamples().length, 28);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 28);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -418,6 +418,26 @@ try {
   const changedWeight=await readFile(join(changedEdge,"strip-18-left-weight.f64"));changedWeight[0]^=1;
   await writeFile(join(changedEdge,"strip-18-left-weight.f64"),changedWeight);
   await assert.rejects(importQuantumSceneBundle(changedEdge),/integrity|hash/i);
+  const trackedFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-tracked-edge").folder);
+  const trackedScene=await importQuantumSceneBundle(trackedFolder);
+  const trackedProducer=JSON.parse((await readFile(join(fixtureRoot,"hofstadter-edge-tracked-producer-results.json"))).toString("utf8"));
+  assert.equal(trackedProducer.study.tracking.status,"consistent");
+  assert.equal(trackedScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(trackedProducer.study))));
+  assert.ok(trackedScene.source.annotations.find(note=>note.id==="tracking")?.text.includes("overlap"));
+  for(const [width,index] of [[18,1],[24,2]]){
+    const crossing=trackedProducer.study.tracking.widths[index-1].crossings[0];
+    const exact=inspectVerifiedScalarSample(trackedScene,{fingerprint:sceneFingerprint(trackedScene),
+      objectId:`tracked-${width}`,sampleIndex:0});
+    assert.equal(exact.position[0],crossing.ky);
+    assert.equal(exact.value,crossing.overlap);
+    assert.ok(trackedScene.source.annotations.find(note=>note.id===`track-${width}-0`)?.text.includes(
+      trackedProducer.study.sources[index].resultSha256));
+  }
+  const changedTracked=join(root,"hofstadter-tracked-changed.qscene");
+  await cp(trackedFolder,changedTracked,{recursive:true});
+  const changedOverlap=await readFile(join(changedTracked,"tracked-18-overlap.f64"));changedOverlap[0]^=1;
+  await writeFile(join(changedTracked,"tracked-18-overlap.f64"),changedOverlap);
+  await assert.rejects(importQuantumSceneBundle(changedTracked),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -436,7 +456,7 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 22, "Expected frozen SSH/QWZ plus bounded producer fixtures including six Hofstadter versions");
+  assert.equal(allFixtureNames.length, 23, "Expected frozen SSH/QWZ plus bounded producer fixtures including tracked Hofstadter edges");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
@@ -449,7 +469,8 @@ try {
   const hallFolderName=bundledQuantumSceneExample("hofstadter-hall").folder;
   const butterflyFolderName=bundledQuantumSceneExample("hofstadter-butterfly").folder;
   const edgeFolderName=bundledQuantumSceneExample("hofstadter-bulk-edge").folder;
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName&&name!==stripFolderName&&name!==hallFolderName&&name!==butterflyFolderName&&name!==edgeFolderName);
+  const trackedFolderName=bundledQuantumSceneExample("hofstadter-tracked-edge").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName&&name!==stripFolderName&&name!==hallFolderName&&name!==butterflyFolderName&&name!==edgeFolderName&&name!==trackedFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
   assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau" && example.model!=="Hofstadter")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
