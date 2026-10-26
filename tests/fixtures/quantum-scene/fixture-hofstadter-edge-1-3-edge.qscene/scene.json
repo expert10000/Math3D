@@ -1,0 +1,327 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "fixture-hofstadter-edge-1-3-edge",
+  "title": "Hofstadter · supplied bulk and finite-strip comparison",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "fixture-hofstadter-edge-1-3",
+    "jobId": "fixture-hofstadter-edge-1-3",
+    "model": "hofstadter_bulk_edge_study",
+    "engine": "native",
+    "engineVersion": "verified independent runs",
+    "computedAt": "2026-10-26T13:50:21.303Z",
+    "resultSha256": "fcd1698403dda8f41e4f23605529d5581e8c803d627080ec545e3de5eb187614",
+    "adapter": "qvis/1",
+    "parameters": {
+      "p": 1,
+      "q": 3,
+      "hopping": 1,
+      "grid": 9,
+      "occupiedBands": 1,
+      "stripSamples": 31
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "bulk kx / strip ky",
+      "bulk ky / strip display lane",
+      "energy"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "rad or display only",
+      "hopping energy"
+    ]
+  },
+  "camera": {
+    "position": [
+      7,
+      -9,
+      12
+    ],
+    "target": [
+      0,
+      1,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "bulk-0-position",
+      "path": "bulk-0-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "2bd7985da5b560d90afafa841d5dd2a6f1e858014748b4801a50e692304638f4"
+    },
+    {
+      "id": "bulk-0-energy",
+      "path": "bulk-0-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "02b1849bf16d5908d7eb56cec1d6786806a3181ea4d89526d2a7f8ba79556094"
+    },
+    {
+      "id": "bulk-1-position",
+      "path": "bulk-1-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "05a7e4f2f595c12d239e32c6a4ca998c891b69580602018b5f3ed86fb9aaa6aa"
+    },
+    {
+      "id": "bulk-1-energy",
+      "path": "bulk-1-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "b404f9b2134770263fd201089ffb437afc8afeda8434641d2101b4abe068b92c"
+    },
+    {
+      "id": "bulk-2-position",
+      "path": "bulk-2-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "0bd67e53cf626417dce0817bc873d4f6ae459226a63f87be5df7d98abac7804f"
+    },
+    {
+      "id": "bulk-2-energy",
+      "path": "bulk-2-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "8746d4f76750fe84943147d6461221ab186ef7e0db1084bd15d03f1ab7e659d5"
+    },
+    {
+      "id": "strip-18-left-position",
+      "path": "strip-18-left-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 558,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 13392,
+      "sha256": "5f9a362c8e33493d3f401b98f581a13a3fae73f1a2aeb4d4580ba199f1de4730"
+    },
+    {
+      "id": "strip-18-left-weight",
+      "path": "strip-18-left-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 558,
+      "unit": "boundary probability",
+      "bytes": 4464,
+      "sha256": "42a028464d1db8f954250adfcc7cc0429accf32eac71c3e2a01cfe2c8abd4070"
+    },
+    {
+      "id": "strip-18-right-position",
+      "path": "strip-18-right-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 558,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 13392,
+      "sha256": "89f9796fca4d21e38fafc88541f7264358f497650ec443c9cb319fa84c4be7fb"
+    },
+    {
+      "id": "strip-18-right-weight",
+      "path": "strip-18-right-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 558,
+      "unit": "boundary probability",
+      "bytes": 4464,
+      "sha256": "1a3fd6e21af0503a31bb9585b68b4de2c7014b03d2171520e99d1a65f3ceeb79"
+    },
+    {
+      "id": "strip-24-left-position",
+      "path": "strip-24-left-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 744,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 17856,
+      "sha256": "ba6f1e2b69bee6b1e67035ad51f6c343a7f24320283aece8ab27e0d2e5d58fec"
+    },
+    {
+      "id": "strip-24-left-weight",
+      "path": "strip-24-left-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 744,
+      "unit": "boundary probability",
+      "bytes": 5952,
+      "sha256": "eeabf80f5d2391576c4edd1f60b7f1782dbac3e2dff17bdb54d0ebc859fe37b6"
+    },
+    {
+      "id": "strip-24-right-position",
+      "path": "strip-24-right-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 744,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 17856,
+      "sha256": "ab87e81b7b87ed7f26077e73b7fea426a9cc34d23d5503108640b0b72949a6fa"
+    },
+    {
+      "id": "strip-24-right-weight",
+      "path": "strip-24-right-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 744,
+      "unit": "boundary probability",
+      "bytes": 5952,
+      "sha256": "74dbcb86825874dbd3411f2642df22622888f8432956717bba3aa3807dcb7611"
+    }
+  ],
+  "objects": [
+    {
+      "id": "bulk-0",
+      "label": "Bulk band 0",
+      "kind": "point-cloud",
+      "positions": "bulk-0-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-0-energy"
+    },
+    {
+      "id": "bulk-1",
+      "label": "Bulk band 1",
+      "kind": "point-cloud",
+      "positions": "bulk-1-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-1-energy"
+    },
+    {
+      "id": "bulk-2",
+      "label": "Bulk band 2",
+      "kind": "point-cloud",
+      "positions": "bulk-2-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-2-energy"
+    },
+    {
+      "id": "strip-18-left",
+      "label": "18 sites · left boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-18-left-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-18-left-weight"
+    },
+    {
+      "id": "strip-18-right",
+      "label": "18 sites · right boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-18-right-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-18-right-weight"
+    },
+    {
+      "id": "strip-24-left",
+      "label": "24 sites · left boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-24-left-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-24-left-weight"
+    },
+    {
+      "id": "strip-24-right",
+      "label": "24 sites · right boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-24-right-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-24-right-weight"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "comparison",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "consistent: Sampled edge flow agrees with bulk Hall orientation at both widths"
+    },
+    {
+      "id": "bulk",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "bulk · run run-e9f9c104ccf0405487fb01586e950c45 · SHA-256 adaf660eae12aa90bc62395bbb4082d67536464cb39f947315f849f4b0228302"
+    },
+    {
+      "id": "strip-18",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "strip-18 · run run-dd77d1d75d62445fbe3996a71af4f556 · SHA-256 802e97eeeb2bc8481dc7782ca1d691c0e8ac02bd0da9d82891bbfb050ab835b7"
+    },
+    {
+      "id": "strip-24",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "strip-24 · run run-73f201f6e1064f76946524d34b9edd80 · SHA-256 26ba432b312716f4a6389da25fc8fbfbfaa11fbb02349ad26932eb8a6952da90"
+    }
+  ]
+}

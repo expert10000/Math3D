@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { previewGraph2DScientificVolumeLine, type Graph2DAuthoringAction,
+import { previewGraph2DScientificVolumeLine, scientificFieldGraphResultState,
+  scientificFieldResultBinding, structuralHash, type ScientificFieldDocument, type Graph2DAuthoringAction,
   type Graph2DDocument, type Graph2DFieldLocator, type Graph2DPointSeriesDraft,
   type Graph2DScientificDatasetPreview } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
+import { cacheVerifiedScientificFieldResult } from "./verifiedScientificFieldCache";
 
 type Axis = Readonly<{ name: string; unit: string }>;
 export type ScientificComplexVolumeLineSelection = Readonly<{ normalAxis: 0 | 1 | 2; planeFixedIndex: number;
@@ -19,12 +21,13 @@ const initialAxes = (shape: readonly [number, number, number]) => {
 };
 
 export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, locator, datasetId, shape,
-  axes, origin, spacing, document, disabled, initialSelection, onAuthoringCommit, onSaveWorkspace,
+  axes, origin, spacing, document, fieldDocument, disabled, initialSelection, onAuthoringCommit, onSaveWorkspace,
   onVerificationStatus }: {
   manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator; datasetId: string;
   shape: readonly [number, number, number]; axes: readonly [Axis, Axis, Axis];
   origin: readonly [number, number, number]; spacing: readonly [number, number, number];
-  document: Graph2DDocument; disabled?: boolean; onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
+  document: Graph2DDocument; fieldDocument?: ScientificFieldDocument;
+  disabled?: boolean; onAuthoringCommit?: (action: Graph2DAuthoringAction) => void;
   initialSelection?: Selection; onSaveWorkspace?: (selection: Selection) => void;
   onVerificationStatus?: (status: "current" | "changed" | "missing") => void;
 }) {
@@ -47,6 +50,7 @@ export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, l
   const alreadyImported = ["real", "imaginary"].some(component => document.source.objects.some(item =>
     item.kind === "point-series" && item.origin?.sceneFingerprint === fingerprint &&
     item.origin.datasetId === datasetId && item.origin.component === component &&
+    (!fieldDocument || scientificFieldGraphResultState(item.origin, [fieldDocument]) === "current") &&
     item.origin.slice && "plane" in item.origin.slice && item.origin.slice.plane?.normalAxis === normalAxis &&
     item.origin.slice.plane.fixedIndex === planeFixedIndex &&
     item.origin.slice.varyingAxis === varyingAxis && item.origin.slice.fixedIndex === fixedIndex));
@@ -61,7 +65,10 @@ export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, l
       const checked = previewGraph2DScientificVolumeLine(manifestJson, fingerprint, line);
       if (checked.origin.component !== (index === 0 ? "real" : "imaginary"))
         throw new TypeError("Verified complex components are out of order.");
-      return { ...checked, origin: { ...checked.origin, locator } };
+      const preview = { ...checked, origin: { ...checked.origin, locator } };
+      return fieldDocument ? cacheVerifiedScientificFieldResult(fieldDocument,
+        { kind: "complex-graph-line/v1", component: preview.origin.component, selection: request },
+        structuralHash({ origin: preview.origin, rows: preview.rows }), () => preview) : preview;
     }) as [Graph2DScientificDatasetPreview, Graph2DScientificDatasetPreview];
     if (pair[0].rows.length !== pair[1].rows.length ||
         JSON.stringify(pair[0].origin.slice) !== JSON.stringify(pair[1].origin.slice) ||
@@ -88,7 +95,9 @@ export function ScientificComplexVolumeLinesPanel({ manifestJson, fingerprint, l
         if (document.source.objects.length > 30) throw new TypeError("Graph object limit reached.");
         const drafts = fresh.map((part, index) => ({ label: part.label,
           table: pointTableStore.publish(part.rows), mode: "line" as const, domain: part.domain,
-          origin: part.origin, style: { color: colors[index]!, lineWidth: 2,
+          origin: { ...part.origin,
+            ...(fieldDocument ? { fieldDocument: scientificFieldResultBinding(fieldDocument) } : {}) },
+          style: { color: colors[index]!, lineWidth: 2,
             lineStyle: "solid" as const, visible: true } })) as
           [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft];
         onAuthoringCommit!({ type: "create-point-series-pair", drafts });

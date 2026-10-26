@@ -101,6 +101,7 @@ export type Graph2DPointTableReference = Readonly<{
 export type Graph2DScientificDatasetOrigin = Readonly<{
   schema: "scientific-scene/v1"; sceneId: string; datasetId: string;
   locator?: Graph2DFieldLocator;
+  fieldDocument?: Readonly<{ id: string; revision: number; structuralHash: string; sourceHash: string }>;
   component?: string;
   slice?: Readonly<{ varyingAxis: 0 | 1; fixedIndex: number; fixedCoordinate: number;
     fixedName: string; fixedUnit: string }> | Readonly<{
@@ -361,8 +362,16 @@ export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Gr
   exact(value, ["schema", "sceneId", "datasetId", "sceneFingerprint", "resourceSha256", "sourceProducer", "sourceId",
     "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit",
     ...(value.component === undefined ? [] : ["component"]), ...(value.slice === undefined ? [] : ["slice"]),
-    ...(value.locator === undefined ? [] : ["locator"])]) &&
+    ...(value.locator === undefined ? [] : ["locator"]),
+    ...(value.fieldDocument === undefined ? [] : ["fieldDocument"])]) &&
   (value.locator === undefined || isGraph2DFieldLocator(value.locator)) &&
+  (value.fieldDocument === undefined || record(value.fieldDocument) &&
+    exact(value.fieldDocument, ["id", "revision", "structuralHash", "sourceHash"]) &&
+    typeof value.fieldDocument.id === "string" &&
+    value.fieldDocument.id.startsWith("math3d:scientific-field:") &&
+    integerWithin(value.fieldDocument.revision, 1, 1e9) &&
+    [value.fieldDocument.structuralHash, value.fieldDocument.sourceHash].every(hash =>
+      typeof hash === "string" && /^sha256:[a-f0-9]{64}$/.test(hash))) &&
   value.schema === "scientific-scene/v1" &&
   [value.sceneId, value.datasetId, value.sourceProducer, value.sourceId].every(item =>
     typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&

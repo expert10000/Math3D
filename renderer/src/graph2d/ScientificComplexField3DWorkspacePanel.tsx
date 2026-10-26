@@ -6,6 +6,7 @@ import { canonicalJsonStringify, createGraph2DFieldReference, inspectGraph2DFiel
   type ScientificFieldDocument } from "@math3d/core";
 import { ScientificComplexVolumeLinesPanel, type ScientificComplexVolumeLineSelection } from
   "./ScientificComplexVolumeLinesPanel";
+import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 
 type Verified = Readonly<{ manifestJson: string; fingerprint: string }>;
 type Replacement = Readonly<{ manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator;
@@ -88,6 +89,7 @@ export function ScientificComplexField3DWorkspacePanel({ initialDocument, graphD
     const next = reviseScientificFieldDocument(document, { ...document.source,
       paired: { ...paired, line }, display: { ...document.source.display,
         view: "plane", normalAxis: line.normalAxis, fixedIndex: line.planeFixedIndex } });
+    invalidateVerifiedScientificFieldResults(document.identity.id);
     setDocument(next); onSaveDocument?.(next);
   };
   const chooseReplacement = async () => {
@@ -132,6 +134,7 @@ export function ScientificComplexField3DWorkspacePanel({ initialDocument, graphD
             ...freshImaginary, id: paired!.imaginary.id }, line: paired!.line } });
       } finally { await window.scientificScenes.closeGraphDataset(opened.source.fingerprint); }
       if (!next) throw new TypeError("Replacement document was not created.");
+      invalidateVerifiedScientificFieldResults(document.identity.id);
       onSaveDocument(next); setDocument(next); setReplacement(null);
       await verify(next);
     } catch (cause) {
@@ -170,7 +173,7 @@ export function ScientificComplexField3DWorkspacePanel({ initialDocument, graphD
           typeof reference.axes[number]]}
         origin={reference.axes.map(axis => axis.origin) as [number, number, number]}
         spacing={reference.axes.map(axis => axis.spacing) as [number, number, number]}
-        document={graphDocument} initialSelection={paired.line}
+        document={graphDocument} fieldDocument={document} initialSelection={paired.line}
         onAuthoringCommit={onAuthoringCommit} onSaveWorkspace={saveSelection}
         onVerificationStatus={status => { if (status !== "current") { setVerified(null);
           setError(`Saved source ${status}. Reverify the field before previewing another line.`); }

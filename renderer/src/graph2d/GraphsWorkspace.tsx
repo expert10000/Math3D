@@ -47,7 +47,8 @@ import {
   structuralHash, canonicalJsonStringify,
   createVectorField3DDocument, type VectorField3DDocument, type VectorField3DSource,
   createVectorField2DDocument, reviseVectorField2DDocument, type VectorField2DDocument,
-  createScientificFieldDocument, reviseScientificFieldDocument, type ScientificFieldDocument,
+  createScientificFieldDocument, reviseScientificFieldDocument,
+  scientificFieldGraphResultState, scientificFieldResultBinding, type ScientificFieldDocument,
   graph2DToolUnavailable, graph2DIntervalAnalysisUnavailable, graph2DSceneStatusLabel, type Graph2DTool,
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
@@ -65,6 +66,8 @@ import { ScientificComplexVolumeLinesPanel } from "./ScientificComplexVolumeLine
 import { ScientificComplexField3DWorkspacePanel } from "./ScientificComplexField3DWorkspacePanel";
 import type { ScientificComplexVolumeLineSelection } from "./ScientificComplexVolumeLinesPanel";
 import { scientificFieldLineSelectionMatchesSlice } from "./reverifyScientificFieldLine";
+import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResultControls";
+import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
@@ -435,6 +438,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     const workspace = saved ? reviseScientificFieldDocument(saved, source) :
       createScientificFieldDocument(source, { stableKey: real.id,
         title: scientificDataset.quantity.name + " · 3D complex field" });
+    if (saved) invalidateVerifiedScientificFieldResults(saved.identity.id);
     onSaveScientificField(workspace);
     setScientificFieldDocument(workspace);
     setFieldStatuses(current => ({ ...current, [real.id]: "current" }));
@@ -651,7 +655,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           ...savedWorkspace.source, reference: { ...replacement, id: relinkSaved.id },
           quantity: { name: quantity.name, unit: quantity.unit } }) : null;
         onAuthoringCommit({ type: "relink-field-reference", referenceId: relinkSaved.id, replacement });
-        if (revisedWorkspace) { onSaveScientificField?.(revisedWorkspace);
+        if (revisedWorkspace) { invalidateVerifiedScientificFieldResults(revisedWorkspace.identity.id);
+          onSaveScientificField?.(revisedWorkspace);
           setScientificFieldDocument(revisedWorkspace); setScientificFieldOpen(false); }
         setFieldStatuses(current => ({ ...current, [relinkSaved.id]: "current" }));
         setFieldRelink(null);
@@ -1106,6 +1111,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const selectedFieldOrigin = selectedObject?.kind === "point-series" ? selectedObject.origin : undefined;
+  const selectedSavedField = savedScientificFields.find(item =>
+    item.identity.id === selectedFieldOrigin?.fieldDocument?.id);
+  const selectedFieldVerification = selectedSavedField ?
+    fieldStatuses[selectedSavedField.source.reference.id] : undefined;
   const phaseObject = sampledDocument.source.objects.find((item) => item.id === document.selection.objectId);
   const phaseVisible = sampledDocument.display.objects.some(style =>
     style.objectId === phaseObject?.id && style.visible);
@@ -1608,6 +1618,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         <dt>Graph object</dt><dd>{inspected.label}</dd>
         <dt>Source</dt><dd><code>{inspected.kind === "explicit-cartesian" ? `y = ${inspected.expression}` : inspected.expression}</code></dd>
         {selectedObject?.kind === "point-series" && selectedObject.origin && <>
+          {selectedObject.origin.fieldDocument && <><dt>Saved field result</dt><dd>
+            <ScientificFieldGraphResultControls graph={document} object={selectedObject}
+              fields={savedScientificFields} sourceStatus={selectedFieldVerification}
+              onCommit={onAuthoringCommit}
+              onVerificationStatus={status => {
+                if (selectedSavedField) setFieldStatuses(current => ({ ...current,
+                  [selectedSavedField.source.reference.id]: status }));
+              }} />
+          </dd></>}
           <dt>Scientific source</dt><dd>{selectedObject.origin.sourceProducer}/{selectedObject.origin.sourceId} ·
             {" "}{selectedObject.origin.sceneId}/{selectedObject.origin.datasetId}</dd>
           <dt>Units</dt><dd>{selectedObject.origin.xName} ({selectedObject.origin.xUnit}) →
@@ -1994,6 +2013,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             item.kind === "point-series" && item.origin?.sceneFingerprint === scientificFieldDocument.source.reference.sceneFingerprint &&
             item.origin.datasetId === scientificFieldDocument.source.reference.datasetId &&
             (item.origin.component ?? "scalar") === scientificFieldDocument.source.reference.component &&
+            scientificFieldGraphResultState(item.origin, savedScientificFields) === "current" &&
             scientificFieldLineSelectionMatchesSlice(selection, item.origin.slice))}
           onAddGraphLine={(preview, selection) => {
             if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
@@ -2002,6 +2022,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               item.origin?.sceneFingerprint === preview.origin.sceneFingerprint &&
               item.origin.datasetId === preview.origin.datasetId &&
               (item.origin.component ?? "scalar") === reference.component &&
+              scientificFieldGraphResultState(item.origin, savedScientificFields) === "current" &&
               scientificFieldLineSelectionMatchesSlice(selection, item.origin.slice)))
               throw new Error("This field line is already in Graphs.");
             const matching = document.source.objects.filter(item => item.kind === "point-series" &&
@@ -2011,7 +2032,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             const table = pointTableStore.publish(preview.rows);
             onAuthoringCommit({ type: "create-point-series", draft: { label: preview.label,
               table, mode: "line", domain: preview.domain,
-              origin: { ...preview.origin, locator: reference.locator },
+              origin: { ...preview.origin, locator: reference.locator,
+                fieldDocument: scientificFieldResultBinding(scientificFieldDocument) },
               style: { color: SCIENTIFIC_GRID_LINE_COLORS[matching.length % SCIENTIFIC_GRID_LINE_COLORS.length],
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${preview.rows.length} verified field samples to Graphs. Use Fit to view the full line.`);
@@ -2186,7 +2208,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   typeof scientificCoordinate.axes[number], typeof scientificCoordinate.axes[number]]}
                 origin={scientificCoordinate.origin as [number, number, number]}
                 spacing={scientificCoordinate.spacing as [number, number, number]}
-                document={document} disabled={scientificImportBusy} onAuthoringCommit={onAuthoringCommit}
+                document={document} fieldDocument={scientificFieldDocument?.source.paired &&
+                  scientificFieldDocument.source.reference.sceneFingerprint === scientificImport.fingerprint &&
+                  scientificFieldDocument.source.reference.datasetId === scientificSelected.datasetId &&
+                  canonicalJsonStringify(scientificFieldDocument.source.reference.locator) ===
+                    canonicalJsonStringify(scientificImport.locator) ?
+                    scientificFieldDocument : undefined}
+                disabled={scientificImportBusy} onAuthoringCommit={onAuthoringCommit}
                 onSaveWorkspace={onSaveScientificField ? saveScientificComplexField : undefined} />}
           </>}
           {scientificPreview ? <>

@@ -5,7 +5,8 @@ import { buildProjectExplorer, createGraph2DFieldReference, createMath3DProject,
   createScientificDatasetLink, createScientificDerivedView,
   createMixedWorkspaceDocument, createScientificFieldDocument, normalizeScientificFieldDocument,
   parseMath3DProject, reviewScientificComplexField3DRelink, reviseScientificFieldDocument,
-  serializeMath3DProject, sha256Checksum } from "@math3d/core";
+  scientificFieldGraphResultState, scientificFieldResultBinding,
+  serializeMath3DProject, sha256Checksum, validGraph2DScientificDatasetOrigin } from "@math3d/core";
 import { inspectProjectCompatibility } from "./projectTransfer";
 
 const manifest = readFileSync(fileURLToPath(new URL("../../../tests/fixtures/scientific-scene/vortex-flow.sscene/manifest.json", import.meta.url)), "utf8");
@@ -18,6 +19,32 @@ const field = () => createScientificFieldDocument({ reference,
 { stableKey: reference.id, title: "Velocity · north" });
 
 describe("scientific scalar field Project workspace", () => {
+  it("marks a bound Graph snapshot stale after revision or relink, including after Project reopen", () => {
+    const original = field();
+    const origin = { schema: "scientific-scene/v1", sceneId: reference.sceneId,
+      datasetId: reference.datasetId, component: reference.component,
+      sceneFingerprint: reference.sceneFingerprint, resourceSha256: reference.resourceSha256,
+      sourceProducer: "fixture", sourceId: "scalar", sourceSchema: "fixture/v1",
+      sourceSha256: reference.resourceSha256, xName: "x", xUnit: "m",
+      yName: "Velocity", yUnit: "m/s", fieldDocument: scientificFieldResultBinding(original) } as const;
+    expect(validGraph2DScientificDatasetOrigin(origin)).toBe(true);
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "field", checkpoint: original,
+      expected: original.identity, replay: null }], activeDocumentIds: [original.identity.id],
+    results: [], artifacts: [], relations: [], committedSelection: null, constructions: [] });
+    const reopened = parseMath3DProject(serializeMath3DProject(createMath3DProject(workspace,
+      { stableKey: "field-revision-result" })));
+    const restored = reopened.workspace.entries[0]!.checkpoint as typeof original;
+    expect(scientificFieldGraphResultState(origin, [restored])).toBe("current");
+    const revised = reviseScientificFieldDocument(restored, { ...restored.source,
+      display: { ...restored.source.display, transfer: { mode: "percentile" } } });
+    expect(scientificFieldGraphResultState(origin, [revised])).toBe("stale");
+    const moved = createGraph2DFieldReference(manifest, fingerprint,
+      { kind: "directory", value: "C:\\moved\\vortex-flow.sscene" }, "field", "north");
+    const relinked = reviseScientificFieldDocument(restored, { ...restored.source,
+      reference: { ...moved, id: restored.source.reference.id } });
+    expect(scientificFieldGraphResultState(origin, [relinked])).toBe("stale");
+    expect(scientificFieldGraphResultState(origin, [])).toBe("stale");
+  });
   it("keeps mixed-axis units out of scalar Laplacian and gradient-magnitude documents", () => {
     const thermalManifest = readFileSync(fileURLToPath(new URL(
       "../../../tests/fixtures/scientific-scene/thermal-gradient.sscene/manifest.json", import.meta.url)), "utf8");
@@ -134,6 +161,22 @@ describe("saved 3D complex field pair", () => {
     quantity: { name: "Wave amplitude", unit: "1" },
     display: { view: "plane", normalAxis: 2, fixedIndex: 8, transfer: { mode: "data" } } },
   { stableKey: real.id, title: "Wave amplitude · 3D complex field" });
+
+  it("binds both Graph components to the saved pair revision", () => {
+    const binding = scientificFieldResultBinding(original);
+    const imaginaryOrigin = { schema: "scientific-scene/v1", sceneId: imaginary.sceneId,
+      datasetId: imaginary.datasetId, component: "imaginary",
+      sceneFingerprint: imaginary.sceneFingerprint, resourceSha256: imaginary.resourceSha256,
+      sourceProducer: "fixture", sourceId: "complex", sourceSchema: "fixture/v1",
+      sourceSha256: imaginary.resourceSha256, xName: "x", xUnit: "m",
+      yName: "Imaginary", yUnit: "1", fieldDocument: binding } as const;
+    expect(scientificFieldGraphResultState(imaginaryOrigin, [original])).toBe("current");
+    const changed = reviseScientificFieldDocument(original, { ...original.source,
+      paired: { ...original.source.paired!, line: { ...original.source.paired!.line, fixedIndex: 21 } } });
+    expect(scientificFieldGraphResultState(imaginaryOrigin, [changed])).toBe("stale");
+    expect(scientificFieldGraphResultState({ ...imaginaryOrigin,
+      resourceSha256: real.resourceSha256 }, [original])).toBe("stale");
+  });
 
   it("reopens both checksums and the selected plane line from a Project", () => {
     const workspace = createMixedWorkspaceDocument({ entries: [{ module: "field", checkpoint: original,

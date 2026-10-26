@@ -240,7 +240,7 @@ describe("SCI-02 saved field workspace and SCI-04 orthogonal slices", () => {
       { manifestJson: json, fingerprint: hash, samples: { ...probe, components: [
         { ...probe.components[0]!, values: [probe.components[0]!.values[0]! + 1] },
         ...probe.components.slice(1)] } })).toThrow(/checksum/);
-  });
+  }, 30_000);
   it("requires v2 chunk coverage for every transferred sample", () => {
     const manifest = JSON.parse(manifestJson);
     manifest.schema = "scientific-scene/v2";

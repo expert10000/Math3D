@@ -506,6 +506,20 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {pickedScalarSample?.objectId.startsWith("flux-")&&<p data-testid="hofstadter-butterfly-selection">{scene.annotations.find(note=>note.id===`source-${pickedScalarSample.objectId.slice(5)}`)?.text}</p>}
               <p>The third coordinate is a display plane. This is an ideal clean-model spectrum and conditional bulk Hall map. No experimental plateau or individual finite-strip edge classification is supplied; Math3D calculates no Harper result.</p>
             </section>}
+            {scene.provenance.model==="hofstadter_bulk_edge_study"&&<section data-testid="hofstadter-bulk-edge-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{margin:0}}>Hofstadter · verified bulk–edge comparison</h3>
+              <p>Study <code>{scene.provenance.runId}</code> · study SHA-256 <code>{scene.provenance.resultSha256}</code>. Flux {scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}, hopping {scene.provenance.parameters?.hopping}, {scene.provenance.parameters?.occupiedBands} occupied bands, bulk grid {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid}, strip momentum samples {scene.provenance.parameters?.stripSamples}.</p>
+              <p data-testid="hofstadter-bulk-edge-status">{scene.annotations.find(note=>note.id==="comparison")?.text}</p>
+              <p>Three independent hash-verified Theory Lab runs are shown. Blue markers use exact bulk (kₓ,kᵧ,E) samples. Teal and amber markers use each strip's exact (kᵧ,energy,edge weight) samples; their separate lanes are display offsets. Sorted strip state indices are not tracked branches. Select a marker for its stored position, scalar value, dataset index and source hash.</p>
+              <div data-testid="hofstadter-bulk-edge-sources">{scene.annotations.filter(note=>note.id!=="comparison").map(note=><p key={note.id}>{note.text}</p>)}</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {scene.objects.filter(object=>object.id==="bulk-0"||object.id==="strip-18-left"||object.id==="strip-18-right"||object.id==="strip-24-left"||object.id==="strip-24-right")
+                  .map(object=><button key={object.id} type="button" aria-label={`Inspect first sample of ${object.id}`}
+                    disabled={verifyingScalar} onClick={()=>selectScalarSample(object.id,0)}>{object.label}: first sample</button>)}
+              </div>
+              {pickedScalarSample&&<p data-testid="hofstadter-bulk-edge-selection">{scene.annotations.find(note=>note.id===(pickedScalarSample.objectId.startsWith("bulk-")?"bulk":pickedScalarSample.objectId.startsWith("strip-18-")?"strip-18":"strip-24"))?.text}</p>}
+              <p>This is a bounded sampled-flow consistency check at a resolved filling. Math3D computes no Harper result and makes no experimental plateau, transport or unique edge-channel claim.</p>
+            </section>}
             {scene.provenance.model==="hofstadter"&&scene.objects.some(object=>object.id==="strip-left")&&<section data-testid="hofstadter-strip-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Hofstadter · verified finite Harper strip</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
@@ -592,7 +606,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}
             </button>
             {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
-            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && <>
+            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && scene.provenance.model!=="hofstadter_bulk_edge_study" && <>
               <button type="button" data-testid="quantum-open-source-run" disabled={openingRun}
                 onClick={() => void openSourceRun()}>
                 {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}

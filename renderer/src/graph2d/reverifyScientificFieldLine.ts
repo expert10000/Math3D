@@ -1,7 +1,9 @@
 import { inspectGraph2DFieldReference, parseScientificSceneManifest,
   previewGraph2DScientificSlice, previewGraph2DScientificVolumeLine,
+  structuralHash,
   type Graph2DScientificDatasetOrigin, type Graph2DScientificDatasetPreview,
   type ScientificFieldDocument } from "@math3d/core";
+import { cacheVerifiedScientificFieldResult } from "./verifiedScientificFieldCache";
 
 export type ScientificFieldLineSelection =
   | Readonly<{ kind: "grid2d"; varyingAxis: 0 | 1; fixedIndex: number }>
@@ -57,6 +59,8 @@ export async function reverifyScientificFieldLine(document: ScientificFieldDocum
     if (fresh.origin.resourceSha256 !== reference.resourceSha256 ||
         !scientificFieldLineSelectionMatchesSlice(selection, fresh.origin.slice))
       throw new TypeError("Saved field line source or selection changed.");
-    return fresh;
+    return cacheVerifiedScientificFieldResult(document,
+      { kind: "scalar-graph-line/v1", selection },
+      structuralHash({ origin: fresh.origin, rows: fresh.rows }), () => fresh);
   } finally { await bridge.closeGraphDataset(opened.source.fingerprint); }
 }

@@ -5,7 +5,8 @@ export async function checkPersonalGraphFlow(page: Page) {
   const functions = page.getByLabel("Graph functions", { exact: true });
   await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
   const inspector = page.getByLabel("Graph inspector", { exact: true });
-  await inspector.locator(".graph2d-critical-list button").first().click();
+  await inspector.getByRole("table", { name: "Numerical analysis results" })
+    .getByRole("button", { name: /^Select / }).first().click();
   const pins = inspector.getByTestId("graph2d-probes");
   await pins.getByLabel("New probe label", { exact: true }).fill("Saved observation");
   await pins.getByRole("button", { name: "Pin current probe", exact: true }).click();

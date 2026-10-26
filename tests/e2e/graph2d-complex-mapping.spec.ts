@@ -284,6 +284,19 @@ test("GRA-17 saved 3D complex field reopens and imports distinct verified pairs"
     await expect(workspace).toContainText("Both source components verified on this opening");
     savedPair = workspace.getByRole("region", { name: "3D complex field lines" });
     await expect(savedPair.getByLabel("Complex fixed y")).toHaveValue("11");
+    await workspace.getByRole("button", { name: "Close" }).click();
+    const graphId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "graph2d")?.expected.id as string);
+    await page.getByTestId("project-viewer-document").selectOption(graphId);
+    const controls = page.getByRole("complementary", { name: "Graph inspector" })
+      .getByTestId("graph2d-saved-field-result-controls");
+    await expect(controls).toContainText("Stale — saved field source or revision changed");
+    await controls.getByTestId("graph2d-reverify-saved-field-line").click();
+    await expect(controls).toContainText("Samples match; refresh the saved field revision and provenance");
+    await controls.getByTestId("graph2d-refresh-saved-field-line").click();
+    await expect(controls).toContainText("Graph rows refreshed from the verified source");
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    workspace = page.getByRole("dialog", { name: "3D complex field workspace" });
     const imaginaryFile = join(directory, "imaginary.f64"), original = await readFile(imaginaryFile);
     const changed = Buffer.from(original); changed[0] ^= 1;
     await writeFile(imaginaryFile, changed);

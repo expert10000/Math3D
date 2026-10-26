@@ -1,8 +1,9 @@
 import { canonicalJsonStringify, createGraph2DFieldReference,
-  createVectorField3DDerivedLine, parseScientificSceneManifest,
+  parseScientificSceneManifest,
   parseVectorField3DDocument,
-  sampleVectorField3DDerivedSlice, scientificCoordinateIndex,
+  scientificCoordinateIndex,
   type Graph2DDerivedFieldOrigin, type VectorField3DDerivedLine } from "@math3d/core";
+import { cachedVerifiedVectorField3DDerivedLine } from "./verifiedDerivedResultCache";
 
 type ScientificBridge = Pick<NonNullable<typeof window.scientificScenes>,
   "openGraphDatasetReference" | "previewVectorSamples" | "previewVectorVolume" | "closeGraphDataset">;
@@ -41,10 +42,9 @@ export async function reverifyVectorField3DDerivedLine(origin: Graph2DDerivedFie
           selection: { kind: manifest.value.schema === "scientific-scene/v3" &&
             origin.stencilGrid === "source" ?
             "source-stencil-slice" : "stencil-slice", normalAxis, fixedIndex } }) };
-    const slice = sampleVectorField3DDerivedSlice(document, normalAxis, origin.fixedCoordinate,
-      origin.operation, scientific);
-    const fresh = createVectorField3DDerivedLine(document, slice, origin.varyingAxis,
-      origin.profileFixedCoordinate);
+    const fresh = cachedVerifiedVectorField3DDerivedLine(document, normalAxis,
+      origin.fixedCoordinate, origin.operation, origin.varyingAxis,
+      origin.profileFixedCoordinate, scientific);
     if (canonicalJsonStringify(fresh.origin) !== canonicalJsonStringify(origin))
       throw new TypeError("Derived line source, selection, or verified sample hashes changed.");
     return fresh;

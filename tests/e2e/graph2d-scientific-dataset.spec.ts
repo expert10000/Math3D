@@ -1004,6 +1004,50 @@ test("GRA-13.4 previews saved scalar rows and columns from Project and rechecks 
     for (const object of graphLines) expect(object.origin).toMatchObject({
       sceneFingerprint: hash(manifestBytes), resourceSha256: hash(original),
       locator: { kind: "directory", value: directory }, xUnit: expect.any(String), yUnit: "K" });
+    const graphId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((entry: { module: string }) => entry.module === "graph2d")?.expected.id as string);
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(graphId);
+    const reopenedField = page.getByRole("dialog", { name: "Scientific field workspace" });
+    if (await reopenedField.isVisible()) await reopenedField.getByRole("button", { name: "Close" }).click();
+    const controls = page.getByRole("complementary", { name: "Graph inspector" })
+      .getByTestId("graph2d-saved-field-result-controls");
+    await expect(controls).toContainText("reverify against the source after Project reopen");
+    await writeFile(resource, changed);
+    await controls.getByTestId("graph2d-reverify-saved-field-line").click();
+    await expect(controls.getByRole("alert")).toContainText("resource integrity failed");
+    await writeFile(resource, original);
+    await controls.getByTestId("graph2d-reverify-saved-field-line").click();
+    await expect(controls).toContainText("Graph rows verified against the saved source on this opening");
+    await expect(controls.getByTestId("graph2d-refresh-saved-field-line")).toBeDisabled();
+    await page.getByTestId("project-viewer-document").selectOption(fieldId);
+    const revisedField = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await revisedField.getByRole("combobox", { name: "Color range" }).selectOption("percentile");
+    await revisedField.getByRole("button", { name: "Apply verified color range" }).click();
+    await expect(revisedField).toContainText("Source verified for this view");
+    await revisedField.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("project-viewer-document").selectOption(graphId);
+    await expect(controls).toContainText("Stale — saved field source or revision changed");
+    await controls.getByTestId("graph2d-reverify-saved-field-line").click();
+    await expect(controls).toContainText("Samples match; refresh the saved field revision and provenance");
+    await controls.getByTestId("graph2d-refresh-saved-field-line").click();
+    await expect(controls).toContainText("Graph rows refreshed from the verified source");
+    await controls.getByTestId("graph2d-reverify-saved-field-line").click();
+    await expect(controls).toContainText("Graph rows verified against the saved source on this opening");
+    const refreshedProjectPanel = page.getByTestId("project-explorer-panel");
+    if (!await refreshedProjectPanel.getByTestId("project-save").isVisible())
+      await refreshedProjectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await refreshedProjectPanel.getByTestId("project-save").click();
+    await expect(refreshedProjectPanel.getByTestId("project-message")).toContainText("Saved");
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("project-viewer-document").selectOption(graphId);
+    const lastField = page.getByRole("dialog", { name: "Scientific field workspace" });
+    if (await lastField.isVisible()) await lastField.getByRole("button", { name: "Close" }).click();
+    await expect(controls).toContainText("reverify against the source after Project reopen");
+    await controls.getByTestId("graph2d-reverify-saved-field-line").click();
+    await expect(controls).toContainText("Graph rows verified against the saved source on this opening");
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-field-to-graph-"))

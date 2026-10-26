@@ -9,7 +9,8 @@ export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", repl
   setSelection: "graph2d.selection.set", setConstructions: "graph2d.constructions.set" } as const;
 export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-parametric", "edit-parametric",
   "create-polar", "edit-polar", "create-implicit", "edit-implicit",
-  "create-inequality", "edit-inequality", "create-point-series", "create-point-series-pair", "edit-point-series",
+  "create-inequality", "edit-inequality", "create-point-series", "create-point-series-pair",
+  "edit-point-series", "edit-point-series-pair",
   "create-piecewise", "edit-piecewise",
   "create-slope-field", "edit-slope-field",
   "create-trajectory", "edit-trajectory",

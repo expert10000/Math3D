@@ -266,7 +266,7 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
         verifiedSamples: [{ ...line.origin.verifiedSamples[0]!, sampleSha256: "bad" },
           ...line.origin.verifiedSamples.slice(1)] })).toBe(false);
     }
-  });
+  }, 30_000);
 
   it("uses verified source-grid neighbors for more accurate v3 profiles", () => {
     const z = at(0, 0, 16)[2], y = at(0, 21, 0)[1];

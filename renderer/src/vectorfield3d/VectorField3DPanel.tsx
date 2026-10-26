@@ -29,6 +29,8 @@ import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
 import { previewVerifiedVectorField3D } from "./previewVerifiedVectorField3D";
 import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerivedLine";
+import { cachedVerifiedVectorField3DSlice, invalidateVerifiedDerivedResults } from
+  "./verifiedDerivedResultCache";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 export const fieldExplorerSessionKey = "math3d.scientific-field-explorer.session.v1";
@@ -181,6 +183,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   };
   const updateSource = (source: VectorField3DSource) => {
     probeEpoch.current++; previewEpoch.current++;
+    invalidateVerifiedDerivedResults(document.identity.id);
     setDocument(reviseVectorField3DDocument(document, source)); setArtifact(null); setSlice(null);
     setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
@@ -195,6 +198,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const sampleSelectedSlice = (next: VectorField3DDocument, axis: 0 | 1 | 2,
     coordinate: number, scientific?: Parameters<typeof sampleVectorField3DSlice>[3]) => {
     const channel = next.workspace?.sliceChannel ?? "component";
+    if (scientific && next.source.field.kind === "scientific-bundle")
+      return cachedVerifiedVectorField3DSlice(next, axis, coordinate, channel, scientific);
     return channel === "component" ? sampleVectorField3DSlice(next, axis, coordinate, scientific) :
       sampleVectorField3DDerivedSlice(next, axis, coordinate, channel, scientific);
   };
@@ -271,8 +276,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             tiled ? "source-stencil-slice" : "stencil-slice", normalAxis,
             fixedIndex: sourceIndex(next, normalAxis, coordinate) } });
         const scientific = { manifestJson: opened.source.manifestJson, fingerprint, samples };
-        setSlice(channel === "component" ? sampleVectorField3DSparseSlice(next, normalAxis, coordinate, scientific) :
-          sampleVectorField3DDerivedSlice(next, normalAxis, coordinate, channel, scientific));
+        setSlice(cachedVerifiedVectorField3DSlice(next, normalAxis, coordinate, channel, scientific));
         if (next.workspace?.probe) {
           const position = next.workspace.probe;
           const probeSamples = await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
@@ -331,8 +335,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               tiled ? "source-stencil-slice" : "stencil-slice", normalAxis: axis,
               fixedIndex: sourceIndex(next, axis, coordinate) } });
           const scientific = { manifestJson: opened.source.manifestJson, fingerprint: fingerprint!, samples };
-          return channel === "component" ? sampleVectorField3DSparseSlice(next, axis, coordinate, scientific) :
-            sampleVectorField3DDerivedSlice(next, axis, coordinate, channel, scientific);
+          return cachedVerifiedVectorField3DSlice(next, axis, coordinate, channel, scientific);
         }));
         if (epoch !== previewEpoch.current) return;
         setLinkedSlices({ xy: slices[0]!, xz: slices[1]!, yz: slices[2]! }); setDocument(next);
