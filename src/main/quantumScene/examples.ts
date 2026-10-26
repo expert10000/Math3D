@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -58,6 +58,9 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "landau-levels", label: "Landau · continuum level fan", description: "Exact signed-field and level-energy samples; no Hall, edge, or plateau claim",
     model: "Landau", fixtureGroup: "quantum-scene", folder: "run-6758e75a58594f6d98ee98e7c9ac5e03-landau.qscene",
     fingerprint: "ecd2fd63ad0fa08012c517d83a7a1289703e4f89e32bddf43a278e4c50a0b416" },
+  { id: "hofstadter-bands", label: "Hofstadter · Harper magnetic bands", description: "Four exact bands at reduced flux 1/4; no Chern or edge claim",
+    model: "Hofstadter", fixtureGroup: "quantum-scene", folder: "run-9e46f98c78e842ebb12c92d5a73e8446-hofstadter.qscene",
+    fingerprint: "d45afe591bae7bfc6bd8fffcc224a01c1dd62a9ebf32825434230da44bf9ec29" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },

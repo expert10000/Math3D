@@ -498,6 +498,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
               <p>Ring, loop and energy samples are supplied by Theory Lab. Select a loop marker to inspect its exact position and upper-band energy. The lower band remains in the verified bundle. Math3D calculates no Berry phase and makes no drumhead-state or surface claim.</p>
             </section>}
+            {scene.provenance.model==="hofstadter"&&<section data-testid="hofstadter-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Hofstadter · verified Harper bands</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Square-lattice reduced magnetic flux p/q={scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}; hopping t={scene.provenance.parameters?.hopping}; {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid} stored k samples. Momentum is in rad / lattice constant; energy is in hopping energy units.</p>
+              <p>Each surface displays supplied samples in the magnetic zone. Select a band point for its exact stored k, energy, dataset index and source run. The displayed gap is a minimum adjacent-band separation on this grid. Math3D computes no Harper spectrum, Chern number or edge state.</p>
+            </section>}
             {scene.provenance.model==="landau_continuum"&&<section data-testid="landau-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Landau · verified continuum level fan</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>

@@ -203,3 +203,22 @@ stored energy. The bundled producer result is
 selection and changed-byte refusal are tested in both repositories. Math3D
 does not calculate the levels. No filling, Hall conductivity, edge channel or
 plateau is claimed; the Hofstadter lattice model is a separate future producer.
+
+## Post-v0.1 Hofstadter magnetic-band admission (2026-10-26)
+
+Theory Lab independently calculates a bounded square-lattice Harper matrix at
+reduced magnetic flux `p/q`. The worker checks band count, flux reversal,
+zero flux and a finer momentum grid. The pinned `p/q=1/4` source run saves four
+bands on a 9 × 9 magnetic-zone grid with exact `p`, `q`, hopping `t`, momentum
+and energy units, sampled gap and convergence diagnostics. Its `.qscene`
+retains the immutable result hash and binary dataset hashes.
+
+Open **File → Verified quantum examples → Hofstadter → Hofstadter · Harper
+magnetic bands**, or **Open in Math3D** from the saved Theory Lab Scenes view.
+Selecting a band surface gives the exact source `kx`, `ky`, energy, band and
+dataset indices. The pinned producer result is
+`tests/fixtures/quantum-scene/hofstadter-producer-result.json`. Import,
+restart, exact selection and changed-byte refusal have desktop acceptance
+coverage. Math3D only renders supplied bands. Chern numbers, edge spectra and
+Hall response remain future producer work; the displayed bulk gap is a sampled
+adjacent-band separation, not a topological invariant.
