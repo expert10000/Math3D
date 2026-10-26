@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 22);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 22);
+  assert.equal(listBundledQuantumSceneExamples().length, 26);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 26);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -309,6 +309,89 @@ try {
   const harperBytes=await readFile(join(changedHarper,"band-0-energy.f64"));
   harperBytes[0]^=1;await writeFile(join(changedHarper,"band-0-energy.f64"),harperBytes);
   await assert.rejects(importQuantumSceneBundle(changedHarper),/integrity|hash/i);
+  const chernFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-chern").folder);
+  const chernScene=await importQuantumSceneBundle(chernFolder);
+  const chernBytes=await readFile(join(fixtureRoot,"hofstadter-chern-producer-result.json"));
+  const chernResult=JSON.parse(chernBytes.toString("utf8"));
+  assert.equal(chernScene.source.provenance.resultSha256,hash(chernBytes));
+  assert.deepEqual(chernScene.source.topology.invariants.map(item=>item.value),[-1,null,1]);
+  assert.deepEqual(chernScene.source.topology.invariants.map(item=>item.status),["verified","undefined","verified"]);
+  assert.equal(chernScene.source.topology.quantities.length,2);
+  for(const occupied of [1,3]){
+    const gap=chernResult.analysis.chernGaps[occupied-1];
+    const dataset=`occupied-${occupied}-plaquette-flux`;
+    assert.deepEqual(Array.from(chernScene.arrays.get(dataset)),gap.plaquetteFlux);
+    const sample=inspectVerifiedTopologySample(chernScene,{fingerprint:sceneFingerprint(chernScene),
+      quantityId:`occupied-${occupied}-berry-flux`,sampleIndex:21});
+    assert.equal(sample.value,gap.plaquetteFlux[21]);
+    assert.equal(sample.valueUnit,"rad per plaquette");
+    assert.equal(sample.runId,chernResult.runId);
+  }
+  const changedCh = join(root,"hofstadter-chern-changed.qscene");
+  await cp(chernFolder,changedCh,{recursive:true});
+  const fluxBytes=await readFile(join(changedCh,"occupied-1-plaquette-flux.f64"));
+  fluxBytes[0]^=1;await writeFile(join(changedCh,"occupied-1-plaquette-flux.f64"),fluxBytes);
+  await assert.rejects(importQuantumSceneBundle(changedCh),/integrity|hash/i);
+  const stripFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-strip").folder);
+  const stripScene=await importQuantumSceneBundle(stripFolder);
+  const stripBytes=await readFile(join(fixtureRoot,"hofstadter-strip-producer-result.json"));
+  const stripResult=JSON.parse(stripBytes.toString("utf8"));
+  assert.equal(stripScene.source.provenance.resultSha256,hash(stripBytes));
+  assert.equal(stripScene.source.topology,undefined,"strip observation must not carry periodic Chern claims");
+  assert.equal(stripScene.source.provenance.parameters.stripCells,stripResult.analysis.strip.cells);
+  assert.deepEqual(Array.from(stripScene.arrays.get("strip-left-weight")),stripResult.analysis.strip.leftWeights.flat());
+  assert.deepEqual(Array.from(stripScene.arrays.get("strip-right-weight")),stripResult.analysis.strip.rightWeights.flat());
+  for(const side of ["left","right"]){
+    const sample=inspectVerifiedScalarSample(stripScene,{fingerprint:sceneFingerprint(stripScene),objectId:`strip-${side}`,sampleIndex:3*17+5});
+    assert.equal(sample.position[0],stripResult.analysis.strip.kyValues[5]);
+    assert.equal(sample.position[2],stripResult.analysis.strip.energies[3][5]);
+    assert.equal(sample.value,stripResult.analysis.strip[side==="left"?"leftWeights":"rightWeights"][3][5]);
+    assert.equal(sample.valueUnit,"probability weight");
+    assert.equal(sample.runId,stripResult.runId);
+  }
+  const changedStrip=join(root,"hofstadter-strip-changed.qscene");
+  await cp(stripFolder,changedStrip,{recursive:true});
+  const stripWeightBytes=await readFile(join(changedStrip,"strip-left-weight.f64"));
+  stripWeightBytes[0]^=1;await writeFile(join(changedStrip,"strip-left-weight.f64"),stripWeightBytes);
+  await assert.rejects(importQuantumSceneBundle(changedStrip),/integrity|hash/i);
+  const hallFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-hall").folder);
+  const hallScene=await importQuantumSceneBundle(hallFolder);
+  const hallBytes=await readFile(join(fixtureRoot,"hofstadter-hall-producer-result.json"));
+  const hallResult=JSON.parse(hallBytes.toString("utf8"));
+  const hall=hallResult.analysis.filling;
+  assert.equal(hallScene.source.provenance.resultSha256,hash(hallBytes));
+  assert.equal(hallScene.source.provenance.parameters.occupiedBands,hall.occupiedBands);
+  assert.equal(hallScene.source.topology.invariants.find(item=>item.id==="filled-global-gap").value,hall.fineGlobalGap);
+  assert.equal(hallScene.source.topology.invariants.find(item=>item.id==="filled-hall-conductance").value,hall.conductance);
+  assert.equal(hall.conductance,-1);
+  assert.equal(hall.status,"defined");
+  const hallSample=inspectVerifiedBandSample(hallScene,{fingerprint:sceneFingerprint(hallScene),objectId:"band-0",sampleIndex:21});
+  assert.equal(hallSample.energy,hallResult.analysis.bandEnergies[0][21]);
+  assert.equal(hallSample.runId,hallResult.runId);
+  const changedHall=join(root,"hofstadter-hall-changed.qscene");
+  await cp(hallFolder,changedHall,{recursive:true});
+  const hallBand=await readFile(join(changedHall,"band-0-energy.f64"));
+  hallBand[0]^=1;await writeFile(join(changedHall,"band-0-energy.f64"),hallBand);
+  await assert.rejects(importQuantumSceneBundle(changedHall),/integrity|hash/i);
+  const butterflyFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-butterfly").folder);
+  const butterfly=await importQuantumSceneBundle(butterflyFolder);
+  const butterflyBytes=await readFile(join(fixtureRoot,"hofstadter-flux-producer-result.json"));
+  const butterflySource=JSON.parse(butterflyBytes.toString("utf8"));
+  assert.equal(butterfly.source.provenance.resultSha256,hash(butterflyBytes));
+  assert.equal(butterfly.source.provenance.model,"hofstadter_flux_sweep");
+  assert.equal(butterfly.source.objects.length,butterflySource.points.length);
+  for(const point of butterflySource.points){
+    const selected=inspectVerifiedScalarSample(butterfly,{fingerprint:sceneFingerprint(butterfly),objectId:`flux-${point.index}`,sampleIndex:point.q===1?0:point.energies[0].length});
+    assert.equal(selected.position[0],point.p/point.q);
+    assert.equal(selected.value,point.q===1?point.energies[0][0]:point.energies[1][0]);
+    assert.ok(butterfly.source.annotations[point.index].text.includes(point.resultSha256));
+    assert.equal(point.filling?.status==="defined",point.filling?.conductance!==null&&point.filling?.conductance!==undefined);
+  }
+  const changedButterfly=join(root,"hofstadter-butterfly-changed.qscene");
+  await cp(butterflyFolder,changedButterfly,{recursive:true});
+  const butterflyBand=await readFile(join(changedButterfly,"flux-1-energy.f64"));
+  butterflyBand[0]^=1;await writeFile(join(changedButterfly,"flux-1-energy.f64"),butterflyBand);
+  await assert.rejects(importQuantumSceneBundle(changedButterfly),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -327,7 +410,7 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 17, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev, Weyl, Nodal, Landau and Hofstadter bundles");
+  assert.equal(allFixtureNames.length, 21, "Expected frozen SSH/QWZ plus bounded producer fixtures including five Hofstadter versions");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
@@ -335,7 +418,11 @@ try {
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
   const harperFolderName=bundledQuantumSceneExample("hofstadter-bands").folder;
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName);
+  const chernFolderName=bundledQuantumSceneExample("hofstadter-chern").folder;
+  const stripFolderName=bundledQuantumSceneExample("hofstadter-strip").folder;
+  const hallFolderName=bundledQuantumSceneExample("hofstadter-hall").folder;
+  const butterflyFolderName=bundledQuantumSceneExample("hofstadter-butterfly").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName&&name!==stripFolderName&&name!==hallFolderName&&name!==butterflyFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
   assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau" && example.model!=="Hofstadter")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");

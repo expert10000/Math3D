@@ -1,0 +1,401 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-93c5726d6bce49e1b752916c751281e3-hofstadter",
+  "title": "Harper bands · flux 1/4",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-93c5726d6bce49e1b752916c751281e3",
+    "jobId": "fixture-harper-p1-q4",
+    "model": "hofstadter",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-26T11:02:24.439979+00:00",
+    "resultSha256": "f02e9a1fb30461e0ecde2846ebd32ddc02d1c5e077e2fe9e42e012d24a96936f",
+    "adapter": "qvis/1",
+    "parameters": {
+      "p": 1,
+      "q": 4,
+      "hopping": 1,
+      "grid": 9
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "hofstadter"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "kx",
+      "ky",
+      "energy"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "rad / lattice constant",
+      "hopping energy"
+    ]
+  },
+  "camera": {
+    "position": [
+      2.356194490192345,
+      -7,
+      8
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "magnetic-k",
+      "path": "magnetic-k.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad / lattice constant",
+      "bytes": 1944,
+      "sha256": "d76695aa9af40e47d2dad606a56934472f227c099e28a18f515c5945edf81f2b"
+    },
+    {
+      "id": "grid-triangles",
+      "path": "grid-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 128,
+      "unit": "vertex index",
+      "bytes": 3072,
+      "sha256": "76518b8808628a76467d8d861e2c15336923c85e4808a9803206ed9cbfec13dc"
+    },
+    {
+      "id": "band-0-positions",
+      "path": "band-0-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "kx, ky, energy",
+      "bytes": 1944,
+      "sha256": "8e375f3259aa1e78cfdc3389df5a260cd4b7d797d57ca87185b3b68c940b90ba"
+    },
+    {
+      "id": "band-0-energy",
+      "path": "band-0-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "a3166d4b38c7a8e58fcc0d089d193a92e0fcc72b43ed5ef559b272d8f44f5c1d"
+    },
+    {
+      "id": "band-1-positions",
+      "path": "band-1-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "kx, ky, energy",
+      "bytes": 1944,
+      "sha256": "3f9d44c50b620721441ef61e9a50e7d977bcfd53c0b8baab815fb02787c6ff98"
+    },
+    {
+      "id": "band-1-energy",
+      "path": "band-1-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "d3a72fe1ffc5079cd04d3cb23da7edb1e78f94a19e3a33662afe848cacd4761d"
+    },
+    {
+      "id": "band-2-positions",
+      "path": "band-2-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "kx, ky, energy",
+      "bytes": 1944,
+      "sha256": "4b81bbae4632a7f55b6b35ce212442cf479cf719f7f0fb0c1a59dfbdbc486aec"
+    },
+    {
+      "id": "band-2-energy",
+      "path": "band-2-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "d95098ec8fafd7c3ff7112d4ef07f4c9a806e099545a6a6fa749de45093b3784"
+    },
+    {
+      "id": "band-3-positions",
+      "path": "band-3-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "kx, ky, energy",
+      "bytes": 1944,
+      "sha256": "d3042dcff2a1bc435f375e541be1ebcfee55970d388b3e14510402ac64eec0fe"
+    },
+    {
+      "id": "band-3-energy",
+      "path": "band-3-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "a23473692c7c88f7d3f4f7cab9150dae5617b5d344fd410649cd58e2188ea4b6"
+    },
+    {
+      "id": "occupied-1-flux-positions",
+      "path": "occupied-1-flux-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 256,
+      "unit": "kx, ky, z=0 display plane",
+      "bytes": 6144,
+      "sha256": "928a1562a6d287fd77c76c0308dfa59082e5eaf63cb859557f0a4503c88f3a10"
+    },
+    {
+      "id": "occupied-1-plaquette-flux",
+      "path": "occupied-1-plaquette-flux.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "rad per plaquette",
+      "bytes": 2048,
+      "sha256": "25e2f5ceae982b48439bcec6c91b335e2ecee06f80ac4691eebd240d0afde07a"
+    },
+    {
+      "id": "occupied-1-flux-triangles",
+      "path": "occupied-1-flux-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 450,
+      "unit": "vertex index",
+      "bytes": 10800,
+      "sha256": "f045cf67ba3ac4286f696460a147a2756829e57faabd21632c1cec98317ab672"
+    },
+    {
+      "id": "occupied-3-flux-positions",
+      "path": "occupied-3-flux-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 256,
+      "unit": "kx, ky, z=0 display plane",
+      "bytes": 6144,
+      "sha256": "928a1562a6d287fd77c76c0308dfa59082e5eaf63cb859557f0a4503c88f3a10"
+    },
+    {
+      "id": "occupied-3-plaquette-flux",
+      "path": "occupied-3-plaquette-flux.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 256,
+      "unit": "rad per plaquette",
+      "bytes": 2048,
+      "sha256": "d57bea351ffdf754a186ab3470f32e4887e7bb1580a3c70a17bd612bca9aaaa7"
+    },
+    {
+      "id": "occupied-3-flux-triangles",
+      "path": "occupied-3-flux-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 450,
+      "unit": "vertex index",
+      "bytes": 10800,
+      "sha256": "f045cf67ba3ac4286f696460a147a2756829e57faabd21632c1cec98317ab672"
+    }
+  ],
+  "objects": [
+    {
+      "id": "band-0",
+      "label": "Magnetic band 0",
+      "kind": "mesh",
+      "positions": "band-0-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "grid-triangles",
+      "scalars": "band-0-energy"
+    },
+    {
+      "id": "band-1",
+      "label": "Magnetic band 1",
+      "kind": "mesh",
+      "positions": "band-1-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "grid-triangles",
+      "scalars": "band-1-energy"
+    },
+    {
+      "id": "band-2",
+      "label": "Magnetic band 2",
+      "kind": "mesh",
+      "positions": "band-2-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "grid-triangles",
+      "scalars": "band-2-energy"
+    },
+    {
+      "id": "band-3",
+      "label": "Magnetic band 3",
+      "kind": "mesh",
+      "positions": "band-3-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "grid-triangles",
+      "scalars": "band-3-energy"
+    },
+    {
+      "id": "occupied-1-flux",
+      "label": "Occupied 1 FHS plaquette flux",
+      "kind": "mesh",
+      "positions": "occupied-1-flux-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "occupied-1-flux-triangles",
+      "scalars": "occupied-1-plaquette-flux"
+    },
+    {
+      "id": "occupied-3-flux",
+      "label": "Occupied 3 FHS plaquette flux",
+      "kind": "mesh",
+      "positions": "occupied-3-flux-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "indices": "occupied-3-flux-triangles",
+      "scalars": "occupied-3-plaquette-flux"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Square-lattice Harper spectrum · flux 1/4 · 4 magnetic bands · conditional occupied-gap Chern diagnostics · no edge spectra",
+      "position": [
+        0,
+        0,
+        4.8
+      ]
+    },
+    {
+      "id": "sampling",
+      "text": "9×9 saved k grid; coarse/fine extrema drift 0.000 hopping energy (within sampling target)",
+      "position": [
+        0,
+        0,
+        -4.8
+      ]
+    }
+  ],
+  "bands": {
+    "kind": "surface",
+    "coordinates": "magnetic-k",
+    "energies": [
+      "band-0-energy",
+      "band-1-energy",
+      "band-2-energy",
+      "band-3-energy"
+    ],
+    "objects": [
+      "band-0",
+      "band-1",
+      "band-2",
+      "band-3"
+    ],
+    "labels": [
+      "band 0",
+      "band 1",
+      "band 2",
+      "band 3"
+    ],
+    "energyUnit": "hopping energy",
+    "bulkGap": 1.1674349118862555e-16,
+    "grid": [
+      9,
+      9
+    ]
+  },
+  "topology": {
+    "quantities": [
+      {
+        "id": "occupied-1-berry-flux",
+        "label": "Occupied 1 FHS plaquette flux",
+        "kind": "berry-curvature",
+        "object": "occupied-1-flux",
+        "dataset": "occupied-1-plaquette-flux",
+        "convention": "Signed FHS plaquette phase in radians; half-open magnetic zone, x-major/y-fastest; no area division"
+      },
+      {
+        "id": "occupied-3-berry-flux",
+        "label": "Occupied 3 FHS plaquette flux",
+        "kind": "berry-curvature",
+        "object": "occupied-3-flux",
+        "dataset": "occupied-3-plaquette-flux",
+        "convention": "Signed FHS plaquette phase in radians; half-open magnetic zone, x-major/y-fastest; no area division"
+      }
+    ],
+    "invariants": [
+      {
+        "id": "occupied-1-chern",
+        "label": "Occupied 1 Chern",
+        "value": -1,
+        "status": "verified",
+        "method": "Producer FHS determinant links; coarse/fine 8/16 periodic meshes; fine direct gap 1.5307 hopping energy; minimum link 0.88617"
+      },
+      {
+        "id": "occupied-2-chern",
+        "label": "Occupied 2 Chern",
+        "value": null,
+        "status": "undefined",
+        "method": "Producer FHS determinant links; coarse/fine 8/16 periodic meshes; fine direct gap 7.6396e-18 hopping energy; minimum link undefined"
+      },
+      {
+        "id": "occupied-3-chern",
+        "label": "Occupied 3 Chern",
+        "value": 1,
+        "status": "verified",
+        "method": "Producer FHS determinant links; coarse/fine 8/16 periodic meshes; fine direct gap 1.5307 hopping energy; minimum link 0.88617"
+      }
+    ],
+    "limitations": [
+      "Chern numbers belong to the producer's gapped occupied subspaces; a touching or unresolved gap is undefined.",
+      "FHS plaquette flux is an exact supplied scalar on a separate half-open periodic mesh. Its z=0 position is a display plane, not an energy sample.",
+      "No open-boundary spectrum, Fermi filling or Hall response is supplied. Math3D does not calculate Berry flux or Chern numbers."
+    ]
+  }
+}

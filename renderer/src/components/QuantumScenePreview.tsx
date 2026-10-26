@@ -498,11 +498,35 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
               <p>Ring, loop and energy samples are supplied by Theory Lab. Select a loop marker to inspect its exact position and upper-band energy. The lower band remains in the verified bundle. Math3D calculates no Berry phase and makes no drumhead-state or surface claim.</p>
             </section>}
-            {scene.provenance.model==="hofstadter"&&<section data-testid="hofstadter-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
-              <h3 style={{ margin: 0 }}>Hofstadter · verified Harper bands</h3>
+            {scene.provenance.model==="hofstadter_flux_sweep"&&<section data-testid="hofstadter-butterfly-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{margin:0}}>Hofstadter · verified flux sweep</h3>
+              <p>Study <code>{scene.provenance.runId}</code> · result SHA-256 <code>{scene.provenance.resultSha256}</code>. Hopping t={scene.provenance.parameters?.hopping}; momentum grid {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid}; reduced denominators through {scene.provenance.parameters?.maxDenominator}; filling {scene.provenance.parameters?.occupiedBands}.</p>
+              <p>Each colored column is an independent hash-verified periodic Harper run. Teal means a producer-supplied Hall value at a resolved global gap; amber means no conditional Hall value. Click a point or use Inspect first below to read exact flux, energy, sample index and source hash. Source labels use S:Y/N for sampling convergence; gap codes D, C, U mean defined, closed and mesh-unresolved; H is the conditional Hall value in e²/h.</p>
+              <div data-testid="hofstadter-butterfly-sources">{scene.annotations.map(note=><p key={note.id}>{note.text}</p>)}</div>
+              {pickedScalarSample?.objectId.startsWith("flux-")&&<p data-testid="hofstadter-butterfly-selection">{scene.annotations.find(note=>note.id===`source-${pickedScalarSample.objectId.slice(5)}`)?.text}</p>}
+              <p>The third coordinate is a display plane. This is an ideal clean-model spectrum and conditional bulk Hall map. No experimental plateau or individual finite-strip edge classification is supplied; Math3D calculates no Harper result.</p>
+            </section>}
+            {scene.provenance.model==="hofstadter"&&scene.objects.some(object=>object.id==="strip-left")&&<section data-testid="hofstadter-strip-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Hofstadter · verified finite Harper strip</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Flux p/q={scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}; hopping t={scene.provenance.parameters?.hopping}; {scene.provenance.parameters?.stripCells} open x sites and {scene.provenance.parameters?.stripSamples} Bloch-periodic y momenta. Energies are in hopping energy and kᵧ in rad / lattice constant.</p>
+              <p>The teal and amber markers show source energies with first and last two-site probability weights. Their ±0.15 state-lane offsets are display only. The state index is sorted by energy at each kᵧ, not a continuously tracked branch. Select either boundary sample below for its exact stored kᵧ, energy, weight, dataset index and source hash.</p>
+              <p>Finite-strip localization is a separate observation from the periodic occupied-gap Chern result. No filling, Hall response, plateau, or edge-channel classification is supplied; Math3D solves no Harper model.</p>
+            </section>}
+            {scene.provenance.model==="hofstadter"&&!scene.objects.some(object=>object.id==="strip-left")&&<section data-testid="hofstadter-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Hofstadter · verified Harper bands{scene.topology?.invariants.length ? " and occupied-gap Chern" : ""}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
               <p>Square-lattice reduced magnetic flux p/q={scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}; hopping t={scene.provenance.parameters?.hopping}; {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid} stored k samples. Momentum is in rad / lattice constant; energy is in hopping energy units.</p>
-              <p>Each surface displays supplied samples in the magnetic zone. Select a band point for its exact stored k, energy, dataset index and source run. The displayed gap is a minimum adjacent-band separation on this grid. Math3D computes no Harper spectrum, Chern number or edge state.</p>
+              <p>Each band surface displays supplied samples in the magnetic zone. Select a band point for its exact stored k, energy, dataset index and source run. The displayed gap is a minimum adjacent-band separation on this grid.</p>
+              {scene.topology?.invariants.find(item=>item.id==="filled-hall-conductance")&&<div data-testid="hofstadter-hall-profile">
+                <p>Selected filling: {scene.provenance.parameters?.occupiedBands} occupied magnetic bands. The producer compares the global maximum occupied energy with the global minimum empty energy on coarse and finer grids.</p>
+                {scene.topology.invariants.filter(item=>item.id==="filled-global-gap"||item.id==="filled-hall-conductance").map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
+                <p>Conductance uses the producer's TKNN/FHS kx-ky sign convention in e²/h. This is an ideal clean-model bulk value conditional on the global gap, not an experimental plateau or a classification of individual strip channels. Math3D only displays the verified source.</p>
+              </div>}
+              {scene.topology?.invariants.length ? <>
+                <p data-testid="hofstadter-chern-status">Producer occupied-gap Chern values: {scene.topology.invariants.map(item=>`${item.label} ${item.value??"undefined"} (${item.status})`).join(" · ")}. A touching middle gap remains undefined.</p>
+                <p>The separate FHS plaquette meshes use a z=0 display plane. Select a flux sample below to inspect its exact supplied k, phase in radians, dataset index and source run. Math3D computes no Harper spectrum, Berry flux, Chern number or edge state.</p>
+              </> : <p>This earlier saved scene contains band energies only; no Chern data was supplied. Math3D computes no Harper spectrum, Chern number or edge state.</p>}
             </section>}
             {scene.provenance.model==="landau_continuum"&&<section data-testid="landau-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Landau · verified continuum level fan</h3>
@@ -568,7 +592,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}
             </button>
             {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
-            {scene.provenance.kind !== "geometry-fixture" && <>
+            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && <>
               <button type="button" data-testid="quantum-open-source-run" disabled={openingRun}
                 onClick={() => void openSourceRun()}>
                 {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}
