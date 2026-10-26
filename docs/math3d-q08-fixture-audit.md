@@ -243,3 +243,22 @@ Desktop acceptance covers import, exact selection, restart and changed-byte
 refusal. Math3D does not calculate Berry flux or a Chern number. Open-boundary
 edge spectra and Hall response at a specified filling remain separate future
 producer calculations.
+
+## Post-v0.1 finite Harper strip admission (2026-10-26)
+
+Theory Lab separately diagonalizes an 18-site Harper strip open in x and
+Bloch-periodic in y at reduced flux `1/4`. Its immutable run stores 17 exact
+kᵧ samples, energy-sorted states, first/last two-site probability weights,
+and eigenpair residuals. The source-linked scene contains two read-only point
+sets with those weights. Their ±0.15 state-lane offsets are only a visual
+separation; the source energy and kᵧ remain unchanged.
+
+Open **File → Verified quantum examples → Hofstadter → Hofstadter · finite open
+strip**, or select **Hofstadter finite strip** in Theory Lab Scenes and use
+**Open in Math3D**. Inspect a left or right point to see its exact source
+sample, energy, weight, unit and result hash. The pinned producer result is
+`tests/fixtures/quantum-scene/hofstadter-strip-producer-result.json`.
+Import, restart, exact sample inspection and changed-byte refusal have
+desktop acceptance coverage. This finite-strip localization is distinct from
+the periodic occupied-gap Chern result. No filling, Hall response, plateau,
+or edge-channel classification is supplied or inferred by Math3D.

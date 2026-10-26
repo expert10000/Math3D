@@ -1,0 +1,149 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-e02feae009f4467394f141d9291863bb-hofstadter-strip",
+  "title": "Open Harper strip · flux 1/4",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-e02feae009f4467394f141d9291863bb",
+    "jobId": "fixture-harper-p1-q4",
+    "model": "hofstadter",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-26T11:37:12.476244+00:00",
+    "resultSha256": "ffc39b9bbe4be10b0b5a6ce3160e8e4dd3d441d3a852928c1349dc472dfb43fb",
+    "adapter": "qvis/1",
+    "parameters": {
+      "p": 1,
+      "q": 4,
+      "hopping": 1,
+      "grid": 9,
+      "stripCells": 18,
+      "stripSamples": 17
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "hofstadter"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "ky",
+      "sorted state display lane",
+      "energy"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "state index + display offset",
+      "hopping energy"
+    ]
+  },
+  "camera": {
+    "position": [
+      5,
+      -18,
+      8.459062240757895
+    ],
+    "target": [
+      0,
+      8.5,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "strip-left-positions",
+      "path": "strip-left-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 306,
+      "unit": "ky, sorted state display lane, energy",
+      "bytes": 7344,
+      "sha256": "a98a228fba11b90ceadb7810d06322379750cb3d315da3762a995f9a07e83163"
+    },
+    {
+      "id": "strip-left-weight",
+      "path": "strip-left-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 306,
+      "unit": "probability weight",
+      "bytes": 2448,
+      "sha256": "43ee3205c5e6a8db532c1e910bcff07529bf3189a1608e39858367deba9598ee"
+    },
+    {
+      "id": "strip-right-positions",
+      "path": "strip-right-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 306,
+      "unit": "ky, sorted state display lane, energy",
+      "bytes": 7344,
+      "sha256": "63656f32c0239e511bd6aee4be205c3b60f46382c677c16c6edf03819d7e747e"
+    },
+    {
+      "id": "strip-right-weight",
+      "path": "strip-right-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 306,
+      "unit": "probability weight",
+      "bytes": 2448,
+      "sha256": "08840cc50703a6a84964f21e83ea350c600ebc14bbe64f88cb1d911553472f72"
+    }
+  ],
+  "objects": [
+    {
+      "id": "strip-left",
+      "label": "left boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-left-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "strip-left-weight"
+    },
+    {
+      "id": "strip-right",
+      "label": "right boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-right-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "strip-right-weight"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Finite Harper strip: 18 sites open in x, Bloch-periodic in y. Left/right colors encode first/last 2 site weights; lane offsets ±0.15 are display only. No filling, Hall response, or edge-channel classification.",
+      "position": [
+        0,
+        0,
+        3.9475623790203502
+      ]
+    },
+    {
+      "id": "sampling",
+      "text": "17 exact ky samples; state index is energy-sorted at each momentum, not a tracked branch. Maximum eigenpair residual 4.379e-15.",
+      "position": [
+        0,
+        17,
+        -3.9475623790203502
+      ]
+    }
+  ]
+}

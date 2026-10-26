@@ -498,7 +498,14 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
               <p>Ring, loop and energy samples are supplied by Theory Lab. Select a loop marker to inspect its exact position and upper-band energy. The lower band remains in the verified bundle. Math3D calculates no Berry phase and makes no drumhead-state or surface claim.</p>
             </section>}
-            {scene.provenance.model==="hofstadter"&&<section data-testid="hofstadter-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+            {scene.provenance.model==="hofstadter"&&scene.objects.some(object=>object.id==="strip-left")&&<section data-testid="hofstadter-strip-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Hofstadter · verified finite Harper strip</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Flux p/q={scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}; hopping t={scene.provenance.parameters?.hopping}; {scene.provenance.parameters?.stripCells} open x sites and {scene.provenance.parameters?.stripSamples} Bloch-periodic y momenta. Energies are in hopping energy and kᵧ in rad / lattice constant.</p>
+              <p>The teal and amber markers show source energies with first and last two-site probability weights. Their ±0.15 state-lane offsets are display only. The state index is sorted by energy at each kᵧ, not a continuously tracked branch. Select either boundary sample below for its exact stored kᵧ, energy, weight, dataset index and source hash.</p>
+              <p>Finite-strip localization is a separate observation from the periodic occupied-gap Chern result. No filling, Hall response, plateau, or edge-channel classification is supplied; Math3D solves no Harper model.</p>
+            </section>}
+            {scene.provenance.model==="hofstadter"&&!scene.objects.some(object=>object.id==="strip-left")&&<section data-testid="hofstadter-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Hofstadter · verified Harper bands{scene.topology?.invariants.length ? " and occupied-gap Chern" : ""}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
               <p>Square-lattice reduced magnetic flux p/q={scene.provenance.parameters?.p}/{scene.provenance.parameters?.q}; hopping t={scene.provenance.parameters?.hopping}; {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid} stored k samples. Momentum is in rad / lattice constant; energy is in hopping energy units.</p>
