@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 22);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 22);
+  assert.equal(listBundledQuantumSceneExamples().length, 23);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 23);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -309,6 +309,29 @@ try {
   const harperBytes=await readFile(join(changedHarper,"band-0-energy.f64"));
   harperBytes[0]^=1;await writeFile(join(changedHarper,"band-0-energy.f64"),harperBytes);
   await assert.rejects(importQuantumSceneBundle(changedHarper),/integrity|hash/i);
+  const chernFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-chern").folder);
+  const chernScene=await importQuantumSceneBundle(chernFolder);
+  const chernBytes=await readFile(join(fixtureRoot,"hofstadter-chern-producer-result.json"));
+  const chernResult=JSON.parse(chernBytes.toString("utf8"));
+  assert.equal(chernScene.source.provenance.resultSha256,hash(chernBytes));
+  assert.deepEqual(chernScene.source.topology.invariants.map(item=>item.value),[-1,null,1]);
+  assert.deepEqual(chernScene.source.topology.invariants.map(item=>item.status),["verified","undefined","verified"]);
+  assert.equal(chernScene.source.topology.quantities.length,2);
+  for(const occupied of [1,3]){
+    const gap=chernResult.analysis.chernGaps[occupied-1];
+    const dataset=`occupied-${occupied}-plaquette-flux`;
+    assert.deepEqual(Array.from(chernScene.arrays.get(dataset)),gap.plaquetteFlux);
+    const sample=inspectVerifiedTopologySample(chernScene,{fingerprint:sceneFingerprint(chernScene),
+      quantityId:`occupied-${occupied}-berry-flux`,sampleIndex:21});
+    assert.equal(sample.value,gap.plaquetteFlux[21]);
+    assert.equal(sample.valueUnit,"rad per plaquette");
+    assert.equal(sample.runId,chernResult.runId);
+  }
+  const changedCh = join(root,"hofstadter-chern-changed.qscene");
+  await cp(chernFolder,changedCh,{recursive:true});
+  const fluxBytes=await readFile(join(changedCh,"occupied-1-plaquette-flux.f64"));
+  fluxBytes[0]^=1;await writeFile(join(changedCh,"occupied-1-plaquette-flux.f64"),fluxBytes);
+  await assert.rejects(importQuantumSceneBundle(changedCh),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -327,7 +350,7 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 17, "Expected four SSH/QWZ, three BHZ, three BBH, three Kitaev, Weyl, Nodal, Landau and Hofstadter bundles");
+  assert.equal(allFixtureNames.length, 18, "Expected frozen SSH/QWZ plus bounded producer fixtures including both Hofstadter versions");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
@@ -335,7 +358,8 @@ try {
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
   const harperFolderName=bundledQuantumSceneExample("hofstadter-bands").folder;
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName);
+  const chernFolderName=bundledQuantumSceneExample("hofstadter-chern").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
   assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau" && example.model!=="Hofstadter")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");

@@ -219,6 +219,27 @@ Selecting a band surface gives the exact source `kx`, `ky`, energy, band and
 dataset indices. The pinned producer result is
 `tests/fixtures/quantum-scene/hofstadter-producer-result.json`. Import,
 restart, exact selection and changed-byte refusal have desktop acceptance
-coverage. Math3D only renders supplied bands. Chern numbers, edge spectra and
-Hall response remain future producer work; the displayed bulk gap is a sampled
-adjacent-band separation, not a topological invariant.
+coverage. Math3D only renders supplied bands. This historical fixture has no
+Chern calculation; the displayed bulk gap is a sampled adjacent-band
+separation, not a topological invariant.
+
+## Post-v0.1 Hofstadter occupied-gap Chern admission (2026-10-26)
+
+Theory Lab also supplies a separate `p/q=1/4` run with gauge-invariant
+occupied-subspace plaquette flux on the magnetic Brillouin torus. It records
+the coarse and refined momentum grids, sampled direct gap, minimum link
+determinant and Chern convergence for each occupied-band gap. The central
+touching gap is explicitly **undefined**; the two open gaps have integer
+Chern values. This is a conditional bulk diagnosis separate from the
+finite-grid energy spectrum. The source result and every binary dataset are
+hash verified.
+
+Open **File → Verified quantum examples → Hofstadter → Hofstadter · occupied-gap
+Chern**. Select a flux plaquette to inspect its exact source grid index and
+value in radians; select a band point to inspect its exact stored momentum and
+energy. The pinned producer result is
+`tests/fixtures/quantum-scene/hofstadter-chern-producer-result.json`.
+Desktop acceptance covers import, exact selection, restart and changed-byte
+refusal. Math3D does not calculate Berry flux or a Chern number. Open-boundary
+edge spectra and Hall response at a specified filling remain separate future
+producer calculations.
