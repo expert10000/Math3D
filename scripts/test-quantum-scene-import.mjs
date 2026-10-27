@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 34);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 34);
+  assert.equal(listBundledQuantumSceneExamples().length, 35);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 35);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -475,11 +475,11 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 29, "Expected frozen SSH/QWZ plus bounded producer fixtures including the finite open-chain Rice–Mele pump");
+  assert.equal(allFixtureNames.length, 30, "Expected frozen SSH/QWZ plus bounded producer fixtures including the Rice–Mele bulk–chain comparison");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
-  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump","rice-mele-open-chain-pump"].map(id=>bundledQuantumSceneExample(id).folder));
+  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump","rice-mele-open-chain-pump","rice-mele-bulk-chain"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
@@ -710,6 +710,31 @@ try {
     assert.equal(sample.position[0],chainResult.analysis.finiteChain.timeValues[8]);
   }
   const chainChanged=join(root,"rice-mele-chain-changed.qscene");
+  const compareBytes=await readFile(join(fixtureRoot,"rice-mele-bulk-chain-producer-result.json"));
+  const compareResult=JSON.parse(compareBytes.toString("utf8"));
+  const compare=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-bulk-chain").folder));
+  assert.equal(compare.source.provenance.runId,compareResult.runId);
+  assert.equal(compare.source.provenance.resultSha256,hash(compareBytes));
+  assert.equal(compare.source.topology,undefined,"Bulk–chain charge is not an invariant");
+  const compared=[
+    ["comparison-bulk-current",8,compareResult.analysis.dynamics.current[8]],
+    ["comparison-bulk-charge",8,compareResult.analysis.dynamics.charge[8]],
+    ["chain-density",8*12+5,compareResult.analysis.finiteChain.siteDensity[8*12+5]],
+    ["chain-current",8*11+5,compareResult.analysis.finiteChain.bondElectronCurrent[8*11+5]],
+    ["chain-charge",8,compareResult.analysis.finiteChain.centralBondCharge[8]],
+    ["chain-left-edge",8,compareResult.analysis.finiteChain.leftEdgePopulation[8]],
+    ["chain-right-edge",8,compareResult.analysis.finiteChain.rightEdgePopulation[8]],
+  ];
+  for(const [objectId,index,expected] of compared){
+    const sample=inspectVerifiedScalarSample(compare,{fingerprint:sceneFingerprint(compare),objectId,sampleIndex:index});
+    assert.equal(sample.value,expected);
+    assert.equal(sample.position[0],compareResult.analysis.dynamics.timeValues[8]);
+  }
+  const compareChanged=join(root,"rice-mele-comparison-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-bulk-chain").folder),compareChanged,{recursive:true});
+  const comparePath=join(compareChanged,"comparison-bulk-charge.f64"),compareData=await readFile(comparePath);
+  compareData[0]^=1;await writeFile(comparePath,compareData);
+  await assert.rejects(importQuantumSceneBundle(compareChanged),/integrity|hash/i);
   await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-open-chain-pump").folder),chainChanged,{recursive:true});
   const chainPath=join(chainChanged,"chain-site-density.f64"),chainData=await readFile(chainPath);
   chainData[0]^=1;await writeFile(chainPath,chainData);

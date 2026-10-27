@@ -74,3 +74,12 @@ It records norm, particle, continuity, time-step and width diagnostics.
 Finite-size motion is distinct from the periodic bulk pump; the scene makes
 no quantized transport or edge-channel claim. Math3D checks source bytes at
 open, selection and restart.
+
+The additional `run-b1699623689840fda9a1ddd6bae5a02b-bulk-chain.qscene`
+comes from a new immutable Theory Lab run using the same bounded worker job.
+`rice-mele-bulk-chain-producer-result.json` is its source result. The scene
+exports periodic current and charge beside open-chain density, bond current,
+central-bond charge and edge populations on exactly shared saved time samples.
+The separate units and finite-size diagnostics are retained. No equality with
+the ideal pump invariant is inferred. The earlier open-chain fixture remains
+available as a historical scene.

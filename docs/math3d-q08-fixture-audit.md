@@ -99,6 +99,13 @@ adds a distinct **Rice–Mele → finite open-chain motion** example. It is a
 half-filled open chain with exact producer-supplied site density, bond current,
 edge populations, central-bond charge and finite-size checks. Math3D exposes
 the stored samples and source hash read-only, with restart and tamper refusal.
+
+The newer **Rice–Mele → bulk–chain comparison** example contains two traces
+from one verified run and cycle. Select an exact time and site, then choose
+**Inspect linked saved samples** to reverify and read periodic current and
+charge next to finite-chain density, bond current, central-bond charge and edge
+populations. Their boundary conditions and charge units are stated separately.
+The viewer does not equate central-bond charge with the periodic invariant.
 It does not identify a quantized pump from a finite chain or infer a unique
 edge channel. The periodic ideal and finite-speed bulk views remain separate.
 

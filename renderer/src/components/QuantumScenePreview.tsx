@@ -58,6 +58,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const riceComparison = scene.provenance.model === "rice_mele_pump" && scene.objects.some(object => object.id === "comparison-bulk-current");
   const qwzRole = qwzSceneRole(opened);
   const [qwzPair, setQwzPair] = useState<{ bands: OpenedScene; curvature: OpenedScene } | null>(null);
   const [qwzBusy, setQwzBusy] = useState(false);
@@ -199,6 +200,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
   const [pickedScalarSample, setPickedScalarSample] = useState<PickedScalarSample | null>(null);
   const [scalarError, setScalarError] = useState("");
   const [verifyingScalar, setVerifyingScalar] = useState(false);
+  const [comparisonTime, setComparisonTime] = useState(0);
+  const [comparisonSite, setComparisonSite] = useState(0);
+  const [comparisonSamples, setComparisonSamples] = useState<Record<string, PickedScalarSample> | null>(null);
+  const [comparisonError, setComparisonError] = useState("");
+  const [verifyingComparison, setVerifyingComparison] = useState(false);
+  const comparisonGeneration = useRef(0);
   const scalarGeneration = useRef(0);
   const [geometrySpace, setGeometrySpace] = useState<"source" | "reciprocal">("source");
   const [reciprocalError, setReciprocalError] = useState("");
@@ -230,7 +237,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     bandGeneration.current++; setPickedBandSample(null); setPickedPrimitive(null);
     setBandSelectionError(""); setVerifyingBand(false);
     scalarGeneration.current++; setPickedScalarSample(null); setScalarError(""); setVerifyingScalar(false);
-    return () => { bandGeneration.current++; scalarGeneration.current++; };
+    comparisonGeneration.current++; setComparisonSamples(null); setComparisonTime(0); setComparisonSite(0); setComparisonError(""); setVerifyingComparison(false);
+    return () => { bandGeneration.current++; scalarGeneration.current++; comparisonGeneration.current++; };
   }, [opened.reference.sceneFingerprint]);
   useEffect(() => {
     topologyGeneration.current++; setPickedTopologySample(null); setPickedVectorSample(null);
@@ -286,6 +294,29 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
       .catch(error => { if (current === scalarGeneration.current)
         setScalarError(`Scalar selection refused: ${String((error as Error)?.message ?? error)}`); })
       .finally(() => { if (current === scalarGeneration.current) setVerifyingScalar(false); });
+  };
+  const inspectRiceComparison = () => {
+    if (!window.quantumScenes || !riceComparison || verifyingComparison) return;
+    const generation=++comparisonGeneration.current;
+    setComparisonSamples(null); setComparisonError(""); setVerifyingComparison(true);
+    const sites=2*Number(scene.provenance.parameters?.chainCells);
+    const requests:[string,number][]=[
+      ["comparison-bulk-current",comparisonTime],["comparison-bulk-charge",comparisonTime],
+      ["chain-density",comparisonTime*sites+comparisonSite],
+      ["chain-current",comparisonTime*(sites-1)+Math.min(comparisonSite,sites-2)],
+      ["chain-charge",comparisonTime],["chain-left-edge",comparisonTime],["chain-right-edge",comparisonTime],
+    ];
+    void Promise.all(requests.map(async ([objectId,sampleIndex])=>{
+      const sample=await window.quantumScenes!.scalarSample({fingerprint:opened.reference.sceneFingerprint,objectId,sampleIndex});
+      if(sample.fingerprint!==opened.reference.sceneFingerprint||sample.runId!==scene.provenance.runId||
+         sample.resultSha256!==scene.provenance.resultSha256)throw new Error("Comparison source identity changed");
+      return [objectId,sample] as const;
+    })).then(samples=>{
+      if(samples.some(([,sample])=>sample.position[0]!==samples[0][1].position[0]))throw new Error("Saved time samples are not aligned");
+      if(generation===comparisonGeneration.current)setComparisonSamples(Object.fromEntries(samples));
+    }).catch(error=>{
+      if(generation===comparisonGeneration.current)setComparisonError(`Comparison refused: ${String((error as Error)?.message??error)}`);
+    }).finally(()=>{if(generation===comparisonGeneration.current)setVerifyingComparison(false);});
   };
   const primitiveMeshes = useMemo(() => buildQuantumPrimitiveMeshes(document.geometry, scene.objects, opened.mappedObjectIds),
     [document.geometry, scene.objects, opened.mappedObjectIds]);
@@ -562,7 +593,22 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Stored inputs: t₁={scene.provenance.parameters?.t1}, t₂={scene.provenance.parameters?.t2}, staggered Δ={scene.provenance.parameters?.delta}, open cells={scene.provenance.parameters?.cells}. {scene.bands ? `Select a band point for its exact stored k and energy (${scene.bands.energyUnit}).` : "Select a site for its exact stored middle-pair density (probability per site). A/B marker offsets are schematic."}</p>
               <p>Periodic bands and finite open-chain states are distinct saved views of one verified static run. Math3D calculates no Hamiltonian, parameter cycle, invariant or Thouless pump.</p>
             </section>}
-            {scene.provenance.model==="rice_mele_pump"&&scene.provenance.parameters?.chainCells!==undefined&&<section data-testid="rice-mele-chain-pump-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+            {riceComparison&&<section data-testid="rice-mele-bulk-chain-profile" style={{padding:10,marginBottom:14,border:"1px solid var(--border, #cbd5e1)",borderRadius:8}}>
+              <h3 style={{margin:0}}>Rice–Mele · periodic bulk and finite chain</h3>
+              <p>One verified run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>. Duration {scene.provenance.parameters?.duration}, {scene.provenance.parameters?.stepsPerPhase} unitary steps per phase, {scene.provenance.parameters?.chainCells} open cells.</p>
+              <p>The periodic current and charge, chain site density and bond current, central-bond charge, and edge populations share exact saved time and phase indices. Math3D reads the supplied arrays; it runs no evolution.</p>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><label>Saved time index <select aria-label="Rice–Mele comparison time" value={comparisonTime} onChange={event=>{comparisonGeneration.current++;setComparisonTime(Number(event.target.value));setComparisonSamples(null);setComparisonError("");setVerifyingComparison(false);}}>{Array.from({length:Number(scene.provenance.parameters?.phaseSamples)+1},(_,index)=><option key={index} value={index}>{index}</option>)}</select></label>
+                <label>Open-chain site <select aria-label="Rice–Mele comparison site" value={comparisonSite} onChange={event=>{comparisonGeneration.current++;setComparisonSite(Number(event.target.value));setComparisonSamples(null);setComparisonError("");setVerifyingComparison(false);}}>{Array.from({length:2*Number(scene.provenance.parameters?.chainCells)},(_,index)=><option key={index} value={index}>Site {index+1}</option>)}</select></label>
+                <button type="button" disabled={verifyingComparison} onClick={inspectRiceComparison}>Inspect linked saved samples</button></div>
+              {comparisonError&&<p role="alert">{comparisonError}</p>}
+              {comparisonSamples&&<div data-testid="rice-mele-bulk-chain-selection" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))",gap:10}}>
+                <div><h4>Periodic filled band</h4><p>Time {comparisonSamples["comparison-bulk-current"].position[0].toPrecision(8)} {comparisonSamples["comparison-bulk-current"].coordinateUnits[0]}</p><p>Current {comparisonSamples["comparison-bulk-current"].value.toPrecision(10)} {comparisonSamples["comparison-bulk-current"].valueUnit}</p><p>Charge {comparisonSamples["comparison-bulk-charge"].value.toPrecision(10)} {comparisonSamples["comparison-bulk-charge"].valueUnit}</p></div>
+                <div><h4>Finite open chain</h4><p>Site {comparisonSite+1} density {comparisonSamples["chain-density"].value.toPrecision(10)} {comparisonSamples["chain-density"].valueUnit}</p><p>Bond current {comparisonSamples["chain-current"].value.toPrecision(10)} {comparisonSamples["chain-current"].valueUnit}</p><p>Central-bond charge {comparisonSamples["chain-charge"].value.toPrecision(10)} {comparisonSamples["chain-charge"].valueUnit}</p><p>Left/right edge populations {comparisonSamples["chain-left-edge"].value.toPrecision(10)} / {comparisonSamples["chain-right-edge"].value.toPrecision(10)} particles</p></div>
+              </div>}
+              {scene.annotations.filter(note=>note.id==="chain-checks"||note.id==="bulk-chain-link").map(note=><p key={note.id}>{note.text}</p>)}
+              <p>Periodic charge is per cell; open-chain charge crosses a central bond. They are distinct evidence, not equal values or a finite-chain invariant. Every selected value is reverified against the source bundle; reopening begins without a selection.</p>
+            </section>}
+            {scene.provenance.model==="rice_mele_pump"&&scene.provenance.parameters?.chainCells!==undefined&&!riceComparison&&<section data-testid="rice-mele-chain-pump-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{margin:0}}>Rice–Mele · verified finite open-chain motion</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
               <p>Half-filled open chain: {scene.provenance.parameters.chainCells} cells; duration {scene.provenance.parameters.duration} inverse hopping energy; {scene.provenance.parameters.stepsPerPhase} unitary steps per saved phase. No periodic end-to-end bond is present.</p>
