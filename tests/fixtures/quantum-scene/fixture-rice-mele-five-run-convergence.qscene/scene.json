@@ -1,0 +1,269 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "fixture-rice-mele-five-run-convergence",
+  "title": "Rice–Mele · separate periodic and finite-chain convergence series",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "fixture-rice-mele-five-run",
+    "jobId": "fixture-rice-mele-five-run",
+    "model": "rice_mele_convergence_study",
+    "engine": "native",
+    "engineVersion": "verified saved runs",
+    "computedAt": "2026-10-27T00:00:00.000Z",
+    "resultSha256": "c11460526c348610057d50109fc6f89e3a3a95d1b16e3fb55de96fbb68c9174f",
+    "adapter": "qvis/1",
+    "parameters": {
+      "baseHopping": 1,
+      "modulation": 0.4,
+      "staggerAmplitude": 0.6,
+      "staggerOffset": 0,
+      "kSamples": 16,
+      "phaseSamples": 16,
+      "stepsPerPhase": 4,
+      "sourceCount": 5
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "normalized independent variable",
+      "series lane",
+      "normalized display value"
+    ],
+    "units": [
+      "display only",
+      "display only",
+      "display only"
+    ]
+  },
+  "camera": {
+    "position": [
+      2,
+      -4,
+      3
+    ],
+    "target": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "periodic-position",
+      "path": "periodic-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 3,
+      "unit": "normalized display position",
+      "bytes": 72,
+      "sha256": "a9a4ac981ba7395626ab516d6ba853a91c4acc395a4c7f7e1441eb8269ee0b8c"
+    },
+    {
+      "id": "periodic-recorded-charge",
+      "path": "periodic-recorded-charge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 3,
+      "unit": "electron charge / cell",
+      "bytes": 24,
+      "sha256": "e419a23a5c8e2b8c3d18ce692c81813e13750b2c47f6b1a2f30608c11b161701"
+    },
+    {
+      "id": "chain-position",
+      "path": "chain-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 3,
+      "unit": "normalized display position",
+      "bytes": 72,
+      "sha256": "285614fab8f6ad410907dab97e5159196cce8b237fc45a4893d22ee8d8e1cf23"
+    },
+    {
+      "id": "chain-recorded-charge",
+      "path": "chain-recorded-charge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 3,
+      "unit": "electron charge",
+      "bytes": 24,
+      "sha256": "057689fc5704659dceba1fb459e6b4cb4b966087c8c9c790e951264b91af3db7"
+    }
+  ],
+  "objects": [
+    {
+      "id": "periodic-points",
+      "label": "Periodic charge versus duration",
+      "kind": "point-cloud",
+      "positions": "periodic-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.12
+      },
+      "scalars": "periodic-recorded-charge"
+    },
+    {
+      "id": "periodic-line",
+      "label": "periodic recorded-point connection",
+      "kind": "polyline",
+      "positions": "periodic-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "chain-points",
+      "label": "Open-chain central-bond charge versus width",
+      "kind": "point-cloud",
+      "positions": "chain-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.12
+      },
+      "scalars": "chain-recorded-charge"
+    },
+    {
+      "id": "chain-line",
+      "label": "chain recorded-point connection",
+      "kind": "polyline",
+      "positions": "chain-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "id": "periodic-0",
+      "position": [
+        0,
+        0,
+        1
+      ],
+      "text": "Periodic · duration 20 inverse hopping energy · charge -1.0171638675936638 electron charge / cell · resolved · step drift 0.011848536095580897 · momentum drift 0.003978315736623328 · norm drift 2.220446049250313e-15"
+    },
+    {
+      "id": "periodic-0-source",
+      "position": [
+        0,
+        0,
+        1
+      ],
+      "text": "Run run-370fab96c6e542cdbc3e76c752bbf1fb · result SHA-256 5e1598237e1d144f6aeac51e624e020ad5fde1e40225b78473a93276b274a8d6"
+    },
+    {
+      "id": "periodic-1",
+      "position": [
+        0.5,
+        0,
+        0.6462426135337471
+      ],
+      "text": "Periodic · duration 30 inverse hopping energy · charge -1.0353957181603197 electron charge / cell · unresolved · step drift 0.02768922815933328 · momentum drift 0.00022207256295958544 · norm drift 3.219646771412954e-15"
+    },
+    {
+      "id": "periodic-1-source",
+      "position": [
+        0.5,
+        0,
+        0.6462426135337471
+      ],
+      "text": "Run run-aecc822f723346ff9ba434468f271eaf · result SHA-256 323580d8dad9dbf83d10911bf1ac930e82d6209fd48a87d90fc6b8496c2b25c4"
+    },
+    {
+      "id": "periodic-2",
+      "position": [
+        1,
+        0,
+        0
+      ],
+      "text": "Periodic · duration 40 inverse hopping energy · charge -1.0687015916501907 electron charge / cell · unresolved · step drift 0.05132548356278033 · momentum drift 0.0007880524022532143 · norm drift 4.440892098500626e-15"
+    },
+    {
+      "id": "periodic-2-source",
+      "position": [
+        1,
+        0,
+        0
+      ],
+      "text": "Run run-4bde2436ffea4e67956b6588c1d3adef · result SHA-256 c327b940538e836ec48cecaf0addf091eff3cd14bde5829d96b7b7ff7ba1f6d3"
+    },
+    {
+      "id": "chain-0",
+      "position": [
+        0,
+        1,
+        0.31347625839708537
+      ],
+      "text": "Chain · width 4 cells · central-bond charge 0.16357011580394465 electron charge · unresolved · continuity 0.00550846269848862 · width drift 0.2756798817507567 · step drift 0.02136688050810237"
+    },
+    {
+      "id": "chain-0-source",
+      "position": [
+        0,
+        1,
+        0.31347625839708537
+      ],
+      "text": "Run run-151934f572dd49a5a5c68b466041cc43 · result SHA-256 8b4a450df085f68d5d98042424fc1c0037298a18c68a3ea2f993cf8ac6e0bca3"
+    },
+    {
+      "id": "chain-1",
+      "position": [
+        0.5,
+        1,
+        1
+      ],
+      "text": "Chain · width 6 cells · central-bond charge 0.43924999755470134 electron charge · unresolved · continuity 0.005606257525028802 · width drift 0.40155913779047414 · step drift 0.02464688329747683"
+    },
+    {
+      "id": "chain-1-source",
+      "position": [
+        0.5,
+        1,
+        1
+      ],
+      "text": "Run run-aecc822f723346ff9ba434468f271eaf · result SHA-256 323580d8dad9dbf83d10911bf1ac930e82d6209fd48a87d90fc6b8496c2b25c4"
+    },
+    {
+      "id": "chain-2",
+      "position": [
+        1,
+        1,
+        0
+      ],
+      "text": "Chain · width 8 cells · central-bond charge 0.037690859764227175 electron charge · unresolved · continuity 0.005508397047597383 · width drift 0.396758796849801 · step drift 0.025237310529164073"
+    },
+    {
+      "id": "chain-2-source",
+      "position": [
+        1,
+        1,
+        0
+      ],
+      "text": "Run run-f290464df47c4861847c1145f7ebf696 · result SHA-256 234b9e4cfc422bdc84e907886b88fdc8c013e530d9d139e83c56054c466e90a5"
+    },
+    {
+      "id": "scope",
+      "position": [
+        0,
+        1.5,
+        0
+      ],
+      "text": "Two separately labeled recorded observables. Display positions are normalized for layout only; no equal-limit or extrapolation claim."
+    }
+  ]
+}

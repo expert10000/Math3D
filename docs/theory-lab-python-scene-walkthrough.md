@@ -48,6 +48,43 @@ Use **Publish with custom Python script…** only for code you independently tru
 
 Do not damage your only source folder to test tamper refusal. The automated installed-app acceptance separately covers changed dataset bytes and rejects them.
 
+## D. Rice–Mele convergence: Lab → verified export → Math3D
+
+This optional route checks the five-run study and its two **separate** observables.
+It uses a `.qscene` directory. It does not use the Python `.sscene` publisher.
+
+1. In **Theory Lab → Topology → Topological bands → Explore**, choose the
+   **Rice–Mele pump** model. Save five compatible runs with the same cycle and
+   sampling settings. A simple controlled set is `(duration, open-chain cells)`
+   = `(20, 6)`, `(30, 6)`, `(40, 6)`, `(30, 4)`, `(30, 8)`. The `(30, 6)` run is
+   the anchor. Each run must include both periodic and open-chain traces.
+2. Open **Topology → Sweeps → Rice–Mele saved-run convergence**. Click
+   **Refresh verified runs**, choose the `(30, 6)` anchor, the two other duration
+   runs, and the two other width runs. Click **Link five verified runs**. The Lab
+   checks all source hashes and the controlled parameter matches before saving
+   the immutable study.
+3. In the saved study click **Export read-only study .qscene**. Choose a persistent
+   parent directory and note the full newly created `*-convergence.qscene`
+   folder path shown by the Lab. Keep the entire folder together.
+4. In Math3D choose **File → Open verified quantum scene** and select that
+   `.qscene` folder. The **Rice–Mele · saved-run convergence evidence** profile
+   shows two plots: periodic charge versus duration in **electron charge / cell**,
+   and open-chain central-bond charge versus width in **electron charge**.
+   Click a duration or width point to reverify its exact scalar value, dataset
+   index, source run ID, hash, status and recorded diagnostics.
+5. Close and restart Math3D, then reopen the same folder or its saved Project
+   link. No point should start selected; choose one again to check source
+   re-verification. For a quick viewer rehearsal without creating Lab runs, use
+   **File → Verified quantum examples → Rice–Mele · five-run convergence**.
+
+The scene's 3D point positions are normalized for layout. The plots label their
+physical axes from the producer's saved metadata, and selection checks values
+against verified binary datasets. Math3D verifies the exported bundle; it does
+not fetch or recalculate the five original Lab runs. Plot lines connect supplied
+samples only. There is no extrapolation or claim that the two charges share a
+limit. Automated acceptance covers restart, changed bundle bytes and missing
+source files; keep your own export intact.
+
 ## Record the result
 
 For each source, note whether import, sample inspection, Project attachment, restart reopening and missing-source refusal were clear. Also note how many clicks it took to find the scene again, whether the right-hand inspector answered your questions, and whether the initial camera showed the important structure. These observations—not another physics calculation—determine whether the deferred [SSR-07 workspace and inspector proposal](scientific-scene-runtime-roadmap.md) is needed.

@@ -741,3 +741,27 @@ M3D-Q01 ... M3D-Q10     MATH3D quantum integration (this roadmap)
 New work after M3D-Q10 must use a new reviewed program/version or a maintenance
 issue linked to this release. It must not extend the sequence indefinitely or mix
 Quantum Lab computation responsibilities into MATH3D.
+
+## Post-freeze extension: Rice–Mele saved-run convergence view (complete, 2026-10-27)
+
+This bounded addition does not change the M3D-Q10 v0.1 release definition. Theory
+Lab produces a `rice_mele_convergence_study` `.qscene` from five hash-verified
+saved runs. Math3D admits that bundle through the existing strict import path and
+offers the pinned **Rice–Mele · five-run convergence** example.
+
+- The read-only profile has two distinct plots: periodic filled-band charge versus
+  cycle duration (**electron charge / cell** against inverse hopping energy), and
+  finite-chain central-bond charge versus open-chain width (**electron charge**
+  against cells). The source scene's normalized 3D positions serve layout only;
+  the plots use the producer's saved physical x labels and exact scalar datasets.
+- Selecting a point re-verifies the bundle and shows its exact dataset value and
+  index, producer-supplied source run ID and SHA-256, status, and diagnostics.
+  Math3D verifies the `.qscene` bytes; the five original Theory Lab runs remain
+  in Theory Lab and are not independently fetched or recomputed by Math3D.
+- The pinned five-run fixture passes import, exact sample, restart, changed-byte,
+  and missing-file refusal in both importer and Electron acceptance. Its reference
+  study is `tests/fixtures/quantum-scene/rice-mele-convergence-producer-study.json`.
+
+There is no fitted limit, extrapolation, shared-charge equality, or Math3D physics
+calculation. The two observables remain separate; the original broader Q08
+coverage status and the frozen Q10 profile are unchanged.

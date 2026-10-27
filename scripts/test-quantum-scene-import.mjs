@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 35);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 35);
+  assert.equal(listBundledQuantumSceneExamples().length, 36);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 36);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -475,11 +475,11 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 30, "Expected frozen SSH/QWZ plus bounded producer fixtures including the Rice–Mele bulk–chain comparison");
+  assert.equal(allFixtureNames.length, 31, "Expected frozen SSH/QWZ plus bounded producer fixtures including the Rice–Mele convergence study");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
-  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump","rice-mele-open-chain-pump","rice-mele-bulk-chain"].map(id=>bundledQuantumSceneExample(id).folder));
+  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump","rice-mele-open-chain-pump","rice-mele-bulk-chain","rice-mele-convergence"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
@@ -735,6 +735,42 @@ try {
   const comparePath=join(compareChanged,"comparison-bulk-charge.f64"),compareData=await readFile(comparePath);
   compareData[0]^=1;await writeFile(comparePath,compareData);
   await assert.rejects(importQuantumSceneBundle(compareChanged),/integrity|hash/i);
+  const riceStudy=JSON.parse(await readFile(join(fixtureRoot,"rice-mele-convergence-producer-study.json"),"utf8"));
+  const riceStudyDir=join(fixtureRoot,bundledQuantumSceneExample("rice-mele-convergence").folder);
+  const riceStudyScene=await importQuantumSceneBundle(riceStudyDir);
+  assert.equal(riceStudyScene.source.provenance.model,"rice_mele_convergence_study");
+  assert.equal(riceStudyScene.source.provenance.runId,riceStudy.studyId);
+  assert.equal(riceStudyScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(riceStudy))));
+  assert.equal(riceStudy.sources.length,5);
+  assert.deepEqual(riceStudyScene.source.coordinates.units,["display only","display only","display only"]);
+  assert.equal(riceStudyScene.source.topology,undefined,"Distinct charges must not become a shared invariant");
+  const riceById=new Map(riceStudy.sources.map(point=>[point.runId,point]));
+  for(const [series,runIds,field,unit] of [
+    ["periodic",riceStudy.durationRuns,"periodicCharge","electron charge / cell"],
+    ["chain",riceStudy.widthRuns,"chainCentralBondCharge","electron charge"]]){
+    for(let index=0;index<runIds.length;index++){
+      const expected=riceById.get(runIds[index]);
+      const sample=inspectVerifiedScalarSample(riceStudyScene,{fingerprint:sceneFingerprint(riceStudyScene),
+        objectId:`${series}-points`,sampleIndex:index});
+      assert.equal(sample.value,expected[field]);assert.equal(sample.valueUnit,unit);
+      assert.equal(sample.valueDatasetId,`${series}-recorded-charge`);
+      assert.match(riceStudyScene.source.annotations.find(note=>note.id===`${series}-${index}`).text,
+        new RegExp(series==="periodic"?`duration ${expected.duration} inverse hopping energy`:`width ${expected.chainCells} cells`));
+      assert.match(riceStudyScene.source.annotations.find(note=>note.id===`${series}-${index}-source`).text,
+        new RegExp(expected.resultSha256));
+    }
+  }
+  assert.equal((await reopenQuantumSceneReference({directory:riceStudyDir,
+    sceneFingerprint:sceneFingerprint(riceStudyScene)})).imported.source.provenance.runId,riceStudy.studyId);
+  for(const [folder,file,missing] of [["rice-convergence-changed.qscene","periodic-recorded-charge.f64",false],
+    ["rice-convergence-missing.qscene","chain-recorded-charge.f64",true]]){
+    const altered=join(root,folder);await cp(riceStudyDir,altered,{recursive:true});
+    if(missing)await rm(join(altered,file));
+    else {const bytes=await readFile(join(altered,file));bytes[0]^=1;await writeFile(join(altered,file),bytes);}
+    await assert.rejects(importQuantumSceneBundle(altered),missing?/missing|invalid|ENOENT/i:/integrity|hash/i);
+    await assert.rejects(reopenQuantumSceneReference({directory:altered,
+      sceneFingerprint:sceneFingerprint(riceStudyScene)}),missing?/missing|invalid|ENOENT/i:/integrity|hash/i);
+  }
   await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-open-chain-pump").folder),chainChanged,{recursive:true});
   const chainPath=join(chainChanged,"chain-site-density.f64"),chainData=await readFile(chainPath);
   chainData[0]^=1;await writeFile(chainPath,chainData);

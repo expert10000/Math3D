@@ -5,6 +5,7 @@ import { GeometryViewer } from "./GeometryViewer";
 import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 import { QuantumFieldSurface } from "./QuantumFieldSurface";
 import { QuantumFieldVolume } from "./QuantumFieldVolume";
+import { RiceMeleConvergenceProfile } from "./RiceMeleConvergenceProfile";
 import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
 import { buildQuantumVectorGlyphMeshes, type VectorGlyphDisplay } from "./quantumVectorGlyphs";
 import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
@@ -593,6 +594,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Stored inputs: t₁={scene.provenance.parameters?.t1}, t₂={scene.provenance.parameters?.t2}, staggered Δ={scene.provenance.parameters?.delta}, open cells={scene.provenance.parameters?.cells}. {scene.bands ? `Select a band point for its exact stored k and energy (${scene.bands.energyUnit}).` : "Select a site for its exact stored middle-pair density (probability per site). A/B marker offsets are schematic."}</p>
               <p>Periodic bands and finite open-chain states are distinct saved views of one verified static run. Math3D calculates no Hamiltonian, parameter cycle, invariant or Thouless pump.</p>
             </section>}
+            {scene.provenance.model==="rice_mele_convergence_study"&&<RiceMeleConvergenceProfile key={opened.reference.sceneFingerprint} scene={scene} fingerprint={opened.reference.sceneFingerprint}/>}
             {riceComparison&&<section data-testid="rice-mele-bulk-chain-profile" style={{padding:10,marginBottom:14,border:"1px solid var(--border, #cbd5e1)",borderRadius:8}}>
               <h3 style={{margin:0}}>Rice–Mele · periodic bulk and finite chain</h3>
               <p>One verified run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>. Duration {scene.provenance.parameters?.duration}, {scene.provenance.parameters?.stepsPerPhase} unitary steps per phase, {scene.provenance.parameters?.chainCells} open cells.</p>
