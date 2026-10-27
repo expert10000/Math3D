@@ -2,6 +2,16 @@ import type { ScientificFieldDocument, ScientificSceneManifest,
   VectorField3DDocument } from "@math3d/core";
 import { scientificExplorerEligibility } from "../graph2d/scientificExplorerEligibility";
 
+export const BUILTIN_EXPLORER_SCENES = [
+  { id: "vortexVolume", title: "Swirling flow", detail: "3D vector · 21 × 21 × 17" },
+  { id: "quadraticVolume", title: "Quadratic potential", detail: "3D scalar · 17 × 17 × 17" },
+  { id: "complexWaveVolume", title: "Complex wave", detail: "3D complex · 41 × 41 × 17" },
+  { id: "vortex80", title: "Generated vortex", detail: "3D vector · 80 × 80 × 80" },
+  { id: "burgersMeasured", title: "Measured Burgers vortex",
+    detail: "3D vector · 47 × 85 × 55 · BCO-DMO CC BY 4.0" },
+] as const;
+export type BuiltinExplorerSceneId = typeof BUILTIN_EXPLORER_SCENES[number]["id"];
+
 export type ExplorerLibraryEntry = Readonly<{
   id: string;
   origin: "scene" | "project";

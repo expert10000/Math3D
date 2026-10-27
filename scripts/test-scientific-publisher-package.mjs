@@ -39,7 +39,9 @@ try {
   assert.equal(await readFile(spec, "utf8"),
     await readFile(resolve("integrations/python/examples/sincos-grid.json"), "utf8"));
   for (const preset of graphPresetNames) {
-    const source = resolve("tests/fixtures/scientific-scene", preset);
+    const source = resolve(["quadratic-volume.sscene", "complex-wave-volume.sscene",
+      "vortex-volume.sscene"].includes(preset) ? "examples/scientific-scenes" :
+      "tests/fixtures/scientific-scene", preset);
     const manifest = JSON.parse(await readFile(join(source, "manifest.json"), "utf8"));
     for (const name of ["bundle.json", "manifest.json", ...manifest.resources.map(resource => resource.path)])
       assert.deepEqual(await readFile(join(packageRoot, "resources/scientific-scenes", preset, name)),

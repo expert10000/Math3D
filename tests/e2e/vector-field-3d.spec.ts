@@ -46,6 +46,30 @@ test("SCI-02 opens a docked field explorer with bounded narrow-window layout", a
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-02 opens built-in vector, scalar and complex scenes without a folder picker", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const examples = explorer.getByRole("region", { name: "Built-in scientific scenes" });
+    await expect(examples.getByRole("button")).toHaveCount(5);
+    await examples.getByRole("button", { name: /Swirling flow/ }).click();
+    await expect(explorer.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples");
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    await expect(explorer.getByTestId("scientific-explorer-field-layer")
+      .getByRole("figure", { name: /Verified volume for Potential scalar/ })).toBeVisible();
+    await examples.getByRole("button", { name: /Complex wave/ }).click();
+    const complex = explorer.getByTestId("scientific-explorer-field-layer");
+    await expect(complex.getByRole("figure", { name: /Verified volume for .* real/ })).toBeVisible();
+    await expect(complex.getByRole("figure", { name: /Verified volume for .* imaginary/ })).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", async () => {
   const app = await launchSurfaceApp();
   try {

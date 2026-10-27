@@ -3,6 +3,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..", "tests", "fixtures", "scientific-scene");
+const examples = join(import.meta.dirname, "..", "examples", "scientific-scenes");
+const exampleBundles = new Set(["quadratic-volume.sscene", "complex-wave-volume.sscene",
+  "vortex-volume.sscene"]);
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const encode = values => {
   const bytes = Buffer.alloc(values.length * 8);
@@ -136,15 +139,25 @@ for (const preset of presets) {
     bytes: manifestBytes.length, sha256: sha256(manifestBytes) } };
   const files = [["manifest.json", manifestBytes], ["bundle.json", Buffer.from(JSON.stringify(bundle, null, 2) + "\n")],
     ...resources.map(item => [item.path, item.data])];
+  const exampleDirectory = exampleBundles.has(preset.directory) ? join(examples, preset.directory) : null;
   if (process.argv.includes("--check")) {
     for (const [name, expected] of files) {
       const actual = await readFile(join(directory, name));
       if (!actual.equals(expected)) throw new Error(`Scientific Graph preset changed: ${preset.directory}/${name}`);
+      if (exampleDirectory) {
+        const example = await readFile(join(exampleDirectory, name));
+        if (!example.equals(expected))
+          throw new Error(`Scientific example changed: ${preset.directory}/${name}`);
+      }
     }
     console.log(`Verified ${preset.directory}: ${bundle.manifest.sha256}`);
   } else {
     await mkdir(directory, { recursive: true });
     for (const [name, bytes] of files) await writeFile(join(directory, name), bytes);
+    if (exampleDirectory) {
+      await mkdir(exampleDirectory, { recursive: true });
+      for (const [name, bytes] of files) await writeFile(join(exampleDirectory, name), bytes);
+    }
     console.log(`Wrote ${preset.directory}: ${bundle.manifest.sha256}`);
   }
 }

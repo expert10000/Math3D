@@ -440,6 +440,11 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   border-bottom: 1px solid var(--border); }
 .scientific-field-explorer-library h4 { margin: 0 0 6px; }
 .scientific-field-explorer-library p { margin: 0 0 8px; }
+.scientific-field-explorer-examples { margin: 10px 0; }
+.scientific-field-explorer-examples h5 { margin: 0 0 6px; }
+.scientific-field-explorer-examples > div { display: grid; gap: 5px; }
+.scientific-field-explorer-examples button { display: grid; gap: 2px; text-align: left; }
+.scientific-field-explorer-examples small { font-weight: normal; }
 .scientific-field-explorer-library ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
 .scientific-field-explorer-library li { display: grid; gap: 4px; padding: 8px;
   border: 1px solid var(--border); border-radius: 7px; overflow-wrap: anywhere; }

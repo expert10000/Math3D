@@ -79,7 +79,7 @@ const config = {
       to: "scientific-scenes/gaussian-bump.sscene",
     },
     {
-      from: "tests/fixtures/scientific-scene/quadratic-volume.sscene",
+      from: "examples/scientific-scenes/quadratic-volume.sscene",
       to: "scientific-scenes/quadratic-volume.sscene",
     },
     {
@@ -87,7 +87,7 @@ const config = {
       to: "scientific-scenes/complex-wave.sscene",
     },
     {
-      from: "tests/fixtures/scientific-scene/complex-wave-volume.sscene",
+      from: "examples/scientific-scenes/complex-wave-volume.sscene",
       to: "scientific-scenes/complex-wave-volume.sscene",
     },
     {
@@ -95,7 +95,7 @@ const config = {
       to: "scientific-scenes/vortex-flow.sscene",
     },
     {
-      from: "tests/fixtures/scientific-scene/vortex-volume.sscene",
+      from: "examples/scientific-scenes/vortex-volume.sscene",
       to: "scientific-scenes/vortex-volume.sscene",
     },
     {

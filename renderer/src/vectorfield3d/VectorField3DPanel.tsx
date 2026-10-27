@@ -43,7 +43,8 @@ import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerived
 import { cachedVerifiedVectorField3DSlice, invalidateVerifiedDerivedResults } from
   "./verifiedDerivedResultCache";
 import { exportVectorField3DIsosurfaceGltf } from "./exportVectorField3DIsosurface";
-import type { ExplorerLibraryEntry } from "./scientificExplorerLibrary";
+import { BUILTIN_EXPLORER_SCENES, type BuiltinExplorerSceneId,
+  type ExplorerLibraryEntry } from "./scientificExplorerLibrary";
 import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -80,7 +81,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
-  onOpenLibraryEntry, fieldLayer, onOpenFieldDetails, onReturnToVectorLayer }: {
+  onOpenLibraryExample, onOpenLibraryEntry, fieldLayer, onOpenFieldDetails,
+  onReturnToVectorLayer }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
@@ -97,6 +99,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   libraryBusy?: boolean;
   libraryError?: string;
   onBrowseLibraryScene?: () => void;
+  onOpenLibraryExample?: (id: BuiltinExplorerSceneId) => void;
   onOpenLibraryEntry?: (entry: ExplorerLibraryEntry) => void;
   fieldLayer?: ScientificFieldDocument | null;
   onOpenFieldDetails?: () => void;
@@ -1240,6 +1243,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       data-testid="scientific-field-explorer-library">
       <h4>Dataset library</h4>
       <p>Opened scene and saved Project fields. A field is verified again when opened.</p>
+      {onOpenLibraryExample && <section aria-label="Built-in scientific scenes"
+        className="scientific-field-explorer-examples">
+        <h5>Built-in scenes</h5>
+        <div>{BUILTIN_EXPLORER_SCENES.map(example => <button type="button" key={example.id}
+          disabled={busy || libraryBusy} onClick={() => onOpenLibraryExample(example.id)}>
+          {example.title}<small>{example.detail}</small></button>)}</div>
+      </section>}
       {fieldLayer && <button type="button" onClick={onReturnToVectorLayer}>
         Back to vector layer</button>}
       {onBrowseLibraryScene && <button type="button" disabled={busy || libraryBusy}

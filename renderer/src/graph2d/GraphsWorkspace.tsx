@@ -72,7 +72,7 @@ import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResult
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
-import { scientificExplorerLibrary, type ExplorerLibraryEntry } from
+import { scientificExplorerLibrary, type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
   "../vectorfield3d/scientificExplorerLibrary";
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
@@ -566,8 +566,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     finally { if (fingerprint) await window.scientificScenes.closeGraphDataset(fingerprint);
       setScientificImportBusy(false); }
   };
-  const openExplorerSceneDataset = async (datasetId: string) => {
-    const source = scientificImport ?? explorerScene;
+  const openExplorerSceneDataset = async (datasetId: string,
+    sourceOverride?: ExplorerSceneSource) => {
+    const source = sourceOverride ?? scientificImport ?? explorerScene;
     if (!source || scientificImportBusy) return;
     setScientificImportBusy(true); setScientificImportError("");
     try {
@@ -623,25 +624,34 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const openScientificVectorField3D = () => scientificDataset &&
     openExplorerSceneDataset(scientificDataset.id);
-  const browseExplorerScene = async () => {
+  const browseExplorerScene = async (example?: BuiltinExplorerSceneId) => {
     const bridge = window.scientificScenes;
-    if (!bridge?.openGraphDataset || scientificImportBusy) return;
+    if (!bridge?.openGraphDataset || !bridge.openGraphDatasetPreset || scientificImportBusy) return;
     setScientificImportBusy(true); setScientificImportError("");
     let fingerprint: string | null = null;
+    let selected: { source: ExplorerSceneSource; datasetId: string } | null = null;
     try {
-      const opened = await bridge.openGraphDataset();
+      const opened = example ? await bridge.openGraphDatasetPreset(example) :
+        await bridge.openGraphDataset();
       if (!opened.ok) { if (!opened.canceled) setScientificImportError(opened.error); return; }
       fingerprint = opened.source.fingerprint;
       const parsed = parseScientificSceneManifest(opened.source.manifestJson);
       if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
-      setExplorerScene({ manifestJson: opened.source.manifestJson,
-        fingerprint, locator: opened.source.locator });
+      const source = { manifestJson: opened.source.manifestJson,
+        fingerprint: opened.source.fingerprint, locator: opened.source.locator };
+      setExplorerScene(source);
+      if (example) {
+        const dataset = parsed.value.datasets.find(item => item.shape.length === 3);
+        if (!dataset) throw new TypeError("This example has no 3D field for Explorer.");
+        selected = { source, datasetId: dataset.id };
+      }
     } catch (error) { setScientificImportError((error as Error).message); }
     finally {
       if (fingerprint) try { await bridge.closeGraphDataset(fingerprint); }
         catch (error) { setScientificImportError((error as Error).message); }
       setScientificImportBusy(false);
     }
+    if (selected) await openExplorerSceneDataset(selected.datasetId, selected.source);
   };
   const openExplorerLibraryEntry = (entry: ExplorerLibraryEntry) => {
     if (!entry.ready) return;
@@ -2127,6 +2137,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy}
           libraryError={scientificImportError}
           onBrowseLibraryScene={scientificImportAvailable ? () => void browseExplorerScene() : undefined}
+          onOpenLibraryExample={scientificImportAvailable ? id => void browseExplorerScene(id) : undefined}
           onOpenLibraryEntry={openExplorerLibraryEntry}
           fieldLayer={explorerFieldLayer} onReturnToVectorLayer={() => setExplorerFieldLayer(null)}
           onOpenFieldDetails={() => { if (explorerFieldLayer) {
