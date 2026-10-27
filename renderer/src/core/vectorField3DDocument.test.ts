@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createVectorField3DDocument, normalizeVectorField3DDocument,
-  parseVectorField3DDocument, reviseVectorField3DDocument, sampleVectorField3DArrows, serializeVectorField3DDocument,
+  parseVectorField3DDocument, reviseVectorField3DDocument, reviseVectorField3DWorkspace,
+  sampleVectorField3DArrows, serializeVectorField3DDocument,
   vectorField3DExpression, type Graph2DFieldReference, type VectorField3DSource } from "@math3d/core";
 
 const axes = [
@@ -20,6 +21,18 @@ const document = (p?: string, q?: string, r?: string) =>
   createVectorField3DDocument(source(p, q, r), { stableKey: ["vector-test", p ?? "1", q ?? "0", r ?? "0"] });
 
 describe("GRA-14 separate 3D vector-field document and deterministic arrow artifacts", () => {
+  it("round-trips a cross-layer physical point without changing source identity", () => {
+    const original = document();
+    const linked = reviseVectorField3DWorkspace(original, { ...original.workspace!,
+      linkedProbe: { point: [0.25, 0.5, 3], units: ["m", "m", "m"] } });
+    expect(linked.identity).toEqual(original.identity);
+    expect(parseVectorField3DDocument(serializeVectorField3DDocument(linked)).workspace?.linkedProbe)
+      .toEqual({ point: [0.25, 0.5, 3], units: ["m", "m", "m"] });
+    const legacy = JSON.parse(serializeVectorField3DDocument(original));
+    delete legacy.workspace.linkedProbe;
+    expect(normalizeVectorField3DDocument(legacy)).toMatchObject({ ok: true,
+      value: { workspace: { linkedProbe: null } } });
+  });
   it("round-trips a versioned constant field and samples camera-independent vectors", () => {
     const saved = document();
     const restored = parseVectorField3DDocument(serializeVectorField3DDocument(saved));

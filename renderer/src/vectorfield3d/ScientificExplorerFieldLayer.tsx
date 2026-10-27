@@ -6,13 +6,16 @@ import { createScientificDatasetLink, deriveVerifiedScientificScalarVolume,
   type Graph2DScientificVolume, type ScientificCoordinateSystem,
   type ScientificFieldDocument, type ScientificFieldTransfer } from "@math3d/core";
 import { ScientificFieldVolume } from "../graph2d/ScientificFieldVolume";
+import { linkedFieldPointStatus, sampleLinkedFieldVolume,
+  type LinkedExplorerProbe } from "./linkedFieldProbe";
 
 type VerifiedLayer = Readonly<{ coordinate: ScientificCoordinateSystem;
   volumes: readonly Graph2DScientificVolume[]; label: string; unit: string }>;
 
 /** Render only fresh, independently verified transfers in the shared Explorer viewer. */
-export function ScientificExplorerFieldLayer({ document, onOpenDetails }: {
+export function ScientificExplorerFieldLayer({ document, onOpenDetails, linkedProbe }: {
   document: ScientificFieldDocument; onOpenDetails: () => void;
+  linkedProbe: LinkedExplorerProbe | null;
 }) {
   const [layer, setLayer] = useState<VerifiedLayer | null>(null);
   const [status, setStatus] = useState("Verifying source before drawing…");
@@ -71,11 +74,30 @@ export function ScientificExplorerFieldLayer({ document, onOpenDetails }: {
     void verify();
     return () => { active = false; };
   }, [document.identity.id, document.identity.structuralHash]);
+  const axes = layer?.coordinate.axes.map((axis, index) => ({ name: axis.name,
+    unit: axis.unit, origin: layer.coordinate.origin[index]!,
+    spacing: layer.coordinate.spacing[index]!, count: layer.volumes[0]!.sourceShape[index]! })) ?? [];
+  const probeState = linkedProbe && layer ? linkedFieldPointStatus(linkedProbe.point,
+    axes, linkedProbe.units) : null;
   return <section className="scientific-explorer-field-layer" aria-label={`${document.source.paired ?
     "Complex" : "Scalar"} field layer`} data-testid="scientific-explorer-field-layer">
     <header><h4>{document.metadata.title}</h4>
       <button type="button" onClick={onOpenDetails}>Open field controls</button></header>
     <p role="status">{status}</p>
+    {linkedProbe && layer && <div role="status" data-testid="scientific-explorer-linked-probe">
+      {probeState === "outside" ? <p>Linked point is outside this field domain. No value is shown.</p> :
+        probeState === "incompatible-units" ? <p>Linked point uses incompatible coordinate units.
+          Select a point in this field to compare values.</p> : <>
+          <p>Linked point {linkedProbe.point.map((value, index) =>
+            `${axes[index]!.name} = ${value} ${axes[index]!.unit}`).join(" · ")}.
+            Trilinear interpolation on verified bounded samples.</p>
+          <p>{layer.volumes.map(volume => `${volume.component} = ${sampleLinkedFieldVolume(volume,
+            axes, linkedProbe.point).toPrecision(7)} ${layer.unit}`).join(" · ")}.</p>
+          <small>Source {document.source.reference.sceneId} / {document.source.reference.datasetId}
+            {" · "}verified samples {layer.volumes.map(volume =>
+              `${volume.component}: ${volume.sampleSha256}`).join(" · ")}</small>
+        </>}
+    </div>}
     {layer && <div className="scientific-explorer-field-volumes">{layer.volumes.map(volume =>
       <ScientificFieldVolume key={`${volume.component}:${volume.sampleSha256}`} volume={volume}
         coordinate={layer.coordinate} label={`${layer.label} ${volume.component}`}
