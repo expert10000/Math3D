@@ -75,6 +75,10 @@ test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", as
     await expect(library.getByRole("button", { name: "Open Velocity from dataset library" }))
       .toBeDisabled();
     await library.getByRole("button", { name: /Open Potential · scalar from dataset library/ }).click();
+    const layer = explorer.getByTestId("scientific-explorer-field-layer");
+    await expect(layer.getByRole("figure", { name: /Verified volume for Potential scalar/ }))
+      .toBeVisible();
+    await layer.getByRole("button", { name: "Open field controls" }).click();
     const scalar = page.getByRole("dialog", { name: "Scientific field workspace" });
     await expect(scalar.getByRole("figure", { name: /Verified volume for Potential scalar/ }))
       .toBeVisible();
@@ -90,8 +94,10 @@ test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", as
     await restoredLibrary.getByRole("button", { name: "Browse scientific scene" }).click();
     await expect(restoredLibrary).toContainText("Potential scalar · scene");
     await restoredLibrary.getByRole("button", { name: "Open Potential from dataset library" }).click();
-    await expect(page.getByRole("dialog", { name: "Scientific field workspace" })
+    await expect(page.getByTestId("scientific-explorer-field-layer")
       .getByRole("figure", { name: /Verified volume for Potential scalar/ })).toBeVisible();
+    await restoredLibrary.getByRole("button", { name: "Back to vector layer" }).click();
+    await expect(page.getByTestId("scientific-explorer-field-layer")).toHaveCount(0);
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -119,6 +125,10 @@ test("SCI-02 reopens a saved complex layer from the Explorer dataset library", a
     const library = explorer.getByRole("region", { name: "Dataset library" });
     await expect(library).toContainText("3D complex field");
     await library.getByRole("button", { name: /Open .*3D complex field from dataset library/ }).click();
+    const layer = explorer.getByTestId("scientific-explorer-field-layer");
+    await expect(layer.getByRole("figure", { name: /Verified volume for .* real/ })).toBeVisible();
+    await expect(layer.getByRole("figure", { name: /Verified volume for .* imaginary/ })).toBeVisible();
+    await layer.getByRole("button", { name: "Open field controls" }).click();
     await expect(page.getByRole("dialog", { name: "3D complex field workspace" }))
       .toContainText("Both source components verified on this opening");
     await page.getByRole("dialog", { name: "3D complex field workspace" })

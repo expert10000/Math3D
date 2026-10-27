@@ -228,11 +228,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } | null>(null);
   const [explorerScene, setExplorerScene] = useState<ExplorerSceneSource | null>(() =>
     readExplorerSceneSession(document.identity.id));
+  const [explorerFieldLayer, setExplorerFieldLayer] = useState<ScientificFieldDocument | null>(null);
   const explorerGraphId = useRef(document.identity.id);
   useEffect(() => {
     if (explorerGraphId.current !== document.identity.id) {
       explorerGraphId.current = document.identity.id;
       setExplorerScene(null);
+      setExplorerFieldLayer(null);
     }
   }, [document.identity.id]);
   useEffect(() => {
@@ -594,7 +596,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             fixedIndex: Math.floor(dataset.shape[2]! / 2), transfer: { mode: "data" } } },
         { stableKey: reference.id, title: `${dataset.quantity.name} · ${paired ? "3D complex field" : "scalar"}` });
         if (scientificImport) await window.scientificScenes?.closeGraphDataset(source.fingerprint);
-        setScientificImport(null); setScientificFieldDocument(field); setScientificFieldOpen(true);
+        setScientificImport(null); setExplorerFieldLayer(field); setVectorField3DOpen(true);
         return;
       }
       const eligibility = scientificExplorerEligibility(parsed.value, dataset);
@@ -614,7 +616,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const next = createVectorField3DDocument(vectorSource, { stableKey: `${source.fingerprint}:${dataset.id}`,
         title: `${parsed.value.title} · ${dataset.quantity.name}` });
       if (scientificImport) await window.scientificScenes?.closeGraphDataset(source.fingerprint);
-      setVectorField3DDocument(next); setVectorField3DOpen(true); setScientificImport(null);
+      setVectorField3DDocument(next); setExplorerFieldLayer(null);
+      setVectorField3DOpen(true); setScientificImport(null);
     } catch (error) { setScientificImportError((error as Error).message); }
     finally { setScientificImportBusy(false); }
   };
@@ -647,11 +650,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     if (entry.kind === "vector") {
       const vector = [vectorField3DDocument, savedVectorField3D].find(item =>
         item?.identity.id === entry.documentId);
-      if (vector) { setVectorField3DDocument(vector); setVectorField3DOpen(true); }
+      if (vector) { setVectorField3DDocument(vector); setExplorerFieldLayer(null);
+        setVectorField3DOpen(true); }
       return;
     }
     const field = savedScientificFields.find(item => item.identity.id === entry.documentId);
-    if (field) { setScientificFieldDocument(field); setScientificFieldOpen(true); }
+    if (field) setExplorerFieldLayer(field);
   };
   const openSavedFieldReference = async (reference: Graph2DFieldReference) => {
     if (!window.scientificScenes?.openGraphDatasetReference || scientificImportBusy) return;
@@ -2124,6 +2128,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           libraryError={scientificImportError}
           onBrowseLibraryScene={scientificImportAvailable ? () => void browseExplorerScene() : undefined}
           onOpenLibraryEntry={openExplorerLibraryEntry}
+          fieldLayer={explorerFieldLayer} onReturnToVectorLayer={() => setExplorerFieldLayer(null)}
+          onOpenFieldDetails={() => { if (explorerFieldLayer) {
+            setScientificFieldDocument(explorerFieldLayer); setScientificFieldOpen(true);
+          } }}
           onSaveDocument={onSaveVectorField3D} onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}
@@ -2134,14 +2142,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {scientificFieldOpen && scientificFieldDocument?.source.paired &&
           <ScientificComplexField3DWorkspacePanel key={scientificFieldDocument.identity.id}
             initialDocument={scientificFieldDocument} graphDocument={document}
-            onSaveDocument={field => { setScientificFieldDocument(field); onSaveScientificField?.(field); }}
+            onSaveDocument={field => { setScientificFieldDocument(field);
+              setExplorerFieldLayer(current => current?.identity.id === field.identity.id ? field : current);
+              onSaveScientificField?.(field); }}
             onAuthoringCommit={onAuthoringCommit}
             onVerificationStatus={status => setFieldStatuses(current => ({ ...current,
               [scientificFieldDocument.source.reference.id]: status }))}
             onClose={() => setScientificFieldOpen(false)} />}
         {scientificFieldOpen && scientificFieldDocument && !scientificFieldDocument.source.paired && <ScientificFieldWorkspacePanel
           key={scientificFieldDocument.identity.id} initialDocument={scientificFieldDocument}
-          onSaveDocument={field => { setScientificFieldDocument(field); onSaveScientificField?.(field); }}
+          onSaveDocument={field => { setScientificFieldDocument(field);
+            setExplorerFieldLayer(current => current?.identity.id === field.identity.id ? field : current);
+            onSaveScientificField?.(field); }}
           isGraphLineImported={selection => document.source.objects.some(item =>
             item.kind === "point-series" && item.origin?.sceneFingerprint === scientificFieldDocument.source.reference.sceneFingerprint &&
             item.origin.datasetId === scientificFieldDocument.source.reference.datasetId &&

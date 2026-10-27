@@ -24,6 +24,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   vectorField3DExpression, type VectorField3DArrowArtifact, type VectorField3DDocument,
   type VectorField3DSource, type VectorField3DExpression, type VectorField3DTrajectoryArtifact,
   type Graph2DScientificDatasetPreview, type VectorField3DLayer,
+  type ScientificFieldDocument,
   type VectorField3DSliceArtifact, type VectorField3DProbeArtifact,
   type VectorField3DClipBounds, type VectorField3DCameraPreset,
   type VectorField3DSpatialSeedPattern,
@@ -43,6 +44,7 @@ import { cachedVerifiedVectorField3DSlice, invalidateVerifiedDerivedResults } fr
   "./verifiedDerivedResultCache";
 import { exportVectorField3DIsosurfaceGltf } from "./exportVectorField3DIsosurface";
 import type { ExplorerLibraryEntry } from "./scientificExplorerLibrary";
+import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -78,7 +80,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
-  onOpenLibraryEntry }: {
+  onOpenLibraryEntry, fieldLayer, onOpenFieldDetails, onReturnToVectorLayer }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
@@ -96,6 +98,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   libraryError?: string;
   onBrowseLibraryScene?: () => void;
   onOpenLibraryEntry?: (entry: ExplorerLibraryEntry) => void;
+  fieldLayer?: ScientificFieldDocument | null;
+  onOpenFieldDetails?: () => void;
+  onReturnToVectorLayer?: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
@@ -1203,14 +1208,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   };
   return createPortal(<div className="scientific-field-explorer" role="region"
     aria-label="Scientific Field Explorer" data-testid="scientific-field-explorer"
-    data-layout={workspace.layout}>
+    data-layout={workspace.layout} data-field-layer={fieldLayer ?
+      fieldLayer.source.paired ? "complex" : "scalar" : undefined}>
     <div
       ref={dialogRef} onKeyDown={onDialogKey}
       className="graph2d-scientific-import vector-field3d-editor scientific-field-explorer-content"
       data-testid="vector-field-3d-editor"
       onPointerDown={event => event.stopPropagation()}>
-    <header className="scientific-field-explorer-header"><div><h3>Scientific Field Explorer · {document.metadata.title}</h3>
-    <p>Independent 3D document · bounded arrows and adaptive numerical trajectories.</p>
+    <header className="scientific-field-explorer-header"><div><h3>Scientific Field Explorer · {
+      fieldLayer?.metadata.title ?? document.metadata.title}</h3>
+    <p>{fieldLayer ? "Verified scalar or complex field layer." :
+      "Independent 3D document · bounded arrows and adaptive numerical trajectories."}</p>
     {seedProgress && <label role="status">Trajectory seeds {seedProgress.completed}/{seedProgress.total}
       <progress aria-label="Trajectory seed progress" value={seedProgress.completed}
         max={Math.max(1, seedProgress.total)} /></label>}</div>
@@ -1232,11 +1240,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       data-testid="scientific-field-explorer-library">
       <h4>Dataset library</h4>
       <p>Opened scene and saved Project fields. A field is verified again when opened.</p>
+      {fieldLayer && <button type="button" onClick={onReturnToVectorLayer}>
+        Back to vector layer</button>}
       {onBrowseLibraryScene && <button type="button" disabled={busy || libraryBusy}
         onClick={onBrowseLibraryScene}>Browse scientific scene</button>}
       {libraryBusy && <p role="status">Reading scene metadata…</p>}
       {libraryError && <p role="alert">{libraryError}</p>}
-      {libraryEntries.length ? <ul>{libraryEntries.map(entry => <li key={entry.id}>
+      {libraryEntries.length ? <ul>{libraryEntries.map(entry => <li key={entry.id}
+        aria-current={entry.documentId === fieldLayer?.identity.id ? "true" : undefined}>
         <div><strong>{entry.title}</strong> <span>{entry.kind} · {entry.origin}</span></div>
         <small>{entry.datasetId} · {entry.shape.join(" × ")} · {entry.unit}</small>
         <small>{entry.reason}</small>
@@ -1504,6 +1515,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       onBusyChange={setLineBusy} onAddGraphLine={onAddGraphLine} isGraphLineImported={isGraphLineImported} />
     </div>
     <div className="scientific-field-explorer-inspector" aria-label="Field status and actions">
+    {fieldLayer && <section className="scientific-explorer-field-inspector">
+      <h4>{fieldLayer.metadata.title}</h4>
+      <p>{fieldLayer.source.paired ? "Complex pair" : "Scalar field"} ·
+        {" "}{fieldLayer.source.reference.shape.join(" × ")} source grid ·
+        {" "}{fieldLayer.source.quantity.name} ({fieldLayer.source.quantity.unit}).</p>
+      <p>Source {fieldLayer.source.reference.sceneId} · dataset
+        {" "}{fieldLayer.source.reference.datasetId}.</p>
+      <p>Displayed samples are verified again on each opening.</p>
+      <button type="button" onClick={onOpenFieldDetails}>Open field controls</button>
+    </section>}
     <h4>Inspector</h4>
     <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
@@ -1871,6 +1892,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </div>
     <div className="scientific-field-explorer-viewer" aria-label="3D field viewer"
       data-multiview={multiView ? workspace.layout : undefined}>
+      {fieldLayer ? <ScientificExplorerFieldLayer
+        key={`${fieldLayer.identity.id}:${fieldLayer.identity.structuralHash}`} document={fieldLayer}
+        onOpenDetails={() => onOpenFieldDetails?.()} /> : <>
       {error && <div role="alert" className="scientific-field-explorer-viewer-error"
         data-testid="vector-field3d-viewer-error">{error}</div>}
       {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
@@ -1927,7 +1951,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           proposedSeed={seedProposal?.view === "3d" ? seedProposal.position : null}
           seedPlacementDisabled={busy || lineBusy || document.source.seeds.length >= 32} /> :
         <div role="status" className="scientific-field-explorer-empty">Verify the field to display bounded 3D arrows.
-          Saved scientific bundles are reread before any field values appear.</div>}
+          Saved scientific bundles are reread before any field values appear.</div>}</>}
     </div>
     </div>
   </div>, mount ?? globalThis.document.body);
