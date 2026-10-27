@@ -1,13 +1,58 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { OrthographicCamera } from "three";
+import { DoubleSide, OrthographicCamera, Raycaster, Vector2 } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { VectorField3DArrowArtifact, VectorField3DDocument,
   VectorField3DTrajectoryArtifact, VectorField3DCameraPreset,
   VectorField3DClipBounds, VectorField3DCameraState } from "@math3d/core";
 import { selectVectorField3DPreview, type VectorField3DPreviewDetail } from
   "./vectorField3DProgressivePreview";
+import { fieldPointToWorld, intersectFieldSeedPlane, seedPlaneNormalAxis,
+  type SeedPlane3D } from "./fieldSeedPlacement3D";
+import { seedGroupStyle } from "./seedGroupManagement";
+import { trajectoryGroupGeometry } from "./trajectoryGroupGeometry";
+
+function SeedPlanePointer({ plane, fixedCoordinate, axes, onPropose }: {
+  plane: SeedPlane3D; fixedCoordinate: number;
+  axes: VectorField3DDocument["source"]["axes"];
+  onPropose: (point: readonly [number, number, number] | null, reason: string | null) => void;
+}) {
+  const { gl, camera } = useThree();
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const previousCursor = canvas.style.cursor;
+    canvas.style.cursor = "crosshair";
+    let down: readonly [number, number] | null = null;
+    const onDown = (event: PointerEvent) => {
+      down = event.button === 0 ? [event.clientX, event.clientY] : null;
+    };
+    const onUp = (event: PointerEvent) => {
+      if (!down || event.button !== 0 ||
+          Math.hypot(event.clientX - down[0], event.clientY - down[1]) > 4) {
+        down = null; return;
+      }
+      down = null;
+      const bounds = canvas.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const pointer = new Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1,
+        1 - (event.clientY - bounds.top) / bounds.height * 2);
+      const raycaster = new Raycaster();
+      raycaster.setFromCamera(pointer, camera);
+      const hit = intersectFieldSeedPlane({ origin: raycaster.ray.origin.toArray(),
+        direction: raycaster.ray.direction.toArray() }, plane, fixedCoordinate, axes);
+      onPropose(hit.point, hit.reason);
+    };
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointerup", onUp);
+    return () => {
+      canvas.style.cursor = previousCursor;
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointerup", onUp);
+    };
+  }, [axes, camera, fixedCoordinate, gl, onPropose, plane]);
+  return null;
+}
 
 const cameraPositions: Record<VectorField3DCameraPreset, readonly [number, number, number]> = {
   perspective: [2.7, 2.2, 2.7], xy: [0, 0, 4], xz: [0, 4, 0], yz: [4, 0, 0],
@@ -36,11 +81,19 @@ export const pointInsideFieldClip = (point: readonly number[], clip: VectorField
   point.every((value, axis) => value >= clip[axis]![0] && value <= clip[axis]![1]);
 
 export function VectorField3DArrowView({ document, artifact, trajectories, probe,
-  onCameraStateChange }: {
+  onCameraStateChange, seedPlane, onSeedPlaneChange, onSeedFixedCoordinateChange,
+  onSeedPropose, proposedSeed, seedPlacementDisabled }: {
   document: VectorField3DDocument; artifact: VectorField3DArrowArtifact;
   trajectories?: VectorField3DTrajectoryArtifact | null;
   probe?: readonly [number, number, number] | null;
   onCameraStateChange?: (state: VectorField3DCameraState) => void;
+  seedPlane?: SeedPlane3D | null;
+  onSeedPlaneChange?: (plane: SeedPlane3D | null) => void;
+  onSeedFixedCoordinateChange?: (axis: 0 | 1 | 2, coordinate: number) => void;
+  onSeedPropose?: (point: readonly [number, number, number] | null,
+    reason: string | null) => void;
+  proposedSeed?: readonly [number, number, number] | null;
+  seedPlacementDisabled?: boolean;
 }) {
   const controls = useRef<OrbitControlsImpl>(null);
   const workspace = document.workspace;
@@ -154,24 +207,8 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     return { positions: new Float32Array(positions), colors: new Float32Array(colors),
       stationary: new Float32Array(stationary) };
   }, [document, artifact, clip, preview]);
-  const paths = useMemo(() => {
-    const positions: number[] = [], colors: number[] = [];
-    const axes = document.source.axes;
-    const span = Math.max(...axes.map(axis => axis.max - axis.min));
-    trajectories?.trajectories.forEach((trajectory, trajectoryIndex) => {
-      const color = trajectoryIndex % 2 === 0 ? [1, .79, .23] : [.38, .97, .77];
-      for (let index = 1; index < trajectory.points.length; index++) {
-        if (!pointInsideFieldClip(trajectory.points[index - 1]!.position, clip) ||
-            !pointInsideFieldClip(trajectory.points[index]!.position, clip)) continue;
-        for (const point of [trajectory.points[index - 1]!, trajectory.points[index]!]) {
-          positions.push(...point.position.map((value, axis) =>
-            (value - (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span));
-          colors.push(...color);
-        }
-      }
-    });
-    return { positions: new Float32Array(positions), colors: new Float32Array(colors) };
-  }, [document, trajectories, clip]);
+  const paths = useMemo(() => trajectoryGroupGeometry(document, trajectories, clip),
+    [document, trajectories, clip]);
   const domainBox = useMemo(() => {
     const axes = document.source.axes, span = Math.max(...axes.map(axis => axis.max - axis.min));
     const half = axes.map(axis => (axis.max - axis.min) / span);
@@ -201,6 +238,17 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
     (document.source.axes[axis]!.min + document.source.axes[axis]!.max) / 2) * 2 /
     Math.max(...document.source.axes.map(item => item.max - item.min))) as
     [number, number, number] | undefined;
+  const seedNormal = seedPlane ? seedPlaneNormalAxis(seedPlane) : null;
+  const seedFixed = seedNormal === null ? null : workspace?.sliceCoordinates[seedNormal] ??
+    (document.source.axes[seedNormal]!.min + document.source.axes[seedNormal]!.max) / 2;
+  const seedPlanePosition = seedNormal === null || seedFixed === null ? null :
+    fieldPointToWorld(document.source.axes.map((axis, index) =>
+      index === seedNormal ? seedFixed : (axis.min + axis.max) / 2), document.source.axes);
+  const seedPlaneSpan = Math.max(...document.source.axes.map(axis => axis.max - axis.min));
+  const seedPlaneSize = seedPlane === "xy" ? [0, 1] : seedPlane === "xz" ? [0, 2] : [2, 1];
+  const seedMarkerPosition = proposedSeed ? fieldPointToWorld(proposedSeed, document.source.axes) : null;
+  const trajectoryGroups = [...new Set(trajectories?.trajectories.map(path =>
+    document.source.seeds.find(seed => seed.id === path.seedId)?.group ?? "manual") ?? [])];
   const colorLabel = artifact.colorBy === "speed" ? `magnitude 0–${maximum.toPrecision(4)}` :
     `${artifact.colorBy.toUpperCase()} component −${maximum.toPrecision(4)}–${maximum.toPrecision(4)}`;
   const fullSampleShape = document.source.field.kind === "scientific-bundle" ?
@@ -233,6 +281,25 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
         </li>)}</ul></>}
       <p>Displayed sample selection <code>{preview.selectionHash}</code>.</p>
     </details>
+    {onSeedPlaneChange && <div role="group" aria-label="3D seed placement"
+      className="vector-field3d-camera-controls">
+      <label>Seed plane <select aria-label="3D seed plane" value={seedPlane ?? ""}
+        disabled={seedPlacementDisabled}
+        onChange={event => onSeedPlaneChange(event.target.value as SeedPlane3D || null)}>
+        <option value="">Off</option><option value="xy">XY</option>
+        <option value="xz">XZ</option><option value="yz">YZ</option>
+      </select></label>
+      {seedNormal !== null && seedFixed !== null && <label>
+        {document.source.axes[seedNormal]!.label} plane coordinate
+        <input type="number" aria-label="3D seed plane coordinate" value={seedFixed}
+          min={document.source.axes[seedNormal]!.min} max={document.source.axes[seedNormal]!.max}
+          step="any" disabled={seedPlacementDisabled}
+          onChange={event => {
+            const value = Number(event.target.value);
+            if (Number.isFinite(value)) onSeedFixedCoordinateChange?.(seedNormal, value);
+          }} /> {document.source.axes[seedNormal]!.unit}</label>}
+      {seedPlane && <span>Click the 3D view to propose a seed on the selected plane; drag to orbit.</span>}
+    </div>}
     <div role="group" aria-label="3D camera viewport" tabIndex={0} onKeyDown={onCameraKey}
       style={{ width: "100%", height: "100%", minHeight: 360, background: "#0d1726" }}>
       <Canvas key={preset === "perspective" ? "perspective" : "orthographic"}
@@ -241,6 +308,20 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
           { position: cameraPositions[preset], zoom: 140 }}>
         <CameraPreset preset={preset} controls={controls} onReady={onCameraReady}
           savedState={workspace?.cameraState ?? null} />
+        {seedPlane && seedFixed !== null && onSeedPropose && !seedPlacementDisabled &&
+          <SeedPlanePointer plane={seedPlane} fixedCoordinate={seedFixed}
+            axes={document.source.axes} onPropose={onSeedPropose} />}
+        {seedPlanePosition && <mesh position={seedPlanePosition}
+          rotation={seedPlane === "xz" ? [Math.PI / 2, 0, 0] :
+            seedPlane === "yz" ? [0, Math.PI / 2, 0] : [0, 0, 0]}>
+          <planeGeometry args={[
+            (document.source.axes[seedPlaneSize[0]!]!.max -
+              document.source.axes[seedPlaneSize[0]!]!.min) * 2 / seedPlaneSpan,
+            (document.source.axes[seedPlaneSize[1]!]!.max -
+              document.source.axes[seedPlaneSize[1]!]!.min) * 2 / seedPlaneSpan]} />
+          <meshBasicMaterial color="#22d3ee" transparent opacity={0.12}
+            side={DoubleSide} depthWrite={false} />
+        </mesh>}
         <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[geometry.positions, 3]} />
@@ -266,6 +347,10 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
           <sphereGeometry args={[0.055, 12, 8]} />
           <meshBasicMaterial color="#fde047" depthTest={false} />
         </mesh>}
+        {seedMarkerPosition && <mesh position={seedMarkerPosition}>
+          <sphereGeometry args={[0.075, 16, 12]} />
+          <meshBasicMaterial color="#fb923c" depthTest={false} />
+        </mesh>}
         {paths.positions.length > 0 && <lineSegments>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[paths.positions, 3]} />
@@ -278,6 +363,10 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
           onEnd={() => { reportCamera(); refinePreview(); }} />
       </Canvas>
     </div>
+    {seedMarkerPosition && <p role="status" data-testid="vector-field3d-3d-seed-marker">
+      Proposed 3D seed marker at {proposedSeed!.map((value, axis) =>
+        `${document.source.axes[axis]!.label} = ${value.toPrecision(8)} ${document.source.axes[axis]!.unit}`)
+        .join(" · ")}.</p>}
     <div role="group" aria-label="3D camera controls" className="vector-field3d-camera-controls">
       <button type="button" onClick={() => moveCamera("left")}>Orbit left</button>
       <button type="button" onClick={() => moveCamera("right")}>Orbit right</button>
@@ -302,6 +391,14 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
       `${document.source.axes[index]!.label} = ${value} ${document.source.axes[index]!.unit}`).join(" · ")}.</p>}
     {trajectories && <p>Trajectory overlay: {trajectories.trajectories.length} seed(s),
       {" "}{trajectories.trajectories.map(path => `${path.seedId}: ${path.stopReason}`).join("; ")}.
-      Gold/cyan lines show adaptive numerical approximations.</p>}
+      Group-colored lines show adaptive numerical approximations.</p>}
+    {trajectoryGroups.length > 0 && <div role="group" aria-label="Trajectory group colors"
+      data-testid="vector-field3d-trajectory-group-colors">
+      {trajectoryGroups.map(id => <span key={id} data-seed-group={id} style={{ marginRight: 12 }}>
+        <span aria-hidden="true" style={{ display: "inline-block", width: 14, height: 8,
+          marginRight: 4, backgroundColor: seedGroupStyle(document, id).color }} />
+        {seedGroupStyle(document, id).name} {seedGroupStyle(document, id).color}
+      </span>)}
+    </div>}
   </figure>;
 }

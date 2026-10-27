@@ -39,6 +39,7 @@ export type VectorField3DEquilibriumConstruction = Readonly<{
   classification: "source" | "sink" | "saddle" | "degenerate/uncertain";
   sourceRevision: number; sourceStructuralHash: string; sourceHash: string | null;
 }>;
+export type VectorField3DSeedGroupStyle = Readonly<{ id: string; name: string; color: string }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   sliceChannel: "component" | "divergence" | "curl-magnitude" |
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
@@ -51,6 +52,7 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
     yz: readonly [number, number] }>;
   probe: readonly [number, number, number] | null;
   hiddenSeedGroups: readonly string[];
+  seedGroupStyles: readonly VectorField3DSeedGroupStyle[];
   equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
   clipBounds: VectorField3DClipBounds;
   cameraPreset: VectorField3DCameraPreset;
@@ -64,6 +66,7 @@ export const defaultVectorField3DWorkspace = (source: VectorField3DSource): Vect
   selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
   equilibriumConstructions: [],
   hiddenSeedGroups: [],
+  seedGroupStyles: [],
   sliceChannel: "component",
   cameraState: null,
   viewsLinked: true, viewZoom: { xy: 1, xz: 1, yz: 1 },
@@ -186,6 +189,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ? { probe: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "hiddenSeedGroups") ?
       { hiddenSeedGroups: [] } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "seedGroupStyles") ?
+      { seedGroupStyles: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "equilibriumConstructions") ?
       { equilibriumConstructions: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "clipBounds") ?
@@ -202,10 +207,21 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "hiddenSeedGroups", "equilibriumConstructions", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "clipBounds", "cameraPreset", "cameraState"]) ||
       !Array.isArray(workspace.hiddenSeedGroups) || workspace.hiddenSeedGroups.length > 32 ||
       workspace.hiddenSeedGroups.some((group: unknown) => !text(group, 64)) ||
       new Set(workspace.hiddenSeedGroups).size !== workspace.hiddenSeedGroups.length ||
+      !Array.isArray(workspace.seedGroupStyles) || workspace.seedGroupStyles.length > 32 ||
+      workspace.seedGroupStyles.some((style: unknown) => !record(style) ||
+        !exact(style, ["id", "name", "color"]) || !text(style.id, 64) ||
+        !text(style.name, 64) || typeof style.color !== "string" ||
+        !/^#[0-9a-fA-F]{6}$/.test(style.color) ||
+        !(source.seeds as VectorField3DSource["seeds"]).some(seed =>
+          (seed.group ?? "manual") === style.id)) ||
+      new Set((workspace.seedGroupStyles as { id: string }[]).map(style => style.id)).size !==
+        workspace.seedGroupStyles.length ||
+      new Set((workspace.seedGroupStyles as { name: string }[]).map(style =>
+        style.name.toLowerCase())).size !== workspace.seedGroupStyles.length ||
       !["component", "divergence", "curl-magnitude", "curl-x", "curl-y", "curl-z",
         "grad-speed-x", "grad-speed-y", "grad-speed-z", "grad-speed-magnitude",
         "laplacian-speed"]

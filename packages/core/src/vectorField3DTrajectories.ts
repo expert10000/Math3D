@@ -78,6 +78,67 @@ export function vectorField3DSeedPreset(source: VectorField3DSource,
       centers[2]!] as Vec3));
 }
 
+export type VectorField3DSpatialSeedPattern = Readonly<{
+  kind: "sphere" | "shell" | "random";
+  center: readonly [number, number, number];
+  radius: number;
+  count: number;
+  randomSeed: number;
+}>;
+
+/** Generate bounded physical coordinates without depending on renderer or worker random state. */
+export function vectorField3DSpatialSeedPattern(source: VectorField3DSource,
+  pattern: VectorField3DSpatialSeedPattern): readonly Vec3[] {
+  if (!["sphere", "shell", "random"].includes(pattern.kind))
+    throw new TypeError("Choose a sphere, shell, or random seed pattern.");
+  if (new Set(source.axes.map(axis => axis.unit)).size !== 1)
+    throw new TypeError("Spatial seed radius requires matching coordinate-axis units.");
+  if (!Number.isInteger(pattern.count) || pattern.count < 1 || pattern.count > 32)
+    throw new RangeError("Spatial seed count must be between 1 and 32.");
+  if (!Number.isSafeInteger(pattern.randomSeed) || pattern.randomSeed < 0 ||
+      pattern.randomSeed > 0xffffffff)
+    throw new RangeError("Random seed must be an integer from 0 to 4294967295.");
+  if (!Number.isFinite(pattern.radius) || pattern.radius <= 0 ||
+      !Array.isArray(pattern.center) || pattern.center.length !== 3 ||
+      pattern.center.some(value => !Number.isFinite(value)))
+    throw new RangeError("Spatial seed center and radius must be finite, with a positive radius.");
+  if (source.axes.some((axis, index) =>
+      pattern.center[index]! - pattern.radius < axis.min ||
+      pattern.center[index]! + pattern.radius > axis.max))
+    throw new RangeError("The complete seed sphere must fit within the field domain.");
+
+  let state = pattern.randomSeed >>> 0;
+  const random = () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = Math.imul(state ^ state >>> 15, state | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 0x100000000;
+  };
+  const radialSequence = (index: number) => {
+    let bits = index + 1, denominator = 1, fraction = 0;
+    while (bits > 0) {
+      denominator *= 2;
+      fraction += (bits & 1) / denominator;
+      bits = Math.floor(bits / 2);
+    }
+    return fraction;
+  };
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  return Array.from({ length: pattern.count }, (_, index) => {
+    const z = pattern.kind === "random" ? 2 * random() - 1 :
+      1 - 2 * (index + .5) / pattern.count;
+    const angle = pattern.kind === "random" ? 2 * Math.PI * random() :
+      index * goldenAngle;
+    const radial = pattern.kind === "shell" ? pattern.radius :
+      pattern.kind === "sphere" ? pattern.radius * Math.cbrt(radialSequence(index)) :
+        pattern.radius * Math.cbrt(random());
+    const planar = Math.sqrt(Math.max(0, 1 - z * z));
+    return [pattern.center[0] + radial * planar * Math.cos(angle),
+      pattern.center[1] + radial * planar * Math.sin(angle),
+      pattern.center[2] + radial * z] as Vec3;
+  });
+}
+
 type Evaluation = (point: Vec3) => Vec3 | null;
 type Step = { ok: true; point: Vec3 } | { ok: false; reason: "boundary" | "undefined" };
 

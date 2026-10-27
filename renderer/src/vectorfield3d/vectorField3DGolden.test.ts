@@ -100,11 +100,17 @@ describe("SCI-12 analytic vector-field numerical oracles", () => {
       seeds: vectorField3DSeedPreset(base.source, "line-5").map((position, index) =>
         ({ id: `line-${index}`, position, group: "line-1" })) });
     const hidden = reviseVectorField3DWorkspace(grouped, {
-      ...grouped.workspace!, hiddenSeedGroups: ["line-1"] });
+      ...grouped.workspace!, hiddenSeedGroups: ["line-1"],
+      seedGroupStyles: [{ id: "line-1", name: "Vortex line", color: "#ff3366" }] });
     expect(hidden.identity.structuralHash).toBe(grouped.identity.structuralHash);
     const reopened = parseVectorField3DDocument(serializeVectorField3DDocument(hidden));
     expect(reopened.source.seeds.map(seed => seed.group)).toEqual(Array(5).fill("line-1"));
     expect(reopened.workspace?.hiddenSeedGroups).toEqual(["line-1"]);
+    expect(reopened.workspace?.seedGroupStyles).toEqual([
+      { id: "line-1", name: "Vortex line", color: "#ff3366" }]);
+    const invalidColor = JSON.parse(serializeVectorField3DDocument(hidden));
+    invalidColor.workspace.seedGroupStyles[0].color = "url(#bad)";
+    expect(() => parseVectorField3DDocument(JSON.stringify(invalidColor))).toThrow();
     const traces = integrateVectorField3DTrajectories(reopened);
     expect(traces.trajectories).toHaveLength(5);
     expect(traces.trajectories.map(path => path.seedId)).toEqual(

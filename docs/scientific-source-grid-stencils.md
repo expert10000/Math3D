@@ -19,6 +19,12 @@ V3 point calculus now reads the center and each source-grid neighbor needed for 
 
 The 80³ golden test checks every Jacobian entry and each other calculus output against independent analytic formulas at interior and boundary points. It checks the exact transfer coverage and rejects a changed sample hash. The measured Burgers desktop test checks Inspector provenance and rejects a changed tile needed by the selected probe.
 
+### SCI-14 Jacobian and eigenvalue detail
+
+The point Inspector keeps value, magnitude, divergence and curl in its compact view. An expandable Jacobian panel shows the 3×3 derivative matrix, each entry's physical unit, the selected finite-difference method, and three eigenvalues in inverse-time units when component and coordinate units are compatible. Complex conjugate pairs are shown with signed imaginary parts. The eigenvalues use the already verified probe Jacobian, so opening the panel requests no additional source tiles. A singular or poorly conditioned Jacobian, nearly repeated roots, or a boundary/two-point stencil receives an **uncertain** label. These values describe the local linearization; they are not a stability classification unless the point is an equilibrium.
+
+The 80³ oracle checks complex and real eigenvalues against the analytic Jacobian, including the one-sided boundary case. The measured Burgers desktop test checks the panel's verified tile hashes, rejection of a changed needed tile, and the same source and sample provenance after Project reopen and fresh analysis. The panel is collapsed after reopening; numerical results are recomputed from the saved source.
+
 One Windows run of `npm run benchmark:scientific:probe` measured first calculus result from the start of verified transfer through calculation:
 
 | Scene | Method | First result | Transfer values | Verified tiles per component |
@@ -110,3 +116,21 @@ The committed 80³ vortex fixture checks all five line seeds against the analyti
 Each verified XY, XZ and YZ slice has an explicit seed placement mode. A click in the plot maps from SVG space through the current zoom/pan transform to the slice's physical coordinates. The displayed cell centers match their sampled coordinates; clicks between centers interpolate continuously between those coordinates. The third coordinate is the displayed plane's fixed physical coordinate. A marker and the full coordinate tuple appear as a proposal before the user chooses the manual group, an existing group, or a new slice group and adds the seed. Ordinary clicks continue to place probes outside placement mode.
 
 The proposal is rejected outside the plot or field bounds, when the slice/source revision changes, or when adding it would exceed 32 document seeds. Source edits and plane changes clear pending proposals. Only the confirmed seed enters the document; saved source references and group membership then follow the normal Project path. The 80³ fixture checks axis order, upward vertical orientation, fixed coordinates, between-sample interpolation, marker position, and plot-boundary rejection for all three planes. The desktop test exercises those interactions, including zoomed placement and the 32-seed limit; the measured Burgers scene verifies slice provenance, trajectory source hash, group membership, and Project reopen.
+
+## 3D click-to-seed
+
+The 3D arrow view offers an explicit XY, XZ, or YZ seed plane at a chosen physical coordinate. A short primary-button click casts a ray from the current perspective or orthographic camera onto that plane; dragging still orbits. The intersection uses the same centered domain transform as arrows and trajectories. The selected plane is drawn translucent cyan, and a proposed seed appears as an orange 3D marker with its complete physical coordinate tuple. The seed is committed only after choosing the manual group, an existing group, or a new 3D group.
+
+Parallel rays, intersections behind the camera, points outside the source domain, stale previews, changed planes, and the 32-seed limit reject placement. A source edit clears the proposal, while changing the plane or its coordinate requires a fresh click. The 80³ tests check physical orientation for all three camera presets and the perspective camera, plus rejected rays; desktop checks cover proposal, marker, group admission, and the cap. A measured Burgers Project round trip checks source fingerprint, trajectory source hash, group membership, and saved physical coordinates.
+
+## Seed group management
+
+Every seed retains its stable group ID in the source. The group's display name, six-digit color, and visibility live in the Project workspace; older documents receive default colors and an empty style list. Renaming, recoloring, and hiding a group leave the document's source revision and structural hash unchanged. The 3D trajectory overlay draws each path in its group's color, and its legend shows the same names and colors. Deleting a group removes its seeds and advances the source revision.
+
+The editor keeps a bounded 64-step undo/redo history for seed additions, individual or group deletion, group rename, color, and visibility. Undo restores exact seed coordinates, IDs, group membership, style, and visibility; redo reapplies the edit. Source-changing undo clears stale numerical results, while display-only undo retains verified trajectories. History is an editing-session convenience; saved Projects retain the resulting seeds and group styles. The 80³ desktop test checks live trajectory colors and unchanged verified source after display edits. The measured Burgers test checks group deletion, undo/redo, source fingerprint, and the Project round trip.
+
+## Spatial seed patterns
+
+Field Explorer can add a spherical shell, a filled sphere, or a seeded random sample inside a physical ball. The controls accept an x/y/z center, positive radius, count from 1 to 32, and a 32-bit random seed. A spherical Fibonacci sequence places shell directions; the filled sphere uses those directions with low-discrepancy volume radii; the random pattern uses a fixed integer generator and volume-uniform radii. Identical source bounds and inputs produce identical coordinates. These patterns require matching axis units because one radius is applied to all three physical axes.
+
+The complete ball must fit within the source domain, and the entire batch must fit under the document's 32-seed limit. Validation occurs before any group or seed is added. Each successful batch gets a stable `sphere-*`, `shell-*`, or `random-*` group and enters the existing undo/redo flow. A Project stores exact physical seed coordinates, group membership, and its pinned scientific source. The 80³ golden and desktop tests check shell radius, volume bounds, repeatability, and atomic rejection; the measured Burgers test checks undo/redo, trajectory provenance, and Project reopen.

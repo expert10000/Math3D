@@ -589,11 +589,21 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     await expect(calculusResult).toContainText("bounded-finite-difference on the source grid");
     await expect(calculusResult).toContainText("Jacobian:");
     await expect(calculusResult).toContainText(/source sha256:[a-f0-9]{64}/);
+    const eigenPanel = editor.getByTestId("vector-field3d-eigen-panel");
+    await expect(eigenPanel).not.toHaveAttribute("open", "");
+    await eigenPanel.locator("summary").click();
+    await expect(eigenPanel).toContainText("Derivative method: bounded-finite-difference on the source grid");
+    await expect(eigenPanel.getByRole("table")).toBeVisible();
+    await expect(eigenPanel.getByRole("list", { name: "Jacobian eigenvalues" })).toBeVisible();
+    await expect(eigenPanel).toContainText("1/s");
     const calculusProvenance = editor.getByLabel("Field calculus sample provenance");
     await calculusProvenance.getByText("Verified calculus samples").click();
     for (const name of ["vx", "vy", "vz"])
       await expect(calculusProvenance).toContainText(new RegExp(`${name}:\\s*[a-f0-9]{64}`));
     await expect(calculusProvenance).toContainText("source tiles verified");
+    const originalProvenance = await calculusProvenance.textContent();
+    const originalSourceHash = (await calculusResult.textContent())!.match(/source (sha256:[a-f0-9]{64})/)?.[1];
+    expect(originalSourceHash).toBeDefined();
     const calculusResource = join(directory, "vx.f64");
     const calculusOriginal = await readFile(calculusResource);
     const calculusChanged = Buffer.from(calculusOriginal);
@@ -614,6 +624,7 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     await editor.getByRole("button", { name: "Analyze field calculus" }).click();
     await expect(editor.getByRole("alert").filter({ hasText: /changed|checksum|integrity/i }))
       .toBeVisible();
+    await expect(editor.getByTestId("vector-field3d-differential")).toHaveCount(0);
     await writeFile(calculusResource, calculusOriginal);
     await editor.getByLabel("Slice displayed field").selectOption("curl-z");
     await editor.getByRole("button", { name: "Preview slice" }).click();
@@ -635,6 +646,7 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     await profile.getByTestId("vector-field3d-send-derived-line").click();
     await expect(editor.getByTestId("vector-field3d-run-status"))
       .toContainText("verified curl-z samples");
+    await editor.getByRole("button", { name: "Save document" }).click();
     await editor.getByRole("button", { name: "Close" }).click();
     await page.getByTestId("projects-toggle").click();
     const projectPanel = page.getByTestId("project-explorer-panel");
@@ -673,6 +685,24 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     await expect(visibleInspector.getByRole("status").filter({ hasText: /changed|checksum|integrity/i }))
       .toBeVisible();
     await writeFile(resource, original);
+    const savedProject = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const fieldEntry = savedProject.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(fieldEntry).toBeDefined();
+    if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
+    await projectPanel.getByTestId(`project-preview-${savedProject.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${fieldEntry.expected.id}`).click();
+    const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(reopened.getByTestId("vector-field3d-differential")).toHaveCount(0);
+    await reopened.getByRole("button", { name: "Analyze field calculus" }).click();
+    const reopenedResult = reopened.getByTestId("vector-field3d-differential");
+    await expect(reopenedResult).toContainText(`source ${originalSourceHash}`);
+    const reopenedEigen = reopened.getByTestId("vector-field3d-eigen-panel");
+    await expect(reopenedEigen).not.toHaveAttribute("open", "");
+    await reopenedEigen.locator("summary").click();
+    await expect(reopenedEigen.getByRole("table")).toBeVisible();
+    const reopenedProvenance = reopened.getByLabel("Field calculus sample provenance");
+    await reopenedProvenance.locator("summary").click();
+    expect(await reopenedProvenance.textContent()).toBe(originalProvenance);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-derived-"))
@@ -977,6 +1007,148 @@ test("SCI-13 measured Burgers slice seed keeps its verified source through Proje
     await editor.getByRole("button", { name: "Run trajectories" }).click();
     await expect(editor.getByTestId("vector-field3d-trajectory-status"))
       .toContainText(`source ${firstSourceHash}`);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 places 80³ 3D seeds on explicit planes through camera rays", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-vortex-80-overview.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "3D arrows" }).click();
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    const figure = editor.getByRole("figure", { name: "3D vector arrow renderer" });
+    await expect(figure.getByLabel("3D preview provenance")).toContainText(/Verified dataset source/);
+    const clickCenter = async (dx = 0, dy = 0) => {
+      const canvas = figure.locator("canvas");
+      const bounds = await canvas.boundingBox();
+      if (!bounds) throw new Error("3D canvas did not mount");
+      await canvas.click({ position: { x: bounds.width / 2 + dx, y: bounds.height / 2 + dy } });
+    };
+    for (const plane of ["xy", "xz", "yz"] as const) {
+      await editor.getByLabel("3D camera preset").selectOption(plane);
+      await figure.getByLabel("3D seed plane", { exact: true }).selectOption(plane);
+      await clickCenter();
+      const proposal = editor.getByTestId("vector-field3d-seed-proposal");
+      await expect(proposal).toBeVisible();
+      await expect(figure.getByTestId("vector-field3d-3d-seed-marker")).toBeVisible();
+      const text = await proposal.innerText();
+      for (const axis of ["x", "y", "z"] as const) {
+        const value = Number(text.match(new RegExp(`\\b${axis} = (-?[\\d.]+) m`))?.[1]);
+        expect(Number.isFinite(value) && Math.abs(value) <= 4).toBe(true);
+      }
+      await clickCenter(25, -25);
+      const orientedText = await proposal.innerText();
+      const oriented = (axis: "x" | "y" | "z") =>
+        Number(orientedText.match(new RegExp(`\\b${axis} = (-?[\\d.]+) m`))?.[1]);
+      if (plane === "xy") { expect(oriented("x")).toBeGreaterThan(0);
+        expect(oriented("y")).toBeGreaterThan(0); }
+      if (plane === "xz") { expect(oriented("x")).toBeLessThan(0);
+        expect(oriented("z")).toBeGreaterThan(0); }
+      if (plane === "yz") { expect(oriented("y")).toBeGreaterThan(0);
+        expect(oriented("z")).toBeGreaterThan(0); }
+      await expect(editor).toContainText("Trajectory seeds (0/32)");
+    }
+    await editor.getByLabel("3D camera preset").selectOption("xy");
+    await figure.getByLabel("3D seed plane", { exact: true }).selectOption("xy");
+    await figure.getByLabel("3D seed plane coordinate").fill("1");
+    await clickCenter();
+    await expect(editor.getByTestId("vector-field3d-seed-proposal"))
+      .toContainText("z = 1.0000000 m");
+    await figure.getByLabel("3D seed plane coordinate").fill("1.5");
+    await expect(editor.getByTestId("vector-field3d-seed-proposal")).toHaveCount(0);
+    await figure.getByLabel("3D seed plane", { exact: true }).selectOption("yz");
+    await clickCenter();
+    await expect(editor.getByRole("alert").filter({ hasText: /ray misses the selected seed plane/i }))
+      .toBeVisible();
+    await figure.getByLabel("3D seed plane", { exact: true }).selectOption("xy");
+    await figure.locator("canvas").click({ position: { x: 5, y: 5 } });
+    await expect(editor.getByRole("alert").filter({ hasText: /outside the field domain/i }))
+      .toBeVisible();
+    await expect(editor.getByTestId("vector-field3d-seed-proposal")).toHaveCount(0);
+    await clickCenter();
+    const proposal = editor.getByTestId("vector-field3d-seed-proposal");
+    await proposal.getByLabel("Proposed seed group").selectOption("");
+    await proposal.getByRole("button", { name: "Add proposed seed" }).click();
+    await expect(editor.getByRole("region", { name: "Seed group 3d-1" })).toContainText("seed-1");
+    for (let index = 0; index < 3; index++)
+      await editor.getByRole("button", { name: "Add ring (8)" }).click();
+    await editor.getByRole("button", { name: "Add line (5)" }).click();
+    await editor.getByRole("button", { name: "Add seed", exact: true }).click();
+    await editor.getByRole("button", { name: "Add seed", exact: true }).click();
+    await expect(editor).toContainText("Trajectory seeds (32/32)");
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(figure.getByLabel("3D seed plane", { exact: true })).toBeDisabled();
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 measured Burgers 3D seed keeps provenance and group after Project reopen", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-burgers-horizontal-level1.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "3D arrows" }).click();
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    const figure = editor.getByRole("figure", { name: "3D vector arrow renderer" });
+    await expect(figure.getByLabel("3D preview provenance")).toContainText(/Verified dataset source/);
+    await editor.getByLabel("3D camera preset").selectOption("xy");
+    await figure.getByLabel("3D seed plane", { exact: true }).selectOption("xy");
+    const canvas = figure.locator("canvas");
+    const bounds = await canvas.boundingBox();
+    if (!bounds) throw new Error("3D canvas did not mount");
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    const proposal = editor.getByTestId("vector-field3d-seed-proposal");
+    await expect(proposal).toBeVisible();
+    const fixed = Number(await figure.getByLabel("3D seed plane coordinate").inputValue());
+    await expect(proposal).toContainText(`z = ${fixed.toPrecision(8)} m`);
+    await proposal.getByLabel("Proposed seed group").selectOption("");
+    await proposal.getByRole("button", { name: "Add proposed seed" }).click();
+    await expect(editor.getByRole("region", { name: "Seed group 3d-1" })).toContainText("seed-1");
+    await editor.getByLabel("Trajectory max time").fill("0.05");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const status = editor.getByTestId("vector-field3d-trajectory-status");
+    await expect(status).toContainText(/source sha256:[a-f0-9]{64}/);
+    const sourceHash = (await status.innerText()).match(/source (sha256:[a-f0-9]{64})/)?.[1];
+    expect(sourceHash).toBeDefined();
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry?.checkpoint.source.seeds).toHaveLength(1);
+    expect(entry?.checkpoint.source.seeds[0].group).toBe("3d-1");
+    expect(entry?.checkpoint.source.seeds[0].position[2]).toBe(fixed);
+    expect(entry?.checkpoint.source.field.references[0].sceneFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByRole("region", { name: "Seed group 3d-1" })).toContainText("seed-1");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText(`source ${sourceHash}`);
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -1720,5 +1892,258 @@ test("GRA-14 512-glyph renderer remains responsive, resizes, and exposes keyboar
     await viewport.press("Escape");
     await expect(editor).toBeHidden();
     await expect(page.locator(".graph2d-toolbar-menu > summary")).toBeFocused();
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 80³ trajectory groups use saved colors without changing verified source", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-vortex-80-overview.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Add line (5)" }).click();
+    await editor.getByRole("button", { name: "Add plane grid (9)" }).click();
+    await editor.getByLabel("Trajectory max time").fill("0.05");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const figure = editor.getByRole("figure", { name: "3D vector arrow renderer" });
+    const legend = figure.getByTestId("vector-field3d-trajectory-group-colors");
+    await expect(legend.locator('[data-seed-group="line-1"]')).toBeVisible();
+    await expect(legend.locator('[data-seed-group="plane-1"]')).toBeVisible();
+    const sourceBefore = await page.evaluate(() => {
+      const value = JSON.parse(sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!);
+      return { structure: value.identity.structuralHash,
+        fingerprint: value.source.field.references[0].sceneFingerprint };
+    });
+    const trajectorySource = (await editor.getByTestId("vector-field3d-trajectory-status").innerText())
+      .match(/source (sha256:[a-f0-9]{64})/)?.[1];
+    await editor.getByLabel("Color line-1 seed group").fill("#ff3366");
+    await editor.getByLabel("Name line-1 seed group").fill("Core swirl");
+    await editor.getByRole("button", { name: "Rename line-1 group" }).click();
+    await expect(legend.locator('[data-seed-group="line-1"]'))
+      .toContainText("Core swirl #ff3366");
+    await expect(legend.locator('[data-seed-group="line-1"] span'))
+      .toHaveCSS("background-color", "rgb(255, 51, 102)");
+    await editor.getByLabel("Show line-1 seed group").uncheck();
+    await expect(legend.locator('[data-seed-group="line-1"]')).toHaveCount(0);
+    await editor.getByRole("button", { name: "Undo seed edit" }).click();
+    await expect(legend.locator('[data-seed-group="line-1"]')).toBeVisible();
+    await editor.getByRole("button", { name: "Undo seed edit" }).click();
+    await expect(legend.locator('[data-seed-group="line-1"]')).toContainText("line-1 #ff3366");
+    await editor.getByRole("button", { name: "Undo seed edit" }).click();
+    await expect(legend.locator('[data-seed-group="line-1"]')).not.toContainText("#ff3366");
+    for (let index = 0; index < 3; index++)
+      await editor.getByRole("button", { name: "Redo seed edit" }).click();
+    await expect(editor.getByLabel("Show line-1 seed group")).not.toBeChecked();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText(`source ${trajectorySource}`);
+    const sourceAfter = await page.evaluate(() => {
+      const value = JSON.parse(sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!);
+      return { structure: value.identity.structuralHash,
+        fingerprint: value.source.field.references[0].sceneFingerprint };
+    });
+    expect(sourceAfter).toEqual(sourceBefore);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 measured Burgers group deletion undo and Project reopen restore exact seeds", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-burgers-horizontal-level1.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByRole("button", { name: "Add line (5)" }).click();
+    await editor.getByRole("button", { name: "Add plane grid (9)" }).click();
+    await editor.getByLabel("Color line-1 seed group").fill("#ff3366");
+    await editor.getByLabel("Name line-1 seed group").fill("Measured swirl");
+    await editor.getByRole("button", { name: "Rename line-1 group" }).click();
+    await editor.getByLabel("Show plane-1 seed group").uncheck();
+    const beforeDelete = await page.evaluate(() => JSON.parse(
+      sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!));
+    await editor.getByRole("button", { name: "Delete line-1 group" }).click();
+    await expect(editor).toContainText("Trajectory seeds (9/32)");
+    await editor.getByRole("button", { name: "Undo seed edit" }).click();
+    await expect(editor).toContainText("Trajectory seeds (14/32)");
+    const restored = await page.evaluate(() => JSON.parse(
+      sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!));
+    expect(restored.source.seeds).toEqual(beforeDelete.source.seeds);
+    expect(restored.workspace.seedGroupStyles).toEqual(beforeDelete.workspace.seedGroupStyles);
+    expect(restored.workspace.hiddenSeedGroups).toEqual(beforeDelete.workspace.hiddenSeedGroups);
+    await editor.getByRole("button", { name: "Redo seed edit" }).click();
+    await expect(editor).toContainText("Trajectory seeds (9/32)");
+    await editor.getByRole("button", { name: "Undo seed edit" }).click();
+    await expect(editor.getByRole("region", { name: "Seed group line-1" }))
+      .toContainText("Measured swirl");
+    await editor.getByLabel("Trajectory max time").fill("0.05");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const status = editor.getByTestId("vector-field3d-trajectory-status");
+    await expect(status).toContainText(/source sha256:[a-f0-9]{64}/);
+    const sourceHash = (await status.innerText()).match(/source (sha256:[a-f0-9]{64})/)?.[1];
+    expect(sourceHash).toBeDefined();
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry?.checkpoint.source.seeds).toEqual(beforeDelete.source.seeds);
+    expect(entry?.checkpoint.workspace.seedGroupStyles).toEqual(beforeDelete.workspace.seedGroupStyles);
+    expect(entry?.checkpoint.workspace.hiddenSeedGroups).toEqual(["plane-1"]);
+    expect(entry?.checkpoint.source.field.references[0].sceneFingerprint)
+      .toBe(beforeDelete.source.field.references[0].sceneFingerprint);
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByLabel("Name line-1 seed group")).toHaveValue("Measured swirl");
+    await expect(editor.getByLabel("Color line-1 seed group")).toHaveValue("#ff3366");
+    await expect(editor.getByLabel("Show plane-1 seed group")).not.toBeChecked();
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText(`source ${sourceHash}`);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 80³ sphere, shell and random patterns stay bounded and repeat exactly", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-vortex-80-overview.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const patterns = editor.locator(".vector-field3d-spatial-seeds");
+    await patterns.locator("summary").click();
+    await patterns.getByLabel("Spatial center x").fill("1");
+    await patterns.getByLabel("Spatial center y").fill("-0.5");
+    await patterns.getByLabel("Spatial center z").fill("0.25");
+    await patterns.getByLabel("Spatial seed radius").fill("1.5");
+    await patterns.getByLabel("Spatial seed count").fill("8");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await expect(editor.getByRole("region", { name: "Seed group shell-1" })).toBeVisible();
+    await patterns.getByLabel("Spatial seed pattern").selectOption("sphere");
+    await patterns.getByLabel("Spatial seed count").fill("6");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await patterns.getByLabel("Spatial seed pattern").selectOption("random");
+    await patterns.getByLabel("Spatial random seed").fill("42");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await expect(editor).toContainText("Trajectory seeds (26/32)");
+    const document = await page.evaluate(() => JSON.parse(
+      sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!));
+    const seeds = document.source.seeds as { group: string; position: number[] }[];
+    const ofGroup = (id: string) => seeds.filter(seed => seed.group === id)
+      .map(seed => seed.position);
+    const shell = ofGroup("shell-1"), sphere = ofGroup("sphere-1");
+    expect(shell).toHaveLength(8);
+    expect(sphere).toHaveLength(6);
+    for (const point of shell)
+      expect(Math.hypot(point[0]! - 1, point[1]! + .5, point[2]! - .25))
+        .toBeCloseTo(1.5, 10);
+    for (const point of [...shell, ...sphere, ...ofGroup("random-1")])
+      expect(point.every(value => value >= -4 && value <= 4)).toBe(true);
+    expect(ofGroup("random-1")).toEqual(ofGroup("random-2"));
+    await patterns.getByLabel("Spatial seed count").fill("7");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await expect(editor.getByRole("alert").filter({ hasText: /32-seed limit/i })).toBeVisible();
+    await expect(editor.getByRole("region", { name: "Seed group random-3" })).toHaveCount(0);
+    await patterns.getByLabel("Spatial seed count").fill("1");
+    await patterns.getByLabel("Spatial center x").fill("3.5");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await expect(editor.getByRole("alert").filter({ hasText: /complete seed sphere/i }))
+      .toBeVisible();
+    const afterRejected = await page.evaluate(() => JSON.parse(
+      sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!));
+    expect(afterRejected.source.seeds).toEqual(document.source.seeds);
+    expect(afterRejected.identity.structuralHash).toBe(document.identity.structuralHash);
+    expect(afterRejected.source.field.references[0].sceneFingerprint)
+      .toBe(document.source.field.references[0].sceneFingerprint);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-13 measured Burgers spatial seeds survive undo, redo and Project reopen", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, resolve("output/scientific-burgers-horizontal-level1.sscene"));
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const patterns = editor.locator(".vector-field3d-spatial-seeds");
+    await patterns.locator("summary").click();
+    await patterns.getByLabel("Spatial seed count").fill("5");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await patterns.getByLabel("Spatial seed pattern").selectOption("random");
+    await patterns.getByLabel("Spatial seed count").fill("4");
+    await patterns.getByLabel("Spatial random seed").fill("17");
+    await patterns.getByRole("button", { name: "Add spatial seed group" }).click();
+    await expect(editor).toContainText("Trajectory seeds (9/32)");
+    const generated = await page.evaluate(() => JSON.parse(
+      sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!));
+    await editor.getByRole("button", { name: "Undo seed edit" }).click();
+    await expect(editor).toContainText("Trajectory seeds (5/32)");
+    await editor.getByRole("button", { name: "Redo seed edit" }).click();
+    await expect(editor).toContainText("Trajectory seeds (9/32)");
+    const restored = await page.evaluate(() => JSON.parse(
+      sessionStorage.getItem("math3d.scientific-field-explorer.session.v1")!));
+    expect(restored.source.seeds).toEqual(generated.source.seeds);
+    expect(restored.source.field.references).toEqual(generated.source.field.references);
+    await editor.getByLabel("Trajectory max time").fill("0.05");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    const status = editor.getByTestId("vector-field3d-trajectory-status");
+    await expect(status).toContainText(/source sha256:[a-f0-9]{64}/);
+    const sourceHash = (await status.innerText()).match(/source (sha256:[a-f0-9]{64})/)?.[1];
+    expect(sourceHash).toBeDefined();
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const entry = saved.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
+    expect(entry?.checkpoint.source.seeds).toEqual(generated.source.seeds);
+    expect(entry?.checkpoint.source.field.references[0].sceneFingerprint)
+      .toBe(generated.source.field.references[0].sceneFingerprint);
+    await projectPanel.getByTestId(`project-preview-${saved.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${entry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByRole("region", { name: "Seed group shell-1" })).toContainText("seed-1");
+    await expect(editor.getByRole("region", { name: "Seed group random-1" })).toContainText("seed-6");
+    await editor.getByRole("button", { name: "Run trajectories" }).click();
+    await expect(editor.getByTestId("vector-field3d-trajectory-status"))
+      .toContainText(`source ${sourceHash}`);
   } finally { await closeSurfaceApp(app); }
 });
