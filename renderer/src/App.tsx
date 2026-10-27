@@ -36,7 +36,9 @@ import { ProjectNavigation } from "./workspace/projectNavigation";
 import { readProjectWorkbook } from "./projects/projectWorkbookBinding";
 import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
-import { promoteScientificIsosurfaceMesh, reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
+import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
+  reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
+import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
@@ -23171,6 +23173,9 @@ const App: React.FC = () => {
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
   const [scientificMeshSourceStates, setScientificMeshSourceStates] = useState<Record<string,
     "pending" | "current" | "stale">>({});
+  const scientificMeshRebuildAbortRef = useRef<AbortController | null>(null);
+  const [scientificMeshRebuild, setScientificMeshRebuild] = useState<{
+    meshId: string; busy: boolean; message: string } | null>(null);
   const nativeMeshSelectionKeysRef = useRef("");
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
   const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
@@ -79071,6 +79076,65 @@ case "mobius":
     navigateRestoredDocument(next.adapter.document().identity.id, "mesh");
   };
 
+  const rebuildFieldIsosurfaceMesh = async (meshId: string) => {
+    if (scientificMeshRebuildAbortRef.current) return;
+    const controller = new AbortController();
+    scientificMeshRebuildAbortRef.current = controller;
+    setScientificMeshRebuild({ meshId, busy: true,
+      message: "Opening and verifying the saved field source…" });
+    let sourceLabel = "the saved field source";
+    try {
+      const restored = restoredProjectRef.current;
+      const adapter = restored?.meshes.get(meshId);
+      if (!restored || !adapter)
+        throw new TypeError("The source-linked Mesh is unavailable in this Project.");
+      const previous = adapter.document();
+      const origin = previous.source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
+      if (origin.kind !== "derivedVectorFieldIsosurface")
+        throw new TypeError("This Mesh has no saved Field Explorer extraction recipe.");
+      sourceLabel = origin.sourceReferences ?
+        `scene ${origin.sourceReferences[0].sceneId}, dataset ${origin.sourceReferences[0].datasetId}` :
+        `field ${origin.source.documentId}`;
+      const workspace = captureMixedKernelWorkspace();
+      const field = verifyMixedWorkspaceReplay(workspace).get(origin.source.documentId);
+      if (field?.format !== "math3d.vector-field3d-document" ||
+          field.identity.revision !== origin.source.revision ||
+          field.identity.structuralHash !== origin.source.structuralHash)
+        throw new TypeError("The saved field generation changed or is unavailable.");
+      const surface = await runVerifiedIsosurface(field, origin.recipe, {
+        signal: controller.signal, bridge: window.scientificScenes,
+        onStatus: message => setScientificMeshRebuild({ meshId, busy: true, message }) });
+      if (controller.signal.aborted) throw new Error("Isosurface rebuild cancelled.");
+      if (restoredProjectRef.current !== restored ||
+          restored.meshes.get(meshId) !== adapter ||
+          adapter.document().identity.structuralHash !== previous.identity.structuralHash ||
+          adapter.document().identity.revision !== previous.identity.revision)
+        throw new TypeError("The Project Mesh changed during extraction. Retry with its current revision.");
+      const rebuilt = rebuildScientificIsosurfaceMesh(captureMixedKernelWorkspace(),
+        adapter, field, surface);
+      restored.workspace = rebuilt.workspace;
+      restored.meshes.set(meshId, rebuilt.adapter);
+      meshDocumentAdapterRef.current = rebuilt.adapter;
+      setMeshKernelDocument(rebuilt.adapter.document());
+      setScientificMeshSourceStates(current => ({ ...current, [meshId]: "current" }));
+      setAdditionalVersion(value => value + 1);
+      navigateRestoredDocument(meshId, "mesh");
+      setScientificMeshRebuild({ meshId, busy: false,
+        message: `Verified Mesh revision ${rebuilt.current.revision} is ready. Save the Project to keep it.` });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      const cancelled = controller.signal.aborted;
+      if (!cancelled && /integrity|checksum|source.*changed|tile/i.test(message))
+        setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
+      setScientificMeshRebuild({ meshId, busy: false, message: cancelled ?
+        "Rebuild cancelled; the previous Mesh revision is unchanged." :
+        `${sourceLabel}: ${message} Repair the source bundle or relink a verified field in Field Explorer before rebuilding.` });
+    } finally {
+      if (scientificMeshRebuildAbortRef.current === controller)
+        scientificMeshRebuildAbortRef.current = null;
+    }
+  };
+
   const createMeshFromSavedSurface = (resolution: SurfaceStudyResolution = 33): string => {
     const restored = restoredProjectRef.current, session = additionalActiveId ? restored?.additional.get(additionalActiveId) : null;
     if (!restored) throw new TypeError("Open a saved Surface source first.");
@@ -82276,11 +82340,20 @@ case "mobius":
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
       {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface" &&
-        <p role="status" data-testid="scientific-mesh-source-status" style={{ margin: "8px 18px",
+        <div role="status" data-testid="scientific-mesh-source-status" style={{ margin: "8px 18px",
           padding: "7px 11px", border: "1px solid #b9cbe0", borderRadius: 8,
           fontSize: 13 }}>Source {scientificMeshSourceStates[meshDocumentAdapterRef.current!.document().identity.id] ?? "pending"} ·
           {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.boundaryEdgeCount} boundary edges ·
-          {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.clipBoundaryEdgeCount} on clip planes</p>}
+          {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.clipBoundaryEdgeCount} on clip planes ·
+          {" "}<button type="button" data-testid="scientific-mesh-rebuild" disabled={!!scientificMeshRebuild?.busy}
+            onClick={() => void rebuildFieldIsosurfaceMesh(meshDocumentAdapterRef.current!.document().identity.id)}>
+            Rebuild from verified source</button>
+          {scientificMeshRebuild?.busy && scientificMeshRebuild.meshId === meshDocumentAdapterRef.current!.document().identity.id &&
+            <button type="button" data-testid="scientific-mesh-rebuild-cancel"
+              onClick={() => scientificMeshRebuildAbortRef.current?.abort()}>Cancel rebuild</button>}
+          {scientificMeshRebuild?.meshId === meshDocumentAdapterRef.current!.document().identity.id &&
+            <p data-testid="scientific-mesh-rebuild-message">{scientificMeshRebuild.message}</p>}
+        </div>}
       {!hasSavedDocumentViewport && (<SavedMeshModuleFrame document={savedMeshModuleActive ? meshDocumentAdapterRef.current?.document() ?? null : null} projectTitle={activeNotebookProjectRef.current?.metadata.title} sourceSurfaceTitle={savedMeshSourceTitle} onProject={() => setProjectsOpen(true)} onStudy={() => setSavedMeshModuleView(false)} onSurface={savedMeshParent?.document && !activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.archived ? () => openSavedStudySurface(meshDocumentAdapterRef.current!.document().identity.id) : undefined} onClose={openNormalSurfacesWorkspace}>
         <SavedSurfaceModuleFrame projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
         data-testid="module-workspace"

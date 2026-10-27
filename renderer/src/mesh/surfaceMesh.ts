@@ -97,6 +97,7 @@ export type SurfaceMeshSource =
         triangleBudget: number; gridShape: readonly [number, number, number] };
       topology: import("@math3d/core").VectorField3DIsosurfaceTopology;
       complete: boolean; clipped: boolean;
+      rebuildSequence?: number;
       verifiedTiles: import("@math3d/core").VectorField3DIsosurface["verifiedTiles"] | null }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }

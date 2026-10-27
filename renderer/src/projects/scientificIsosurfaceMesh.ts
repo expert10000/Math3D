@@ -1,10 +1,12 @@
 import { canonicalJsonStringify, createDocumentRelation, createMixedWorkspaceDocument,
   createScientificDatasetLink, parseScientificSceneManifest,
   scientificTileLayout, sha256Checksum, viewerSourceFromDocument,
+  withDocumentRelationStatus, type CanonicalJsonValue,
   type MixedWorkspaceDocument, type VectorField3DDocument,
   type VectorField3DIsosurface } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import type { SurfaceMeshSource } from "../mesh/surfaceMesh";
+import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
 
 export const SCIENTIFIC_ISOSURFACE_MESH_OPERATION = "vector3d.speed-isosurface-mesh";
 export type IsosurfaceMeshOrigin = Extract<SurfaceMeshSource,
@@ -52,6 +54,68 @@ export function promoteScientificIsosurfaceMesh(workspace: MixedWorkspaceDocumen
       field.identity.id, mesh.identity.id])],
     relations: [...workspace.relations, relation] });
   return { workspace: next, adapter };
+}
+
+/** Publish a verified rebuild as a new Mesh revision; retain the old resource in replay. */
+export function rebuildScientificIsosurfaceMesh(workspace: MixedWorkspaceDocument,
+  adapter: MeshDocumentAdapter, field: VectorField3DDocument,
+  surface: VectorField3DIsosurface) {
+  const previous = adapter.document();
+  const origin = previous.source.origin as IsosurfaceMeshOrigin;
+  if (origin.kind !== "derivedVectorFieldIsosurface")
+    throw new TypeError("This Mesh has no saved Field Explorer extraction recipe.");
+  if (field.identity.id !== origin.source.documentId ||
+      field.identity.revision !== origin.source.revision ||
+      field.identity.structuralHash !== origin.source.structuralHash ||
+      canonicalJsonStringify(surface.source) !== canonicalJsonStringify(origin.source))
+    throw new TypeError("The source field generation changed. Relink a verified field before rebuilding.");
+  if (surface.level !== origin.recipe.level || surface.unit !== origin.recipe.unit ||
+      surface.triangleBudget !== origin.recipe.triangleBudget ||
+      canonicalJsonStringify(surface.clipBounds) !== canonicalJsonStringify(origin.recipe.clipBounds) ||
+      canonicalJsonStringify(surface.gridShape) !== canonicalJsonStringify(origin.recipe.gridShape) ||
+      surface.triangleCount < 1 || surface.indices.length !== surface.triangleCount * 3 ||
+      surface.positions.length !== surface.vertexCount * 3 ||
+      surface.normals.length !== surface.positions.length)
+    throw new TypeError("The verified extraction does not match the saved Mesh recipe.");
+  if (origin.sourceHash !== surface.sourceHash ||
+      canonicalJsonStringify(origin.sourceReferences) !== canonicalJsonStringify(surface.sourceReferences) ||
+      canonicalJsonStringify(origin.verifiedTiles) !== canonicalJsonStringify(surface.verifiedTiles ?? null))
+    throw new TypeError("Verified source tiles changed. Repair or relink the scientific scene before rebuilding.");
+  if (!workspace.entries.some(entry => entry.module === "mesh" &&
+      entry.expected.id === previous.identity.id))
+    throw new TypeError("The source-linked Mesh is unavailable in this Project.");
+  // Build on a copy so a failed Project validation cannot mutate the live Mesh.
+  const nextAdapter = MeshDocumentAdapter.restoreReplay(adapter.exportReplay());
+  const nextOrigin: IsosurfaceMeshOrigin = { ...origin, topology: surface.topology,
+    complete: surface.complete, clipped: surface.clipped,
+    rebuildSequence: (origin.rebuildSequence ?? 0) + 1,
+    verifiedTiles: surface.verifiedTiles ?? null };
+  const nextDocument = nextAdapter.replaceMesh({ label: previous.metadata.label,
+    positions: surface.positions, normals: surface.normals, indices: surface.indices,
+    source: nextOrigin }, "generate", { operation: SCIENTIFIC_ISOSURFACE_MESH_OPERATION,
+      level: surface.level, triangleBudget: surface.triangleBudget });
+  const replay = nextAdapter.replayBundle();
+  const entries = workspace.entries.map(entry => entry.expected.id === previous.identity.id &&
+      entry.module === "mesh" ? { ...entry, checkpoint: replay.checkpoint.document,
+        expected: nextDocument.identity,
+        replay: { format: MIXED_REPLAY_FORMATS.mesh,
+          payload: replay as unknown as CanonicalJsonValue } } : entry);
+  const relation = createDocumentRelation({ kind: "generated-by",
+    sources: [viewerSourceFromDocument(field)], sourceOrder: "ordered",
+    target: { type: "document", generation: viewerSourceFromDocument(nextDocument) },
+    operation: SCIENTIFIC_ISOSURFACE_MESH_OPERATION,
+    parameters: { level: surface.level, clipBounds: surface.clipBounds,
+      triangleBudget: surface.triangleBudget, topology: surface.topology,
+      previousRevision: previous.identity.revision } });
+  const relations = workspace.relations.map(item =>
+    item.operation === SCIENTIFIC_ISOSURFACE_MESH_OPERATION &&
+    item.target.type === "document" &&
+    item.target.generation.documentId === previous.identity.id ?
+      withDocumentRelationStatus(item, "stale") : item);
+  const next = createMixedWorkspaceDocument({ ...workspace, entries,
+    relations: [...relations, relation] });
+  return { workspace: next, adapter: nextAdapter, previous: previous.identity,
+    current: nextDocument.identity };
 }
 
 /** Recheck exactly the v3 tiles named by the saved mesh before declaring it current. */

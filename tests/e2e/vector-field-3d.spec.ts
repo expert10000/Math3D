@@ -135,8 +135,8 @@ test("SCI-09 analytic sphere isosurface appears in the 3D Field Explorer", async
   } finally { await closeSurfaceApp(app); }
 });
 
-test("SCI-09 measured Burgers speed isosurface exports verified tiles and regenerates after Project reopen", async () => {
-  test.setTimeout(300_000);
+test("SCI-09 measured Burgers speed isosurface exports verified tiles and rebuilds its Project Mesh", async () => {
+  test.setTimeout(480_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-isosurface-"));
   const directory = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory, { recursive: true });
@@ -240,6 +240,7 @@ test("SCI-09 measured Burgers speed isosurface exports verified tiles and regene
       .toContainText(gltf.meshes[0].extras.sourceHash);
     await page.evaluate(() => {
       const originalPost = Worker.prototype.postMessage;
+      (window as unknown as { originalIsosurfacePost: typeof originalPost }).originalIsosurfacePost = originalPost;
       Worker.prototype.postMessage = function(message) {
         window.setTimeout(() => originalPost.call(this, message), 1200);
       };
@@ -252,11 +253,32 @@ test("SCI-09 measured Burgers speed isosurface exports verified tiles and regene
     await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
     await expect(editor.getByTestId("vector-field3d-isosurface"))
       .toContainText("Verified source tiles:", { timeout: 120_000 });
+    await page.evaluate(() => {
+      Worker.prototype.postMessage = (window as unknown as {
+        originalIsosurfacePost: typeof Worker.prototype.postMessage
+      }).originalIsosurfacePost;
+    });
     await editor.getByRole("button", { name: "Add source-linked Mesh to Project" }).click();
     await expect(page.getByTestId("scientific-mesh-source-status"))
       .toContainText("Source current", { timeout: 120_000 });
     await expect(page.getByTestId("scientific-mesh-source-status"))
       .toContainText("on clip planes");
+    await page.evaluate(() => {
+      const originalPost = Worker.prototype.postMessage;
+      (window as unknown as { originalIsosurfacePost: typeof originalPost }).originalIsosurfacePost = originalPost;
+      Worker.prototype.postMessage = function(message) {
+        window.setTimeout(() => originalPost.call(this, message), 1200);
+      };
+    });
+    await page.getByTestId("scientific-mesh-rebuild").click();
+    await page.getByTestId("scientific-mesh-rebuild-cancel").click();
+    await expect(page.getByTestId("scientific-mesh-rebuild-message"))
+      .toContainText("previous Mesh revision is unchanged");
+    await page.evaluate(() => {
+      Worker.prototype.postMessage = (window as unknown as {
+        originalIsosurfacePost: typeof Worker.prototype.postMessage
+      }).originalIsosurfacePost;
+    });
     if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
     if (!await projectPanel.getByTestId("project-save").isVisible())
       await projectPanel.getByTestId("project-gallery-layout-toggle").click();
@@ -267,6 +289,7 @@ test("SCI-09 measured Burgers speed isosurface exports verified tiles and regene
       checkpoint: { source: { origin: { kind: string } } } }) =>
       item.module === "mesh" && item.checkpoint.source.origin.kind === "derivedVectorFieldIsosurface");
     expect(meshEntry).toBeDefined();
+    expect(meshEntry.expected.revision).toBe(1);
     expect(meshEntry.checkpoint.source.origin).toMatchObject({ clipped: true,
       topology: { watertight: false, boundaryEdgeCount: gltf.meshes[0].extras.topology.boundaryEdgeCount,
         clipBoundaryEdgeCount: gltf.meshes[0].extras.topology.clipBoundaryEdgeCount },
@@ -296,7 +319,44 @@ test("SCI-09 measured Burgers speed isosurface exports verified tiles and regene
     await projectPanel.getByTestId("project-import-open").click();
     await expect(page.getByTestId("scientific-mesh-source-status"))
       .toContainText("Source stale", { timeout: 120_000 });
+    await page.getByTestId("scientific-mesh-rebuild").click();
+    await expect(page.getByTestId("scientific-mesh-rebuild-message"))
+      .toContainText(/vx:|integrity|checksum/i, { timeout: 120_000 });
+    await expect(page.getByTestId("scientific-mesh-rebuild-message"))
+      .toContainText("Repair the source bundle or relink");
     await writeFile(resource, original);
+    await page.getByTestId("scientific-mesh-rebuild").click();
+    await expect(page.getByTestId("scientific-mesh-rebuild-message"))
+      .toContainText("Verified Mesh revision", { timeout: 120_000 });
+    await expect(page.getByTestId("scientific-mesh-source-status"))
+      .toContainText("Source current");
+    if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const rebuiltProject = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const rebuiltEntry = rebuiltProject.workspace.entries.find((item: { expected: { id: string } }) =>
+      item.expected.id === meshEntry.expected.id);
+    expect(rebuiltEntry.expected.revision).toBe(meshEntry.expected.revision + 1);
+    expect(rebuiltEntry.checkpoint.source.origin.topology.clipBoundaryEdgeCount)
+      .toBe(meshEntry.checkpoint.source.origin.topology.clipBoundaryEdgeCount);
+    expect(rebuiltEntry.checkpoint.source.origin.verifiedTiles)
+      .toEqual(meshEntry.checkpoint.source.origin.verifiedTiles);
+    expect(rebuiltProject.workspace.relations.filter((item: { operation: string }) =>
+      item.operation === "vector3d.speed-isosurface-mesh").map((item: { status: string }) =>
+      item.status)).toEqual(["stale", "current"]);
+    if (!await projectPanel.getByTestId(`project-preview-${rebuiltProject.identity.id}`).isVisible()) {
+      if (!await projectPanel.getByTestId("project-detail-toggle").isVisible())
+        await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+      if (!await projectPanel.getByTestId(`project-preview-${rebuiltProject.identity.id}`).isVisible())
+        await projectPanel.getByTestId("project-detail-toggle").click();
+    }
+    await projectPanel.getByTestId(`project-preview-${rebuiltProject.identity.id}`).click();
+    await projectPanel.getByTestId("project-restore-saved").click();
+    await projectPanel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("scientific-mesh-source-status"))
+      .toContainText("Source current", { timeout: 120_000 });
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-isosurface-"))

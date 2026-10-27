@@ -6,7 +6,7 @@ import { createMath3DProject, createMixedWorkspaceDocument, createVectorField3DD
 import { captureProjectResources, exportProjectPackage,
   parseProjectPackage } from "./projectResources";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
-import { promoteScientificIsosurfaceMesh,
+import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
   reverifyScientificIsosurfaceMesh } from "./scientificIsosurfaceMesh";
 import { meshDocumentEditable } from "./nativeMeshRestore";
 
@@ -76,5 +76,64 @@ describe("SCI-09 source-linked Project Mesh", () => {
         boundaryEdgeCount: clipped.topology.boundaryEdgeCount,
         clipBoundaryEdgeCount: clipped.topology.clipBoundaryEdgeCount } });
     expect(clipped.topology.boundaryEdgeCount).toBeGreaterThan(0);
+  });
+
+  it("rebuilds a sphere into a new revision and retains the old resource through Project reopen", () => {
+    const sphere = surface(defaultVectorField3DWorkspace(field.source).clipBounds);
+    const promoted = promoteScientificIsosurfaceMesh(workspace, field, sphere);
+    const original = promoted.adapter.document();
+    const rebuilt = rebuildScientificIsosurfaceMesh(promoted.workspace,
+      promoted.adapter, field, sphere);
+    expect(promoted.adapter.document()).toEqual(original);
+    expect(rebuilt.current.revision).toBe(original.identity.revision + 1);
+    expect(rebuilt.adapter.mesh()).toMatchObject({ source: {
+      topology: { watertight: true, boundaryEdgeCount: 0 } } });
+    expect(rebuilt.adapter.mesh().positions).toEqual(sphere.positions);
+    expect(rebuilt.adapter.mesh().normals).toEqual(sphere.normals);
+    expect(rebuilt.workspace.relations).toHaveLength(2);
+    expect(rebuilt.workspace.relations.map(relation => relation.status))
+      .toEqual(["stale", "current"]);
+    const rebuiltAgain = rebuildScientificIsosurfaceMesh(rebuilt.workspace,
+      rebuilt.adapter, field, sphere);
+    expect(rebuiltAgain.current.revision).toBe(rebuilt.current.revision + 1);
+    expect(rebuiltAgain.adapter.mesh().source).toMatchObject({ rebuildSequence: 2 });
+    const historical = rebuilt.adapter.exportReplay();
+    expect(historical.resources.some(item =>
+      item.reference.id === original.source.resource.id)).toBe(true);
+    const project = createMath3DProject(rebuilt.workspace,
+      { stableKey: "sci09-rebuilt-sphere" });
+    const resources = captureProjectResources(project, item =>
+      rebuilt.adapter.resources.bytes(item.reference as never));
+    const reopened = parseProjectPackage(exportProjectPackage(project, resources));
+    expect(verifyMixedWorkspaceReplay(reopened.project.workspace)
+      .get(original.identity.id)).toEqual(rebuilt.adapter.document());
+    const buffers = reopened.resources.meshStore(reopened.project)
+      .resolve(rebuilt.adapter.document().source.resource)!;
+    expect(buffers.indices).toEqual(sphere.indices);
+    expect(reopened.resources.meshStore(reopened.project)
+      .resolve(original.source.resource)?.positions).toEqual(sphere.positions);
+    for (let index = 0; index < buffers.positions.length; index += 81) {
+      const p = buffers.positions.slice(index, index + 3);
+      const n = buffers.normals!.slice(index, index + 3);
+      expect(Math.hypot(...p)).toBeCloseTo(1, 1);
+      expect(p[0]! * n[0]! + p[1]! * n[1]! + p[2]! * n[2]!)
+        .toBeGreaterThan(0.75);
+    }
+  });
+
+  it("rejects changed source provenance without touching the current Mesh", () => {
+    const clipped = surface([[-0.5, 0.5], [-2, 2], [-2, 2]]);
+    const promoted = promoteScientificIsosurfaceMesh(workspace, field, clipped);
+    const old = promoted.adapter.document();
+    expect(() => rebuildScientificIsosurfaceMesh(promoted.workspace,
+      promoted.adapter, field, { ...clipped, sourceHash: "sha256:tampered" }))
+      .toThrow(/Repair or relink/);
+    expect(promoted.adapter.document()).toEqual(old);
+    const rebuilt = rebuildScientificIsosurfaceMesh(promoted.workspace,
+      promoted.adapter, field, clipped);
+    expect(rebuilt.adapter.mesh().source).toMatchObject({ clipped: true,
+      topology: { watertight: false,
+        boundaryEdgeCount: clipped.topology.boundaryEdgeCount,
+        clipBoundaryEdgeCount: clipped.topology.clipBoundaryEdgeCount } });
   });
 });
