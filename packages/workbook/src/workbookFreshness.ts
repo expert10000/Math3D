@@ -3,6 +3,7 @@ import { inspectWorkbookDependency } from "./workbookDependencies";
 import { inspectNotebookReference } from "./notebookReferences";
 import type { Workbook, WorkbookBlock } from "./workbookModel";
 import { assessWorkbookClaim } from "./workbookClaims";
+import { inspectWorkbookComparisonReference } from "./workbookComparisonReference";
 
 export type WorkbookFreshnessStatus = "current" | "stale" | "missing" | "failed";
 export type WorkbookBlockFreshness = Readonly<{
@@ -20,7 +21,8 @@ const priority: Record<WorkbookFreshnessStatus, number> = { current: 0, stale: 1
 
 export function workbookNeedsProjectInspection(workbook: Workbook): boolean {
   return !!workbook.dependencies?.some((edge) => edge.source.kind === "project" || edge.source.kind === "note") ||
-    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference || block.claim?.evidence.some(item => item.kind === "result")));
+    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference ||
+      !!block.visualize?.comparison || block.claim?.evidence.some(item => item.kind === "result")));
 }
 
 /** Derives affected blocks without changing runs or scheduling work. */
@@ -45,6 +47,8 @@ export function resolveWorkbookFreshness(
       ? project ? inspectNotebookReference(project, block.notebookReference)
         : { status: "missing" as const, reason: "Open the linked Project to inspect this reference." }
       : null;
+    const comparison = block.type === "visualize" && block.visualize?.comparison
+      ? inspectWorkbookComparisonReference(project, block.visualize.comparison) : null;
     const base = block.enabled === false || intrinsicComputeStatus[id] === "disabled"
       ? { status: "missing" as const, reason: "Block is disabled.", path: [id], blockedBySource: false }
       : intrinsicComputeStatus[id] === "failed" || block.type === "assert" && !block.claim && block.assert?.status === "fail"
@@ -52,6 +56,9 @@ export function resolveWorkbookFreshness(
         : reference && reference.status !== "current"
           ? { status: reference.status === "different-project" ? "missing" as const : reference.status,
             reason: reference.reason, path: [id], blockedBySource: true }
+        : comparison && comparison.status !== "current"
+          ? { status: comparison.status === "stale" ? "stale" as const : "missing" as const,
+            reason: `Saved comparison is ${comparison.status}; reopen or relink its exact Project sources.`, path: [id], blockedBySource: true }
         : intrinsicComputeStatus[id] === "stale"
           ? { status: "stale" as const, reason: "Compute inputs or parameters changed.", path: [id], blockedBySource: false }
           : { status: "current" as const, reason: "Sources match.", path: [id], blockedBySource: false };

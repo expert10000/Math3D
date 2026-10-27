@@ -1,0 +1,84 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "complex-wave-volume",
+  "title": "Complex wave volume · 3D",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "complex-wave-volume-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "76bad1545d0d3abc6205a86eb14668fd2b1efbf4d42166c93eefb857e21bb066"
+  },
+  "resources": [
+    {
+      "id": "real",
+      "path": "real.f64",
+      "format": "f64le",
+      "count": 28577,
+      "bytes": 228616,
+      "sha256": "d7d79bdbdcd4c50adc42b6dee3b49a0338c7386298b8b2ca1ae865007e763bf7"
+    },
+    {
+      "id": "imaginary",
+      "path": "imaginary.f64",
+      "format": "f64le",
+      "count": 28577,
+      "bytes": 228616,
+      "sha256": "4033658c61b797a2c132fb94d18f27fa2b6263d1f7b93123ce13dea556ceb6ac"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "space",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        },
+        {
+          "name": "z",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4,
+        -2
+      ],
+      "spacing": [
+        0.2,
+        0.2,
+        0.25
+      ],
+      "periodic": [
+        false,
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "complex-scalar-field",
+      "coordinateSystem": "space",
+      "shape": [
+        41,
+        41,
+        17
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Wave amplitude",
+        "unit": "1"
+      },
+      "real": "real",
+      "imaginary": "imaginary"
+    }
+  ],
+  "views": []
+}

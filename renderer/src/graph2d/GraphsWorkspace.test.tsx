@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { renderToStaticMarkup } from "react-dom/server";
-import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument } from "@math3d/core";
+import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
+  createGraph2DFieldReference, createScientificFieldDocument, Graph2DPointTableStore,
+  reviseScientificFieldDocument, scientificFieldResultBinding, sha256Checksum } from "@math3d/core";
 import { recommendedWorkspaceDockLayout } from "../workspaceDocks";
 import { GraphsWorkspace } from "./GraphsWorkspace";
 
@@ -8,10 +12,43 @@ const document = createEmptyGraph2DDocument("graphs-shell-test");
 const dockLayout = recommendedWorkspaceDockLayout("graphs");
 
 describe("Graphs workspace shell", () => {
+  it("labels saved field Graph rows unverified after reopen and stale after a revision", () => {
+    const manifestJson = readFileSync(fileURLToPath(new URL(
+      "../../../tests/fixtures/scientific-scene/thermal-gradient.sscene/manifest.json", import.meta.url)), "utf8");
+    const fingerprint = sha256Checksum(new TextEncoder().encode(manifestJson)).slice(7);
+    const reference = createGraph2DFieldReference(manifestJson, fingerprint,
+      { kind: "preset", value: "thermal-gradient" }, "temperature", "scalar");
+    const field = createScientificFieldDocument({ reference,
+      quantity: { name: "Temperature", unit: "K" },
+      display: { view: "plane", normalAxis: null, fixedIndex: null,
+        transfer: { mode: "data" } } }, { stableKey: reference.id });
+    const rows = [{ id: "row_1", x: 0, y: 1 }, { id: "row_2", x: 1, y: 2 }];
+    const table = new Graph2DPointTableStore().publish(rows);
+    const origin = { schema: "scientific-scene/v1" as const, sceneId: reference.sceneId,
+      datasetId: reference.datasetId, component: reference.component,
+      sceneFingerprint: reference.sceneFingerprint, resourceSha256: reference.resourceSha256,
+      sourceProducer: "fixture", sourceId: "thermal", sourceSchema: "fixture/v1",
+      sourceSha256: reference.resourceSha256, xName: "time", xUnit: "s",
+      yName: "Temperature", yUnit: "K", fieldDocument: scientificFieldResultBinding(field) };
+    const source = applyGraph2DAuthoring(document, { type: "create-point-series", draft: {
+      label: "Thermal line", table, mode: "line", domain: { min: 0, max: 1,
+        includeMin: true, includeMax: true }, origin,
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } } });
+    const graph = createGraph2DDocument({ stableKey: "bound-thermal", source: source.source,
+      display: source.display, selection: { objectId: source.source.objects[0]!.id, probe: null } });
+    expect(renderToStaticMarkup(<GraphsWorkspace document={graph} dockLayout={dockLayout}
+      savedScientificFields={[field]} />)).toContain("Saved rows; reverify against the source after Project reopen");
+    const revised = reviseScientificFieldDocument(field, { ...field.source,
+      display: { ...field.source.display, transfer: { mode: "percentile" } } });
+    expect(renderToStaticMarkup(<GraphsWorkspace document={graph} dockLayout={dockLayout}
+      savedScientificFields={[revised]} />)).toContain("Stale — saved field source or revision changed");
+    expect(renderToStaticMarkup(<GraphsWorkspace document={graph} dockLayout={dockLayout}
+      savedScientificFields={[revised]} />)).toContain("Reverify Graph line");
+  });
   it("renders document-backed empty, loading, and error states", () => {
     const empty = renderToStaticMarkup(<GraphsWorkspace document={document} dockLayout={dockLayout} />);
     expect(empty).toContain("0 graph objects");
-    expect(empty).toContain("No functions in this graph.");
+    expect(empty).toContain("No graph objects yet. Choose Add Graph to begin.");
     expect(empty).toContain('aria-label="Graph view essentials"');
     expect(empty).toContain('aria-label="Zoom in"');
     expect(empty).toContain("Fit selection");

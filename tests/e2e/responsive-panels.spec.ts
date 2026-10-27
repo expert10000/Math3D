@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
 test("Graphs More menu keeps scientific presets inside the viewer", async () => {
   const app = await launchSurfaceApp();
@@ -16,7 +17,7 @@ test("Graphs More menu keeps scientific presets inside the viewer", async () => 
       expect(menuBox).not.toBeNull(); expect(viewerBox).not.toBeNull();
       expect(menuBox!.x).toBeGreaterThanOrEqual(viewerBox!.x);
       expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewerBox!.x + viewerBox!.width);
-      for (const name of ["Import scientific dataset", "Sine–cosine grid preset", "Thermal gradient grid preset"]) {
+      for (const name of ["Import scientific dataset", "Scientific field presets"]) {
         const button = menu.getByRole("button", { name });
         const box = await button.boundingBox();
         expect(box).not.toBeNull();
@@ -36,8 +37,8 @@ test("Graphs keeps essential view controls and compact card actions keyboard rea
     await resetSurfaceAppState(app.page);
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function", exact: true }).click();
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
     const more = functions.getByLabel("More actions for f");
     await more.focus();
     await app.page.keyboard.press("Enter");
@@ -73,8 +74,8 @@ test("Graphs keeps toolbar and compact Inspector separate at tablet width", asyn
     await app.page.setViewportSize({ width: 900, height: 650 });
     await app.page.getByTestId("workspace-nav-graphs").click();
     const functions = app.page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function", exact: true }).click();
-    await functions.getByRole("button", { name: "Save function", exact: true }).click();
+    await openGraphType(app.page, "Function");
+    await saveGraphEditor(app.page);
     const toolbar = app.page.locator(".graph2d-toolbar");
     const inspector = app.page.locator(".graph2d-compact-panels > details > summary").filter({ hasText: "Inspector" });
     await expect(inspector).toBeVisible();

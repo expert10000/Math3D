@@ -55,6 +55,7 @@ describe("Graph2D polar measurements", () => {
       const limited = measure("1", sourceDomain, kind, undefined, { maxEvaluations: 20 });
       expect(limited.value).toBeNull();
       expect(limited.evaluations).toBeLessThanOrEqual(20);
+      expect(limited.publication.diagnostics.some(entry => entry.code === "evaluation-limit")).toBe(true);
       const controller = new AbortController(); controller.abort();
       const cancelled = measure("1", sourceDomain, kind, undefined, { signal: controller.signal });
       expect(cancelled.cancelled).toBe(true);

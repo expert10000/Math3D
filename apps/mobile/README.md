@@ -10,6 +10,8 @@ View also offers Solid, Curvature, and Faces surface colors plus Solid, Wirefram
 
 The app entry point delegates state to `mobileAppController.ts` and rendering to separate Home, Explore, Workspace, Projects, and Settings screens. Navigation, workspace, and local project state each have a dedicated hook; the Workspace inspector is its own component. Project saves are validated, staged in a temporary file, and renamed into place. The previous valid library is retained as a recovery backup. Projects supports search, sorting, rename, duplicate, reversible delete, generated scene thumbnails, validated scene import, folder export, and native sharing. Remote compute remains disabled until a worker reports the expected protocol, server and engine identity, and named capabilities. Run `npm run mobile:worker:pair` on the desktop to start the LAN worker proxy with a short-lived token and QR code, then scan it from mobile Settings. The token stays in memory and expires automatically; manual URL entry remains available under Advanced.
 
+A saved 3D vector field can be opened from the Project explorer as a read-only Android viewer. Tap **View 3D vector field**, then **Verify and render arrows**. For a scientific field, select its local `.sscene` folder; every render re-reads the complete bundle and rejects missing or changed bytes before showing up to 512 arrows. The status includes the source revision, sample counts and time through the first rendered frame. Drag or use the camera buttons to inspect the field. Mobile trajectories are deferred until the viewer is measured on an Android device.
+
 Scope for the first version:
 
 - scene gallery

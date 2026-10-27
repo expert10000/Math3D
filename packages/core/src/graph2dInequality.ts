@@ -87,7 +87,7 @@ export const sampleGraph2DInequality = (request: Graph2DRegionRequest): Graph2DR
       const cy = y(j + .5);
       samplesEvaluated += object.clauses.length;
       const inside = evaluateGraph2DRegion(object, variables, cx, cy);
-      if (inside === null) { unresolved = true; note("unresolved-cell"); }
+      if (inside === null) { unresolved = true; note("invalid-sample"); note("unresolved-cell"); }
       if (inside && runStart < 0) runStart = i;
       if (!inside) flush(i);
     }

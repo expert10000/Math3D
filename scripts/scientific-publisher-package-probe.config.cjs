@@ -9,7 +9,12 @@ module.exports = {
   directories: { ...base.directories, output: "output/scientific-publisher-package-probe" },
   extraResources: base.extraResources.filter((item) =>
     item.to === "scientific-scenes/sincos.sscene" || item.to === "scientific-scenes/thermal-gradient.sscene" ||
-    item.to === "scientific-scenes/complex-wave.sscene" || item.to === "scientific-scenes/vortex-flow.sscene" ||
+    item.to === "scientific-scenes/quadratic-potential.sscene" ||
+    item.to === "scientific-scenes/saddle-potential.sscene" ||
+    item.to === "scientific-scenes/gaussian-bump.sscene" ||
+    item.to === "scientific-scenes/quadratic-volume.sscene" ||
+    item.to === "scientific-scenes/complex-wave.sscene" || item.to === "scientific-scenes/complex-wave-volume.sscene" ||
+    item.to === "scientific-scenes/vortex-flow.sscene" ||
     item.to === "scientific-scenes/vortex-volume.sscene" ||
     item.to?.startsWith("scientific-publisher/")),
   win: { ...base.win, target: "dir" },

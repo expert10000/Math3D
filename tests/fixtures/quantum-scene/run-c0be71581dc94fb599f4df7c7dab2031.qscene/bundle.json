@@ -1,0 +1,8 @@
+{
+  "schema": "quantum-scene-bundle/v1",
+  "scene": {
+    "path": "scene.json",
+    "bytes": 3403,
+    "sha256": "126b6f2a9ec6d2c326a6cf5e033763a2345d8bbdd6e476e101e7fdbb84f623a5"
+  }
+}

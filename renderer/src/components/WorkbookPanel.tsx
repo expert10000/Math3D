@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
 import type { NotebookReference } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
+import type { ProjectResourceReader } from "../projects/projectResources";
+import { createWorkbookComparisonReference } from "@math3d/workbook";
+import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
@@ -35,6 +38,7 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 type WorkbookPanelProps = {
   workbooks: Workbook[];
+  readComparisonResource?: ProjectResourceReader;
   activeWorkbookId: string | null;
   activeStageId: WorkbookStageId;
   computeStatusById: Record<string, "ok" | "stale" | "failed" | "disabled">;
@@ -482,6 +486,7 @@ const VisualizeDiffPanel: React.FC<{
 
 export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   workbooks,
+  readComparisonResource,
   activeWorkbookId,
   activeStageId,
   onSelectWorkbook,
@@ -599,7 +604,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const [artifactContext, setArtifactContext] = useState<NotebookProjectContext | null>(null);
   const getProjectRef = useRef(getNotebookProject);
   getProjectRef.current = getNotebookProject;
-  const hasExternalDependencies = !!activeWorkbook && (viewMode === "document" || workbookNeedsProjectInspection(activeWorkbook) || activeWorkbook.stages.some(stage => stage.blocks.some(block => block.type === "assert")));
+  const hasExternalDependencies = !!activeWorkbook && (viewMode === "document" || workbookNeedsProjectInspection(activeWorkbook) ||
+    activeWorkbook.stages.some(stage => stage.blocks.some(block => block.type === "assert" || block.type === "visualize")));
   useEffect(() => {
     if (!hasExternalDependencies) { setDependencyProject(null); setProjectLive(false); setArtifactContext(null); return; }
     const refresh = () => {
@@ -1527,6 +1533,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       {activeWorkbook && <WorkbookPublication workbook={activeWorkbook} onExport={onExportPublication} />}
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
         project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
+        readComparisonResource={readComparisonResource}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
         onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
@@ -1860,6 +1867,20 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 project={dependencyProject} onOpenNote={onOpenNote} />}
 
               {block.type === "visualize" && <WorkbookSnapshotRecord block={block} />}
+              {block.type === "visualize" && <div style={{ display: "grid", gap: 5 }}>
+                <label>Saved Project comparison <select data-testid="workbook-comparison-select" value={block.visualize?.comparison?.compositionId ?? ""}
+                  disabled={readOnly || !dependencyProject}
+                  onChange={event => {
+                    const composition = dependencyProject?.compositions?.find(item => item.id === event.target.value);
+                    onUpdateBlock(activeStageId, block.id, { visualize: { ...(block.visualize ?? { live: true }),
+                      comparison: composition && dependencyProject ? createWorkbookComparisonReference(dependencyProject, composition) : undefined } });
+                  }}>
+                  <option value="">No comparison linked</option>
+                  {dependencyProject?.compositions?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+                </select></label>
+                {!dependencyProject && <small>Open and save a Project comparison before linking it to this Visualize block.</small>}
+                {block.visualize?.comparison && <WorkbookComparisonBlock project={dependencyProject} reference={block.visualize.comparison} readResource={readComparisonResource} />}
+              </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {(() => {

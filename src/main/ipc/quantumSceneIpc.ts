@@ -8,6 +8,8 @@ import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneRefer
 import { isAbsolute, resolve } from "node:path";
 import { chooseTheoryLabTarget, launchTheoryLab } from "../quantumScene/theoryLabLaunch";
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
+import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantumScene/scalarSelection";
+import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
   type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
 import { bundledQuantumSceneDirectory, bundledQuantumSceneExample,
@@ -40,12 +42,17 @@ function failed(error: unknown): QuantumSceneOpenResponse {
   return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
 }
 
-export function registerQuantumSceneIpc(initialDirectory: string | null = null): void {
+export function registerQuantumSceneIpc(initialDirectory: string | null = null, initialError: string | null = null): void {
   let launchDirectory = initialDirectory;
+  let launchError = initialError;
   const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; directory: string; imported: ImportedQuantumScene }>();
+  const selectedStudyPoint = new WeakMap<Electron.WebContents, { fingerprint: string; series: "periodic" | "chain"; sampleIndex: number }>();
+  const studySelectionSerial = new WeakMap<Electron.WebContents, number>();
   const volumeJobs = new WeakMap<Electron.WebContents, Map<string, { cancelled: boolean }>>();
   const openedFor = (event: Electron.IpcMainInvokeEvent, directory: string, imported: ImportedQuantumScene, remembered: boolean) => {
     for (const job of volumeJobs.get(event.sender)?.values() ?? []) job.cancelled = true;
+    studySelectionSerial.set(event.sender, (studySelectionSerial.get(event.sender) ?? 0) + 1);
+    selectedStudyPoint.delete(event.sender);
     verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), directory: resolve(directory), imported });
     return opened(directory, imported, remembered);
   };
@@ -63,7 +70,10 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     if (!trustedSender(event))
       return { ok: false, canceled: false, error: "Untrusted quantum scene IPC sender" };
     const directory = launchDirectory;
+    const error = launchError;
     launchDirectory = null;
+    launchError = null;
+    if (error) return failed(new Error(`External quantum scene handoff refused: ${error}`));
     if (!directory) return { ok: false, canceled: true };
     try {
       const imported = await importQuantumSceneBundle(directory);
@@ -145,6 +155,22 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
     const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
     if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during band selection");
     return inspectVerifiedBandSample(reopened.imported, request);
+  });
+  ipcMain.handle("quantumScenes:scalarSample", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("Scalar selection requires one request");
+    const active = activeField(event, args[0]);
+    const serial = (studySelectionSerial.get(event.sender) ?? 0) + 1;
+    studySelectionSerial.set(event.sender, serial);
+    selectedStudyPoint.delete(event.sender);
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active || studySelectionSerial.get(event.sender) !== serial)
+      throw new Error("Quantum scene or selection changed during scalar selection");
+    const sample = inspectVerifiedScalarSample(reopened.imported, args[0] as ScalarSampleRequest);
+    if (reopened.imported.source.provenance.model === "rice_mele_convergence_study" &&
+        (sample.objectId === "periodic-points" || sample.objectId === "chain-points"))
+      selectedStudyPoint.set(event.sender, { fingerprint: active.fingerprint,
+        series: sample.objectId === "periodic-points" ? "periodic" : "chain", sampleIndex: sample.sampleIndex });
+    return sample;
   });
   ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Topology selection requires one request");
@@ -246,6 +272,8 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       let reopened = await reopenQuantumSceneReference(reference);
       if (reopened.imported.source.provenance.kind === "geometry-fixture")
         throw new Error("Geometry examples have no saved Theory Lab run");
+      if (reopened.imported.source.provenance.model === "rice_mele_convergence_study")
+        throw new Error("Select a convergence point to open its exact saved Lab run");
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win || win.isDestroyed()) throw new Error("Scene window is unavailable");
       const target = await chooseTheoryLabTarget(win);
@@ -257,6 +285,34 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null):
       const { runId, resultSha256 } = reopened.imported.source.provenance;
       await launchTheoryLab(target, runId, resultSha256);
       return { ok: true, canceled: false, runId, resultSha256 };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle("quantumScenes:openStudySourceRun", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) return { ok: false, canceled: false, error: "Study source launch requires one selected point" };
+    try {
+      const active = activeField(event, args[0]);
+      const request = args[0] as StudySourceRunRequest;
+      const selected = selectedStudyPoint.get(event.sender);
+      if (!selected || selected.fingerprint !== active.fingerprint || selected.series !== request.series ||
+          selected.sampleIndex !== request.sampleIndex)
+        throw new Error("Select and verify this exact study point before opening its Lab run");
+      const reference = { directory: active.directory, sceneFingerprint: active.fingerprint };
+      const first = await reopenQuantumSceneReference(reference);
+      resolveStudySourceRun(first.imported, request);
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) throw new Error("Scene window is unavailable");
+      const target = await chooseTheoryLabTarget(win);
+      if (!target) return { ok: false, canceled: true };
+      // The picker can remain open while the active scene or source files change.
+      activeField(event, request);
+      if (selectedStudyPoint.get(event.sender) !== selected)
+        throw new Error("Selected study point changed during Theory Lab selection");
+      const reopened = await reopenQuantumSceneReference(reference);
+      const identity = resolveStudySourceRun(reopened.imported, request);
+      await launchTheoryLab(target, identity.runId, identity.resultSha256);
+      return { ok: true, canceled: false, ...identity };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }

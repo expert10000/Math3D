@@ -14,6 +14,8 @@ export type Graph2DPhaseOrbit = Readonly<{
 export type Graph2DPhasePortraitArtifact = Graph2DSamplingArtifact & Readonly<{
   kind: "phase-portrait";
   fieldSegments: readonly Graph2DSampleSegment[];
+  /** Speed at each visible arrow, in coordinate units per authored time unit. */
+  fieldMagnitudes: readonly number[];
   orbits: readonly Graph2DPhaseOrbit[];
   nullclines: Readonly<{ x: readonly Graph2DSampleSegment[]; y: readonly Graph2DSampleSegment[] }>;
   equilibria: readonly Readonly<{ x: number; y: number; residual: number; linearization: Graph2DPhaseLinearization }> [];
@@ -26,6 +28,8 @@ export type Graph2DPhasePortraitRequest = Readonly<{
   variables: Readonly<Record<string, number>>;
   viewport: Graph2DViewport;
   width: number; height: number; maxSamples: number; deadlineMs?: number;
+  /** Scene rendering omits mathematical analysis; publications and direct previews include it. */
+  includeAnalysis?: boolean;
 }>;
 
 /** Bounded planar direction grid plus two-sided adaptive RK4 orbits. Time is a parameter, not the screen x coordinate. */
@@ -35,7 +39,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       !Number.isSafeInteger(request.maxSamples) || request.maxSamples < 1)
     throw new TypeError("Invalid phase-portrait sampling request.");
   if (viewport.xScale === "log10" || viewport.yScale === "log10") return {
-    samplerVersion: 1, kind: "phase-portrait", segments: [], fieldSegments: [], orbits: [], samplesEvaluated: 0,
+    samplerVersion: 1, kind: "phase-portrait", segments: [], fieldSegments: [], fieldMagnitudes: [], orbits: [], samplesEvaluated: 0,
     nullclines: { x: [], y: [] }, equilibria: [],
     analysis: { status: "unavailable", method: "contour-intersection-newton", gridScale: null,
       candidates: 0, unresolved: 0, evaluations: 0 },
@@ -53,12 +57,13 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
   };
   const xMin = Math.max(viewport.xMin, object.domain.min), xMax = Math.min(viewport.xMax, object.domain.max);
   const yMin = Math.max(viewport.yMin, object.yDomain.min), yMax = Math.min(viewport.yMax, object.yDomain.max);
-  const fieldSegments: Graph2DSampleSegment[] = [];
+  const fieldSegments: Graph2DSampleSegment[] = [], fieldMagnitudes: number[] = [];
   if (xMin < xMax && yMin < yMax) {
-    let columns = Math.max(1, Math.min(20, Math.floor(width / 48)));
-    let rows = Math.max(1, Math.min(20, Math.floor(height / 48)));
+    const spacing = Math.max(width, height) / (object.fieldDensity ?? 12);
+    let columns = Math.max(1, Math.min(24, Math.floor(width / spacing)));
+    let rows = Math.max(1, Math.min(24, Math.floor(height / spacing)));
     // Reserve most evaluations for saved orbits, especially when another graph shares the scene budget.
-    const glyphBudget = Math.max(1, Math.min(256, Math.floor(maxEvaluations / 20)));
+    const glyphBudget = Math.max(1, Math.min(576, Math.floor(maxEvaluations / 12)));
     while (columns * rows > glyphBudget) {
       if (columns >= rows && columns > 1) columns -= 1;
       else rows -= 1;
@@ -66,6 +71,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     const pxPerX = width / (viewport.xMax - viewport.xMin);
     const pxPerY = height / (viewport.yMax - viewport.yMin);
     const lengthPx = Math.min(24, 0.4 * Math.min(width / columns, height / rows));
+    const fieldSamples: { center: Point; vector: Point; screenNorm: number; magnitude: number }[] = [];
     for (let row = 0; row < rows && !fieldTimedOut; row += 1) for (let column = 0; column < columns; column += 1) {
       if (deadlineMs !== undefined && Date.now() > deadlineMs) { fieldTimedOut = true; break; }
       const center = { x: xMin + (column + 0.5) * (xMax - xMin) / columns,
@@ -74,10 +80,21 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       if (!vector) { invalidGlyphs += 1; continue; }
       const norm = Math.hypot(vector.x * pxPerX, vector.y * pxPerY);
       if (!Number.isFinite(norm) || norm === 0) continue;
-      const dx = vector.x * lengthPx / (2 * norm), dy = vector.y * lengthPx / (2 * norm);
+      const magnitude = Math.hypot(vector.x, vector.y);
+      if (!Number.isFinite(magnitude)) { invalidGlyphs += 1; continue; }
+      fieldSamples.push({ center, vector, screenNorm: norm, magnitude });
+    }
+    const ordered = fieldSamples.map(sample => sample.magnitude).sort((a, b) => a - b);
+    const reference = ordered[Math.floor(ordered.length / 2)] ?? 1;
+    for (const { center, vector, screenNorm, magnitude } of fieldSamples) {
+      // Median-relative lengths expose speed without letting one singular spike flatten the entire field.
+      const speedScale = Math.max(0.35, Math.min(1.4, Math.sqrt(magnitude / reference)));
+      const dx = vector.x * lengthPx * speedScale / (2 * screenNorm);
+      const dy = vector.y * lengthPx * speedScale / (2 * screenNorm);
       if (![dx, dy].every(Number.isFinite)) { invalidGlyphs += 1; continue; }
       fieldSegments.push({ points: [{ x: center.x - dx, y: center.y - dy }, { x: center.x + dx, y: center.y + dy }],
         openStart: false, openEnd: false });
+      fieldMagnitudes.push(magnitude);
     }
   }
   const maxStep = object.timeSpan / 16, minStep = Math.max(1e-10, object.timeSpan * 1e-9);
@@ -139,19 +156,50 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
     orbits.push({ seedIndex, seed, backward: backward.stop, forward: forward.stop,
       acceptedSteps: backward.accepted + forward.accepted, rejectedSteps: backward.rejected + forward.rejected });
   }
-  const analysisStart = samplesEvaluated;
+  const phaseAnalysis = request.includeAnalysis === false ? {
+    nullclines: { x: [], y: [] }, equilibria: [], analysis: { status: "unavailable" as const,
+      method: "contour-intersection-newton" as const, gridScale: null, candidates: 0, unresolved: 0, evaluations: 0 },
+  } : computePhaseAnalysis({ ...request, maxEvaluations }, evaluate, () => samplesEvaluated,
+    amount => { samplesEvaluated += amount; });
+  const diagnostics: Graph2DSamplingDiagnostic[] = [];
+  if (invalidGlyphs) diagnostics.push({ code: "invalid-sample", count: invalidGlyphs });
+  if (fieldTimedOut) diagnostics.push({ code: "deadline", count: 1 });
+  for (const orbit of orbits) for (const stop of [orbit.backward, orbit.forward]) {
+    if (stop === "singular") diagnostics.push({ code: "invalid-sample", count: 1 });
+    if (stop === "sample-limit" || stop === "step-limit") diagnostics.push({ code: "sample-limit", count: 1 });
+    if (stop === "deadline") diagnostics.push({ code: "deadline", count: 1 });
+  }
+  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, fieldMagnitudes, orbits, segments,
+    ...phaseAnalysis,
+    samplesEvaluated, converged: (request.includeAnalysis === false || phaseAnalysis.analysis.status === "complete") && !diagnostics.some(item => item.code === "deadline" || item.code === "sample-limit" ||
+      item.code === "invalid-sample" && orbits.some(orbit => orbit.backward === "singular" || orbit.forward === "singular")), diagnostics };
+};
+
+type PhaseAnalysisRequest = Omit<Graph2DPhasePortraitRequest, "maxSamples" | "includeAnalysis"> & Readonly<{ maxEvaluations: number }>;
+export type Graph2DPhaseAnalysisResult = Pick<Graph2DPhasePortraitArtifact, "nullclines" | "equilibria" | "analysis">;
+
+/** Mathematical contour and equilibrium scan, independent of the scene's arrow/orbit budget. */
+const computePhaseAnalysis = (request: PhaseAnalysisRequest,
+  evaluate: (point: Point) => Point | null, samplesEvaluated: () => number,
+  recordEvaluations: (count: number) => void): Graph2DPhaseAnalysisResult => {
+  const { object, viewport, width, height, maxEvaluations, deadlineMs } = request;
+  const xMin = Math.max(viewport.xMin, object.domain.min), xMax = Math.min(viewport.xMax, object.domain.max);
+  const yMin = Math.max(viewport.yMin, object.yDomain.min), yMax = Math.min(viewport.yMax, object.yDomain.max);
+  const inside = (point: Point) => point.x >= object.domain.min && point.x <= object.domain.max &&
+    point.y >= object.yDomain.min && point.y <= object.yDomain.max;
+  const analysisStart = samplesEvaluated();
   let nullclines: Graph2DPhasePortraitArtifact["nullclines"] = { x: [], y: [] };
   const equilibria: { x: number; y: number; residual: number }[] = [];
   let analysisStatus: Graph2DPhasePortraitArtifact["analysis"]["status"] = "unavailable";
   let gridScale: number | null = null, candidates = 0, unresolved = 0;
-  const remaining = maxEvaluations - samplesEvaluated;
+  const remaining = maxEvaluations - samplesEvaluated();
   if (xMin < xMax && yMin < yMax && remaining >= 96 && (deadlineMs === undefined || Date.now() <= deadlineMs)) {
-    const contourBudget = Math.min(512, Math.floor(remaining * 0.38));
+    const contourBudget = Math.min(4096, Math.floor(remaining * 0.38));
     const contour = (expression: Graph2DPhasePortraitObject["xDerivative"]) => {
       const sampled = sampleGraph2DImplicit({ object: { id: object.id, kind: "implicit", label: object.label,
         expression, domain: object.domain, yDomain: object.yDomain }, variables: request.variables,
         viewport, width, height, policy: { maxSamples: contourBudget, maxDepth: 8, tolerancePx: 1.5 }, deadlineMs });
-      samplesEvaluated += sampled.samplesEvaluated;
+      recordEvaluations(sampled.samplesEvaluated);
       return sampled;
     };
     const xContour = contour(object.xDerivative), yContour = contour(object.yDerivative);
@@ -180,7 +228,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
       let point = crossing, value = evaluate(point), resolved = false;
       for (let iteration = 0; iteration < 5 && value; iteration += 1) {
         const residual = Math.hypot(value.x, value.y);
-        if (residual <= 1e-7 * (1 + Math.hypot(point.x, point.y))) {
+        if (residual < 1e-7) {
           if (!equilibria.some(other => Math.hypot(other.x - point.x, other.y - point.y) < (gridScale ?? 0) * 0.25))
             equilibria.push({ ...point, residual });
           resolved = true; break;
@@ -201,7 +249,7 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
         point = next; value = evaluate(point);
       }
       if (!resolved) { unresolved += 1; analysisStatus = "partial"; }
-      if (samplesEvaluated + 8 > maxEvaluations || deadlineMs !== undefined && Date.now() > deadlineMs) {
+      if (samplesEvaluated() + 8 > maxEvaluations || deadlineMs !== undefined && Date.now() > deadlineMs) {
         analysisStatus = "partial"; break outer;
       }
     }
@@ -209,18 +257,30 @@ export const sampleGraph2DPhasePortrait = (request: Graph2DPhasePortraitRequest)
   // Classify only after searching for crossings, so Jacobian work cannot hide another equilibrium.
   const classifiedEquilibria = equilibria.map(point => ({ ...point,
     linearization: estimateGraph2DPhaseLinearization(point, object.domain, object.yDomain, evaluate) }));
-  const diagnostics: Graph2DSamplingDiagnostic[] = [];
-  if (invalidGlyphs) diagnostics.push({ code: "invalid-sample", count: invalidGlyphs });
-  if (fieldTimedOut) diagnostics.push({ code: "deadline", count: 1 });
-  for (const orbit of orbits) for (const stop of [orbit.backward, orbit.forward]) {
-    if (stop === "singular") diagnostics.push({ code: "invalid-sample", count: 1 });
-    if (stop === "sample-limit" || stop === "step-limit") diagnostics.push({ code: "sample-limit", count: 1 });
-    if (stop === "deadline") diagnostics.push({ code: "deadline", count: 1 });
-  }
-  return { samplerVersion: 1, kind: "phase-portrait", fieldSegments, orbits, segments, nullclines,
-    equilibria: classifiedEquilibria,
-    analysis: { status: analysisStatus, method: "contour-intersection-newton", gridScale,
-      candidates, unresolved, evaluations: samplesEvaluated - analysisStart },
-    samplesEvaluated, converged: analysisStatus === "complete" && !diagnostics.some(item => item.code === "deadline" || item.code === "sample-limit" ||
-      item.code === "invalid-sample" && orbits.some(orbit => orbit.backward === "singular" || orbit.forward === "singular")), diagnostics };
+  if (samplesEvaluated() >= maxEvaluations || deadlineMs !== undefined && Date.now() > deadlineMs)
+    analysisStatus = "partial";
+  return { nullclines, equilibria: classifiedEquilibria, analysis: { status: analysisStatus,
+    method: "contour-intersection-newton" as const, gridScale, candidates, unresolved,
+    evaluations: samplesEvaluated() - analysisStart } };
+};
+/** Dedicated phase analysis entry point. Its allowance never pays for arrows or trajectories. */
+export const analyzeGraph2DPhasePortrait = (request: PhaseAnalysisRequest): Graph2DPhaseAnalysisResult => {
+  if (!Number.isSafeInteger(request.maxEvaluations) || request.maxEvaluations < 1 || request.maxEvaluations > 12000)
+    throw new TypeError("Phase analysis budget must be 1–12000 evaluations.");
+  if (!Number.isFinite(request.width) || request.width <= 0 || !Number.isFinite(request.height) || request.height <= 0)
+    throw new TypeError("Invalid phase analysis size.");
+  if (request.viewport.xScale === "log10" || request.viewport.yScale === "log10") return {
+    nullclines: { x: [], y: [] }, equilibria: [], analysis: { status: "unavailable", method: "contour-intersection-newton",
+      gridScale: null, candidates: 0, unresolved: 0, evaluations: 0 },
+  };
+  let count = 0;
+  const evaluate = (point: Point): Point | null => {
+    if (count + 2 > request.maxEvaluations || request.deadlineMs !== undefined && Date.now() > request.deadlineMs) return null;
+    const scope = { ...request.variables, ...point };
+    const x = evaluateGraph2DExpression(request.object.xDerivative.ast, scope, { deadlineMs: request.deadlineMs });
+    const y = evaluateGraph2DExpression(request.object.yDerivative.ast, scope, { deadlineMs: request.deadlineMs });
+    count += 2;
+    return x.ok && y.ok && Number.isFinite(x.value) && Number.isFinite(y.value) ? { x: x.value, y: y.value } : null;
+  };
+  return computePhaseAnalysis(request, evaluate, () => count, amount => { count += amount; });
 };

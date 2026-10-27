@@ -1,0 +1,75 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "quadratic-volume",
+  "title": "Quadratic potential · 3D scalar field",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "quadratic-volume-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "97e675bc0d564a67bdc8d426fddf1865316112edcd9b5f581a58d323f6066f3f"
+  },
+  "resources": [
+    {
+      "id": "scalar",
+      "path": "scalar.f64",
+      "format": "f64le",
+      "count": 4913,
+      "bytes": 39304,
+      "sha256": "97e675bc0d564a67bdc8d426fddf1865316112edcd9b5f581a58d323f6066f3f"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "space",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        },
+        {
+          "name": "z",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4,
+        -4
+      ],
+      "spacing": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "periodic": [
+        false,
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "scalar-field",
+      "coordinateSystem": "space",
+      "shape": [
+        17,
+        17,
+        17
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Potential",
+        "unit": "V"
+      },
+      "real": "scalar"
+    }
+  ],
+  "views": []
+}

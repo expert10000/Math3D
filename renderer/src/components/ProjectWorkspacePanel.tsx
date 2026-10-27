@@ -7,6 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
+  upsertMath3DProjectComposition, inspectProjectCompositionAvailability, type ProjectComposition,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -21,6 +22,7 @@ import { presentProjectFreshness, presentProjectRelationFreshness } from "../pro
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
+const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
@@ -72,6 +74,7 @@ type Props = {
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number } | null;
+  resultRequest?: { id: string; token: number } | null;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
@@ -85,7 +88,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -144,6 +147,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     workspacePanel.current?.scrollTo({ top: 0 });
     if (section) window.requestAnimationFrame(() => window.requestAnimationFrame(() => jumpTo(section)));
   };
+  useEffect(() => {
+    if (!open || !resultRequest) return;
+    setNotesOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(true);
+    setResultFocus(resultRequest); openDetailPage("results");
+  }, [open, resultRequest?.token]);
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
   const openingStarter = useRef(false);
@@ -152,6 +160,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const [compositionOpen, setCompositionOpen] = useState(false);
+  const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
@@ -380,7 +390,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         try {
           const saved = loadLibraryProject(localStorage, entry.id);
           summary = { description: saved.metadata.description ?? "", documents: saved.workspace.entries.length, results: saved.workspace.results.length,
-            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex", quantum: "Quantum scene" }[item.module] ?? item.module)),
+            modules: [...new Set([...saved.workspace.entries.map(item => ({ graph2d: "Graph", field: "Scientific field", vector2d: "2D vector field", vector3d: "3D vector field", surface: "Surface", curve: "Curve", mesh: "Mesh", volume: "Volume", geometry: "Geometry", topology: "Topology", complex: "Complex", quantum: "Quantum scene" }[item.module] ?? item.module)),
               ...(saved.workbooks?.length ? ["Workbook"] : []), ...(saved.notes?.length ? ["Notes"] : []), ...(saved.workspace.results.length ? ["Analysis"] : [])])] };
         } catch { summary = { description: "Saved payload unavailable. Preview reports the recovery details.", documents: 0, results: 0, modules: [] }; }
         summaryCache.current.set(entry.id, { savedAt: entry.savedAt, summary });
@@ -879,7 +889,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (failure) { setExampleMessage(`Samsung collection import failed: ${(failure as Error).message}`); }
     finally { setBusy(false); }
   };
-  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false, inspectedForThisOpen = false) => {
+  const importPreview = async (openWorkspace: boolean, candidate = incoming, reuseExistingResources = false,
+    inspectedForThisOpen = false, preferredVectorDocumentId?: string) => {
     if (!candidate || busy) return false;
     setBusy(true);
     const activationToken = ++importSequence.current;
@@ -922,7 +933,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current ||
         previous && canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous))
         throw new Error("The workspace changed during source verification. Retry opening the Project.");
-      const choice = openWorkspace ? selectProjectDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY)) : null;
+      const preferred = preferredVectorDocumentId ? prepared.project.workspace.entries.find(entry =>
+        entry.expected.id === preferredVectorDocumentId && entry.module === "vector3d" &&
+        !prepared.project.metadata.documents?.[entry.expected.id]?.archived) : null;
+      if (preferredVectorDocumentId && !preferred) throw new Error("Saved 3D field is unavailable in this Project.");
+      const choice = openWorkspace ? preferred ? { selected: preferred, recovery: null } :
+        selectProjectDocument(prepared.project, localStorage.getItem(PROJECT_RESUME_KEY)) : null;
       const rollback = () => { rollbackTables?.(); if (hostRestored && previous && onRestoreWorkspace) onRestoreWorkspace(previous, previousResources, previousOwner ?? undefined); };
       const commitStart = performance.now();
       setLibrary(await commitProjectResources(prepared.project, resources, () => {
@@ -967,7 +983,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Project import failed: ${(error as Error).message}`); return false; }
     finally { setBusy(false); }
   };
-  const openLibraryProject = async (id: string, showDetails = false) => {
+  const openLibraryProject = async (id: string, showDetails = false, preferredVectorDocumentId?: string) => {
     if (busy) return;
     const sequence = ++importSequence.current;
     setBusy(true);
@@ -981,7 +997,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setMessage("This saved project has preview support. Review its compatibility details below.");
         return;
       }
-      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true);
+      await importPreview(true, prepared, canReuseProjectResourceArchive(next, resources), true,
+        preferredVectorDocumentId);
     } catch (error) { setMessage(`Saved project unavailable: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
@@ -1180,7 +1197,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         <div className="project-gallery-browse-controls">
           <div className="project-gallery-filters" aria-label="Project collection">{["All projects", "Starter projects", "Your saved projects", "Favorites"].map(value => <button type="button" key={value} aria-pressed={collection === value} onClick={() => setCollection(value)}>{value}</button>)}</div>
           <div className="project-gallery-search-row"><label>Search projects<input data-testid="project-library-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search names, topics or tags" /></label>
-            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
+            <label>Module<select data-testid="project-library-module" value={moduleFilter} onChange={event => setModuleFilter(event.target.value)}>{["All modules", "Graph", "3D vector field", "Curve", "Surface", "Mesh", "Volume", "Geometry", "Topology", "Complex", "Quantum scene", "Workbook", "Notes", "Analysis"].map(value => <option key={value}>{value}</option>)}</select></label>
             {(query || moduleFilter !== "All modules") && <button type="button" onClick={() => { setQuery(""); setModuleFilter("All modules"); }}>Clear filters</button>}
           </div>
         </div>
@@ -1230,6 +1247,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </nav>}
         {projectNotesView && <div className="project-notes-workspace"><p className="project-workspace-eyebrow">PROJECT / NOTES</p>{renderNotesPanel("page")}</div>}
         <div className="project-workspace-main">
+        {project && !preview && !managed && <section aria-label="Project comparison" data-testid="project-composition-entry" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, margin: "12px 0" }}>
+          <h4 style={{ margin: "0 0 4px" }}>Compare saved documents</h4>
+          <p style={{ margin: "0 0 8px" }}>View two saved Mesh, Geometry or bounded Surface documents without copying their sources. {project.compositions?.length ?? 0} saved compositions.</p>
+          <button type="button" data-testid="project-open-composition" disabled={busy ||
+            project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2 &&
+            !project.workspace.entries.some(entry => ["mesh", "geometry", "surface"].includes(entry.module) && !!entry.replay &&
+              (entry.checkpoint.identity.revision !== entry.expected.revision || entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash))}
+            onClick={() => setCompositionOpen(true)}>Open comparison</button>
+        </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
             aria-current={detailPage === page ? "page" : undefined} onClick={() => openDetailPage(page)}>{page[0].toUpperCase() + page.slice(1)}</button>)}
@@ -1504,6 +1530,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
             <button type="button" data-testid={`project-view-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>View with Project</button>
+            {document.module === "vector3d" && <button type="button"
+              data-testid={`project-open-field-explorer-${document.id}`}
+              disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}
+              onClick={() => { if (preview && project) void openLibraryProject(project.identity.id, false, document.id);
+                else navigate(document.id, document.module); }}>Open Field Explorer</button>}
             {preview && !document.archived && <small> · open project first</small>}
             <small> · revision {document.revision}{document.archived ? " · archived" : ""}</small>
             <button type="button" data-testid={`project-inspect-${document.id}`} onClick={() => { setInspectedId(document.id); setInspectionOpen(true); }}>Inspect dependencies</button>
@@ -1563,6 +1594,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
+      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} onClose={() => setCompositionOpen(false)}
+        onSave={async (composition: ProjectComposition) => {
+          const ok = await commitNotes(saved => {
+            const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
+            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint"))
+              throw new Error("A comparison source generation is unavailable. Reopen the saved Project.");
+            return upsertMath3DProjectComposition(saved, composition);
+          }, `Saved composition “${composition.title}”.`);
+          if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");
+          return ok;
+        }} /></React.Suspense>}
     </ProjectGalleryFrame>}
   </div>;
 };

@@ -61,11 +61,12 @@ export function analyzeGraph2DPolarMeasurement(input: Readonly<{
   const variables = Object.fromEntries(input.document.source.variables.map(entry => [entry.name, entry.value]));
   const symbolic = input.kind === "arc-length" ? differentiateGraph2DExpression(object.rExpression.ast, 1, "theta") : null;
   const method = input.kind === "swept-area" ? "direct-radius" : symbolic?.ok ? "symbolic-slope" : "finite-difference-slope";
-  let evaluations = 0;
+  let evaluations = 0, budgetReached = false;
   const radiusCache = new Map<number, number | null>();
   const integrandCache = new Map<number, number | null>();
   const evaluate = (ast: Graph2DExpressionAst, theta: number): number | null => {
-    if (input.signal?.aborted || evaluations >= maxEvaluations) return null;
+    if (input.signal?.aborted) return null;
+    if (evaluations >= maxEvaluations) { budgetReached = true; return null; }
     evaluations += 1;
     const result = evaluateGraph2DExpression(ast, { ...variables, theta });
     return result.ok && Number.isFinite(result.value) ? result.value : null;
@@ -157,9 +158,12 @@ export function analyzeGraph2DPolarMeasurement(input: Readonly<{
       value, partialValue, errorEstimate: status === "complete" ? error : null, unresolvedCells, evaluations, method },
     warnings: ["Simpson refinement error is estimated, not certified; narrow singularities may be missed.",
       ...(input.kind === "swept-area" ? ["Swept area counts repeated traversal; it is not geometric union area."] : []),
+      ...(budgetReached ? ["Evaluation budget reached; the full angular interval result is unavailable."] : []),
       ...(unresolvedCells ? ["The full angular interval result is unavailable; only a partial value is shown."] : [])],
-    diagnostics: unresolvedCells ? [{ code: cancelled ? "cancelled" : "unresolved-cells", severity: "warning",
-      message: cancelled ? "Measurement was cancelled." : `${unresolvedCells} cells crossed an invalid source, open endpoint, work limit, or failed convergence.` }] : [],
+    diagnostics: unresolvedCells ? [{ code: cancelled ? "cancelled" : budgetReached ? "evaluation-limit" : "unresolved-cells", severity: "warning",
+      message: cancelled ? "Measurement was cancelled." : budgetReached ?
+        `Evaluation budget reached at ${maxEvaluations}; ${unresolvedCells} cells remain unresolved.` :
+        `${unresolvedCells} cells crossed an invalid source, open endpoint, or failed convergence.` }] : [],
     artifacts: [] });
   return { kind: input.kind, objectId: object.id, resultId, source, interval: input.interval, status, value,
     partialValue, errorEstimate: status === "complete" ? error : null, tolerance, evaluations,

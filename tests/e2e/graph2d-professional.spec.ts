@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { launchSurfaceApp, closeSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { checkPersonalGraphFlow } from "../graph2d-web/personalGraphFlow";
@@ -58,10 +59,10 @@ test("G2D40 Electron professional scales, checked regression and frozen local pu
     await openMore();
     await page.getByRole("button", { name: "Show continuation", exact: true }).click();
     await expect.poll(() => page.locator("[data-graph2d-continuation]").first().getAttribute("d")).not.toBe("");
-    const functions = page.getByLabel("Graph functions"); await functions.getByRole("button", { name: "Add data series", exact: true }).click();
-    await functions.getByLabel("Data series name").fill("Measurements");
-    await functions.getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12");
-    await functions.getByRole("button", { name: "Save data series", exact: true }).click();
+    const functions = page.getByLabel("Graph functions"); await openGraphType(page, "Data series");
+    await graphEditor(page).getByLabel("Data series name").fill("Measurements");
+    await graphEditor(page).getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12");
+    await saveGraphEditor(page);
     await functions.getByRole("button", { name: "Select Measurements", exact: true }).click();
     const panel = page.getByRole("region", { name: "Regression fitting", exact: true });
     await panel.getByRole("button", { name: "Fit dataset", exact: true }).click(); await expect(panel.getByRole("status")).toHaveText("Current regression");

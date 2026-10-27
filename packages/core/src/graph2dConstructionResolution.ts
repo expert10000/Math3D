@@ -3,7 +3,7 @@ import type { Graph2DDocument, Graph2DGraphObject, Graph2DProbe } from "./graph2
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
-  GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS, nextGraph2DConstructionId,
+  GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS, GRAPH2D_MAX_CONSTRUCTIONS, nextGraph2DConstructionId,
   applyGraph2DConstructionAction, type Graph2DConstructionAction,
   type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction, type Graph2DCandidateConstruction } from "./graph2dConstructions";
 import { analyzeGraph2DCriticalPoints, isGraph2DCriticalPointCurrent,
@@ -152,7 +152,8 @@ export function graph2DConstructionFromCandidate(document: Graph2DDocument,
       analysis.status !== "complete" ||
       !(intersection ? isGraph2DIntersectionCurrent(analysis as Graph2DIntersectionAnalysis, document) :
         isGraph2DCriticalPointCurrent(candidate as Graph2DCriticalPoint, document)) ||
-      !analysis.candidates.some(item => item.candidateId === candidate.candidateId))
+      !analysis.candidates.some(item => item.candidateId === candidate.candidateId &&
+        structuralHash(item) === structuralHash(candidate)))
     throw new TypeError("Candidate is stale or does not belong to this analysis.");
   const interval = analysis.interval;
   const width = interval.max - interval.min;
@@ -174,6 +175,67 @@ export function graph2DConstructionFromCandidate(document: Graph2DDocument,
       classification: intersection ? candidate.classification : null, sourceGeneration: candidate.source },
     style: { visible: true, color: document.display.objects.find(item => item.objectId === ids[0])?.color ?? "#2563eb",
       lineWidth: 2, lineStyle: "solid" }, requiredCapability: GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY };
+}
+
+/** A construction edit changes result IDs; match the same numerical feature within its local window. */
+export function isGraph2DCriticalCandidateAlreadySaved(document: Graph2DDocument,
+  candidate: Graph2DCriticalPoint): boolean {
+  if (candidate.kind === "inflection") return false;
+  const kind = candidate.kind === "zero" ? "root" : candidate.kind;
+  return (document.source.constructions?.objects ?? []).some(object => {
+    if (object.kind !== kind || object.inputs[0]?.objectId !== candidate.objectId) return false;
+    if (object.anchor.candidateId === candidate.candidateId) return true;
+    const tolerance = Math.min(object.anchor.matchRadius,
+      Math.max(1e-8, Math.abs(candidate.x) * 1e-8, (candidate.estimatedXError ?? 0) * 2));
+    return Math.abs(object.anchor.seedX - candidate.x) <= tolerance;
+  });
+}
+
+/** Build a single atomic command from a current scan, assigning IDs against the staged source. */
+export function graph2DConstructionActionsFromCandidates(document: Graph2DDocument,
+  analysis: Graph2DCriticalPointAnalysis, candidates: readonly Graph2DCriticalPoint[]): readonly Graph2DConstructionAction[] {
+  if (analysis.status !== "complete") throw new TypeError("A complete bounded scan is required before saving candidates.");
+  const ids = new Set<string>();
+  if (candidates.length + (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS)
+    throw new TypeError(`Saving candidates exceeds the ${GRAPH2D_MAX_CONSTRUCTIONS}-construction budget.`);
+  let staged = document;
+  const actions: Graph2DConstructionAction[] = [];
+  for (const candidate of candidates) {
+    if (candidate.kind === "inflection" || candidate.confidence !== "numerical")
+      throw new TypeError("Only validated zeros and extrema can be saved.");
+    if (ids.has(candidate.candidateId) || isGraph2DCriticalCandidateAlreadySaved(document, candidate))
+      throw new TypeError("Candidate is duplicated or already saved.");
+    ids.add(candidate.candidateId);
+    const action: Graph2DConstructionAction = { type: "create",
+      object: graph2DConstructionFromCandidate(staged, analysis, candidate) };
+    actions.push(action);
+    staged = { ...staged, source: applyGraph2DConstructionAction(staged.source, action) };
+  }
+  return actions;
+}
+
+/** Save a selected set of intersections as one checked, source-linked command. */
+export function graph2DConstructionActionsFromIntersectionCandidates(document: Graph2DDocument,
+  analysis: Graph2DIntersectionAnalysis,
+  candidates: readonly Graph2DIntersectionCandidate[]): readonly Graph2DConstructionAction[] {
+  if (analysis.status !== "complete" || !isGraph2DIntersectionCurrent(analysis, document))
+    throw new TypeError("A current complete intersection scan is required before saving candidates.");
+  if (candidates.length + (document.source.constructions?.objects.length ?? 0) > GRAPH2D_MAX_CONSTRUCTIONS)
+    throw new TypeError(`Saving candidates exceeds the ${GRAPH2D_MAX_CONSTRUCTIONS}-construction budget.`);
+  const ids = new Set<string>();
+  let staged = document;
+  const actions: Graph2DConstructionAction[] = [];
+  for (const candidate of candidates) {
+    if (ids.has(candidate.candidateId) || (document.source.constructions?.objects ?? []).some(saved =>
+      saved.kind === "intersection" && saved.anchor.candidateId === candidate.candidateId))
+      throw new TypeError("Intersection candidate is duplicated or already saved.");
+    ids.add(candidate.candidateId);
+    const action: Graph2DConstructionAction = { type: "create",
+      object: graph2DConstructionFromCandidate(staged, analysis, candidate) };
+    actions.push(action);
+    staged = { ...staged, source: applyGraph2DConstructionAction(staged.source, action) };
+  }
+  return actions;
 }
 
 /** Resolves the ordered graph against exact source expressions, never sampler polylines. */

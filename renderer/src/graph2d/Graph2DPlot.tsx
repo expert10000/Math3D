@@ -5,8 +5,11 @@ import {
   type Graph2DProbe, type Graph2DScreenSize,
   type Graph2DIntervalAnalysis,
   type Graph2DIntegralAnalysis,
+  type Graph2DDerivativeCurve,
+  type Graph2DUnresolvedInterval,
   type Graph2DIntersectionAnalysis,
   type Graph2DRegionArtifact,
+  type Graph2DContourArtifact,
   type Graph2DPointSeriesArtifact,
   type Graph2DPiecewiseArtifact,
   type Graph2DTrajectoryArtifact,
@@ -33,9 +36,12 @@ type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonl
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   selectedPhaseSeed?: { objectId: string; index: number } | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
-  area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null };
+  focusedIntervalId?: string | null;
+  area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null;
+  derivativeCurve?: Graph2DDerivativeCurve | null;
+  unresolvedIntervals?: readonly Graph2DUnresolvedInterval[] };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, area, intersections, probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, focusedIntervalId, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -117,6 +123,19 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           </g>;
         })}
       </g>}
+      {unresolvedIntervals.length > 0 && !graph2DHasLogScale(display.viewport) &&
+        <g data-testid="graph2d-unresolved-bands" clipPath={`url(#${clipId})`}
+          className="graph2d-unresolved-bands" aria-hidden="true" pointerEvents="none">
+          {unresolvedIntervals.map((item, index) => {
+            const left = (item.min - bounds.xMin) / xSpan * size.width;
+            const right = (item.max - bounds.xMin) / xSpan * size.width;
+            return <rect key={`${item.reason}:${item.min}:${item.max}:${index}`}
+              data-unresolved-reason={item.reason} x={left} y={0}
+              width={Math.max(1, right - left)} height={size.height}>
+              <title>{`Unresolved x interval [${item.min}, ${item.max}]: ${item.reason}`}</title>
+            </rect>;
+          })}
+        </g>}
       {display.axes.x && grid.xAxis !== null && <line className="graph2d-axis" x1="0" x2={size.width} y1={grid.xAxis} y2={grid.xAxis} />}
       {display.axes.y && grid.yAxis !== null && <line className="graph2d-axis" x1={grid.yAxis} x2={grid.yAxis} y1="0" y2={size.height} />}
       {display.axes.labels && <g className="graph2d-tick-labels" aria-hidden="true">
@@ -124,9 +143,18 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
         {grid.horizontalMajor.filter((tick) => tick.value !== 0).map((tick) => <text key={`yl-${tick.value}`} x={Math.min(size.width - 32, Math.max(5, (grid.yAxis ?? 0) + 5))} y={tick.pixel - 3}>{tick.label}</text>)}
       </g>}
       <g clipPath={`url(#${clipId})`}>
-        {regression?.model !== "spline" && regression && <g aria-hidden="true">
+        {series.filter(item => item.style.visible && "kind" in item.artifact && item.artifact.kind === "implicit-contour")
+          .flatMap(item => (item.artifact as Graph2DContourArtifact).zeroCandidates.map((point, index) => {
+            const screen = graph2DWorldToScreen(display.viewport, size, point);
+            return <circle key={`zero-${item.objectId}-${index}`} data-graph2d-zero-candidate={item.objectId}
+              cx={screen.x} cy={screen.y} r={3.5} fill={item.style.color} stroke="white" strokeWidth={1.5}
+              pointerEvents="none"><title>Possible isolated zero or tangency; refine the domain to inspect.</title></circle>;
+          }))}
+        {regression && regression.model !== "spline" && regression.model !== "exponential-decay" && regression.model !== "logistic-growth" && <g aria-hidden="true">
           {regression.curve.slice(1).map((p, i) => {
-            const a = regression.curve[i], corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
+            const a = regression.curve[i];
+            if (!a || !("meanLow" in a) || !("meanHigh" in a) || !("meanLow" in p) || !("meanHigh" in p)) return null;
+            const corners = [{ x: a.x, y: a.meanLow }, { x: p.x, y: p.meanLow }, { x: p.x, y: p.meanHigh }, { x: a.x, y: a.meanHigh }].map(point => graph2DWorldToScreen(display.viewport, size, point));
             return corners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)) ? <polygon key={i} points={corners.map(point => `${point.x},${point.y}`).join(" ")} fill="#7c3aed" fillOpacity={.12} /> : null;
           })}
         </g>}
@@ -264,6 +292,11 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
               strokeDasharray={item.style.lineStyle === "solid" ? undefined : item.style.lineStyle === "dashed" ? "8 5" : "2 4"} />
           </g>)}
         </g>}
+        {derivativeCurve?.artifact && !graph2DHasLogScale(display.viewport) && <g
+          data-testid="graph2d-derivative-curve-overlay" data-result-id={derivativeCurve.resultId}
+          clipPath={`url(#${clipId})`} aria-hidden="true" pointerEvents="none">
+          <path d={pathFor(derivativeCurve.artifact)} className="graph2d-derivative-curve-path" />
+        </g>}
         {overlays.map((overlay) => {
           const segment = clipGraph2DLineOverlay(overlay, display.viewport, size);
           if (!segment) return null;
@@ -330,6 +363,9 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
           const x = (part.min - bounds.xMin) / xSpan * size.width;
           const width = (part.max - part.min) / xSpan * size.width;
           return <g key={part.intervalId} data-interval-id={part.intervalId}>
+            {part.intervalId === focusedIntervalId && <rect data-focused-interval-id={part.intervalId}
+              x={x} y={0} width={width} height={size.height} fill="#2563eb" fillOpacity={0.08}
+              stroke="#2563eb" strokeWidth={1} pointerEvents="none" />}
             <rect className={`graph2d-interval-trend graph2d-interval-${part.monotonicity}`}
               x={x} y={size.height - 14} width={width} height={5} />
             <rect className={`graph2d-interval-concavity graph2d-interval-${part.concavity}`}

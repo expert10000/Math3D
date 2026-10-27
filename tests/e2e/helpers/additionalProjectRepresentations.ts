@@ -32,7 +32,7 @@ export const exerciseAdditionalEditors=async(page:Page,fixture:ReturnType<typeof
   const panel=page.getByTestId("project-explorer-panel"),editor=page.getByTestId("project-source-editor");
   const show=async()=>{if(!await panel.isVisible())await page.getByTestId("projects-toggle").click();};
   const fullDetails=async()=>{await show();if(await panel.getByTestId("project-viewer-document").isVisible())await panel.getByTestId("project-gallery-layout-toggle").click();await expect(panel.getByTestId("project-save")).toBeVisible();};
-  const open=async(id:string)=>{await show();const viewer=panel.getByTestId("project-viewer-document");if(await viewer.isVisible())await viewer.selectOption(id);else{const button=panel.getByTestId(`project-open-${id}`);if(!await button.isVisible())await panel.getByTestId("project-detail-tab-documents").click();await button.click();}if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();};
+  const open=async(id:string)=>{await show();const viewer=panel.getByTestId("project-viewer-document");if(await viewer.isVisible())await viewer.selectOption(id);else{const button=panel.getByTestId(`project-open-${id}`);if(!await button.isVisible()){if(await panel.getAttribute("data-project-placement"))await panel.getByTestId("project-gallery-layout-toggle").click();await panel.getByTestId("project-detail-tab-documents").click();}await button.click();}if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();};
   await show();await panel.getByTestId("project-import-file").setInputFiles({name:"representations.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(fixture.project))});
   await panel.getByTestId("project-import-save").click();
   await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
@@ -86,7 +86,7 @@ export const checkReopenedAdditionalHistory=async(page:Page,document:any)=>{
   const panel=page.getByTestId("project-explorer-panel");if(!await panel.isVisible())await page.getByTestId("projects-toggle").click();
   const viewerDocument=panel.getByTestId("project-viewer-document");
   if(await viewerDocument.isVisible())await viewerDocument.selectOption(document.identity.id);
-  else{const open=panel.getByTestId(`project-open-${document.identity.id}`);if(!await open.isVisible())await panel.getByTestId("project-detail-tab-documents").click();await open.click();}
+  else{const open=panel.getByTestId(`project-open-${document.identity.id}`);if(!await open.isVisible()){if(await panel.getAttribute("data-project-placement"))await panel.getByTestId("project-gallery-layout-toggle").click();await panel.getByTestId("project-detail-tab-documents").click();}await open.click();}
   if(await panel.isVisible())await page.getByRole("button",{name:"Close project explorer"}).click();
   const editor=page.getByTestId("project-source-editor");await expect(editor.getByTestId("project-source-undo")).toBeEnabled();
   await editor.getByTestId("project-source-json").locator("summary").click();await editor.getByTestId("project-source-undo").click();expect(JSON.parse(await editor.getByTestId("project-source-definition").inputValue())).toEqual(document.source);await editor.getByTestId("project-source-redo").click();

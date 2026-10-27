@@ -3,6 +3,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..", "tests", "fixtures", "scientific-scene");
+const examples = join(import.meta.dirname, "..", "examples", "scientific-scenes");
+const exampleBundles = new Set(["quadratic-volume.sscene", "complex-wave-volume.sscene",
+  "vortex-volume.sscene"]);
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const encode = values => {
   const bytes = Buffer.alloc(values.length * 8);
@@ -27,6 +30,16 @@ const wave = (i, j) => {
   const phase = 2.2 * x + 0.9 * y + 0.4 * Math.sin(y);
   return [envelope * Math.cos(phase), envelope * Math.sin(phase)];
 };
+const complexVolumeShape = [41, 41, 17], complexVolumeOrigin = [-4, -4, -2];
+const complexVolumeSpacing = [0.2, 0.2, 0.25];
+const volumeWave = (i, j, k) => {
+  const x = complexVolumeOrigin[0] + i * complexVolumeSpacing[0];
+  const y = complexVolumeOrigin[1] + j * complexVolumeSpacing[1];
+  const z = complexVolumeOrigin[2] + k * complexVolumeSpacing[2];
+  const envelope = Math.exp(-(x * x + y * y) / 18 - z * z / 12);
+  const phase = 1.3 * x + 0.8 * y + 0.65 * z + 0.25 * Math.sin(y);
+  return [envelope * Math.cos(phase), envelope * Math.sin(phase)];
+};
 const vortexShape = [33, 33], vortexOrigin = [-4, -4], vortexSpacing = [0.25, 0.25];
 const vortex = (i, j) => {
   const x = vortexOrigin[0] + i * vortexSpacing[0], y = vortexOrigin[1] + j * vortexSpacing[1];
@@ -41,12 +54,57 @@ const volume = (i, j, k) => {
   const envelope = Math.exp(-(x * x + y * y) / 18) * (0.55 + 0.45 * Math.cos(z * Math.PI / 6));
   return [-y * envelope, x * envelope, 0.8 * Math.sin(z * Math.PI / 3) * Math.exp(-(x * x + y * y) / 12)];
 };
+const scalarShape = [17, 17], scalarOrigin = [-4, -4], scalarSpacing = [0.5, 0.5];
+const scalarPosition = (i, j) => [scalarOrigin[0] + i * scalarSpacing[0],
+  scalarOrigin[1] + j * scalarSpacing[1]];
+const scalarAxes = [{ name: "x", unit: "m" }, { name: "y", unit: "m" }];
+const scalarVolumeShape = [17, 17, 17], scalarVolumeOrigin = [-4, -4, -4];
+const scalarVolumeSpacing = [0.5, 0.5, 0.5];
+const bumpShape = [41, 41], bumpOrigin = [-4, -4], bumpSpacing = [0.2, 0.2];
 
 const presets = [
+  { directory: "quadratic-potential.sscene", sceneId: "quadratic-potential",
+    title: "Quadratic potential · 2D scalar field", shape: scalarShape,
+    coordinate: coordinates("plane", scalarAxes, scalarOrigin, scalarSpacing),
+    quantity: { name: "Potential", unit: "V" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j) => {
+      const [x, y] = scalarPosition(i, j); return [x * x + y * y];
+    } },
+  { directory: "saddle-potential.sscene", sceneId: "saddle-potential",
+    title: "Saddle potential · 2D scalar field", shape: scalarShape,
+    coordinate: coordinates("plane", scalarAxes, scalarOrigin, scalarSpacing),
+    quantity: { name: "Potential", unit: "V" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j) => {
+      const [x, y] = scalarPosition(i, j); return [x * x - y * y];
+    } },
+  { directory: "gaussian-bump.sscene", sceneId: "gaussian-bump",
+    title: "Gaussian bump · 2D scalar field", shape: bumpShape,
+    coordinate: coordinates("plane", scalarAxes, bumpOrigin, bumpSpacing),
+    quantity: { name: "Amplitude", unit: "1" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j) => {
+      const x = bumpOrigin[0] + i * bumpSpacing[0], y = bumpOrigin[1] + j * bumpSpacing[1];
+      return [Math.exp(-(x * x + y * y) / 2)];
+    } },
+  { directory: "quadratic-volume.sscene", sceneId: "quadratic-volume",
+    title: "Quadratic potential · 3D scalar field", shape: scalarVolumeShape,
+    coordinate: coordinates("space", [...scalarAxes, { name: "z", unit: "m" }],
+      scalarVolumeOrigin, scalarVolumeSpacing),
+    quantity: { name: "Potential", unit: "V" }, semanticType: "scalar-field",
+    components: ["scalar"], sample: (i, j, k) => {
+      const x = scalarVolumeOrigin[0] + i * scalarVolumeSpacing[0];
+      const y = scalarVolumeOrigin[1] + j * scalarVolumeSpacing[1];
+      const z = scalarVolumeOrigin[2] + k * scalarVolumeSpacing[2];
+      return [x * x + y * y + z * z];
+    } },
   { directory: "complex-wave.sscene", sceneId: "complex-wave", title: "Complex wave packet · 2D",
     shape: complexShape, coordinate: coordinates("plane", [{ name: "x", unit: "m" }, { name: "y", unit: "m" }],
       complexOrigin, complexSpacing), quantity: { name: "Wave amplitude", unit: "1" },
     semanticType: "complex-scalar-field", components: ["real", "imaginary"], sample: wave },
+  { directory: "complex-wave-volume.sscene", sceneId: "complex-wave-volume", title: "Complex wave volume · 3D",
+    shape: complexVolumeShape, coordinate: coordinates("space", [{ name: "x", unit: "m" },
+      { name: "y", unit: "m" }, { name: "z", unit: "m" }], complexVolumeOrigin, complexVolumeSpacing),
+    quantity: { name: "Wave amplitude", unit: "1" }, semanticType: "complex-scalar-field",
+    components: ["real", "imaginary"], sample: volumeWave },
   { directory: "vortex-flow.sscene", sceneId: "vortex-flow", title: "Planar vortex · 2D vector field",
     shape: vortexShape, coordinate: coordinates("plane", [{ name: "x", unit: "m" }, { name: "y", unit: "m" }],
       vortexOrigin, vortexSpacing), quantity: { name: "Velocity", unit: "m/s" },
@@ -69,7 +127,8 @@ for (const preset of presets) {
   const dataset = { id: "field", semanticType: preset.semanticType, coordinateSystem: preset.coordinate.id,
     shape: preset.shape, order: "last-axis-fastest", quantity: preset.quantity,
     ...(preset.semanticType === "complex-scalar-field" ? { real: "real", imaginary: "imaginary" } :
-      { components: preset.components.map(name => ({ name, resource: name })) }) };
+      preset.semanticType === "scalar-field" ? { real: "scalar" } :
+        { components: preset.components.map(name => ({ name, resource: name })) }) };
   const manifest = { schema: "scientific-scene/v1", sceneId: preset.sceneId, title: preset.title,
     source: { producer: "math3d-fixture", sourceId: `${preset.sceneId}-v1`, sourceSchema: "scientific-fixture/v1",
       sha256: sha256(sourceBytes) },
@@ -80,15 +139,25 @@ for (const preset of presets) {
     bytes: manifestBytes.length, sha256: sha256(manifestBytes) } };
   const files = [["manifest.json", manifestBytes], ["bundle.json", Buffer.from(JSON.stringify(bundle, null, 2) + "\n")],
     ...resources.map(item => [item.path, item.data])];
+  const exampleDirectory = exampleBundles.has(preset.directory) ? join(examples, preset.directory) : null;
   if (process.argv.includes("--check")) {
     for (const [name, expected] of files) {
       const actual = await readFile(join(directory, name));
       if (!actual.equals(expected)) throw new Error(`Scientific Graph preset changed: ${preset.directory}/${name}`);
+      if (exampleDirectory) {
+        const example = await readFile(join(exampleDirectory, name));
+        if (!example.equals(expected))
+          throw new Error(`Scientific example changed: ${preset.directory}/${name}`);
+      }
     }
     console.log(`Verified ${preset.directory}: ${bundle.manifest.sha256}`);
   } else {
     await mkdir(directory, { recursive: true });
     for (const [name, bytes] of files) await writeFile(join(directory, name), bytes);
+    if (exampleDirectory) {
+      await mkdir(exampleDirectory, { recursive: true });
+      for (const [name, bytes] of files) await writeFile(join(exampleDirectory, name), bytes);
+    }
     console.log(`Wrote ${preset.directory}: ${bundle.manifest.sha256}`);
   }
 }

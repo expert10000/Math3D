@@ -27,7 +27,8 @@ test("G2D42 tools enforce prerequisites, route existing analysis and restore key
 test("G2D43 pins retain labels and visibility through undo/save and parameter cards use transient previews", async ({ page }, info) => {
   await start(page); const inspector = page.getByLabel("Graph inspector", { exact: true }), pins = inspector.getByTestId("graph2d-probes");
   await page.getByLabel("Graph functions", { exact: true }).getByRole("button", { name: "Select Parabola", exact: true }).click();
-  await inspector.locator(".graph2d-critical-list button").first().click();
+  await inspector.getByRole("table", { name: "Numerical analysis results" })
+    .getByRole("button", { name: /^Select / }).first().click();
   await pins.getByLabel("New probe label", { exact: true }).fill("P"); await pins.getByRole("button", { name: "Pin current probe", exact: true }).click();
   const marker = page.locator('[data-testid="graph2d-saved-markers"] [data-probe-id]'); await expect(marker).toHaveCount(1); await expect(marker).toContainText("P: (");
   await pins.getByRole("button", { name: "Hide P", exact: true }).click(); await expect(marker).toHaveCount(0);

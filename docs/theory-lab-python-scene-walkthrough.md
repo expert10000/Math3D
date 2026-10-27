@@ -48,6 +48,106 @@ Use **Publish with custom Python script…** only for code you independently tru
 
 Do not damage your only source folder to test tamper refusal. The automated installed-app acceptance separately covers changed dataset bytes and rejects them.
 
+## D. Rice–Mele convergence: Lab → verified export → Math3D
+
+This optional route checks the five-run study and its two **separate** observables.
+It uses a `.qscene` directory. It does not use the Python `.sscene` publisher.
+
+1. In **Theory Lab → Topology → Topological bands → Explore**, choose the
+   **Rice–Mele pump** model. Save five compatible runs with the same cycle and
+   sampling settings. A simple controlled set is `(duration, open-chain cells)`
+   = `(20, 6)`, `(30, 6)`, `(40, 6)`, `(30, 4)`, `(30, 8)`. The `(30, 6)` run is
+   the anchor. Each run must include both periodic and open-chain traces.
+2. Open **Topology → Sweeps → Rice–Mele saved-run convergence**. Click
+   **Refresh verified runs**, choose the `(30, 6)` anchor, the two other duration
+   runs, and the two other width runs. Click **Link five verified runs**. The Lab
+   checks all source hashes and the controlled parameter matches before saving
+   the immutable study.
+3. In the saved study click **Export read-only study .qscene**. Choose a persistent
+   parent directory and note the full newly created `*-convergence.qscene`
+   folder path shown by the Lab. Keep the entire folder together.
+4. In Math3D choose **File → Open verified quantum scene** and select that
+   `.qscene` folder. The **Rice–Mele · saved-run convergence evidence** profile
+   shows two plots: periodic charge versus duration in **electron charge / cell**,
+   and open-chain central-bond charge versus width in **electron charge**.
+   Click a duration or width point to reverify its exact scalar value, dataset
+   index, source run ID, hash, status and recorded diagnostics. The source panel
+   labels the whole export as a **Study**; it is not itself a saved Lab run.
+   The generic **Open source run** action is therefore absent for this scene.
+   After selecting a point, click **Open selected run in Theory Lab**. Math3D
+   rechecks the `.qscene` and that point's run ID and hash before handing them
+   to the selected installed Lab app or built checkout. On first use choose
+   **Installed application** and select `Quantum Hamiltonian Lab.exe`, or choose
+   **Source checkout** and select its root folder. Lab then verifies its own
+   saved run before opening.
+5. Close and restart Math3D, then reopen the same folder or its saved Project
+   link. No point should start selected; choose one again to check source
+   re-verification. For a quick viewer rehearsal without creating Lab runs, use
+   **File → Verified quantum examples → Rice–Mele · five-run convergence**.
+
+The pinned example is a viewer rehearsal: its five producer run IDs are not
+installed in your local Theory Lab. **Open selected run in Theory Lab** on that
+example will start Lab with an exact source identity, but Lab should report the
+run unavailable. To test successful navigation, export a study from runs saved
+in your own Lab profile and keep those runs. If a run has been deleted or its
+hash changed, Lab refuses it. If any bundle file is missing or changed, Math3D
+refuses the handoff before starting Lab.
+
+For a reproducible **real two-app acceptance**, build both checkouts, then run
+the following in the Math3D checkout on Windows:
+
+```powershell
+$env:QLAB_E2E_CHECKOUT = 'C:\path\to\theory-lab'
+npx playwright test tests/e2e/quantum-rice-mele-two-app.spec.ts --reporter=list
+```
+
+The test creates a temporary `rice-roundtrip-*` root containing an isolated Lab
+profile, five newly computed saved runs, and their exported `.qscene`. It opens
+that export in Math3D, selects the duration-30 periodic point and width-8 chain
+point, then observes each **real Lab window** over a loopback test-only DevTools
+connection. Each window must show the selected verified run ID, never the study
+ID. The test also removes one saved run and changes its result bytes in turn;
+Math3D can still verify the unchanged export, while Lab must refuse each source
+run. Test processes and the temporary root are cleaned up afterward. No user
+profile, scientific data, or rendering path is changed.
+
+To repeat the route with installed executables, first build the Theory Lab
+Windows installer with `npm run package:win:installer` and install it into a new
+directory. Build Math3D's isolated handoff probe installer from a Math3D
+checkout after `npm run build:core`:
+
+```powershell
+.\node_modules\.bin\electron-builder.cmd --win nsis --config scripts/quantum-handoff-installed-probe.config.cjs
+```
+
+Install the generated `output/quantum-handoff-installed-probe/Math3D-Quantum-Handoff-Probe-Setup-*.exe`
+into another new directory. This probe uses Math3D's production main and
+renderer code under a distinct app identity, so it does not replace a user's
+normal Math3D installation. Its optional compute workers are omitted because
+the verified scene handoff is read-only. Then run:
+
+```powershell
+$env:QLAB_E2E_CHECKOUT = 'C:\path\to\theory-lab' # fixture producer only
+$env:QLAB_E2E_INSTALLED_EXE = 'C:\path\to\Quantum Hamiltonian Lab.exe'
+$env:MATH3D_E2E_INSTALLED_EXE = 'C:\path\to\Math3D Quantum Handoff Probe.exe'
+npx playwright test tests/e2e/quantum-rice-mele-two-app.spec.ts --reporter=list
+```
+
+The fixture producer still runs from the checkout to create five controlled
+saved runs. Both interactive windows and the selected-run handoff use the
+installed executables. The test repeats a selection after Math3D restart,
+then checks missing-run and changed-run refusal in the installed Lab. Ordinary
+use of the two installed apps needs no source checkout; keep the original saved
+runs in the Lab profile used to produce the exported scene.
+
+The scene's 3D point positions are normalized for layout. The plots label their
+physical axes from the producer's saved metadata, and selection checks values
+against verified binary datasets. Math3D verifies the exported bundle; it does
+not fetch or recalculate the five original Lab runs. Plot lines connect supplied
+samples only. There is no extrapolation or claim that the two charges share a
+limit. Automated acceptance covers restart, changed bundle bytes and missing
+source files; keep your own export intact.
+
 ## Record the result
 
 For each source, note whether import, sample inspection, Project attachment, restart reopening and missing-source refusal were clear. Also note how many clicks it took to find the scene again, whether the right-hand inspector answered your questions, and whether the initial camera showed the important structure. These observations—not another physics calculation—determine whether the deferred [SSR-07 workspace and inspector proposal](scientific-scene-runtime-roadmap.md) is needed.

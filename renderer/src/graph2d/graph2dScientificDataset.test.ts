@@ -4,6 +4,7 @@ import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocumen
   GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY,
   inspectGraph2DCompatibility,
   previewGraph2DScientificDataset, previewGraph2DScientificSlice, verifyGraph2DScientificPlane,
+  verifyGraph2DScientificVectorPlane,
   verifyGraph2DScientificVolume,
   serializeGraph2DDocument, sha256Checksum,
   type ScientificSceneManifest } from "@math3d/core";
@@ -26,6 +27,24 @@ const fixture = () => {
 };
 
 describe("GRA-10 verified scientific dataset adapter", () => {
+  it("preserves optional saved field revision bindings in Graph documents", () => {
+    const { json, fingerprint, values } = fixture();
+    const preview = previewGraph2DScientificDataset(json, fingerprint, "amplitude", values);
+    const binding = { id: "math3d:scientific-field:fixture", revision: 2,
+      structuralHash: `sha256:${"a".repeat(64)}`, sourceHash: `sha256:${"b".repeat(64)}` };
+    const origin = { ...preview.origin, fieldDocument: binding };
+    const store = new Graph2DPointTableStore(), table = store.publish(preview.rows);
+    const source = applyGraph2DAuthoring(createEmptyGraph2DDocument("bound-field"), {
+      type: "create-point-series", draft: { label: preview.label, table, mode: "line", domain: preview.domain,
+        origin, style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } },
+    });
+    const document = createGraph2DDocument({ ...source, stableKey: "bound-field" });
+    expect(parseGraph2DDocument(serializeGraph2DDocument(document)).source.objects[0])
+      .toMatchObject({ origin: { fieldDocument: binding } });
+    expect(normalizeGraph2DDocument({ ...document, source: { ...document.source,
+      objects: [{ ...document.source.objects[0], origin: { ...origin,
+        fieldDocument: { ...binding, sourceHash: "bad" } } }] } }).ok).toBe(false);
+  });
   it("imports immutable verified 1D values as a point series with units and provenance", () => {
     const { json, fingerprint, values } = fixture();
     const preview = previewGraph2DScientificDataset(json, fingerprint, "amplitude", values);
@@ -202,6 +221,21 @@ describe("GRA-10 explicit 2D scalar lines", () => {
     const north = previewGraph2DScientificSlice(vectorJson, vectorHash, makeLine(vectorHash, "north"));
     expect(north.label).toBe("Velocity north · distance = 12 m");
     expect(north.rows.map(row => row.y)).toEqual(selected);
+    const eastValues = Array.from({ length: 12 }, (_, index) => index);
+    const eastBytes = new Uint8Array(12 * 8), eastView = new DataView(eastBytes.buffer);
+    eastValues.forEach((value, index) => eastView.setFloat64(index * 8, value, true));
+    const shared = { fingerprint: vectorHash, datasetId: "amplitude", sourceShape: [3, 4],
+      normalAxis: null, fixedIndex: null, planeAxes: [0, 1] as [number, number], shape: [3, 4] as [number, number] };
+    const eastPlane = { ...shared, component: "east", resourceSha256: source.resources[0]!.sha256,
+      planeSha256: sha256Checksum(eastBytes).slice(7), values: eastValues };
+    const northPlane = { ...shared, component: "north", resourceSha256,
+      planeSha256: resourceSha256, values };
+    expect(verifyGraph2DScientificVectorPlane(vectorJson, vectorHash, [eastPlane, northPlane]))
+      .toEqual([eastPlane, northPlane]);
+    expect(() => verifyGraph2DScientificVectorPlane(vectorJson, vectorHash,
+      [eastPlane, { ...northPlane, values: [...values.slice(0, 11), 999] }])).toThrow(/checksum/);
+    expect(() => verifyGraph2DScientificVectorPlane(vectorJson, vectorHash,
+      [northPlane, eastPlane])).toThrow(/aligned components/);
   });
 
   it("extracts both non-square directions, coordinates and saved slice provenance", () => {
@@ -232,7 +266,7 @@ describe("GRA-10 explicit 2D scalar lines", () => {
   it("rejects wrong fingerprints, selections, hashes, values and singleton varying axes", () => {
     const { json, fingerprint, line } = gridFixture();
     expect(() => previewGraph2DScientificSlice(json + " ", fingerprint, line(0, 1))).toThrow(/fingerprint/);
-    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), fixedIndex: 4 })).toThrow(/verified line/);
+    expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), fixedIndex: 4 })).toThrow(/outside/);
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), varyingAxis: 2 as 0 })).toThrow(/verified line/);
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), shape: [4, 3] })).toThrow(/verified line/);
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), resourceSha256: "b".repeat(64) })).toThrow(/verified line/);
@@ -240,7 +274,7 @@ describe("GRA-10 explicit 2D scalar lines", () => {
     expect(() => previewGraph2DScientificSlice(json, fingerprint, { ...line(0, 1), values: [1, NaN, 9] })).toThrow(/non-finite/);
     const singleton = gridFixture([1, 4]);
     expect(() => previewGraph2DScientificSlice(singleton.json, singleton.fingerprint, singleton.line(0, 0)))
-      .toThrow(/verified line/);
+      .toThrow(/one varying axis/);
     expect(previewGraph2DScientificSlice(singleton.json, singleton.fingerprint, singleton.line(1, 0)).rows).toHaveLength(4);
     const malformed = JSON.parse(json);
     malformed.datasets[0].shape = [3, 5];

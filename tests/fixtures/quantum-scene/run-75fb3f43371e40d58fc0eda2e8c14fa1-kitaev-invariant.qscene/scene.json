@@ -1,0 +1,130 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-75fb3f43371e40d58fc0eda2e8c14fa1-kitaev-invariant",
+  "title": "Kitaev bulk Pfaffian and real-pairing winding diagnostics",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-75fb3f43371e40d58fc0eda2e8c14fa1",
+    "jobId": "fixture-kitaev-invariant",
+    "model": "kitaev_chain",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-25T12:46:12.626210+00:00",
+    "resultSha256": "4c21ee6aaff6f6f4d550650fab126798acdaf832a478a7200393a4229f014ffa",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": 0,
+      "hopping": 1,
+      "pairing": 0.8,
+      "cells": 16,
+      "kPoints": 101
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "kitaev_chain"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "BdG xi",
+      "BdG pairing d_y",
+      "display z"
+    ],
+    "units": [
+      "normalized energy (hbar=1)",
+      "normalized energy (hbar=1)",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      0,
+      0,
+      6
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "datasets": [
+    {
+      "id": "bdg-chiral-curve",
+      "path": "bdg-chiral-curve.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 2424,
+      "sha256": "f99c847f47c3bed77931d42a78ac552a5d0c731a4e44b9d77df856774622443c"
+    },
+    {
+      "id": "momentum-samples",
+      "path": "momentum-samples.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 101,
+      "unit": "rad / cell spacing",
+      "bytes": 808,
+      "sha256": "f7aee026a9af1726ca79083f1a68f67c7ea0148067e0b8534c224edb64373f7a"
+    }
+  ],
+  "objects": [
+    {
+      "id": "kitaev-bdg-curve",
+      "label": "Supplied periodic BdG chiral curve",
+      "kind": "polyline",
+      "positions": "bdg-chiral-curve",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "momentum-samples"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "bulk-status",
+      "text": "Producer Pfaffian signs (-1, 1); parity 1; winding 1 (defined). Exact bulk gap 3.200000. Finite end-site density is a separate observation.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "kitaev-pfaffian-parity",
+        "label": "Bulk Pfaffian parity",
+        "value": 1,
+        "status": "verified",
+        "method": "Producer signs of antisymmetric BdG matrix at k=0 and pi"
+      },
+      {
+        "id": "kitaev-winding",
+        "label": "Real-pairing chiral winding",
+        "value": 1,
+        "status": "verified",
+        "method": "Pfaffian signs at k=0,pi; chiral q winding on sampled periodic mesh"
+      }
+    ],
+    "limitations": [
+      "Both bulk claims are undefined at a bulk gap closure; winding also requires a resolved mesh.",
+      "The curve joins producer samples for display; Math3D does not calculate the invariant.",
+      "Finite end localization is a separate saved observation, not an invariant input."
+    ]
+  }
+}

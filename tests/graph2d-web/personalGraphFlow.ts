@@ -1,10 +1,12 @@
 import { expect, type Page } from "@playwright/test";
+import { editGraph, graphEditor, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 
 export async function checkPersonalGraphFlow(page: Page) {
   const functions = page.getByLabel("Graph functions", { exact: true });
   await functions.getByRole("button", { name: "Select Parabola", exact: true }).click();
   const inspector = page.getByLabel("Graph inspector", { exact: true });
-  await inspector.locator(".graph2d-critical-list button").first().click();
+  await inspector.getByRole("table", { name: "Numerical analysis results" })
+    .getByRole("button", { name: /^Select / }).first().click();
   const pins = inspector.getByTestId("graph2d-probes");
   await pins.getByLabel("New probe label", { exact: true }).fill("Saved observation");
   await pins.getByRole("button", { name: "Pin current probe", exact: true }).click();
@@ -26,9 +28,9 @@ export async function checkPersonalGraphFlow(page: Page) {
   expect(copyGraph.identity.id).not.toBe(originalGraph.identity.id);
   expect(copyGraph.source).toEqual(originalGraph.source);
   expect(copyGraph.display.pinnedProbes).toEqual(originalGraph.display.pinnedProbes);
-  await functions.getByRole("button", { name: "Edit Parabola", exact: true }).click();
-  await functions.getByLabel("Function expression", { exact: true }).fill("3*x");
-  await functions.getByRole("button", { name: "Save function", exact: true }).click();
+  await editGraph(page, "Parabola");
+  await graphEditor(page).getByLabel("Function expression", { exact: true }).fill("3*x");
+  await saveGraphEditor(page);
   await expect(page.locator('[data-testid="graph2d-saved-markers"] [data-probe-id]')).toHaveCount(0);
   await expect(pins).toContainText("stale");
   await page.getByTestId("graph-gallery-open").click();

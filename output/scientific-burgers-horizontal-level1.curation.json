@@ -1,0 +1,102 @@
+{
+  "schema": "math3d-scientific-curation/v1",
+  "source": {
+    "doi": "10.26008/1912/bco-dmo.834530.1",
+    "page": "https://www.bco-dmo.org/dataset/834530",
+    "fileUrl": "https://datadocs.bco-dmo.org/dataset/834530/file/vmmwyR7c4JLlGB/flow_field.csv",
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "file": "flow_field.csv",
+    "bytes": 133557055,
+    "sha256": "31aa11b267183803bd3c4f40b30e5758a3d9ca7f09f539232341547375a79982",
+    "publishedMd5": "f2e18e754092c2e8e78eb71eaacdf407"
+  },
+  "selection": {
+    "Flow_field": "horizontal",
+    "Level": "level1",
+    "rows": 219725,
+    "shape": [
+      47,
+      85,
+      55
+    ],
+    "missingValues": 0,
+    "duplicateCells": 0,
+    "omittedSelectedRows": 0
+  },
+  "coordinates": {
+    "sourceUnit": "mm",
+    "sceneUnit": "m",
+    "scale": 0.001,
+    "sourceAxes": [
+      {
+        "min": -9.817061,
+        "max": 7.013308,
+        "count": 47,
+        "idealSpacing": 0.3658775869565218,
+        "maxGridResidual": 7.608695637983942e-7
+      },
+      {
+        "min": -16.916657,
+        "max": 13.817061,
+        "count": 85,
+        "idealSpacing": 0.36587759523809527,
+        "maxGridResidual": 5.952380934814983e-7
+      },
+      {
+        "min": 0.182939,
+        "max": 19.940329,
+        "count": 55,
+        "idealSpacing": 0.36587759259259256,
+        "maxGridResidual": 5.925925954386457e-7
+      }
+    ],
+    "roundingToleranceMm": 0.0000011
+  },
+  "values": {
+    "sourceColumns": [
+      "V_x",
+      "V_y",
+      "V_z"
+    ],
+    "sceneComponents": [
+      "vx",
+      "vy",
+      "vz"
+    ],
+    "unit": "m/s",
+    "resampling": "none",
+    "missingValueImputation": "none"
+  },
+  "output": {
+    "scene": "scientific-burgers-horizontal-level1.sscene",
+    "fingerprint": "38179ec5ca0234db91bdddf35868608d2fcbd7d831cce00929e812d007271c0c",
+    "resourceSha256": [
+      "4210cef367b245c22d62cea5ceb33192755cb5bd145d024bdd4abe853fede794",
+      "788395b83d2e06ba2de9c8ba9b3c2bab550f3beac12a2180b40f4aa2e66c5cab",
+      "bcf21a1d801f4a4e4910776fec49b71d9b84210b2c163b2a3efb5029afaf3096"
+    ],
+    "logicalResourceSha256": [
+      "5c8c0a6dec80f26a7e36ad6d5464bc9172a4571f1aac01b72bd4f7aa4c48e3ca",
+      "bb3df051f946ac37001356d98217cd83862501d922eaca45583fa843c2c86286",
+      "8b9028b4fc65091c53dd2bd2579897b4553d5856edb963c6725f87ad3f7973e8"
+    ],
+    "tileShape": [
+      [
+        16,
+        16,
+        16
+      ],
+      [
+        16,
+        16,
+        16
+      ],
+      [
+        16,
+        16,
+        16
+      ]
+    ],
+    "overviewBytes": 12288
+  }
+}

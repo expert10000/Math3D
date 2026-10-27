@@ -17,6 +17,8 @@ const { renderVerifiedFieldSlice, inspectVerifiedFieldSample } = require("../dis
 const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldSurface.js");
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
 const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
+const { inspectVerifiedScalarSample } = require("../dist/main/quantumScene/scalarSelection.js");
+const { resolveStudySourceRun } = require("../dist/main/quantumScene/studySourceRun.js");
 const { BUNDLED_QUANTUM_SCENE_EXAMPLES, bundledQuantumSceneExample,
   bundledQuantumSceneDirectory, listBundledQuantumSceneExamples } = require("../dist/main/quantumScene/examples.js");
 const { glyphSampleIndices, inspectVerifiedTopologySample, inspectVerifiedVectorSample } =
@@ -222,9 +224,240 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 9);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 9);
+  assert.equal(listBundledQuantumSceneExamples().length, 36);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 36);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
+  const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
+  const weyl=await importQuantumSceneBundle(weylFolder);
+  const weylResultBytes=await readFile(join(fixtureRoot,"weyl-local-producer-result.json"));
+  const weylResult=JSON.parse(weylResultBytes.toString("utf8"));
+  assert.equal(weyl.source.provenance.model,"weyl_minimal");
+  assert.equal(weyl.source.topology.invariants.find(item=>item.id==="local-chirality").value,1);
+  assert.equal(weyl.source.topology.invariants.find(item=>item.id==="occupied-chern").value,-1);
+  assert.equal(weyl.source.provenance.resultSha256,hash(weylResultBytes));
+  assert.equal(weyl.document.geometry.triangles.length,320);
+  assert.equal(weyl.document.geometry.points.length,163);
+  const weylFirst=inspectVerifiedScalarSample(weyl,{fingerprint:sceneFingerprint(weyl),objectId:"weyl-samples",sampleIndex:0});
+  assert.deepEqual(weylFirst.position,weylResult.analysis.positions[0]);
+  assert.equal(weylFirst.value,-0.5);
+  assert.equal(weylFirst.valueUnit,"inverse length squared");
+  const changedWeyl=join(root,"weyl-changed.qscene");
+  await cp(weylFolder,changedWeyl,{recursive:true});
+  const weylBytes=await readFile(join(changedWeyl,"radial-berry.f64"));
+  weylBytes[0]^=1;await writeFile(join(changedWeyl,"radial-berry.f64"),weylBytes);
+  await assert.rejects(importQuantumSceneBundle(changedWeyl),/integrity|hash/i);
+  const nodalFolder=join(fixtureRoot,bundledQuantumSceneExample("nodal-ring").folder);
+  const nodal=await importQuantumSceneBundle(nodalFolder);
+  const nodalResultBytes=await readFile(join(fixtureRoot,"nodal-ring-producer-result.json"));
+  const nodalResult=JSON.parse(nodalResultBytes.toString("utf8"));
+  assert.equal(nodal.source.provenance.model,"nodal_line_two_band");
+  assert.equal(nodal.source.provenance.resultSha256,hash(nodalResultBytes));
+  assert.equal(nodal.source.topology.invariants.find(item=>item.id==="linking-berry-phase").value,Math.PI);
+  assert.equal(nodal.source.topology.invariants.find(item=>item.id==="linking-berry-phase").status,"verified");
+  assert.deepEqual(Array.from(nodal.arrays.get("ring-samples")),nodalResult.analysis.ringPositions.flat());
+  assert.deepEqual(Array.from(nodal.arrays.get("loop-samples")),nodalResult.analysis.loopPositions.flat());
+  assert.deepEqual(Array.from(nodal.arrays.get("loop-lower-band")),nodalResult.analysis.lowerBand);
+  assert.deepEqual(Array.from(nodal.arrays.get("loop-upper-band")),nodalResult.analysis.upperBand);
+  const nodalFirst=inspectVerifiedScalarSample(nodal,{fingerprint:sceneFingerprint(nodal),objectId:"linking-loop-samples",sampleIndex:0});
+  assert.deepEqual(nodalFirst.position,nodalResult.analysis.loopPositions[0]);
+  assert.equal(nodalFirst.value,nodalResult.analysis.upperBand[0]);
+  assert.equal(nodalFirst.valueUnit,"normalized energy");
+  const changedNodal=join(root,"nodal-changed.qscene");
+  await cp(nodalFolder,changedNodal,{recursive:true});
+  const nodalBytes=await readFile(join(changedNodal,"loop-upper-band.f64"));
+  nodalBytes[0]^=1;await writeFile(join(changedNodal,"loop-upper-band.f64"),nodalBytes);
+  await assert.rejects(importQuantumSceneBundle(changedNodal),/integrity|hash/i);
+  const changedRing=join(root,"nodal-ring-changed.qscene");
+  await cp(nodalFolder,changedRing,{recursive:true});
+  const ringBytes=await readFile(join(changedRing,"ring-samples.f64"));
+  ringBytes[0]^=1;await writeFile(join(changedRing,"ring-samples.f64"),ringBytes);
+  await assert.rejects(importQuantumSceneBundle(changedRing),/integrity|hash/i);
+  const landauFolder=join(fixtureRoot,bundledQuantumSceneExample("landau-levels").folder);
+  const landau=await importQuantumSceneBundle(landauFolder);
+  const landauResultBytes=await readFile(join(fixtureRoot,"landau-producer-result.json"));
+  const landauResult=JSON.parse(landauResultBytes.toString("utf8"));
+  assert.equal(landau.source.provenance.model,"landau_continuum");
+  assert.equal(landau.source.provenance.resultSha256,hash(landauResultBytes));
+  assert.deepEqual(landau.source.coordinates.axes,["signed B","level index n","energy E_n"]);
+  assert.equal(landau.source.coordinates.units[0],landauResult.analysis.units.field);
+  assert.equal(landau.document.geometry.points.length,35);
+  assert.deepEqual(Array.from(landau.arrays.get("level-3-positions")),landauResult.analysis.fieldValues.flatMap((field,i)=>[field,3,landauResult.analysis.energies[i][3]]));
+  assert.deepEqual(Array.from(landau.arrays.get("level-3-energy")),landauResult.analysis.energies.map(row=>row[3]));
+  const landauSample=inspectVerifiedScalarSample(landau,{fingerprint:sceneFingerprint(landau),objectId:"level-3-samples",sampleIndex:2});
+  assert.deepEqual(landauSample.position,[landauResult.analysis.fieldValues[2],3,landauResult.analysis.energies[2][3]]);
+  assert.equal(landauSample.value,landauResult.analysis.energies[2][3]);
+  assert.equal(landauSample.valueUnit,landauResult.analysis.units.energy);
+  const changedLandau=join(root,"landau-changed.qscene");
+  await cp(landauFolder,changedLandau,{recursive:true});
+  const landauBytes=await readFile(join(changedLandau,"level-3-energy.f64"));
+  landauBytes[0]^=1;await writeFile(join(changedLandau,"level-3-energy.f64"),landauBytes);
+  await assert.rejects(importQuantumSceneBundle(changedLandau),/integrity|hash/i);
+  const harperFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-bands").folder);
+  const harper=await importQuantumSceneBundle(harperFolder);
+  const harperResultBytes=await readFile(join(fixtureRoot,"hofstadter-producer-result.json"));
+  const harperResult=JSON.parse(harperResultBytes.toString("utf8"));
+  assert.equal(harper.source.provenance.model,"hofstadter");
+  assert.equal(harper.source.provenance.resultSha256,hash(harperResultBytes));
+  assert.equal(harper.source.bands.energies.length,harperResult.model.parameters.q);
+  assert.deepEqual(harper.source.coordinates.units,["rad / lattice constant","rad / lattice constant","hopping energy"]);
+  assert.deepEqual(Array.from(harper.arrays.get("band-0-energy")),harperResult.analysis.bandEnergies[0]);
+  const harperSample=inspectVerifiedBandSample(harper,{fingerprint:sceneFingerprint(harper),objectId:"band-0",sampleIndex:21});
+  assert.deepEqual(harperSample.k.slice(0,2),[harperResult.analysis.kxValues[2],harperResult.analysis.kyValues[3]]);
+  assert.equal(harperSample.energy,harperResult.analysis.bandEnergies[0][21]);
+  assert.equal(harperSample.energyUnit,harperResult.analysis.units.energy);
+  const changedHarper=join(root,"hofstadter-changed.qscene");
+  await cp(harperFolder,changedHarper,{recursive:true});
+  const harperBytes=await readFile(join(changedHarper,"band-0-energy.f64"));
+  harperBytes[0]^=1;await writeFile(join(changedHarper,"band-0-energy.f64"),harperBytes);
+  await assert.rejects(importQuantumSceneBundle(changedHarper),/integrity|hash/i);
+  const chernFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-chern").folder);
+  const chernScene=await importQuantumSceneBundle(chernFolder);
+  const chernBytes=await readFile(join(fixtureRoot,"hofstadter-chern-producer-result.json"));
+  const chernResult=JSON.parse(chernBytes.toString("utf8"));
+  assert.equal(chernScene.source.provenance.resultSha256,hash(chernBytes));
+  assert.deepEqual(chernScene.source.topology.invariants.map(item=>item.value),[-1,null,1]);
+  assert.deepEqual(chernScene.source.topology.invariants.map(item=>item.status),["verified","undefined","verified"]);
+  assert.equal(chernScene.source.topology.quantities.length,2);
+  for(const occupied of [1,3]){
+    const gap=chernResult.analysis.chernGaps[occupied-1];
+    const dataset=`occupied-${occupied}-plaquette-flux`;
+    assert.deepEqual(Array.from(chernScene.arrays.get(dataset)),gap.plaquetteFlux);
+    const sample=inspectVerifiedTopologySample(chernScene,{fingerprint:sceneFingerprint(chernScene),
+      quantityId:`occupied-${occupied}-berry-flux`,sampleIndex:21});
+    assert.equal(sample.value,gap.plaquetteFlux[21]);
+    assert.equal(sample.valueUnit,"rad per plaquette");
+    assert.equal(sample.runId,chernResult.runId);
+  }
+  const changedCh = join(root,"hofstadter-chern-changed.qscene");
+  await cp(chernFolder,changedCh,{recursive:true});
+  const fluxBytes=await readFile(join(changedCh,"occupied-1-plaquette-flux.f64"));
+  fluxBytes[0]^=1;await writeFile(join(changedCh,"occupied-1-plaquette-flux.f64"),fluxBytes);
+  await assert.rejects(importQuantumSceneBundle(changedCh),/integrity|hash/i);
+  const stripFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-strip").folder);
+  const stripScene=await importQuantumSceneBundle(stripFolder);
+  const stripBytes=await readFile(join(fixtureRoot,"hofstadter-strip-producer-result.json"));
+  const stripResult=JSON.parse(stripBytes.toString("utf8"));
+  assert.equal(stripScene.source.provenance.resultSha256,hash(stripBytes));
+  assert.equal(stripScene.source.topology,undefined,"strip observation must not carry periodic Chern claims");
+  assert.equal(stripScene.source.provenance.parameters.stripCells,stripResult.analysis.strip.cells);
+  assert.deepEqual(Array.from(stripScene.arrays.get("strip-left-weight")),stripResult.analysis.strip.leftWeights.flat());
+  assert.deepEqual(Array.from(stripScene.arrays.get("strip-right-weight")),stripResult.analysis.strip.rightWeights.flat());
+  for(const side of ["left","right"]){
+    const sample=inspectVerifiedScalarSample(stripScene,{fingerprint:sceneFingerprint(stripScene),objectId:`strip-${side}`,sampleIndex:3*17+5});
+    assert.equal(sample.position[0],stripResult.analysis.strip.kyValues[5]);
+    assert.equal(sample.position[2],stripResult.analysis.strip.energies[3][5]);
+    assert.equal(sample.value,stripResult.analysis.strip[side==="left"?"leftWeights":"rightWeights"][3][5]);
+    assert.equal(sample.valueUnit,"probability weight");
+    assert.equal(sample.runId,stripResult.runId);
+  }
+  const changedStrip=join(root,"hofstadter-strip-changed.qscene");
+  await cp(stripFolder,changedStrip,{recursive:true});
+  const stripWeightBytes=await readFile(join(changedStrip,"strip-left-weight.f64"));
+  stripWeightBytes[0]^=1;await writeFile(join(changedStrip,"strip-left-weight.f64"),stripWeightBytes);
+  await assert.rejects(importQuantumSceneBundle(changedStrip),/integrity|hash/i);
+  const hallFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-hall").folder);
+  const hallScene=await importQuantumSceneBundle(hallFolder);
+  const hallBytes=await readFile(join(fixtureRoot,"hofstadter-hall-producer-result.json"));
+  const hallResult=JSON.parse(hallBytes.toString("utf8"));
+  const hall=hallResult.analysis.filling;
+  assert.equal(hallScene.source.provenance.resultSha256,hash(hallBytes));
+  assert.equal(hallScene.source.provenance.parameters.occupiedBands,hall.occupiedBands);
+  assert.equal(hallScene.source.topology.invariants.find(item=>item.id==="filled-global-gap").value,hall.fineGlobalGap);
+  assert.equal(hallScene.source.topology.invariants.find(item=>item.id==="filled-hall-conductance").value,hall.conductance);
+  assert.equal(hall.conductance,-1);
+  assert.equal(hall.status,"defined");
+  const hallSample=inspectVerifiedBandSample(hallScene,{fingerprint:sceneFingerprint(hallScene),objectId:"band-0",sampleIndex:21});
+  assert.equal(hallSample.energy,hallResult.analysis.bandEnergies[0][21]);
+  assert.equal(hallSample.runId,hallResult.runId);
+  const changedHall=join(root,"hofstadter-hall-changed.qscene");
+  await cp(hallFolder,changedHall,{recursive:true});
+  const hallBand=await readFile(join(changedHall,"band-0-energy.f64"));
+  hallBand[0]^=1;await writeFile(join(changedHall,"band-0-energy.f64"),hallBand);
+  await assert.rejects(importQuantumSceneBundle(changedHall),/integrity|hash/i);
+  const butterflyFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-butterfly").folder);
+  const butterfly=await importQuantumSceneBundle(butterflyFolder);
+  const butterflyBytes=await readFile(join(fixtureRoot,"hofstadter-flux-producer-result.json"));
+  const butterflySource=JSON.parse(butterflyBytes.toString("utf8"));
+  assert.equal(butterfly.source.provenance.resultSha256,hash(butterflyBytes));
+  assert.equal(butterfly.source.provenance.model,"hofstadter_flux_sweep");
+  assert.equal(butterfly.source.objects.length,butterflySource.points.length);
+  for(const point of butterflySource.points){
+    const selected=inspectVerifiedScalarSample(butterfly,{fingerprint:sceneFingerprint(butterfly),objectId:`flux-${point.index}`,sampleIndex:point.q===1?0:point.energies[0].length});
+    assert.equal(selected.position[0],point.p/point.q);
+    assert.equal(selected.value,point.q===1?point.energies[0][0]:point.energies[1][0]);
+    assert.ok(butterfly.source.annotations[point.index].text.includes(point.resultSha256));
+    assert.equal(point.filling?.status==="defined",point.filling?.conductance!==null&&point.filling?.conductance!==undefined);
+  }
+  const changedButterfly=join(root,"hofstadter-butterfly-changed.qscene");
+  await cp(butterflyFolder,changedButterfly,{recursive:true});
+  const butterflyBand=await readFile(join(changedButterfly,"flux-1-energy.f64"));
+  butterflyBand[0]^=1;await writeFile(join(changedButterfly,"flux-1-energy.f64"),butterflyBand);
+  await assert.rejects(importQuantumSceneBundle(changedButterfly),/integrity|hash/i);
+  const edgeFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-bulk-edge").folder);
+  const edgeScene=await importQuantumSceneBundle(edgeFolder);
+  const edgeProducer=JSON.parse((await readFile(join(fixtureRoot,"hofstadter-edge-producer-results.json"))).toString("utf8"));
+  assert.equal(edgeScene.source.provenance.model,"hofstadter_bulk_edge_study");
+  assert.equal(edgeScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(edgeProducer.study))));
+  assert.equal(edgeProducer.study.comparison.status,"consistent");
+  assert.equal(edgeProducer.study.sources.length,3);
+  const bulkEdge=inspectVerifiedScalarSample(edgeScene,{fingerprint:sceneFingerprint(edgeScene),objectId:"bulk-0",sampleIndex:12});
+  assert.equal(bulkEdge.position[0],edgeProducer.results[0].analysis.kxValues[1]);
+  assert.equal(bulkEdge.position[1],edgeProducer.results[0].analysis.kyValues[3]);
+  assert.equal(bulkEdge.value,edgeProducer.results[0].analysis.bandEnergies[0][12]);
+  for(const [width,sourceIndex] of [[18,1],[24,2]]){
+    const strip=edgeProducer.results[sourceIndex].analysis.strip;
+    for(const side of ["left","right"]){
+      const sample=inspectVerifiedScalarSample(edgeScene,{fingerprint:sceneFingerprint(edgeScene),objectId:`strip-${width}-${side}`,sampleIndex:3*31+5});
+      assert.equal(sample.position[0],strip.kyValues[5]);
+      assert.equal(sample.position[2],strip.energies[3][5]);
+      assert.equal(sample.value,strip[side==="left"?"leftWeights":"rightWeights"][3][5]);
+      assert.ok(edgeScene.source.annotations[sourceIndex+1].text.includes(edgeProducer.study.sources[sourceIndex].resultSha256));
+    }
+  }
+  const changedEdge=join(root,"hofstadter-edge-changed.qscene");
+  await cp(edgeFolder,changedEdge,{recursive:true});
+  const changedWeight=await readFile(join(changedEdge,"strip-18-left-weight.f64"));changedWeight[0]^=1;
+  await writeFile(join(changedEdge,"strip-18-left-weight.f64"),changedWeight);
+  await assert.rejects(importQuantumSceneBundle(changedEdge),/integrity|hash/i);
+  const trackedFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-tracked-edge").folder);
+  const trackedScene=await importQuantumSceneBundle(trackedFolder);
+  const trackedProducer=JSON.parse((await readFile(join(fixtureRoot,"hofstadter-edge-tracked-producer-results.json"))).toString("utf8"));
+  assert.equal(trackedProducer.study.tracking.status,"consistent");
+  assert.equal(trackedScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(trackedProducer.study))));
+  assert.ok(trackedScene.source.annotations.find(note=>note.id==="tracking")?.text.includes("overlap"));
+  for(const [width,index] of [[18,1],[24,2]]){
+    const crossing=trackedProducer.study.tracking.widths[index-1].crossings[0];
+    const exact=inspectVerifiedScalarSample(trackedScene,{fingerprint:sceneFingerprint(trackedScene),
+      objectId:`tracked-${width}`,sampleIndex:0});
+    assert.equal(exact.position[0],crossing.ky);
+    assert.equal(exact.value,crossing.overlap);
+    assert.ok(trackedScene.source.annotations.find(note=>note.id===`track-${width}-0`)?.text.includes(
+      trackedProducer.study.sources[index].resultSha256));
+  }
+  const changedTracked=join(root,"hofstadter-tracked-changed.qscene");
+  await cp(trackedFolder,changedTracked,{recursive:true});
+  const changedOverlap=await readFile(join(changedTracked,"tracked-18-overlap.f64"));changedOverlap[0]^=1;
+  await writeFile(join(changedTracked,"tracked-18-overlap.f64"),changedOverlap);
+  await assert.rejects(importQuantumSceneBundle(changedTracked),/integrity|hash/i);
+  const convergenceFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-edge-convergence").folder);
+  const convergenceScene=await importQuantumSceneBundle(convergenceFolder);
+  const convergenceProducer=JSON.parse((await readFile(join(fixtureRoot,"hofstadter-edge-convergence-producer-results.json"))).toString("utf8"));
+  assert.equal(convergenceProducer.study.convergence.status,"consistent");
+  assert.deepEqual(convergenceProducer.study.convergence.terminations.map(item=>item.rightPhase),[2,2]);
+  assert.equal(convergenceScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(convergenceProducer.study))));
+  for(const [grid,width,sourceIndex] of [[17,18,3],[31,23,2]]){
+    const crossing=convergenceProducer.study.convergence.widths[width===18?0:1][grid===17?"coarseCrossings":"fineCrossings"][0];
+    const selected=inspectVerifiedScalarSample(convergenceScene,{fingerprint:sceneFingerprint(convergenceScene),
+      objectId:`grid-${grid}-${width}`,sampleIndex:0});
+    assert.equal(selected.position[0],crossing.ky);assert.equal(selected.value,crossing.overlap);
+    assert.ok(convergenceScene.source.annotations.find(note=>note.id===`grid-${grid}-${width}-0`)?.text.includes(
+      convergenceProducer.study.sources[sourceIndex].role));
+  }
+  const changedConvergence=join(root,"hofstadter-grid-changed.qscene");
+  await cp(convergenceFolder,changedConvergence,{recursive:true});
+  const changedGrid=await readFile(join(changedConvergence,"grid-17-18-overlap.f64"));changedGrid[0]^=1;
+  await writeFile(join(changedConvergence,"grid-17-18-overlap.f64"),changedGrid);
+  await assert.rejects(importQuantumSceneBundle(changedConvergence),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -240,10 +473,29 @@ try {
         pinned.source.datasets.map(dataset => dataset.sha256));
     }
   }
-  const fixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
+  const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
+  assert.equal(allFixtureNames.length, 31, "Expected frozen SSH/QWZ plus bounded producer fixtures including the Rice–Mele convergence study");
+  const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
+  const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
+  const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
+  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump","rice-mele-open-chain-pump","rice-mele-bulk-chain","rice-mele-convergence"].map(id=>bundledQuantumSceneExample(id).folder));
+  const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
+  const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
+  const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
+  const harperFolderName=bundledQuantumSceneExample("hofstadter-bands").folder;
+  const chernFolderName=bundledQuantumSceneExample("hofstadter-chern").folder;
+  const stripFolderName=bundledQuantumSceneExample("hofstadter-strip").folder;
+  const hallFolderName=bundledQuantumSceneExample("hofstadter-hall").folder;
+  const butterflyFolderName=bundledQuantumSceneExample("hofstadter-butterfly").folder;
+  const edgeFolderName=bundledQuantumSceneExample("hofstadter-bulk-edge").folder;
+  const trackedFolderName=bundledQuantumSceneExample("hofstadter-tracked-edge").folder;
+  const convergenceFolderName=bundledQuantumSceneExample("hofstadter-edge-convergence").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&!riceFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName&&name!==stripFolderName&&name!==hallFolderName&&name!==butterflyFolderName&&name!==edgeFolderName&&name!==trackedFolderName&&name!==convergenceFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Rice–Mele" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau" && example.model!=="Hofstadter")
+    .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
     "ssh/bands": { axes: ["k", "energy", "display z"], units: ["rad / cell spacing", "normalized energy (hbar=1)", "dimensionless"] },
@@ -251,6 +503,7 @@ try {
     "qwz/bands": { axes: ["kx", "ky", "energy"], units: ["rad / lattice constant", "rad / lattice constant", "normalized energy (hbar=1)"] },
   };
   const acceptedViews = new Set();
+  const pairedViews = new Map();
   for (const name of fixtureNames) {
     const real = await importQuantumSceneBundle(join(fixtureRoot, name));
     const { source, document } = real;
@@ -261,6 +514,9 @@ try {
     assert.ok(real.mappedObjectIds.length || real.deferredObjectIds.length || real.deferredFieldIds.length);
     const key = `${source.provenance.model}/${source.bands ? "bands" : "standard"}`;
     assert.deepEqual({ axes: source.coordinates.axes, units: source.coordinates.units }, expectedCoordinates[key]);
+    const peers = pairedViews.get(source.provenance.model) ?? [];
+    peers.push({ source, fingerprint: sceneFingerprint(real) });
+    pairedViews.set(source.provenance.model, peers);
     if (source.provenance.model === "ssh") {
       assert.equal(source.lattice, undefined, "1D SSH is supplied Geometry, not a fictitious 2D/3D lattice");
       assert.ok(real.mappedObjectIds.length > 0);
@@ -301,6 +557,309 @@ try {
     acceptedViews.add(key);
   }
   assert.deepEqual(acceptedViews, new Set(["ssh/standard", "ssh/bands", "qwz/standard", "qwz/bands"]));
+  for (const [model, peers] of pairedViews) {
+    assert.equal(peers.length, 2, `${model} requires standard and bands from one saved result`);
+    assert.equal(peers.filter(peer => !!peer.source.bands).length, 1);
+    assert.equal(new Set(peers.map(peer => peer.source.provenance.runId)).size, 1);
+    assert.equal(new Set(peers.map(peer => peer.source.provenance.resultSha256)).size, 1);
+    assert.equal(new Set(peers.map(peer => peer.source.provenance.engine)).size, 1);
+    assert.deepEqual(peers[0].source.provenance.parameters, peers[1].source.provenance.parameters);
+    assert.equal(new Set(peers.map(peer => peer.fingerprint)).size, 2, "Each view retains its own source fingerprint");
+    assert.deepEqual(peers.flatMap(peer => peer.source.topology?.invariants.map(invariant => invariant.id) ?? []),
+      [model === "qwz" ? "chern" : "winding"]);
+  }
+  const bhzDirectory=join(fixtureRoot,bundledQuantumSceneExample("bhz-bands").folder);
+  const bhz=await importQuantumSceneBundle(bhzDirectory);
+  const bhzResultBytes=await readFile(join(fixtureRoot,"bhz-producer-result.json"));
+  const bhzResult=JSON.parse(bhzResultBytes.toString("utf8"));
+  assert.equal(bhz.source.provenance.model,"bhz");
+  assert.equal(bhz.source.provenance.resultSha256,hash(bhzResultBytes));
+  assert.equal(bhz.source.provenance.runId,bhzResult.runId);
+  assert.equal(bhz.source.bands.objects.length,4);
+  assert.deepEqual(bhz.source.bands.labels,["Block occupied","Partner occupied","Block empty","Partner empty"]);
+  assert.deepEqual(bhz.source.topology.invariants.map(item=>[item.id,item.value,item.status]),
+    [["spin-z2",1,"verified"],["block-chern",1,"supplied"]]);
+  assert.deepEqual(bhz.source.bands.grid,[21,21]);
+  const bhzSample=inspectVerifiedBandSample(bhz,{fingerprint:sceneFingerprint(bhz),objectId:"band-0",sampleIndex:220});
+  assert.equal(bhzSample.energy,bhzResult.analysis.bandEnergies[0][220]);
+  assert.equal(bhzSample.runId,bhzResult.runId);
+  const bhzChanged=join(root,"bhz-changed.qscene");
+  await cp(bhzDirectory,bhzChanged,{recursive:true});
+  const bhzBandPath=join(bhzChanged,"band-energy-0.f64"),bhzBytes=await readFile(bhzBandPath);
+  bhzBytes[0]^=1;await writeFile(bhzBandPath,bhzBytes);
+  await assert.rejects(importQuantumSceneBundle(bhzChanged),/integrity|hash/i);
+  const bbhBytes=await readFile(join(fixtureRoot,"bbh-producer-result.json"));
+  const bbhResult=JSON.parse(bbhBytes.toString("utf8"));
+  const bbhBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("bbh-bands").folder));
+  const bbhFinite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("bbh-finite").folder));
+  for(const scene of [bbhBands,bbhFinite]){
+    assert.equal(scene.source.provenance.model,"bbh");
+    assert.equal(scene.source.provenance.runId,bbhResult.runId);
+    assert.equal(scene.source.provenance.resultSha256,hash(bbhBytes));
+    assert.equal(scene.source.topology,undefined,"Finite corner density is not a quadrupole invariant");
+  }
+  assert.equal(bbhBands.source.bands.objects.length,4);
+  assert.equal(inspectVerifiedBandSample(bbhBands,{fingerprint:sceneFingerprint(bbhBands),objectId:"band-0",sampleIndex:60}).energy,
+    bbhResult.analysis.bandEnergies[0][60]);
+  const cell=inspectVerifiedScalarSample(bbhFinite,{fingerprint:sceneFingerprint(bbhFinite),objectId:"finite-midgap-cells",sampleIndex:5});
+  assert.equal(cell.value,bbhResult.analysis.finite.midgapDensity[5]);
+  assert.deepEqual(cell.position,[1,1,0]);
+  assert.equal(cell.valueDatasetId,"midgap-density");
+  assert.equal(cell.sampleId,"finite-midgap-cells:sample:5");
+  const displayPoints=bbhFinite.document.geometry.points.filter(point=>point.id?.startsWith("finite-midgap-cells:site:"));
+  assert.equal(displayPoints.length,16);
+  assert.ok(displayPoints[0].size>displayPoints[5].size,"Corner concentration must be visible as display-only marker size");
+  assert.throws(()=>inspectVerifiedScalarSample(bbhFinite,{fingerprint:sceneFingerprint(bbhFinite),objectId:"finite-midgap-cells",sampleIndex:16}),/outside/);
+  const bbhChanged=join(root,"bbh-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("bbh-finite").folder),bbhChanged,{recursive:true});
+  const densityPath=join(bbhChanged,"midgap-density.f64"),densityBytes=await readFile(densityPath);
+  densityBytes[0]^=1;await writeFile(densityPath,densityBytes);
+  await assert.rejects(importQuantumSceneBundle(bbhChanged),/integrity|hash/i);
+  const wilsonBytes=await readFile(join(fixtureRoot,"bbh-wilson-producer-result.json"));
+  const wilsonResult=JSON.parse(wilsonBytes.toString("utf8"));
+  const bbhWilson=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("bbh-wilson").folder));
+  assert.equal(bbhWilson.source.provenance.runId,wilsonResult.runId);
+  assert.equal(bbhWilson.source.provenance.resultSha256,hash(wilsonBytes));
+  assert.equal(bbhWilson.source.topology.invariants.find(item=>item.id==="bbh-quadrupole").value,.5);
+  assert.equal(bbhWilson.source.topology.invariants.find(item=>item.id==="bbh-quadrupole").status,"verified");
+  const center=inspectVerifiedScalarSample(bbhWilson,{fingerprint:sceneFingerprint(bbhWilson),objectId:"wilson-x-negative",sampleIndex:8});
+  assert.equal(center.value,wilsonResult.analysis.wilson.wannierX[0][8]);
+  assert.equal(center.position[0],wilsonResult.analysis.bandKValues[8]);
+  assert.equal(center.valueUnit,"cycle");
+  const alteredWilson=join(root,"bbh-wilson-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("bbh-wilson").folder),alteredWilson,{recursive:true});
+  const alteredCenters=join(alteredWilson,"wilson-x-negative-centers.f64"),centerBytes=await readFile(alteredCenters);
+  centerBytes[0]^=1;await writeFile(alteredCenters,centerBytes);
+  await assert.rejects(importQuantumSceneBundle(alteredWilson),/integrity|hash/i);
+  const riceBytes=await readFile(join(fixtureRoot,"rice-mele-producer-result.json"));
+  const riceResult=JSON.parse(riceBytes.toString("utf8"));
+  const riceBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-bands").folder));
+  const riceFinite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite").folder));
+  for(const scene of [riceBands,riceFinite]){
+    assert.equal(scene.source.provenance.model,"rice_mele");
+    assert.equal(scene.source.provenance.runId,riceResult.runId);
+    assert.equal(scene.source.provenance.resultSha256,hash(riceBytes));
+    assert.equal(scene.source.provenance.source?.entryId,"rice_mele");
+    assert.equal(scene.source.topology,undefined,"Static result supplies no pump invariant");
+  }
+  assert.equal(riceBands.source.bands.kind,"path");
+  const riceBandSample=inspectVerifiedBandSample(riceBands,{fingerprint:sceneFingerprint(riceBands),objectId:"band-0",sampleIndex:25});
+  assert.equal(riceBandSample.k[0],riceResult.analysis.kValues[25]);
+  assert.equal(riceBandSample.energy,riceResult.analysis.lowerBand[25]);
+  const riceSite=inspectVerifiedScalarSample(riceFinite,{fingerprint:sceneFingerprint(riceFinite),objectId:"middle-density",sampleIndex:3});
+  assert.equal(riceSite.value,riceResult.analysis.middleDensity[3]);
+  assert.deepEqual(riceSite.position,[3,0,0]);
+  const riceChanged=join(root,"rice-mele-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite").folder),riceChanged,{recursive:true});
+  const riceDensityPath=join(riceChanged,"middle-density.f64"),riceDensityBytes=await readFile(riceDensityPath);
+  riceDensityBytes[0]^=1;await writeFile(riceDensityPath,riceDensityBytes);
+  await assert.rejects(importQuantumSceneBundle(riceChanged),/integrity|hash/i);
+  const pumpBytes=await readFile(join(fixtureRoot,"rice-mele-pump-producer-result.json"));
+  const pumpResult=JSON.parse(pumpBytes.toString("utf8"));
+  const pump=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-pump").folder));
+  assert.equal(pump.source.provenance.model,"rice_mele_pump");
+  assert.equal(pump.source.provenance.runId,pumpResult.runId);
+  assert.equal(pump.source.provenance.resultSha256,hash(pumpBytes));
+  assert.equal(pump.source.provenance.source?.entryId,"rice_mele");
+  assert.equal(pump.source.topology.invariants.find(item=>item.id==="pump-chern").value,pumpResult.analysis.chern);
+  assert.equal(pump.source.topology.invariants.find(item=>item.id==="pump-winding").value,pumpResult.analysis.polarizationWinding);
+  const pumpBand=inspectVerifiedScalarSample(pump,{fingerprint:sceneFingerprint(pump),objectId:"band-0",sampleIndex:0});
+  assert.equal(pumpBand.value,pumpResult.analysis.lowerBand[0]);
+  assert.equal(pumpBand.position[0],pumpResult.analysis.phaseValues[0]);
+  assert.equal(pumpBand.position[1],pumpResult.analysis.kValues[0]);
+  const pumpPolarization=inspectVerifiedScalarSample(pump,{fingerprint:sceneFingerprint(pump),objectId:"polarization-samples",sampleIndex:8});
+  assert.equal(pumpPolarization.value,pumpResult.analysis.polarization[8]);
+  const pumpChanged=join(root,"rice-mele-pump-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-pump").folder),pumpChanged,{recursive:true});
+  const pumpBandPath=join(pumpChanged,"band-energy-0.f64"),pumpBandBytes=await readFile(pumpBandPath);
+  pumpBandBytes[0]^=1;await writeFile(pumpBandPath,pumpBandBytes);
+  await assert.rejects(importQuantumSceneBundle(pumpChanged),/integrity|hash/i);
+  const finiteBytes=await readFile(join(fixtureRoot,"rice-mele-finite-producer-result.json"));
+  const finiteResult=JSON.parse(finiteBytes.toString("utf8"));
+  const finite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite-pump").folder));
+  assert.equal(finite.source.provenance.runId,finiteResult.runId);
+  assert.equal(finite.source.provenance.resultSha256,hash(finiteBytes));
+  assert.equal(finite.source.provenance.model,"rice_mele_pump");
+  assert.equal(finite.source.provenance.parameters.duration,80);
+  assert.equal(finite.source.topology,undefined,"Finite-speed charge must not be exported as a topological invariant");
+  for(const [objectId,index,expected] of [
+    ["finite-current",8,finiteResult.analysis.dynamics.current[8]],
+    ["finite-charge",8,finiteResult.analysis.dynamics.charge[8]],
+    ["finite-local-current",8*finiteResult.analysis.dynamics.kValues.length+4,
+      finiteResult.analysis.dynamics.currentByK[8*finiteResult.analysis.dynamics.kValues.length+4]],
+  ]){
+    const sample=inspectVerifiedScalarSample(finite,{fingerprint:sceneFingerprint(finite),objectId,sampleIndex:index});
+    assert.equal(sample.value,expected);
+    assert.equal(sample.position[0],finiteResult.analysis.dynamics.timeValues[8]);
+    if(objectId==="finite-local-current")assert.equal(sample.position[1],finiteResult.analysis.dynamics.kValues[4]);
+  }
+  const finiteChanged=join(root,"rice-mele-finite-changed.qscene");
+  const chainBytes=await readFile(join(fixtureRoot,"rice-mele-chain-producer-result.json"));
+  const chainResult=JSON.parse(chainBytes.toString("utf8"));
+  const chain=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-open-chain-pump").folder));
+  assert.equal(chain.source.provenance.runId,chainResult.runId);
+  assert.equal(chain.source.provenance.resultSha256,hash(chainBytes));
+  assert.equal(chain.source.provenance.parameters.chainCells,6);
+  assert.equal(chain.source.topology,undefined,"Finite-chain charge must not become a topological invariant");
+  for(const [objectId,index,expected] of [
+    ["chain-density",8*12+5,chainResult.analysis.finiteChain.siteDensity[8*12+5]],
+    ["chain-current",8*11+5,chainResult.analysis.finiteChain.bondElectronCurrent[8*11+5]],
+    ["chain-charge",8,chainResult.analysis.finiteChain.centralBondCharge[8]],
+  ]){
+    const sample=inspectVerifiedScalarSample(chain,{fingerprint:sceneFingerprint(chain),objectId,sampleIndex:index});
+    assert.equal(sample.value,expected);
+    assert.equal(sample.position[0],chainResult.analysis.finiteChain.timeValues[8]);
+  }
+  const chainChanged=join(root,"rice-mele-chain-changed.qscene");
+  const compareBytes=await readFile(join(fixtureRoot,"rice-mele-bulk-chain-producer-result.json"));
+  const compareResult=JSON.parse(compareBytes.toString("utf8"));
+  const compare=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-bulk-chain").folder));
+  assert.equal(compare.source.provenance.runId,compareResult.runId);
+  assert.equal(compare.source.provenance.resultSha256,hash(compareBytes));
+  assert.equal(compare.source.topology,undefined,"Bulk–chain charge is not an invariant");
+  const compared=[
+    ["comparison-bulk-current",8,compareResult.analysis.dynamics.current[8]],
+    ["comparison-bulk-charge",8,compareResult.analysis.dynamics.charge[8]],
+    ["chain-density",8*12+5,compareResult.analysis.finiteChain.siteDensity[8*12+5]],
+    ["chain-current",8*11+5,compareResult.analysis.finiteChain.bondElectronCurrent[8*11+5]],
+    ["chain-charge",8,compareResult.analysis.finiteChain.centralBondCharge[8]],
+    ["chain-left-edge",8,compareResult.analysis.finiteChain.leftEdgePopulation[8]],
+    ["chain-right-edge",8,compareResult.analysis.finiteChain.rightEdgePopulation[8]],
+  ];
+  for(const [objectId,index,expected] of compared){
+    const sample=inspectVerifiedScalarSample(compare,{fingerprint:sceneFingerprint(compare),objectId,sampleIndex:index});
+    assert.equal(sample.value,expected);
+    assert.equal(sample.position[0],compareResult.analysis.dynamics.timeValues[8]);
+  }
+  const compareChanged=join(root,"rice-mele-comparison-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-bulk-chain").folder),compareChanged,{recursive:true});
+  const comparePath=join(compareChanged,"comparison-bulk-charge.f64"),compareData=await readFile(comparePath);
+  compareData[0]^=1;await writeFile(comparePath,compareData);
+  await assert.rejects(importQuantumSceneBundle(compareChanged),/integrity|hash/i);
+  const riceStudy=JSON.parse(await readFile(join(fixtureRoot,"rice-mele-convergence-producer-study.json"),"utf8"));
+  const riceStudyDir=join(fixtureRoot,bundledQuantumSceneExample("rice-mele-convergence").folder);
+  const riceStudyScene=await importQuantumSceneBundle(riceStudyDir);
+  assert.equal(riceStudyScene.source.provenance.model,"rice_mele_convergence_study");
+  assert.equal(riceStudyScene.source.provenance.runId,riceStudy.studyId);
+  assert.equal(riceStudyScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(riceStudy))));
+  assert.equal(riceStudy.sources.length,5);
+  assert.deepEqual(riceStudyScene.source.coordinates.units,["display only","display only","display only"]);
+  assert.equal(riceStudyScene.source.topology,undefined,"Distinct charges must not become a shared invariant");
+  const riceById=new Map(riceStudy.sources.map(point=>[point.runId,point]));
+  const sourceRequest=(series,index,point)=>({fingerprint:sceneFingerprint(riceStudyScene),series,
+    sampleIndex:index,runId:point.runId,resultSha256:point.resultSha256});
+  assert.deepEqual(resolveStudySourceRun(riceStudyScene,sourceRequest("periodic",1,riceById.get(riceStudy.plan.anchorRunId))),
+    {runId:riceStudy.plan.anchorRunId,resultSha256:riceById.get(riceStudy.plan.anchorRunId).resultSha256});
+  assert.deepEqual(resolveStudySourceRun(riceStudyScene,sourceRequest("chain",2,riceById.get(riceStudy.widthRuns[2]))),
+    {runId:riceStudy.widthRuns[2],resultSha256:riceById.get(riceStudy.widthRuns[2]).resultSha256});
+  assert.throws(()=>resolveStudySourceRun(riceStudyScene,sourceRequest("periodic",1,riceById.get(riceStudy.durationRuns[0]))),/does not match/);
+  assert.throws(()=>resolveStudySourceRun(riceStudyScene,{...sourceRequest("chain",2,riceById.get(riceStudy.widthRuns[2])),
+    resultSha256:"0".repeat(64)}),/does not match/);
+  assert.throws(()=>resolveStudySourceRun(riceStudyScene,{...sourceRequest("periodic",1,riceById.get(riceStudy.plan.anchorRunId)),
+    series:"invalid"}),/Invalid selected/);
+  assert.throws(()=>resolveStudySourceRun(compare,sourceRequest("periodic",1,riceById.get(riceStudy.plan.anchorRunId))),/not a Rice/);
+  for(const [series,runIds,field,unit] of [
+    ["periodic",riceStudy.durationRuns,"periodicCharge","electron charge / cell"],
+    ["chain",riceStudy.widthRuns,"chainCentralBondCharge","electron charge"]]){
+    for(let index=0;index<runIds.length;index++){
+      const expected=riceById.get(runIds[index]);
+      const sample=inspectVerifiedScalarSample(riceStudyScene,{fingerprint:sceneFingerprint(riceStudyScene),
+        objectId:`${series}-points`,sampleIndex:index});
+      assert.equal(sample.value,expected[field]);assert.equal(sample.valueUnit,unit);
+      assert.equal(sample.valueDatasetId,`${series}-recorded-charge`);
+      assert.match(riceStudyScene.source.annotations.find(note=>note.id===`${series}-${index}`).text,
+        new RegExp(series==="periodic"?`duration ${expected.duration} inverse hopping energy`:`width ${expected.chainCells} cells`));
+      assert.match(riceStudyScene.source.annotations.find(note=>note.id===`${series}-${index}-source`).text,
+        new RegExp(expected.resultSha256));
+    }
+  }
+  assert.equal((await reopenQuantumSceneReference({directory:riceStudyDir,
+    sceneFingerprint:sceneFingerprint(riceStudyScene)})).imported.source.provenance.runId,riceStudy.studyId);
+  for(const [folder,file,missing] of [["rice-convergence-changed.qscene","periodic-recorded-charge.f64",false],
+    ["rice-convergence-missing.qscene","chain-recorded-charge.f64",true]]){
+    const altered=join(root,folder);await cp(riceStudyDir,altered,{recursive:true});
+    if(missing)await rm(join(altered,file));
+    else {const bytes=await readFile(join(altered,file));bytes[0]^=1;await writeFile(join(altered,file),bytes);}
+    await assert.rejects(importQuantumSceneBundle(altered),missing?/missing|invalid|ENOENT/i:/integrity|hash/i);
+    await assert.rejects(reopenQuantumSceneReference({directory:altered,
+      sceneFingerprint:sceneFingerprint(riceStudyScene)}),missing?/missing|invalid|ENOENT/i:/integrity|hash/i);
+  }
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-open-chain-pump").folder),chainChanged,{recursive:true});
+  const chainPath=join(chainChanged,"chain-site-density.f64"),chainData=await readFile(chainPath);
+  chainData[0]^=1;await writeFile(chainPath,chainData);
+  await assert.rejects(importQuantumSceneBundle(chainChanged),/integrity|hash/i);
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite-pump").folder),finiteChanged,{recursive:true});
+  const finitePath=join(finiteChanged,"finite-current.f64"),finiteData=await readFile(finitePath);
+  finiteData[0]^=1;await writeFile(finitePath,finiteData);
+  await assert.rejects(importQuantumSceneBundle(finiteChanged),/integrity|hash/i);
+  const kitaevBytes=await readFile(join(fixtureRoot,"kitaev-producer-result.json"));
+  const kitaevResult=JSON.parse(kitaevBytes.toString("utf8"));
+  const kitaevBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-bands").folder));
+  const kitaevFinite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-finite").folder));
+  for(const imported of [kitaevBands,kitaevFinite]){
+    assert.equal(imported.source.provenance.model,"kitaev_chain");
+    assert.equal(imported.source.provenance.runId,kitaevResult.runId);
+    assert.equal(imported.source.provenance.resultSha256,hash(kitaevBytes));
+    assert.equal(imported.source.topology,undefined,"Finite end density is not a topological invariant");
+  }
+  assert.equal(kitaevBands.source.bands.kind,"path");
+  assert.equal(kitaevBands.source.bands.objects.length,2);
+  const kSample=inspectVerifiedBandSample(kitaevBands,{fingerprint:sceneFingerprint(kitaevBands),objectId:"band-0",sampleIndex:25});
+  assert.equal(kSample.k[0],kitaevResult.analysis.kValues[25]);
+  assert.equal(kSample.energy,kitaevResult.analysis.lowerBand[25]);
+  assert.equal(kSample.sampleId,"band-0:sample:25");
+  const site=inspectVerifiedScalarSample(kitaevFinite,{fingerprint:sceneFingerprint(kitaevFinite),objectId:"finite-end-sites",sampleIndex:0});
+  assert.equal(site.value,kitaevResult.analysis.finite.siteDensity[0]);
+  assert.deepEqual(site.position,[0,0,0]);
+  assert.equal(site.valueDatasetId,"near-zero-density");
+  assert.equal(site.sampleId,"finite-end-sites:sample:0");
+  assert.equal(kitaevFinite.document.geometry.points.filter(point=>point.id?.startsWith("finite-end-sites:site:")).length,16);
+  assert.throws(()=>inspectVerifiedScalarSample(kitaevFinite,{fingerprint:sceneFingerprint(kitaevFinite),objectId:"finite-end-sites",sampleIndex:16}),/outside/);
+  const kitaevChanged=join(root,"kitaev-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("kitaev-finite").folder),kitaevChanged,{recursive:true});
+  const kitaevDensityPath=join(kitaevChanged,"near-zero-density.f64"),kitaevDensityBytes=await readFile(kitaevDensityPath);
+  kitaevDensityBytes[0]^=1;await writeFile(kitaevDensityPath,kitaevDensityBytes);
+  await assert.rejects(importQuantumSceneBundle(kitaevChanged),/integrity|hash/i);
+  const invariantBytes=await readFile(join(fixtureRoot,"kitaev-invariant-producer-result.json"));
+  const invariantResult=JSON.parse(invariantBytes.toString("utf8"));
+  const invariantScene=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-invariant").folder));
+  assert.equal(invariantScene.source.provenance.model,"kitaev_chain");
+  assert.equal(invariantScene.source.provenance.runId,invariantResult.runId);
+  assert.equal(invariantScene.source.provenance.resultSha256,hash(invariantBytes));
+  assert.equal(invariantScene.source.topology.invariants[0].value,invariantResult.analysis.invariant.parity);
+  assert.equal(invariantScene.source.topology.invariants[1].value,invariantResult.analysis.invariant.winding);
+  const curve=inspectVerifiedScalarSample(invariantScene,{fingerprint:sceneFingerprint(invariantScene),objectId:"kitaev-bdg-curve",sampleIndex:25});
+  assert.deepEqual(curve.position,[invariantResult.analysis.invariant.curveX[25],invariantResult.analysis.invariant.curveY[25],0]);
+  assert.equal(curve.value,invariantResult.analysis.kValues[25]);
+  assert.equal(curve.valueDatasetId,"momentum-samples");
+  const changedInvariant=join(root,"kitaev-invariant-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("kitaev-invariant").folder),changedInvariant,{recursive:true});
+  const curvePath=join(changedInvariant,"bdg-chiral-curve.f64"),curveBytes=await readFile(curvePath);
+  curveBytes[0]^=1;await writeFile(curvePath,curveBytes);
+  await assert.rejects(importQuantumSceneBundle(changedInvariant),/integrity|hash/i);
+  const generalBytes=await readFile(join(fixtureRoot,"bhz-general-producer-result.json"));
+  const generalResult=JSON.parse(generalBytes.toString("utf8"));
+  const generalScenes=await Promise.all(["bhz-general-continuum","bhz-general-lattice"].map(id=>
+    importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample(id).folder))));
+  for(const source of generalScenes){
+    assert.equal(source.source.provenance.model,"bhz_general");
+    assert.equal(source.source.provenance.runId,generalResult.runId);
+    assert.equal(source.source.provenance.resultSha256,hash(generalBytes));
+    assert.equal(source.source.bands.objects.length,4);
+    assert.deepEqual(source.source.topology.invariants.map(item=>[item.id,item.value,item.status]),[["z2",1,"verified"]]);
+  }
+  assert.equal(generalScenes[0].source.reciprocal,undefined);
+  assert.ok(generalScenes[1].source.reciprocal);
+  assert.ok(generalScenes[1].source.objects.some(object=>object.id==="ribbon-states"));
+  assert.equal(inspectVerifiedBandSample(generalScenes[0],{fingerprint:sceneFingerprint(generalScenes[0]),objectId:"band-0",sampleIndex:220}).energy,
+    generalResult.analysis.continuumBandEnergies[0][220]);
+  assert.equal(inspectVerifiedBandSample(generalScenes[1],{fingerprint:sceneFingerprint(generalScenes[1]),objectId:"band-0",sampleIndex:220}).energy,
+    generalResult.analysis.latticeBandEnergies[0][220]);
+  const alteredGeneral=join(root,"altered-general.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("bhz-general-lattice").folder),alteredGeneral,{recursive:true});
+  const alteredBand=join(alteredGeneral,"band-energy-0.f64"),alteredBytes=await readFile(alteredBand);
+  alteredBytes[0]^=1;await writeFile(alteredBand,alteredBytes);
+  await assert.rejects(importQuantumSceneBundle(alteredGeneral),/integrity|hash/i);
   const qwzDirectory = join(fixtureRoot, "run-97a132d1d712414bb62bb8c9212f517e.qscene");
   const qwz = await importQuantumSceneBundle(qwzDirectory);
   const display = qwz.document.extensions[qwz.source.schema].topologyDisplay;
@@ -550,7 +1109,7 @@ try {
   damaged[0] ^= 1;
   await writeFile(artifact, damaged);
   await assert.rejects(importQuantumSceneBundle(copied), /integrity/);
-  console.log("M3D-Q01 four real Theory Lab bundles, units and tamper refusal passed");
+  console.log("M3D-Q01 four frozen QWZ/SSH bundles plus BHZ, BBH and Kitaev, units and tamper refusal passed");
 
   if (process.argv[2]) {
     const real = await importQuantumSceneBundle(process.argv[2]);

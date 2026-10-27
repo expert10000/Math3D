@@ -67,6 +67,8 @@ exports still use **Open Theory Lab quantum scene (.qscene)** or **Open in Math3
 
 For producer-neutral `scientific-scene/v1`, use **File → Verified quantum examples → Publish with reference Python script…** with an independently installed Python 3.10+ executable and the offered `sincos-grid.json` sample. Approve the explicit run, inspect the verified 2D surface, and reopen its `.sscene` folder with **File → Open scientific scene (.sscene)**. In **Projects**, the Verified scene links card near the top separates the two folder commands and reopens saved links after source verification. **Contents → Scientific scenes** can attach the open verified source as a compact link; save the Project to retain it. No arrays are copied into Project JSON. See the [Python publication workflow](docs/scientific-scene-python-job-workflow.md).
 
+For 3D fields, open **Graphs → Scientific Field Explorer → Dataset library → Built-in scenes**. The small portable `.sscene` bundles are also in [examples/scientific-scenes](examples/scientific-scenes/README.md); choose one of those folders with **Browse scientific scene** when opening from disk.
+
 For a hands-on test of **both** a Theory Lab `.qscene` and a Python `.sscene` in the installed desktop app, follow the [scene walkthrough](docs/theory-lab-python-scene-walkthrough.md). It includes Project restart, exact-source relink and a reversible missing-source check.
 
 M3D-Q05 adds a separate **Reciprocal space** view for supplied SSH 1D,
@@ -77,6 +79,13 @@ separate M3D-Q04 gap.
 
 Follow [the Lab-to-Math3D lattice walkthrough](docs/quantum-lattice-usage.md)
 for exact steps, build requirements, saved-run distinctions and verification.
+
+For Rice–Mele convergence studies, select a verified plot point and choose
+**Open selected run in Theory Lab**. On first use Math3D accepts either the
+installed `Quantum Hamiltonian Lab.exe` or a built Lab checkout. The selected
+run ID and result hash are checked again by Lab. The
+[scene walkthrough](docs/theory-lab-python-scene-walkthrough.md#d-ricemele-convergence-lab--verified-export--math3d)
+includes an installed-to-installed acceptance path.
 
 ## Install
 

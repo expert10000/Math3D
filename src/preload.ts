@@ -4,8 +4,11 @@ import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } f
 import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
+import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
+import type { StudySourceRunRequest } from "./main/quantumScene/studySourceRun";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
-import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
+import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, ScientificGraphReferenceOpenResponse, ScientificGraphRelinkPickResponse, Graph2DFieldLocator,
+  PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
 import type { TopologySample, TopologySampleRequest, VectorSample, VectorSampleRequest } from "./main/quantumScene/topologyDisplay";
 import type { WorkspaceFileOpenResponse } from "./main/ipc/workspaceFileIpc";
 
@@ -531,6 +534,7 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
   verifyActive: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:verifyActive", fingerprint),
   bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
+  scalarSample: (request: ScalarSampleRequest): Promise<ScalarSample> => ipcRenderer.invoke("quantumScenes:scalarSample", request),
   topologySample: (request: TopologySampleRequest): Promise<TopologySample> => ipcRenderer.invoke("quantumScenes:topologySample", request),
   vectorSample: (request: VectorSampleRequest): Promise<VectorSample> => ipcRenderer.invoke("quantumScenes:vectorSample", request),
   pickMatchingReference: (fingerprint: string): Promise<QuantumSceneRelinkResponse> => ipcRenderer.invoke("quantumScenes:pickMatchingReference", fingerprint),
@@ -545,20 +549,59 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:openSourceRun", { fingerprint }),
+  openStudySourceRun: (request: StudySourceRunRequest): Promise<
+    { ok: true; canceled: false; runId: string; resultSha256: string } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openStudySourceRun", request),
 }));
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
   openGraphDataset: (): Promise<ScientificGraphDatasetOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDataset"),
-  openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "vortexFlow" | "vortexVolume"):
+  openGraphDatasetPreset: (id: "sincos" | "thermal" | "quadraticPotential" | "saddlePotential" |
+    "gaussianBump" | "quadraticVolume" | "complexWave" | "complexWaveVolume" | "vortexFlow" |
+    "vortexVolume" | "vortex80" | "burgersMeasured"):
     Promise<ScientificGraphDatasetOpenResponse> =>
     ipcRenderer.invoke("scientificScenes:openGraphDatasetPreset", id),
+  openGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string }):
+    Promise<ScientificGraphReferenceOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDatasetReference", request),
+  checkGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string }):
+    Promise<ScientificGraphReferenceOpenResponse> => ipcRenderer.invoke("scientificScenes:checkGraphDatasetReference", request),
+  chooseGraphDatasetRelink: (): Promise<ScientificGraphRelinkPickResponse> =>
+    ipcRenderer.invoke("scientificScenes:chooseGraphDatasetRelink"),
   previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphSlice", request),
+  previewGraphVolumeLine: (request: { fingerprint: string; datasetId: string;
+    normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphVolumeLine", request),
+  previewGraphVectorVolumeLine: (request: { fingerprint: string; datasetId: string;
+    components: [string, string, string]; component: string;
+    normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphVectorVolumeLine", request),
+  previewGraphComplexVolumeLines: (request: { fingerprint: string; datasetId: string;
+    normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+    ipcRenderer.invoke("scientificScenes:previewGraphComplexVolumeLines", request),
   previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
     normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphPlane", request),
+  previewVectorPlane: (request: { fingerprint: string; datasetId: string;
+    components: [string, string] }) => ipcRenderer.invoke("scientificScenes:previewVectorPlane", request),
   previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
     ipcRenderer.invoke("scientificScenes:previewGraphVolume", request),
+  previewVectorVolume: (request: { fingerprint: string; datasetId: string;
+    components: [string, string, string]; sampleLimit?: number }) =>
+    ipcRenderer.invoke("scientificScenes:previewVectorVolume", request),
+  previewVectorSamples: (request: { fingerprint: string; datasetId: string;
+    components: [string, string, string]; selection: { kind: "slice" | "stencil-slice" |
+      "source-stencil-slice"; normalAxis: 0 | 1 | 2;
+      fixedIndex: number } | { kind: "probe" | "source-stencil-probe";
+        indices: [number, number, number] } }) =>
+    ipcRenderer.invoke("scientificScenes:previewVectorSamples", request),
+  previewVectorTile: (request: { fingerprint: string; datasetId: string;
+    components: [string, string, string]; indices: [number, number, number] }) =>
+    ipcRenderer.invoke("scientificScenes:previewVectorTile", request),
+  previewVectorTiles: (request: { fingerprint: string; datasetId: string;
+    components: [string, string, string]; indicesBatch: [number, number, number][] }) =>
+    ipcRenderer.invoke("scientificScenes:previewVectorTiles", request),
   closeGraphDataset: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("scientificScenes:closeGraphDataset", fingerprint),
   openExample: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openExample"),
   openDirectory: (): Promise<ScientificSceneOpenResponse> => ipcRenderer.invoke("scientificScenes:openDirectory"),

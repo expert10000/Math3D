@@ -2,13 +2,15 @@ import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { Graph2DScientificVolume, ScientificCoordinateSystem } from "@math3d/core";
+import { ScientificFieldTransferControls } from "./ScientificFieldTransferControls";
+import { scientificFieldColor, scientificFieldRange, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 
-export function ScientificFieldVolume({ volume, coordinate, label, unit }: {
+export function ScientificFieldVolume({ volume, coordinate, label, unit, transfer, onApplyTransfer }: {
   volume: Graph2DScientificVolume; coordinate: ScientificCoordinateSystem; label: string; unit: string;
+  transfer: ScientificFieldTransfer; onApplyTransfer: (transfer: ScientificFieldTransfer) => void;
 }) {
+  const range = scientificFieldRange(volume.values, transfer);
   const field = useMemo(() => {
-    let low = Infinity, high = -Infinity;
-    for (const value of volume.values) { if (value < low) low = value; if (value > high) high = value; }
     const positions = new Float32Array(volume.values.length * 3);
     const colors = new Float32Array(volume.values.length * 3);
     const extents = volume.sourceShape.map((count, axis) => (count - 1) * coordinate.spacing[axis]!);
@@ -19,17 +21,17 @@ export function ScientificFieldVolume({ volume, coordinate, label, unit }: {
       const indices = [i, j, k], output = next * 3;
       for (let axis = 0; axis < 3; axis++) {
         const count = volume.sampleShape[axis]!, source = volume.sourceShape[axis]!;
-        const original = count === 1 ? 0 : indices[axis]! * (source - 1) / (count - 1);
+        const original = count === 1 ? 0 : Math.round(indices[axis]! * (source - 1) / (count - 1));
         positions[output + axis] = (original - (source - 1) / 2) * coordinate.spacing[axis]! * 2 / scale;
       }
-      const t = high === low ? .5 : (volume.values[next]! - low) / (high - low);
-      colors[output] = (30 + 220 * t) / 255;
-      colors[output + 1] = (80 + 135 * (1 - Math.abs(2 * t - 1))) / 255;
-      colors[output + 2] = (235 - 205 * t) / 255;
+      const color = scientificFieldColor(volume.values[next]!, range);
+      colors[output] = color[0] / 255;
+      colors[output + 1] = color[1] / 255;
+      colors[output + 2] = color[2] / 255;
       next++;
     }
-    return { positions, colors, low, high };
-  }, [volume, coordinate]);
+    return { positions, colors };
+  }, [volume, coordinate, transfer]);
   return <figure className="graph2d-scientific-volume" aria-label={`Verified volume for ${label}`}>
     <figcaption>{label} ({unit}) · 3D volume overview · {volume.sampleShape.join(" × ")} displayed samples
       {volume.sampleShape.some((size, axis) => size !== volume.sourceShape[axis]) &&
@@ -47,7 +49,9 @@ export function ScientificFieldVolume({ volume, coordinate, label, unit }: {
         <OrbitControls enablePan enableZoom />
       </Canvas>
     </div>
-    <p>Drag to rotate; scroll to zoom. Axes: {coordinate.axes.map(axis => `${axis.name} (${axis.unit})`).join(" · ")}. Blue {field.low} to red {field.high} {unit}.</p>
+    <p>Drag to rotate; scroll to zoom. Axes: {coordinate.axes.map(axis => `${axis.name} (${axis.unit})`).join(" · ")}.</p>
+    <ScientificFieldTransferControls range={range} transfer={transfer} unit={unit} onApply={onApplyTransfer}
+      rangeLabel="Displayed sample range" />
     <small>Verified sample {volume.sampleSha256} · source resource {volume.resourceSha256}</small>
   </figure>;
 }

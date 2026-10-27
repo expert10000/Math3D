@@ -1,0 +1,571 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-c53d91611dd34bac80a93f9b56f0e74e-lattice-bands",
+  "title": "BHZ_GENERAL supplied lattice energy bands",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-c53d91611dd34bac80a93f9b56f0e74e",
+    "jobId": "fixture-bhz-general-m2",
+    "model": "bhz_general",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-24T11:57:44.980596+00:00",
+    "resultSha256": "1fa8a544916ad8d8ed3c0fb24d5f8b42b84fcd87e6c20434db43ef2689fbc850",
+    "adapter": "qvis/1",
+    "parameters": {
+      "A": 1,
+      "B": 1,
+      "C": 0,
+      "D": 0,
+      "M": 2,
+      "R": 0.2,
+      "grid": 21,
+      "edgeCells": 12,
+      "edgeSamples": 15,
+      "continuumExtent": 1
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "bhz_general"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "kx",
+      "ky",
+      "energy"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "rad / lattice constant",
+      "normalized energy (hbar=1)"
+    ]
+  },
+  "camera": {
+    "position": [
+      15,
+      -14,
+      13
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "band-0",
+      "label": "Occupied 1",
+      "kind": "mesh",
+      "positions": "band-positions-0",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-0",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-1",
+      "label": "Occupied 2",
+      "kind": "mesh",
+      "positions": "band-positions-1",
+      "visible": true,
+      "style": {
+        "color": "#c994d7",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-1",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-2",
+      "label": "Empty 1",
+      "kind": "mesh",
+      "positions": "band-positions-2",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-2",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-3",
+      "label": "Empty 2",
+      "kind": "mesh",
+      "positions": "band-positions-3",
+      "visible": true,
+      "style": {
+        "color": "#7fa8ee",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-3",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "ribbon-states",
+      "label": "Producer open-ribbon energies (color = outer-edge weight)",
+      "kind": "point-cloud",
+      "positions": "ribbon-spectrum",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "ribbon-edge-weight"
+    },
+    {
+      "id": "symmetry-points",
+      "label": "Named high-symmetry k-points",
+      "kind": "point-cloud",
+      "positions": "symmetry-points",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "primitive-bz",
+      "label": "Supplied primitive Brillouin-zone boundary",
+      "kind": "polyline",
+      "positions": "primitive-bz",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "symmetry-path",
+      "label": "Γ → X → M → Γ",
+      "kind": "polyline",
+      "positions": "symmetry-path",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "reciprocal-b1",
+      "label": "Reciprocal b1 (2π convention)",
+      "kind": "vectors",
+      "positions": "reciprocal-origin-0",
+      "visible": true,
+      "style": {
+        "color": "#5995f0",
+        "opacity": 1,
+        "size": 1
+      },
+      "values": "reciprocal-basis-0"
+    },
+    {
+      "id": "reciprocal-b2",
+      "label": "Reciprocal b2 (2π convention)",
+      "kind": "vectors",
+      "positions": "reciprocal-origin-1",
+      "visible": true,
+      "style": {
+        "color": "#5995f0",
+        "opacity": 1,
+        "size": 1
+      },
+      "values": "reciprocal-basis-1"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "band-k",
+      "path": "band-k.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "rad / lattice constant",
+      "bytes": 10584,
+      "sha256": "e73ee7960e27f0cdfa74fabf66c1812c2280dbd550b034ff070e957a29016d02"
+    },
+    {
+      "id": "band-triangles",
+      "path": "band-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 800,
+      "unit": "vertex index",
+      "bytes": 19200,
+      "sha256": "33765386810e20f762a1cf1c6591f45ef1f23fb63747a6744bedc146ecece79e"
+    },
+    {
+      "id": "band-energy-0",
+      "path": "band-energy-0.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "9d0d77472a80dabcea4a671066794c0cb6ca8dfd12688d556564f3f54388d340"
+    },
+    {
+      "id": "band-positions-0",
+      "path": "band-positions-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "311bdd2bee1b83bbb63b42cda5e43cc2bb456fa1938332e8109f08dcef6214d4"
+    },
+    {
+      "id": "band-energy-1",
+      "path": "band-energy-1.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "908bad376440fa9777e22985809e53780c9a1d5d66fe8c672cf18b4a5a48b8c2"
+    },
+    {
+      "id": "band-positions-1",
+      "path": "band-positions-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "8af893c3b3d54d4dcefe99de987b73eacb347491e6ba354c9b74ce39cb17ed6c"
+    },
+    {
+      "id": "band-energy-2",
+      "path": "band-energy-2.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "044eac8bbc69d170fa3c3af7c79947c3c27f21e5b7586515017f5ea1fe292e85"
+    },
+    {
+      "id": "band-positions-2",
+      "path": "band-positions-2.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "2c57df808c2aedb6582e1f0fc80b4286661c904db262c2da7f1c6a143e3ffdc9"
+    },
+    {
+      "id": "band-energy-3",
+      "path": "band-energy-3.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 441,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 3528,
+      "sha256": "53cf3b37119ca486884491645929347445136e569d43369210368130f0c9f81f"
+    },
+    {
+      "id": "band-positions-3",
+      "path": "band-positions-3.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 441,
+      "unit": "declared mixed scene units",
+      "bytes": 10584,
+      "sha256": "f993b61bd69e7644e1a99c57a6efa2a1d4bcd75fc607bf6edae7aef304e40aed"
+    },
+    {
+      "id": "ribbon-spectrum",
+      "path": "ribbon-spectrum.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 720,
+      "unit": "mixed k/energy display units",
+      "bytes": 17280,
+      "sha256": "1a90d7ee01c4db718441877fcea6f196b72cef4b2e49ddff43ef248d23ecf72a"
+    },
+    {
+      "id": "ribbon-edge-weight",
+      "path": "ribbon-edge-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 720,
+      "unit": "probability in outer two cells per edge",
+      "bytes": 5760,
+      "sha256": "e285b7aa8a1c84a1f4fe43a8b13feb84fa9796529d4d4cd63c6f3ec677bc1161"
+    },
+    {
+      "id": "symmetry-points",
+      "path": "symmetry-points.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 3,
+      "unit": "rad / lattice constant",
+      "bytes": 72,
+      "sha256": "0b38b9e58e766d6f3b357b3424436f55765ea9c3506cce3d411675f8ed44d32d"
+    },
+    {
+      "id": "primitive-bz",
+      "path": "primitive-bz.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 5,
+      "unit": "rad / lattice constant",
+      "bytes": 120,
+      "sha256": "ca64b02b579cbe5b41830cba9b223058cb8a0d499e2c1963fd0ffcf19601c29a"
+    },
+    {
+      "id": "symmetry-path",
+      "path": "symmetry-path.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 4,
+      "unit": "rad / lattice constant",
+      "bytes": 96,
+      "sha256": "d98e2296bfc3f2f5625acf5a583b34b927bad7b62fe9c4fb20909bec9351013e"
+    },
+    {
+      "id": "reciprocal-origin-0",
+      "path": "reciprocal-origin-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    {
+      "id": "reciprocal-basis-0",
+      "path": "reciprocal-basis-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "216c5ff606d91a2157202f64f248b7b4ffe3b93c3b0253ce803a6374081b3546"
+    },
+    {
+      "id": "reciprocal-origin-1",
+      "path": "reciprocal-origin-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    {
+      "id": "reciprocal-basis-1",
+      "path": "reciprocal-basis-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / lattice constant",
+      "bytes": 24,
+      "sha256": "d406424da99864b9a400d28d960613e2af5da04fbd59876c5812b3f083d4936e"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "band-convention",
+      "text": "Original worker samples. Lines/triangles are display connections, not interpolated scientific values. No periodic seam or topology inference.",
+      "position": [
+        0,
+        0,
+        6
+      ]
+    },
+    {
+      "id": "band-gap",
+      "text": "Atlas continuum and declared lattice regularization are separate views. Worker lattice Z2 1; open-ribbon states are supplied only with the lattice view.",
+      "position": [
+        0,
+        0,
+        -6
+      ]
+    },
+    {
+      "id": "reciprocal-label-0",
+      "text": "b1",
+      "position": [
+        6.283185307179586,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "reciprocal-label-1",
+      "text": "b2",
+      "position": [
+        0,
+        6.283185307179586,
+        0
+      ]
+    },
+    {
+      "id": "k-label-Gamma",
+      "text": "Γ",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "k-label-X",
+      "text": "X",
+      "position": [
+        3.141592653589793,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "k-label-M",
+      "text": "M",
+      "position": [
+        3.141592653589793,
+        3.141592653589793,
+        0
+      ]
+    }
+  ],
+  "bands": {
+    "kind": "surface",
+    "coordinates": "band-k",
+    "energies": [
+      "band-energy-0",
+      "band-energy-1",
+      "band-energy-2",
+      "band-energy-3"
+    ],
+    "objects": [
+      "band-0",
+      "band-1",
+      "band-2",
+      "band-3"
+    ],
+    "labels": [
+      "Occupied 1",
+      "Occupied 2",
+      "Empty 1",
+      "Empty 2"
+    ],
+    "energyUnit": "normalized energy (hbar=1)",
+    "bulkGap": 2.0481588731739384,
+    "grid": [
+      21,
+      21
+    ]
+  },
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "z2",
+        "label": "Inversion-parity Z2",
+        "value": 1,
+        "status": "verified",
+        "method": "Producer Fu-Kane TRIM parity with dense-grid gap check; R term preserves time reversal and inversion"
+      }
+    ],
+    "limitations": [
+      "Continuum bulk and a=1 lattice regularization are separate supplied views.",
+      "Stored eigenvector phases are gauge-dependent; edge weights and spin expectations are producer values.",
+      "A finite open ribbon is not a semi-infinite boundary or a universal material prediction."
+    ]
+  },
+  "reciprocal": {
+    "directBasis": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ]
+    ],
+    "basis": [
+      [
+        6.283185307179586,
+        0,
+        0
+      ],
+      [
+        0,
+        6.283185307179586,
+        0
+      ]
+    ],
+    "directUnit": "lattice constant a=1",
+    "reciprocalUnit": "rad / lattice constant",
+    "pointObject": "symmetry-points",
+    "points": [
+      {
+        "id": "Gamma",
+        "label": "Γ",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "X",
+        "label": "X",
+        "position": [
+          3.141592653589793,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "M",
+        "label": "M",
+        "position": [
+          3.141592653589793,
+          3.141592653589793,
+          0
+        ]
+      }
+    ],
+    "paths": [
+      {
+        "object": "symmetry-path",
+        "label": "Γ → X → M → Γ",
+        "points": [
+          "Gamma",
+          "X",
+          "M",
+          "Gamma"
+        ]
+      }
+    ],
+    "boundaryObjects": [
+      "primitive-bz"
+    ]
+  }
+}

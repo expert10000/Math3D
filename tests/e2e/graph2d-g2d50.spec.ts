@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState } from "./helpers/surfaceAppHarness";
+import { graphEditor, openGraphType, saveGraphEditor } from "./helpers/graphAuthoring";
 
 test("G2D50 keeps invalid polar bounds visible and disables measurement without clipping the Inspector", async () => {
   const app = await launchSurfaceApp();
@@ -9,9 +10,9 @@ test("G2D50 keeps invalid polar bounds visible and disables measurement without 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click();
     const functions = page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add polar" }).click();
-    await functions.getByLabel("Polar radius expression").fill("2*cos(theta)");
-    await functions.getByRole("button", { name: "Save polar" }).click();
+    await openGraphType(page, "Polar");
+    await graphEditor(page).getByLabel("Polar radius expression").fill("2*cos(theta)");
+    await saveGraphEditor(page);
     await functions.getByRole("button", { name: "Select r" }).click();
     const inspector = page.getByLabel("Graph inspector");
     const measurements = inspector.getByLabel("Polar measurements");
@@ -61,9 +62,9 @@ test("G2D50 recovers a graph when the sampling worker fails to load", async () =
     });
     await page.getByTestId("workspace-nav-graphs").click();
     const functions = page.getByLabel("Graph functions");
-    await functions.getByRole("button", { name: "Add function" }).click();
-    await functions.getByLabel("Function expression").fill("x^2");
-    await functions.getByRole("button", { name: "Save function" }).click();
+    await openGraphType(page, "Function");
+    await graphEditor(page).getByLabel("Function expression").fill("x^2");
+    await saveGraphEditor(page);
     await expect(page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("d", /[ML]/);
     await expect(page.getByText("Graph sampling failed", { exact: false })).toHaveCount(0);
     await expect(page.getByLabel("Graph inspector").getByTestId("graph2d-sampling-status"))

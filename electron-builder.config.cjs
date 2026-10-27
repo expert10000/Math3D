@@ -67,16 +67,44 @@ const config = {
       to: "scientific-scenes/thermal-gradient.sscene",
     },
     {
+      from: "tests/fixtures/scientific-scene/quadratic-potential.sscene",
+      to: "scientific-scenes/quadratic-potential.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/saddle-potential.sscene",
+      to: "scientific-scenes/saddle-potential.sscene",
+    },
+    {
+      from: "tests/fixtures/scientific-scene/gaussian-bump.sscene",
+      to: "scientific-scenes/gaussian-bump.sscene",
+    },
+    {
+      from: "examples/scientific-scenes/quadratic-volume.sscene",
+      to: "scientific-scenes/quadratic-volume.sscene",
+    },
+    {
       from: "tests/fixtures/scientific-scene/complex-wave.sscene",
       to: "scientific-scenes/complex-wave.sscene",
+    },
+    {
+      from: "examples/scientific-scenes/complex-wave-volume.sscene",
+      to: "scientific-scenes/complex-wave-volume.sscene",
     },
     {
       from: "tests/fixtures/scientific-scene/vortex-flow.sscene",
       to: "scientific-scenes/vortex-flow.sscene",
     },
     {
-      from: "tests/fixtures/scientific-scene/vortex-volume.sscene",
+      from: "examples/scientific-scenes/vortex-volume.sscene",
       to: "scientific-scenes/vortex-volume.sscene",
+    },
+    {
+      from: "output/scientific-vortex-80-overview.sscene",
+      to: "scientific-scenes/scientific-vortex-80-overview.sscene",
+    },
+    {
+      from: "output/scientific-burgers-horizontal-level1.sscene",
+      to: "scientific-scenes/scientific-burgers-horizontal-level1.sscene",
     },
     {
       from: "integrations/python/scientific_scene_publisher.py",

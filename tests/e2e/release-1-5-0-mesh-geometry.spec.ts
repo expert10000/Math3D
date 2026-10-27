@@ -388,6 +388,7 @@ test.describe("release 1.5.0 mesh and geometry preset check", () => {
     try {
       ctx = await launchReleaseCheckApp();
       const rootPid = ctx.app.process().pid;
+      if (rootPid === undefined) throw new Error("Electron process PID is unavailable");
       samples.push(await sampleProcessTreeSafely(rootPid, performance.now() - startedAt));
 
       if (selectedAreas.has("mesh")) {

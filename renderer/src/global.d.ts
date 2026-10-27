@@ -591,19 +591,70 @@ declare global {
   interface Window {
     scientificScenes?: {
       openGraphDataset: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
+          locator: import("@math3d/core").Graph2DFieldLocator;
           datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
             { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
-      openGraphDatasetPreset: (id: "sincos" | "thermal" | "complexWave" | "vortexFlow" | "vortexVolume") =>
+      openGraphDatasetPreset: (id: "sincos" | "thermal" | "quadraticPotential" | "saddlePotential" |
+        "gaussianBump" | "quadraticVolume" | "complexWave" | "complexWaveVolume" | "vortexFlow" | "vortexVolume" |
+        "vortex80" | "burgersMeasured") =>
         ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>;
+      openGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string }) =>
+        Promise<{ ok: true; source: Awaited<ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>> extends infer R ?
+          R extends { ok: true; source: infer S } ? S : never : never } |
+          { ok: false; status: "missing" | "changed" | "error"; error: string }>;
+      checkGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string }) =>
+        ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDatasetReference"]>;
+      chooseGraphDatasetRelink: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
+        locator: import("@math3d/core").Graph2DFieldLocator;
+        datasets: { datasetId: string; component: string; shape: [number, number] | [number, number, number] }[] } } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       previewGraphSlice: (request: { fingerprint: string; datasetId: string; component?: string; varyingAxis: 0 | 1; fixedIndex: number }) =>
         Promise<{ fingerprint: string; datasetId: string; component: string; varyingAxis: 0 | 1; fixedIndex: number;
           shape: [number, number]; resourceSha256: string; sliceSha256: string; values: number[] }>;
+      previewGraphVolumeLine: (request: { fingerprint: string; datasetId: string;
+        normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+        Promise<{ fingerprint: string; datasetId: string; component: "scalar";
+          shape: [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+          varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
+          sliceSha256: string; values: number[] }>;
+      previewGraphVectorVolumeLine: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; component: string;
+        normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+        Promise<{ fingerprint: string; datasetId: string; component: string;
+          shape: [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+          varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
+          sliceSha256: string; values: number[] }>;
+      previewGraphComplexVolumeLines: (request: { fingerprint: string; datasetId: string;
+        normalAxis: 0 | 1 | 2; planeFixedIndex: number; varyingAxis: 0 | 1 | 2; fixedIndex: number }) =>
+        Promise<readonly [{ fingerprint: string; datasetId: string; component: "real";
+          shape: [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+          varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
+          sliceSha256: string; values: number[] }, { fingerprint: string; datasetId: string; component: "imaginary";
+          shape: [number, number, number]; normalAxis: 0 | 1 | 2; planeFixedIndex: number;
+          varyingAxis: 0 | 1 | 2; fixedIndex: number; resourceSha256: string;
+          sliceSha256: string; values: number[] }]>;
       previewGraphPlane: (request: { fingerprint: string; datasetId: string; component: string;
         normalAxis: 0 | 1 | 2 | null; fixedIndex: number | null }) =>
         Promise<import("@math3d/core").Graph2DScientificPlane>;
+      previewVectorPlane: (request: { fingerprint: string; datasetId: string;
+        components: [string, string] }) =>
+        Promise<[import("@math3d/core").Graph2DScientificPlane, import("@math3d/core").Graph2DScientificPlane]>;
       previewGraphVolume: (request: { fingerprint: string; datasetId: string; component: string }) =>
         Promise<import("@math3d/core").Graph2DScientificVolume>;
+      previewVectorVolume: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; sampleLimit?: number }) =>
+        Promise<[import("@math3d/core").Graph2DScientificVolume,
+          import("@math3d/core").Graph2DScientificVolume, import("@math3d/core").Graph2DScientificVolume]>;
+      previewVectorSamples: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; selection: import("@math3d/core").VectorField3DSparseSelection }) =>
+        Promise<import("@math3d/core").VectorField3DSparseSamples>;
+      previewVectorTile: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; indices: [number, number, number] }) =>
+        Promise<import("@math3d/core").VectorField3DVerifiedTile>;
+      previewVectorTiles: (request: { fingerprint: string; datasetId: string;
+        components: [string, string, string]; indicesBatch: [number, number, number][] }) =>
+        Promise<import("@math3d/core").VectorField3DVerifiedTile[]>;
       closeGraphDataset: (fingerprint: string) => Promise<boolean>;
       openExample: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
       openDirectory: () => Promise<import("./components/ScientificScenePreview").ScientificSceneOpenResponse>;
@@ -631,7 +682,7 @@ declare global {
     };
     quantumScenes?: {
       open: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
-      examples: () => Promise<{ id: string; label: string; description: string; model: "SSH" | "QWZ" | "Hydrogenic" }[]>;
+      examples: () => Promise<{ id: string; label: string; description: string; model: "SSH" | "Rice–Mele" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic" }[]>;
       openExample: (id: string) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
@@ -641,6 +692,13 @@ declare global {
         objectId: string; bandIndex: number; bandId: string; bandLabel: string; sampleIndex: number; sampleId: string;
         coordinateDatasetId: string; energyDatasetId: string; k: [number, number, number]; kUnit: string;
         energy: number; energyUnit: string; bulkGap: number; runId: string; resultSha256: string; fingerprint: string;
+      }>;
+      scalarSample: (request: { fingerprint: string; objectId: string; sampleIndex: number }) => Promise<{
+        objectId: string; objectLabel: string; sampleIndex: number; sampleId: string;
+        position: [number, number, number]; coordinateAxes: [string, string, string];
+        coordinateUnits: [string, string, string]; positionDatasetId: string;
+        value: number; valueUnit: string; valueDatasetId: string;
+        runId: string; resultSha256: string; fingerprint: string;
       }>;
       topologySample: (request: { fingerprint: string; quantityId: string; sampleIndex: number }) => Promise<
         { quantityId: string; quantityLabel: string; kind: string; objectId: string; sampleIndex: number; sampleId: string;
@@ -664,6 +722,10 @@ declare global {
       cancelFieldVolume: (requestId: string) => Promise<boolean>;
       revealSource: (fingerprint: string) => Promise<{ ok: true; directory: string } | { ok: false; error: string }>;
       openSourceRun: (fingerprint: string) => Promise<
+        { ok: true; canceled: false; runId: string; resultSha256: string } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      openStudySourceRun: (request: { fingerprint: string; series: "periodic" | "chain"; sampleIndex: number;
+        runId: string; resultSha256: string }) => Promise<
         { ok: true; canceled: false; runId: string; resultSha256: string } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };

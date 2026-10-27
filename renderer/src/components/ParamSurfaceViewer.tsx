@@ -373,6 +373,7 @@ type Props = {
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   captureToken?: number;
+  captureSize?: "thumbnail" | "report";
   onCaptureThumbnail?: (dataUrl: string | null) => void;
   showBoundingBox?: boolean;
   resetToken?: number;
@@ -1496,6 +1497,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   cameraTourCommand = null,
   onCameraTourEvent,
   captureToken = 0,
+  captureSize = "thumbnail",
   onCaptureThumbnail,
   showBoundingBox = false,
   resetToken,
@@ -6603,8 +6605,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }
     renderer.render(scene, cam);
     const src = renderer.domElement;
-    const w = 240;
-    const h = 160;
+    const w = captureSize === "report" ? 720 : 240;
+    const h = captureSize === "report" ? 480 : 160;
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
@@ -6615,7 +6617,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }
     ctx.drawImage(src, 0, 0, w, h);
     onCaptureThumbnail(canvas.toDataURL("image/jpeg", 0.7));
-  }, [captureToken]);
+  }, [captureToken, captureSize]);
 
   useEffect(() => {
     const obj = surfaceObjRef.current;

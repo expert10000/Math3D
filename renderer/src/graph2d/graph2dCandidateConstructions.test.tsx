@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { analyzeGraph2DCriticalPoints, analyzeGraph2DIntersections, applyGraph2DAuthoring,
-  createEmptyGraph2DDocument, graph2DConstructionFromCandidate, inspectGraph2DCompatibility,
+  createEmptyGraph2DDocument, graph2DConstructionFromCandidate, graph2DConstructionActionsFromCandidates,
+  graph2DConstructionActionsFromIntersectionCandidates,
+  isGraph2DCriticalCandidateAlreadySaved,
+  inspectGraph2DCompatibility,
   parseGraph2DDocument, resolveGraph2DConstructions, serializeGraph2DDocument,
   validateGraph2DConstructionSet, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -23,6 +26,30 @@ const edit = (adapter: Graph2DCommandAdapter, objectId: string, expression: stri
   }), "edit");
 
 describe("G2D49 source-linked numerical candidate constructions", () => {
+  it("builds an atomic batch with unique IDs and rejects partial or repeated candidates", () => {
+    const adapter = create("x^2-1");
+    const analysis = analyzeGraph2DCriticalPoints({ document: adapter.document(), objectId: "function_1", interval });
+    const roots = analysis.candidates.filter(item => item.kind === "zero" && item.confidence === "numerical");
+    expect(roots).toHaveLength(2);
+    const actions = graph2DConstructionActionsFromCandidates(adapter.document(), analysis, roots);
+    expect(() => graph2DConstructionActionsFromCandidates(adapter.document(), analysis,
+      [{ ...roots[0]!, x: roots[0]!.x + 0.01 }])).toThrow(/stale/);
+    expect(actions.map(item => item.type === "create" ? item.object.id : "")).toEqual(["construction_1", "construction_2"]);
+    adapter.commitConstructions(actions);
+    expect(adapter.document().source.constructions?.objects).toHaveLength(2);
+    expect(() => graph2DConstructionActionsFromCandidates(adapter.document(), analysis, roots)).toThrow(/already saved|stale/);
+    const refreshed = analyzeGraph2DCriticalPoints({ document: adapter.document(), objectId: "function_1", interval });
+    expect(refreshed.candidates.filter(item => item.kind === "zero").every(item =>
+      isGraph2DCriticalCandidateAlreadySaved(adapter.document(), item))).toBe(true);
+    expect(() => graph2DConstructionActionsFromCandidates(adapter.document(), refreshed,
+      refreshed.candidates.filter(item => item.kind === "zero"))).toThrow(/already saved/);
+    expect(() => graph2DConstructionActionsFromCandidates(create("x^2-1").document(),
+      { ...analysis, status: "incomplete" }, roots)).toThrow(/complete bounded scan/);
+    const saved = adapter.document().source.constructions!.objects[0]!;
+    const full = { ...adapter.document(), source: { ...adapter.document().source,
+      constructions: { version: 1 as const, objects: Array(32).fill(saved) } } };
+    expect(() => graph2DConstructionActionsFromCandidates(full, analysis, roots)).toThrow(/construction budget/);
+  });
   it("saves one root with bounded provenance, recomputes a nearby root, and makes a missing root unavailable", () => {
     const adapter = create("x^2-1");
     const analysis = analyzeGraph2DCriticalPoints({ document: adapter.document(), objectId: "function_1", interval });
@@ -91,6 +118,23 @@ describe("G2D49 source-linked numerical candidate constructions", () => {
       anchor: { ...saved.anchor, matchRadius: 100 } }] }, sources)).not.toEqual([]);
     expect(validateGraph2DConstructionSet({ version: 1, objects: [{ ...saved,
       inputs: [{ kind: "source", objectId: "function_1" }, { kind: "source", objectId: "function_1" }] }] }, sources)).not.toEqual([]);
+  });
+
+  it("saves multiple intersections atomically and rejects duplicates", () => {
+    const adapter = create("x^2", "1");
+    const analysis = analyzeGraph2DIntersections({ document: adapter.document(), firstObjectId: "function_1",
+      secondObjectId: "function_2", interval });
+    expect(analysis.candidates).toHaveLength(2);
+    const actions = graph2DConstructionActionsFromIntersectionCandidates(adapter.document(), analysis,
+      analysis.candidates);
+    expect(actions.map(action => action.type === "create" ? action.object.id : "")).toEqual([
+      "construction_1", "construction_2"]);
+    expect(() => graph2DConstructionActionsFromIntersectionCandidates(adapter.document(), analysis,
+      [analysis.candidates[0]!, analysis.candidates[0]!])).toThrow(/duplicated/);
+    adapter.commitConstructions(actions);
+    expect(adapter.document().source.constructions?.objects).toHaveLength(2);
+    expect(() => graph2DConstructionActionsFromIntersectionCandidates(adapter.document(), analysis,
+      analysis.candidates)).toThrow(/current complete/);
   });
 
   it("keeps multiple distinct candidate scans within the shared construction evaluation budget", () => {

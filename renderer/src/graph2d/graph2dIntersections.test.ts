@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DIntersections, applyGraph2DAuthoring, createEmptyGraph2DDocument,
-  createGraph2DDocument, isGraph2DIntersectionCurrent } from "@math3d/core";
+  createGraph2DDocument, createGraph2DNumericalDataset, isGraph2DIntersectionCurrent } from "@math3d/core";
 
 const documentFor = (first: string, second: string) => {
   let document = createEmptyGraph2DDocument(`intersection:${first}:${second}`);
@@ -25,29 +25,83 @@ describe("Graph2D pairwise intersections", () => {
     const result = analyzeGraph2DIntersections({ document, firstObjectId: "function_1",
       secondObjectId: "function_2", interval: { min: -2, max: 2 } });
     expect(result.status).toBe("complete");
+    expect(result.unresolvedIntervals).toEqual([]);
     expect(near(result.candidates, -1)).toBe(true);
     expect(near(result.candidates, 1)).toBe(true);
     expect(result.candidates.every((entry) => entry.classification === "crossing" &&
       entry.resultId === result.resultId && entry.residual <= 1e-7)).toBe(true);
+    expect(result.candidates.every((entry) => entry.localSensitivity !== null &&
+      Math.abs(entry.localSensitivity - 0.5) < 1e-4 &&
+      entry.estimatedXError !== null && entry.estimatedXError < 1e-6)).toBe(true);
     expect(result.evaluations).toBeLessThanOrEqual(12000);
     expect(isGraph2DIntersectionCurrent(result, document)).toBe(true);
+    const dataset = createGraph2DNumericalDataset(result);
+    expect(dataset).toMatchObject({ format: "math3d.graph2d-numerical.v1", operation: "intersections",
+      objectIds: ["function_1", "function_2"], scan: { quality: "approximate" } });
+    expect(dataset.candidates).toHaveLength(2);
+    expect(dataset.candidates.every(entry => entry.localSensitivity !== null &&
+      entry.estimatedXError !== null)).toBe(true);
   });
 
   it("reports an even tangency as possible, including off-grid", () => {
     const atZero = analyze("x^2", "0");
     expect(near(atZero.candidates.filter((entry) => entry.classification === "tangent-possible"), 0)).toBe(true);
+    expect(atZero.candidates.filter((entry) => entry.classification === "tangent-possible")
+      .every(entry => entry.localSensitivity === null && entry.estimatedXError === null)).toBe(true);
     const shifted = analyze("(x-0.3)^2", "0");
     expect(near(shifted.candidates.filter((entry) => entry.classification === "tangent-possible"), 0.3)).toBe(true);
   });
 
-  it("rejects poles and keeps unresolved brackets visible", () => {
+  it("withholds a location estimate when a crossing has zero local slope", () => {
+    const result = analyze("x^3", "0");
+    const crossing = result.candidates.find(entry => Math.abs(entry.x) < 1e-6);
+    expect(crossing?.classification).toBe("crossing");
+    expect(crossing?.localSensitivity).toBeNull();
+    expect(crossing?.estimatedXError).toBeNull();
+  });
+
+  it("finds two crossings hidden inside one same-sign base cell", () => {
+    const result = analyze("(x-0.001)*(x-0.002)", "0", 0, 1);
+    expect(near(result.candidates, 0.001)).toBe(true);
+    expect(near(result.candidates, 0.002)).toBe(true);
+    expect(result.evaluations).toBeLessThanOrEqual(12000);
+  });
+
+  it("separates local refinement from completeness and never certifies a small residual", () => {
+    const refined = analyze("x", "0.3");
+    expect(refined.status).toBe("complete");
+    expect(refined.quality).toBe("approximate");
+    expect(refined.candidates[0]?.quality).toBe("refined");
+    const sampled = analyze("x", "0");
+    expect(sampled.candidates[0]?.quality).toBe("approximate");
+    const pole = analyze("1/x", "0");
+    expect(pole.status).toBe("incomplete");
+    expect(pole.quality).toBe("incomplete");
+    expect(pole.publication.summary.quality).toBe("incomplete");
+    expect(pole.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= 0 && entry.max >= 0)).toBe(true);
+  });
+
+  it("rejects poles and keeps unresolved domain cells visible", () => {
     const reciprocal = analyze("1/x", "0");
     expect(reciprocal.candidates).toHaveLength(0);
     expect(reciprocal.invalidCells).toBeGreaterThan(0);
     const tangent = analyze("tan(x)", "0");
     expect(near(tangent.candidates, 0)).toBe(true);
     expect(tangent.candidates.some((entry) => Math.abs(Math.abs(entry.x) - Math.PI / 2) < 1e-3)).toBe(false);
-    expect(tangent.unresolvedBrackets).toBeGreaterThan(0);
+    expect(tangent.invalidCells).toBeGreaterThan(0);
+    expect(tangent.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= Math.PI / 2 && entry.max >= Math.PI / 2)).toBe(true);
+  });
+
+  it("retains a crossing separate from an off-grid pole", () => {
+    const result = analyze("(x-0.02)/(x-0.003)", "0", -1, 1);
+    expect(result.status).toBe("incomplete");
+    expect(result.invalidCells).toBeGreaterThan(0);
+    expect(result.unresolvedIntervals.some(entry => entry.reason === "undefined" &&
+      entry.min <= 0.003 && entry.max >= 0.003)).toBe(true);
+    expect(near(result.candidates, 0.02)).toBe(true);
+    expect(result.candidates.some(entry => Math.abs(entry.x - 0.003) < 1e-3)).toBe(false);
   });
 
   it("flags coincident functions instead of manufacturing many isolated crossings", () => {
@@ -61,5 +115,14 @@ describe("Graph2D pairwise intersections", () => {
     const document = documentFor("x", "2*x");
     expect(() => analyzeGraph2DIntersections({ document, firstObjectId: "function_1",
       secondObjectId: "function_1" })).toThrow();
+  });
+
+  it("keeps differently budgeted pair scans as distinct results", () => {
+    const document = documentFor("x", "1");
+    const request = { document, firstObjectId: "function_1", secondObjectId: "function_2" };
+    const quick = analyzeGraph2DIntersections({ ...request, maxEvaluations: 100 });
+    const thorough = analyzeGraph2DIntersections({ ...request, maxEvaluations: 12000 });
+    expect(quick.resultId).not.toBe(thorough.resultId);
+    expect(quick.status).toBe("incomplete");
   });
 });

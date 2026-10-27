@@ -5,6 +5,7 @@ import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocumen
   getGraph2DPresetCatalog, instantiateGraph2DPreset, inspectGraph2DCompatibility, structuralHash, sampleGraph2DScene,
   createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlayer, Graph2DAnimationExportBuilder,
   graph2DSamplingPresentationContext, presentGraph2DSampling, type Graph2DSampledSeries, type Graph2DAuthoringAction } from "@math3d/core";
+import { analyzeGraph2DCriticalPoints } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 
 const configured = () => {
@@ -47,6 +48,25 @@ describe("G2D38 bounded portable parameters", () => {
     const committed = adapter.commitScene(applyGraph2DAuthoring(document, { type: "parameter-value", name: "a", value: 3 }), "parameter-value");
     expect(committed.identity.revision).toBe(document.identity.revision + 1); expect(committed.identity.structuralHash).not.toBe(document.identity.structuralHash);
     expect(adapter.history().undoDepth).toBe(1); expect(adapter.undo()?.source.variables[0].value).toBe(2); expect(adapter.redo()?.source.variables[0].value).toBe(3);
+  });
+  it("refreshes numerical evidence for each parameter frame without changing committed results", () => {
+    const adapter = new Graph2DCommandAdapter(createEmptyGraph2DDocument("parameter-analysis"));
+    adapter.commitScene(applyGraph2DAuthoring(adapter.document(), { type: "parameter-create",
+      draft: { name: "a", value: 1, min: 0.5, max: 4, step: 0.5, unit: "" } }), "parameter-create");
+    const scene = applyGraph2DAuthoring(adapter.document(), { type: "create", draft: {
+      label: "family", expression: "a*x-1", domain: { min: -2, max: 2, includeMin: true, includeMax: true },
+      style: { color: "#2563eb", lineWidth: 2, lineStyle: "solid", visible: true } } });
+    const committed = adapter.commitScene(scene, "create");
+    const objectId = committed.source.objects[0]!.id;
+    const scan = (document: typeof committed) => analyzeGraph2DCriticalPoints({ document, objectId,
+      interval: { min: -2, max: 2 }, maxEvaluations: 2000 });
+    const base = scan(committed), frame = scan(previewGraph2DParameterValues(committed, { a: 2 }));
+    const zero = (result: typeof base) => result.candidates.find(candidate => candidate.kind === "zero")!;
+    expect(zero(base).x).toBeCloseTo(1, 6);
+    expect(zero(frame).x).toBeCloseTo(0.5, 6);
+    expect(frame.publication.resultId).not.toBe(base.publication.resultId);
+    expect(frame.publication.provenance.source.structuralHash).not.toBe(committed.identity.structuralHash);
+    expect(adapter.document().identity.structuralHash).toBe(committed.identity.structuralHash);
   });
   it("does not remove referenced names, rename bindings, overflow bounds or add duplicates", () => {
     const document = configured();

@@ -1,0 +1,337 @@
+{
+  "schema": "quantum-scene/v2",
+  "id": "run-18145016435540afafc5a2a06870566f-bands",
+  "title": "KITAEV_CHAIN supplied energy bands",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-18145016435540afafc5a2a06870566f",
+    "jobId": "fixture-kitaev-finite",
+    "model": "kitaev_chain",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-25T10:39:50.411363+00:00",
+    "resultSha256": "a007939b6773d2c93be1ff886f4c18a23326a14ad96706abc04075edd5c2229a",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": 0,
+      "hopping": 1,
+      "pairing": 0.8,
+      "cells": 16,
+      "kPoints": 101
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "kitaev_chain"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "k",
+      "energy",
+      "display z"
+    ],
+    "units": [
+      "rad / cell spacing",
+      "normalized energy (hbar=1)",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      0,
+      -4,
+      8
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "objects": [
+    {
+      "id": "band-0",
+      "label": "Lower band",
+      "kind": "polyline",
+      "positions": "band-positions-0",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-0"
+    },
+    {
+      "id": "band-1",
+      "label": "Upper band",
+      "kind": "polyline",
+      "positions": "band-positions-1",
+      "visible": true,
+      "style": {
+        "color": "#c994d7",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-1"
+    },
+    {
+      "id": "symmetry-points",
+      "label": "KITAEV_CHAIN high-symmetry k-points",
+      "kind": "point-cloud",
+      "positions": "symmetry-points",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "symmetry-path",
+      "label": "KITAEV_CHAIN supplied zone path",
+      "kind": "polyline",
+      "positions": "symmetry-path",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "primitive-bz",
+      "label": "SSH Brillouin-zone endpoints",
+      "kind": "point-cloud",
+      "positions": "primitive-bz",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.15
+      }
+    },
+    {
+      "id": "reciprocal-b1",
+      "label": "Reciprocal b1 (2π convention)",
+      "kind": "vectors",
+      "positions": "reciprocal-origin-0",
+      "visible": true,
+      "style": {
+        "color": "#5995f0",
+        "opacity": 1,
+        "size": 1
+      },
+      "values": "reciprocal-basis-0"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "band-k",
+      "path": "band-k.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "rad / cell spacing",
+      "bytes": 2424,
+      "sha256": "b25bd2a1f7db867197568d5825a0ed38b9175585ce9f331233062751eca49596"
+    },
+    {
+      "id": "band-energy-0",
+      "path": "band-energy-0.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 101,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 808,
+      "sha256": "4a726c3ce81c23658a89562873fbcacae76d704f039d960b56caa52b838e274b"
+    },
+    {
+      "id": "band-positions-0",
+      "path": "band-positions-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "declared mixed scene units",
+      "bytes": 2424,
+      "sha256": "55b1d6cb15510c226951b611ed462ebe5efb331c7cdeddb187ae0c03168f3136"
+    },
+    {
+      "id": "band-energy-1",
+      "path": "band-energy-1.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 101,
+      "unit": "normalized energy (hbar=1)",
+      "bytes": 808,
+      "sha256": "17069e1608c3a253ca8db772cfd523dbef52f1dd5eb105e5ebfd9f1cb2e8bb1a"
+    },
+    {
+      "id": "band-positions-1",
+      "path": "band-positions-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 101,
+      "unit": "declared mixed scene units",
+      "bytes": 2424,
+      "sha256": "e5efd888f1a5ca93985dbd1efb640dea25bb5d88ae8dd17470e68c6a7364dff4"
+    },
+    {
+      "id": "symmetry-points",
+      "path": "symmetry-points.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 3,
+      "unit": "rad / cell spacing",
+      "bytes": 72,
+      "sha256": "569dc66cee0b7b93cea3813f5a91f303310c2d1155787f85e197fa6a2653d462"
+    },
+    {
+      "id": "symmetry-path",
+      "path": "symmetry-path.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 3,
+      "unit": "rad / cell spacing",
+      "bytes": 72,
+      "sha256": "569dc66cee0b7b93cea3813f5a91f303310c2d1155787f85e197fa6a2653d462"
+    },
+    {
+      "id": "primitive-bz",
+      "path": "primitive-bz.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad / cell spacing",
+      "bytes": 48,
+      "sha256": "c9664c6ebc23a2882e5ada9ee0dff0bddd615fe31ea18da6fa4299b65add8bda"
+    },
+    {
+      "id": "reciprocal-origin-0",
+      "path": "reciprocal-origin-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / cell spacing",
+      "bytes": 24,
+      "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    },
+    {
+      "id": "reciprocal-basis-0",
+      "path": "reciprocal-basis-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "rad / cell spacing",
+      "bytes": 24,
+      "sha256": "216c5ff606d91a2157202f64f248b7b4ffe3b93c3b0253ce803a6374081b3546"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "band-convention",
+      "text": "Original worker samples. Lines/triangles are display connections, not interpolated scientific values. No periodic seam or topology inference.",
+      "position": [
+        0,
+        0,
+        2
+      ]
+    },
+    {
+      "id": "band-gap",
+      "text": "Kitaev producer bulk gap 3.200000 (open); finite end-site density is a separate observation. No topological invariant is supplied.",
+      "position": [
+        0,
+        0,
+        -2
+      ]
+    }
+  ],
+  "bands": {
+    "kind": "path",
+    "coordinates": "band-k",
+    "energies": [
+      "band-energy-0",
+      "band-energy-1"
+    ],
+    "objects": [
+      "band-0",
+      "band-1"
+    ],
+    "labels": [
+      "Lower band",
+      "Upper band"
+    ],
+    "energyUnit": "normalized energy (hbar=1)",
+    "bulkGap": 3.2
+  },
+  "reciprocal": {
+    "directBasis": [
+      [
+        1,
+        0,
+        0
+      ]
+    ],
+    "basis": [
+      [
+        6.283185307179586,
+        0,
+        0
+      ]
+    ],
+    "directUnit": "cell spacing a=1",
+    "reciprocalUnit": "rad / cell spacing",
+    "pointObject": "symmetry-points",
+    "points": [
+      {
+        "id": "Xminus",
+        "label": "−π",
+        "position": [
+          -3.141592653589793,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "Gamma",
+        "label": "Γ",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "id": "Xplus",
+        "label": "+π",
+        "position": [
+          3.141592653589793,
+          0,
+          0
+        ]
+      }
+    ],
+    "paths": [
+      {
+        "object": "symmetry-path",
+        "label": "−π → Γ → +π",
+        "points": [
+          "Xminus",
+          "Gamma",
+          "Xplus"
+        ]
+      }
+    ],
+    "boundaryObjects": [
+      "primitive-bz"
+    ]
+  }
+}

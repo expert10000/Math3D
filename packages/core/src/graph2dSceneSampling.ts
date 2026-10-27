@@ -21,6 +21,8 @@ export type Graph2DSceneSamplingRequest = Readonly<{
   timeBudgetMs?: number;
   /** Publication-only repeatability: bounded evaluation work, no clock-dependent truncation. */
   deterministic?: boolean;
+  /** Interactive host runs phase nullcline/equilibrium analysis in a separate job. */
+  separatePhaseAnalysis?: boolean;
 }>;
 export type Graph2DSampledSeries = Readonly<{ objectId: string; style: Graph2DObjectDisplay; artifact: Graph2DSamplingArtifact;
   /** Visual-only outside the authored x domain. Never probed, fitted, analysed or published. */
@@ -65,7 +67,7 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
           Graph2DSlopeFieldObject,
         maxSamples: common.policy.maxSamples }) :
       object.kind === "phase-portrait" ? sampleGraph2DPhasePortrait({ ...common, object,
-        maxSamples: common.policy.maxSamples }) :
+        maxSamples: common.policy.maxSamples, includeAnalysis: !request.separatePhaseAnalysis }) :
       object.kind === "time-ode" ? sampleGraph2DTimeOde({ ...common, object,
         maxSamples: common.policy.maxSamples }) :
       sampleGraph2DPointSeries(object, request.pointTables?.[object.table.id] ?? null, common.policy.maxSamples);

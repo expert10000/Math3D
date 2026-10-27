@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 import { resolve } from "node:path";
 const { graph2DParityCorpus } = require(resolve("tests/fixtures/graph2dParityCorpus.ts"));
 const { sampleGraph2DScene, createGraph2DWorkspaceProject, createWorkspaceProjectHandoff, serializeWorkspaceProjectHandoff } = require(resolve("packages/core/src/index.ts"));
@@ -30,8 +31,8 @@ test("G2D34 browser worker numerical corpus and rendered visual geometry", async
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
   await page.reload(); await page.getByTestId("workspace-nav-graphs").click();
   const functions = page.getByLabel("Graph functions");
-  await functions.getByRole("button", { name: "Add function", exact: true }).click();
-  await functions.getByRole("button", { name: "Save function", exact: true }).click();
+  await openGraphType(page, "Function");
+  await saveGraphEditor(page);
   await expect(page.locator('[data-graph2d-path="function_1"]')).toHaveAttribute("d", /[ML]/);
   await expect.poll(() => page.evaluate(() => (window as unknown as { graphCorpusWorkers: { active: number } }).graphCorpusWorkers.active)).toBe(0);
   const workerUrl = await page.evaluate(() => (window as unknown as { graphCorpusWorkers: { url: string } }).graphCorpusWorkers.url);

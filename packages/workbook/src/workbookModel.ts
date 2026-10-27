@@ -324,6 +324,7 @@ export type WorkbookBlock = {
   params?: WorkbookParamState;
   visualize?: {
     live: boolean;
+    comparison?: import("./workbookComparisonReference").WorkbookComparisonReference;
     snapshot?: WorkbookViewSnapshot | null;
     snapshotA?: WorkbookViewSnapshot | null;
     snapshotB?: WorkbookViewSnapshot | null;

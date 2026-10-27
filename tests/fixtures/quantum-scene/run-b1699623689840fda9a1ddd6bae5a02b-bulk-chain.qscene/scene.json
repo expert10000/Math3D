@@ -1,0 +1,316 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-b1699623689840fda9a1ddd6bae5a02b-open-chain-pump",
+  "title": "Rice–Mele · bulk and open-chain motion",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-b1699623689840fda9a1ddd6bae5a02b",
+    "jobId": "fixture-rice-mele-chain",
+    "model": "rice_mele_pump",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-27T12:53:06.205309+00:00",
+    "resultSha256": "b02437f6a64d3cf9d49d0aa71ecd53c34d9617bd8510039cd50216e6a1fbab59",
+    "adapter": "qvis/1",
+    "parameters": {
+      "baseHopping": 1,
+      "modulation": 0.4,
+      "staggerAmplitude": 0.6,
+      "staggerOffset": 0,
+      "kSamples": 16,
+      "phaseSamples": 16,
+      "duration": 40,
+      "stepsPerPhase": 8,
+      "chainCells": 6
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "rice_mele"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "time",
+      "open-chain site or bond",
+      "recorded value"
+    ],
+    "units": [
+      "inverse hopping energy",
+      "site / bond index",
+      "quantity-specific; see each dataset"
+    ]
+  },
+  "camera": {
+    "position": [
+      26,
+      -9.600000000000001,
+      3
+    ],
+    "target": [
+      20,
+      6,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "chain-density",
+      "label": "Exact time–site occupied density",
+      "kind": "point-cloud",
+      "positions": "chain-site-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.9,
+        "size": 0.045
+      },
+      "scalars": "chain-site-density"
+    },
+    {
+      "id": "chain-current",
+      "label": "Exact time–bond electron current",
+      "kind": "point-cloud",
+      "positions": "chain-bond-positions",
+      "visible": true,
+      "style": {
+        "color": "#e5a567",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "chain-bond-current"
+    },
+    {
+      "id": "chain-charge",
+      "label": "Central-bond accumulated electron charge",
+      "kind": "point-cloud",
+      "positions": "chain-central-positions",
+      "visible": true,
+      "style": {
+        "color": "#ae96e5",
+        "opacity": 1,
+        "size": 0.07
+      },
+      "scalars": "chain-central-charge"
+    },
+    {
+      "id": "chain-left-edge",
+      "label": "Left-edge population",
+      "kind": "point-cloud",
+      "positions": "chain-edge-positions",
+      "visible": true,
+      "style": {
+        "color": "#78c9be",
+        "opacity": 1,
+        "size": 0.04
+      },
+      "scalars": "chain-left-edge"
+    },
+    {
+      "id": "chain-right-edge",
+      "label": "Right-edge population",
+      "kind": "point-cloud",
+      "positions": "chain-edge-positions",
+      "visible": true,
+      "style": {
+        "color": "#dd9e7c",
+        "opacity": 1,
+        "size": 0.04
+      },
+      "scalars": "chain-right-edge"
+    },
+    {
+      "id": "comparison-bulk-current",
+      "label": "Periodic filled-band current",
+      "kind": "point-cloud",
+      "positions": "comparison-bulk-current-positions",
+      "visible": true,
+      "style": {
+        "color": "#50adbd",
+        "opacity": 1,
+        "size": 0.08
+      },
+      "scalars": "comparison-bulk-current"
+    },
+    {
+      "id": "comparison-bulk-charge",
+      "label": "Periodic accumulated charge per cell",
+      "kind": "point-cloud",
+      "positions": "comparison-bulk-charge-positions",
+      "visible": true,
+      "style": {
+        "color": "#dc9e5c",
+        "opacity": 1,
+        "size": 0.08
+      },
+      "scalars": "comparison-bulk-charge"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "chain-site-positions",
+      "path": "chain-site-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 204,
+      "unit": "time, site index, display plane",
+      "bytes": 4896,
+      "sha256": "eeb0230a379eeb2489fb5c7cb2cbb9db5b890c6fd448f9309a8430e6cf89b304"
+    },
+    {
+      "id": "chain-site-density",
+      "path": "chain-site-density.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 204,
+      "unit": "particles per site",
+      "bytes": 1632,
+      "sha256": "d2fb8e204b542c018c5aa4884d7270193fc16b23305a0b464c85b02a9bc62ad6"
+    },
+    {
+      "id": "chain-bond-positions",
+      "path": "chain-bond-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 187,
+      "unit": "time, right-bond index + 0.5, display plane",
+      "bytes": 4488,
+      "sha256": "f10732ff9cfbbdedb1092ccb8dbe341b6ab681e115f86fd10cf1c314a41f9da5"
+    },
+    {
+      "id": "chain-bond-current",
+      "path": "chain-bond-current.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 187,
+      "unit": "electron charge / inverse hopping time",
+      "bytes": 1496,
+      "sha256": "0f6a71682b1c1d1c1e55315461e4d438caa802a5758a8329e016f69720463ef2"
+    },
+    {
+      "id": "chain-central-positions",
+      "path": "chain-central-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 17,
+      "unit": "time, central bond, display plane",
+      "bytes": 408,
+      "sha256": "93ee888f89d4d69d47031d889106b3f5a8998cde02909aa112cf885c8c9592fc"
+    },
+    {
+      "id": "chain-central-charge",
+      "path": "chain-central-charge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 17,
+      "unit": "electron charge",
+      "bytes": 136,
+      "sha256": "9eb2446e3f363109c3ba4c2abb97a937fbd604ff482bddd1862d370e54d95080"
+    },
+    {
+      "id": "chain-edge-positions",
+      "path": "chain-edge-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 17,
+      "unit": "time, left edge baseline, display plane",
+      "bytes": 408,
+      "sha256": "01886936c53f629aa2847dec18a6847991762659570dc10d7cbafe3b55ff843c"
+    },
+    {
+      "id": "chain-left-edge",
+      "path": "chain-left-edge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 17,
+      "unit": "particles in outer two sites",
+      "bytes": 136,
+      "sha256": "21c347bf1aa9e618d1ed12eb2d6c87687f55e7fcd8af40f9650006fdc22165e9"
+    },
+    {
+      "id": "chain-right-edge",
+      "path": "chain-right-edge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 17,
+      "unit": "particles in outer two sites",
+      "bytes": 136,
+      "sha256": "1b31e8ea9bc4d979e31c64f653c2727a96ec18d82ab2b086563b977d6248d6ac"
+    },
+    {
+      "id": "comparison-bulk-current-positions",
+      "path": "comparison-bulk-current-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 17,
+      "unit": "inverse hopping energy; bulk comparison lane",
+      "bytes": 408,
+      "sha256": "a00c63a97150e5284c8c54e7ce040ebcad15cb525cf54e5d74bf70fb60e8673e"
+    },
+    {
+      "id": "comparison-bulk-current",
+      "path": "comparison-bulk-current.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 17,
+      "unit": "electron charge / inverse hopping time",
+      "bytes": 136,
+      "sha256": "3934f4f9fab3a060762f1b011beee3151a47025230a8f0dd34bed27eb3960105"
+    },
+    {
+      "id": "comparison-bulk-charge-positions",
+      "path": "comparison-bulk-charge-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 17,
+      "unit": "inverse hopping energy; bulk comparison lane",
+      "bytes": 408,
+      "sha256": "933b2349530a101bc7fe2e859a026de7bcecdf749a6a971ede0766356c542704"
+    },
+    {
+      "id": "comparison-bulk-charge",
+      "path": "comparison-bulk-charge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 17,
+      "unit": "electron charge / cell",
+      "bytes": 136,
+      "sha256": "816ac42282116af4ef06365de57962a3db74cf9b9ebc0cab5a532a54557f88fb"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "chain-scope",
+      "text": "Half-filled open chain with 6 cells and 6 occupied orbitals; finite-size status resolved. Final central-bond charge 0.49549045 electron charge. Separate from the periodic ideal pump and not labelled quantized.",
+      "position": [
+        20,
+        6,
+        3
+      ]
+    },
+    {
+      "id": "chain-checks",
+      "text": "Norm drift 1.887e-14; particle drift 1.776e-14; continuity residual 1.999e-3; time/width charge drift 9.212e-3 / 7.743e-2. Open ends have no wrap bond.",
+      "position": [
+        20,
+        6,
+        -3
+      ]
+    },
+    {
+      "id": "bulk-chain-link",
+      "text": "One run and exact cycle: bulk charge electron charge / cell; chain central-bond charge electron charge. These have distinct boundary conditions and are not asserted equal.",
+      "position": [
+        20,
+        -2,
+        2
+      ]
+    }
+  ]
+}

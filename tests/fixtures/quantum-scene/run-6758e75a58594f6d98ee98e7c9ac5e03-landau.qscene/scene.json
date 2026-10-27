@@ -1,0 +1,309 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-6758e75a58594f6d98ee98e7c9ac5e03-landau",
+  "title": "Continuum Landau level fan",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-6758e75a58594f6d98ee98e7c9ac5e03",
+    "jobId": "fixture-landau-fan",
+    "model": "landau_continuum",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-26T09:33:17.512499+00:00",
+    "resultSha256": "2c938f7ba31060c0576188530c7b04c48cb1bbd0b79791ac5e1fe3724d56f64e",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mass": 1,
+      "charge": -1,
+      "fieldStart": 0.5,
+      "fieldStop": 2,
+      "fieldSamples": 7,
+      "levels": 5,
+      "grid": 64
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "landau_continuum"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "signed B",
+      "level index n",
+      "energy E_n"
+    ],
+    "units": [
+      "normalized magnetic field",
+      "categorical index",
+      "normalized energy"
+    ]
+  },
+  "camera": {
+    "position": [
+      3.95,
+      -10,
+      14.4
+    ],
+    "target": [
+      1.25,
+      2,
+      4.5
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "level-0-positions",
+      "path": "level-0-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 7,
+      "unit": "mixed: normalized field, categorical index, normalized energy",
+      "bytes": 168,
+      "sha256": "e1783c58706fdb994f8935643ffa0e49b16a4da6113ee8cc28cf0e7dcd4cf90c"
+    },
+    {
+      "id": "level-0-energy",
+      "path": "level-0-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 7,
+      "unit": "normalized energy",
+      "bytes": 56,
+      "sha256": "756071c2c0f4204276a3b5dbdb2ffe458435fbe556fe611c4774e9e6b4d3cb3a"
+    },
+    {
+      "id": "level-1-positions",
+      "path": "level-1-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 7,
+      "unit": "mixed: normalized field, categorical index, normalized energy",
+      "bytes": 168,
+      "sha256": "fbd2a87ae5374798c455102cc132d701e8f5f34fe2a9e8405972547dd6a20732"
+    },
+    {
+      "id": "level-1-energy",
+      "path": "level-1-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 7,
+      "unit": "normalized energy",
+      "bytes": 56,
+      "sha256": "e9a2068c723617a8d046f1d0c91bf4f4d4abea7e9a2748710adbcf30a26fd807"
+    },
+    {
+      "id": "level-2-positions",
+      "path": "level-2-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 7,
+      "unit": "mixed: normalized field, categorical index, normalized energy",
+      "bytes": 168,
+      "sha256": "3bcf442c3db1bc9096eb35621ebf67d7d85fe83e02449bfa296bdc4b3b9f61f7"
+    },
+    {
+      "id": "level-2-energy",
+      "path": "level-2-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 7,
+      "unit": "normalized energy",
+      "bytes": 56,
+      "sha256": "e975b1ba4a5a1934bb7ec5f245496b0883870781da3da255e920e878f811ec94"
+    },
+    {
+      "id": "level-3-positions",
+      "path": "level-3-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 7,
+      "unit": "mixed: normalized field, categorical index, normalized energy",
+      "bytes": 168,
+      "sha256": "3e4716809012de69577282fee0065e0287b24b4cef5232505d6cd979e24813da"
+    },
+    {
+      "id": "level-3-energy",
+      "path": "level-3-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 7,
+      "unit": "normalized energy",
+      "bytes": 56,
+      "sha256": "0adc82515457a2995108e6f0cdd05631cc52ad1f78c576a513ad5302359918d4"
+    },
+    {
+      "id": "level-4-positions",
+      "path": "level-4-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 7,
+      "unit": "mixed: normalized field, categorical index, normalized energy",
+      "bytes": 168,
+      "sha256": "87913eaa949e8bb46dee1ffe99c706b281e216882a7cbb9828d0fd05a848aaae"
+    },
+    {
+      "id": "level-4-energy",
+      "path": "level-4-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 7,
+      "unit": "normalized energy",
+      "bytes": 56,
+      "sha256": "c340bf5fb65dabbcf87197689afee87ed4e87a5a8db199578779de3c95abd736"
+    }
+  ],
+  "objects": [
+    {
+      "id": "level-0-line",
+      "label": "Landau level n=0",
+      "kind": "polyline",
+      "positions": "level-0-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "level-0-samples",
+      "label": "Exact stored level n=0 samples",
+      "kind": "point-cloud",
+      "positions": "level-0-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.07
+      },
+      "scalars": "level-0-energy"
+    },
+    {
+      "id": "level-1-line",
+      "label": "Landau level n=1",
+      "kind": "polyline",
+      "positions": "level-1-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "level-1-samples",
+      "label": "Exact stored level n=1 samples",
+      "kind": "point-cloud",
+      "positions": "level-1-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.07
+      },
+      "scalars": "level-1-energy"
+    },
+    {
+      "id": "level-2-line",
+      "label": "Landau level n=2",
+      "kind": "polyline",
+      "positions": "level-2-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "level-2-samples",
+      "label": "Exact stored level n=2 samples",
+      "kind": "point-cloud",
+      "positions": "level-2-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.07
+      },
+      "scalars": "level-2-energy"
+    },
+    {
+      "id": "level-3-line",
+      "label": "Landau level n=3",
+      "kind": "polyline",
+      "positions": "level-3-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "level-3-samples",
+      "label": "Exact stored level n=3 samples",
+      "kind": "point-cloud",
+      "positions": "level-3-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.07
+      },
+      "scalars": "level-3-energy"
+    },
+    {
+      "id": "level-4-line",
+      "label": "Landau level n=4",
+      "kind": "polyline",
+      "positions": "level-4-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "level-4-samples",
+      "label": "Exact stored level n=4 samples",
+      "kind": "point-cloud",
+      "positions": "level-4-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.07
+      },
+      "scalars": "level-4-energy"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "2D uniform-field continuum · ħ=1. Energy is sign-invariant under q or B reversal. No filling, Hall conductivity, edge channel or plateau is calculated.",
+      "position": [
+        1.25,
+        0,
+        9.9
+      ]
+    },
+    {
+      "id": "convergence",
+      "text": "Finite-difference coarse/fine check: converged; maximum fine error 0.013309 normalized energy.",
+      "position": [
+        1.25,
+        0,
+        0
+      ]
+    }
+  ]
+}

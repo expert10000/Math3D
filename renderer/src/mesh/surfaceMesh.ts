@@ -88,6 +88,17 @@ export type SurfaceMeshSource =
   | { kind: "polyhedronPreset"; id?: string; label?: string }
   | { kind: "quantumSceneField"; fieldId: string; level: number; resultSha256: string }
   | { kind: "scientificSceneField"; sceneId: string; datasetId: string; fingerprint: string }
+  | { kind: "derivedVectorFieldIsosurface";
+      source: { documentId: string; revision: number; structuralHash: string };
+      sourceHash: string | null;
+      sourceReferences: import("@math3d/core").VectorField3DIsosurface["sourceReferences"];
+      recipe: { level: number; unit: string;
+        clipBounds: import("@math3d/core").VectorField3DClipBounds;
+        triangleBudget: number; gridShape: readonly [number, number, number] };
+      topology: import("@math3d/core").VectorField3DIsosurfaceTopology;
+      complete: boolean; clipped: boolean;
+      rebuildSequence?: number;
+      verifiedTiles: import("@math3d/core").VectorField3DIsosurface["verifiedTiles"] | null }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }
   | { kind: "csg" }
@@ -129,6 +140,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return `verified quantum field ${source.fieldId} density surface at ${source.level * 100}% of maximum`;
     case "scientificSceneField":
       return `verified scientific field ${source.sceneId}/${source.datasetId}`;
+    case "derivedVectorFieldIsosurface":
+      return `source-linked speed isosurface |F| = ${source.recipe.level} ${source.recipe.unit}`;
     case "halfspaceIntersection":
       return "halfspace intersection";
     case "convexHull":

@@ -1,0 +1,237 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-7f366d57030b42c88d1c4afa89e059fe-bbh-wilson",
+  "title": "BBH occupied and nested Wilson diagnostics",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-7f366d57030b42c88d1c4afa89e059fe",
+    "jobId": "fixture-bbh-wilson",
+    "model": "bbh",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-25T11:48:47.146391+00:00",
+    "resultSha256": "e5a288ff6f5a90a6b9bd4977e720fd95320ba43f6854fabfc04d7c5cccba91fe",
+    "adapter": "qvis/1",
+    "parameters": {
+      "gammaX": 0.5,
+      "lambdaX": 1,
+      "gammaY": 0.5,
+      "lambdaY": 1,
+      "grid": 21,
+      "cells": 4
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "bbh"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "transverse k",
+      "Wannier center",
+      "Wilson direction lane"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "cycle",
+      "display lane"
+    ]
+  },
+  "camera": {
+    "position": [
+      7,
+      -8,
+      5
+    ],
+    "target": [
+      0,
+      0,
+      0.5
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "datasets": [
+    {
+      "id": "wilson-x-negative-positions",
+      "path": "wilson-x-negative-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 21,
+      "unit": "declared mixed scene units",
+      "bytes": 504,
+      "sha256": "fed84f7937c63e7a422771fe516def703ebeba6b6e9ac7ef8772514383147e29"
+    },
+    {
+      "id": "wilson-x-negative-centers",
+      "path": "wilson-x-negative-centers.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 21,
+      "unit": "cycle",
+      "bytes": 168,
+      "sha256": "928b318f21ef003009d3a2678739dab36565cc5e1845ab288465cb4652c66b0f"
+    },
+    {
+      "id": "wilson-x-positive-positions",
+      "path": "wilson-x-positive-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 21,
+      "unit": "declared mixed scene units",
+      "bytes": 504,
+      "sha256": "6f27b731640717c1a4a7b20cc0b6a1bb6e7e0a07df1be6d00a8a10767ed59c05"
+    },
+    {
+      "id": "wilson-x-positive-centers",
+      "path": "wilson-x-positive-centers.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 21,
+      "unit": "cycle",
+      "bytes": 168,
+      "sha256": "ac83a29c12c296d8d19d6f7285b2f7014564a7887d9b022fbc41237653ae895f"
+    },
+    {
+      "id": "wilson-y-negative-positions",
+      "path": "wilson-y-negative-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 21,
+      "unit": "declared mixed scene units",
+      "bytes": 504,
+      "sha256": "81f5ffead451e2b96ea00b4719efb6c374cdefb6bf7dad60f258c186c9751648"
+    },
+    {
+      "id": "wilson-y-negative-centers",
+      "path": "wilson-y-negative-centers.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 21,
+      "unit": "cycle",
+      "bytes": 168,
+      "sha256": "d2367c6ff58044157e2d69501187d6c1e15c30d649f4266d15b99d9d4705c6f7"
+    },
+    {
+      "id": "wilson-y-positive-positions",
+      "path": "wilson-y-positive-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 21,
+      "unit": "declared mixed scene units",
+      "bytes": 504,
+      "sha256": "0070ec3098221fdf3e27ca37a48a97be22cd6027d8c58ed944e532405720c2ff"
+    },
+    {
+      "id": "wilson-y-positive-centers",
+      "path": "wilson-y-positive-centers.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 21,
+      "unit": "cycle",
+      "bytes": 168,
+      "sha256": "c4661344ef94737f7ce673e26bc94c03cfacbaf28d4b9300382a6e1ec92d40e5"
+    }
+  ],
+  "objects": [
+    {
+      "id": "wilson-x-negative",
+      "label": "X occupied Wilson negative sector",
+      "kind": "polyline",
+      "positions": "wilson-x-negative-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "wilson-x-negative-centers"
+    },
+    {
+      "id": "wilson-x-positive",
+      "label": "X occupied Wilson positive sector",
+      "kind": "polyline",
+      "positions": "wilson-x-positive-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "wilson-x-positive-centers"
+    },
+    {
+      "id": "wilson-y-negative",
+      "label": "Y occupied Wilson negative sector",
+      "kind": "polyline",
+      "positions": "wilson-y-negative-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "wilson-y-negative-centers"
+    },
+    {
+      "id": "wilson-y-positive",
+      "label": "Y occupied Wilson positive sector",
+      "kind": "polyline",
+      "positions": "wilson-y-positive-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "wilson-y-positive-centers"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "wilson-status",
+      "text": "Nested Wilson quadrupole 0.5; defined. Exact bulk gap 1.4142; Wannier gaps x=0.15253, y=0.15253. Finite corner density is a separate observation.",
+      "position": [
+        0,
+        0,
+        0.5
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [],
+    "invariants": [
+      {
+        "id": "bbh-quadrupole",
+        "label": "Nested Wilson quadrupole",
+        "value": 0.5,
+        "status": "verified",
+        "method": "Producer occupied-band Wilson loops in x and y; isolated Wannier sectors; nested sector polarization"
+      },
+      {
+        "id": "nested-x-negative",
+        "label": "x Wilson negative-sector polarization",
+        "value": 0.5,
+        "status": "supplied",
+        "method": "Producer nested Wilson loop"
+      },
+      {
+        "id": "nested-y-negative",
+        "label": "y Wilson negative-sector polarization",
+        "value": 0.5,
+        "status": "supplied",
+        "method": "Producer nested Wilson loop"
+      }
+    ],
+    "limitations": [
+      "Invariant requires open bulk and Wannier-sector gaps; closed gaps are undefined.",
+      "These four curves are supplied Wannier centers; display connections do not interpolate physics.",
+      "Finite corner localization is a separate saved observation, not evidence used to assign this invariant."
+    ]
+  }
+}

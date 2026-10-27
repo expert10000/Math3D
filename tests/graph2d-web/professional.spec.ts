@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 const start = async (page: Page) => {
@@ -25,10 +26,10 @@ test("Graphs follows Projects and precedes Curves and Surfaces in desktop naviga
 
 test("GRA-12.2 cancels an in-flight regression worker and permits a fresh fit", async ({ page }) => {
   await start(page); const functions = page.getByLabel("Graph functions");
-  await functions.getByRole("button", { name: "Add data series", exact: true }).click();
-  await functions.getByLabel("Data series name").fill("Measurements");
-  await functions.getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12");
-  await functions.getByRole("button", { name: "Save data series", exact: true }).click();
+  await openGraphType(page, "Data series");
+  await graphEditor(page).getByLabel("Data series name").fill("Measurements");
+  await graphEditor(page).getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12");
+  await saveGraphEditor(page);
   await functions.getByRole("button", { name: "Select Measurements", exact: true }).click();
   const panel = page.getByRole("region", { name: "Regression fitting", exact: true });
   await page.evaluate(() => { const original = window.Worker;
@@ -192,10 +193,10 @@ test("G2D37 continuation and scale policies preserve authored range, undo and sa
 });
 test("G2D39 checked data fitting, residuals, stale models and offline uncertainty publication", async ({ page, context }, info) => {
   await start(page); const functions = page.getByLabel("Graph functions");
-  await functions.getByRole("button", { name: "Add data series", exact: true }).click();
-  await functions.getByLabel("Data series name").fill("Measurements");
-  await functions.getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12\n6,NA");
-  await functions.getByRole("button", { name: "Save data series", exact: true }).click();
+  await openGraphType(page, "Data series");
+  await graphEditor(page).getByLabel("Data series name").fill("Measurements");
+  await graphEditor(page).getByLabel("Data series import").fill("x,y\n0,1\n1,3\n2,4\n3,7\n4,8\n5,12\n6,NA");
+  await saveGraphEditor(page);
   await functions.getByRole("button", { name: "Select Measurements", exact: true }).click(); await save(page);
   const before = await page.evaluate(() => localStorage.getItem("math3d.mixed-workspace.v1")), panel = page.getByRole("region", { name: "Regression fitting", exact: true });
   await expect(page.getByTestId("graph2d-regression-overlay")).toHaveCount(0);

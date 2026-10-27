@@ -1,0 +1,67 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "gaussian-bump",
+  "title": "Gaussian bump · 2D scalar field",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "gaussian-bump-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "44d11d839402c5af9ac70170d7ac7e20c8048890fc62f14c6ebfbc859d09badc"
+  },
+  "resources": [
+    {
+      "id": "scalar",
+      "path": "scalar.f64",
+      "format": "f64le",
+      "count": 1681,
+      "bytes": 13448,
+      "sha256": "44d11d839402c5af9ac70170d7ac7e20c8048890fc62f14c6ebfbc859d09badc"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "plane",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4
+      ],
+      "spacing": [
+        0.2,
+        0.2
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "scalar-field",
+      "coordinateSystem": "plane",
+      "shape": [
+        41,
+        41
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Amplitude",
+        "unit": "1"
+      },
+      "real": "scalar"
+    }
+  ],
+  "views": []
+}

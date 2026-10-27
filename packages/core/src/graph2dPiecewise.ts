@@ -54,7 +54,8 @@ export const sampleGraph2DPiecewise = (request: Readonly<{
   deadlineMs?: number;
 }>): Graph2DPiecewiseArtifact => {
   const diagnostics = new Map<Graph2DSamplingDiagnostic["code"], number>();
-  const segments = [], pieceBudget = Math.max(32, Math.floor(request.policy.maxSamples / request.object.pieces.length) - 2);
+  const segments: Graph2DPiecewiseArtifact["segments"][number][] = [];
+  const pieceBudget = Math.max(32, Math.floor(request.policy.maxSamples / request.object.pieces.length) - 2);
   let samplesEvaluated = 0, converged = true;
   const endpoints: Graph2DPiecewiseArtifact["endpoints"][number][] = [];
   for (const piece of request.object.pieces) {

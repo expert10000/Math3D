@@ -4,6 +4,7 @@ import { styles } from "../mobileAppStyles";
 import { buildMobileProjectExplorer } from "../models/mobileProjectExplorer";
 import type { MobileProjectNoteInput } from "../models/mobileProjectNotes";
 import type { ProjectResourceSidecar } from "@math3d/core";
+import { MobileVectorField3DViewer } from "./MobileVectorField3DViewer";
 
 export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[]; onOpenGraph?: (id: string) => void;
   onOpenSurface?: (id: string) => void; onOpenCurve?: (id: string) => void; onRefresh?: (relationId: string) => Promise<boolean>;
@@ -11,6 +12,8 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
   const [refreshing, setRefreshing] = React.useState(false);
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
+  const [complexId, setComplexId] = useState<string | null>(null);
+  const [vector3dId, setVector3dId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<MobileProjectNoteInput | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteMessage, setNoteMessage] = useState("");
@@ -18,7 +21,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
   }, [raw, resources]);
-  useEffect(() => { setWorkbookId(null); setNoteId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
+  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
   if (!state.explorer) return <Text accessibilityRole="alert" style={styles.note}>{state.error}</Text>;
   const { groups, relations, results, workbooks, notes } = state.explorer;
   const selectedWorkbook = workbooks.find(item => item.id === workbookId);
@@ -89,6 +92,35 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
       {group.documents.map(document => <View key={document.id} testID={`mobile-project-document-${document.id}`}>
         <Text style={styles.itemMeta}>{document.title} · revision {document.revision}</Text>
         <Text style={styles.note}>{document.editing}{document.archived ? " · archived" : ""}{document.stale ? " · historical dependency" : ""}</Text>
+        {document.module === "vector3d" && document.vector3dPreview && <>
+          <Pressable testID={`mobile-project-view-vector3d-${document.id}`} accessibilityRole="button"
+            onPress={() => setVector3dId(vector3dId === document.id ? null : document.id)} style={styles.secondaryBtn}>
+            <Text style={styles.secondaryBtnText}>{vector3dId === document.id ? "Hide" : "View"} 3D vector field</Text>
+          </Pressable>
+          {vector3dId === document.id && <MobileVectorField3DViewer
+            key={`${document.id}:${document.revision}`} document={document.vector3dPreview} />}
+        </>}
+        {document.module === "vector3d" && document.unavailableReason &&
+          <Text style={styles.note}>{document.unavailableReason}</Text>}
+        {document.module === "complex" && document.complexPreview && <>
+          <Pressable testID={`mobile-project-view-complex-${document.id}`} accessibilityRole="button"
+            onPress={() => setComplexId(complexId === document.id ? null : document.id)} style={styles.secondaryBtn}>
+            <Text style={styles.secondaryBtnText}>{complexId === document.id ? "Hide" : "View"} Complex contour</Text>
+          </Pressable>
+          {complexId === document.id && <View testID="mobile-project-complex-detail">
+            <Text style={styles.itemMeta}>f(z) = {document.complexPreview.functionText}</Text>
+            {document.complexPreview.contours.map(contour => <Text key={contour.id} style={styles.itemMeta}>
+              {contour.id}: {contour.points} points · {contour.closed ? "closed" : "open"}
+            </Text>)}
+            <Text style={styles.note}>{document.complexPreview.graphStatus}</Text>
+            {document.complexPreview.mapping && <Text style={styles.note}>Mapping: {document.complexPreview.mapping}</Text>}
+            {document.complexPreview.scientific && <>
+              <Text style={styles.note}>Grid {document.complexPreview.scientific.sceneId}/{document.complexPreview.scientific.datasetId}; {document.complexPreview.scientific.fixedName} = {document.complexPreview.scientific.fixedCoordinate} {document.complexPreview.scientific.fixedUnit}; varying {document.complexPreview.scientific.varyingName} ({document.complexPreview.scientific.varyingUnit}).</Text>
+              <Text style={styles.note}>External scientific bundle not checked on mobile. Fingerprint {document.complexPreview.scientific.fingerprint}.</Text>
+            </>}
+            <Text style={styles.note}>Read-only saved contour; use desktop Complex Analysis to edit or refresh.</Text>
+          </View>}
+        </>}
         {document.module === "curve" && onOpenCurve && <>
           <Pressable testID={`mobile-project-edit-curve-${document.id}`} disabled={document.editing !== "Curve workspace"}
             accessibilityState={{ disabled: document.editing !== "Curve workspace" }} onPress={() => onOpenCurve(document.id)} style={styles.secondaryBtn}>
@@ -129,6 +161,6 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     {results.map(result => <Text key={result.id} style={styles.itemMeta}>{result.operation} · {result.authority} · {result.freshness} · {titles.get(result.sourceDocumentId) ?? "Missing source"} revision {result.sourceRevision}</Text>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Source resources ({state.explorer.resources.filter(item => item.available).length}/{state.explorer.resources.length})</Text>
     {state.explorer.resources.map(item => <Text key={`${item.kind}:${item.id}`} style={styles.itemMeta}>{item.kind} · {item.available ? "Verified and retained" : item.required ? "Missing source bytes" : "Optional cache unavailable"}</Text>)}
-    <Text style={styles.note}>Import a desktop project package to retain Graph tables, Mesh and Volume source bytes. Package export includes verified retained bytes; missing resources stay missing. Edit an available Graph, Curve or Surface without changing other documents. Other modules remain saved previews; analysis artifact bytes may require separate transfer.</Text>
+    <Text style={styles.note}>Import a desktop project package to retain Graph tables, Mesh and Volume source bytes. Package export includes verified retained bytes; missing resources stay missing. Edit an available Graph, Curve or Surface without changing other documents. Saved 3D vector fields have a read-only viewer; analysis artifact bytes may require separate transfer.</Text>
   </View>;
 };

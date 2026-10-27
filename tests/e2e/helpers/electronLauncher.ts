@@ -3,7 +3,13 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-type ElectronLaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>;
+type ElectronLaunchOptions = Omit<NonNullable<Parameters<typeof electron.launch>[0]>, "env"> & {
+  env?: Record<string, string | undefined>;
+};
+
+export function definedEnvironment(env: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
 
 type EnsureElectronModule = {
   ensureElectronExecutablePath: () => Promise<string>;
@@ -33,7 +39,7 @@ function withIsolatedProfileArgs(args: string[], userDataDir: string, cacheDir: 
 }
 
 export async function launchRepoElectron(options: ElectronLaunchOptions): Promise<ElectronApplication> {
-  const executablePath = await resolveExecutablePathOnce();
+  const executablePath = options.executablePath ?? await resolveExecutablePathOnce();
   const providedEnv = options.env as Record<string, string | undefined> | undefined;
   const profileRoot = providedEnv?.MATH3D_E2E_PROFILE_ROOT
     ? path.resolve(providedEnv.MATH3D_E2E_PROFILE_ROOT)
@@ -52,7 +58,7 @@ export async function launchRepoElectron(options: ElectronLaunchOptions): Promis
   return electron.launch({
     ...options,
     args: withIsolatedProfileArgs(args, userDataDir, cacheDir),
-    env,
+    env: definedEnvironment(env),
     executablePath,
   });
 }

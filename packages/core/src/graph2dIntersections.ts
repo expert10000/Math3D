@@ -3,10 +3,15 @@ import { structuralHash } from "./documentIdentity";
 import { analyzeGraph2DDerivative } from "./graph2dDerivatives";
 import type { Graph2DDocument, Graph2DExplicitObject } from "./graph2dDocument";
 import { evaluateGraph2DExpression } from "./graph2dExpression";
+import { graph2DExpressionPossibleDomainBoundary } from "./graph2dInterval";
+import { graph2DQualityForNumericalCandidate, graph2DQualityForScan,
+  type Graph2DNumericalCandidateQuality } from "./graph2dAnalysisQuality";
 import type { ScientificSourceGeneration } from "./scientificJobs";
+import { compactGraph2DUnresolvedIntervals, type Graph2DUnresolvedInterval } from "./graph2dUnresolvedCoverage";
 
-export const GRAPH2D_INTERSECTION_ALGORITHM_VERSION = "1" as const;
+export const GRAPH2D_INTERSECTION_ALGORITHM_VERSION = "5" as const;
 export const GRAPH2D_INTERSECTION_GRID_CELLS = 256;
+export const GRAPH2D_INTERSECTION_MAX_SCAN_CELLS = 2048;
 export const GRAPH2D_INTERSECTION_MAX_EVALUATIONS = 12000;
 export const GRAPH2D_INTERSECTION_MAX_CANDIDATES = 64;
 export type Graph2DIntersectionCandidate = Readonly<{
@@ -17,9 +22,14 @@ export type Graph2DIntersectionCandidate = Readonly<{
   x: number;
   y: number;
   residual: number;
+  /** Local |dx/d(f-g)| at a transverse crossing; null for possible tangencies or unresolved slope. */
+  localSensitivity: number | null;
+  /** Residual times local sensitivity, a linear estimate rather than a certified bound. */
+  estimatedXError: number | null;
   classification: "crossing" | "tangent-possible";
   method: "sample" | "bracket-bisection" | "minimum-absolute-residual";
   confidence: "numerical" | "heuristic";
+  quality: Graph2DNumericalCandidateQuality;
   source: ScientificSourceGeneration;
 }>;
 export type Graph2DIntersectionAnalysis = Readonly<{
@@ -29,11 +39,14 @@ export type Graph2DIntersectionAnalysis = Readonly<{
   source: ScientificSourceGeneration;
   interval: Readonly<{ min: number; max: number }>;
   status: "complete" | "incomplete" | "unavailable";
+  quality: "approximate" | "incomplete" | null;
   candidates: readonly Graph2DIntersectionCandidate[];
   evaluations: number;
   invalidCells: number;
   unresolvedBrackets: number;
   coincidentCells: number;
+  refinementLimitedCells: number;
+  unresolvedIntervals: readonly Graph2DUnresolvedInterval[];
   publication: AnalysisResultEnvelope;
 }>;
 
@@ -61,16 +74,24 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
   const source: ScientificSourceGeneration = { documentId: input.document.identity.id,
     revision: input.document.identity.revision, structuralHash: input.document.identity.structuralHash,
     generation: input.document.identity.revision };
-  const resultId = "graph2d.intersections." + structuralHash({ source, firstObjectId: first.id,
-    secondObjectId: second.id, interval, algorithmVersion: GRAPH2D_INTERSECTION_ALGORITHM_VERSION }).slice(7);
-  const started = Date.now();
-  const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
   const maxEvaluations = Math.min(GRAPH2D_INTERSECTION_MAX_EVALUATIONS,
     Math.max(1, Math.floor(input.maxEvaluations ?? GRAPH2D_INTERSECTION_MAX_EVALUATIONS)));
+  const resultId = "graph2d.intersections." + structuralHash({ source, firstObjectId: first.id,
+    secondObjectId: second.id, interval, maxEvaluations,
+    algorithmVersion: GRAPH2D_INTERSECTION_ALGORITHM_VERSION }).slice(7);
+  const started = Date.now();
+  const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
   let evaluations = 0, incomplete = false, invalidCells = 0, unresolvedBrackets = 0, coincidentCells = 0;
+  let refinementLimitedCells = 0;
+  const unresolvedRaw: Graph2DUnresolvedInterval[] = [];
+  const unresolved = (min: number, max: number, reason: Graph2DUnresolvedInterval["reason"]) =>
+    unresolvedRaw.push({ min, max, reason });
   const value = (object: Graph2DExplicitObject, x: number): number | null => {
     if (!allowed(object, x)) return null;
-    if (evaluations >= maxEvaluations) { incomplete = true; return null; }
+    if (evaluations >= maxEvaluations) {
+      if (!incomplete) unresolved(interval.min, interval.max, "work-limit");
+      incomplete = true; return null;
+    }
     evaluations += 1;
     const result = evaluateGraph2DExpression(object.expression.ast, { ...variables, x });
     return result.ok ? result.value : null;
@@ -79,6 +100,9 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     const a = value(first, x), b = value(second, x);
     return a === null || b === null ? null : a - b;
   };
+  const domainBoundary = (left: number, right: number): boolean =>
+    graph2DExpressionPossibleDomainBoundary(first.expression.ast, [left, right], variables) ||
+    graph2DExpressionPossibleDomainBoundary(second.expression.ast, [left, right], variables);
   const candidates: Graph2DIntersectionCandidate[] = [];
   const xTolerance = interval.min < interval.max ? Math.max(1e-10,
     16 * Number.EPSILON * Math.max(1, Math.abs(interval.min), Math.abs(interval.max)),
@@ -88,22 +112,63 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     method: Graph2DIntersectionCandidate["method"], confidence: Graph2DIntersectionCandidate["confidence"]) => {
     const a = value(first, x), b = value(second, x);
     if (a === null || b === null || Math.abs(a - b) > Math.max(residualTolerance, residual * 2)) return;
+    const h = 1e-5 * Math.max(1, Math.abs(x));
+    const transverse = classification === "crossing" && x - h > interval.min && x + h < interval.max &&
+      allowed(first, x - h) && allowed(first, x + h) && allowed(second, x - h) && allowed(second, x + h) &&
+      !domainBoundary(x - h, x + h) && evaluations + 4 <= maxEvaluations;
+    const left = transverse ? difference(x - h) : null;
+    const right = transverse ? difference(x + h) : null;
+    const slope = left !== null && right !== null ? (right - left) / (2 * h) : null;
+    const localSensitivity = slope !== null && Number.isFinite(slope) && Math.abs(slope) > 1e-8 ?
+      1 / Math.abs(slope) : null;
     const candidate: Graph2DIntersectionCandidate = { candidateId: `${resultId}.${structuralHash({ x }).slice(7)}`,
       resultId, firstObjectId: first.id, secondObjectId: second.id, x, y: (a + b) / 2,
-      residual: Math.abs(a - b), classification, method, confidence, source };
+      residual: Math.abs(a - b), localSensitivity,
+      estimatedXError: localSensitivity === null ? null : Math.abs(a - b) * localSensitivity,
+      classification, method, confidence,
+      quality: graph2DQualityForNumericalCandidate({ method, confidence, residual: Math.abs(a - b) },
+        residualTolerance), source };
     const previous = candidates.findIndex((entry) => Math.abs(entry.x - x) <= Math.max(xTolerance * 8, 1e-7));
     if (previous >= 0) {
       if (candidate.residual < candidates[previous]!.residual ||
         candidate.confidence === "numerical" && candidates[previous]!.confidence === "heuristic") candidates[previous] = candidate;
       return;
     }
-    if (candidates.length >= GRAPH2D_INTERSECTION_MAX_CANDIDATES) { incomplete = true; return; }
+    if (candidates.length >= GRAPH2D_INTERSECTION_MAX_CANDIDATES) {
+      incomplete = true; unresolved(interval.min, interval.max, "work-limit"); return;
+    }
     candidates.push(candidate);
   };
   if (interval.min < interval.max) {
-    const grid = Array.from({ length: GRAPH2D_INTERSECTION_GRID_CELLS + 1 }, (_, index) =>
+    const baseGrid = Array.from({ length: GRAPH2D_INTERSECTION_GRID_CELLS + 1 }, (_, index) =>
       interval.min + (interval.max - interval.min) * index / GRAPH2D_INTERSECTION_GRID_CELLS);
+    const grid = [baseGrid[0]!];
+    const refineCell = (left: number, right: number, depth: number): void => {
+      if (incomplete) { grid.push(right); return; }
+      const midpoint = (left + right) / 2;
+      if (midpoint === left || midpoint === right) { grid.push(right); return; }
+      const a = difference(left), m = difference(midpoint), b = difference(right);
+      const boundary = domainBoundary(left, right);
+      const scale = a === null || m === null || b === null ? 0 :
+        Math.max(1e-12, Math.abs(a), Math.abs(m), Math.abs(b));
+      const suspicious = boundary || a === null || m === null || b === null ||
+        a * b > 0 && (a * m <= 0 || Math.abs(m) < 0.15 * Math.min(Math.abs(a), Math.abs(b))) ||
+        a !== null && m !== null && b !== null && Math.abs(m - (a + b) / 2) > 0.12 * scale;
+      if (!suspicious) { grid.push(right); return; }
+      // Reserve one endpoint for each remaining base cell so the final grid stays bounded.
+      if (depth >= 3 || grid.length >= GRAPH2D_INTERSECTION_MAX_SCAN_CELLS - GRAPH2D_INTERSECTION_GRID_CELLS) {
+        refinementLimitedCells += 1;
+        unresolved(left, right, boundary ? "undefined" : "refinement-limit");
+        grid.push(right);
+        return;
+      }
+      refineCell(left, midpoint, depth + 1);
+      refineCell(midpoint, right, depth + 1);
+    };
+    for (let index = 0; index < baseGrid.length - 1; index += 1)
+      refineCell(baseGrid[index]!, baseGrid[index + 1]!, 0);
     const field = grid.map(difference);
+    const riskyCells = grid.slice(1).map((right, index) => domainBoundary(grid[index]!, right));
     for (let index = 0; index < field.length; index += 1) {
       const current = field[index], left = field[index - 1], right = field[index + 1];
       if (current !== 0 || left === 0 || right === 0) continue;
@@ -114,8 +179,15 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     }
     for (let index = 0; index < grid.length - 1 && !incomplete; index += 1) {
       const left = field[index], right = field[index + 1];
-      if (left === null || right === null) { invalidCells += 1; continue; }
-      if (left === 0 && right === 0) { coincidentCells += 1; continue; }
+      if (riskyCells[index]) {
+        invalidCells += 1; unresolved(grid[index]!, grid[index + 1]!, "undefined"); continue;
+      }
+      if (left === null || right === null) {
+        invalidCells += 1; unresolved(grid[index]!, grid[index + 1]!, "undefined"); continue;
+      }
+      if (left === 0 && right === 0) {
+        coincidentCells += 1; unresolved(grid[index]!, grid[index + 1]!, "coincident"); continue;
+      }
       if (left === 0 || right === 0 || Math.sign(left) === Math.sign(right)) continue;
       let a = grid[index]!, b = grid[index + 1]!, fa = left, fb = right;
       let valid = true;
@@ -131,7 +203,9 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
       const x = Math.abs(fa) <= Math.abs(fb) ? a : b;
       const residual = Math.min(Math.abs(fa), Math.abs(fb));
       if (!valid || residual > Math.max(residualTolerance, Math.abs((right - left) /
-        (grid[index + 1]! - grid[index]!)) * xTolerance * 2)) { unresolvedBrackets += 1; continue; }
+        (grid[index + 1]! - grid[index]!)) * xTolerance * 2)) {
+        unresolvedBrackets += 1; unresolved(grid[index]!, grid[index + 1]!, "residual-check"); continue;
+      }
       add(x, residual, "crossing", "bracket-bisection", "numerical");
     }
     // A sign-preserving local minimum of |f-g| can be a tangency. This remains heuristic.
@@ -157,29 +231,41 @@ export const analyzeGraph2DIntersections = (input: Readonly<{
     }
   }
   candidates.sort((a, b) => a.x - b.x);
-  const status = interval.min >= interval.max ? "unavailable" : incomplete || coincidentCells ? "incomplete" : "complete";
+  const status = interval.min >= interval.max ? "unavailable" :
+    incomplete || coincidentCells > 0 || invalidCells > 0 || unresolvedBrackets > 0 ||
+    refinementLimitedCells > 0 ? "incomplete" : "complete";
+  const quality = graph2DQualityForScan(status);
+  const unresolvedIntervals = compactGraph2DUnresolvedIntervals(unresolvedRaw, interval);
   const publication = createAnalysisResultEnvelope({ resultId,
     status: status === "unavailable" ? "unsupported" : "numerical",
     provenance: { source, operation: { type: "graph2d.intersections", algorithm: "pair-grid-bracket-and-minimum-residual",
       algorithmVersion: GRAPH2D_INTERSECTION_ALGORITHM_VERSION,
       parameters: { firstObjectId: first.id, secondObjectId: second.id, interval,
-        gridCells: GRAPH2D_INTERSECTION_GRID_CELLS, maxCandidates: GRAPH2D_INTERSECTION_MAX_CANDIDATES } },
+        gridCells: GRAPH2D_INTERSECTION_GRID_CELLS, maxScanCells: GRAPH2D_INTERSECTION_MAX_SCAN_CELLS,
+        maxRefinementDepth: 3, maxCandidates: GRAPH2D_INTERSECTION_MAX_CANDIDATES,
+        maxEvaluations } },
       numericContext: { precision: { binaryBits: 53 }, tolerance: { absolute: residualTolerance } },
       engine: { name: "math3d-core", version: GRAPH2D_INTERSECTION_ALGORITHM_VERSION }, elapsedMs: Math.max(0, Date.now() - started) },
-    summary: { interval, status, candidateCount: candidates.length, invalidCells, unresolvedBrackets,
-      coincidentCells, evaluations },
+    summary: { interval, status, quality, candidateCount: candidates.length,
+      approximateCount: candidates.filter((entry) => entry.quality === "approximate").length,
+      refinedCount: candidates.filter((entry) => entry.quality === "refined").length,
+      invalidCells, unresolvedBrackets,
+      coincidentCells, refinementLimitedCells, unresolvedIntervalCount: unresolvedIntervals.length, evaluations },
     warnings: ["Tangencies and narrow intersections are heuristic and may be missed; multiplicity is not certified.",
-      ...(incomplete ? ["Intersection scan reached a work or candidate limit."] : [])],
+      ...(status === "incomplete" ? ["Intersection scan is incomplete because of a work limit or unresolved cells."] : [])],
     diagnostics: [
       ...(invalidCells ? [{ code: "invalid-cells", severity: "warning" as const,
-        message: `${invalidCells} cells touched an undefined sample.` }] : []),
+        message: `${invalidCells} cells touched an undefined sample or possible domain boundary.` }] : []),
       ...(unresolvedBrackets ? [{ code: "unresolved-brackets", severity: "warning" as const,
         message: `${unresolvedBrackets} sign changes did not pass residual checks.` }] : []),
       ...(coincidentCells ? [{ code: "coincident-cells", severity: "warning" as const,
         message: `${coincidentCells} cells appear coincident; isolated intersections are not enumerated there.` }] : []),
+      ...(refinementLimitedCells ? [{ code: "refinement-limit", severity: "warning" as const,
+        message: `${refinementLimitedCells} suspicious cells reached the bounded refinement limit.` }] : []),
     ], artifacts: [] });
   return { resultId, firstObjectId: first.id, secondObjectId: second.id, source, interval, status,
-    candidates, evaluations, invalidCells, unresolvedBrackets, coincidentCells, publication };
+    quality, candidates, evaluations, invalidCells, unresolvedBrackets, coincidentCells,
+    refinementLimitedCells, unresolvedIntervals, publication };
 };
 
 export const isGraph2DIntersectionCurrent = (result: Graph2DIntersectionAnalysis, document: Graph2DDocument): boolean =>

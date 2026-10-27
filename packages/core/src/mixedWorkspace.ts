@@ -10,17 +10,22 @@ import { normalizeTopologyDocument, type TopologyDocument } from "./topologyDocu
 import { normalizeComplexAnalysisDocument, type ComplexAnalysisDocument } from "./complexAnalysisDocument";
 import { normalizeGraph2DDocument, type Graph2DDocument } from "./graph2dDocument";
 import { normalizeQuantumSceneDocument, type QuantumSceneDocument } from "./quantumSceneDocument";
+import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
+import { normalizeVectorField2DDocument, type VectorField2DDocument } from "./vectorField2DDocument";
+import { normalizeScientificFieldDocument, type ScientificFieldDocument } from "./scientificFieldDocument";
 import { normalizeViewerCommittedSelection, viewerSourceFromDocument, type ViewerCommittedSelection } from "./viewerProvenance";
 import { canonicalJsonByteLength, matchesScientificSourceGeneration, type ScientificSourceGeneration } from "./scientificJobs";
 import type { ValidationResult } from "./validation";
+import { isScientificSceneLibraryReference, scientificSceneLibraryKey,
+  type ScientificSceneLibraryReference } from "./scientificSceneLibrary";
 
 export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const MAX_MIXED_WORKSPACE_BYTES = 16 * 1024 * 1024;
 export const MAX_MIXED_WORKSPACE_REPLAY_BYTES = 256 * 1024;
-export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d", "quantum"] as const;
+export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d", "quantum", "vector3d", "vector2d", "field"] as const;
 export type KernelWorkspaceModule = typeof KERNEL_WORKSPACE_MODULES[number];
-export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument;
+export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument | VectorField3DDocument | VectorField2DDocument | ScientificFieldDocument;
 export type MixedWorkspaceReplay = Readonly<{ format: string; payload: CanonicalJsonValue }>;
 export type MixedWorkspaceEntry = Readonly<{
   module: KernelWorkspaceModule;
@@ -48,13 +53,15 @@ export type MixedWorkspaceDocument = Readonly<{
   relations: readonly DocumentRelation[];
   committedSelection: ViewerCommittedSelection | null;
   constructions: readonly MixedConstructionSource[];
+  scientificScenes?: readonly ScientificSceneLibraryReference[];
 }>;
 export type MixedWorkspaceReplayAdapter = (entry: MixedWorkspaceEntry) => KernelWorkspaceDocument;
 export type MixedWorkspaceReplayAdapters = Partial<Record<KernelWorkspaceModule, MixedWorkspaceReplayAdapter>>;
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-const exact = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
-  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) && Object.keys(value).every((key) => keys.includes(key));
+const exact = (value: Record<string, unknown>, keys: readonly string[], optional: readonly string[] = []): boolean =>
+  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+  Object.keys(value).every((key) => keys.includes(key) || optional.includes(key));
 const jsonClone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
 const moduleSet = new Set<string>(KERNEL_WORKSPACE_MODULES);
 
@@ -69,6 +76,9 @@ const normalizeModuleDocument = (module: KernelWorkspaceModule, value: unknown):
     case "complex": return normalizeComplexAnalysisDocument(value);
     case "graph2d": return normalizeGraph2DDocument(value);
     case "quantum": return normalizeQuantumSceneDocument(value);
+    case "vector3d": return normalizeVectorField3DDocument(value);
+    case "vector2d": return normalizeVectorField2DDocument(value);
+    case "field": return normalizeScientificFieldDocument(value);
   }
 };
 const entryKey = (entry: MixedWorkspaceEntry): string => `${entry.module}:${entry.expected.id}`;
@@ -77,7 +87,7 @@ const identityEquals = (left: DocumentIdentity, right: DocumentIdentity): boolea
 
 export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResult<MixedWorkspaceDocument> => {
   const errors: string[] = [];
-  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"]) ||
+  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes"]) ||
       value.format !== MIXED_WORKSPACE_FORMAT || value.schemaVersion !== MIXED_WORKSPACE_SCHEMA_VERSION) return { ok: false, errors: ["Invalid mixed workspace envelope."] };
   if (!Array.isArray(value.entries) || value.entries.length > 512) errors.push("Invalid mixed workspace entries.");
   const entries: MixedWorkspaceEntry[] = [];
@@ -153,6 +163,12 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
     if (!record(construction) || !exact(construction, ["kind", "source", "normalizedSceneScript"]) ||
         !["scratch", "workbook", "scene-script"].includes(String(construction.kind))) errors.push("Invalid construction source.");
     else constructions.push(construction as MixedConstructionSource);
+  }
+  if (value.scientificScenes !== undefined) {
+    if (!Array.isArray(value.scientificScenes) || value.scientificScenes.length > 64 ||
+        value.scientificScenes.some(scene => !isScientificSceneLibraryReference(scene)) ||
+        new Set((value.scientificScenes as ScientificSceneLibraryReference[]).map(scientificSceneLibraryKey)).size !== value.scientificScenes.length)
+      errors.push("Invalid scientific scene library references.");
   }
   try { if (canonicalJsonByteLength(value) > MAX_MIXED_WORKSPACE_BYTES) errors.push("Mixed workspace exceeds the compact format limit."); }
   catch (error) { errors.push(String((error as Error).message ?? error)); }

@@ -9,6 +9,32 @@ const viewport = { xMin: -1, xMax: 4, yMin: -1, yMax: 5, aspect: "free" as const
 const size = { width: 500, height: 600 };
 
 describe("Graph2D point series", () => {
+  it("refreshes a complex pair as one validated Graph edit", () => {
+    const store = new Graph2DPointTableStore();
+    const rows = [{ id: "row_1", x: 0, y: 1 }, { id: "row_2", x: 1, y: 2 }];
+    const table = store.publish(rows), domain = graph2DPointDomain(rows);
+    const empty = createEmptyGraph2DDocument("paired-refresh");
+    const created = applyGraph2DAuthoring(empty, { type: "create-point-series-pair", drafts: [
+      { label: "real", table, mode: "line", domain, style },
+      { label: "imaginary", table, mode: "line", domain, style },
+    ] });
+    const graph = createGraph2DDocument({ ...created, stableKey: "paired-refresh" });
+    const [real, imaginary] = graph.source.objects;
+    const fresh = store.publish([{ id: "row_1", x: 0, y: 3 }, { id: "row_2", x: 1, y: 4 }]);
+    const edits = [{ objectId: real!.id, draft: { label: "real", table: fresh,
+      mode: "line" as const, domain, style } },
+    { objectId: imaginary!.id, draft: { label: "imaginary", table: fresh,
+      mode: "line" as const, domain, style } }] as const;
+    expect(() => applyGraph2DAuthoring(graph, { type: "edit-point-series-pair",
+      edits: [edits[0], { ...edits[1], draft: { ...edits[1].draft, label: "" } }] })).toThrow();
+    expect(graph.source.objects.map(item => item.kind === "point-series" ? item.table : null))
+      .toEqual([table, table]);
+    const revised = applyGraph2DAuthoring(graph, { type: "edit-point-series-pair", edits });
+    expect(revised.source.objects.map(item => item.kind === "point-series" ? item.table : null))
+      .toEqual([fresh, fresh]);
+    expect(revised.source.objects.map(item => item.id)).toEqual([real!.id, imaginary!.id]);
+    expect(revised.selection.objectId).toBe(graph.selection.objectId);
+  });
   it("previews typed CSV/TSV rows and rejects malformed or oversized input", () => {
     const preview = previewGraph2DPointImport("x,y\n0,0\n1,NA\n2,4");
     expect(preview.errors).toEqual([]);

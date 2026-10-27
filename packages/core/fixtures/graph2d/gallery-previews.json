@@ -11,7 +11,7 @@
     "tolerancePx": 0.75,
     "theme": "light"
   },
-  "compressedBytes": 293809,
+  "compressedBytes": 317532,
   "entries": [
     {
       "id": "line-comparison",
@@ -206,9 +206,9 @@
       "key": "sha256:63704de04216a33143cd547ba664222f7e81b7091ee916a07556a10fc5a07366",
       "svg": "implicit-conics.svg",
       "png": "implicit-conics.png",
-      "svgHash": "sha256:22fc51d995e45ddacaa484d633b33b5179529a2b7670dca66e14d6f4af52c939",
-      "pngHash": "sha256:234d0a0e313e27b7c0309ff7fb3c54b431de204f021ec5dcb94dc4822656c08f",
-      "samples": 882,
+      "svgHash": "sha256:5b4a96ab3a826cc38bb096bc7d18f38c51d1646d3c0853bb05cc6d7bbe2c0fee",
+      "pngHash": "sha256:eddc18afadc1e1e24b5360a16af306e98ba89fb890c164ed12b7902eaba04e66",
+      "samples": 512,
       "diagnostics": []
     },
     {
@@ -217,10 +217,16 @@
       "key": "sha256:d45829976a4a2c364302fc64b19d4e8a5bfcf3112f29bb5d647ca6f33ab32405",
       "svg": "strict-disk.svg",
       "png": "strict-disk.png",
-      "svgHash": "sha256:5a83e59dd9b3eb6923ab6d14ca75ae7e5cffca5bed23204de1d66af6fc44f279",
-      "pngHash": "sha256:bc9c3b77882b6eb6b62dec30149d58a0fab83235f1d097324a11bc66224d38ad",
-      "samples": 613,
-      "diagnostics": []
+      "svgHash": "sha256:86a50fb01d79686a99908cb497509d91e2752abd8ad24d3db0655a71d60393ca",
+      "pngHash": "sha256:3a65b9100b0b5c469634e73ea00e714ee643010334cfee4aebb44f8861d9f911",
+      "samples": 601,
+      "diagnostics": [
+        {
+          "objectId": "inequality_1",
+          "code": "unresolved-cell",
+          "count": 8
+        }
+      ]
     },
     {
       "id": "piecewise-data-gaps",
@@ -256,9 +262,9 @@
       "key": "sha256:827295a60855e230bd8bd2033976e57108e7b4aa2e41a29e62f375fc60f2b0cc",
       "svg": "phase-center.svg",
       "png": "phase-center.png",
-      "svgHash": "sha256:3528d53a6e3968bfd75724a5be8a0674e729ac7860e90e00607c8bdd64ac8e1a",
-      "pngHash": "sha256:089d70c768246f2161357d8a40acf64580f53a3e0e5a1f7adfdacf30354d43da",
-      "samples": 1626,
+      "svgHash": "sha256:7c883e166b8ff7fd0a88f30c1d4d60043bb930e937a022590fcca2a104643fe6",
+      "pngHash": "sha256:7e14aa04a6283ab62e9a435f9ec3fd396614b63252d10a4f6e5d6295cf404a7b",
+      "samples": 1510,
       "diagnostics": []
     },
     {
@@ -278,9 +284,9 @@
       "key": "sha256:3c192e9c92141444296c3ce80e3739aa3d72d4d70570d8006ec3ff198b87427a",
       "svg": "phase-orbit-explorer.svg",
       "png": "phase-orbit-explorer.png",
-      "svgHash": "sha256:2787460a5b480a364dd596f1250cac0bb207e337d287a1c0a62ca3ccbc72ecfe",
-      "pngHash": "sha256:67ec21b8958482b9f3388c85416331d3b2abdf0077c22784e22b18a66694f0e1",
-      "samples": 1934,
+      "svgHash": "sha256:b24b9ca62ea544dd7d346d3135058e82c808b4e59f101ab0de5451c7b9ea4846",
+      "pngHash": "sha256:40ef2cd5801f73d12f15425d2fe21863fab84afb046d2ab94b75d755ff7b0f14",
+      "samples": 1982,
       "diagnostics": []
     },
     {
@@ -289,9 +295,9 @@
       "key": "sha256:d40e71694db023ce9ce78339ac16da89328e8ed1ef8ea655840c33fa9e1c44b1",
       "svg": "phase-saddle.svg",
       "png": "phase-saddle.png",
-      "svgHash": "sha256:2af736d359bcda25a273de3e7d2523f3632f6fc88584b66b2b31a77460c4e7ec",
-      "pngHash": "sha256:b3a6b8684042e2508a1d062f742671ac2b0f38a779d4259cd61a62a4fb0eefbf",
-      "samples": 1050,
+      "svgHash": "sha256:82f85e40684aac7e0cfe76cfc07283150ccb26ac8b486f2c4f20f585d371d9b3",
+      "pngHash": "sha256:cfccda0902d2abfbe989d13c5202e30abe7574b350e7f0c4b598b3e573be355d",
+      "samples": 1158,
       "diagnostics": []
     },
     {
@@ -300,9 +306,9 @@
       "key": "sha256:e83e8f0b1333b092c056d8bd97b4a4881e65f2d4878647fc5de3503ac6a77bac",
       "svg": "phase-bistable.svg",
       "png": "phase-bistable.png",
-      "svgHash": "sha256:2601c5d6ea183711ca6bb8deaffcaa35ef253686dfac972f36a6bc3469ed2840",
-      "pngHash": "sha256:d4d9b635f6d115ab5a58ab6729253089b42b2be55a712d6fb997e8e3bdc9eeed",
-      "samples": 1174,
+      "svgHash": "sha256:55335102f6c7da7bea36404d94d551e7d08d6d634a5b1ecac2294ffbf6e968e1",
+      "pngHash": "sha256:ef4a7689ab2dbf84ebd259997e2c2d478660880c353714e6bbc2dcd33a8aa33f",
+      "samples": 1718,
       "diagnostics": []
     }
   ]

@@ -171,7 +171,7 @@ def run_worker(worker: Path, name: str, operation: str, mesh_a: tuple[bytes, byt
         raise RuntimeError(f"{name} {operation}: native worker job ID mismatch")
     message = output[start + job_size + mesh_size:].decode("utf-8", errors="replace")
     if status != 0:
-        raise RuntimeError(f"{name} {operation}: native worker rejected the closed input: {message}")
+        raise RuntimeError(f"{name} {operation}: native worker rejected the input: {message}")
     if message != "native-cgal":
         raise RuntimeError(f"{name} {operation}: unexpected kernel: {message}")
     return decode_mesh(output[start + job_size:start + job_size + mesh_size])

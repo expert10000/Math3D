@@ -12,6 +12,7 @@ import {
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
 import { validateComplexExpressionAst, type ComplexExpressionVariable } from "./complexExpressionAst";
+import { isGraph2DFieldLocator, type Graph2DFieldLocator } from "./graph2dFieldReference";
 
 export const COMPLEX_ANALYSIS_DOCUMENT_FORMAT = "math3d.complex-analysis-document" as const;
 export const COMPLEX_ANALYSIS_DOCUMENT_SCHEMA_VERSION = 1 as const;
@@ -124,10 +125,21 @@ export type ComplexAnalysisDocument = Readonly<{
   mobius: ComplexMobiusDefinition | null;
   results: readonly ComplexResultReference[];
   provenance: Readonly<{
-    origin: "native" | "legacy-adapter";
+    origin: "native" | "legacy-adapter" | "graph2d-promotion";
     sourceFormat: string;
     sourceVersion: number;
     diagnostics: readonly ComplexDocumentDiagnostic[];
+    graphSource?: Readonly<{ documentId: StableDocumentId; revision: number; structuralHash: StructuralHash;
+      objectId: string; pairedObjectId?: string; sampleCount: number; closure?: "auto" | "open" | "closed";
+      mapping: "parametric-xy-to-complex-contour" | "paired-functions-to-complex-contour" | "scientific-complex-line-to-contour";
+      scientificSource?: Readonly<{ sceneId: string; datasetId: string; sceneFingerprint: string;
+        locator?: Graph2DFieldLocator;
+        realResourceSha256: string; imaginaryResourceSha256: string; varyingAxis: 0 | 1 | 2;
+        fixedIndex: number; fixedCoordinate: number; fixedName: string; fixedUnit: string;
+        varyingName: string; varyingUnit: string; fixedAxis?: 0 | 1 | 2;
+        plane?: Readonly<{ normalAxis: 0 | 1 | 2; fixedIndex: number;
+          fixedCoordinate: number; fixedName: string; fixedUnit: string }> }>;
+      targetStructuralHash: StructuralHash }>;
   }>;
 }>;
 
@@ -311,8 +323,8 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
   const provenance = value.provenance;
   if (!isRecord(provenance)) errors.push("complex.provenance must be an object.");
   else {
-    fields(provenance, ["origin", "sourceFormat", "sourceVersion", "diagnostics"], "complex.provenance", errors);
-    if (!["native", "legacy-adapter"].includes(provenance.origin as string)) errors.push("complex.provenance.origin is invalid.");
+    fields(provenance, ["origin", "sourceFormat", "sourceVersion", "diagnostics", "graphSource"], "complex.provenance", errors);
+    if (!["native", "legacy-adapter", "graph2d-promotion"].includes(provenance.origin as string)) errors.push("complex.provenance.origin is invalid.");
     stringValue(provenance.sourceFormat, "complex.provenance.sourceFormat", errors, 120);
     if (!positiveInteger(provenance.sourceVersion)) errors.push("complex.provenance.sourceVersion must be positive.");
     if (!Array.isArray(provenance.diagnostics)) errors.push("complex.provenance.diagnostics must be an array.");
@@ -323,6 +335,63 @@ export const normalizeComplexAnalysisDocument = (value: unknown): ValidationResu
       stringValue(entry.code, `${path}.code`, errors, 120); stringValue(entry.message, `${path}.message`, errors); stringValue(entry.action, `${path}.action`, errors);
       if (!["info", "warning", "error"].includes(entry.severity as string)) errors.push(`${path}.severity is invalid.`);
     });
+    if (provenance.origin === "graph2d-promotion" || provenance.graphSource !== undefined) {
+      const link = provenance.graphSource;
+      if (provenance.origin !== "graph2d-promotion" || !isRecord(link)) errors.push("complex.provenance.graphSource requires a promoted Graph source.");
+      else {
+        fields(link, ["documentId", "revision", "structuralHash", "objectId", "pairedObjectId", "sampleCount", "closure", "mapping", "scientificSource", "targetStructuralHash"], "complex.provenance.graphSource", errors);
+        if (typeof link.documentId !== "string" || !SAFE_ID.test(link.documentId)) errors.push("complex.provenance.graphSource.documentId is invalid.");
+        if (!positiveInteger(link.revision)) errors.push("complex.provenance.graphSource.revision is invalid.");
+        if (typeof link.structuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.structuralHash)) errors.push("complex.provenance.graphSource.structuralHash is invalid.");
+        if (typeof link.objectId !== "string" || !SAFE_ID.test(link.objectId)) errors.push("complex.provenance.graphSource.objectId is invalid.");
+        if (link.pairedObjectId !== undefined && (typeof link.pairedObjectId !== "string" || !SAFE_ID.test(link.pairedObjectId) || link.pairedObjectId === link.objectId)) errors.push("complex.provenance.graphSource.pairedObjectId is invalid.");
+        if (!positiveInteger(link.sampleCount) || (link.sampleCount as number) > 4097) errors.push("complex.provenance.graphSource.sampleCount is invalid.");
+        if (link.closure !== undefined && !["auto", "open", "closed"].includes(link.closure as string)) errors.push("complex.provenance.graphSource.closure is invalid.");
+        if (!["parametric-xy-to-complex-contour", "paired-functions-to-complex-contour", "scientific-complex-line-to-contour"].includes(link.mapping as string)) errors.push("complex.provenance.graphSource.mapping is invalid.");
+        if ((link.mapping === "parametric-xy-to-complex-contour") !== (link.pairedObjectId === undefined) ||
+            (link.mapping === "scientific-complex-line-to-contour") !== (link.scientificSource !== undefined))
+          errors.push("complex.provenance.graphSource mapping and paired source metadata disagree.");
+        if (link.scientificSource !== undefined) {
+          const scientific = link.scientificSource;
+          if (!isRecord(scientific)) errors.push("complex.provenance.graphSource.scientificSource is invalid.");
+          else {
+            fields(scientific, ["sceneId", "datasetId", "sceneFingerprint", "locator", "realResourceSha256", "imaginaryResourceSha256", "varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "varyingName", "varyingUnit", "fixedAxis", "plane"], "complex.provenance.graphSource.scientificSource", errors);
+            if (scientific.locator !== undefined && !isGraph2DFieldLocator(scientific.locator))
+              errors.push("complex.provenance.graphSource.scientificSource.locator is invalid.");
+            for (const key of ["sceneId", "datasetId", "fixedName", "fixedUnit", "varyingName", "varyingUnit"])
+              stringValue(scientific[key], `complex.provenance.graphSource.scientificSource.${key}`, errors, 160);
+            for (const key of ["sceneFingerprint", "realResourceSha256", "imaginaryResourceSha256"])
+              if (typeof scientific[key] !== "string" || !/^[a-f0-9]{64}$/.test(scientific[key] as string))
+                errors.push(`complex.provenance.graphSource.scientificSource.${key} is invalid.`);
+            if (![0, 1, 2].includes(scientific.varyingAxis as number) ||
+                (scientific.plane === undefined && scientific.varyingAxis === 2))
+              errors.push("complex.provenance.graphSource.scientificSource.varyingAxis is invalid.");
+            if (!Number.isSafeInteger(scientific.fixedIndex) || (scientific.fixedIndex as number) < 0 || (scientific.fixedIndex as number) > 255 ||
+                typeof scientific.fixedCoordinate !== "number" || !Number.isFinite(scientific.fixedCoordinate))
+              errors.push("complex.provenance.graphSource.scientificSource fixed coordinate is invalid.");
+            if ((scientific.fixedAxis === undefined) !== (scientific.plane === undefined))
+              errors.push("complex.provenance.graphSource.scientificSource plane metadata is incomplete.");
+            if (scientific.plane !== undefined) {
+              const plane = scientific.plane;
+              if (!isRecord(plane) || ![0, 1, 2].includes(scientific.fixedAxis as number) ||
+                  ![0, 1, 2].includes(plane.normalAxis as number) ||
+                  new Set([scientific.varyingAxis, scientific.fixedAxis, plane.normalAxis]).size !== 3)
+                errors.push("complex.provenance.graphSource.scientificSource plane axes are invalid.");
+              else {
+                fields(plane, ["normalAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"],
+                  "complex.provenance.graphSource.scientificSource.plane", errors);
+                if (!Number.isSafeInteger(plane.fixedIndex) || (plane.fixedIndex as number) < 0 ||
+                    (plane.fixedIndex as number) > 255 || !finite(plane.fixedCoordinate))
+                  errors.push("complex.provenance.graphSource.scientificSource plane coordinate is invalid.");
+                stringValue(plane.fixedName, "complex.provenance.graphSource.scientificSource.plane.fixedName", errors, 160);
+                stringValue(plane.fixedUnit, "complex.provenance.graphSource.scientificSource.plane.fixedUnit", errors, 160);
+              }
+            }
+          }
+        }
+        if (typeof link.targetStructuralHash !== "string" || !/^sha256:[0-9a-f]{64}$/.test(link.targetStructuralHash)) errors.push("complex.provenance.graphSource.targetStructuralHash is invalid.");
+      }
+    }
   }
   if (errors.length) return { ok: false, errors };
   return { ok: true, value: immutableCanonicalJsonClone(value) as ComplexAnalysisDocument };

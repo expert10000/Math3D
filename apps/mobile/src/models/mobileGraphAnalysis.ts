@@ -6,23 +6,27 @@ import { analyzeGraph2DDerivative, analyzeGraph2DLocalDifferential, analyzeGraph
   type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis, type Graph2DIntersectionCandidate,
   type Graph2DIntersectionAnalysis, structuralHash } from "@math3d/core";
 import { graph2DPublicationAnalysisTables, type Graph2DPublicationTable } from "@math3d/core";
-import { analyzeGraph2DRegression, graph2DRegressionResidualTable, graph2DRegressionCurveTable, type Graph2DRegression, type Graph2DPointRow } from "@math3d/core";
+import { analyzeGraph2DRegression, graph2DRegressionResidualTable, graph2DRegressionCurveTable,
+  analyzeGraph2DFourier, type Graph2DFourierResult, type Graph2DRegression, type Graph2DPointRow } from "@math3d/core";
 const publicationProjection = (results: readonly { publication: AnalysisResultEnvelope }[]) => {
   const { analyses, analysisNotes } = graph2DPublicationAnalysisTables(results);
   return { publicationTables: analyses, publicationNotes: analysisNotes };
 };
 
 export type MobileGraphAnalysisKind = "derivatives" | "tangent" | "features" | "integral" | "intersections" | "arc-length" |
-  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic" | "regression-spline";
+  "polar-area" | "polar-arc-length" | "polar-tangent" | "parametric-tangent" | "regression-linear" | "regression-quadratic" | "regression-cubic" | "regression-quartic" | "regression-spline" | "regression-exponential" | "regression-logistic" | "fourier";
 export type MobileGraphAnalysisDraft = { kind: MobileGraphAnalysisKind; objectId: string; secondId: string;
-  x: string; min: string; max: string; tolerance: string; smoothing?: string; mode: "signed" | "absolute" };
+  x: string; min: string; max: string; tolerance: string; smoothing?: string;
+  amplitude?: string; rate?: string; capacity?: string; midpoint?: string;
+  fourierWindow?: "rectangular" | "hann"; fourierNormalization?: "peak" | "rms";
+  fourierDetrend?: "none" | "mean"; xUnit?: string; mode: "signed" | "absolute" };
 export type MobileGraphAnalysisRow = { label: string; detail: string; probe?: Graph2DProbe;
   candidate?: Graph2DCriticalPoint | Graph2DIntersectionCandidate };
 export type MobileGraphAnalysis = { kind: MobileGraphAnalysisKind; inputHash: string; publications: readonly AnalysisResultEnvelope[];
   rows: readonly MobileGraphAnalysisRow[]; overlays: readonly Graph2DLineOverlay[]; areaSegments?: readonly Graph2DAreaFillSegment[];
   candidateAnalysis?: Graph2DCriticalPointAnalysis | Graph2DIntersectionAnalysis;
   publicationTables?: readonly Graph2DPublicationTable[]; publicationNotes?: readonly string[] };
-export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression };
+export type MobileGraphRegressionAnalysis = MobileGraphAnalysis & { regression?: Graph2DRegression; fourier?: Graph2DFourierResult };
 export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraphAnalysisDraft => {
   const selected = document.source.objects.find(object => object.id === document.selection.objectId);
   const parametricDefault = selected?.kind === "parametric" ?
@@ -31,7 +35,9 @@ export const mobileGraphAnalysisDraft = (document: Graph2DDocument): MobileGraph
     objectId: selected?.id ?? document.source.objects.find(object => object.kind === "explicit-cartesian")?.id ?? "",
     secondId: "", x: String(selected?.kind === "parametric" ? document.selection.probe?.parameter ?? parametricDefault : document.selection.probe?.x ?? 0),
     min: String(selected?.kind === "polar" ? selected.domain.min : -1),
-    max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", smoothing: "0.001", mode: "signed" };
+    max: String(selected?.kind === "polar" ? selected.domain.max : 1), tolerance: "0.00001", smoothing: "0.001",
+    amplitude: "1", rate: "1", capacity: "1", midpoint: "0", fourierWindow: "hann",
+    fourierNormalization: "peak", fourierDetrend: "mean", xUnit: "s", mode: "signed" };
 };
 const number = (text: string) => {
   if (!text.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text.trim()) || !Number.isFinite(Number(text)))
@@ -39,6 +45,10 @@ const number = (text: string) => {
   return Number(text);
 };
 export const mobileGraphSplineSmoothness = (draft: MobileGraphAnalysisDraft) => number(draft.smoothing ?? "0.001");
+export const mobileGraphExponentialInitial = (draft: MobileGraphAnalysisDraft) => ({
+  amplitude: number(draft.amplitude ?? "1"), rate: number(draft.rate ?? "1") });
+export const mobileGraphLogisticInitial = (draft: MobileGraphAnalysisDraft) => ({
+  capacity: number(draft.capacity ?? "1"), rate: number(draft.rate ?? "1"), midpoint: number(draft.midpoint ?? "0") });
 const format = (value: number | null) => value === null ? "unavailable" : value.toPrecision(8);
 export const mobileGraphAnalysisInputHash = (draft: MobileGraphAnalysisDraft) => structuralHash(draft);
 
@@ -53,22 +63,51 @@ export const mobileGraphRegressionResult = (draft: MobileGraphAnalysisDraft, fit
       ...(fit.model === "spline" ? [
         { label: "Cubic smoothing spline", detail: `${fit.spline.controlPoints} control points · λ=${fit.spline.lambda} · no extrapolation` },
         { label: "Uncertainty", detail: "No confidence or prediction intervals are provided for this regularized model." },
+      ] : fit.model === "exponential-decay" ? [
+        { label: "Exponential decay", detail: `y=${format(fit.parameters.amplitude)}*exp(-${format(fit.parameters.rate)}*(x-${format(fit.parameters.anchor)}))` },
+        { label: "Solver", detail: `${fit.solver.status} in ${fit.solver.iterations} iterations; ${fit.solver.rejectedSteps} rejected. Local result, no global or uniqueness guarantee.` },
+        { label: "Uncertainty", detail: "No parameter uncertainty or confidence/prediction intervals are reported." },
+      ] : fit.model === "logistic-growth" ? [
+        { label: "Logistic growth", detail: `y=${format(fit.parameters.capacity)}/(1+exp(-${format(fit.parameters.rate)}*(x-${format(fit.parameters.midpoint)})))` },
+        { label: "Solver", detail: `${fit.solver.status} in ${fit.solver.iterations} iterations; ${fit.solver.rejectedSteps} rejected. Local result, no global or uniqueness guarantee.` },
+        { label: "Uncertainty", detail: "No parameter uncertainty or confidence/prediction intervals are reported." },
       ] : [
         { label: "Centered/scaled equation", detail: `z=(x-${fit.center})/${fit.scale}; y=${fit.coefficients.map((c, i) => `${format(c)}${i ? `*z^${i}` : ""}`).join(" + ")}` },
         { label: "95% pointwise limits", detail: "Brown fit; purple dashed mean response; purple dotted new observation. Not simultaneous; no extrapolation. Log axes omit non-positive parts." },
       ]),
-      { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 fitted samples${fit.model === "spline" ? "." : " with intervals."} Results are transient; fit again after reopening.` }] };
+      { label: "Residuals", detail: `${fit.residuals.length} original rows; observed minus fitted. Report/CSV includes first 2,048 rows and all 129 fitted samples${fit.model === "spline" || fit.model === "exponential-decay" || fit.model === "logistic-growth" ? "." : " with intervals."} Results are transient; fit again after reopening.` }] };
 };
 
 /** One requested bounded shared-core operation, never automatic all-function work. */
 export const runMobileGraphAnalysis = (document: Graph2DDocument, draft: MobileGraphAnalysisDraft, regressionRows: readonly Graph2DPointRow[] | null = null): MobileGraphRegressionAnalysis => {
   const object = document.source.objects.find((object) => object.id === draft.objectId);
   const result: MobileGraphAnalysis = { kind: draft.kind, inputHash: mobileGraphAnalysisInputHash(draft), publications: [], rows: [], overlays: [] };
-  if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic" || draft.kind === "regression-quartic" || draft.kind === "regression-spline") {
+  if (draft.kind === "fourier") {
+    const spectrum = analyzeGraph2DFourier({ document, objectId: draft.objectId, rows: regressionRows,
+      options: { window: draft.fourierWindow ?? "hann", normalization: draft.fourierNormalization ?? "peak",
+        detrend: draft.fourierDetrend ?? "mean", xUnit: draft.xUnit ?? "s" } });
+    const projection = publicationProjection([spectrum]);
+    const bins = spectrum.bins.slice(0, 2048);
+    const table: Graph2DPublicationTable = { publication: spectrum.publication,
+      columns: ["Frequency", "Amplitude", "Phase radians"],
+      rows: bins.map(bin => [bin.frequency, bin.amplitude, bin.phaseRadians]) };
+    return { ...result, fourier: spectrum, publications: [spectrum.publication],
+      publicationTables: [...projection.publicationTables, table],
+      publicationNotes: spectrum.bins.length > bins.length ? [`Spectrum table includes first ${bins.length} of ${spectrum.bins.length} frequency bins.`] : [],
+      rows: [{ label: `Fourier spectrum · ${spectrum.n} samples`,
+        detail: `Δx=${format(spectrum.sampleInterval)} ${spectrum.options.xUnit}; Nyquist=${format(spectrum.nyquist)} ${spectrum.frequencyUnit}; ${spectrum.options.window} window; ${spectrum.options.normalization} amplitude.` },
+        ...spectrum.bins.slice(1).sort((a, b) => b.amplitude - a.amplitude).slice(0, 12).map(bin => ({
+          label: `${format(bin.frequency)} ${spectrum.frequencyUnit}`,
+          detail: `Amplitude ${format(bin.amplitude)} y units; phase ${format(bin.phaseRadians)} rad` }))] };
+  }
+  if (draft.kind === "regression-linear" || draft.kind === "regression-quadratic" || draft.kind === "regression-cubic" || draft.kind === "regression-quartic" || draft.kind === "regression-spline" || draft.kind === "regression-exponential" || draft.kind === "regression-logistic") {
     const fit = analyzeGraph2DRegression({ document, objectId: draft.objectId, rows: regressionRows,
       model: draft.kind === "regression-linear" ? "linear" : draft.kind === "regression-quadratic" ? "quadratic" :
-        draft.kind === "regression-cubic" ? "cubic" : draft.kind === "regression-quartic" ? "quartic" : "spline",
-      smoothing: draft.kind === "regression-spline" ? mobileGraphSplineSmoothness(draft) : undefined });
+        draft.kind === "regression-cubic" ? "cubic" : draft.kind === "regression-quartic" ? "quartic" :
+          draft.kind === "regression-exponential" ? "exponential-decay" : draft.kind === "regression-logistic" ? "logistic-growth" : "spline",
+      smoothing: draft.kind === "regression-spline" ? mobileGraphSplineSmoothness(draft) : undefined,
+      initial: draft.kind === "regression-exponential" ? mobileGraphExponentialInitial(draft) :
+        draft.kind === "regression-logistic" ? mobileGraphLogisticInitial(draft) : undefined });
     return mobileGraphRegressionResult(draft, fit);
   }
   if (draft.kind === "polar-area" || draft.kind === "polar-arc-length") {

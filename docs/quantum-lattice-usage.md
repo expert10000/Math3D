@@ -108,3 +108,26 @@ and generated bundle fixtures, and
 open square, honeycomb, simple-cubic, supplied 1D/SSH geometry, selection,
 units, reopening, and tamper refusal; they do not assert unsupported periodic
 bonds or chemistry.
+
+## Inspect a tracked Hofstadter crossing
+
+Choose **File → Verified quantum examples → Hofstadter · overlap-validated
+strip crossings**. The pinned Theory Lab `p/q=1/6` fixture shows periodic
+bands, two open strips, and highlighted crossing segments. In the right
+panel, **Inspect first sample of tracked-18** reads the exact saved crossing
+position and squared eigenvector overlap. The associated annotation gives
+the assignment margin and the strip run hash. The 18- and 24-site results
+are producer supplied; Math3D performs no Harper calculation. The older
+**Hofstadter · verified bulk–edge comparison** example stays available and
+is labelled as sorted-index evidence. A changed source dataset is refused.
+
+## Inspect two-grid Hofstadter edge-flow convergence
+
+Choose **File → Verified quantum examples → Hofstadter · two-grid edge-flow
+convergence**. The pinned Theory Lab `p/q=1/5` scene pairs 18- and 23-site
+strips with matching boundary phase. Its right panel displays producer-supplied
+17- and 31-point crossing and periodic-seam diagnostics. Choose **Inspect
+first sample of grid-17-18** for the exact saved crossing momentum and overlap;
+the adjacent source list identifies the immutable run and hash. The lanes are
+display offsets. A changed source dataset is refused. Math3D neither tracks
+branches nor calculates Hall transport or a unique physical edge channel.

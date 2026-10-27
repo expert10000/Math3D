@@ -82,14 +82,23 @@ const derivativeNode = (node: Node, variable: "x" | "theta" | "t" = "x"): Node |
         case "sin": return mul(call("cos", u), d);
         case "cos": return mul(unary("-", call("sin", u)), d);
         case "tan": return div(d, pow(call("cos", u), number(2)));
+        case "sinh": return mul(call("cosh", u), d);
+        case "cosh": return mul(call("sinh", u), d);
+        case "tanh": return div(d, pow(call("cosh", u), number(2)));
         case "asin": return div(d, call("sqrt", sub(number(1), pow(u, number(2)))));
         case "acos": return unary("-", div(d, call("sqrt", sub(number(1), pow(u, number(2))))));
         case "atan": return div(d, add(number(1), pow(u, number(2))));
+        case "asinh": return div(d, call("sqrt", add(pow(u, number(2)), number(1))));
+        case "acosh": return div(d, mul(call("sqrt", sub(u, number(1))), call("sqrt", add(u, number(1)))));
+        case "atanh": return div(d, sub(number(1), pow(u, number(2))));
         case "sqrt": return div(d, mul(number(2), call("sqrt", u)));
+        case "cbrt": return div(d, mul(number(3), pow(call("cbrt", u), number(2))));
         case "exp": return mul(call("exp", u), d);
         case "ln": return div(d, u);
         case "log": return div(d, mul(u, number(Math.LN10)));
-        case "abs": case "floor": case "ceil": return null;
+        case "log2": return div(d, mul(u, number(Math.LN2)));
+        case "abs": case "floor": case "ceil": case "round": case "trunc": case "sign":
+        case "sinc": case "sec": case "csc": case "cot": return null;
       }
     }
   }

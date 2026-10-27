@@ -7,6 +7,26 @@ import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
 import { mobileProjectResourceContext } from "./mobileProjectResources";
 import { createInMemoryDependencyGraph } from "@math3d/kernel";
 
+const complexContourPreview = (document: import("@math3d/core").KernelWorkspaceDocument | undefined,
+  documents: ReadonlyMap<string, import("@math3d/core").KernelWorkspaceDocument>) => {
+  if (document?.format !== "math3d.complex-analysis-document") return null;
+  const link = document.provenance.graphSource;
+  const graph = link ? documents.get(link.documentId) : null;
+  const graphStatus = !link ? "unlinked" : document.identity.structuralHash !== link.targetStructuralHash ? "target edited" :
+    graph?.format !== "math3d.graph2d-document" ? "Graph unavailable" :
+      graph.identity.revision === link.revision && graph.identity.structuralHash === link.structuralHash ?
+        "Graph checkpoint matches" : "Graph checkpoint changed";
+  return { functionText: document.function.sourceText,
+    contours: document.contours.map(contour => ({ id: contour.contourId, points: contour.points.length,
+      closed: contour.closed })), graphStatus,
+    mapping: link?.mapping ?? null, graphDocumentId: link?.documentId ?? null,
+    scientific: link?.scientificSource ? { sceneId: link.scientificSource.sceneId,
+      datasetId: link.scientificSource.datasetId, fixedName: link.scientificSource.fixedName,
+      fixedCoordinate: link.scientificSource.fixedCoordinate, fixedUnit: link.scientificSource.fixedUnit,
+      varyingName: link.scientificSource.varyingName, varyingUnit: link.scientificSource.varyingUnit,
+      fingerprint: link.scientificSource.sceneFingerprint } : null };
+};
+
 /** Inspect checkpointed named projects without activating an editor or mutating storage. */
 export const buildMobileProjectExplorer = (raw: string, sidecars: readonly ProjectResourceSidecar[] = []) => {
   const project = parseMath3DProject(raw);
@@ -64,8 +84,11 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
       serializedProject: raw, projectResources: [...sidecars], updatedAt: 0, lastOpenedAt: 0 }),
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
     groups: tree.groups.map(group => ({ ...group, documents: group.documents.map(document => ({ ...document,
+      complexPreview: document.module === "complex" ? complexContourPreview(resolved.get(document.id), resolved) : null,
+      vector3dPreview: document.module === "vector3d" && resolved.get(document.id)?.format === "math3d.vector-field3d-document" ?
+        resolved.get(document.id) as import("@math3d/core").VectorField3DDocument : null,
       editing: document.module === "surface" && !document.archived && !surfaceReason(document.id) ? "Surface workspace" : document.module === "curve" && !document.archived && resolved.get(document.id)?.format === "math3d.curve-document" && !curveReason(document.id) ? "Curve workspace" : document.module === "graph2d" && !document.archived && !inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Graph workspace" : "Saved preview",
-      unavailableReason: document.module === "surface" ? document.archived ? "Archived documents cannot be edited." : surfaceReason(document.id) : document.module === "curve" ? document.archived ? "Archived documents cannot be edited." : curveReason(document.id) : document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
+      unavailableReason: document.module === "surface" ? document.archived ? "Archived documents cannot be edited." : surfaceReason(document.id) : document.module === "curve" ? document.archived ? "Archived documents cannot be edited." : curveReason(document.id) : document.module === "vector3d" ? resolved.get(document.id)?.format === "math3d.vector-field3d-document" ? null : "Saved 3D vector field is unavailable on mobile." : document.module !== "graph2d" ? "This module remains a saved preview on mobile." : document.archived ? "Archived documents cannot be edited." :
         inventory.some(item => item.kind === "graph-point-table" && item.owners.includes(document.id) && !resources.bytes(item)) ? "Import missing Graph source tables before editing." : null,
       stale: relations.some(relation => relation.freshness !== "current" && relation.target.type === "document" && relation.target.generation.documentId === document.id),
     })) })),

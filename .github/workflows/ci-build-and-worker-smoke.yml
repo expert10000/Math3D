@@ -144,6 +144,21 @@ jobs:
       - name: Build app
         run: npm run build:core
 
+      - name: Verify frozen quantum scene corpus and import boundary
+        run: node scripts/test-quantum-scene-import.mjs
+
+      - name: Verify QWZ, SSH and Kitaev study profiles
+        run: npx playwright test tests/e2e/quantum-qwz-study.spec.ts tests/e2e/quantum-ssh-study.spec.ts tests/e2e/quantum-kitaev-study.spec.ts --reporter=list
+
+      - name: Verify Q09 desktop import and persistence routes
+        run: npm run test:quantum:q09
+
+      - name: Install Chromium for browser capability test
+        run: npx playwright install chromium
+
+      - name: Verify browser quantum-import capability boundary
+        run: npm run build:web && npm run test:quantum:browser
+
       - name: Run fast Playwright app e2e tests
         run: npm run test:app:e2e:fast
 

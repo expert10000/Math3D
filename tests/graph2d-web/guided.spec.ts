@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { editGraph, graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 
 async function start(page: Page) {
   await page.route("**/api/worker/**", route => route.fulfill({ status: 503, body: '{"error":"unavailable"}', contentType: "application/json" }));
@@ -45,9 +46,9 @@ test("GGL13 guided paths open source-linked copies, preserve edits and mark stal
   expect(first.requiredCapabilities).toContain("graph2d.probes.v1");
   expect(first.display.pinnedProbes).toHaveLength(2);
   const functions = page.getByLabel("Graph functions", { exact: true });
-  await functions.getByRole("button", { name: "Edit Function", exact: true }).click();
-  await functions.getByLabel("Function expression").fill("2*sin(x)");
-  await functions.getByRole("button", { name: "Save function", exact: true }).click();
+  await editGraph(page, "Function");
+  await graphEditor(page).getByLabel("Function expression").fill("2*sin(x)");
+  await saveGraphEditor(page);
   await expect(markers).toHaveCount(0);
   await expect(openedGuide).toContainText("stale");
   await expect(page.getByLabel("Graph inspector", { exact: true }).getByTestId("graph2d-probes")).toContainText("stale");
@@ -56,15 +57,15 @@ test("GGL13 guided paths open source-linked copies, preserve edits and mark stal
   await guides.getByRole("button", { name: "Study Slope and derivative" }).click();
   await expect(detail).toContainText("resumes your edited guided copy");
   await detail.getByRole("button", { name: "Open guided Slope and derivative" }).click();
-  await functions.getByRole("button", { name: "Edit Function", exact: true }).click();
-  await expect(functions.getByLabel("Function expression")).toHaveValue("2*sin(x)");
-  await functions.getByRole("button", { name: "Cancel", exact: true }).click();
+  await editGraph(page, "Function");
+  await expect(graphEditor(page).getByLabel("Function expression")).toHaveValue("2*sin(x)");
+  await graphEditor(page).getByRole("button", { name: "Cancel", exact: true }).click();
   await page.getByTestId("graph-gallery-open").click();
   await gallery.getByRole("button", { name: "Learn", exact: true }).click();
   await guides.getByRole("button", { name: "Study Taylor near zero" }).click();
   await expect(detail).toContainText("not a certified Taylor remainder");
   await detail.getByRole("button", { name: "Open guided Taylor near zero" }).click();
-  await expect(functions.getByRole("button", { name: "Edit P3 cubic", exact: true })).toBeVisible();
+  await expect(functions.getByRole("button", { name: "Select P3 cubic", exact: true })).toBeVisible();
   await expect(markers).toHaveCount(2);
   await save(page);
   const second = await checkpoint(page);

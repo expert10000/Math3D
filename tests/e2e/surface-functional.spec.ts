@@ -59,7 +59,8 @@ test.describe("Surface functional flow", () => {
       await openSurfaceGenerator(ctx.page);
       await waitForWorkerReady(ctx.page);
 
-      await expect.poll(async () => (await readWorkerStatusText(ctx.page)).toLowerCase()).not.toContain(
+      const page = ctx.page;
+      await expect.poll(async () => (await readWorkerStatusText(page)).toLowerCase()).not.toContain(
         "worker unavailable"
       );
       await ctx.page.getByTestId("surfaces-left-tab-analysis").click();

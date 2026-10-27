@@ -10,7 +10,7 @@
     "build:web:pages": "vite build --base ./ --outDir ../apps/web/dist --emptyOutDir",
     "preview": "vite preview",
     "preview:web": "vite preview --host --port 4173 --strictPort --base / --outDir ../apps/web/dist",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=4",
     "bench:gk18": "vitest bench src/kernel/dependencyLocalInvalidation.bench.ts --run"
   },
   "dependencies": {

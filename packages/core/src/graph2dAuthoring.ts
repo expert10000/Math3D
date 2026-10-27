@@ -1,9 +1,14 @@
 import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDatasetOrigin,
+  validGraph2DAnalyticFieldOrigin, validGraph2DDerivedFieldOrigin,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
-  type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin } from "./graph2dDocument";
+  type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin,
+  type Graph2DAnalyticFieldOrigin, type Graph2DDerivedFieldOrigin } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
+import { isGraph2DFieldReference, reviewGraph2DFieldRelink, type Graph2DFieldReference } from "./graph2dFieldReference";
+import { isGraph2DVectorFieldReference, reviewGraph2DVectorFieldRelink,
+  type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -41,6 +46,8 @@ export type Graph2DPhasePortraitDraft = Readonly<{
   label: string; xDerivative: string; yDerivative: string;
   domain: Graph2DDomain; yDomain: Graph2DDomain; timeSpan: number;
   seeds: readonly Readonly<{ x: number; y: number }>[];
+  fieldDensity?: number;
+  fieldUnits?: Readonly<{ x: string; y: string; time: string }>;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
 export type Graph2DTimeOdeDraft = Readonly<{
@@ -62,6 +69,8 @@ export type Graph2DPointSeriesDraft = Readonly<{
   mode: "points" | "line";
   domain: Graph2DDomain;
   origin?: Graph2DScientificDatasetOrigin;
+  analyticOrigin?: Graph2DAnalyticFieldOrigin;
+  derivedOrigin?: Graph2DDerivedFieldOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
 export type Graph2DPiecewiseDraft = Readonly<{
@@ -71,6 +80,12 @@ export type Graph2DPiecewiseDraft = Readonly<{
 }>;
 export type Graph2DAuthoringAction =
   | Graph2DParameterAction
+  | Readonly<{ type: "save-field-reference"; reference: Graph2DFieldReference }>
+  | Readonly<{ type: "relink-field-reference"; referenceId: string; replacement: Graph2DFieldReference }>
+  | Readonly<{ type: "remove-field-reference"; referenceId: string }>
+  | Readonly<{ type: "save-vector-field-reference"; reference: Graph2DVectorFieldReference }>
+  | Readonly<{ type: "relink-vector-field-reference"; referenceId: string; replacement: Graph2DVectorFieldReference }>
+  | Readonly<{ type: "remove-vector-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
@@ -90,7 +105,11 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "create-inequality"; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
+  | Readonly<{ type: "create-point-series-pair"; drafts: readonly [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft] }>
   | Readonly<{ type: "edit-point-series"; objectId: string; draft: Graph2DPointSeriesDraft }>
+  | Readonly<{ type: "edit-point-series-pair"; edits: readonly [
+    Readonly<{ objectId: string; draft: Graph2DPointSeriesDraft }>,
+    Readonly<{ objectId: string; draft: Graph2DPointSeriesDraft }> ] }>
   | Readonly<{ type: "create-piecewise"; draft: Graph2DPiecewiseDraft }>
   | Readonly<{ type: "edit-piecewise"; objectId: string; draft: Graph2DPiecewiseDraft }>
   | Readonly<{ type: "duplicate" | "delete" | "visibility"; objectId: string }>
@@ -183,6 +202,11 @@ export const validateGraph2DPhasePortraitDraft = (draft: Graph2DPhasePortraitDra
     ...validateGraph2DImplicitDraft({ ...draft, expression: draft.yDerivative }, variables)];
   if (!Number.isFinite(draft.timeSpan) || draft.timeSpan <= 0 || draft.timeSpan > 100)
     errors.push("Time horizon must be greater than 0 and at most 100.");
+  if (draft.fieldDensity !== undefined && (!Number.isInteger(draft.fieldDensity) || draft.fieldDensity < 4 || draft.fieldDensity > 24))
+    errors.push("Field density must be an integer from 4 to 24 arrows per longest side.");
+  if (draft.fieldUnits !== undefined && Object.values(draft.fieldUnits).some(unit =>
+    typeof unit !== "string" || unit.length > 24 || unit.trim() !== unit))
+    errors.push("Coordinate and time units must be at most 24 characters without surrounding spaces.");
   if (draft.seeds.length > 8) errors.push("Use at most eight initial points.");
   for (const seed of draft.seeds) if (!Number.isFinite(seed.x) || !Number.isFinite(seed.y) ||
     seed.x < draft.domain.min || seed.x > draft.domain.max || seed.y < draft.yDomain.min || seed.y > draft.yDomain.max)
@@ -226,6 +250,12 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
   if (!validPointTableReference(draft.table)) errors.push("Point table reference is invalid.");
   if (!["points", "line"].includes(draft.mode)) errors.push("Choose points or connected line mode.");
   if (draft.origin !== undefined && !validGraph2DScientificDatasetOrigin(draft.origin)) errors.push("Scientific dataset provenance is invalid.");
+  if (draft.analyticOrigin !== undefined && !validGraph2DAnalyticFieldOrigin(draft.analyticOrigin))
+    errors.push("Analytic field provenance is invalid.");
+  if (draft.derivedOrigin !== undefined && !validGraph2DDerivedFieldOrigin(draft.derivedOrigin))
+    errors.push("Derived field provenance is invalid.");
+  if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin].filter(item => item !== undefined).length > 1)
+    errors.push("Choose one provenance source for the point series.");
   return errors;
 };
 export const validateGraph2DPiecewiseDraft = (draft: Graph2DPiecewiseDraft,
@@ -245,6 +275,58 @@ export const validateGraph2DPiecewiseDraft = (draft: Graph2DPiecewiseDraft,
 
 export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2DAuthoringAction): Graph2DScene => {
   if (isGraph2DParameterAction(action)) return applyGraph2DParameterAction(document, action);
+  if (action.type === "save-field-reference") {
+    if (!isGraph2DFieldReference(action.reference)) throw new TypeError("Invalid field reference.");
+    const existing = document.source.fieldReferences ?? [];
+    if (existing.some(item => item.id === action.reference.id)) throw new TypeError("Field component is already saved.");
+    if (existing.length >= 16) throw new TypeError("Field reference limit reached.");
+    return { source: { ...document.source, fieldReferences: [...existing, action.reference] },
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "relink-field-reference") {
+    const existing = document.source.fieldReferences ?? [];
+    const saved = existing.find(item => item.id === action.referenceId);
+    if (!saved) throw new TypeError("Field reference does not exist.");
+    const review = reviewGraph2DFieldRelink(saved, action.replacement);
+    if (!review.eligible) throw new TypeError("Replacement field component, axes, shape or checksum do not match.");
+    const updated = { ...action.replacement, id: saved.id };
+    return { source: { ...document.source, fieldReferences: existing.map(item =>
+      item.id === saved.id ? updated : item) }, display: document.display, selection: document.selection };
+  }
+  if (action.type === "remove-field-reference") {
+    const existing = document.source.fieldReferences ?? [];
+    if (!existing.some(item => item.id === action.referenceId)) throw new TypeError("Field reference does not exist.");
+    const remaining = existing.filter(item => item.id !== action.referenceId);
+    const { fieldReferences: _removed, ...source } = document.source;
+    return { source: remaining.length ? { ...source, fieldReferences: remaining } : source,
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "save-vector-field-reference") {
+    if (!isGraph2DVectorFieldReference(action.reference)) throw new TypeError("Invalid paired vector field reference.");
+    const existing = document.source.vectorFieldReferences ?? [];
+    if (existing.some(item => item.id === action.reference.id)) throw new TypeError("Vector field is already saved.");
+    if (existing.length >= 8) throw new TypeError("Vector field reference limit reached.");
+    return { source: { ...document.source, vectorFieldReferences: [...existing, action.reference] },
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "relink-vector-field-reference") {
+    const existing = document.source.vectorFieldReferences ?? [];
+    const saved = existing.find(item => item.id === action.referenceId);
+    if (!saved) throw new TypeError("Vector field reference does not exist.");
+    if (!reviewGraph2DVectorFieldRelink(saved, action.replacement).eligible)
+      throw new TypeError("Replacement vector components, axes, shape or checksums do not match.");
+    const updated = { ...action.replacement, id: saved.id };
+    return { source: { ...document.source, vectorFieldReferences: existing.map(item =>
+      item.id === saved.id ? updated : item) }, display: document.display, selection: document.selection };
+  }
+  if (action.type === "remove-vector-field-reference") {
+    const existing = document.source.vectorFieldReferences ?? [];
+    if (!existing.some(item => item.id === action.referenceId)) throw new TypeError("Vector field reference does not exist.");
+    const remaining = existing.filter(item => item.id !== action.referenceId);
+    const { vectorFieldReferences: _removed, ...source } = document.source;
+    return { source: remaining.length ? { ...source, vectorFieldReferences: remaining } : source,
+      display: document.display, selection: document.selection };
+  }
   const objects = [...document.source.objects];
   const displays = [...document.display.objects];
   let selection = document.selection;
@@ -413,7 +495,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       xDerivative: { source: action.draft.xDerivative, variable: "xy" as const, ast: parsedX.ast },
       yDerivative: { source: action.draft.yDerivative, variable: "xy" as const, ast: parsedY.ast },
       domain: action.draft.domain, yDomain: action.draft.yDomain, timeSpan: action.draft.timeSpan,
-      seeds: action.draft.seeds };
+      seeds: action.draft.seeds,
+      ...(action.draft.fieldDensity === undefined ? {} : { fieldDensity: action.draft.fieldDensity }),
+      ...(action.draft.fieldUnits === undefined ? {} : { fieldUnits: action.draft.fieldUnits }) };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-phase-portrait") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
@@ -490,6 +574,42 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     if (action.type === "create-piecewise") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }
     selection = { objectId: id, probe: null };
+  } else if (action.type === "edit-point-series-pair") {
+    const [first, second] = action.edits;
+    if (first.objectId === second.objectId) throw new TypeError("Choose two distinct point series.");
+    for (const edit of action.edits) {
+      const target = objects.findIndex(entry => entry.id === edit.objectId);
+      if (target < 0 || objects[target]?.kind !== "point-series")
+        throw new TypeError("Both selected objects must be point series.");
+      const errors = validateGraph2DPointSeriesDraft(edit.draft);
+      if (errors.length) throw new TypeError(errors.join(" "));
+    }
+    for (const edit of action.edits) {
+      const target = objects.findIndex(entry => entry.id === edit.objectId);
+      const draft = edit.draft;
+      objects[target] = { id: edit.objectId, kind: "point-series", label: draft.label,
+        table: draft.table, mode: draft.mode, missing: "gap", domain: draft.domain,
+        ...(draft.origin ? { origin: draft.origin } : {}),
+        ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
+        ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}) };
+      displays[target] = { objectId: edit.objectId, ...draft.style };
+    }
+    selection = { objectId: document.selection.objectId, probe: null };
+  } else if (action.type === "create-point-series-pair") {
+    if (objects.length > GRAPH2D_MAX_OBJECTS - 2) throw new TypeError("Function limit reached.");
+    for (const draft of action.drafts) {
+      const errors = validateGraph2DPointSeriesDraft(draft);
+      if (errors.length) throw new TypeError(errors.join(" "));
+    }
+    for (const draft of action.drafts) {
+      let serial = 1, id = "series_1";
+      while (objects.some(entry => entry.id === id)) id = "series_" + ++serial;
+      objects.push({ id, kind: "point-series", label: draft.label, table: draft.table,
+        mode: draft.mode, missing: "gap", domain: draft.domain,
+        ...(draft.origin ? { origin: draft.origin } : {}) });
+      displays.push({ objectId: id, ...draft.style });
+      selection = { objectId: id, probe: null };
+    }
   } else if (action.type === "create-point-series" || action.type === "edit-point-series") {
     if (action.type === "edit-point-series" && objects[index]?.kind !== "point-series")
       throw new TypeError("Selected object is not a point series.");
@@ -504,7 +624,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     }
     const object = { id, kind: "point-series" as const, label: action.draft.label,
       table: action.draft.table, mode: action.draft.mode, missing: "gap" as const, domain: action.draft.domain,
-      ...(action.draft.origin ? { origin: action.draft.origin } : {}) };
+      ...(action.draft.origin ? { origin: action.draft.origin } : {}),
+      ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}),
+      ...(action.draft.derivedOrigin ? { derivedOrigin: action.draft.derivedOrigin } : {}) };
     const display = { objectId: id, ...action.draft.style };
     if (action.type === "create-point-series") { objects.push(object); displays.push(display); }
     else { objects[index] = object; displays[index] = display; }

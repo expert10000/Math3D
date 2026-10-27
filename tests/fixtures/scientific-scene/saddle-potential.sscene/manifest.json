@@ -1,0 +1,67 @@
+{
+  "schema": "scientific-scene/v1",
+  "sceneId": "saddle-potential",
+  "title": "Saddle potential · 2D scalar field",
+  "source": {
+    "producer": "math3d-fixture",
+    "sourceId": "saddle-potential-v1",
+    "sourceSchema": "scientific-fixture/v1",
+    "sha256": "827ee8dee408ed6a823c2644af9f63f86545235ee3c02eaf78badcb32090e28d"
+  },
+  "resources": [
+    {
+      "id": "scalar",
+      "path": "scalar.f64",
+      "format": "f64le",
+      "count": 289,
+      "bytes": 2312,
+      "sha256": "827ee8dee408ed6a823c2644af9f63f86545235ee3c02eaf78badcb32090e28d"
+    }
+  ],
+  "coordinates": [
+    {
+      "id": "plane",
+      "kind": "cartesian",
+      "axes": [
+        {
+          "name": "x",
+          "unit": "m"
+        },
+        {
+          "name": "y",
+          "unit": "m"
+        }
+      ],
+      "origin": [
+        -4,
+        -4
+      ],
+      "spacing": [
+        0.5,
+        0.5
+      ],
+      "periodic": [
+        false,
+        false
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "field",
+      "semanticType": "scalar-field",
+      "coordinateSystem": "plane",
+      "shape": [
+        17,
+        17
+      ],
+      "order": "last-axis-fastest",
+      "quantity": {
+        "name": "Potential",
+        "unit": "V"
+      },
+      "real": "scalar"
+    }
+  ],
+  "views": []
+}

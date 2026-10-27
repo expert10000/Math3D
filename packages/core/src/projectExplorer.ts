@@ -1,9 +1,9 @@
 import { normalizeMath3DProject, type Math3DProject } from "./math3dProject";
 import type { KernelWorkspaceDocument, KernelWorkspaceModule } from "./mixedWorkspace";
 
-export const PROJECT_EXPLORER_MODULES: readonly KernelWorkspaceModule[] = ["graph2d", "geometry", "curve", "surface", "mesh", "volume", "topology", "complex", "quantum"];
+export const PROJECT_EXPLORER_MODULES: readonly KernelWorkspaceModule[] = ["graph2d", "field", "vector2d", "vector3d", "geometry", "curve", "surface", "mesh", "volume", "topology", "complex", "quantum"];
 export const PROJECT_MODULE_LABELS: Record<KernelWorkspaceModule, string> = {
-  graph2d: "Graph", geometry: "Geometry", curve: "Curve", surface: "Surface", mesh: "Mesh", volume: "Volume", topology: "Topology", complex: "Complex Analysis", quantum: "Quantum scene",
+  graph2d: "Graph", field: "Scientific field", vector2d: "2D vector field", vector3d: "3D vector field", geometry: "Geometry", curve: "Curve", surface: "Surface", mesh: "Mesh", volume: "Volume", topology: "Topology", complex: "Complex Analysis", quantum: "Quantum scene",
 };
 export type ProjectExplorerDocument = Readonly<{ id: string; module: KernelWorkspaceModule; title: string; revision: number; active: boolean; archived: boolean }>;
 const titleFor = (document: KernelWorkspaceDocument): string => {
@@ -11,6 +11,9 @@ const titleFor = (document: KernelWorkspaceDocument): string => {
     case "math3d.geometry-document": return document.metadata.title;
     case "math3d.mesh-document": return document.metadata.label;
     case "math3d.graph2d-document": return document.metadata.title;
+    case "math3d.vector-field3d-document": return document.metadata.title;
+    case "math3d.vector-field2d-document": return document.metadata.title;
+    case "math3d.scientific-field-document": return document.metadata.title;
     case "math3d.curve-document": return document.metadata.title;
     case "math3d.surface-document": return document.metadata.title;
     case "math3d.topology-document": return typeof document.source.model.name === "string" ? document.source.model.name : "Topology document";

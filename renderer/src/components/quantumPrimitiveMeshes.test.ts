@@ -32,6 +32,17 @@ describe("verified quantum scene primitive picking", () => {
     expect(buildQuantumPrimitiveMeshes({ points: geometry.points.slice(0, 1) }, objects, [])).toEqual([]);
   });
 
+  it("preserves source sample IDs while drawing verified density markers at distinct display sizes", () => {
+    const geometry = { points: [
+      { x: 0, y: 0, z: 0, id: "nucleus:site:0", size: 3 },
+      { x: 1, y: 0, z: 0, id: "nucleus:site:1", size: 1 },
+    ] };
+    const [mesh] = buildQuantumPrimitiveMeshes(geometry, objects, ["nucleus"]);
+    expect(mesh.primitivesByFace[0].sampleId).toBe("nucleus:site:0");
+    expect(mesh.primitivesByFace[8].sampleId).toBe("nucleus:site:1");
+    expect(Math.abs(mesh.positions[0])).toBeGreaterThan(Math.abs(mesh.positions[8 * 9] - 1));
+  });
+
   it("keeps degenerate links selectable without non-finite geometry", () => {
     const geometry = { segments: [{ a: { x: 1, y: 1, z: 1, id: "links:link:0:a" },
       b: { x: 1, y: 1, z: 1, id: "links:link:0:b" } }] };

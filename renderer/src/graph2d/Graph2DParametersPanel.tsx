@@ -5,10 +5,12 @@ import { createGraph2DAnimationPlan, graph2DAnimationFrame, Graph2DAnimationPlay
   type Graph2DAnimationPlan, type Graph2DParameterFields, type Graph2DPublicationArtifact } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
 
-export function Graph2DParametersPanel({ document, onPreview, onCommit, settled, samplingError, onClose, compact = false, onExpand }: {
+export function Graph2DParametersPanel({ document, onPreview, onCommit, settled, samplingError, onClose,
+  compact = false, onExpand, analysisPreviewEnabled = false, onAnalysisPreviewChange }: {
   document: Graph2DDocument; onPreview: (values: Record<string, number> | null) => void;
   onCommit: (action: Graph2DParameterAction) => void; settled: boolean; samplingError?: string; onClose: () => void;
   compact?: boolean; onExpand?: () => void;
+  analysisPreviewEnabled?: boolean; onAnalysisPreviewChange?: (enabled: boolean) => void;
 }) {
   const [edit, setEdit] = useState<{ name?: string; fields: Graph2DParameterFields } | null>(null);
   const [expressionEdit, setExpressionEdit] = useState<{ original?: string; name: string; expression: string } | null>(null);
@@ -66,6 +68,8 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
   if (compact) return <aside className="graph2d-parameter-cards" aria-label="On-graph parameter cards" data-testid="graph2d-parameter-cards"
     onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
     <header><strong>Parameter preview</strong><button onClick={onClose}>Hide parameter cards</button></header>
+    <label className="graph2d-analysis-preview-toggle"><input type="checkbox" checked={analysisPreviewEnabled}
+      onChange={event => onAnalysisPreviewChange?.(event.target.checked)} /> Analyze settled preview frames</label>
     {!configured.length && <p>Configure a parameter to add a slider.</p>}
     {configured.map(p => <label key={p.name}>{p.name} = {preview?.name === p.name ? preview.text : p.value} {p.control!.unit}
       <input aria-label={`${p.name} card slider`} type="range" min={p.control!.min} max={p.control!.max} step={p.control!.step}
@@ -83,6 +87,9 @@ export function Graph2DParametersPanel({ document, onPreview, onCommit, settled,
     onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); } }}>
     <header><h2>Parameters</h2><button data-testid="graph2d-parameters-close" onClick={onClose}>Close parameters</button></header>
     <p>Sliders and animation are previews. Derived expressions update with their inputs. Apply commits one value and its derived results; Cancel restores the saved source. Units are labels, not conversions.</p>
+    <label className="graph2d-analysis-preview-toggle"><input type="checkbox" checked={analysisPreviewEnabled}
+      onChange={event => onAnalysisPreviewChange?.(event.target.checked)} /> Analyze settled preview frames</label>
+    <small>Opt in to a separate 2,000-evaluation numerical scan for each settled explicit-function frame. Preview results cannot be saved or exported.</small>
     {guidance && <section aria-label="Interactive recipe guidance"><strong>Matches {guidance.title}</strong><p>{guidance.description}</p>
       <small>Suggestions are matched to the current recipe, not stored origin. Editing its expressions, domains or controls removes these hints.</small></section>}
     {!configured.length && <p>Configure an existing named variable or add a parameter, then use its name in a function (for example a*x).</p>}

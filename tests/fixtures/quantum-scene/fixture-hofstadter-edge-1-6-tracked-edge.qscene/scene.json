@@ -1,0 +1,625 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "fixture-hofstadter-edge-1-6-tracked-edge",
+  "title": "Hofstadter · supplied bulk and finite-strip comparison",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "fixture-hofstadter-edge-1-6-tracked",
+    "jobId": "fixture-hofstadter-edge-1-6-tracked",
+    "model": "hofstadter_bulk_edge_study",
+    "engine": "native",
+    "engineVersion": "verified independent runs",
+    "computedAt": "2026-10-26T22:15:56.537Z",
+    "resultSha256": "3693c3a0a4a906a4c7106c67883b9e209ae90c2cb53f7f1ae4e314b496b1af99",
+    "adapter": "qvis/1",
+    "parameters": {
+      "p": 1,
+      "q": 6,
+      "hopping": 1,
+      "grid": 9,
+      "occupiedBands": 1,
+      "stripSamples": 31
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "bulk kx / strip ky",
+      "bulk ky / strip display lane",
+      "energy"
+    ],
+    "units": [
+      "rad / lattice constant",
+      "rad or display only",
+      "hopping energy"
+    ]
+  },
+  "camera": {
+    "position": [
+      7,
+      -9,
+      12
+    ],
+    "target": [
+      0,
+      1,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "bulk-0-position",
+      "path": "bulk-0-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "8b6cccc6afcf69224b185a308ddbc60a2ca37f5f676fa5665e5b97aeff470e7d"
+    },
+    {
+      "id": "bulk-0-energy",
+      "path": "bulk-0-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "39eb6b7aebf6d3c375cf5dccf213874fc8fb9621fb1e3518e330afb1d5dfad76"
+    },
+    {
+      "id": "bulk-1-position",
+      "path": "bulk-1-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "0c7846177085b3c6e3aa4c956001c0591cbf907051527a5c5056cc750241c3da"
+    },
+    {
+      "id": "bulk-1-energy",
+      "path": "bulk-1-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "749912f810272ca101733f3773adb8391314d37e292bf6eb5837df4d492f209a"
+    },
+    {
+      "id": "bulk-2-position",
+      "path": "bulk-2-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "cc8ecb88f4eebc57c4a29fd9f908e54bdd350daa4431a297d878195b0be267c6"
+    },
+    {
+      "id": "bulk-2-energy",
+      "path": "bulk-2-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "e0267b525e51e519bc8693515ed57d3ebf8e40efe5fdc14eae85c35fa0b01a07"
+    },
+    {
+      "id": "bulk-3-position",
+      "path": "bulk-3-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "c0d403d78e18e9301658e169eb049d05c89d57a85abe67a06be3de14dd80eedd"
+    },
+    {
+      "id": "bulk-3-energy",
+      "path": "bulk-3-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "7efb7cc05129c9a65a9c137c62618da40a442258f5202e1834a11a85521044d7"
+    },
+    {
+      "id": "bulk-4-position",
+      "path": "bulk-4-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "ddcd9bf8aefeac48bc1ab76a6b5b248540e97048cf19670d82492d7b7d7f6fef"
+    },
+    {
+      "id": "bulk-4-energy",
+      "path": "bulk-4-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "2d8e89985d1aaea44f844f8759b4974f1ec6562948ce2978b9a6be8c8d12c4fc"
+    },
+    {
+      "id": "bulk-5-position",
+      "path": "bulk-5-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 81,
+      "unit": "rad, rad, hopping energy",
+      "bytes": 1944,
+      "sha256": "a55b153e908aa610d0e638a493c77ac0f55b30139711b700bd041f403f1f50ee"
+    },
+    {
+      "id": "bulk-5-energy",
+      "path": "bulk-5-energy.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 81,
+      "unit": "hopping energy",
+      "bytes": 648,
+      "sha256": "fb84929c25448134aec934f975a96552528d2d2969f5b79042a7dcfcdf4c8984"
+    },
+    {
+      "id": "strip-18-left-position",
+      "path": "strip-18-left-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 558,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 13392,
+      "sha256": "667937607fe915c4d53cd94a8374858ef4305604894719dd01a67a4587fcc765"
+    },
+    {
+      "id": "strip-18-left-weight",
+      "path": "strip-18-left-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 558,
+      "unit": "boundary probability",
+      "bytes": 4464,
+      "sha256": "9d2a2dd00aa4a7a31c1b162e6e7a4fecf065b7c09075e156f61c404867f87e89"
+    },
+    {
+      "id": "strip-18-right-position",
+      "path": "strip-18-right-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 558,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 13392,
+      "sha256": "58a364b7bff55eb1e0bd3fe747876e7e639d1a57d4f68c7cb5b80dedf17bbcfd"
+    },
+    {
+      "id": "strip-18-right-weight",
+      "path": "strip-18-right-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 558,
+      "unit": "boundary probability",
+      "bytes": 4464,
+      "sha256": "a71e5d53b52acc270bcc550745396b1bddd6853055e61e3322373b9e88897ed7"
+    },
+    {
+      "id": "strip-24-left-position",
+      "path": "strip-24-left-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 744,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 17856,
+      "sha256": "e1e18e9ac2a34f07ae238bd5787dd629a479bdf2a5534525b0e3c5203eec910c"
+    },
+    {
+      "id": "strip-24-left-weight",
+      "path": "strip-24-left-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 744,
+      "unit": "boundary probability",
+      "bytes": 5952,
+      "sha256": "75aa755a3a0559c1d9603021378d7feaaf00807473029163422b37dedc354faa"
+    },
+    {
+      "id": "strip-24-right-position",
+      "path": "strip-24-right-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 744,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 17856,
+      "sha256": "4607222e50ad294decd979ae16d884f9ca4d78a11e4dddbbabaff6d0be89fba0"
+    },
+    {
+      "id": "strip-24-right-weight",
+      "path": "strip-24-right-weight.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 744,
+      "unit": "boundary probability",
+      "bytes": 5952,
+      "sha256": "5573c65c30edea48bbaea6f6171d2bd3f979e1bc6d879c2a4a0251d70b133452"
+    },
+    {
+      "id": "tracked-18-left-0-position",
+      "path": "tracked-18-left-0-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 48,
+      "sha256": "480fa48751fcb2400bde7cd0bb466bd2be2cd32c47bde31d23e7f4af3b8a972b"
+    },
+    {
+      "id": "tracked-18-right-1-position",
+      "path": "tracked-18-right-1-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 48,
+      "sha256": "367beaefa0fe70e20042d946841f61edaee96c4d04a26d1fc593b02bea7d16f6"
+    },
+    {
+      "id": "tracked-18-position",
+      "path": "tracked-18-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 48,
+      "sha256": "116eddfe26917c77662d75645c569f99164f33ab39d0e284f182fa9069092461"
+    },
+    {
+      "id": "tracked-18-overlap",
+      "path": "tracked-18-overlap.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 2,
+      "unit": "squared eigenvector overlap",
+      "bytes": 16,
+      "sha256": "3df05c5cbe5b60a766c94c5b632ff64135cdcbf8dbd05dfc082057444f03bca4"
+    },
+    {
+      "id": "tracked-24-left-0-position",
+      "path": "tracked-24-left-0-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 48,
+      "sha256": "2a87ac12cb3bec424e7b1cff9dc7448b86d15db934ff03a0780a024089cfe7c5"
+    },
+    {
+      "id": "tracked-24-right-1-position",
+      "path": "tracked-24-right-1-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 48,
+      "sha256": "2525ed3458706bccbc2c4a9c51175da1df0ec31b2228d41514ffb39d4b2f387d"
+    },
+    {
+      "id": "tracked-24-position",
+      "path": "tracked-24-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 2,
+      "unit": "rad, display lane, hopping energy",
+      "bytes": 48,
+      "sha256": "1964ecc196fee2bd58b853e2ac54c52135c486ce1399c5c626945608926a6eac"
+    },
+    {
+      "id": "tracked-24-overlap",
+      "path": "tracked-24-overlap.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 2,
+      "unit": "squared eigenvector overlap",
+      "bytes": 16,
+      "sha256": "8618e154343f79009b48dfb76d0870278bf9ff1d81d7363bfc5ebf9579b3209e"
+    }
+  ],
+  "objects": [
+    {
+      "id": "bulk-0",
+      "label": "Bulk band 0",
+      "kind": "point-cloud",
+      "positions": "bulk-0-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-0-energy"
+    },
+    {
+      "id": "bulk-1",
+      "label": "Bulk band 1",
+      "kind": "point-cloud",
+      "positions": "bulk-1-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-1-energy"
+    },
+    {
+      "id": "bulk-2",
+      "label": "Bulk band 2",
+      "kind": "point-cloud",
+      "positions": "bulk-2-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-2-energy"
+    },
+    {
+      "id": "bulk-3",
+      "label": "Bulk band 3",
+      "kind": "point-cloud",
+      "positions": "bulk-3-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-3-energy"
+    },
+    {
+      "id": "bulk-4",
+      "label": "Bulk band 4",
+      "kind": "point-cloud",
+      "positions": "bulk-4-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-4-energy"
+    },
+    {
+      "id": "bulk-5",
+      "label": "Bulk band 5",
+      "kind": "point-cloud",
+      "positions": "bulk-5-position",
+      "visible": true,
+      "style": {
+        "color": "#80abd9",
+        "opacity": 0.7,
+        "size": 0.045
+      },
+      "scalars": "bulk-5-energy"
+    },
+    {
+      "id": "strip-18-left",
+      "label": "18 sites · left boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-18-left-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-18-left-weight"
+    },
+    {
+      "id": "strip-18-right",
+      "label": "18 sites · right boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-18-right-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-18-right-weight"
+    },
+    {
+      "id": "strip-24-left",
+      "label": "24 sites · left boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-24-left-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-24-left-weight"
+    },
+    {
+      "id": "strip-24-right",
+      "label": "24 sites · right boundary weight",
+      "kind": "point-cloud",
+      "positions": "strip-24-right-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.8,
+        "size": 0.035
+      },
+      "scalars": "strip-24-right-weight"
+    },
+    {
+      "id": "tracked-18-left-0",
+      "label": "18 sites · left overlap-validated crossing",
+      "kind": "polyline",
+      "positions": "tracked-18-left-0-position",
+      "visible": true,
+      "style": {
+        "color": "#44dec0",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "tracked-18-right-1",
+      "label": "18 sites · right overlap-validated crossing",
+      "kind": "polyline",
+      "positions": "tracked-18-right-1-position",
+      "visible": true,
+      "style": {
+        "color": "#f9a65a",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "tracked-18",
+      "label": "18 sites · validated crossings",
+      "kind": "point-cloud",
+      "positions": "tracked-18-position",
+      "visible": true,
+      "style": {
+        "color": "#f5e68a",
+        "opacity": 1,
+        "size": 0.12
+      },
+      "scalars": "tracked-18-overlap"
+    },
+    {
+      "id": "tracked-24-left-0",
+      "label": "24 sites · left overlap-validated crossing",
+      "kind": "polyline",
+      "positions": "tracked-24-left-0-position",
+      "visible": true,
+      "style": {
+        "color": "#44dec0",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "tracked-24-right-1",
+      "label": "24 sites · right overlap-validated crossing",
+      "kind": "polyline",
+      "positions": "tracked-24-right-1-position",
+      "visible": true,
+      "style": {
+        "color": "#f9a65a",
+        "opacity": 1,
+        "size": 1
+      }
+    },
+    {
+      "id": "tracked-24",
+      "label": "24 sites · validated crossings",
+      "kind": "point-cloud",
+      "positions": "tracked-24-position",
+      "visible": true,
+      "style": {
+        "color": "#f5e68a",
+        "opacity": 1,
+        "size": 0.12
+      },
+      "scalars": "tracked-24-overlap"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "track-18-0",
+      "position": [
+        0.4392877760386095,
+        4,
+        -2.334414218338977
+      ],
+      "text": "18 sites · left · 2→3 · interval 17 · kᵧ 0.4392877760386095 · overlap 0.998767858706425 · margin 0.9982015276921067 · run run-941a8c6de9c24c26b5a5aa746bd2dcf0 · SHA-256 e63121d8282a1e3790ee84e7fa03ccb3665bd53ca6ce2ce6456c8b87b9d98e0a"
+    },
+    {
+      "id": "track-18-1",
+      "position": [
+        0.6079097751579917,
+        4.3,
+        -2.334414218338977
+      ],
+      "text": "18 sites · right · 3→2 · interval 17 · kᵧ 0.6079097751579917 · overlap 0.9987678587064255 · margin 0.9984100713115207 · run run-941a8c6de9c24c26b5a5aa746bd2dcf0 · SHA-256 e63121d8282a1e3790ee84e7fa03ccb3665bd53ca6ce2ce6456c8b87b9d98e0a"
+    },
+    {
+      "id": "track-24-0",
+      "position": [
+        0.43928777604281677,
+        4.8,
+        -2.334414218338977
+      ],
+      "text": "24 sites · left · 3→4 · interval 17 · kᵧ 0.43928777604281677 · overlap 0.9987678590495923 · margin 0.9982649142069192 · run run-caa5b364899a4b88842bae93f4e9bd78 · SHA-256 2f2801c28a5560db8298b017953cf3f9188c37d47099905dd28213609d3b43d3"
+    },
+    {
+      "id": "track-24-1",
+      "position": [
+        0.6079097751537854,
+        5.1,
+        -2.334414218338977
+      ],
+      "text": "24 sites · right · 4→3 · interval 17 · kᵧ 0.6079097751537854 · overlap 0.9987678590495901 · margin 0.9985093527997227 · run run-caa5b364899a4b88842bae93f4e9bd78 · SHA-256 2f2801c28a5560db8298b017953cf3f9188c37d47099905dd28213609d3b43d3"
+    },
+    {
+      "id": "comparison",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "consistent: Sampled edge flow agrees with bulk Hall orientation at both widths"
+    },
+    {
+      "id": "tracking",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "maximum-eigenvector-overlap/hungarian-v1 · consistent: Overlap-validated edge flow agrees with the bulk Hall orientation at both widths · ambiguous candidates 18:0, 24:0"
+    },
+    {
+      "id": "bulk",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "bulk · run run-23c42ba7fdab439d83ba16e1ece5d8f1 · SHA-256 2da7259b33f8cbc305a3cdac6de2fb8d7311a53a92fc5b606d6b05db64028779"
+    },
+    {
+      "id": "strip-18",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "strip-18 · run run-941a8c6de9c24c26b5a5aa746bd2dcf0 · SHA-256 e63121d8282a1e3790ee84e7fa03ccb3665bd53ca6ce2ce6456c8b87b9d98e0a"
+    },
+    {
+      "id": "strip-24",
+      "position": [
+        0,
+        5.7,
+        0
+      ],
+      "text": "strip-24 · run run-caa5b364899a4b88842bae93f4e9bd78 · SHA-256 2f2801c28a5560db8298b017953cf3f9188c37d47099905dd28213609d3b43d3"
+    }
+  ]
+}

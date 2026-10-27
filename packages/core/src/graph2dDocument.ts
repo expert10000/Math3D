@@ -7,7 +7,11 @@ import type { ValidationResult } from "./validation";
 import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
 import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 import { graph2DParameterExpressionsCurrent } from "./graph2dParameterExpressions";
+import { isGraph2DFieldReference, isGraph2DFieldLocator,
+  type Graph2DFieldReference, type Graph2DFieldLocator } from "./graph2dFieldReference";
+import { isGraph2DVectorFieldReference, type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 import { isGraph2DViewport } from "./graph2dViewport";
+import { parseVectorField3DDocument } from "./vectorField3DDocument";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
   type Graph2DConstructionSet } from "./graph2dConstructions";
@@ -28,6 +32,8 @@ export const GRAPH2D_INEQUALITY_CAPABILITY = "graph2d.inequality.v1" as const;
 export const GRAPH2D_POINT_SERIES_CAPABILITY = "graph2d.point-series.v1" as const;
 export const GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY = "graph2d.scientific-dataset.v1" as const;
 export const GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY = "graph2d.scientific-dataset-slice.v1" as const;
+export const GRAPH2D_FIELD_REFERENCE_CAPABILITY = "graph2d.field-reference.v1" as const;
+export const GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY = "graph2d.vector-field-reference.v1" as const;
 export const GRAPH2D_PIECEWISE_CAPABILITY = "graph2d.piecewise.v1" as const;
 export const GRAPH2D_SLOPE_FIELD_CAPABILITY = "graph2d.slope-field.v1" as const;
 export const GRAPH2D_TRAJECTORY_CAPABILITY = "graph2d.trajectory.v1" as const;
@@ -94,12 +100,41 @@ export type Graph2DPointTableReference = Readonly<{
 }>;
 export type Graph2DScientificDatasetOrigin = Readonly<{
   schema: "scientific-scene/v1"; sceneId: string; datasetId: string;
+  locator?: Graph2DFieldLocator;
+  fieldDocument?: Readonly<{ id: string; revision: number; structuralHash: string; sourceHash: string }>;
   component?: string;
   slice?: Readonly<{ varyingAxis: 0 | 1; fixedIndex: number; fixedCoordinate: number;
-    fixedName: string; fixedUnit: string }>;
+    fixedName: string; fixedUnit: string }> | Readonly<{
+    varyingAxis: 0 | 1 | 2; fixedAxis: 0 | 1 | 2; fixedIndex: number;
+    fixedCoordinate: number; fixedName: string; fixedUnit: string;
+    plane: Readonly<{ normalAxis: 0 | 1 | 2; fixedIndex: number;
+      fixedCoordinate: number; fixedName: string; fixedUnit: string }>;
+  }>;
   sceneFingerprint: string; resourceSha256: string;
   sourceProducer: string; sourceId: string; sourceSchema: string; sourceSha256: string;
   xName: string; xUnit: string; yName: string; yUnit: string;
+}>;
+export type Graph2DAnalyticFieldOrigin = Readonly<{
+  kind: "vector-field3d-expression-line";
+  documentId: string; revision: number; structuralHash: string;
+  component: "p" | "q" | "r" | "speed"; varyingAxis: 0 | 1 | 2;
+  fixedCoordinates: readonly (number | null)[];
+  expressions: readonly string[];
+  xName: string; xUnit: string; yUnit: string;
+}>;
+export type Graph2DDerivedFieldOrigin = Readonly<{
+  kind: "vector-field3d-derived-line";
+  sourceDocumentJson: string;
+  operation: "divergence" | "curl-x" | "curl-y" | "curl-z" |
+    "grad-speed-x" | "grad-speed-y" | "grad-speed-z" | "grad-speed-magnitude" |
+    "laplacian-speed";
+  normalAxis: 0 | 1 | 2; fixedCoordinate: number;
+  varyingAxis: 0 | 1 | 2; profileFixedCoordinate: number;
+  stencilGrid?: "source";
+  xName: string; xUnit: string; yUnit: string;
+  sourceHash: string; lineSha256: string;
+  verifiedSamples: readonly Readonly<{ name: string; sampleSha256: string;
+    verifiedChunks?: number; totalChunks?: number; verifiedTiles?: number; totalTiles?: number }>[];
 }>;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
@@ -110,6 +145,8 @@ export type Graph2DPointSeriesObject = Readonly<{
   missing: "gap";
   domain: Graph2DDomain;
   origin?: Graph2DScientificDatasetOrigin;
+  analyticOrigin?: Graph2DAnalyticFieldOrigin;
+  derivedOrigin?: Graph2DDerivedFieldOrigin;
 }>;
 export type Graph2DPiece = Readonly<{
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
@@ -146,6 +183,8 @@ export type Graph2DPhasePortraitObject = Readonly<{
   yDomain: Graph2DDomain;
   timeSpan: number;
   seeds: readonly Readonly<{ x: number; y: number }>[];
+  fieldDensity?: number;
+  fieldUnits?: Readonly<{ x: string; y: string; time: string }>;
 }>;
 export type Graph2DTimeOdeObject = Readonly<{
   id: string; kind: "time-ode"; label: string;
@@ -161,6 +200,8 @@ export type Graph2DSource = Readonly<{
   variables: readonly Graph2DParameter[];
   assumptions: readonly string[];
   constructions?: Graph2DConstructionSet;
+  fieldReferences?: readonly Graph2DFieldReference[];
+  vectorFieldReferences?: readonly Graph2DVectorFieldReference[];
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport" | "axes">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
@@ -172,6 +213,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin) ? [GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin?.slice) ?
       [GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY] : []),
+    ...(source.fieldReferences?.length ? [GRAPH2D_FIELD_REFERENCE_CAPABILITY] : []),
+    ...(source.vectorFieldReferences?.length ? [GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "piecewise") ? [GRAPH2D_PIECEWISE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "slope-field") ? [GRAPH2D_SLOPE_FIELD_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "trajectory") ? [GRAPH2D_TRAJECTORY_CAPABILITY] : []),
@@ -215,7 +258,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -276,10 +319,15 @@ const validTrajectoryObject = (value: unknown): value is Graph2DTrajectoryObject
   value.kind === "trajectory" && bounded(value.label, 160) && objectId(value.sourceFieldId) &&
   record(value.seed) && exact(value.seed, ["x", "y"]) && finite(value.seed.x) && finite(value.seed.y);
 const validPhasePortraitObject = (value: unknown, variables: readonly string[]): value is Graph2DPhasePortraitObject =>
-  record(value) && exact(value, ["id", "kind", "label", "xDerivative", "yDerivative", "domain", "yDomain", "timeSpan", "seeds"]) &&
+  record(value) && exact(value, ["id", "kind", "label", "xDerivative", "yDerivative", "domain", "yDomain", "timeSpan", "seeds",
+    ...(value.fieldDensity === undefined ? [] : ["fieldDensity"]), ...(value.fieldUnits === undefined ? [] : ["fieldUnits"])]) &&
   objectId(value.id) && value.kind === "phase-portrait" && bounded(value.label, 160) &&
   validExpression(value.xDerivative, variables, "xy") && validExpression(value.yDerivative, variables, "xy") &&
   validDomain(value.domain) && validDomain(value.yDomain) && finite(value.timeSpan) && value.timeSpan > 0 && value.timeSpan <= 100 &&
+  (value.fieldDensity === undefined || integerWithin(value.fieldDensity, 4, 24)) &&
+  (value.fieldUnits === undefined || record(value.fieldUnits) && exact(value.fieldUnits, ["x", "y", "time"]) &&
+    [value.fieldUnits.x, value.fieldUnits.y, value.fieldUnits.time].every(unit =>
+      typeof unit === "string" && unit.length <= 24 && unit.trim() === unit)) &&
   Array.isArray(value.seeds) && value.seeds.length <= 8 &&
   value.seeds.every((seed: unknown) => record(seed) && exact(seed, ["x", "y"]) && finite(seed.x) && finite(seed.y) &&
     seed.x >= (value.domain as Graph2DDomain).min && seed.x <= (value.domain as Graph2DDomain).max &&
@@ -313,14 +361,34 @@ export const validPointTableReference = (value: unknown): value is Graph2DPointT
 export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Graph2DScientificDatasetOrigin => record(value) &&
   exact(value, ["schema", "sceneId", "datasetId", "sceneFingerprint", "resourceSha256", "sourceProducer", "sourceId",
     "sourceSchema", "sourceSha256", "xName", "xUnit", "yName", "yUnit",
-    ...(value.component === undefined ? [] : ["component"]), ...(value.slice === undefined ? [] : ["slice"])]) &&
+    ...(value.component === undefined ? [] : ["component"]), ...(value.slice === undefined ? [] : ["slice"]),
+    ...(value.locator === undefined ? [] : ["locator"]),
+    ...(value.fieldDocument === undefined ? [] : ["fieldDocument"])]) &&
+  (value.locator === undefined || isGraph2DFieldLocator(value.locator)) &&
+  (value.fieldDocument === undefined || record(value.fieldDocument) &&
+    exact(value.fieldDocument, ["id", "revision", "structuralHash", "sourceHash"]) &&
+    typeof value.fieldDocument.id === "string" &&
+    value.fieldDocument.id.startsWith("math3d:scientific-field:") &&
+    integerWithin(value.fieldDocument.revision, 1, 1e9) &&
+    [value.fieldDocument.structuralHash, value.fieldDocument.sourceHash].every(hash =>
+      typeof hash === "string" && /^sha256:[a-f0-9]{64}$/.test(hash))) &&
   value.schema === "scientific-scene/v1" &&
   [value.sceneId, value.datasetId, value.sourceProducer, value.sourceId].every(item =>
     typeof item === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(item)) &&
   (value.component === undefined || typeof value.component === "string" && /^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(value.component)) &&
   (value.slice === undefined || record(value.slice) &&
-    exact(value.slice, ["varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
-    (value.slice.varyingAxis === 0 || value.slice.varyingAxis === 1) &&
+    (value.slice.plane === undefined ?
+      exact(value.slice, ["varyingAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
+      (value.slice.varyingAxis === 0 || value.slice.varyingAxis === 1) :
+      exact(value.slice, ["varyingAxis", "fixedAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit", "plane"]) &&
+      [0, 1, 2].includes(value.slice.varyingAxis as number) &&
+      [0, 1, 2].includes(value.slice.fixedAxis as number) &&
+      record(value.slice.plane) && exact(value.slice.plane, ["normalAxis", "fixedIndex", "fixedCoordinate", "fixedName", "fixedUnit"]) &&
+      [0, 1, 2].includes(value.slice.plane.normalAxis as number) &&
+      new Set([value.slice.varyingAxis, value.slice.fixedAxis, value.slice.plane.normalAxis]).size === 3 &&
+      integerWithin(value.slice.plane.fixedIndex, 0, 255) &&
+      finite(value.slice.plane.fixedCoordinate) && Math.abs(value.slice.plane.fixedCoordinate) <= 1e12 &&
+      bounded(value.slice.plane.fixedName, 160) && bounded(value.slice.plane.fixedUnit, 80)) &&
     integerWithin(value.slice.fixedIndex, 0, 255) && finite(value.slice.fixedCoordinate) &&
     Math.abs(value.slice.fixedCoordinate) <= 1e12 && bounded(value.slice.fixedName, 160) &&
     bounded(value.slice.fixedUnit, 80)) &&
@@ -329,11 +397,61 @@ export const validGraph2DScientificDatasetOrigin = (value: unknown): value is Gr
     typeof item === "string" && /^[a-f0-9]{64}$/.test(item)) &&
   [value.xName, value.yName].every(item => bounded(item, 160)) &&
   [value.xUnit, value.yUnit].every(item => bounded(item, 80));
+export const validGraph2DAnalyticFieldOrigin = (value: unknown): value is Graph2DAnalyticFieldOrigin =>
+  record(value) && exact(value, ["kind", "documentId", "revision", "structuralHash", "component",
+    "varyingAxis", "fixedCoordinates", "expressions", "xName", "xUnit", "yUnit"]) &&
+  value.kind === "vector-field3d-expression-line" && bounded(value.documentId, 160) &&
+  integerWithin(value.revision, 1, 1e9) && typeof value.structuralHash === "string" &&
+  /^sha256:[a-f0-9]{64}$/.test(value.structuralHash) &&
+  ["p", "q", "r", "speed"].includes(String(value.component)) &&
+  [0, 1, 2].includes(value.varyingAxis as number) &&
+  Array.isArray(value.fixedCoordinates) && value.fixedCoordinates.length === 3 &&
+  value.fixedCoordinates.every((item, index) => index === value.varyingAxis ? item === null :
+    finite(item) && Math.abs(item) <= 1e9) &&
+  Array.isArray(value.expressions) && value.expressions.length === 3 &&
+  value.expressions.every(item => bounded(item, 2048)) &&
+  bounded(value.xName, 160) && bounded(value.xUnit, 80) && bounded(value.yUnit, 80);
+export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2DDerivedFieldOrigin => {
+  if (!record(value) || !exact(value, ["kind", "sourceDocumentJson", "operation", "normalAxis",
+    "fixedCoordinate", "varyingAxis", "profileFixedCoordinate", "xName", "xUnit", "yUnit",
+    "sourceHash", "lineSha256", "verifiedSamples",
+    ...(value.stencilGrid === undefined ? [] : ["stencilGrid"])]) ||
+    value.kind !== "vector-field3d-derived-line" ||
+    !["divergence", "curl-x", "curl-y", "curl-z", "grad-speed-x", "grad-speed-y",
+      "grad-speed-z", "grad-speed-magnitude", "laplacian-speed"].includes(String(value.operation)) ||
+    ![0, 1, 2].includes(value.normalAxis as number) ||
+    ![0, 1, 2].includes(value.varyingAxis as number) || value.normalAxis === value.varyingAxis ||
+    (value.stencilGrid !== undefined && value.stencilGrid !== "source") ||
+    !finite(value.fixedCoordinate) || !finite(value.profileFixedCoordinate) ||
+    !bounded(value.xName, 160) || !bounded(value.xUnit, 80) || !bounded(value.yUnit, 80) ||
+    typeof value.sourceHash !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.sourceHash) ||
+    typeof value.lineSha256 !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.lineSha256) ||
+    !Array.isArray(value.verifiedSamples) || value.verifiedSamples.length !== 3 ||
+    !value.verifiedSamples.every((part: unknown) => record(part) &&
+      exact(part, ["name", "sampleSha256", ...(part.verifiedChunks === undefined ? [] :
+        ["verifiedChunks", "totalChunks"]), ...(part.verifiedTiles === undefined ? [] :
+        ["verifiedTiles", "totalTiles"])]) && bounded(part.name, 64) &&
+      typeof part.sampleSha256 === "string" && /^[a-f0-9]{64}$/.test(part.sampleSha256) &&
+      (part.verifiedChunks === undefined || integerWithin(part.verifiedChunks, 1, 1e6) &&
+        integerWithin(part.totalChunks, 1, 1e6)) &&
+      (part.verifiedTiles === undefined || integerWithin(part.verifiedTiles, 1, 1e6) &&
+        integerWithin(part.totalTiles, 1, 1e6)))) return false;
+  if (typeof value.sourceDocumentJson !== "string" || value.sourceDocumentJson.length > 256 * 1024)
+    return false;
+  try { return parseVectorField3DDocument(value.sourceDocumentJson).source.field.kind === "scientific-bundle"; }
+  catch { return false; }
+};
 const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObject => record(value) &&
-  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain", ...(value.origin === undefined ? [] : ["origin"])]) && objectId(value.id) &&
+  exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain",
+    ...(value.origin === undefined ? [] : ["origin"]),
+    ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"]),
+    ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
-  (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin));
+  [value.origin, value.analyticOrigin, value.derivedOrigin].filter(item => item !== undefined).length <= 1 &&
+  (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
+  (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
+  (value.derivedOrigin === undefined || validGraph2DDerivedFieldOrigin(value.derivedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
   if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
       value.kind !== "piecewise" || !bounded(value.label, 160) || !Array.isArray(value.pieces) ||
@@ -348,14 +466,25 @@ const validPiecewiseObject = (value: unknown, variables: readonly string[]): val
   return true;
 };
 const validSource = (value: unknown): value is Graph2DSource => {
-  if (!record(value) || !exact(value, ["objects", "variables", "assumptions", ...(value.constructions !== undefined ? ["constructions"] : [])]) || !Array.isArray(value.objects) ||
+  if (!record(value) || !exact(value, ["objects", "variables", "assumptions", ...(value.constructions !== undefined ? ["constructions"] : []),
+      ...(value.fieldReferences !== undefined ? ["fieldReferences"] : []),
+      ...(value.vectorFieldReferences !== undefined ? ["vectorFieldReferences"] : [])]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
       !Array.isArray(value.variables) || value.variables.length > 16 ||
       !value.variables.every(isGraph2DParameter) ||
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
       !graph2DParameterExpressionsCurrent(value.variables) ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
-      !value.assumptions.every((entry: unknown) => bounded(entry, 160))) return false;
+      !value.assumptions.every((entry: unknown) => bounded(entry, 160)) ||
+      (value.fieldReferences !== undefined && (!Array.isArray(value.fieldReferences) ||
+        value.fieldReferences.length < 1 || value.fieldReferences.length > 16 ||
+        !value.fieldReferences.every(isGraph2DFieldReference) ||
+        new Set(value.fieldReferences.map((entry: Graph2DFieldReference) => entry.id)).size !== value.fieldReferences.length)) ||
+      (value.vectorFieldReferences !== undefined && (!Array.isArray(value.vectorFieldReferences) ||
+        value.vectorFieldReferences.length < 1 || value.vectorFieldReferences.length > 8 ||
+        !value.vectorFieldReferences.every(isGraph2DVectorFieldReference) ||
+        new Set(value.vectorFieldReferences.map((entry: Graph2DVectorFieldReference) => entry.id)).size !==
+          value.vectorFieldReferences.length))) return false;
   const names = value.variables.map((entry: { name: string }) => entry.name);
   if (names.includes("t") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "parametric" || entry.kind === "time-ode")) return false;
   if (names.includes("theta") && value.objects.some((entry: Graph2DGraphObject) => entry.kind === "polar")) return false;

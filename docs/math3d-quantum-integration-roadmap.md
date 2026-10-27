@@ -2,7 +2,17 @@
 
 ## Status and authority
 
-**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08–Q10 remain open.
+**Status:** M3D-Q01–Q03 have bounded read-only desktop paths. M3D-Q04 has open 2D/3D lattice inspection and derived supercell preview; periodic/1D lattice metadata remains open. M3D-Q05 is complete for supplied canonical 1D SSH, square, honeycomb and simple-cubic reciprocal geometry, plus QWZ; v1 remains strict and SSH uses the versioned v2 extension. M3D-Q06 is complete for verified SSH/QWZ band selection and bounded 2D display LOD. M3D-Q07 is complete for verified QWZ curvature and contract-declared vector objects. M3D-Q08 retains its frozen v0.1 QWZ/SSH set and now also has bounded post-v0.1 producer-backed BHZ, BBH and Kitaev views. BBH has a separate nested-Wilson diagnostic scene with a conditional quadrupole; Kitaev has a separate producer-backed Pfaffian/winding diagnostic scene. The broader multi-family milestone remains Partial for families without independently verified producer scenes; bounded Weyl, nodal, Landau-level, Hofstadter and Rice–Mele pump scenes are now admitted individually. Rice–Mele has separate ideal-cycle and finite-speed, source-linked read-only fixtures; the finite-speed charge is not labelled quantized. M3D-Q09 is complete for its desktop `.qscene` file-handoff routes. M3D-Q10 is complete for the scoped v0.1 QWZ/SSH release profile, desktop/browser matrix and recorded CI/two-app evidence.
+
+See the [Q08 fixture audit](math3d-q08-fixture-audit.md) and
+[v0.1 release profile](math3d-quantum-v0.1-freeze.md) for the exact supported
+set, frozen interchange, capability matrix and remaining sign-off gates.
+
+**Post-v0.1 update (2026-10-27):** Q08 now also has a separately verified
+Rice–Mele filled-band pump scene. Theory Lab supplies the closed-cycle bands,
+plaquette phases, polarization winding and conditional Chern; Math3D only
+displays and re-verifies exact samples. The frozen QWZ/SSH v0.1 set is
+unchanged. See the dated admission in the Q08 fixture audit.
 
 For the exact Theory Lab export and Math3D inspection workflow, see the
 [M3D-Q04 lattice usage guide](quantum-lattice-usage.md).
@@ -140,7 +150,7 @@ no zone construction, physics calculation or coordinate conversion. Square,
 honeycomb and simple-cubic fixtures plus real QWZ handoffs are checked. The
 frozen v1 reciprocal block is 2D/3D only, so a native 1D reciprocal fixture
 and its full acceptance remain gated on a separately versioned producer
-contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08–Q10 remain open.
+contract. M3D-Q06 is complete for the bounded supplied-band path; M3D-Q07 is complete for the bounded supplied-curvature/vector path. M3D-Q08 is Partial, M3D-Q09 is complete for desktop file handoff, and M3D-Q10 is complete for the scoped v0.1 profile.
 
 Quantum Lab must not call MATH3D internals, and MATH3D must not reproduce Quantum
 Lab's physics engines. Both applications meet at the portable, versioned scene
@@ -512,6 +522,38 @@ unsourced topological claim.
 
 ### M3D-Q08 — `feat(math3d-quantum): add topological Hamiltonian visualization`
 
+**Status: Partial overall; v0.1 supported set frozen to QWZ and SSH, with a bounded post-v0.1 BHZ producer-backed extension.** The
+[fixture audit](math3d-q08-fixture-audit.md) records the actual producer
+corpus and admission rule for later families. Open either pinned QWZ example
+under **File → Verified quantum examples**, then choose **Link matching QWZ
+views** in its source inspector. The existing scene viewer offers **Bands** and
+**Berry curvature** views after both independently verified bundles declare the
+same run ID, result SHA-256, engine, and model inputs. Switching re-verifies
+the selected bundle. The profile shows the producer-supplied band labels and
+bulk gap, Berry dataset and convention, and the structured Chern value/status/
+method; exact band and curvature picks still use their existing source-backed
+inspectors. Band inversion, edge/bulk classification, and nodes are marked
+**not supplied**. No dataset is joined or computed in Math3D. A different QWZ
+run cannot be paired with the pinned example merely by matching its model name.
+The pinned SSH finite-chain and band-path examples offer the same source-backed
+view switching through **Link matching SSH views**. The study displays only
+producer-labeled bond and density objects, supplied band labels, the worker
+bulk gap and structured winding result. It does not infer an edge/bulk phase
+from the density view. Each switch re-verifies the target bundle, and mismatched
+runs, hashes, inputs or changed bytes are refused. BHZ now has a separate
+producer-computed, pinned four-band lattice fixture with exact stored-sample
+inspection and a read-only source-attributed profile. Its `A=B=1`, `ε=0`
+scope, two block Chern values, spin-conserved Z₂ status, and limitations are
+recorded in the [fixture audit](math3d-q08-fixture-audit.md). It is not the
+full Atlas continuum BHZ family. A later additive `bhz_general` producer now
+supplies a paired continuum view and a=1 lattice/ribbon view with variable
+A/B/C/D/M, optional R mixing, conditional inversion Z₂ and finite-edge
+weights. Math3D pins both verified bundles and displays their exact samples;
+it does not compute a BHZ invariant or classify the finite ribbon. The legacy
+fixed BHZ fixture remains available. BBH and Kitaev now have separate verified
+portable fixtures and bounded read-only profiles. BBH also has a later
+nested-Wilson diagnostic fixture. Weyl, nodal and Landau/Hall remain pending.
+
 **Scope.** Compose the prior generic primitives into reviewed scenes for QWZ, BHZ,
 BBH, Kitaev, Weyl, nodal, and Landau/Hall families. Support supplied band inversion,
 edge/bulk classifications, Weyl nodes, Berry-flux structures, and parameter-sweep
@@ -523,6 +565,20 @@ model-specific data parser; parameter sweeps retain frame/parameter identity;
 edge/bulk and node labels are visibly attributed to the producing computation.
 
 ### M3D-Q09 — `feat(math3d-quantum): add Quantum Lab to Math3D round trip`
+
+**Status: Complete for the supported desktop `.qscene` folder handoff.** A live
+Windows two-app test starts Theory Lab, computes and saves a Rabi run, clicks
+**Open in Math3D**, and confirms that the independently launched Math3D imports
+the exact Lab-created bytes and preserves source run, result hash and scene
+fingerprint. It also exercises the Lab export/import/open path and verifies that
+both Math3D startup and native-picker imports produce the same canonical scene
+graph. Pinned QWZ route parity, visible malformed-launch refusal, missing or
+modified source refusal without Project mutation, saved-Project restart and
+exact-hash relinking pass independently. No private Lab state or Math3D physics
+worker is used. The recent-scene shortcut remains independent of a Project
+relink. See `docs/quantum-scene-project-links.md` for the UI and test path.
+This implementation uses an absolute folder argument, not an OS file association
+or URL/deep link; those conditional transports are not claimed.
 
 **Scope.** Add file/URL-policy-safe handoff and an **Open in MATH3D** entry point:
 
@@ -541,6 +597,16 @@ reopen, and replay preserve hashes and provenance; no hidden Quantum Lab-specifi
 mutation is required.
 
 ### M3D-Q10 — `release(math3d-quantum): freeze QLab Math3D integration v0.1`
+
+**Status: Complete for scoped v0.1.** The [v0.1 release profile](math3d-quantum-v0.1-freeze.md)
+freezes the QWZ/SSH topological support set, schema/encoding/budget policy,
+known limitations and desktop/browser capability matrix. The quantum corpus,
+QWZ/SSH studies, Q09 desktop routes and browser desktop-only boundary passed
+in [CI run 40032122253](https://github.com/expert10000/Math3D/actions/runs/40032122253)
+at release code commit `5797fbdcbe9e3afc8beed90892de5c047f6bb85e`
+(also on main); the real two-app Lab-button route passed separately on Windows.
+This sign-off does not expand
+the Q08 model set or claim a Math3D browser `.qscene` importer.
 
 **Scope.** Freeze the supported schema/version matrix, object families, artifact
 encodings, runtime capabilities, size budgets, fixture corpus, migration policy,
@@ -675,3 +741,83 @@ M3D-Q01 ... M3D-Q10     MATH3D quantum integration (this roadmap)
 New work after M3D-Q10 must use a new reviewed program/version or a maintenance
 issue linked to this release. It must not extend the sequence indefinitely or mix
 Quantum Lab computation responsibilities into MATH3D.
+
+## Post-freeze extension: Rice–Mele saved-run convergence view (complete, 2026-10-27)
+
+This bounded addition does not change the M3D-Q10 v0.1 release definition. Theory
+Lab produces a `rice_mele_convergence_study` `.qscene` from five hash-verified
+saved runs. Math3D admits that bundle through the existing strict import path and
+offers the pinned **Rice–Mele · five-run convergence** example.
+
+- The read-only profile has two distinct plots: periodic filled-band charge versus
+  cycle duration (**electron charge / cell** against inverse hopping energy), and
+  finite-chain central-bond charge versus open-chain width (**electron charge**
+  against cells). The source scene's normalized 3D positions serve layout only;
+  the plots use the producer's saved physical x labels and exact scalar datasets.
+- Selecting a point re-verifies the bundle and shows its exact dataset value and
+  index, producer-supplied source run ID and SHA-256, status, and diagnostics.
+  Math3D verifies the `.qscene` bytes; the five original Theory Lab runs remain
+  in Theory Lab and are not independently fetched or recomputed by Math3D.
+- The pinned five-run fixture passes import, exact sample, restart, changed-byte,
+  and missing-file refusal in both importer and Electron acceptance. Its reference
+  study is `tests/fixtures/quantum-scene/rice-mele-convergence-producer-study.json`.
+
+There is no fitted limit, extrapolation, shared-charge equality, or Math3D physics
+calculation. The two observables remain separate; the original broader Q08
+coverage status and the frozen Q10 profile are unchanged.
+
+### Selected source-run navigation (complete, 2026-10-27)
+
+The convergence profile now opens Theory Lab from an exact selected periodic or
+chain point. Math3D hides the generic scene-level source-run button, because the
+scene provenance ID names the study rather than one of its five saved runs. The
+main process reopens and verifies the full `.qscene`, checks the selected scalar
+value, sample index, source annotation, run ID and result hash, then verifies
+again after any Theory Lab checkout picker before sending the one-use launch
+intent. A changed active selection, changed bundle or missing file refuses the
+handoff. Lab remains responsible for verifying that the original saved run
+exists and matches its hash; Math3D does not fetch runs or calculate a result.
+
+Importer and Electron tests cover both series, restart, wrong/unselected IDs,
+and changed or missing bundle files. Theory Lab's source-run receiver acceptance
+also covers a missing local run, wrong hash and tampered saved run.
+
+### Real convergence two-app acceptance (complete, 2026-10-27)
+
+The earlier capture launcher and receiver tests are now joined by
+`tests/e2e/quantum-rice-mele-two-app.spec.ts`. The fixture producer in Theory Lab
+computes and saves five fresh runs in an isolated profile, exports their exact
+convergence `.qscene`, and records the two selected source identities. Math3D
+opens that exported bundle, selects one periodic and one chain point, and launches
+real Theory Lab windows. A loopback test-only DevTools connection observes each
+window reopening the selected verified run ID. Separate cases remove and tamper
+with a Lab saved run; the unchanged Math3D scene still opens, but Lab refuses the
+source run. The test never treats the study ID as a saved run.
+
+Local Windows acceptance on 2026-10-27: Math3D `build:core` passed, Theory Lab
+`build` and `typecheck` passed, and the live Playwright test passed all four
+handoffs (periodic, chain, missing, tampered) in one test. The test-only TypeScript
+configuration passed after the final edit. See the walkthrough for the exact
+command and temporary-profile behavior. This extends acceptance evidence without
+altering the frozen Q10 v0.1 scope or adding physics or rendering code.
+
+### Installed-app selected-run handoff (complete, 2026-10-28)
+
+Theory Lab's Windows installer now carries a frozen, pinned QuTiP/NumPy/SciPy
+worker and the contract schemas. A fresh isolated installation passed worker
+readiness and the two-level spectrum without a source checkout or separate
+Python. Math3D can remember either a validated installed `Quantum Hamiltonian
+Lab.exe` or the existing built checkout; old checkout preferences remain
+readable. For a selected convergence point, it re-verifies the source bundle,
+sample, run ID, and SHA-256 before launching either target. Installed Lab still
+verifies the saved run and refuses a missing or changed result.
+
+The installed-app Playwright acceptance built and installed Math3D's read-only
+handoff probe under a distinct app identity, then used real installed Math3D
+and Lab windows. It passed periodic and chain point navigation, Math3D restart,
+and missing/tampered Lab run refusal (**1/1 test, 26.0 s**, Windows, 2026-10-28).
+The five-run fixture producer remains a checkout script for deterministic test
+setup; ordinary installed-app navigation does not require that checkout. The
+probe omits optional Math3D compute workers and is not a full release-package
+signoff. See [the walkthrough](theory-lab-python-scene-walkthrough.md) for the
+exact build, install, and acceptance commands.

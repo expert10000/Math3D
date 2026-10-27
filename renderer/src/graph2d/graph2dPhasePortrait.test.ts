@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
-  inspectGraph2DCompatibility, normalizeGraph2DDocument, sampleGraph2DPhasePortrait,
+  analyzeGraph2DPhasePortrait, inspectGraph2DCompatibility, normalizeGraph2DDocument, sampleGraph2DPhasePortrait,
   sampleGraph2DScene, projectGraph2DPublicationGeometry, selectionForGraph2DObject,
   graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed, graph2DWorldToScreen,
   type Graph2DPhasePortraitDraft } from "@math3d/core";
@@ -94,6 +94,28 @@ describe("GRA-11.6 interactive initial points", () => {
   });
 });
 describe("GRA-11.3 planar phase portraits", () => {
+  it("runs equilibrium analysis without spending the scene arrow and orbit budget", () => {
+    const document = create();
+    const object = document.source.objects[0];
+    if (object?.kind !== "phase-portrait") throw new Error("Expected phase portrait.");
+    const request = { object, variables: {}, viewport, width: 640, height: 640 };
+    const scene = sampleGraph2DPhasePortrait({ ...request, maxSamples: 2000, includeAnalysis: false });
+    const quick = analyzeGraph2DPhasePortrait({ ...request, maxEvaluations: 2000 });
+    const thorough = analyzeGraph2DPhasePortrait({ ...request, maxEvaluations: 12000 });
+    expect(scene.analysis.status).toBe("unavailable");
+    expect(scene.analysis.evaluations).toBe(0);
+    expect(scene.nullclines.x).toHaveLength(0);
+    expect(scene.orbits[0]?.forward).toBe("time-horizon");
+    expect(quick.equilibria).toHaveLength(1);
+    expect(thorough.equilibria).toHaveLength(1);
+    expect(quick.analysis.evaluations).toBeLessThanOrEqual(2000);
+    expect(thorough.analysis.evaluations).toBeLessThanOrEqual(12000);
+    expect(thorough.analysis.evaluations).toBeGreaterThan(quick.analysis.evaluations);
+    const interactive = sampleGraph2DScene({ document, viewport, width: 640, height: 640,
+      interaction: false, separatePhaseAnalysis: true })[0]!.artifact;
+    expect(interactive).toMatchObject({ kind: "phase-portrait", nullclines: { x: [], y: [] }, equilibria: [] });
+    expect(interactive.samplesEvaluated).toBeLessThanOrEqual(document.display.sampling.maxSamples);
+  });
   it("returns to the unit circle for x′=y, y′=-x in both time directions", () => {
     const result = solve();
     expect(result.fieldSegments.length).toBeGreaterThan(50);
@@ -200,5 +222,45 @@ describe("GRA-11.3 planar phase portraits", () => {
     expect(geometry.primitives.some(item => item.kind === "line" && item.color === "#0891b2")).toBe(true);
     expect(geometry.primitives.some(item => item.kind === "circle" && item.color === "#111827")).toBe(true);
     expect(geometry.omitted).toBe(0);
+  });
+});
+
+describe("GRA-14 authored planar field controls", () => {
+  it("persists density and units, varies arrow length with speed, and keeps orbit stops", () => {
+    const source = create({ ...draft("x+2", "0"), fieldDensity: 20,
+      fieldUnits: { x: "m", y: "m", time: "s" }, seeds: [{ x: 1, y: 0 }] });
+    const normalized = normalizeGraph2DDocument(JSON.parse(JSON.stringify(source)));
+    expect(normalized.ok).toBe(true);
+    const object = source.source.objects[0];
+    expect(object?.kind === "phase-portrait" && object.fieldUnits).toEqual({ x: "m", y: "m", time: "s" });
+    const dense = solve(source);
+    const sparse = solve(create({ ...draft("x+2", "0"), fieldDensity: 4 }));
+    expect(dense.fieldSegments.length).toBeGreaterThan(sparse.fieldSegments.length);
+    expect(dense.fieldMagnitudes).toHaveLength(dense.fieldSegments.length);
+    const slow = dense.fieldMagnitudes.findIndex(speed => speed > 0 && speed < 1);
+    const fast = dense.fieldMagnitudes.findIndex(speed => speed > 4);
+    expect(slow).toBeGreaterThanOrEqual(0);
+    expect(fast).toBeGreaterThanOrEqual(0);
+    const length = (index: number) => {
+      const [a, b] = dense.fieldSegments[index]!.points;
+      return Math.hypot(b!.x - a!.x, b!.y - a!.y);
+    };
+    expect(length(fast)).toBeGreaterThan(length(slow));
+    expect(dense.orbits[0]?.forward).toBe("domain-boundary");
+    expect(dense.samplesEvaluated).toBeLessThanOrEqual(12000);
+    const adapter = new Graph2DCommandAdapter(source);
+    adapter.commitScene(applyGraph2DAuthoring(source,
+      graph2DPhaseSeedAction(source, "phase_portrait_1", 0, { x: 0, y: 1 })), "edit-phase-portrait");
+    const edited = adapter.document().source.objects[0];
+    expect(edited?.kind === "phase-portrait" && edited.fieldDensity).toBe(20);
+    expect(edited?.kind === "phase-portrait" && edited.fieldUnits?.time).toBe("s");
+    adapter.undo();
+    expect(adapter.document().source).toEqual(source.source);
+  });
+
+  it("accepts legacy phase documents and rejects out-of-range density or malformed units", () => {
+    expect(normalizeGraph2DDocument(create()).ok).toBe(true);
+    expect(() => create({ ...draft(), fieldDensity: 25 })).toThrow(/density/i);
+    expect(() => create({ ...draft(), fieldUnits: { x: " m", y: "m", time: "s" } })).toThrow(/units/i);
   });
 });

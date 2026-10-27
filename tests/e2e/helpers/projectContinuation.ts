@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { resolve } from "node:path";
+import { editGraph, graphEditor, saveGraphEditor } from "./graphAuthoring";
 const core = require(resolve("packages/core/src/index.ts"));
 
 const show = async (page: Page) => {
@@ -15,10 +16,13 @@ const select = async (page: Page, id: string) => {
 };
 const expression = (page: Page) => page.getByLabel("Graph functions").locator(".graph2d-function-summary code").first();
 const edit = async (page: Page, source: string) => {
+  const panel = page.getByTestId("project-explorer-panel");
+  if (await panel.isVisible()) await panel.getByRole("button", { name: "Close project explorer" }).click();
   const functions = page.getByLabel("Graph functions");
-  await functions.getByRole("button", { name: /^Edit / }).first().click();
-  await functions.getByLabel("Function expression").fill(source);
-  await functions.getByRole("button", { name: "Save function", exact: true }).click();
+  const label = await functions.locator(".graph2d-function-summary strong").first().innerText();
+  await editGraph(page, label);
+  await graphEditor(page).getByLabel("Function expression").fill(source);
+  await saveGraphEditor(page);
 };
 const history = async (page: Page, key: string) => {
   await page.getByTestId("graphs-workspace").getByTestId("main-viewer").focus();
@@ -32,11 +36,12 @@ export async function exerciseMultipleGraphs(page: Page) {
   const panel = await show(page);
   await panel.getByTestId("project-import-file").setInputFiles({ name: "multiple.json", mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
   await expect(panel.getByTestId("project-import-open")).toBeEnabled(); await panel.getByTestId("project-import-open").click();
+  await expect(panel.getByTestId("project-viewer-document")).toBeVisible();
   await select(page, a.identity.id); await edit(page, "x*x+2");
   await select(page, b.identity.id); await expect(expression(page)).toContainText("x^2"); await edit(page, "3*x");
   await history(page, "Control+z"); await expect(expression(page)).toContainText("x^2");
   await select(page, a.identity.id); await expect(expression(page)).toContainText("x*x+2");
-  await panel.getByTestId("project-gallery-layout-toggle").click();
+  await show(page); await panel.getByTestId("project-gallery-layout-toggle").click();
   await panel.getByTestId("project-save").click(); await expect(panel.getByTestId("project-message")).toContainText("Saved");
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
   expect(saved.workspace.entries.map((entry: any) => entry.expected.id)).toEqual([a.identity.id, b.identity.id]);

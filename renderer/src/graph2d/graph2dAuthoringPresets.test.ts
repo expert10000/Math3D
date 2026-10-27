@@ -8,18 +8,26 @@ import {
 import { graph2DAuthoringPresets } from "./graph2dAuthoringPresets";
 
 describe("Graph Add presets", () => {
-  it("offers three distinct, valid starting drafts for every Add editor", () => {
+  it("offers five distinct, valid starting drafts for every Add editor", () => {
     const check = <T>(kind: string, entries: readonly { id: string; title: string; detail: string; draft: () => T }[],
       validate: (draft: T) => readonly string[]) => {
-      expect(entries, kind).toHaveLength(3);
-      expect(new Set(entries.map(entry => entry.id)).size, kind).toBe(3);
+      expect(entries, kind).toHaveLength(5);
+      expect(new Set(entries.map(entry => entry.id)).size, kind).toBe(5);
       expect(entries.every(entry => entry.title.trim() && entry.detail.trim()), kind).toBe(true);
       for (const entry of entries) expect(validate(entry.draft()), `${kind}: ${entry.title}`).toEqual([]);
     };
     check("explicit", graph2DAuthoringPresets.explicit, validateGraph2DFunctionDraft);
     check("parametric", graph2DAuthoringPresets.parametric, validateGraph2DParametricDraft);
     check("polar", graph2DAuthoringPresets.polar, validateGraph2DPolarDraft);
-    check("implicit", graph2DAuthoringPresets.implicit, validateGraph2DImplicitDraft);
+    expect(graph2DAuthoringPresets.implicit.length).toBeGreaterThanOrEqual(24);
+    expect(new Set(graph2DAuthoringPresets.implicit.map(entry => entry.id)).size)
+      .toBe(graph2DAuthoringPresets.implicit.length);
+    for (const entry of graph2DAuthoringPresets.implicit) {
+      expect(validateGraph2DImplicitDraft(entry.draft()), entry.title).toEqual([]);
+      expect(entry.equation).toBe(`${entry.draft().expression} = 0`);
+      expect(entry.properties.trim()).not.toBe("");
+      expect(entry.expected.trim()).not.toBe("");
+    }
     check("slope-field", graph2DAuthoringPresets["slope-field"], validateGraph2DSlopeFieldDraft);
     check("phase-portrait", graph2DAuthoringPresets["phase-portrait"], validateGraph2DPhasePortraitDraft);
     check("time-ode", graph2DAuthoringPresets["time-ode"], validateGraph2DTimeOdeDraft);

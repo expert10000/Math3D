@@ -281,7 +281,8 @@ test.describe("Workspace navigation", () => {
 
       await ctx.page.getByTestId("volume-action-new").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
-      await expect(detailedControls.getByLabel("F(x,y,z)")).toBeVisible();
+      await expect(detailedControls.getByText("Custom field", { exact: true })).toBeVisible();
+      await expect(detailedControls.getByRole("textbox", { name: "Volume custom field" })).toBeVisible();
 
       await ctx.page.getByTestId("volume-action-gallery").click();
       await expect(volumeNav).toHaveAttribute("aria-pressed", "true");
@@ -400,6 +401,7 @@ test.describe("Workspace navigation", () => {
         await resetSurfaceAppState(ctx.page);
 
         const labels = await getAvailableSectionLabels(ctx.page);
+        const page = ctx.page;
         expect(labels.length).toBeGreaterThanOrEqual(2);
 
         const back = ctx.page.getByRole("button", { name: "Workspace back", exact: true }).first();
@@ -425,14 +427,14 @@ test.describe("Workspace navigation", () => {
 
         for (let idx = visited.length - 2; idx >= 0; idx--) {
           await back.click();
-          await expect.poll(async () => getActiveSectionLabel(ctx.page, labels), { timeout: navigationTimeout }).toBe(visited[idx]);
+          await expect.poll(async () => getActiveSectionLabel(page, labels), { timeout: navigationTimeout }).toBe(visited[idx]);
         }
         await expect(back).toBeDisabled();
         await expect(forward).toBeEnabled();
 
         for (let idx = 1; idx < visited.length; idx++) {
           await forward.click();
-          await expect.poll(async () => getActiveSectionLabel(ctx.page, labels), { timeout: navigationTimeout }).toBe(visited[idx]);
+          await expect.poll(async () => getActiveSectionLabel(page, labels), { timeout: navigationTimeout }).toBe(visited[idx]);
         }
         await expect(forward).toBeDisabled();
       } finally {
@@ -448,6 +450,7 @@ test.describe("Workspace navigation", () => {
       await resetSurfaceAppState(ctx.page);
 
       const labels = await getAvailableSectionLabels(ctx.page);
+      const page = ctx.page;
       expect(labels.length).toBeGreaterThanOrEqual(2);
 
       const back = ctx.page.getByRole("button", { name: "Workspace back", exact: true }).first();
@@ -469,7 +472,7 @@ test.describe("Workspace navigation", () => {
       await expect(forward).toBeDisabled();
 
       await back.click();
-      await expect.poll(async () => getActiveSectionLabel(ctx.page, labels)).toBe(target1 as SectionLabel);
+      await expect.poll(async () => getActiveSectionLabel(page, labels)).toBe(target1 as SectionLabel);
       await expect(forward).toBeEnabled();
 
       const target3 = labels.find((label) => label !== target1);
@@ -480,10 +483,10 @@ test.describe("Workspace navigation", () => {
       await expect(back).toBeEnabled();
 
       await back.click();
-      await expect.poll(async () => getActiveSectionLabel(ctx.page, labels)).toBe(target1 as SectionLabel);
+      await expect.poll(async () => getActiveSectionLabel(page, labels)).toBe(target1 as SectionLabel);
 
       await forward.click();
-      await expect.poll(async () => getActiveSectionLabel(ctx.page, labels)).toBe(target3 as SectionLabel);
+      await expect.poll(async () => getActiveSectionLabel(page, labels)).toBe(target3 as SectionLabel);
     } finally {
       await closeSurfaceApp(ctx);
     }

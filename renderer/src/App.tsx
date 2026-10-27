@@ -18,6 +18,7 @@ import { ComplexAnalysisCommandAdapter } from "./math/complexCommandAdapter";
 import { VolumeProjectEditor } from "./projects/VolumeProjectEditor";
 import { buildNativeVolumeDataset, nativeVolumeObject, volumeEditorSeed, volumeDocumentEditable, validateNativeVolumeReplay } from "./projects/nativeVolumeRestore";
 import { ScientificProjectEditor } from "./projects/ScientificProjectEditor";
+import { MathExpressionInput } from "./math/MathExpressionInput";
 import { verifyMixedWorkspaceReplay } from "./kernel/mixedWorkspaceReplay";
 // src/App.tsx
 import { AdditionalProjectSession } from "./projects/additionalProjectSession";
@@ -35,6 +36,9 @@ import { ProjectNavigation } from "./workspace/projectNavigation";
 import { readProjectWorkbook } from "./projects/projectWorkbookBinding";
 import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
+import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
+  reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
+import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
@@ -74,6 +78,7 @@ import {
   type WorkspaceDockLayout,
 } from "./workspaceDocks";
 import { GraphsWorkspace } from "./graph2d/GraphsWorkspace";
+import { Graph2DComplexLinkPanel } from "./graph2d/Graph2DComplexLinkPanel";
 import { freshGraphGalleryLaunchToken, launchGraphGalleryPreset, resumeGraphGalleryCheckpoint, copyPersonalGraphProject,
   exportPersonalGraphProject, personalGraphDefinition, previewPersonalGraphImport, importPersonalGraphProject } from "./graph2d/graph2dGallerySession";
 import { pointTableStore } from "./graph2d/pointTableStore";
@@ -788,9 +793,13 @@ import {
   canonicalJsonByteLength,
   geometryDocumentFromSceneDocument,
   MAX_MIXED_WORKSPACE_REPLAY_BYTES,
+  matchesScientificSourceGeneration,
   viewerSourceFromDocument,
+  VECTOR_FIELD3D_POINT_RESULT_TYPE,
+  vectorField3DPointResultRelation,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
+  type ComplexAnalysisDocument,
   type CanonicalJsonValue,
   type MeshEditKind,
   type MeshDocument,
@@ -10137,7 +10146,8 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader) => {
+const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader,
+  sourceReader?: (item: ProjectResourceRequirement) => Uint8Array | null) => {
   const exportedAt = formatExportTimestamp(Date.now());
   if (!workbooks.length) {
     return ["# Math3D Workbook Export", `_Exported ${exportedAt}_`, "_No workbooks available._"].join("\n\n");
@@ -10241,7 +10251,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
       });
     });
   });
-  lines.push(notebookPublicationMarkdown(notebookPublicationManifest(workbooks, project, reader, selected)));
+  lines.push(notebookPublicationMarkdown(notebookPublicationManifest(workbooks, project, reader, selected, sourceReader)));
   return lines.join("\n\n");
 };
 
@@ -10313,7 +10323,8 @@ const buildWorkbookAnalysisTablesCsv = (workbooks: Workbook[], activeWorkbookId:
   return rows.join("\n");
 };
 
-const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader) => {
+const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null, project: Math3DProject | null = null, selected?: readonly string[], reader?: NotebookArtifactReader,
+  sourceReader?: (item: ProjectResourceRequirement) => Uint8Array | null) => {
   const exportedAt = formatExportTimestamp(Date.now());
   const multi = workbooks.length > 1;
   const hasWorkbooks = workbooks.length > 0;
@@ -10492,7 +10503,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
     <div class="report">
       ${header}
       ${workbooksHtml}
-      ${notebookPublicationManifestHtml(notebookPublicationManifest(workbooks, project, reader, selected))}
+      ${notebookPublicationManifestHtml(notebookPublicationManifest(workbooks, project, reader, selected, sourceReader))}
     </div>
   </body>
 </html>`;
@@ -23160,9 +23171,25 @@ const App: React.FC = () => {
   } | null>(null);
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
+  const [scientificMeshSourceStates, setScientificMeshSourceStates] = useState<Record<string,
+    "pending" | "current" | "stale">>({});
+  const scientificMeshRebuildAbortRef = useRef<AbortController | null>(null);
+  const [scientificMeshRebuild, setScientificMeshRebuild] = useState<{
+    meshId: string; busy: boolean; message: string } | null>(null);
   const nativeMeshSelectionKeysRef = useRef("");
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
   const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
+  const [vectorField3DDocument, setVectorField3DDocument] = useState<import("@math3d/core").VectorField3DDocument | null>(null);
+  const [vectorField3DPointResults, setVectorField3DPointResults] = useState<AnalysisResultEnvelope[]>([]);
+  const [vectorField3DOpenRequest, setVectorField3DOpenRequest] = useState<{ document: import("@math3d/core").VectorField3DDocument; token: number } | null>(null);
+  const vectorField3DRequestSerial = useRef(0);
+  const [vectorField2DDocument, setVectorField2DDocument] = useState<import("@math3d/core").VectorField2DDocument | null>(null);
+  const [vectorField2DOpenRequest, setVectorField2DOpenRequest] = useState<{ document: import("@math3d/core").VectorField2DDocument; token: number } | null>(null);
+  const vectorField2DRequestSerial = useRef(0);
+  const [scientificFieldDocuments, setScientificFieldDocuments] = useState<import("@math3d/core").ScientificFieldDocument[]>([]);
+  const [scientificSceneLibrary, setScientificSceneLibrary] = useState<import("@math3d/core").ScientificSceneLibraryReference[]>([]);
+  const [scientificFieldOpenRequest, setScientificFieldOpenRequest] = useState<{ document: import("@math3d/core").ScientificFieldDocument; token: number } | null>(null);
+  const scientificFieldRequestSerial = useRef(0);
   const [graph2dPromotions, setGraph2dPromotions] = useState<Graph2DAnyPromotion[]>([]);
   const [activeGraph2DTargetId, setActiveGraph2DTargetId] = useState<string | null>(null);
   const activeGraph2DTarget = graph2dPromotions.find((item) => item.document.identity.id === activeGraph2DTargetId &&
@@ -42614,6 +42641,7 @@ const App: React.FC = () => {
   const getNotebookSnapshotSourceRef = useRef<() => ReturnType<typeof viewerSourceFromDocument> | null>(() => null);
   const getNotebookCaptureContextRef = useRef<() => NotebookProjectContext | null>(() => null);
   const getWorkbookDependencyProjectRef = useRef<() => Math3DProject | null>(() => null);
+  const readComparisonReportResourceRef = useRef<(item: ProjectResourceRequirement) => Uint8Array | null>(() => null);
   const workbookStatus = useMemo(() => {
     const statuses = Object.values(computeStatusById);
     if (!statuses.length) return "ok";
@@ -55802,7 +55830,7 @@ case "mobius":
   }, [workbookBundleJson]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
-    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current());
+    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);
     const base =
       workbooks.length > 1
         ? "math3d-book"
@@ -55811,7 +55839,7 @@ case "mobius":
   }, [workbooks, activeWorkbookId, activeWorkbook]);
 
   const handleExportWorkbooksPdf = useCallback(() => {
-    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current());
+    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);
     const base =
       workbooks.length > 1
         ? "math3d-book"
@@ -76734,6 +76762,7 @@ case "mobius":
     setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: previous.layout }));
   }, [projectsOpen]);
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
+  const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
@@ -77333,6 +77362,14 @@ case "mobius":
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
       const entries = restored.workspace.entries.map((entry) => {
+        if (entry.module === "vector3d" && vectorField3DDocument?.identity.id === entry.expected.id)
+          return { ...entry, checkpoint: vectorField3DDocument, expected: vectorField3DDocument.identity, replay: null };
+        if (entry.module === "vector2d" && vectorField2DDocument?.identity.id === entry.expected.id)
+          return { ...entry, checkpoint: vectorField2DDocument, expected: vectorField2DDocument.identity, replay: null };
+        const scientificFieldDocument = entry.module === "field" ? scientificFieldDocuments.find(item =>
+          item.identity.id === entry.expected.id) : null;
+        if (scientificFieldDocument)
+          return { ...entry, checkpoint: scientificFieldDocument, expected: scientificFieldDocument.identity, replay: null };
         const graph = restored.graphs.get(entry.expected.id);
         if (graph) { const replay = graph.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: graph.document().identity, replay: { format: MIXED_REPLAY_FORMATS.graph2d, payload: replay as unknown as CanonicalJsonValue } }; }
         const additional = restored.additional.get(entry.expected.id);
@@ -77355,6 +77392,16 @@ case "mobius":
       if (entries.some((entry) => entry.module === "graph2d")) for (const promotion of graph2dPromotions) {
         if (!entries.some((entry) => entry.expected.id === promotion.document.identity.id)) entries.push({ module: promotion.document.format === "math3d.curve-document" ? "curve" : promotion.document.format === "math3d.geometry-document" ? "geometry" : "surface", checkpoint: promotion.document, expected: promotion.document.identity, replay: null });
       }
+      if (vectorField3DDocument && !entries.some((entry) => entry.expected.id === vectorField3DDocument.identity.id))
+        entries.push({ module: "vector3d", checkpoint: vectorField3DDocument,
+          expected: vectorField3DDocument.identity, replay: null });
+      if (vectorField2DDocument && !entries.some((entry) => entry.expected.id === vectorField2DDocument.identity.id))
+        entries.push({ module: "vector2d", checkpoint: vectorField2DDocument,
+          expected: vectorField2DDocument.identity, replay: null });
+      for (const scientificFieldDocument of scientificFieldDocuments)
+        if (!entries.some((entry) => entry.expected.id === scientificFieldDocument.identity.id))
+          entries.push({ module: "field", checkpoint: scientificFieldDocument,
+            expected: scientificFieldDocument.identity, replay: null });
       // Capture newly selected native documents and their derived publications,
       // while keeping unrelated editors outside the opened project.
       const live = captureMixedKernelWorkspace(false);
@@ -77376,9 +77423,13 @@ case "mobius":
         if (entry.module === "volume" && activeVolumeKernelAdapter.document().identity.id === entry.expected.id && volumeDocumentEditable(activeVolumeKernelAdapter.document())) restored.volumes.set(entry.expected.id, activeVolumeKernelAdapter);
       }
       const ids = new Set(entries.map((entry) => entry.expected.id));
-      const results = [...new Map([...restored.workspace.results, ...live.results.filter((result) => ids.has(result.provenance.source.documentId))].map((result) => [result.resultId, result])).values()];
+      const pointResults = vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId));
+      const results = [...new Map([...restored.workspace.results,
+        ...live.results.filter((result) => ids.has(result.provenance.source.documentId)),
+        ...pointResults].map((result) => [result.resultId, result])).values()];
       const resultIds = new Set(results.map((result) => result.resultId));
-      const relations = [...new Map([...restored.workspace.relations, ...live.relations.filter((relation) => relation.sources.every((source) => ids.has(source.documentId)) && (relation.target.type === "document" ? ids.has(relation.target.generation.documentId) : relation.target.type === "result" ? resultIds.has(relation.target.resultId) : live.artifacts.some((artifact) => artifact.handle.artifactId === (relation.target.type === "artifact" ? relation.target.artifactId : ""))))].map((relation) => [relation.relationId, relation])).values()];
+      const relations = [...new Map([...restored.workspace.relations, ...live.relations.filter((relation) => relation.sources.every((source) => ids.has(source.documentId)) && (relation.target.type === "document" ? ids.has(relation.target.generation.documentId) : relation.target.type === "result" ? resultIds.has(relation.target.resultId) : live.artifacts.some((artifact) => artifact.handle.artifactId === (relation.target.type === "artifact" ? relation.target.artifactId : "")))),
+        ...pointResults.map(vectorField3DPointResultRelation)].map((relation) => [relation.relationId, relation])).values()];
       const artifactIds = new Set([...results.flatMap((result) => result.artifacts.map((artifact) => artifact.artifactId)), ...relations.flatMap((relation) => relation.target.type === "artifact" ? [relation.target.artifactId] : [])]);
       const artifacts = [...new Map([...restored.workspace.artifacts, ...live.artifacts.filter((artifact) => artifactIds.has(artifact.handle.artifactId))].map((artifact) => [artifact.handle.artifactId, artifact])).values()];
       const constructions = restored.workspace.constructions.map((entry) => {
@@ -77387,7 +77438,13 @@ case "mobius":
         if (entry.kind === "workbook") return { ...entry, source: retainConstructionSource(entry.source, normalizeConstructionLabSeedRecord(entry.source), geometryWorkbookSceneSeeds, true) };
         return entry;
       });
-      const next = createMixedWorkspaceDocument({ ...restored.workspace, entries, activeDocumentIds: [...new Set([...restored.workspace.activeDocumentIds, ...entries.filter((entry) => !restored.workspace.entries.some((saved) => saved.expected.id === entry.expected.id)).map((entry) => entry.expected.id)])], results, relations, artifacts, constructions });
+      const savedSelection = restored.workspace.committedSelection;
+      const selectedEntry = savedSelection && entries.find(entry => entry.expected.id === savedSelection.source.documentId);
+      const committedSelection = savedSelection && selectedEntry &&
+        matchesScientificSourceGeneration(savedSelection.source, viewerSourceFromDocument({ identity: selectedEntry.expected })) ?
+        savedSelection : null;
+      const next = createMixedWorkspaceDocument({ ...restored.workspace, entries, scientificScenes: scientificSceneLibrary,
+        committedSelection, activeDocumentIds: [...new Set([...restored.workspace.activeDocumentIds, ...entries.filter((entry) => !restored.workspace.entries.some((saved) => saved.expected.id === entry.expected.id)).map((entry) => entry.expected.id)])], results, relations, artifacts, constructions });
       restored.workspace = next;
       return next;
     }
@@ -77420,6 +77477,9 @@ case "mobius":
     add("complex", complexPreviewSession.commands.document(), complexReplay.checkpoint.document,
       MIXED_REPLAY_FORMATS.complex, complexReplay as unknown as CanonicalJsonValue);
     add("graph2d", graph2dDocument);
+    add("vector3d", vectorField3DDocument);
+    add("vector2d", vectorField2DDocument);
+    for (const scientificFieldDocument of scientificFieldDocuments) add("field", scientificFieldDocument);
     for (const promotion of graph2dPromotions) add(promotion.document.format === "math3d.curve-document" ? "curve" : promotion.document.format === "math3d.geometry-document" ? "geometry" : "surface", promotion.document);
     const activeDocumentIds = entries.map((entry) => entry.expected.id);
     const surfaceHandoffs = surfaceMeshKernelHandoff.records();
@@ -77430,10 +77490,13 @@ case "mobius":
       add("surface", openedCurveConstruction.record.target);
     }
     const ids = new Set(entries.map((entry) => entry.expected.id));
-    const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results()]
+    const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results(),
+      ...vectorField3DPointResults]
       .filter((result) => ids.has(result.provenance.source.documentId));
     const uniqueResults = [...new Map(results.map((result) => [result.resultId, result])).values()];
     const relations = [...volumeExtractionRecords.flatMap((record) => record.relations), ...surfaceHandoffs.flatMap((record) => record.relations),
+      ...vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId))
+        .map(vectorField3DPointResultRelation),
       ...(openedCurveConstruction ? [openedCurveConstruction.record.relation] : []), ...graph2dPromotions.map((item) => item.relation)];
     const uniqueRelations = [...new Map(relations.map((relation) => [relation.relationId, relation])).values()];
     const volumeArtifacts = new Map(volumeExtractionRecords.map((record) => [record.artifactId, { contentHash: record.contentHash, byteLength: record.byteLength }]));
@@ -77450,7 +77513,7 @@ case "mobius":
       ...(Object.keys(geometryWorkbookSceneSeeds).length ? [{ kind: "workbook" as const, source: JSON.parse(JSON.stringify(geometryWorkbookSceneSeeds)) as CanonicalJsonValue, normalizedSceneScript: sceneScript }] : []),
       { kind: "scene-script" as const, source: sceneScript, normalizedSceneScript: sceneScript },
     ];
-    return createMixedWorkspaceDocument({ entries, activeDocumentIds,
+    return createMixedWorkspaceDocument({ entries, activeDocumentIds, scientificScenes: scientificSceneLibrary,
       results: uniqueResults, artifacts, relations: uniqueRelations,
       committedSelection: activeKernelSource ? { state: "committed", source: activeKernelSource, entityIds: activeKernelEvidence?.selectedEntityIds ?? [] } : null,
       constructions });
@@ -77467,6 +77530,25 @@ case "mobius":
     const volume = volumeExtractionBridgeRef.current?.artifacts().resolve(handle, source);
     return volume?.ok ? volume.bytes : null;
   };
+  const readComparisonResource = (item: ProjectResourceRequirement): Uint8Array | null => {
+    const restored = restoredProjectRef.current?.resources?.bytes(item);
+    if (restored) return restored;
+    if (item.kind === "mesh-buffers") {
+      const reference = item.reference as import("@math3d/core").MeshResourceReference;
+      for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
+        const bytes = adapter?.resources.bytes(reference);
+        if (bytes) return bytes;
+      }
+      for (const record of surfaceMeshKernelHandoff.records())
+        if (record.meshDocument?.source.resource.id === item.id) return surfaceMeshKernelHandoff.resolvePromoted(record.meshId);
+    }
+    if (item.kind === "volume-payload") {
+      const data = volumeStorageStoreRef.current.get(item.id);
+      if (data) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice();
+    }
+    return null;
+  };
+  readComparisonReportResourceRef.current = readComparisonResource;
   const readNotebookContext = () => readNotebookProjectContext(activeNotebookProjectRef.current, localStorage.getItem(PROJECT_STORAGE_KEY), captureMixedKernelWorkspace, readNotebookArtifact);
   const getNotebookContext = () => {
     const context = readNotebookContext();
@@ -77484,9 +77566,9 @@ case "mobius":
     const book = activeWorkbook, context = getNotebookContext(), project = context?.project ?? null;
     const base = sanitizeFileBase(book.title, "workbook");
     if (kind === "markdown") {
-      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact), base + ".report.md", "text/markdown"); return;
+      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact, readComparisonResource), base + ".report.md", "text/markdown"); return;
     }
-    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact);
+    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact, readComparisonResource);
     if (kind === "pdf") {
       const opened = window.open("", "_blank");
       if (!opened) { downloadTextFile(html, base + ".report.html", "text/html"); return; }
@@ -78605,6 +78687,17 @@ case "mobius":
 
   const reopenGraphWorkspace = (workspace: MixedWorkspaceDocument) => {
           restoredProjectRef.current = null; setAdditionalActiveId(null); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null);
+          setScientificSceneLibrary([...(workspace.scientificScenes ?? [])]);
+          const field = workspace.entries.find((entry) => entry.module === "vector3d")?.checkpoint;
+          setVectorField3DDocument(field?.format === "math3d.vector-field3d-document" ? field : null);
+          setVectorField3DOpenRequest(null);
+          const field2D = workspace.entries.find((entry) => entry.module === "vector2d")?.checkpoint;
+          setVectorField2DDocument(field2D?.format === "math3d.vector-field2d-document" ? field2D : null);
+          setVectorField2DOpenRequest(null);
+          setScientificFieldDocuments(workspace.entries.filter((entry) => entry.module === "field")
+            .map(entry => entry.checkpoint).filter((item): item is import("@math3d/core").ScientificFieldDocument =>
+              item.format === "math3d.scientific-field-document"));
+          setScientificFieldOpenRequest(null);
           const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
           if (!graph || graph.format !== "math3d.graph2d-document") return;
           graph2dAdapterRef.current = new Graph2DCommandAdapter(graph); setGraph2dDocument(graph);
@@ -78625,6 +78718,21 @@ case "mobius":
 
   const projectNavigationRef = useRef(new ProjectNavigation());
   const restoredMeshDatasetRef = useRef<{ documentId: string; sourceHash: string; mesh: SurfaceMeshData } | null>(null);
+  const activateComplexAdapter = (complex: ComplexAnalysisCommandAdapter) => {
+    const document = complex.document(), seed = complexEditorSeed(document);
+    setRestoredComplexAdapter(complex); setComplexPreviewSession(new ComplexFunctionPreviewSession(seed, complex, complexSourceFromEditor));
+    setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID); setComplexMapSpec({ ...COMPLEX_MAP_DEFAULT_SPEC, ...seed });
+    setOtherComplexIncludeInfinityBranchPoint(document.branchPolicy.includeInfinity);
+    setOtherComplexBranchCutMode(({ principal: "principal", "negative-real-axis": "negative_real_axis", "positive-real-axis": "positive_real_axis", radial: "radial_from_point" } as const)[document.branchPolicy.cut.kind as "principal" | "negative-real-axis" | "positive-real-axis" | "radial"]);
+    setOtherComplexBranchCutRadialAngleDeg(seed.branchCutAngle * 180 / Math.PI);
+    const contour = document.contours[0];
+    if (contour) {
+      if (contour.kind === "circle" && contour.center && contour.radius !== null) { setOtherComplexPathMode("circle"); setOtherComplexPathCenter(contour.center); setOtherComplexPathRadius(contour.radius); }
+      else { setOtherComplexPathMode("polyline"); setOtherComplexPolylinePath(contour.points.map((point) => [point.re, point.im])); setOtherComplexPolylineClosed(contour.closed); }
+    }
+    setOtherComplexPathAnimationPlaying(false); setActiveGraph2DTargetId(null);
+    setFunctionExplorerScene("other_complex"); setMode("mobius");
+  };
   const navigateRestoredDocument = (id: string, module: KernelWorkspaceModule): boolean => {
     setProjectMiddleContent(null);
     const navigationSequence = ++quantumSceneNavigationSequence.current;
@@ -78658,6 +78766,31 @@ case "mobius":
           setQuantumSceneNavigationError(`Quantum scene unavailable: ${String((error as Error).message)}`);
       });
       return true;
+    }
+    if (module === "vector3d") {
+      const entry = restored?.workspace.entries.find(item => item.module === "vector3d" && item.expected.id === id);
+      if (!entry || entry.checkpoint.format !== "math3d.vector-field3d-document") return false;
+      setVectorField3DDocument(entry.checkpoint);
+      setVectorField3DOpenRequest({ document: entry.checkpoint, token: ++vectorField3DRequestSerial.current });
+      setMode("graphs"); return true;
+    }
+    if (module === "vector2d") {
+      const entry = restored?.workspace.entries.find(item => item.module === "vector2d" && item.expected.id === id);
+      const field = entry?.checkpoint.format === "math3d.vector-field2d-document" ? entry.checkpoint :
+        vectorField2DDocument?.identity.id === id ? vectorField2DDocument : null;
+      if (!field) return false;
+      setVectorField2DDocument(field);
+      setVectorField2DOpenRequest({ document: field, token: ++vectorField2DRequestSerial.current });
+      setMode("graphs"); return true;
+    }
+    if (module === "field") {
+      const entry = restored?.workspace.entries.find(item => item.module === "field" && item.expected.id === id);
+      const field = entry?.checkpoint.format === "math3d.scientific-field-document" ? entry.checkpoint :
+        scientificFieldDocuments.find(item => item.identity.id === id) ?? null;
+      if (!field) return false;
+      setScientificFieldDocuments(current => [field, ...current.filter(item => item.identity.id !== field.identity.id)]);
+      setScientificFieldOpenRequest({ document: field, token: ++scientificFieldRequestSerial.current });
+      setMode("graphs"); return true;
     }
     const graph = restored?.graphs.get(id);
     if (graph) {
@@ -78746,19 +78879,7 @@ case "mobius":
       setActiveGraph2DTargetId(null); setMode("topology"); return true;
     }
     if (complex) {
-      const document = complex.document(), seed = complexEditorSeed(document);
-      setRestoredComplexAdapter(complex); setComplexPreviewSession(new ComplexFunctionPreviewSession(seed, complex, complexSourceFromEditor));
-      setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID); setComplexMapSpec({ ...COMPLEX_MAP_DEFAULT_SPEC, ...seed });
-      setOtherComplexIncludeInfinityBranchPoint(document.branchPolicy.includeInfinity);
-      setOtherComplexBranchCutMode(({ principal: "principal", "negative-real-axis": "negative_real_axis", "positive-real-axis": "positive_real_axis", radial: "radial_from_point" } as const)[document.branchPolicy.cut.kind as "principal" | "negative-real-axis" | "positive-real-axis" | "radial"]);
-      setOtherComplexBranchCutRadialAngleDeg(seed.branchCutAngle * 180 / Math.PI);
-      const contour = document.contours[0];
-      if (contour) {
-        if (contour.kind === "circle" && contour.center && contour.radius !== null) { setOtherComplexPathMode("circle"); setOtherComplexPathCenter(contour.center); setOtherComplexPathRadius(contour.radius); }
-        else { setOtherComplexPathMode("polyline"); setOtherComplexPolylinePath(contour.points.map((point) => [point.re, point.im])); setOtherComplexPolylineClosed(contour.closed); }
-      }
-      setOtherComplexPathAnimationPlaying(false); setActiveGraph2DTargetId(null);
-      setFunctionExplorerScene("other_complex"); setMode("mobius"); return true;
+      activateComplexAdapter(complex); return true;
     }
     if (geometry) {
       const document = geometry.document(), seed = restoredGeometryEditorSeed(document);
@@ -78799,6 +78920,52 @@ case "mobius":
       setMode("surfaces"); setDatasetKind("surface"); setSurfaceViewerKind("param"); setSurfacesPanelState("work"); setSurfacesLeftTab("object"); return true;
     }
     return false;
+  };
+  const complexWorkspaceEntry = (adapter: ComplexAnalysisCommandAdapter): MixedWorkspaceEntry => {
+    const replay = adapter.exportReplay();
+    return { module: "complex", checkpoint: replay.checkpoint.document,
+      expected: adapter.document().identity,
+      replay: { format: MIXED_REPLAY_FORMATS.complex, payload: replay as unknown as CanonicalJsonValue } };
+  };
+  const placeGraphComplexContour = (target: ComplexAnalysisDocument) => {
+    const link = target.provenance.graphSource;
+    if (!link || link.documentId !== graph2dDocument.identity.id ||
+        link.revision !== graph2dDocument.identity.revision ||
+        link.structuralHash !== graph2dDocument.identity.structuralHash)
+      throw new TypeError("Graph source changed before Complex placement; preview the contour again.");
+    const restored = restoredProjectRef.current;
+    if (restored?.workspace.entries.some(entry => entry.expected.id === target.identity.id) ||
+        !restored && complexPreviewSession.commands.document().identity.id === target.identity.id)
+      throw new TypeError("This linked Complex document already exists. Open it in Complex Analysis and review a refresh there.");
+    const adapter = new ComplexAnalysisCommandAdapter(target);
+    if (restored) {
+      restored.workspace = captureMixedKernelWorkspace();
+      if (!restored.workspace.entries.some(entry => entry.expected.id === link.documentId))
+        throw new TypeError("Save or open the source Graph in this project before placing its Complex contour.");
+      const entry = complexWorkspaceEntry(adapter);
+      restored.workspace = createMixedWorkspaceDocument({ ...restored.workspace,
+        entries: [...restored.workspace.entries, entry],
+        activeDocumentIds: [target.identity.id, ...restored.workspace.activeDocumentIds] });
+      restored.complexes.set(target.identity.id, adapter);
+      navigateRestoredDocument(target.identity.id, "complex");
+    } else { setActiveProjectDocumentId(null); setProjectMiddleContent(null); activateComplexAdapter(adapter); }
+  };
+  const refreshPlacedGraphComplexContour = (target: ComplexAnalysisDocument) => {
+    const restored = restoredProjectRef.current;
+    if (restored) restored.workspace = captureMixedKernelWorkspace();
+    const current = restoredComplexAdapter?.document();
+    if (!current || current.identity.id !== target.identity.id ||
+        target.identity.revision !== current.identity.revision + 1)
+      throw new TypeError("Complex target changed before refresh; review it again.");
+    const adapter = new ComplexAnalysisCommandAdapter(target);
+    if (restored?.complexes.has(target.identity.id)) {
+      const index = restored.workspace.entries.findIndex(entry => entry.expected.id === target.identity.id && entry.module === "complex");
+      if (index < 0) throw new TypeError("Linked Complex document is missing from the project.");
+      const entries = [...restored.workspace.entries]; entries[index] = complexWorkspaceEntry(adapter);
+      restored.workspace = createMixedWorkspaceDocument({ ...restored.workspace, entries });
+      restored.complexes.set(target.identity.id, adapter);
+      navigateRestoredDocument(target.identity.id, "complex");
+    } else activateComplexAdapter(adapter);
   };
   const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => {
     const resolved = verifyMixedWorkspaceReplay(workspace);
@@ -78856,10 +79023,118 @@ case "mobius":
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
     restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources,
       projectTags: owner?.metadata.tags ?? [], additional, context };
+    const linked = [...meshes.values()].filter(adapter =>
+      (adapter.document().source.origin as { kind?: string })?.kind ===
+        "derivedVectorFieldIsosurface");
+    setScientificMeshSourceStates(Object.fromEntries(linked.map(adapter =>
+      [adapter.document().identity.id, "pending"] as const)));
+    for (const adapter of linked) {
+      const meshId = adapter.document().identity.id;
+      const origin = adapter.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
+      if (origin.kind !== "derivedVectorFieldIsosurface") continue;
+      const source = resolved.get(origin.source.documentId);
+      if (source?.format !== "math3d.vector-field3d-document") {
+        setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
+        continue;
+      }
+      if (origin.sourceReferences && !window.scientificScenes) {
+        setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
+        continue;
+      }
+      void reverifyScientificIsosurfaceMesh(origin, source, window.scientificScenes)
+        .then(status => setScientificMeshSourceStates(current =>
+          ({ ...current, [meshId]: status })))
+        .catch(() => setScientificMeshSourceStates(current =>
+          ({ ...current, [meshId]: "stale" })));
+    }
+    setVectorField3DPointResults(workspace.results.filter(result =>
+      result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE));
     if (owner) activeNotebookProjectRef.current = owner;
     const firstGraph = graphs.values().next().value;
     if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
     setAdditionalActiveId(null);
+  };
+
+  const promoteFieldIsosurfaceToMesh = (field: import("@math3d/core").VectorField3DDocument,
+    surface: import("@math3d/core").VectorField3DIsosurface) => {
+    const restored = restoredProjectRef.current;
+    const next = promoteScientificIsosurfaceMesh(captureMixedKernelWorkspace(), field, surface);
+    setVectorField3DDocument(field);
+    meshDocumentAdapterRef.current = next.adapter;
+    setMeshKernelDocument(next.adapter.document());
+    if (restored) {
+      restored.workspace = next.workspace;
+      restored.meshes.set(next.adapter.document().identity.id, next.adapter);
+      const id = next.adapter.document().identity.id;
+      const origin = next.adapter.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
+      setScientificMeshSourceStates(current => ({ ...current, [id]: "pending" }));
+      void reverifyScientificIsosurfaceMesh(origin, field, window.scientificScenes)
+        .then(status => setScientificMeshSourceStates(current => ({ ...current, [id]: status })))
+        .catch(() => setScientificMeshSourceStates(current => ({ ...current, [id]: "stale" })));
+      setAdditionalVersion(value => value + 1);
+    } else {
+      reopenProjectWorkspace(next.workspace);
+    }
+    navigateRestoredDocument(next.adapter.document().identity.id, "mesh");
+  };
+
+  const rebuildFieldIsosurfaceMesh = async (meshId: string) => {
+    if (scientificMeshRebuildAbortRef.current) return;
+    const controller = new AbortController();
+    scientificMeshRebuildAbortRef.current = controller;
+    setScientificMeshRebuild({ meshId, busy: true,
+      message: "Opening and verifying the saved field source…" });
+    let sourceLabel = "the saved field source";
+    try {
+      const restored = restoredProjectRef.current;
+      const adapter = restored?.meshes.get(meshId);
+      if (!restored || !adapter)
+        throw new TypeError("The source-linked Mesh is unavailable in this Project.");
+      const previous = adapter.document();
+      const origin = previous.source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
+      if (origin.kind !== "derivedVectorFieldIsosurface")
+        throw new TypeError("This Mesh has no saved Field Explorer extraction recipe.");
+      sourceLabel = origin.sourceReferences ?
+        `scene ${origin.sourceReferences[0].sceneId}, dataset ${origin.sourceReferences[0].datasetId}` :
+        `field ${origin.source.documentId}`;
+      const workspace = captureMixedKernelWorkspace();
+      const field = verifyMixedWorkspaceReplay(workspace).get(origin.source.documentId);
+      if (field?.format !== "math3d.vector-field3d-document" ||
+          field.identity.revision !== origin.source.revision ||
+          field.identity.structuralHash !== origin.source.structuralHash)
+        throw new TypeError("The saved field generation changed or is unavailable.");
+      const surface = await runVerifiedIsosurface(field, origin.recipe, {
+        signal: controller.signal, bridge: window.scientificScenes,
+        onStatus: message => setScientificMeshRebuild({ meshId, busy: true, message }) });
+      if (controller.signal.aborted) throw new Error("Isosurface rebuild cancelled.");
+      if (restoredProjectRef.current !== restored ||
+          restored.meshes.get(meshId) !== adapter ||
+          adapter.document().identity.structuralHash !== previous.identity.structuralHash ||
+          adapter.document().identity.revision !== previous.identity.revision)
+        throw new TypeError("The Project Mesh changed during extraction. Retry with its current revision.");
+      const rebuilt = rebuildScientificIsosurfaceMesh(captureMixedKernelWorkspace(),
+        adapter, field, surface);
+      restored.workspace = rebuilt.workspace;
+      restored.meshes.set(meshId, rebuilt.adapter);
+      meshDocumentAdapterRef.current = rebuilt.adapter;
+      setMeshKernelDocument(rebuilt.adapter.document());
+      setScientificMeshSourceStates(current => ({ ...current, [meshId]: "current" }));
+      setAdditionalVersion(value => value + 1);
+      navigateRestoredDocument(meshId, "mesh");
+      setScientificMeshRebuild({ meshId, busy: false,
+        message: `Verified Mesh revision ${rebuilt.current.revision} is ready. Save the Project to keep it.` });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      const cancelled = controller.signal.aborted;
+      if (!cancelled && /integrity|checksum|source.*changed|tile/i.test(message))
+        setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
+      setScientificMeshRebuild({ meshId, busy: false, message: cancelled ?
+        "Rebuild cancelled; the previous Mesh revision is unchanged." :
+        `${sourceLabel}: ${message} Repair the source bundle or relink a verified field in Field Explorer before rebuilding.` });
+    } finally {
+      if (scientificMeshRebuildAbortRef.current === controller)
+        scientificMeshRebuildAbortRef.current = null;
+    }
   };
 
   const createMeshFromSavedSurface = (resolution: SurfaceStudyResolution = 33): string => {
@@ -78953,6 +79228,8 @@ case "mobius":
   const savedMeshSourceCurrent = () => {
     const restored = restoredProjectRef.current, mesh = meshDocumentAdapterRef.current;
     if (!restored || !mesh) return true;
+    if ((mesh.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface")
+      return scientificMeshSourceStates[mesh.document().identity.id] === "current";
     const lineage = restored.workspace.relations.find(relation => relation.operation === "surface.tessellate-saved" && relation.target.type === "document" && relation.target.generation.documentId === mesh.document().identity.id);
     if (!lineage) return true;
     const source = lineage.sources[0], parent = restored.additional.get(source.documentId)?.document() ?? restored.surfaces.get(source.documentId)?.document();
@@ -79571,6 +79848,7 @@ case "mobius":
         activeProjectDocumentId={activeProjectDocumentId}
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
+        resultRequest={projectResultRequest}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
@@ -79660,7 +79938,7 @@ case "mobius":
           setProjectMiddleContent({ kind: "workbook", workbook, focusBlockId: blockId });
         }}
         onViewProjectDetail={() => setProjectMiddleContent({ kind: "project-detail" })}
-        canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
+        canNavigateDocument={(id, module) => restoredProjectRef.current?.graphs.has(id) || restoredProjectRef.current?.workspace.entries.some(entry => (entry.module === "vector3d" || entry.module === "vector2d" || entry.module === "field") && entry.expected.id === id) || restoredProjectRef.current?.additional.has(id) || restoredProjectRef.current?.curves.has(id) || restoredProjectRef.current?.surfaces.has(id) || restoredProjectRef.current?.geometries.has(id) || restoredProjectRef.current?.topologies.has(id) || restoredProjectRef.current?.complexes.has(id) || restoredProjectRef.current?.volumes.has(id) || restoredProjectRef.current?.meshes.has(id) || graph2dPromotions.some((item) => item.document.identity.id === id) || ({
           geometry: geometryKernelAdapterRef.current?.document().identity.id,
           mesh: meshKernelDocument?.identity.id,
           surface: (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom" ? restoredSurfaceAdapter : surfaceDocumentAdapters.get(activeCanonicalSurfaceDefinition.identity.surfaceId))?.document().identity.id,
@@ -79669,6 +79947,9 @@ case "mobius":
           topology: topologyKernelDocument?.identity.id,
           complex: complexPreviewSession.commands.document().identity.id,
           graph2d: graph2dDocument.identity.id,
+          vector3d: vectorField3DDocument?.identity.id,
+          vector2d: vectorField2DDocument?.identity.id,
+          field: scientificFieldDocuments.find(item => item.identity.id === id)?.identity.id,
           quantum: restoredProjectRef.current?.workspace.entries.find((entry) => entry.module === "quantum" && entry.expected.id === id)?.expected.id,
         }[module] === id)}
         onNavigateDocument={(id, module) => {
@@ -79753,6 +80034,7 @@ case "mobius":
       />
       {projectMiddleContent?.kind === "workbook" && activeProjectDocumentId && <ProjectWorkbookMiddleView
         workbook={projectMiddleContent.workbook} project={activeNotebookProjectRef.current}
+        readComparisonResource={readComparisonResource}
         documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId]?.title ?? "document"}
         focusBlockId={projectMiddleContent.focusBlockId}
         onReturn={() => setProjectMiddleContent(null)}
@@ -82029,14 +82311,22 @@ case "mobius":
       {restoredTopologyAdapter && mode === "topology" && <div data-testid="project-topology-editor" style={{ padding: "6px 14px" }}>Saved Topology · {restoredTopologyAdapter.current().name} · {restoredTopologyAdapter.document().identity.id} · Projects → Save project keeps these edits.</div>}
       {nativeVolumeActive && activeKernelModule === "volume" && <VolumeProjectEditor key={restoredVolumeAdapter!.document().identity.id} adapter={restoredVolumeAdapter!} onRestore={() => navigateRestoredDocument(restoredVolumeAdapter!.document().identity.id, "volume")} />}
       {restoredComplexAdapter && activeKernelModule === "complex" && <ScientificProjectEditor adapter={restoredComplexAdapter} spec={complexMapSpec} onChange={updateComplexMapSpec} onRestore={() => navigateRestoredDocument(restoredComplexAdapter.document().identity.id, "complex")} />}
+      {restoredComplexAdapter && activeKernelModule === "complex" && restoredComplexAdapter.document().provenance.graphSource &&
+        <Graph2DComplexLinkPanel target={restoredComplexAdapter.document()}
+          source={restoredComplexAdapter.document().provenance.graphSource!.documentId === graph2dDocument.identity.id
+            ? graph2dDocument : restoredProjectRef.current?.graphs.get(restoredComplexAdapter.document().provenance.graphSource!.documentId)?.document() ?? null}
+          onRefresh={refreshPlacedGraphComplexContour} />}
       {restoredProjectRef.current && (mode === "curves" && activeCurveKernelAdapter === restoredCurveAdapter || mode === "surfaces" && surfaceViewerKind === "param" && paramSurfaceId === "custom" && restoredSurfaceAdapter) && <div data-testid="project-editor-history" style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "6px 14px" }}>
         <span>Saved document · {mode === "curves" ? restoredCurveAdapter?.document().metadata.title : restoredSurfaceAdapter?.document().metadata.title}</span>
         <button type="button" data-testid="project-editor-undo" onClick={() => { const adapter = mode === "curves" ? restoredCurveAdapter! : restoredSurfaceAdapter!; adapter.undo(); navigateRestoredDocument(adapter.document().identity.id, mode === "curves" ? "curve" : "surface"); }}>Undo document</button>
         <button type="button" data-testid="project-editor-redo" onClick={() => { const adapter = mode === "curves" ? restoredCurveAdapter! : restoredSurfaceAdapter!; adapter.redo(); navigateRestoredDocument(adapter.document().identity.id, mode === "curves" ? "curve" : "surface"); }}>Redo document</button>
         {mode === "surfaces" && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <label>x(u,v) <input data-testid="project-surface-x" value={paramXExpr} onChange={(event) => setParamXExpr(event.target.value)} style={{ width: 110 }} /></label>
-          <label>y(u,v) <input data-testid="project-surface-y" value={paramYExpr} onChange={(event) => setParamYExpr(event.target.value)} style={{ width: 110 }} /></label>
-          <label>z(u,v) <input data-testid="project-surface-z" value={paramZExpr} onChange={(event) => setParamZExpr(event.target.value)} style={{ width: 150 }} /></label>
+          <MathExpressionInput label="x(u,v)" ariaLabel="Surface x expression" profile="real" variables={["u", "v"]}
+            inputTestId="project-surface-x" value={paramXExpr} onChange={setParamXExpr} />
+          <MathExpressionInput label="y(u,v)" ariaLabel="Surface y expression" profile="real" variables={["u", "v"]}
+            inputTestId="project-surface-y" value={paramYExpr} onChange={setParamYExpr} />
+          <MathExpressionInput label="z(u,v)" ariaLabel="Surface z expression" profile="real" variables={["u", "v"]}
+            inputTestId="project-surface-z" value={paramZExpr} onChange={setParamZExpr} />
         </div>}
         <span>Projects → Save project keeps these edits.</span>
       </div>}
@@ -82051,6 +82341,21 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
+      {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface" &&
+        <div role="status" data-testid="scientific-mesh-source-status" style={{ margin: "8px 18px",
+          padding: "7px 11px", border: "1px solid #b9cbe0", borderRadius: 8,
+          fontSize: 13 }}>Source {scientificMeshSourceStates[meshDocumentAdapterRef.current!.document().identity.id] ?? "pending"} ·
+          {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.boundaryEdgeCount} boundary edges ·
+          {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.clipBoundaryEdgeCount} on clip planes ·
+          {" "}<button type="button" data-testid="scientific-mesh-rebuild" disabled={!!scientificMeshRebuild?.busy}
+            onClick={() => void rebuildFieldIsosurfaceMesh(meshDocumentAdapterRef.current!.document().identity.id)}>
+            Rebuild from verified source</button>
+          {scientificMeshRebuild?.busy && scientificMeshRebuild.meshId === meshDocumentAdapterRef.current!.document().identity.id &&
+            <button type="button" data-testid="scientific-mesh-rebuild-cancel"
+              onClick={() => scientificMeshRebuildAbortRef.current?.abort()}>Cancel rebuild</button>}
+          {scientificMeshRebuild?.meshId === meshDocumentAdapterRef.current!.document().identity.id &&
+            <p data-testid="scientific-mesh-rebuild-message">{scientificMeshRebuild.message}</p>}
+        </div>}
       {!hasSavedDocumentViewport && (<SavedMeshModuleFrame document={savedMeshModuleActive ? meshDocumentAdapterRef.current?.document() ?? null : null} projectTitle={activeNotebookProjectRef.current?.metadata.title} sourceSurfaceTitle={savedMeshSourceTitle} onProject={() => setProjectsOpen(true)} onStudy={() => setSavedMeshModuleView(false)} onSurface={savedMeshParent?.document && !activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.archived ? () => openSavedStudySurface(meshDocumentAdapterRef.current!.document().identity.id) : undefined} onClose={openNormalSurfacesWorkspace}>
         <SavedSurfaceModuleFrame projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
         data-testid="module-workspace"
@@ -89753,6 +90058,7 @@ case "mobius":
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
+                      readComparisonResource={readComparisonResource}
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}
@@ -89871,6 +90177,31 @@ case "mobius":
           </div>
         ) : mode === "graphs" ? (
           <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} analysisRequest={projectGraphAnalysisRequest}
+            savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}
+            onSaveVectorField3D={field => { setVectorField3DDocument(field); setVectorField3DOpenRequest(null); }}
+            onPromoteVectorField3DIsosurface={promoteFieldIsosurfaceToMesh}
+            savedVectorField3DPointResults={vectorField3DPointResults}
+            onSaveVectorField3DPointResult={(field, result) => {
+              setVectorField3DDocument(field);
+              setVectorField3DPointResults(current => current.some(item => item.resultId === result.resultId) ?
+                current : [...current, result]);
+            }}
+            onOpenVectorField3DProjectResults={id => {
+              setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+              setProjectsOpen(true);
+            }}
+            savedVectorField2D={vectorField2DDocument} openVectorField2DRequest={vectorField2DOpenRequest}
+            onSaveVectorField2D={field => { setVectorField2DDocument(field); setVectorField2DOpenRequest(null); }}
+            savedScientificFields={scientificFieldDocuments} openScientificFieldRequest={scientificFieldOpenRequest}
+            savedScientificScenes={scientificSceneLibrary}
+            onSaveScientificScene={scene => setScientificSceneLibrary(current =>
+              [...current.filter(item => item.locator.kind !== scene.locator.kind ||
+                item.locator.value !== scene.locator.value), scene].slice(-64))}
+            onRemoveScientificScene={scene => setScientificSceneLibrary(current =>
+              current.filter(item => item.locator.kind !== scene.locator.kind ||
+                item.locator.value !== scene.locator.value))}
+            onSaveScientificField={field => { setScientificFieldDocuments(current => [field,
+              ...current.filter(item => item.identity.id !== field.identity.id)]); setScientificFieldOpenRequest(null); }}
             onExportPersonalProject={id => exportPersonalGraphProject(captureMixedKernelWorkspace,id,localStorage)}
             onCopyGraphDefinition={id => personalGraphDefinition(captureMixedKernelWorkspace,id,localStorage)}
             onPreviewPersonalImport={raw => previewPersonalGraphImport(raw,localStorage)}
@@ -89888,6 +90219,7 @@ case "mobius":
             }}
             promotions={graph2dPromotions} onPromotionCreate={addGraph2DPromotion}
             onPromotionLocate={openGraph2DTarget} onPromotionRegenerate={regenerateGraph2DTarget}
+            onComplexContourPlace={placeGraphComplexContour}
             onViewportCommit={commitGraph2DViewport} onGridModeCommit={commitGraph2DGridMode}
             onAxesCommit={commitGraph2DAxes}
             onProbesCommit={pinnedProbes => { const adapter = graph2dAdapterRef.current!, document = adapter.document();
@@ -90272,16 +90604,11 @@ case "mobius":
                       </div>
                     ) : (
                     <div style={{ display: "grid", gap: 6 }}>
-                      <label style={{ fontSize: 11 }}>
-                        x(t)
+                      <div style={{ fontSize: 11 }}>
                         {activeCurveIsCustom ? (
-                          <input
-                            type="text"
-                            value={activeCurveFormulas.x}
-                            onChange={(e) => setCurveCustomXExpr(e.target.value)}
-                            style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
-                          />
-                        ) : (
+                          <MathExpressionInput label="x(t)" ariaLabel="Curve x expression" profile="real" variables={["t"]}
+                            value={activeCurveFormulas.x} onChange={setCurveCustomXExpr} />
+                        ) : (<><span>x(t)</span>
                           <div
                             style={{
                               marginTop: 4,
@@ -90294,19 +90621,13 @@ case "mobius":
                             }}
                           >
                             {activeCurveFormulas.x}
-                          </div>
-                        )}
-                      </label>
-                      <label style={{ fontSize: 11 }}>
-                        y(t)
+                          </div></>)}
+                      </div>
+                      <div style={{ fontSize: 11 }}>
                         {activeCurveIsCustom ? (
-                          <input
-                            type="text"
-                            value={activeCurveFormulas.y}
-                            onChange={(e) => setCurveCustomYExpr(e.target.value)}
-                            style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
-                          />
-                        ) : (
+                          <MathExpressionInput label="y(t)" ariaLabel="Curve y expression" profile="real" variables={["t"]}
+                            value={activeCurveFormulas.y} onChange={setCurveCustomYExpr} />
+                        ) : (<><span>y(t)</span>
                           <div
                             style={{
                               marginTop: 4,
@@ -90319,20 +90640,14 @@ case "mobius":
                             }}
                           >
                             {activeCurveFormulas.y}
-                          </div>
-                        )}
-                      </label>
+                          </div></>)}
+                      </div>
                       {(activeCurvePreset?.dimension ?? 2) === 3 && (
-                        <label style={{ fontSize: 11 }}>
-                          z(t)
+                        <div style={{ fontSize: 11 }}>
                           {activeCurveIsCustom ? (
-                            <input
-                              type="text"
-                              value={activeCurveFormulas.z ?? ""}
-                              onChange={(e) => setCurveCustomZExpr(e.target.value)}
-                              style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
-                            />
-                          ) : (
+                            <MathExpressionInput label="z(t)" ariaLabel="Curve z expression" profile="real" variables={["t"]}
+                              value={activeCurveFormulas.z ?? ""} onChange={setCurveCustomZExpr} />
+                          ) : (<><span>z(t)</span>
                             <div
                               style={{
                                 marginTop: 4,
@@ -90345,9 +90660,8 @@ case "mobius":
                               }}
                             >
                               {activeCurveFormulas.z}
-                            </div>
-                          )}
-                        </label>
+                            </div></>)}
+                        </div>
                       )}
                     </div>
                     )}
@@ -107569,15 +107883,9 @@ case "mobius":
                             active preset note: {otherComplexActivePreset.note}
                           </div>
                         )}
-                        <label style={{ display: "grid", gap: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700 }}>f(z)</span>
-                          <input
-                            type="text"
-                            value={otherComplexFunctionExpr}
-                            onChange={(e) => updateOtherComplexFunctionExpr(e.target.value)}
-                            spellCheck={false}
-                          />
-                        </label>
+                        <MathExpressionInput label="f(z)" ariaLabel="Complex function expression"
+                          profile="complex" variables={["z"]} value={otherComplexFunctionExpr}
+                          onChange={updateOtherComplexFunctionExpr} />
                         <div style={{ fontSize: 11, opacity: 0.75 }}>
                           Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
                         </div>
@@ -110355,7 +110663,8 @@ case "mobius":
           </>
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
-      {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)} />}
+      {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)}
+        onOpenRelated={related => { setQuantumScenePreview(related); setQuantumSceneReference(related.reference); }} />}
       {scientificScenePreview && <ScientificScenePreview opened={scientificScenePreview} onClose={() => {
         void window.scientificScenes?.close(scientificScenePreview.fingerprint);
         setScientificScenePreview(null);

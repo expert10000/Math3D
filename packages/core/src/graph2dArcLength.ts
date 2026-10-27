@@ -30,6 +30,7 @@ export const analyzeGraph2DArcLength = (input: Readonly<{
   objectId: string;
   interval: Readonly<{ min: number; max: number }>;
   tolerance?: number;
+  maxEvaluations?: number;
 }>): Graph2DArcLengthAnalysis => {
   const object = input.document.source.objects.find((entry) => entry.id === input.objectId);
   if (!object || object.kind !== "explicit-cartesian" || !Number.isFinite(input.interval.min) || !Number.isFinite(input.interval.max) ||
@@ -37,23 +38,27 @@ export const analyzeGraph2DArcLength = (input: Readonly<{
   const tolerance = input.tolerance ?? 1e-6;
   if (!Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.1)
     throw new TypeError("Invalid Graph2D arc-length tolerance.");
+  const maxEvaluations = input.maxEvaluations ?? GRAPH2D_ARC_LENGTH_MAX_EVALUATIONS;
+  if (!Number.isSafeInteger(maxEvaluations) || maxEvaluations < 1 ||
+    maxEvaluations > GRAPH2D_ARC_LENGTH_MAX_EVALUATIONS)
+    throw new TypeError("Invalid Graph2D arc-length evaluation budget.");
   const started = Date.now();
   const source: ScientificSourceGeneration = { documentId: input.document.identity.id,
     revision: input.document.identity.revision, structuralHash: input.document.identity.structuralHash,
     generation: input.document.identity.revision };
   const resultId = "graph2d.arc-length." + structuralHash({ source, objectId: object.id, interval: input.interval,
-    tolerance, algorithmVersion: GRAPH2D_ARC_LENGTH_ALGORITHM_VERSION }).slice(7);
+    tolerance, maxEvaluations, algorithmVersion: GRAPH2D_ARC_LENGTH_ALGORITHM_VERSION }).slice(7);
   const symbolic = differentiateGraph2DExpression(object.expression.ast, 1);
   const method = symbolic.ok ? "adaptive-simpson-symbolic-slope" : "adaptive-simpson-finite-difference-slope";
   const variables = Object.fromEntries(input.document.source.variables.map((entry) => [entry.name, entry.value]));
-  let evaluations = 0;
+  let evaluations = 0, budgetReached = false;
   const cache = new Map<number, number | null>();
   const integrand = (x: number): number | null => {
     if (cache.has(x)) return cache.get(x)!;
     if (x < object.domain.min || x > object.domain.max ||
       x === object.domain.min && !object.domain.includeMin ||
-      x === object.domain.max && !object.domain.includeMax ||
-      evaluations >= GRAPH2D_ARC_LENGTH_MAX_EVALUATIONS) return null;
+      x === object.domain.max && !object.domain.includeMax) return null;
+    if (evaluations >= maxEvaluations) { budgetReached = true; return null; }
     evaluations += 1;
     const y = evaluateGraph2DExpression(object.expression.ast, { ...variables, x });
     if (!y.ok) { cache.set(x, null); return null; }
@@ -100,15 +105,17 @@ export const analyzeGraph2DArcLength = (input: Readonly<{
     provenance: { source, operation: { type: "graph2d.arc-length", algorithm: method,
       algorithmVersion: GRAPH2D_ARC_LENGTH_ALGORITHM_VERSION,
       parameters: { objectId: object.id, interval: input.interval,
-        gridCells: GRAPH2D_ARC_LENGTH_GRID_CELLS, maxEvaluations: GRAPH2D_ARC_LENGTH_MAX_EVALUATIONS } },
+        gridCells: GRAPH2D_ARC_LENGTH_GRID_CELLS, maxEvaluations } },
       numericContext: { precision: { binaryBits: 53 }, tolerance: { absolute: tolerance } },
       engine: { name: "math3d-core", version: GRAPH2D_ARC_LENGTH_ALGORITHM_VERSION }, elapsedMs: Math.max(0, Date.now() - started) },
     summary: { interval: input.interval, status, value, partialValue,
       errorEstimate: status === "complete" ? error : null, unresolvedCells, evaluations, method },
     warnings: ["Refinement error is estimated, not certified; unresolved discontinuities may be missed.",
+      ...(budgetReached ? ["Evaluation budget reached; the full interval length is unavailable."] : []),
       ...(unresolvedCells ? ["The full interval length is unavailable because some cells did not resolve."] : [])],
-    diagnostics: unresolvedCells ? [{ code: "unresolved-cells", severity: "warning",
-      message: `${unresolvedCells} cells crossed an invalid source or failed numerical convergence.` }] : [], artifacts: [] });
+    diagnostics: unresolvedCells ? [{ code: budgetReached ? "evaluation-limit" : "unresolved-cells", severity: "warning",
+      message: budgetReached ? `Evaluation budget reached at ${maxEvaluations}; ${unresolvedCells} cells remain unresolved.` :
+        `${unresolvedCells} cells crossed an invalid source or failed numerical convergence.` }] : [], artifacts: [] });
   return { objectId: object.id, resultId, source, interval: input.interval, status, value, partialValue,
     errorEstimate: status === "complete" ? error : null, tolerance, evaluations, unresolvedCells, method, publication };
 };

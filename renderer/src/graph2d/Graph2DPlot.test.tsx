@@ -53,6 +53,22 @@ describe("Graph2D render projection", () => {
     expect(svg.indexOf('data-testid="graph2d-regression-overlay"')).toBeGreaterThan(svg.indexOf('data-graph2d-series-markers='));
     expect(svg).toContain('stroke="#b45309" stroke-width="3"');
   });
+  it("renders an exponential fit without requesting unavailable confidence bands", () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ({ id: `row_${i + 1}`, x: i / 5,
+      y: 3 * Math.exp(-.7 * i / 5) }));
+    const table = new Graph2DPointTableStore().publish(rows);
+    const base = createEmptyGraph2DDocument("exponential-plot");
+    const document = createGraph2DDocument({ ...applyGraph2DAuthoring(base, { type: "create-point-series", draft: {
+      label: "Decay", table, domain: graph2DPointDomain(rows), mode: "points",
+      style: { color: "#2563eb", lineStyle: "solid", lineWidth: 2, visible: true } } }), stableKey: "exponential-plot" });
+    const regression = analyzeGraph2DRegression({ document, objectId: document.source.objects[0]!.id,
+      rows, model: "exponential-decay", initial: { amplitude: 2, rate: .3 } });
+    const svg = renderToStaticMarkup(<Graph2DPlot display={document.display} size={{ width: 640, height: 480 }}
+      series={[]} regression={regression} />);
+    expect(svg).toContain('data-testid="graph2d-regression-overlay"');
+    expect(svg).not.toContain('<polygon');
+    expect(svg).toContain('stroke="#b45309" stroke-width="3"');
+  });
   it("bounds marker DOM for a dense line without removing its sampled path", () => {
     const points = Array.from({ length: 1025 }, (_, index) => ({ x: index / 1024, y: index / 1024,
       rowId: `row_${index + 1}` }));
@@ -67,5 +83,13 @@ describe("Graph2D render projection", () => {
     expect(svg).toContain('data-row-id="row_1"');
     expect(svg).toContain('data-row-id="row_1025"');
     expect(svg).toContain('data-graph2d-path="dense"');
+  });
+  it("marks unresolved scan intervals behind the axes", () => {
+    const display = createEmptyGraph2DDocument("unresolved-plot").display;
+    const svg = renderToStaticMarkup(<Graph2DPlot display={display} size={{ width: 640, height: 480 }}
+      series={[]} unresolvedIntervals={[{ min: -1, max: 1, reason: "undefined" }]} />);
+    expect(svg).toContain('data-testid="graph2d-unresolved-bands"');
+    expect(svg).toContain('data-unresolved-reason="undefined"');
+    expect(svg.indexOf('data-testid="graph2d-unresolved-bands"')).toBeLessThan(svg.indexOf('class="graph2d-axis"'));
   });
 });

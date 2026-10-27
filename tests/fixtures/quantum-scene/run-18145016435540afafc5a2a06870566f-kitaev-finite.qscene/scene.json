@@ -1,0 +1,106 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-18145016435540afafc5a2a06870566f-kitaev-finite",
+  "title": "Kitaev finite open chain · near-zero pair site density",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-18145016435540afafc5a2a06870566f",
+    "jobId": "fixture-kitaev-finite",
+    "model": "kitaev_chain",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-25T10:39:50.411363+00:00",
+    "resultSha256": "a007939b6773d2c93be1ff886f4c18a23326a14ad96706abc04075edd5c2229a",
+    "adapter": "qvis/1",
+    "parameters": {
+      "mu": 0,
+      "hopping": 1,
+      "pairing": 0.8,
+      "cells": 16,
+      "kPoints": 101
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "kitaev_chain"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "site index",
+      "display y",
+      "display z"
+    ],
+    "units": [
+      "site",
+      "dimensionless",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      7.5,
+      -7.2,
+      4.8
+    ],
+    "target": [
+      7.5,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "chain-sites",
+      "path": "chain-sites.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 16,
+      "unit": "site",
+      "bytes": 384,
+      "sha256": "3fb1f0741f58e64d13a5d95038006cbebd3f9590c530dd49e95c1699f5659294"
+    },
+    {
+      "id": "near-zero-density",
+      "path": "near-zero-density.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 16,
+      "unit": "probability per site",
+      "bytes": 128,
+      "sha256": "42572e234365da4c3f9b9a18c447f82b67f28d82ae105944921020dfb65f8ee1"
+    }
+  ],
+  "objects": [
+    {
+      "id": "finite-end-sites",
+      "label": "Mean particle-hole pair density per finite site",
+      "kind": "point-cloud",
+      "positions": "chain-sites",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "near-zero-density"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "finite-status",
+      "text": "Mean end-site weight 0.98765 from a finite open chain. Localization is an observation; no topological invariant computed.",
+      "position": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

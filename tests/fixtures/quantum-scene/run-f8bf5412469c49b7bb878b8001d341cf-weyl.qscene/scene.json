@@ -1,0 +1,215 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-f8bf5412469c49b7bb878b8001d341cf-weyl",
+  "title": "Weyl local cone · enclosing-sphere Berry flux",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-f8bf5412469c49b7bb878b8001d341cf",
+    "jobId": "fixture-weyl-local",
+    "model": "weyl_minimal",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-25T14:19:06.636021+00:00",
+    "resultSha256": "76f6e1fb29fc083a5fa5120c00959927ad9ee884e726839ee22507ed789314c2",
+    "adapter": "qvis/1",
+    "parameters": {
+      "velocity": 1,
+      "chirality": 1,
+      "radius": 1,
+      "subdivisions": 2
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "weyl_minimal"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "qx",
+      "qy",
+      "qz"
+    ],
+    "units": [
+      "inverse length",
+      "inverse length",
+      "inverse length"
+    ]
+  },
+  "camera": {
+    "position": [
+      3,
+      -3,
+      2.4
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "sphere-positions",
+      "path": "sphere-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 162,
+      "unit": "inverse length",
+      "bytes": 3888,
+      "sha256": "78f5a610b78aa2a0531441b43aa274a5314bc7b56ebe5e23a81b5a83a1bc0837"
+    },
+    {
+      "id": "berry-curvature",
+      "path": "berry-curvature.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 162,
+      "unit": "inverse length squared",
+      "bytes": 3888,
+      "sha256": "d9730e7d513bd0f24187adc72e78e07475b284ff20d3be583780d89ffc38c383"
+    },
+    {
+      "id": "radial-berry",
+      "path": "radial-berry.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 162,
+      "unit": "inverse length squared",
+      "bytes": 1296,
+      "sha256": "0322e23379c96f314f9724c42bce2eaef4bbfcf5e546cd3fb48da148336c3dde"
+    },
+    {
+      "id": "sphere-triangles",
+      "path": "sphere-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 320,
+      "unit": "vertex index",
+      "bytes": 7680,
+      "sha256": "e58be6e7259272c061ecfb0ab7a9258943fe641995c3340b051daff6f8dbf739"
+    },
+    {
+      "id": "node-position",
+      "path": "node-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "inverse length",
+      "bytes": 24,
+      "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0"
+    }
+  ],
+  "objects": [
+    {
+      "id": "weyl-sphere",
+      "label": "Verified enclosing sphere",
+      "kind": "mesh",
+      "positions": "sphere-positions",
+      "visible": true,
+      "style": {
+        "color": "#5a83ab",
+        "opacity": 0.3,
+        "size": 1
+      },
+      "indices": "sphere-triangles",
+      "scalars": "radial-berry"
+    },
+    {
+      "id": "weyl-samples",
+      "label": "Stored momentum and Berry samples",
+      "kind": "point-cloud",
+      "positions": "sphere-positions",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.09
+      },
+      "scalars": "radial-berry"
+    },
+    {
+      "id": "weyl-berry-vectors",
+      "label": "Supplied occupied-band Berry curvature",
+      "kind": "vectors",
+      "positions": "sphere-positions",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 0.8,
+        "size": 1
+      },
+      "values": "berry-curvature"
+    },
+    {
+      "id": "weyl-node",
+      "label": "Local crossing at q=0",
+      "kind": "point-cloud",
+      "positions": "node-position",
+      "visible": true,
+      "style": {
+        "color": "#ffffff",
+        "opacity": 1,
+        "size": 0.16
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "id": "local-cone-scope",
+      "text": "Linearized local node at q=0. Enclosing sphere excludes the degeneracy. No periodic lattice, partner node, Fermi arc or surface state is supplied.",
+      "position": [
+        0,
+        0,
+        1.25
+      ]
+    },
+    {
+      "id": "flux-diagnostic",
+      "text": "Occupied-band flux -6.283185; Chern -1; local chirality 1.",
+      "position": [
+        0,
+        0,
+        -1.25
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [
+      {
+        "id": "occupied-berry-field",
+        "label": "Radial occupied-band Berry curvature",
+        "kind": "berry-curvature",
+        "object": "weyl-samples",
+        "dataset": "radial-berry",
+        "convention": "Lower-band local linearized Weyl cone; radial component in inverse length squared"
+      }
+    ],
+    "invariants": [
+      {
+        "id": "local-chirality",
+        "label": "Local node chirality",
+        "value": 1,
+        "status": "verified",
+        "method": "sign det velocity matrix of the declared local two-band Hamiltonian"
+      },
+      {
+        "id": "occupied-chern",
+        "label": "Occupied-band enclosing-sphere Chern",
+        "value": -1,
+        "status": "verified",
+        "method": "gauge-invariant Wilson triangle flux; independent solid-angle check"
+      }
+    ],
+    "limitations": [
+      "Local linearization only; no periodic Brillouin zone or lattice completion.",
+      "No surface bands or Fermi arcs are present."
+    ]
+  }
+}

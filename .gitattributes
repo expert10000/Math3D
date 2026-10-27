@@ -11,3 +11,9 @@ tests/fixtures/quantum-scene-orbitals/**/*.json -text
 tests/fixtures/quantum-scene-orbitals/**/*.f64 -text
 tests/fixtures/scientific-scene/**/*.json -text
 tests/fixtures/scientific-scene/**/*.f64 -text
+examples/scientific-scenes/**/*.json -text
+examples/scientific-scenes/**/*.f64 -text
+output/scientific-vortex-80-overview.sscene/*.json -text
+output/scientific-vortex-80-overview.sscene/*.f64 -text
+output/scientific-burgers-horizontal-level1.sscene/*.json -text
+output/scientific-burgers-horizontal-level1.sscene/*.f64 -text

@@ -5,8 +5,9 @@ import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
   previewGraph2DParameterValues, graph2DRegressionOverlaySeries, applyGraph2DAuthoring, type Graph2DDocument, type Graph2DViewport, type Graph2DAnyPromotion,
   type Graph2DPhasePortraitArtifact, type Graph2DTimeOdeArtifact } from "@math3d/core";
-import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob,
-  type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob } from "@math3d/core";
+import { createGraph2DSplineRegressionJob, createGraph2DPolynomialRegressionJob, createGraph2DExponentialRegressionJob,
+  createGraph2DLogisticRegressionJob, type Graph2DSplineRegressionJob, type Graph2DPolynomialRegressionJob,
+  type Graph2DExponentialRegressionJob, type Graph2DLogisticRegressionJob } from "@math3d/core";
 import { projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions } from "@math3d/core";
 import { graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
@@ -34,6 +35,7 @@ import { MobileGraphPromotionPanel } from "./MobileGraphPromotionPanel";
 import { mobileGraphLayout, mobileGraphPanelDestination, type MobileGraphDestination } from "./models/mobileGraphLayout";
 import { MobileGraphAnalysisPanel } from "./MobileGraphAnalysisPanel";
 import { mobileGraphAnalysisDraft, mobileGraphAnalysisInputHash, mobileGraphRegressionResult, mobileGraphSplineSmoothness,
+  mobileGraphExponentialInitial, mobileGraphLogisticInitial,
   runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
 import { mobileGraphToolUnavailable, mobileGraphTangentDraft } from "./models/mobileGraphTools";
@@ -116,7 +118,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
   const [analysisPending, setAnalysisPending] = useState<number | null>(null);
   const analysisGeneration = useRef(0);
-  const activeFit = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob | Graph2DPolynomialRegressionJob;
+  const activeFit = useRef<{ token: number; timer: ReturnType<typeof setTimeout> | null; job: Graph2DSplineRegressionJob | Graph2DPolynomialRegressionJob | Graph2DExponentialRegressionJob | Graph2DLogisticRegressionJob;
     sourceKey: string; draftHash: string; progressBucket: number } | null>(null);
   const sourceKey = `${document.identity.id}|${document.identity.revision}|${document.identity.structuralHash}`;
   const sourceKeyRef = useRef(sourceKey); sourceKeyRef.current = sourceKey;
@@ -141,7 +143,11 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       }
       const job = analysisDraft.kind === "regression-spline" ?
         createGraph2DSplineRegressionJob({ document, objectId: analysisDraft.objectId, rows,
-          smoothing: mobileGraphSplineSmoothness(analysisDraft) }) :
+          smoothing: mobileGraphSplineSmoothness(analysisDraft) }) : analysisDraft.kind === "regression-exponential" ?
+        createGraph2DExponentialRegressionJob({ document, objectId: analysisDraft.objectId, rows,
+          initial: mobileGraphExponentialInitial(analysisDraft) }) : analysisDraft.kind === "regression-logistic" ?
+        createGraph2DLogisticRegressionJob({ document, objectId: analysisDraft.objectId, rows,
+          initial: mobileGraphLogisticInitial(analysisDraft) }) :
         createGraph2DPolynomialRegressionJob({ document, objectId: analysisDraft.objectId, rows,
           model: analysisDraft.kind === "regression-linear" ? "linear" : analysisDraft.kind === "regression-quadratic" ? "quadratic" :
             analysisDraft.kind === "regression-cubic" ? "cubic" : "quartic" });
@@ -154,7 +160,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         if (activeFit.current !== active) return;
         if (sourceKeyRef.current !== sourceAtStart || draftHashRef.current !== draftAtStart) { cancelFit(false); return; }
         try {
-          if (job.advance(draft.kind === "regression-spline" ? 128 : 2048)) {
+          if (job.advance(draft.kind === "regression-exponential" || draft.kind === "regression-logistic" ? 1 : draft.kind === "regression-spline" ? 128 : 2048)) {
             const result = mobileGraphRegressionResult(draft, job.result());
             activeFit.current = null; setAnalysisPending(null); setAnalysis(result); setError("");
             console.info(`MATH3D_DEVICE_METRIC fit-publish durationMs=${Date.now() - analysisStartedAt} model=${draft.kind} rows=${rows?.length ?? 0}`);
@@ -558,6 +564,14 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onApply={(action) => commit(() => adapter.commitScene(applyMobileGraphAuthoring(document, action), action.type))}
         onSelect={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : <><Text style={s.readout}>{mobileGraphCapabilities(document)}</Text>
         <Text style={s.readout}>Probes: evaluated explicit/parametric/polar, interpolated contours, nearest data row. Explicit calculus, polar measurements, and parametric/polar local differentials use source expressions; regression uses original point data. Sampling is approximate.</Text>
+        {!!document.source.fieldReferences?.length && <View accessibilityLabel="Saved scientific field references" testID="mobile-graph-field-references">
+          <Text style={s.title}>Saved scientific fields</Text>
+          {document.source.fieldReferences.map(reference => <View key={reference.id}>
+            <Text>{reference.datasetId} · {reference.component} · {reference.shape.join(" × ")}</Text>
+            <Text>{reference.axes.map(axis => `${axis.name} (${axis.unit})`).join(" / ")}</Text>
+            <Text>Source metadata only. Reverify the original .sscene on desktop before viewing values.</Text>
+          </View>)}
+        </View>}
         {guided && <View accessibilityLabel={`Guide ${guided.concept.title}`} testID="mobile-graph-guided-panel">
           <Text accessibilityRole="header" style={s.title}>Guide: {guided.concept.title} · {guided.state}</Text>
           {guided.state === "stale" && <Text accessibilityLiveRegion="polite">Source or marker changed. These steps describe the original example; request fresh analysis.</Text>}
@@ -578,6 +592,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {selectedPhase && <View accessibilityLabel="Phase portrait equilibrium analysis" testID="mobile-graph-phase-equilibria">
           <Text style={s.title}>Equilibrium scan · {selectedPhase.analysis.status}</Text>
           {selectedPhaseObject?.kind === "phase-portrait" && <>
+            <Text>Field: {selectedPhaseObject.fieldDensity ?? 12} arrows per longest side; x {selectedPhaseObject.fieldUnits?.x || "unitless"}, y {selectedPhaseObject.fieldUnits?.y || "unitless"}, time {selectedPhaseObject.fieldUnits?.time || "unitless"}.</Text>
+            <Text>{selectedPhase.fieldSegments.length} sampled arrows. Arrow length indicates median-relative speed.
+              {selectedPhase.fieldMagnitudes.length ? ` Speed range ${Math.min(...selectedPhase.fieldMagnitudes).toPrecision(3)}–${Math.max(...selectedPhase.fieldMagnitudes).toPrecision(3)} coordinate units per time unit.` : " No finite nonzero vectors sampled."}</Text>
             <Text>Initial points: {selectedPhaseObject.seeds.length}/8. Drag a marked point to update its orbit.</Text>
             {selectedPhaseObject.seeds.length === 0 && <Text>No initial points. Place one on the graph.</Text>}
             {selectedPhaseObject.seeds.map((seed, index) => {

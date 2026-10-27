@@ -1,0 +1,136 @@
+{
+  "schema": "quantum-rice-mele-convergence-study/v1",
+  "studyId": "fixture-rice-mele-five-run",
+  "plan": {
+    "schema": "quantum-rice-mele-convergence-plan/v1",
+    "studyId": "fixture-rice-mele-five-run",
+    "anchorRunId": "run-aecc822f723346ff9ba434468f271eaf",
+    "durationRuns": [
+      "run-370fab96c6e542cdbc3e76c752bbf1fb",
+      "run-aecc822f723346ff9ba434468f271eaf",
+      "run-4bde2436ffea4e67956b6588c1d3adef"
+    ],
+    "widthRuns": [
+      "run-151934f572dd49a5a5c68b466041cc43",
+      "run-aecc822f723346ff9ba434468f271eaf",
+      "run-f290464df47c4861847c1145f7ebf696"
+    ]
+  },
+  "computedAt": "2026-10-27T00:00:00.000Z",
+  "cycle": {
+    "baseHopping": 1,
+    "modulation": 0.4,
+    "staggerAmplitude": 0.6,
+    "staggerOffset": 0,
+    "kSamples": 16,
+    "phaseSamples": 16,
+    "stepsPerPhase": 4
+  },
+  "sources": [
+    {
+      "runId": "run-370fab96c6e542cdbc3e76c752bbf1fb",
+      "resultSha256": "5e1598237e1d144f6aeac51e624e020ad5fde1e40225b78473a93276b274a8d6",
+      "duration": 20,
+      "chainCells": 6,
+      "periodicCharge": -1.0171638675936638,
+      "chainCentralBondCharge": -0.004167561843261433,
+      "periodicStatus": "resolved",
+      "chainStatus": "size-sensitive",
+      "bulkTimeStepDrift": 0.011848536095580897,
+      "bulkMomentumDrift": 0.003978315736623328,
+      "bulkNormDrift": 2.220446049250313e-15,
+      "chainTimeStepDrift": 0.010658069094653486,
+      "chainWidthDrift": 0.4941108549206818,
+      "chainContinuityResidual": 0.0039356824793368855,
+      "chainParticleDrift": 1.9539925233402755e-14,
+      "chainNormDrift": 1.015584817933559e-14
+    },
+    {
+      "runId": "run-aecc822f723346ff9ba434468f271eaf",
+      "resultSha256": "323580d8dad9dbf83d10911bf1ac930e82d6209fd48a87d90fc6b8496c2b25c4",
+      "duration": 30,
+      "chainCells": 6,
+      "periodicCharge": -1.0353957181603197,
+      "chainCentralBondCharge": 0.43924999755470134,
+      "periodicStatus": "unresolved",
+      "chainStatus": "unresolved",
+      "bulkTimeStepDrift": 0.02768922815933328,
+      "bulkMomentumDrift": 0.00022207256295958544,
+      "bulkNormDrift": 3.219646771412954e-15,
+      "chainTimeStepDrift": 0.02464688329747683,
+      "chainWidthDrift": 0.40155913779047414,
+      "chainContinuityResidual": 0.005606257525028802,
+      "chainParticleDrift": 2.4868995751603507e-14,
+      "chainNormDrift": 1.3662752578012288e-14
+    },
+    {
+      "runId": "run-4bde2436ffea4e67956b6588c1d3adef",
+      "resultSha256": "c327b940538e836ec48cecaf0addf091eff3cd14bde5829d96b7b7ff7ba1f6d3",
+      "duration": 40,
+      "chainCells": 6,
+      "periodicCharge": -1.0687015916501907,
+      "chainCentralBondCharge": 0.4553262152740847,
+      "periodicStatus": "unresolved",
+      "chainStatus": "unresolved",
+      "bulkTimeStepDrift": 0.05132548356278033,
+      "bulkMomentumDrift": 0.0007880524022532143,
+      "bulkNormDrift": 4.440892098500626e-15,
+      "chainTimeStepDrift": 0.04016423529571067,
+      "chainWidthDrift": 0.08502717924280534,
+      "chainContinuityResidual": 0.007471588301928053,
+      "chainParticleDrift": 2.220446049250313e-14,
+      "chainNormDrift": 1.2872843271903405e-14
+    },
+    {
+      "runId": "run-151934f572dd49a5a5c68b466041cc43",
+      "resultSha256": "8b4a450df085f68d5d98042424fc1c0037298a18c68a3ea2f993cf8ac6e0bca3",
+      "duration": 30,
+      "chainCells": 4,
+      "periodicCharge": -1.0353957181603197,
+      "chainCentralBondCharge": 0.16357011580394465,
+      "periodicStatus": "unresolved",
+      "chainStatus": "unresolved",
+      "bulkTimeStepDrift": 0.02768922815933328,
+      "bulkMomentumDrift": 0.00022207256295958544,
+      "bulkNormDrift": 3.219646771412954e-15,
+      "chainTimeStepDrift": 0.02136688050810237,
+      "chainWidthDrift": 0.2756798817507567,
+      "chainContinuityResidual": 0.00550846269848862,
+      "chainParticleDrift": 2.1316282072803006e-14,
+      "chainNormDrift": 1.0658141036401503e-14
+    },
+    {
+      "runId": "run-f290464df47c4861847c1145f7ebf696",
+      "resultSha256": "234b9e4cfc422bdc84e907886b88fdc8c013e530d9d139e83c56054c466e90a5",
+      "duration": 30,
+      "chainCells": 8,
+      "periodicCharge": -1.0353957181603197,
+      "chainCentralBondCharge": 0.037690859764227175,
+      "periodicStatus": "unresolved",
+      "chainStatus": "unresolved",
+      "bulkTimeStepDrift": 0.02768922815933328,
+      "bulkMomentumDrift": 0.00022207256295958544,
+      "bulkNormDrift": 3.219646771412954e-15,
+      "chainTimeStepDrift": 0.025237310529164073,
+      "chainWidthDrift": 0.396758796849801,
+      "chainContinuityResidual": 0.005508397047597383,
+      "chainParticleDrift": 8.704148513061227e-14,
+      "chainNormDrift": 2.042810414166108e-14
+    }
+  ],
+  "durationRuns": [
+    "run-370fab96c6e542cdbc3e76c752bbf1fb",
+    "run-aecc822f723346ff9ba434468f271eaf",
+    "run-4bde2436ffea4e67956b6588c1d3adef"
+  ],
+  "widthRuns": [
+    "run-151934f572dd49a5a5c68b466041cc43",
+    "run-aecc822f723346ff9ba434468f271eaf",
+    "run-f290464df47c4861847c1145f7ebf696"
+  ],
+  "units": {
+    "duration": "inverse hopping energy",
+    "periodicCharge": "electron charge / cell",
+    "chainCentralBondCharge": "electron charge"
+  }
+}
