@@ -436,6 +436,16 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-viewer { grid-column: 1; }
 .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-inspector { grid-column: 2; }
 .vector-field3d-layers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
+.scientific-field-explorer-library { margin-bottom: 14px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border); }
+.scientific-field-explorer-library h4 { margin: 0 0 6px; }
+.scientific-field-explorer-library p { margin: 0 0 8px; }
+.scientific-field-explorer-library ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.scientific-field-explorer-library li { display: grid; gap: 4px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 7px; overflow-wrap: anywhere; }
+.scientific-field-explorer-library li div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; }
+.scientific-field-explorer-library li small { display: block; }
+.scientific-field-explorer-library li button { justify-self: start; }
 .vector-field3d-layers button[aria-pressed="true"] { border-color: var(--accent); background: var(--panel); font-weight: 700; }
 .scientific-field-explorer-inspector [aria-label="Slice controls"] { display: grid; gap: 8px; padding: 8px;
   border: 1px solid var(--border); border-radius: 8px; }

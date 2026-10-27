@@ -46,6 +46,87 @@ test("SCI-02 opens a docked field explorer with bounded narrow-window layout", a
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    await page.getByRole("dialog", { name: "Scientific field presets" })
+      .getByRole("button", { name: "Quadratic potential volume" }).click();
+    let importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importer.getByRole("button", { name: "View verified volume" }).click();
+    await expect(importer.getByRole("figure", { name: /Verified volume for Potential scalar/ }))
+      .toBeVisible();
+    await importer.getByRole("button", { name: "Save field reference" }).click();
+    await importer.getByRole("button", { name: "Cancel" }).click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    await page.getByRole("dialog", { name: "Scientific field presets" })
+      .getByRole("button", { name: "Swirling flow volume" }).click();
+    importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importer.getByRole("button", { name: "Open in Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const library = explorer.getByRole("region", { name: "Dataset library" });
+    await expect(library).toContainText("Potential · scalar");
+    await expect(library).toContainText("Velocity vector · scene");
+    await expect(library.getByRole("button", { name: "Open Velocity from dataset library" }))
+      .toBeDisabled();
+    await library.getByRole("button", { name: /Open Potential · scalar from dataset library/ }).click();
+    const scalar = page.getByRole("dialog", { name: "Scientific field workspace" });
+    await expect(scalar.getByRole("figure", { name: /Verified volume for Potential scalar/ }))
+      .toBeVisible();
+    await scalar.getByRole("button", { name: "Close" }).click();
+    await expect(explorer).toBeVisible();
+    await page.getByTestId("workspace-nav-surfaces").click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    const restoredLibrary = page.getByRole("region", { name: "Dataset library" });
+    await expect(restoredLibrary).toContainText("Velocity vector · scene");
+    await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
+      ({ canceled: false, filePaths: [folder] }); },
+    resolve("tests/fixtures/scientific-scene/quadratic-volume.sscene"));
+    await restoredLibrary.getByRole("button", { name: "Browse scientific scene" }).click();
+    await expect(restoredLibrary).toContainText("Potential scalar · scene");
+    await restoredLibrary.getByRole("button", { name: "Open Potential from dataset library" }).click();
+    await expect(page.getByRole("dialog", { name: "Scientific field workspace" })
+      .getByRole("figure", { name: /Verified volume for Potential scalar/ })).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-02 reopens a saved complex layer from the Explorer dataset library", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    await page.getByRole("dialog", { name: "Scientific field presets" })
+      .getByRole("button", { name: "Complex wave volume" }).click();
+    const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await importer.getByRole("region", { name: "3D complex field lines" })
+      .getByRole("button", { name: "Save paired field to Project" }).click();
+    await importer.getByRole("button", { name: "Cancel" }).click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific field presets" }).click();
+    await page.getByRole("dialog", { name: "Scientific field presets" })
+      .getByRole("button", { name: "Swirling flow volume" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const library = explorer.getByRole("region", { name: "Dataset library" });
+    await expect(library).toContainText("3D complex field");
+    await library.getByRole("button", { name: /Open .*3D complex field from dataset library/ }).click();
+    await expect(page.getByRole("dialog", { name: "3D complex field workspace" }))
+      .toContainText("Both source components verified on this opening");
+    await page.getByRole("dialog", { name: "3D complex field workspace" })
+      .getByRole("button", { name: "Close" }).click();
+    await expect(explorer).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("field preview errors stay visible in the viewer", async () => {
   const app = await launchSurfaceApp();
   try {

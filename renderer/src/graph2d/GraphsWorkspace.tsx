@@ -8,6 +8,7 @@ import {
   previewGraph2DScientificSlice, verifyGraph2DScientificPlane, verifyGraph2DScientificVectorPlane,
   verifyGraph2DScientificVolume,
   parseScientificSceneManifest, createGraph2DFieldReference, inspectGraph2DFieldReference,
+  isGraph2DFieldLocator,
   createGraph2DVectorFieldReference, inspectGraph2DVectorFieldReference,
   reviewGraph2DVectorFieldRelink,
   reviewGraph2DFieldRelink,
@@ -71,6 +72,8 @@ import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResult
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
+import { scientificExplorerLibrary, type ExplorerLibraryEntry } from
+  "../vectorfield3d/scientificExplorerLibrary";
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { VectorField2DPanel } from "./VectorField2DPanel";
@@ -101,6 +104,23 @@ import { Graph2DPhaseEquilibriaTable } from "./Graph2DPhaseEquilibriaTable";
 import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
+const EXPLORER_SCENE_SESSION_KEY = "math3d.scientific-field-explorer.scene.v1";
+type ExplorerSceneSource = Readonly<{ manifestJson: string; fingerprint: string;
+  locator: Graph2DFieldLocator }>;
+function readExplorerSceneSession(graphId: string): ExplorerSceneSource | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.sessionStorage.getItem(EXPLORER_SCENE_SESSION_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as { graphId?: unknown; source?: Partial<ExplorerSceneSource> };
+    const source = saved.source;
+    if (saved.graphId !== graphId || typeof source?.manifestJson !== "string" ||
+        typeof source.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(source.fingerprint) ||
+        !isGraph2DFieldLocator(source.locator) ||
+        !parseScientificSceneManifest(source.manifestJson).ok) return null;
+    return source as ExplorerSceneSource;
+  } catch { return null; }
+}
 const SCIENTIFIC_GRID_LINE_COLORS = ["#2563eb", "#ea580c", "#059669", "#9333ea", "#e11d48", "#0d9488"] as const;
 const SCIENTIFIC_FIELD_PRESETS = [
   { id: "sincos", kind: "scalar", title: "Sine–cosine grid", detail: "2D · oscillatory, dimensionless scalar" },
@@ -206,6 +226,23 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     manifestJson: string; fingerprint: string; locator: Graph2DFieldLocator;
     datasets: ({ datasetId: string; component: string; values: number[]; shape?: never } |
       { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } | null>(null);
+  const [explorerScene, setExplorerScene] = useState<ExplorerSceneSource | null>(() =>
+    readExplorerSceneSession(document.identity.id));
+  const explorerGraphId = useRef(document.identity.id);
+  useEffect(() => {
+    if (explorerGraphId.current !== document.identity.id) {
+      explorerGraphId.current = document.identity.id;
+      setExplorerScene(null);
+    }
+  }, [document.identity.id]);
+  useEffect(() => {
+    try {
+      if (explorerScene) window.sessionStorage.setItem(EXPLORER_SCENE_SESSION_KEY,
+        JSON.stringify({ graphId: document.identity.id, source: explorerScene }));
+      else window.sessionStorage.removeItem(EXPLORER_SCENE_SESSION_KEY);
+    } catch { try { window.sessionStorage.removeItem(EXPLORER_SCENE_SESSION_KEY); }
+      catch { /* The current Explorer remains available without session storage. */ } }
+  }, [document.identity.id, explorerScene]);
   const [fieldStatuses, setFieldStatuses] = useState<Record<string, "current" | "changed" | "missing" | "error">>({});
   useEffect(() => setFieldStatuses({}), [document.identity.id]);
   const [fieldRelink, setFieldRelink] = useState<{ referenceId: string; source: {
@@ -284,6 +321,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const scientificSelected = scientificImport?.datasets.find(item => `${item.datasetId}:${item.component}` === scientificDatasetId);
   const scientificManifest = useMemo(() => scientificImport ? parseScientificSceneManifest(scientificImport.manifestJson) : null,
     [scientificImport]);
+  const explorerManifest = useMemo(() => explorerScene ?
+    parseScientificSceneManifest(explorerScene.manifestJson) : null, [explorerScene]);
+  const explorerLibrary = scientificExplorerLibrary(explorerManifest?.ok ? explorerManifest.value : null,
+    [savedVectorField3D].filter((item): item is VectorField3DDocument => !!item),
+    savedScientificFields, explorerScene?.fingerprint);
   const scientificDataset = scientificManifest?.ok ? scientificManifest.value.datasets.find(item => item.id === scientificSelected?.datasetId) : null;
   const scientificCoordinate = scientificManifest?.ok ? scientificManifest.value.coordinates.find(item => item.id === scientificDataset?.coordinateSystem) : null;
   const scientificExplorerDatasets = scientificManifest?.ok ? scientificManifest.value.datasets
@@ -522,32 +564,94 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     finally { if (fingerprint) await window.scientificScenes.closeGraphDataset(fingerprint);
       setScientificImportBusy(false); }
   };
-  const openScientificVectorField3D = async () => {
-    if (!scientificImport || !scientificManifest?.ok || !scientificDataset || scientificImportBusy) return;
-    const eligibility = scientificExplorerEligibility(scientificManifest.value, scientificDataset);
-    if (!eligibility.ready || !eligibility.timeUnit || !scientificCoordinate) {
-      setScientificImportError(eligibility.reason); return;
-    }
-    setScientificImportBusy(true);
+  const openExplorerSceneDataset = async (datasetId: string) => {
+    const source = scientificImport ?? explorerScene;
+    if (!source || scientificImportBusy) return;
+    setScientificImportBusy(true); setScientificImportError("");
     try {
-      const refs = scientificDataset.components!.map(part => createGraph2DFieldReference(
-        scientificImport.manifestJson, scientificImport.fingerprint, scientificImport.locator,
-        scientificDataset.id, part.name)) as [Graph2DFieldReference, Graph2DFieldReference, Graph2DFieldReference];
-      const axes = scientificCoordinate.axes.map((axis, index) => ({ role: (["x", "y", "z"] as const)[index]!,
-        label: axis.name, unit: axis.unit, min: scientificCoordinate.origin[index]!,
-        max: scientificCoordinate.origin[index]! + scientificCoordinate.spacing[index]! *
-          (scientificDataset.shape[index]! - 1) })) as unknown as VectorField3DSource["axes"];
-      const source: VectorField3DSource = { axes, timeUnit: eligibility.timeUnit, field: { kind: "scientific-bundle",
-        componentUnits: [scientificDataset.quantity.unit, scientificDataset.quantity.unit,
-          scientificDataset.quantity.unit], references: refs }, seeds: [],
+      const parsed = parseScientificSceneManifest(source.manifestJson);
+      if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
+      const dataset = parsed.value.datasets.find(item => item.id === datasetId);
+      if (!dataset || dataset.shape.length !== 3)
+        throw new TypeError("The selected 3D dataset is unavailable.");
+      const coordinate = parsed.value.coordinates.find(item => item.id === dataset.coordinateSystem);
+      if (!coordinate || coordinate.kind !== "cartesian" || coordinate.axes.length !== 3 ||
+          dataset.shape.some(size => size < 2))
+        throw new TypeError("The selected field requires a regular 3D Cartesian grid.");
+      setExplorerScene({ manifestJson: source.manifestJson, fingerprint: source.fingerprint,
+        locator: source.locator });
+      if (dataset.semanticType !== "vector-field") {
+        const reference = createGraph2DFieldReference(source.manifestJson, source.fingerprint,
+          source.locator, dataset.id, dataset.semanticType === "complex-scalar-field" ? "real" : "scalar");
+        const paired = dataset.semanticType === "complex-scalar-field" ? {
+          imaginary: createGraph2DFieldReference(source.manifestJson, source.fingerprint,
+            source.locator, dataset.id, "imaginary"),
+          line: { normalAxis: 2 as const, planeFixedIndex: Math.floor(dataset.shape[2]! / 2),
+            varyingAxis: 0 as const, fixedIndex: Math.floor(dataset.shape[1]! / 2) } } : undefined;
+        const field = createScientificFieldDocument({ reference, ...(paired ? { paired } : {}),
+          quantity: { name: dataset.quantity.name, unit: dataset.quantity.unit },
+          display: { view: paired ? "plane" : "volume", normalAxis: 2,
+            fixedIndex: Math.floor(dataset.shape[2]! / 2), transfer: { mode: "data" } } },
+        { stableKey: reference.id, title: `${dataset.quantity.name} · ${paired ? "3D complex field" : "scalar"}` });
+        if (scientificImport) await window.scientificScenes?.closeGraphDataset(source.fingerprint);
+        setScientificImport(null); setScientificFieldDocument(field); setScientificFieldOpen(true);
+        return;
+      }
+      const eligibility = scientificExplorerEligibility(parsed.value, dataset);
+      if (!eligibility.ready || !eligibility.timeUnit) throw new TypeError(eligibility.reason);
+      const refs = dataset.components!.map(part => createGraph2DFieldReference(
+        source.manifestJson, source.fingerprint, source.locator,
+        dataset.id, part.name)) as [Graph2DFieldReference, Graph2DFieldReference, Graph2DFieldReference];
+      const axes = coordinate.axes.map((axis, index) => ({ role: (["x", "y", "z"] as const)[index]!,
+        label: axis.name, unit: axis.unit, min: coordinate.origin[index]!,
+        max: coordinate.origin[index]! + coordinate.spacing[index]! *
+          (dataset.shape[index]! - 1) })) as unknown as VectorField3DSource["axes"];
+      const vectorSource: VectorField3DSource = { axes, timeUnit: eligibility.timeUnit, field: { kind: "scientific-bundle",
+        componentUnits: [dataset.quantity.unit, dataset.quantity.unit,
+          dataset.quantity.unit], references: refs }, seeds: [],
         display: { density: [5, 5, 5], maxGlyphs: 512, magnitudeScale: 1, colorBy: "speed" },
         solver: { absoluteTolerance: 1e-6, relativeTolerance: 1e-6, maxSteps: 10000, maxTime: 20 } };
-      const next = createVectorField3DDocument(source, { stableKey: `${scientificImport.fingerprint}:${scientificDataset.id}`,
-        title: scientificManifest.value.title });
-      await window.scientificScenes?.closeGraphDataset(scientificImport.fingerprint);
+      const next = createVectorField3DDocument(vectorSource, { stableKey: `${source.fingerprint}:${dataset.id}`,
+        title: `${parsed.value.title} · ${dataset.quantity.name}` });
+      if (scientificImport) await window.scientificScenes?.closeGraphDataset(source.fingerprint);
       setVectorField3DDocument(next); setVectorField3DOpen(true); setScientificImport(null);
     } catch (error) { setScientificImportError((error as Error).message); }
     finally { setScientificImportBusy(false); }
+  };
+  const openScientificVectorField3D = () => scientificDataset &&
+    openExplorerSceneDataset(scientificDataset.id);
+  const browseExplorerScene = async () => {
+    const bridge = window.scientificScenes;
+    if (!bridge?.openGraphDataset || scientificImportBusy) return;
+    setScientificImportBusy(true); setScientificImportError("");
+    let fingerprint: string | null = null;
+    try {
+      const opened = await bridge.openGraphDataset();
+      if (!opened.ok) { if (!opened.canceled) setScientificImportError(opened.error); return; }
+      fingerprint = opened.source.fingerprint;
+      const parsed = parseScientificSceneManifest(opened.source.manifestJson);
+      if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
+      setExplorerScene({ manifestJson: opened.source.manifestJson,
+        fingerprint, locator: opened.source.locator });
+    } catch (error) { setScientificImportError((error as Error).message); }
+    finally {
+      if (fingerprint) try { await bridge.closeGraphDataset(fingerprint); }
+        catch (error) { setScientificImportError((error as Error).message); }
+      setScientificImportBusy(false);
+    }
+  };
+  const openExplorerLibraryEntry = (entry: ExplorerLibraryEntry) => {
+    if (!entry.ready) return;
+    setScientificImportError("");
+    if (entry.origin === "scene") { void openExplorerSceneDataset(entry.datasetId); return; }
+    if (entry.kind === "vector") {
+      const vector = [vectorField3DDocument, savedVectorField3D].find(item =>
+        item?.identity.id === entry.documentId);
+      if (vector) { setVectorField3DDocument(vector); setVectorField3DOpen(true); }
+      return;
+    }
+    const field = savedScientificFields.find(item => item.identity.id === entry.documentId);
+    if (field) { setScientificFieldDocument(field); setScientificFieldOpen(true); }
   };
   const openSavedFieldReference = async (reference: Graph2DFieldReference) => {
     if (!window.scientificScenes?.openGraphDatasetReference || scientificImportBusy) return;
@@ -2016,6 +2120,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${line.rows.length} verified ${line.origin.operation} samples to Graphs.`);
           }}
+          libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy}
+          libraryError={scientificImportError}
+          onBrowseLibraryScene={scientificImportAvailable ? () => void browseExplorerScene() : undefined}
+          onOpenLibraryEntry={openExplorerLibraryEntry}
           onSaveDocument={onSaveVectorField3D} onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}

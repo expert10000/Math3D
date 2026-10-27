@@ -42,6 +42,7 @@ import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerived
 import { cachedVerifiedVectorField3DSlice, invalidateVerifiedDerivedResults } from
   "./verifiedDerivedResultCache";
 import { exportVectorField3DIsosurfaceGltf } from "./exportVectorField3DIsosurface";
+import type { ExplorerLibraryEntry } from "./scientificExplorerLibrary";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -75,7 +76,9 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
-  savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface }: {
+  savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
+  libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
+  onOpenLibraryEntry }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
@@ -88,6 +91,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
     surface: VectorField3DIsosurface) => void;
+  libraryEntries?: readonly ExplorerLibraryEntry[];
+  libraryBusy?: boolean;
+  libraryError?: string;
+  onBrowseLibraryScene?: () => void;
+  onOpenLibraryEntry?: (entry: ExplorerLibraryEntry) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
@@ -158,6 +166,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [saveStatus, setSaveStatus] = useState("");
   const datasetLink = document.source.field.kind === "scientific-bundle" ?
     createScientificDatasetLink(document.source.field.references) : null;
+  const currentLibraryVector = (entry: ExplorerLibraryEntry) => entry.kind === "vector" &&
+    (entry.documentId === document.identity.id ||
+      document.source.field.kind === "scientific-bundle" &&
+      entry.sceneFingerprint === document.source.field.references[0].sceneFingerprint &&
+      entry.datasetId === document.source.field.references[0].datasetId);
   const workspace = document.workspace ?? defaultVectorField3DWorkspace(document.source);
   const seedGroups = [...new Set(document.source.seeds.map(seed => seed.group ?? "manual"))]
     .map(id => ({ id, seeds: document.source.seeds.filter(seed =>
@@ -1215,6 +1228,24 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     }}>Equilibria</button>
     {" "}<button type="button" onClick={onClose}>Back to Graphs</button></div></header>
     <div className="scientific-field-explorer-controls" aria-label="Field controls">
+    <section className="scientific-field-explorer-library" aria-label="Dataset library"
+      data-testid="scientific-field-explorer-library">
+      <h4>Dataset library</h4>
+      <p>Opened scene and saved Project fields. A field is verified again when opened.</p>
+      {onBrowseLibraryScene && <button type="button" disabled={busy || libraryBusy}
+        onClick={onBrowseLibraryScene}>Browse scientific scene</button>}
+      {libraryBusy && <p role="status">Reading scene metadata…</p>}
+      {libraryError && <p role="alert">{libraryError}</p>}
+      {libraryEntries.length ? <ul>{libraryEntries.map(entry => <li key={entry.id}>
+        <div><strong>{entry.title}</strong> <span>{entry.kind} · {entry.origin}</span></div>
+        <small>{entry.datasetId} · {entry.shape.join(" × ")} · {entry.unit}</small>
+        <small>{entry.reason}</small>
+        <button type="button" disabled={busy || libraryBusy || !entry.ready || currentLibraryVector(entry)}
+          onClick={() => onOpenLibraryEntry?.(entry)} aria-label={`Open ${entry.title} from dataset library`}>
+          {currentLibraryVector(entry) ? "Current field" :
+            entry.kind === "vector" ? "Open in Explorer" : "Open verified layer"}</button>
+      </li>)}</ul> : <p>Open a scientific scene or save a field in the Project to add it here.</p>}
+    </section>
     <nav aria-label="Field layers" className="vector-field3d-layers">
       {([ ["arrows", "3D arrows"], ["trajectories", "Trajectories"],
         ["xy", "XY slice"], ["xz", "XZ slice"], ["yz", "YZ slice"] ] as const).map(([layer, label]) =>
