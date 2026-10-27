@@ -123,6 +123,141 @@ test("SCI-02 linked physical probe follows vector, scalar, complex and 80³ laye
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on all planes and 80³", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const examples = explorer.getByRole("region", { name: "Built-in scientific scenes" });
+    await examples.getByRole("button", { name: /Swirling flow/ }).click();
+    await explorer.getByRole("button", { name: "XY slice" }).click();
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    await explorer.getByRole("button", { name: "Show this scalar as overlay on vector slices" }).click();
+    for (const plane of ["XY", "XZ", "YZ"] as const) {
+      await explorer.getByRole("button", { name: `${plane} slice` }).click();
+      await explorer.getByRole("button", { name: "Preview slice" }).click();
+      await expect(explorer.getByTestId("scientific-scalar-overlay-status"))
+        .toContainText("Verified scalar samples");
+      const figure = explorer.getByRole("figure", { name: `${plane} field slice` });
+      await expect(figure.getByTestId("scientific-slice-overlay-arrows")).toBeVisible();
+      await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+        .toContainText("verified sample SHA-256");
+      await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+        .toContainText("Potential");
+      if (plane === "XY") {
+        await figure.locator('[data-probe-cell="10-10"]').click();
+        await expect(explorer.getByTestId("scientific-explorer-cross-layer-probe"))
+          .toContainText("Physical point: 0 m · 0 m · 0 m");
+      }
+      await expect(figure.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
+    }
+    await examples.getByRole("button", { name: /Generated vortex/ }).click();
+    await explorer.getByRole("button", { name: "XY slice" }).click();
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    await explorer.getByRole("button", { name: "Show this scalar as overlay on vector slices" }).click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    const large = explorer.getByRole("figure", { name: "XY field slice" });
+    await expect(large.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("1024/1024 cells", { timeout: 60_000 });
+    await expect(large.getByTestId("scientific-slice-overlay-arrows")).toBeVisible();
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-02 Burgers overlay reopens with source links and rejects a changed vector tile", async () => {
+  test.setTimeout(240_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-scalar-overlay-"));
+  const directory = join(root, "burgers.sscene");
+  const scalarDirectory = join(root, "potential.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory,
+    { recursive: true });
+  await cp(resolve("examples/scientific-scenes/quadratic-volume.sscene"), scalarDirectory,
+    { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await explorer.getByRole("button", { name: "XY slice" }).click();
+    await explorer.getByLabel("Slice physical coordinate").selectOption({ index: 0 });
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, scalarDirectory);
+    const library = explorer.getByRole("region", { name: "Dataset library" });
+    await library.getByRole("button", { name: "Browse scientific scene" }).click();
+    await library.getByRole("button", { name: "Open Potential from dataset library" }).click();
+    await explorer.getByRole("button", { name: "Show this scalar as overlay on vector slices" }).click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    await expect(explorer.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("Potential", { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Save document" }).click();
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const recipe = stored.workspace.entries.find((entry: { module: string }) =>
+      entry.module === "vector3d")?.checkpoint.workspace.scalarOverlay;
+    expect(recipe.reference.sceneId).toBe("quadratic-volume");
+    expect(recipe.reference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(recipe)).not.toContain("values");
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("Potential", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-scalar-overlay-status"))
+      .toContainText("Verified scalar samples");
+    const scalarFile = join(scalarDirectory, "scalar.f64");
+    const originalScalar = await readFile(scalarFile), changedScalar = Buffer.from(originalScalar);
+    changedScalar[0] ^= 1;
+    await writeFile(scalarFile, changedScalar);
+    await reopened.getByRole("button", { name: "Open saved document" }).click();
+    await expect(reopened.getByTestId("scientific-scalar-overlay-status"))
+      .toContainText(/withheld.*integrity|withheld.*checksum|withheld.*changed/i,
+        { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
+    await writeFile(scalarFile, originalScalar);
+    await reopened.getByRole("button", { name: "Open saved document" }).click();
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("Potential", { timeout: 60_000 });
+    await reopened.getByRole("button", { name: "Back to Graphs" }).click();
+    const tile = join(directory, "vx.f64"), original = await readFile(tile);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(tile, changed);
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const changedExplorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(changedExplorer.getByRole("alert"))
+      .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
+    await expect(changedExplorer.getByTestId("scientific-slice-overlay-provenance"))
+      .toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-scalar-overlay-"))
+      throw new Error("Unsafe scalar-overlay fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("SCI-02 Burgers linked probe survives Project reopen with verified source", async () => {
   const app = await launchSurfaceApp();
   try {

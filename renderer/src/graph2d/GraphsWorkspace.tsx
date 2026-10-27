@@ -2244,7 +2244,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               onRemoveScientificScene?.(scene);
             }
           }}
-          fieldLayer={explorerFieldLayer} linkedProbe={linkedExplorerProbe}
+          fieldLayer={explorerFieldLayer} overlayFields={savedScientificFields}
+          linkedProbe={linkedExplorerProbe}
           onLinkedProbeChange={setLinkedExplorerProbe}
           onReturnToVectorLayer={() => setExplorerFieldLayer(null)}
           onOpenFieldDetails={() => { if (explorerFieldLayer) {

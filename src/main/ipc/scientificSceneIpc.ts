@@ -92,12 +92,25 @@ const referenceRequest = (value: unknown): { directory: string; sceneFingerprint
 
 export function registerScientificSceneIpc(): void {
   const active = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
-  const graphActive = new WeakMap<Electron.WebContents, { directory: string; fingerprint: string }>();
+  const graphActive = new WeakMap<Electron.WebContents, Map<string, { directory: string; fingerprint: string; readers: number }>>();
+  const activateGraphSource = (sender: Electron.WebContents, directory: string, fingerprint: string) => {
+    let sources = graphActive.get(sender);
+    if (!sources) { sources = new Map(); graphActive.set(sender, sources); }
+    const existing = sources.get(fingerprint);
+    if (existing) {
+      // A fingerprint identifies the manifest, not the directory containing its resources.
+      // Never let a simultaneous reader silently switch to another copy of that bundle.
+      if (existing.directory !== directory)
+        throw new Error("This scientific source is already being read from another directory. Retry after that read completes.");
+      existing.readers++;
+    } else sources.set(fingerprint, { directory, fingerprint, readers: 1 });
+  };
+  const activeGraphSource = (sender: Electron.WebContents, fingerprint: unknown) =>
+    typeof fingerprint === "string" ? graphActive.get(sender)?.get(fingerprint) : undefined;
   const prepared = new WeakMap<Electron.WebContents, PreparedPythonPublisher & { reference: boolean }>();
   const running = new WeakMap<Electron.WebContents, { jobId: string; handle: PythonPublisherRun }>();
   ipcMain.handle("scientificScenes:openGraphDataset", async (event, ...args: unknown[]): Promise<ScientificGraphDatasetOpenResponse> => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid Graph dataset request" };
-    graphActive.delete(event.sender);
     try {
       const window = BrowserWindow.fromWebContents(event.sender)!;
       const picked = await dialog.showOpenDialog(window, { title: "Import verified scientific dataset into Graphs",
@@ -107,7 +120,7 @@ export function registerScientificSceneIpc(): void {
       if (!isAbsolute(directory) || !directory.toLowerCase().endsWith(".sscene"))
         throw new TypeError("Choose a .sscene directory");
       const source = await openScientificGraphDatasets(directory);
-      graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
+      activateGraphSource(event.sender, directory, source.fingerprint);
       return { ok: true, source: { ...source, locator: { kind: "directory", value: directory } } };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
@@ -115,13 +128,12 @@ export function registerScientificSceneIpc(): void {
     if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||
         !Object.prototype.hasOwnProperty.call(GRAPH_DATASET_PRESETS, args[0]))
       return { ok: false, canceled: false, error: "Invalid Graph dataset preset" };
-    graphActive.delete(event.sender);
     try {
       const preset = GRAPH_DATASET_PRESETS[args[0] as keyof typeof GRAPH_DATASET_PRESETS];
       const directory = graphPresetDirectory(preset);
       const source = await openScientificGraphDatasets(directory);
       if (source.fingerprint !== preset.fingerprint) throw new Error("Bundled Graph dataset preset changed");
-      graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
+      activateGraphSource(event.sender, directory, source.fingerprint);
       return { ok: true, source: { ...source, locator: { kind: "preset", value: args[0] } } };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
@@ -158,10 +170,11 @@ export function registerScientificSceneIpc(): void {
       { ok: false, status: "error", error: "Invalid Graph field reference request." });
   ipcMain.handle("scientificScenes:openGraphDatasetReference", async (event, ...args: unknown[]): Promise<ScientificGraphReferenceOpenResponse> => {
     if (!trustedSender(event)) return { ok: false, status: "error", error: "Invalid Graph field reference request." };
-    graphActive.delete(event.sender);
     const verified = await verifyGraphDatasetReference(args);
-    if (verified.result.ok && verified.directory)
-      graphActive.set(event.sender, { directory: verified.directory, fingerprint: verified.result.source.fingerprint });
+    if (verified.result.ok && verified.directory) {
+      try { activateGraphSource(event.sender, verified.directory, verified.result.source.fingerprint); }
+      catch (error) { return { ok: false, status: "error", error: error instanceof Error ? error.message : String(error) }; }
+    }
     return verified.result;
   });
   ipcMain.handle("scientificScenes:chooseGraphDatasetRelink", async (event, ...args: unknown[]): Promise<ScientificGraphRelinkPickResponse> => {
@@ -195,8 +208,8 @@ export function registerScientificSceneIpc(): void {
         (request.varyingAxis !== 0 && request.varyingAxis !== 1) ||
         typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
       throw new TypeError("Invalid Graph slice request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphSlice(source.directory, source.fingerprint, request.datasetId,
       request.varyingAxis, request.fixedIndex, request.component as string | undefined);
   });
@@ -214,8 +227,8 @@ export function registerScientificSceneIpc(): void {
         typeof request.planeFixedIndex !== "number" || !Number.isSafeInteger(request.planeFixedIndex) ||
         typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
       throw new TypeError("Invalid Graph volume line request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVolumeLine(source.directory, source.fingerprint, request.datasetId,
       request.normalAxis as 0 | 1 | 2, request.planeFixedIndex as number,
       request.varyingAxis as 0 | 1 | 2, request.fixedIndex as number);
@@ -239,8 +252,8 @@ export function registerScientificSceneIpc(): void {
         typeof request.planeFixedIndex !== "number" || !Number.isSafeInteger(request.planeFixedIndex) ||
         typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
       throw new TypeError("Invalid Graph vector volume line request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorVolumeLine(source.directory, source.fingerprint, request.datasetId,
       components as [string, string, string], request.component,
       request.normalAxis as 0 | 1 | 2, request.planeFixedIndex as number,
@@ -260,8 +273,8 @@ export function registerScientificSceneIpc(): void {
         typeof request.planeFixedIndex !== "number" || !Number.isSafeInteger(request.planeFixedIndex) ||
         typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))
       throw new TypeError("Invalid Graph complex volume line request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphComplexVolumeLines(source.directory, source.fingerprint, request.datasetId,
       request.normalAxis as 0 | 1 | 2, request.planeFixedIndex as number,
       request.varyingAxis as 0 | 1 | 2, request.fixedIndex as number);
@@ -277,8 +290,8 @@ export function registerScientificSceneIpc(): void {
         (request.normalAxis !== null && request.normalAxis !== 0 && request.normalAxis !== 1 && request.normalAxis !== 2) ||
         (request.fixedIndex !== null && (typeof request.fixedIndex !== "number" || !Number.isSafeInteger(request.fixedIndex))))
       throw new TypeError("Invalid Graph plane request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphPlane(source.directory, source.fingerprint, request.datasetId,
       request.component, request.normalAxis, request.fixedIndex);
   });
@@ -294,8 +307,8 @@ export function registerScientificSceneIpc(): void {
           !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
         new Set(request.components).size !== 2)
       throw new TypeError("Invalid 2D vector-field request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorPlane(source.directory, source.fingerprint, request.datasetId,
       request.components as [string, string]);
   });
@@ -308,8 +321,8 @@ export function registerScientificSceneIpc(): void {
         typeof request.datasetId !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.datasetId) ||
         typeof request.component !== "string" || !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(request.component))
       throw new TypeError("Invalid Graph volume request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVolume(source.directory, source.fingerprint, request.datasetId, request.component);
   });
   ipcMain.handle("scientificScenes:previewVectorVolume", async (event, ...args: unknown[]) => {
@@ -327,8 +340,8 @@ export function registerScientificSceneIpc(): void {
           !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
         new Set(request.components).size !== 3)
       throw new TypeError("Invalid 3D vector-field request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorVolume(source.directory, source.fingerprint, request.datasetId,
       request.components as [string, string, string], request.sampleLimit as number | undefined);
   });
@@ -354,8 +367,8 @@ export function registerScientificSceneIpc(): void {
           !/^[A-Za-z][A-Za-z0-9._-]{0,63}$/.test(component)) ||
         new Set(request.components).size !== 3 || !validSelection)
       throw new TypeError("Invalid sparse vector request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint) throw new Error("Graph scientific source is not active");
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source) throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorSamples(source.directory, source.fingerprint, request.datasetId,
       request.components as [string, string, string], selection as
         { kind: "slice" | "stencil-slice" | "source-stencil-slice";
@@ -376,8 +389,8 @@ export function registerScientificSceneIpc(): void {
         !Array.isArray(request.indices) || request.indices.length !== 3 ||
         request.indices.some(index => !Number.isSafeInteger(index)))
       throw new TypeError("Invalid vector tile request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint)
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source)
       throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorTile(source.directory, source.fingerprint, request.datasetId,
       request.components as [string, string, string], request.indices as [number, number, number]);
@@ -398,8 +411,8 @@ export function registerScientificSceneIpc(): void {
           !Array.isArray(indices) || indices.length !== 3 ||
           indices.some(index => !Number.isSafeInteger(index))))
       throw new TypeError("Invalid vector tile batch request");
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== request.fingerprint)
+    const source = activeGraphSource(event.sender, request.fingerprint);
+    if (!source)
       throw new Error("Graph scientific source is not active");
     return previewScientificGraphVectorTiles(source.directory, source.fingerprint, request.datasetId,
       request.components as [string, string, string],
@@ -408,9 +421,13 @@ export function registerScientificSceneIpc(): void {
   ipcMain.handle("scientificScenes:closeGraphDataset", (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 1 || typeof args[0] !== "string" ||
         !/^[a-f0-9]{64}$/.test(args[0])) return false;
-    const source = graphActive.get(event.sender);
-    if (!source || source.fingerprint !== args[0]) return false;
-    graphActive.delete(event.sender);
+    const sources = graphActive.get(event.sender);
+    if (!sources) return false;
+    const source = sources.get(args[0]);
+    if (!source) return false;
+    source.readers--;
+    if (source.readers === 0) sources.delete(args[0]);
+    if (sources.size === 0) graphActive.delete(event.sender);
     return true;
   });
   ipcMain.handle("scientificScenes:preparePublisher", async (event, ...args: unknown[]): Promise<PythonPublisherPrepareResponse> => {
