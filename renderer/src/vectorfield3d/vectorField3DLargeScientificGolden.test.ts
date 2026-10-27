@@ -10,7 +10,7 @@ import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
   sampleVectorField3DDerivedSlice, sampleVectorField3DProbe, sampleVectorField3DSlice,
   createVectorField3DDerivedLine, validGraph2DDerivedFieldOrigin,
   scientificTileLayout, scientificTileSampleLocation, sha256Checksum,
-  vectorField3DSeedPreset,
+  vectorField3DSeedPreset, vectorField3DSpatialSeedPattern,
   vectorField3DSourceStencilPoints, vectorField3DSourceProbeStencilPoints,
   type VectorField3DSparseSamples,
   type Graph2DFieldReference, type VectorField3DSource, type VectorField3DVolumes } from "@math3d/core";
@@ -136,6 +136,37 @@ const close = (actual: number | null | undefined, expected: number, tolerance: n
 };
 
 describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
+  it("places bounded sphere, shell and reproducible random seeds in physical coordinates", () => {
+    const common = { center: [1, -.5, .25] as const, radius: 1.5,
+      count: 12, randomSeed: 314159 };
+    const shell = vectorField3DSpatialSeedPattern(source, { ...common, kind: "shell" });
+    expect(shell).toHaveLength(12);
+    for (const point of shell) {
+      expect(Math.hypot(...point.map((value, axis) => value - common.center[axis]!)))
+        .toBeCloseTo(common.radius, 10);
+      expect(point.every(value => value >= -4 && value <= 4)).toBe(true);
+    }
+    const sphere = vectorField3DSpatialSeedPattern(source, { ...common, kind: "sphere" });
+    expect(sphere).toHaveLength(12);
+    const sphereRadii = sphere.map(point => Math.hypot(...point.map((value, axis) =>
+      value - common.center[axis]!)));
+    expect(Math.min(...sphereRadii)).toBeLessThan(common.radius * .6);
+    expect(Math.max(...sphereRadii)).toBeGreaterThan(common.radius * .9);
+    expect(Math.max(...sphereRadii)).toBeLessThan(common.radius);
+    const random = vectorField3DSpatialSeedPattern(source, { ...common, kind: "random" });
+    expect(vectorField3DSpatialSeedPattern(source, { ...common, kind: "random" })).toEqual(random);
+    expect(vectorField3DSpatialSeedPattern(source, { ...common, kind: "random",
+      randomSeed: common.randomSeed + 1 })).not.toEqual(random);
+    expect(random.every(point => Math.hypot(...point.map((value, axis) =>
+      value - common.center[axis]!)) <= common.radius)).toBe(true);
+    expect(() => vectorField3DSpatialSeedPattern(source, { ...common, kind: "shell",
+      center: [3.5, 0, 0] })).toThrow(/complete seed sphere/i);
+    expect(() => vectorField3DSpatialSeedPattern(source, { ...common, kind: "random",
+      count: 33 })).toThrow(/between 1 and 32/i);
+    expect(() => vectorField3DSpatialSeedPattern(source, { ...common, kind: "random",
+      randomSeed: -1 })).toThrow(/random seed/i);
+  });
+
   it("maps XY, XZ and YZ slice clicks to oriented physical seed coordinates", () => {
     for (const normalAxis of [2, 1, 0] as const) {
       const fixed = coordinate(positions[14]!);
@@ -184,6 +215,26 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
         for (let component = 0; component < 3; component++)
           close(result.jacobian?.[component]?.[axis], expected.jacobian[component]![axis]!, 0.004);
       }
+      const xyDeterminant = expected.jacobian[0]![0]! * expected.jacobian[1]![1]! -
+        expected.jacobian[0]![1]! * expected.jacobian[1]![0]!;
+      const eigenvalues = result.eigenanalysis.eigenvalues!;
+      expect(result.eigenanalysis.unit).toBe("1/s");
+      if (xyDeterminant > 0) {
+        close(eigenvalues[0].real, expected.jacobian[2]![2]!, 0.004);
+        close(eigenvalues[0].imaginary, 0, 0.004);
+        close(eigenvalues[1].real, 0, 0.004);
+        close(eigenvalues[2].real, 0, 0.004);
+        close(eigenvalues[1].imaginary, Math.sqrt(xyDeterminant), 0.004);
+        close(eigenvalues[2].imaginary, -Math.sqrt(xyDeterminant), 0.004);
+      } else {
+        const expectedRoots = [-Math.sqrt(-xyDeterminant), Math.sqrt(-xyDeterminant),
+          expected.jacobian[2]![2]!].sort((a, b) => a - b);
+        eigenvalues.forEach((value, index) => {
+          close(value.real, expectedRoots[index]!, 0.004);
+          close(value.imaginary, 0, 0.004);
+        });
+      }
+      expect(result.eigenanalysis.status).toBe(indices[0] === 0 ? "uncertain" : "resolved");
       close(result.magnitudeLaplacian, expected.laplacian, 0.05);
       const changed = { ...samples, components: [{ ...samples.components[0]!,
         values: samples.components[0]!.values.map((value, index) => index === 0 ? value + 1 : value) },

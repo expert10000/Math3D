@@ -139,6 +139,7 @@ export * from "./vectorField3DVerifiedTileCache";
 export * from "./vectorField3DAnalyticLine";
 export * from "./vectorField3DDerivedLine";
 export * from "./vectorField3DDifferential";
+export * from "./vectorField3DEigenanalysis";
 export * from "./vectorField3DTrajectories";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";

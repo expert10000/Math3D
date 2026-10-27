@@ -3,6 +3,8 @@ import { scientificAxisCoordinate, scientificCoordinateIndex,
   scientificPointWithinBounds } from "./scientificDatasetCoordinates";
 import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
+import { analyzeVectorField3DEigenvalues, type VectorField3DEigenanalysis,
+  type VectorField3DMatrix3 } from "./vectorField3DEigenanalysis";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
 import { sampleVectorField3DSlice, vectorField3DVolumeProvenance,
   type VectorField3DSliceArtifact } from "./vectorField3DSlices";
@@ -24,6 +26,7 @@ export type VectorField3DDifferentialArtifact = Readonly<{
   divergence: number | null; curl: Vec3 | null;
   divergenceUnit: string; curlUnit: string | null;
   jacobian: readonly Vec3[] | null; jacobianUnits: readonly (readonly string[])[];
+  eigenanalysis: VectorField3DEigenanalysis;
   localStructure: "rotation-dominated" | "strain-dominated" | "balanced" | null;
   magnitudeGradient: Vec3 | null; magnitudeLaplacian: number | null;
   magnitudeGradientUnit: string | null; magnitudeLaplacianUnit: string | null;
@@ -87,6 +90,8 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     ...(sourceGrid ? { stencilGrid: "source" as const } : {}),
     divergence: null, curl: null, divergenceUnit: `1/${source.timeUnit}`, curlUnit: null,
     jacobian: null, jacobianUnits: [], localStructure: null,
+    eigenanalysis: { status: "unavailable", eigenvalues: null, unit: null,
+      conditionEstimate: null, diagnostics: [message] },
     magnitudeGradient: null, magnitudeLaplacian: null,
     magnitudeGradientUnit: null, magnitudeLaplacianUnit: null,
     stencils, evaluations, diagnostics: [...diagnostics, message], verifiedSamples,
@@ -204,6 +209,12 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     scalarSecond.reduce((sum, value) => sum + value, 0) : null;
   const jacobianUnits = componentUnits.map(unit => source.axes.map(axis =>
     `(${unit})/${axis.unit}`));
+  const eigenUnit = scalarUnitsAvailable ?
+    componentUnits[0] === `${source.axes[0].unit}/${source.timeUnit}` ?
+      `1/${source.timeUnit}` : `(${componentUnits[0]})/${source.axes[0].unit}` : null;
+  const eigenanalysis = analyzeVectorField3DEigenvalues(jacobian as unknown as VectorField3DMatrix3,
+    eigenUnit,
+    stencils.some(stencil => stencil.boundary || stencil.method === "two-point"));
   let localStructure: VectorField3DDifferentialArtifact["localStructure"] = null;
   if (scalarUnitsAvailable) {
     let rotationNorm2 = 0, strainNorm2 = 0;
@@ -231,7 +242,8 @@ function analyzeAt(document: VectorField3DDocument, position: Vec3,
     ...(sourceGrid ? { stencilGrid: "source" as const } : {}),
     divergence, curl, divergenceUnit: `1/${source.timeUnit}`,
     curlUnit: uniformUnits ? `1/${source.timeUnit}` : null,
-    jacobian: jacobian.map(row => row as unknown as Vec3), jacobianUnits, localStructure,
+    jacobian: jacobian.map(row => row as unknown as Vec3), jacobianUnits, eigenanalysis,
+    localStructure,
     magnitudeGradient, magnitudeLaplacian,
     magnitudeGradientUnit: scalarUnitsAvailable ? `(${componentUnits[0]})/${source.axes[0].unit}` : null,
     magnitudeLaplacianUnit: scalarUnitsAvailable ? `(${componentUnits[0]})/${source.axes[0].unit}²` : null,

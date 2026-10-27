@@ -1061,6 +1061,14 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-13 slice seed placement.** [Verified slice click-to-seed](scientific-source-grid-stencils.md#slice-click-to-seed) converts XY/XZ/YZ clicks into physical coordinates, uses the displayed plane's fixed coordinate, and previews the point before a group is selected and the seed is committed. The 80³ orientation tests and measured Burgers Project round trip cover bounds, provenance, and saved placement.
 
+**SCI-13 3D seed placement.** [3D click-to-seed](scientific-source-grid-stencils.md#3d-click-to-seed) casts the current camera ray onto an explicitly selected XY/XZ/YZ plane. The proposed physical coordinate and marker are shown before group admission; stale sources, invalid intersections, and the 32-seed cap are rejected. The 80³ camera-orientation checks and measured Burgers Project round trip cover placement and provenance.
+
+**SCI-13 group management.** [Saved group names, colors, visibility, deletion, and bounded undo/redo](scientific-source-grid-stencils.md#seed-group-management) now cover seed and group edits. View-only changes retain verified source identity and live trajectories; group deletion changes the source and clears stale results. The 80³ field checks trajectory colors, and measured Burgers checks exact undo restoration, provenance, and Project reopen.
+
+**SCI-13 spatial patterns.** [Bounded sphere, shell, and seeded random patterns](scientific-source-grid-stencils.md#spatial-seed-patterns) use physical center/radius controls, reject incomplete or out-of-bounds batches before admission, and keep the 32-seed document cap. The 80³ fixture checks coordinates and repeatability; measured Burgers checks undo/redo, source provenance, and Project reopen.
+
+**SCI-14 point Inspector Jacobian detail.** The [expandable Jacobian and eigenvalue panel](scientific-source-grid-stencils.md#sci-14-jacobian-and-eigenvalue-detail) reuses the verified point stencil and shows matrix units, derivative method, real or complex eigenvalues, and uncertainty labels. The compact value, magnitude, divergence and curl remain visible. The 80³ oracle checks eigenvalues; the measured Burgers desktop check covers verified tile provenance, tamper rejection and Project reopen. Result-graph links remain a later SCI-14 step.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---
