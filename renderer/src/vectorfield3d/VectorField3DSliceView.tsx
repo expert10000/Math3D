@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
   VectorField3DClipBounds } from "@math3d/core";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
+import type { ScalarSliceOverlay, SliceOverlayArrow } from "./scientificSliceOverlay";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -12,7 +13,8 @@ const color = (value: number | null, min: number, max: number) => {
 export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoom = 1,
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
   onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
-  seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed }: {
+  seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
+  scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "" }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -25,6 +27,10 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSeedPlacementToggle?: () => void;
   onSeedPropose?: (point: readonly [number, number, number] | null) => void;
   proposedSeed?: readonly [number, number, number] | null;
+  scalarOverlay?: ScalarSliceOverlay | null;
+  overlayArrows?: readonly SliceOverlayArrow[];
+  overlayVectorSamples?: readonly Readonly<{ name: string; sampleSha256: string }>[];
+  overlayStatus?: string;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
   onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
@@ -32,6 +38,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   derivedLineBusy?: boolean;
 }) {
   const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
+  const arrowMarkerId = useId().replace(/:/g, "");
   const [first, second] = slice.planeAxes;
   const { left, top, width, height } = slicePlot;
   const cellWidth = width / slice.shape[0], cellHeight = height / slice.shape[1];
@@ -53,9 +60,26 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       24 + index * 272 / Math.max(profile.length - 1, 1)},${
       104 - (row.value - profileMin) * 80 / profileSpan}`).join(" ");
   const seedMarker = proposedSeed ? sliceSeedMarkerAtPoint(slice, proposedSeed) : null;
+  const crosshairCoordinate = (coordinates: readonly number[], value: number,
+    start: number, cell: number) => {
+    if (value < coordinates[0]! - 1e-9 || value > coordinates.at(-1)! + 1e-9) return null;
+    const upper = coordinates.findIndex(item => item >= value - 1e-9);
+    if (upper <= 0) return start + cell / 2;
+    const lower = upper - 1;
+    const fraction = (value - coordinates[lower]!) /
+      (coordinates[upper]! - coordinates[lower]!);
+    return start + (lower + .5 + fraction) * cell;
+  };
+  const crosshairX = probeOnPlane ? crosshairCoordinate(slice.coordinates[0], probe[first],
+    left, cellWidth) : null;
+  const crosshairYFromBottom = probeOnPlane ? crosshairCoordinate(slice.coordinates[1],
+    probe[second], 0, cellHeight) : null;
+  const crosshairY = crosshairYFromBottom === null ? null : top + height - crosshairYFromBottom;
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
+    {overlayStatus && <p role={overlayStatus.includes("withheld") ? "alert" : "status"}
+      data-testid="scientific-slice-overlay-status">{overlayStatus}</p>}
     {onSeedPlacementToggle && <button type="button"
       aria-label={`Place seed on ${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} slice`}
       aria-pressed={seedPlacementActive} disabled={seedPlacementDisabled}
@@ -88,6 +112,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         onSeedPropose(sliceSeedPointAtSvgPosition(slice, local.x, local.y));
       }}>
       <rect x={left} y={top} width={width} height={height} fill="#0d1726" />
+      {scalarOverlay && <defs><marker id={arrowMarkerId} markerWidth="5" markerHeight="5"
+        refX="4" refY="2.5" orient="auto" markerUnits="strokeWidth">
+        <path d="M0 0L5 2.5L0 5Z" fill="#fff" /></marker></defs>}
       {slice.values.map((value, index) => {
         const x = Math.floor(index / slice.shape[1]), y = index % slice.shape[1];
         const clipped = clipBounds && (slice.fixedCoordinate < clipBounds[slice.normalAxis]![0] ||
@@ -96,10 +123,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           slice.coordinates[0][x]! > clipBounds[first]![1] ||
           slice.coordinates[1][y]! < clipBounds[second]![0] ||
           slice.coordinates[1][y]! > clipBounds[second]![1]);
+        const scalarValue = scalarOverlay?.values[index];
         return <rect key={index} data-probe-cell={`${x}-${y}`}
           x={left + x * cellWidth} y={top + (slice.shape[1] - 1 - y) * cellHeight}
-          width={cellWidth + .3} height={cellHeight + .3} fill={color(value, slice.min, slice.max)}
-          opacity={clipped ? .2 : 1}
+          width={cellWidth + .3} height={cellHeight + .3}
+          fill={scalarOverlay ? scalarValue !== null && scalarValue !== undefined ?
+            color(scalarValue, scalarOverlay.min, scalarOverlay.max) : "#334155" :
+            color(value, slice.min, slice.max)}
+          opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
             if (!onProbeSelect || seedPlacementActive) return;
             const point = [0, 0, 0] as [number, number, number];
@@ -109,13 +140,32 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             onProbeSelect(point);
           }} />;
       })}
-      {probeFirst >= 0 && probeSecond >= 0 && <g data-testid="vector-field3d-slice-crosshair"
+      {scalarOverlay && <g data-testid="scientific-slice-overlay-arrows" pointerEvents="none"
+        stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
+        {overlayArrows.map((arrow, index) => {
+          const magnitude = Math.hypot(arrow.firstComponent, arrow.secondComponent);
+          const cx = left + (arrow.firstIndex + .5) * cellWidth;
+          const cy = top + (slice.shape[1] - arrow.secondIndex - .5) * cellHeight;
+          if (magnitude <= 1e-12) return <g key={index}
+            data-normal-component={arrow.normalComponent > 0 ? "positive" : "negative"}>
+            <circle cx={cx} cy={cy} r={Math.min(cellWidth, cellHeight) * .26}
+              fill="#0d1726" stroke="#fff" />
+            <text x={cx} y={cy + 3} textAnchor="middle" fill="#fff"
+              stroke="none" fontSize="11" fontWeight="bold">{arrow.normalComponent > 0 ? "+" : "−"}</text>
+          </g>;
+          const dx = arrow.firstComponent / magnitude * cellWidth * .32;
+          const dy = -arrow.secondComponent / magnitude * cellHeight * .32;
+          return <line key={index} x1={cx - dx} y1={cy - dy} x2={cx + dx} y2={cy + dy}
+            markerEnd={`url(#${arrowMarkerId})`} />;
+        })}
+      </g>}
+      {crosshairX !== null && crosshairY !== null && <g data-testid="vector-field3d-slice-crosshair"
         stroke="#fff" strokeWidth="2" pointerEvents="none">
-        <line x1={58 + (probeFirst + .5) * cellWidth} y1="16"
-          x2={58 + (probeFirst + .5) * cellWidth} y2={16 + height}
+        <line x1={crosshairX} y1="16"
+          x2={crosshairX} y2={16 + height}
           stroke={profileDirection === 1 ? "#fde047" : "#fff"} />
-        <line x1="58" y1={16 + (slice.shape[1] - probeSecond - .5) * cellHeight}
-          x2={58 + width} y2={16 + (slice.shape[1] - probeSecond - .5) * cellHeight}
+        <line x1="58" y1={crosshairY}
+          x2={58 + width} y2={crosshairY}
           stroke={profileDirection === 0 ? "#fde047" : "#fff"} />
       </g>}
       {seedMarker && <g data-testid="vector-field3d-proposed-seed-marker" pointerEvents="none">
@@ -133,10 +183,19 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         <text x="15" y="280" transform="rotate(-90 15 280)" textAnchor="middle">{secondAxis.label} ({secondAxis.unit})</text>
       </g>
     </svg>
+    {scalarOverlay && <p data-testid="scientific-slice-overlay-provenance">
+      Scalar {scalarOverlay.title}: {scalarOverlay.covered}/{scalarOverlay.values.length} cells ·
+      {" "}{scalarOverlay.min.toPrecision(4)}–{scalarOverlay.max.toPrecision(4)} {scalarOverlay.unit}.
+      {" "}Source {scalarOverlay.source}; verified sample SHA-256 {scalarOverlay.sampleSha256}.
+      {" "}{overlayArrows.length} vector glyphs sampled on this plane; +/− marks the signed normal component.
+      {slice.sourceHash && ` Vector source ${slice.sourceHash}.`}
+      {overlayVectorSamples.length ? ` Verified arrow samples ${overlayVectorSamples.map(part =>
+        `${part.name}: ${part.sampleSha256}`).join(" · ")}.` :
+        " Authored expression vectors on this plane."}</p>}
     <div className="vector-field3d-slice-legend" role="img"
-      aria-label={`Color legend, ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}`}>
-      <span>{slice.min.toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar" />
-      <span>{slice.max.toPrecision(4)} {slice.unit}</span>
+      aria-label={`Color legend, ${(scalarOverlay?.min ?? slice.min).toPrecision(4)} to ${(scalarOverlay?.max ?? slice.max).toPrecision(4)} ${scalarOverlay?.unit ?? slice.unit}`}>
+      <span>{(scalarOverlay?.min ?? slice.min).toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar" />
+      <span>{(scalarOverlay?.max ?? slice.max).toPrecision(4)} {scalarOverlay?.unit ?? slice.unit}</span>
     </div>
     <p role="status">{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit};
       {" "}{slice.rejected} invalid of {slice.evaluated} samples. Dimmed cells lie outside the display clip;

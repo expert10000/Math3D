@@ -453,7 +453,7 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .scientific-field-explorer-library li button { justify-self: start; }
 .scientific-field-explorer-library li[aria-current="true"] { border-color: var(--accent); }
 .scientific-field-explorer[data-field-layer] .scientific-field-explorer-controls > :not(.scientific-field-explorer-library),
-.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector > :not(.scientific-explorer-field-inspector) {
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector > :not(.scientific-explorer-field-inspector):not(.scientific-explorer-linked-inspector) {
   display: none; }
 .scientific-field-explorer[data-field-layer] .scientific-field-explorer-viewer { overflow: auto; }
 .scientific-explorer-field-layer { min-width: 0; padding: 12px; color: #e5efff; }
