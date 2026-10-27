@@ -800,3 +800,24 @@ handoffs (periodic, chain, missing, tampered) in one test. The test-only TypeScr
 configuration passed after the final edit. See the walkthrough for the exact
 command and temporary-profile behavior. This extends acceptance evidence without
 altering the frozen Q10 v0.1 scope or adding physics or rendering code.
+
+### Installed-app selected-run handoff (complete, 2026-10-28)
+
+Theory Lab's Windows installer now carries a frozen, pinned QuTiP/NumPy/SciPy
+worker and the contract schemas. A fresh isolated installation passed worker
+readiness and the two-level spectrum without a source checkout or separate
+Python. Math3D can remember either a validated installed `Quantum Hamiltonian
+Lab.exe` or the existing built checkout; old checkout preferences remain
+readable. For a selected convergence point, it re-verifies the source bundle,
+sample, run ID, and SHA-256 before launching either target. Installed Lab still
+verifies the saved run and refuses a missing or changed result.
+
+The installed-app Playwright acceptance built and installed Math3D's read-only
+handoff probe under a distinct app identity, then used real installed Math3D
+and Lab windows. It passed periodic and chain point navigation, Math3D restart,
+and missing/tampered Lab run refusal (**1/1 test, 26.0 s**, Windows, 2026-10-28).
+The five-run fixture producer remains a checkout script for deterministic test
+setup; ordinary installed-app navigation does not require that checkout. The
+probe omits optional Math3D compute workers and is not a full release-package
+signoff. See [the walkthrough](theory-lab-python-scene-walkthrough.md) for the
+exact build, install, and acceptance commands.

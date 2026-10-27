@@ -76,7 +76,10 @@ It uses a `.qscene` directory. It does not use the Python `.sscene` publisher.
    The generic **Open source run** action is therefore absent for this scene.
    After selecting a point, click **Open selected run in Theory Lab**. Math3D
    rechecks the `.qscene` and that point's run ID and hash before handing them
-   to the local Lab checkout. Lab then verifies its own saved run before opening.
+   to the selected installed Lab app or built checkout. On first use choose
+   **Installed application** and select `Quantum Hamiltonian Lab.exe`, or choose
+   **Source checkout** and select its root folder. Lab then verifies its own
+   saved run before opening.
 5. Close and restart Math3D, then reopen the same folder or its saved Project
    link. No point should start selected; choose one again to check source
    re-verification. For a quick viewer rehearsal without creating Lab runs, use
@@ -107,6 +110,35 @@ ID. The test also removes one saved run and changes its result bytes in turn;
 Math3D can still verify the unchanged export, while Lab must refuse each source
 run. Test processes and the temporary root are cleaned up afterward. No user
 profile, scientific data, or rendering path is changed.
+
+To repeat the route with installed executables, first build the Theory Lab
+Windows installer with `npm run package:win:installer` and install it into a new
+directory. Build Math3D's isolated handoff probe installer from a Math3D
+checkout after `npm run build:core`:
+
+```powershell
+.\node_modules\.bin\electron-builder.cmd --win nsis --config scripts/quantum-handoff-installed-probe.config.cjs
+```
+
+Install the generated `output/quantum-handoff-installed-probe/Math3D-Quantum-Handoff-Probe-Setup-*.exe`
+into another new directory. This probe uses Math3D's production main and
+renderer code under a distinct app identity, so it does not replace a user's
+normal Math3D installation. Its optional compute workers are omitted because
+the verified scene handoff is read-only. Then run:
+
+```powershell
+$env:QLAB_E2E_CHECKOUT = 'C:\path\to\theory-lab' # fixture producer only
+$env:QLAB_E2E_INSTALLED_EXE = 'C:\path\to\Quantum Hamiltonian Lab.exe'
+$env:MATH3D_E2E_INSTALLED_EXE = 'C:\path\to\Math3D Quantum Handoff Probe.exe'
+npx playwright test tests/e2e/quantum-rice-mele-two-app.spec.ts --reporter=list
+```
+
+The fixture producer still runs from the checkout to create five controlled
+saved runs. Both interactive windows and the selected-run handoff use the
+installed executables. The test repeats a selection after Math3D restart,
+then checks missing-run and changed-run refusal in the installed Lab. Ordinary
+use of the two installed apps needs no source checkout; keep the original saved
+runs in the Lab profile used to produce the exported scene.
 
 The scene's 3D point positions are normalized for layout. The plots label their
 physical axes from the producer's saved metadata, and selection checks values

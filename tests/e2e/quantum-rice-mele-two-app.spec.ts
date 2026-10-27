@@ -1,15 +1,17 @@
 import { expect, test } from "@playwright/test";
-import { chromium } from "playwright";
+import { _electron as electron, chromium } from "playwright";
 import { execFile } from "node:child_process";
 import { createServer } from "node:net";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
-import { launchRepoElectron } from "./helpers/electronLauncher";
+import { definedEnvironment, launchRepoElectron } from "./helpers/electronLauncher";
 
 const command = promisify(execFile);
 const labCheckout = process.env.QLAB_E2E_CHECKOUT;
+const installedLab = process.env.QLAB_E2E_INSTALLED_EXE;
+const installedMath3D = process.env.MATH3D_E2E_INSTALLED_EXE;
 const math3d = resolve(__dirname, "..", "..");
 
 async function freePort(): Promise<number> {
@@ -22,8 +24,9 @@ async function freePort(): Promise<number> {
 }
 
 async function launchedLabPids(executable: string, port: number, runId: string): Promise<number[]> {
+  const processName = basename(executable).replaceAll("'", "''");
   const { stdout } = await command("powershell.exe", ["-NoProfile", "-Command",
-    "Get-CimInstance Win32_Process -Filter \"Name = 'electron.exe'\" | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress"],
+    `Get-CimInstance Win32_Process -Filter "Name = '${processName}'" | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress`],
     { maxBuffer: 1024 * 1024 });
   const parsed: unknown = stdout.trim() ? JSON.parse(stdout) : [];
   return (Array.isArray(parsed) ? parsed : [parsed]).filter((entry: any) =>
@@ -39,7 +42,7 @@ test("real five-run convergence point opens exact Lab runs and refuses missing o
   test.skip(process.platform !== "win32", "Detached Lab process cleanup is currently Windows-only");
   test.setTimeout(300_000);
   const lab = resolve(labCheckout!);
-  const executable = join(lab, "node_modules", "electron", "dist", "electron.exe");
+  const executable = installedLab || join(lab, "node_modules", "electron", "dist", "electron.exe");
   const root = await mkdtemp(join(tmpdir(), "rice-roundtrip-"));
   const profile = join(root, "lab-profile"), exports = join(root, "exports"), report = join(root, "fixture.json");
   await mkdir(profile); await mkdir(exports);
@@ -58,14 +61,21 @@ test("real five-run convergence point opens exact Lab runs and refuses missing o
     async function handoff(series: "periodic" | "chain", outcome: "opened" | "missing" | "tampered") {
       const point = fixture.selected[series], port = await freePort();
       active.value = { port, runId: point.runId };
-      const app = await launchRepoElectron({ args: [".", "--quantum-scene", fixture.bundle], cwd: math3d,
-        env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: join(root, `math3d-${series}-${outcome}`),
-          MATH3D_THEORY_LAB_HOME: lab, QLAB_TEST_PROFILE: profile,
-          MATH3D_E2E_LAB_DEBUG_PORT: String(port) } });
+      const mathProfile = join(root, `math3d-${series}-${outcome}`);
+      const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: mathProfile,
+        MATH3D_E2E_USER_DATA_DIR: join(mathProfile, "user-data"), MATH3D_E2E: "1",
+        MATH3D_THEORY_LAB_HOME: installedLab || lab, QLAB_TEST_PROFILE: profile,
+        MATH3D_E2E_LAB_DEBUG_PORT: String(port) };
+      const app = installedMath3D
+        ? await electron.launch({ executablePath: installedMath3D, cwd: dirname(installedMath3D),
+          args: [`--user-data-dir=${join(mathProfile, "user-data")}`, "--quantum-scene", fixture.bundle],
+          env: definedEnvironment(env) })
+        : await launchRepoElectron({ args: [".", "--quantum-scene", fixture.bundle], cwd: math3d, env });
       try {
         const page = await app.firstWindow(), scene = page.getByTestId("rice-convergence-profile");
         await expect(scene).toBeVisible();
         await expect(scene).toContainText(fixture.studyId);
+        await expect(page.getByTestId("rice-convergence-selection")).toHaveCount(0);
         await scene.getByRole("button", { name: series === "periodic"
           ? `Inspect periodic point 2, duration ${fixture.selected.periodic.duration}`
           : `Inspect chain point 3, width ${fixture.selected.chain.width}` }).click();
@@ -95,15 +105,28 @@ test("real five-run convergence point opens exact Lab runs and refuses missing o
           }
         } finally { await browser.close().catch(() => {}); }
       } finally {
-        for (const pid of await launchedLabPids(executable, port, point.runId).catch(() => []))
-          await command("taskkill", ["/PID", String(pid), "/T", "/F"]).catch(() => {});
-        await app.close();
+        const labPids = await launchedLabPids(executable, port, point.runId);
+        for (const pid of labPids)
+          await command("taskkill", ["/PID", String(pid), "/T", "/F"]);
+        if (installedMath3D) {
+          // Electron's packaged window can close before Playwright's context
+          // handshake completes; bound that close and stop only its own PID.
+          const pid = app.process()?.pid;
+          try {
+            await Promise.race([app.close(), new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("Packaged Math3D close timed out")), 5_000))]);
+          } catch {
+            if (pid) await command("taskkill", ["/PID", String(pid), "/T", "/F"]).catch(() => {});
+          }
+        } else await app.close();
         active.value = null;
       }
     }
 
     await handoff("periodic", "opened");
     await handoff("chain", "opened");
+    // A reopened Math3D profile must demand a fresh verified point selection.
+    await handoff("periodic", "opened");
     const periodic = fixture.selected.periodic;
     const sourceDir = join(profile, "runs", periodic.runId);
     await rename(sourceDir, `${sourceDir}-missing`);

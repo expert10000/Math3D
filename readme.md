@@ -80,6 +80,13 @@ separate M3D-Q04 gap.
 Follow [the Lab-to-Math3D lattice walkthrough](docs/quantum-lattice-usage.md)
 for exact steps, build requirements, saved-run distinctions and verification.
 
+For Rice–Mele convergence studies, select a verified plot point and choose
+**Open selected run in Theory Lab**. On first use Math3D accepts either the
+installed `Quantum Hamiltonian Lab.exe` or a built Lab checkout. The selected
+run ID and result hash are checked again by Lab. The
+[scene walkthrough](docs/theory-lab-python-scene-walkthrough.md#d-ricemele-convergence-lab--verified-export--math3d)
+includes an installed-to-installed acceptance path.
+
 ## Install
 
 ```bash
