@@ -72,6 +72,7 @@ if (typeof window !== "undefined") {
       health: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
       getStatus: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
       run: (request: SageRunRequest) => requestJson<unknown>("POST", "/run", request).then(normalizeSageRunResponse),
+      cancel: async () => { throw new Error("Sage job cancellation is available only in the desktop app."); },
     };
   }
 }

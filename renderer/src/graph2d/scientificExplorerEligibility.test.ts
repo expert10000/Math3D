@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseScientificSceneManifest } from "@math3d/core";
 import { scientificExplorerEligibility } from "./scientificExplorerEligibility";
 
 const manifest = (directory: string) => {
-  const parsed = parseScientificSceneManifest(readFileSync(resolve(directory, "manifest.json"), "utf8"));
+  const path = fileURLToPath(new URL(`../../../${directory}/manifest.json`, import.meta.url));
+  const parsed = parseScientificSceneManifest(readFileSync(path, "utf8"));
   if (!parsed.ok) throw new Error(parsed.errors.join(" "));
   return parsed.value;
 };
