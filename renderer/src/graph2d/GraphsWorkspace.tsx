@@ -117,6 +117,8 @@ const SCIENTIFIC_FIELD_PRESETS = [
   { id: "complexWaveVolume", kind: "complex", title: "Complex wave volume", detail: "3D · paired real and imaginary plane lines" },
 ] as const;
 type ScientificFieldPresetId = typeof SCIENTIFIC_FIELD_PRESETS[number]["id"];
+const SCIENTIFIC_EXPLORER_PRESETS = SCIENTIFIC_FIELD_PRESETS.filter(preset =>
+  "explorer" in preset && preset.explorer);
 
 function readGraph2DLeftPalette(): Graph2DLeftPalette {
   if (typeof window === "undefined") return "classic";
@@ -401,11 +403,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const openScientificDataset = async (preset?: ScientificFieldPresetId) => {
     if (!window.scientificScenes?.openGraphDataset) return;
+    const previousFingerprint = scientificImport?.fingerprint;
     setScientificPresetOpen(false);
     resetScientificSlice();
     setScientificImport(null);
     setScientificImportBusy(true); setScientificImportError("");
     try {
+      if (previousFingerprint) await window.scientificScenes.closeGraphDataset(previousFingerprint);
       const opened = preset ? await window.scientificScenes.openGraphDatasetPreset(preset) :
         await window.scientificScenes.openGraphDataset();
       if (opened.ok) { setScientificImport(opened.source); const first = opened.source.datasets[0];
@@ -2141,8 +2145,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>
           {scientificManifest?.ok && <p>{scientificManifest.value.title}</p>}
+          <section className="graph2d-scientific-explorer-catalog" aria-label="Available 3D Field Explorer examples">
+            <h4>Available 3D Explorer datasets</h4>
+            <p>Each example is a separate verified scene. Switch scenes here; the list below describes the opened scene.</p>
+            <div>{SCIENTIFIC_EXPLORER_PRESETS.map(preset =>
+              <div key={preset.id}>
+                <button type="button" disabled={scientificImportBusy ||
+                  scientificImport.locator.kind === "preset" && scientificImport.locator.value === preset.id}
+                  onClick={() => void openScientificDataset(preset.id)}>
+                  {preset.title}</button>
+                <small>{preset.detail}</small>
+              </div>)}</div>
+          </section>
           <section className="graph2d-scientific-explorer-datasets" aria-label="3D Field Explorer datasets">
-            <h4>3D datasets in this scene</h4>
+            <h4>3D datasets in this scene ({scientificExplorerDatasets.length})</h4>
             {scientificExplorerDatasets.length ? scientificExplorerDatasets.map(({ dataset, eligibility }) =>
               <div className="graph2d-scientific-explorer-dataset" key={dataset.id}
                 data-testid={`scientific-explorer-dataset-${dataset.id}`}>

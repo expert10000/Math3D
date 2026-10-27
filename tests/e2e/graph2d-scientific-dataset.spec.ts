@@ -622,6 +622,15 @@ test("Graphs identifies Explorer-ready 3D datasets and opens the generated and m
       .toContainText("Ready for Field Explorer");
     await expect(dialog.getByTestId("scientific-explorer-dataset-field"))
       .toContainText("80 × 80 × 80");
+    const catalog = dialog.getByRole("region", { name: "Available 3D Field Explorer examples" });
+    await expect(catalog.getByRole("button", { name: "Swirling flow volume" })).toBeVisible();
+    await expect(catalog.getByRole("button", { name: "Measured Burgers vortex" })).toBeVisible();
+    await catalog.getByRole("button", { name: "Measured Burgers vortex" }).click();
+    await expect(dialog.getByTestId("scientific-explorer-dataset-field"))
+      .toContainText("47 × 85 × 55");
+    await catalog.getByRole("button", { name: "Generated vortex 80³" }).click();
+    await expect(dialog.getByTestId("scientific-explorer-dataset-field"))
+      .toContainText("80 × 80 × 80");
     await dialog.getByRole("button", { name: "Open in Field Explorer" }).click();
     let explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(explorer).toContainText("Manifest-linked bundle: large-vortex-80");
