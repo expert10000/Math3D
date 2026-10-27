@@ -70,6 +70,98 @@ test("SCI-02 opens built-in vector, scalar and complex scenes without a folder p
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-02 linked physical probe follows vector, scalar, complex and 80³ layers", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const examples = explorer.getByRole("region", { name: "Built-in scientific scenes" });
+    const probe = explorer.getByTestId("scientific-explorer-cross-layer-probe");
+    await examples.getByRole("button", { name: /Swirling flow/ }).click();
+    await probe.getByRole("button", { name: "Place at this field center" }).click();
+    await expect(probe).toContainText("Physical point: 0 m · 0 m · 0 m");
+    await expect(explorer.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("Verified linked point");
+    await probe.locator('input[aria-label="Linked probe x"]').fill("1");
+    await expect(explorer.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("Verified linked point");
+    await probe.locator('input[aria-label="Linked probe y"]').fill("-0.5");
+    await expect(explorer.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("Verified linked point");
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    const scalar = explorer.getByTestId("scientific-explorer-linked-probe");
+    await expect(scalar).toContainText("scalar = 1.250000");
+    await expect(scalar).toContainText("verified samples");
+    await examples.getByRole("button", { name: /Complex wave/ }).click();
+    const complex = explorer.getByTestId("scientific-explorer-linked-probe");
+    await expect(complex).toContainText("real =");
+    await expect(complex).toContainText("imaginary =");
+    await probe.locator('input[aria-label="Linked probe z"]').fill("3");
+    await expect(complex).toContainText("outside this field domain");
+    await expect(complex).not.toContainText("real =");
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    await expect(explorer.getByTestId("scientific-explorer-linked-probe"))
+      .toContainText("scalar = 10.25000");
+    await examples.getByRole("button", { name: /Generated vortex/ }).click();
+    await expect(probe).toContainText("Physical point: 1 m · -0.5 m · 3 m");
+    await expect(explorer.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("Verified linked point", { timeout: 30000 });
+    await expect(explorer.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("verified samples");
+    const readComponent = async (name: string) => {
+      const text = await explorer.getByTestId("scientific-explorer-linked-vector-probe").innerText();
+      return Number(text.match(new RegExp(`${name} = ([0-9.eE+-]+)`))?.[1]);
+    };
+    const scale = 16 / (16 + 1 + 0.25);
+    expect(await readComponent("east")).toBeCloseTo(0.5 * scale, 2);
+    expect(await readComponent("north")).toBeCloseTo(scale, 2);
+    expect(await readComponent("up")).toBeCloseTo(Math.sin(3) / 4, 2);
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-02 Burgers linked probe survives Project reopen with verified source", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await explorer.getByRole("region", { name: "Built-in scientific scenes" })
+      .getByRole("button", { name: /Measured Burgers vortex/ }).click();
+    const probe = explorer.getByTestId("scientific-explorer-cross-layer-probe");
+    await probe.getByRole("button", { name: "Place at this field center" }).click();
+    const point = await probe.getByText(/Physical point:/).textContent();
+    await expect(explorer.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("Verified linked point", { timeout: 30000 });
+    await explorer.getByRole("button", { name: "Save document" }).click();
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(stored.workspace.entries.find((entry: { module: string }) =>
+      entry.module === "vector3d")?.checkpoint.workspace.linkedProbe).toBeTruthy();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(reopened.getByTestId("scientific-explorer-cross-layer-probe"))
+      .toContainText(point!);
+    await expect(reopened.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("Verified linked point", { timeout: 30000 });
+    await expect(reopened.getByTestId("scientific-explorer-linked-vector-probe"))
+      .toContainText("burgers");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("SCI-02 Project library rechecks multiple scene sources after reopen", async () => {
   const root = await mkdtemp(join(tmpdir(), "m3d-explorer-library-"));
   const scalar = join(root, "scalar.sscene"), complex = join(root, "complex.sscene");

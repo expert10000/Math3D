@@ -73,6 +73,7 @@ import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResult
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
+import type { LinkedExplorerProbe } from "../vectorfield3d/linkedFieldProbe";
 import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedScientificExplorerEntries,
   type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
   "../vectorfield3d/scientificExplorerLibrary";
@@ -279,6 +280,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       explorerGraphId.current = document.identity.id;
       setExplorerScene(null);
       setExplorerFieldLayer(null);
+      setLinkedExplorerProbe(null);
     }
   }, [document.identity.id]);
   useEffect(() => {
@@ -343,6 +345,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
   const [scientificPresetKind, setScientificPresetKind] = useState<"all" | "scalar" | "vector" | "complex" | "explorer">("all");
   const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(readFieldExplorerSession);
+  const [linkedExplorerProbe, setLinkedExplorerProbe] = useState<LinkedExplorerProbe | null>(() => {
+    const saved = readFieldExplorerSession() ?? savedVectorField3D;
+    return saved?.workspace?.linkedProbe ?? (saved?.workspace?.probe ? {
+      point: saved.workspace.probe,
+      units: saved.source.axes.map(axis => axis.unit) as [string, string, string] } : null);
+  });
+  useEffect(() => {
+    const saved = savedVectorField3D;
+    if (!saved) return;
+    setLinkedExplorerProbe(current => current ?? saved.workspace?.linkedProbe ??
+      (saved.workspace?.probe ? { point: saved.workspace.probe,
+        units: saved.source.axes.map(axis => axis.unit) as [string, string, string] } : null));
+  }, [savedVectorField3D?.identity.id]);
   const [vectorField3DOpen, setVectorField3DOpen] = useState(() => readFieldExplorerSession() !== null);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<VectorField2DDocument | null>(null);
   const [vectorField2DOpen, setVectorField2DOpen] = useState(false);
@@ -361,6 +376,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   useEffect(() => {
     if (!openVectorField3DRequest) return;
     setVectorField3DDocument(openVectorField3DRequest.document);
+    setLinkedExplorerProbe(current => current ?? openVectorField3DRequest.document.workspace?.linkedProbe ?? null);
     setVectorField3DOpen(true);
   }, [openVectorField3DRequest?.token]);
   const scientificImportAvailable = typeof window !== "undefined" && !!window.scientificScenes?.openGraphDataset;
@@ -740,6 +756,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const vector = [vectorField3DDocument, savedVectorField3D].find(item =>
         item?.identity.id === entry.documentId);
       if (vector) { setVectorField3DDocument(vector); setExplorerFieldLayer(null);
+        setLinkedExplorerProbe(current => current ?? vector.workspace?.linkedProbe ?? null);
         setVectorField3DOpen(true); }
       return;
     }
@@ -2227,11 +2244,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               onRemoveScientificScene?.(scene);
             }
           }}
-          fieldLayer={explorerFieldLayer} onReturnToVectorLayer={() => setExplorerFieldLayer(null)}
+          fieldLayer={explorerFieldLayer} linkedProbe={linkedExplorerProbe}
+          onLinkedProbeChange={setLinkedExplorerProbe}
+          onReturnToVectorLayer={() => setExplorerFieldLayer(null)}
           onOpenFieldDetails={() => { if (explorerFieldLayer) {
             setScientificFieldDocument(explorerFieldLayer); setScientificFieldOpen(true);
           } }}
-          onSaveDocument={onSaveVectorField3D} onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
+          onSaveDocument={field => { setVectorField3DDocument(field); onSaveVectorField3D?.(field); }}
+          onClose={() => { window.sessionStorage.removeItem(fieldExplorerSessionKey);
             setVectorField3DOpen(false);
             requestAnimationFrame(() => viewerRef.current?.querySelector<HTMLElement>(".graph2d-toolbar-menu > summary")?.focus()); }} />}
         {vectorField2DOpen && vectorField2DDocument && <VectorField2DPanel

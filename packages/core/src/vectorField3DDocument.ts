@@ -52,6 +52,8 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
   viewCenter: Readonly<{ xy: readonly [number, number]; xz: readonly [number, number];
     yz: readonly [number, number] }>;
   probe: readonly [number, number, number] | null;
+  linkedProbe: Readonly<{ point: readonly [number, number, number];
+    units: readonly [string, string, string] }> | null;
   hiddenSeedGroups: readonly string[];
   seedGroupStyles: readonly VectorField3DSeedGroupStyle[];
   equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
@@ -66,7 +68,8 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
   workspace?: VectorField3DWorkspace }>;
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
-  selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
+  selectedLayer: "arrows", layout: "three-pane", probe: null, linkedProbe: null,
+  cameraPreset: "perspective",
   equilibriumConstructions: [],
   isosurfaceLevel: null,
   isosurfaceTriangleBudget: 40_000,
@@ -192,6 +195,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "sliceChannel") ?
       { sliceChannel: defaults.sliceChannel } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "probe") ? { probe: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "linkedProbe") ?
+      { linkedProbe: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "hiddenSeedGroups") ?
       { hiddenSeedGroups: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "seedGroupStyles") ?
@@ -216,7 +221,7 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
       workspace.isosurfaceLevel !== null && (!finite(workspace.isosurfaceLevel) ||
         workspace.isosurfaceLevel < 0 || workspace.isosurfaceLevel > 1e9) ||
       !integer(workspace.isosurfaceTriangleBudget, 1, 100_000) ||
@@ -264,6 +269,12 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       !scientificPointWithinBounds(workspace.sliceCoordinates as number[], source.axes) ||
       workspace.probe !== null && (!tuple3(workspace.probe) ||
         !scientificPointWithinBounds(workspace.probe as number[], source.axes)) ||
+      workspace.linkedProbe !== null && (!record(workspace.linkedProbe) ||
+        !exact(workspace.linkedProbe, ["point", "units"]) ||
+        !tuple3(workspace.linkedProbe.point) ||
+        workspace.linkedProbe.point.some(value => !finite(value) || Math.abs(value) > 1e9) ||
+        !tuple3(workspace.linkedProbe.units) ||
+        workspace.linkedProbe.units.some(value => !text(value))) ||
       !Array.isArray(workspace.equilibriumConstructions) ||
       workspace.equilibriumConstructions.length > 32 ||
       workspace.equilibriumConstructions.some((item: unknown) => !record(item) ||

@@ -46,6 +46,8 @@ import { exportVectorField3DIsosurfaceGltf } from "./exportVectorField3DIsosurfa
 import { BUILTIN_EXPLORER_SCENES, type BuiltinExplorerSceneId,
   type ExplorerLibraryEntry } from "./scientificExplorerLibrary";
 import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
+import { LinkedExplorerVectorProbe } from "./LinkedExplorerVectorProbe";
+import type { LinkedExplorerProbe } from "./linkedFieldProbe";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -82,7 +84,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
-  fieldLayer, onOpenFieldDetails,
+  fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
   onReturnToVectorLayer }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
@@ -105,6 +107,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onRemoveLibraryScene?: (entry: ExplorerLibraryEntry) => void;
   onRecheckLibraryScene?: (entry: ExplorerLibraryEntry) => void;
   fieldLayer?: ScientificFieldDocument | null;
+  linkedProbe?: LinkedExplorerProbe | null;
+  onLinkedProbeChange?: (probe: LinkedExplorerProbe | null) => void;
   onOpenFieldDetails?: () => void;
   onReturnToVectorLayer?: () => void;
 }) {
@@ -187,6 +191,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       entry.sceneFingerprint === document.source.field.references[0].sceneFingerprint &&
       entry.datasetId === document.source.field.references[0].datasetId);
   const workspace = document.workspace ?? defaultVectorField3DWorkspace(document.source);
+  const linkedAxes = fieldLayer ? fieldLayer.source.reference.axes.map((axis, index) => ({
+    label: axis.name, unit: axis.unit, min: axis.origin,
+    max: axis.origin + axis.spacing * (fieldLayer.source.reference.shape[index]! - 1) })) :
+    document.source.axes;
+  const linkedUnits = linkedAxes.map(axis => axis.unit) as [string, string, string];
+  const changeLinkedProbe = (probe: LinkedExplorerProbe | null) => {
+    setDocument(current => reviseVectorField3DWorkspace(current, {
+      ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), linkedProbe: probe }));
+    onLinkedProbeChange?.(probe);
+  };
   const seedGroups = [...new Set(document.source.seeds.map(seed => seed.group ?? "manual"))]
     .map(id => ({ id, seeds: document.source.seeds.filter(seed =>
       (seed.group ?? "manual") === id) }));
@@ -662,6 +676,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           Math.abs(slice.fixedCoordinate - position[slice.normalAxis]) > 1e-9 ||
           slice.source.structuralHash !== revised.identity.structuralHash)) setSlice(null);
       setDocument(revised); setProbeArtifact(null); setDifferential(null); setError("");
+      changeLinkedProbe({ point: [...position] as [number, number, number],
+        units: document.source.axes.map(axis => axis.unit) as [string, string, string] });
       if (multiView) await previewLinkedViews(revised);
       else await verifyProbe(revised, position);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
@@ -1184,7 +1200,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     }
   };
   const save = () => {
-    try { const next = currentDocument(); onSaveDocument?.(next);
+    try { const current = currentDocument();
+      const next = reviseVectorField3DWorkspace(current, {
+        ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
+        linkedProbe });
+      onSaveDocument?.(next);
       try { window.localStorage.setItem(storageKey, serializeVectorField3DDocument(next)); }
       catch (cause) { if (!onSaveDocument) throw cause; }
       setDocument(next); setError("");
@@ -1199,6 +1219,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       probeEpoch.current++;
       setDocument(next); setExpressions(next.source.field.kind === "expressions" ?
         next.source.field.components.map(component => component.source) as [string, string, string] : ["-y", "x", "0"]);
+      onLinkedProbeChange?.(next.workspace?.linkedProbe ?? null);
       setSeedDraft(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as [string, string, string]);
       setSpatialCenter(next.source.axes.map(axis => String((axis.min + axis.max) / 2)) as
         [string, string, string]);
@@ -1557,6 +1578,31 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     <h4>Inspector</h4>
     <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
+    <section aria-label="Cross-layer physical probe"
+      className="vector-field3d-probe scientific-explorer-linked-inspector"
+      data-testid="scientific-explorer-cross-layer-probe">
+      <h5>Cross-layer physical probe</h5>
+      <p>One physical point follows the selected dataset. Values are shown only after source verification.</p>
+      <button type="button" onClick={() => changeLinkedProbe({
+        point: linkedAxes.map(axis => (axis.min + axis.max) / 2) as [number, number, number],
+        units: linkedUnits })}>Place at this field center</button>
+      {linkedProbe && <><div className="vector-field3d-probe-coordinates">
+        {([0, 1, 2] as const).map(axis => <label key={axis}>
+          Linked probe {linkedAxes[axis]!.label} ({linkedProbe.units[axis]})
+          <input type="number" step="any" aria-label={`Linked probe ${linkedAxes[axis]!.label}`}
+            value={linkedProbe.point[axis]} onChange={event => {
+              const value = Number(event.target.value);
+              if (!event.target.value.trim() || !Number.isFinite(value)) return;
+              const point = [...linkedProbe.point] as [number, number, number];
+              point[axis] = value; changeLinkedProbe({ ...linkedProbe, point });
+            }} />
+        </label>)}</div>
+        <p>Physical point: {linkedProbe.point.map((value, axis) =>
+          `${value} ${linkedProbe.units[axis]}`).join(" · ")}.</p>
+        <button type="button" onClick={() => changeLinkedProbe(null)}>Clear linked point</button>
+        {!fieldLayer && <LinkedExplorerVectorProbe document={document} linkedProbe={linkedProbe} />}
+      </>}
+    </section>
     <section aria-label="Display clipping box" className="vector-field3d-view-controls">
       <h5>Display clipping box</h5>
       <p>Hide samples outside these bounds. Field values, probes and saved source data stay unchanged.</p>
@@ -1923,6 +1969,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       data-multiview={multiView ? workspace.layout : undefined}>
       {fieldLayer ? <ScientificExplorerFieldLayer
         key={`${fieldLayer.identity.id}:${fieldLayer.identity.structuralHash}`} document={fieldLayer}
+        linkedProbe={linkedProbe}
         onOpenDetails={() => onOpenFieldDetails?.()} /> : <>
       {error && <div role="alert" className="scientific-field-explorer-viewer-error"
         data-testid="vector-field3d-viewer-error">{error}</div>}
