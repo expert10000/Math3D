@@ -81,7 +81,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
-  onOpenLibraryExample, onOpenLibraryEntry, fieldLayer, onOpenFieldDetails,
+  onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
+  fieldLayer, onOpenFieldDetails,
   onReturnToVectorLayer }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
@@ -101,10 +102,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onBrowseLibraryScene?: () => void;
   onOpenLibraryExample?: (id: BuiltinExplorerSceneId) => void;
   onOpenLibraryEntry?: (entry: ExplorerLibraryEntry) => void;
+  onRemoveLibraryScene?: (entry: ExplorerLibraryEntry) => void;
+  onRecheckLibraryScene?: (entry: ExplorerLibraryEntry) => void;
   fieldLayer?: ScientificFieldDocument | null;
   onOpenFieldDetails?: () => void;
   onReturnToVectorLayer?: () => void;
 }) {
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const matchingLibraryEntries = libraryEntries.filter(entry =>
+    [entry.title, entry.sceneTitle, entry.datasetId, entry.kind, entry.unit,
+      entry.sourceStatus, entry.reason].some(value => value?.toLowerCase().includes(libraryQuery.trim().toLowerCase())));
   const dialogRef = useRef<HTMLDivElement>(null);
   const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
   const cancelRunRef = useRef<(() => void) | null>(null);
@@ -1242,7 +1249,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     <section className="scientific-field-explorer-library" aria-label="Dataset library"
       data-testid="scientific-field-explorer-library">
       <h4>Dataset library</h4>
-      <p>Opened scene and saved Project fields. A field is verified again when opened.</p>
+      <p>Project scene references and saved fields. Scene sources are checked when a Project opens; field values are verified when viewed. Save the Project to keep additions.</p>
       {onOpenLibraryExample && <section aria-label="Built-in scientific scenes"
         className="scientific-field-explorer-examples">
         <h5>Built-in scenes</h5>
@@ -1256,16 +1263,28 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onClick={onBrowseLibraryScene}>Browse scientific scene</button>}
       {libraryBusy && <p role="status">Reading scene metadata…</p>}
       {libraryError && <p role="alert">{libraryError}</p>}
-      {libraryEntries.length ? <ul>{libraryEntries.map(entry => <li key={entry.id}
+      <label>Search datasets <input type="search" aria-label="Search dataset library"
+        value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)} /></label>
+      <small role="status">{matchingLibraryEntries.length} of {libraryEntries.length} datasets</small>
+      {matchingLibraryEntries.length ? <ul>{matchingLibraryEntries.map(entry => <li key={entry.id}
         aria-current={entry.documentId === fieldLayer?.identity.id ? "true" : undefined}>
-        <div><strong>{entry.title}</strong> <span>{entry.kind} · {entry.origin}</span></div>
+        <div><strong>{entry.title}</strong> <span>{entry.kind} · {entry.sceneKey ?
+          `Project scene: ${entry.sceneTitle}` : entry.origin}</span></div>
         <small>{entry.datasetId} · {entry.shape.join(" × ")} · {entry.unit}</small>
-        <small>{entry.reason}</small>
+        <small role={entry.sourceStatus === "missing" || entry.sourceStatus === "changed" ||
+          entry.sourceStatus === "error" ? "alert" : undefined}>{entry.reason}</small>
         <button type="button" disabled={busy || libraryBusy || !entry.ready || currentLibraryVector(entry)}
           onClick={() => onOpenLibraryEntry?.(entry)} aria-label={`Open ${entry.title} from dataset library`}>
           {currentLibraryVector(entry) ? "Current field" :
             entry.kind === "vector" ? "Open in Explorer" : "Open verified layer"}</button>
-      </li>)}</ul> : <p>Open a scientific scene or save a field in the Project to add it here.</p>}
+        {entry.sceneKey && <><button type="button" disabled={libraryBusy}
+          onClick={() => onRecheckLibraryScene?.(entry)}
+          aria-label={`Recheck ${entry.sceneTitle} source`}>Recheck source</button>
+          <button type="button" disabled={libraryBusy}
+            onClick={() => onRemoveLibraryScene?.(entry)}
+            aria-label={`Remove ${entry.sceneTitle} from Project library`}>Remove scene</button></>}
+      </li>)}</ul> : <p>{libraryEntries.length ? "No datasets match your search." :
+        "Open a scientific scene or save a field in the Project to add it here."}</p>}
     </section>
     <nav aria-label="Field layers" className="vector-field3d-layers">
       {([ ["arrows", "3D arrows"], ["trajectories", "Trajectories"],

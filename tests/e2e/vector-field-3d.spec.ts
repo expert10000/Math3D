@@ -70,6 +70,78 @@ test("SCI-02 opens built-in vector, scalar and complex scenes without a folder p
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-02 Project library rechecks multiple scene sources after reopen", async () => {
+  const root = await mkdtemp(join(tmpdir(), "m3d-explorer-library-"));
+  const scalar = join(root, "scalar.sscene"), complex = join(root, "complex.sscene");
+  await cp(resolve("tests/fixtures/scientific-scene/quadratic-volume.sscene"), scalar, { recursive: true });
+  await cp(resolve("tests/fixtures/scientific-scene/complex-wave-volume.sscene"), complex, { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const library = explorer.getByRole("region", { name: "Dataset library" });
+    for (const folder of [scalar, complex]) {
+      await app.app.evaluate(({ dialog }, selected) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
+      }, folder);
+      await library.getByRole("button", { name: "Browse scientific scene" }).click();
+    }
+    await expect(library).toContainText("Potential scalar");
+    await expect(library).toContainText("Complex wave");
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(stored.workspace.scientificScenes).toHaveLength(2);
+    expect(JSON.stringify(stored.workspace.scientificScenes)).not.toContain("values");
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const current = page.getByRole("region", { name: "Dataset library" });
+    await expect(current).toContainText("Reference current");
+    await current.getByRole("button", { name: "Open Potential from dataset library" }).click();
+    await expect(page.getByTestId("scientific-explorer-field-layer")
+      .getByRole("figure", { name: /Verified volume for Potential scalar/ })).toBeVisible();
+    await page.getByRole("region", { name: "Scientific Field Explorer" })
+      .getByRole("button", { name: "Back to Graphs" }).click();
+    await rm(scalar, { recursive: true });
+    const manifestPath = join(complex, "manifest.json");
+    const changed = JSON.parse(await readFile(manifestPath, "utf8"));
+    changed.title += " updated";
+    const changedBytes = Buffer.from(JSON.stringify(changed));
+    await writeFile(manifestPath, changedBytes);
+    const bundlePath = join(complex, "bundle.json");
+    const bundle = JSON.parse(await readFile(bundlePath, "utf8"));
+    bundle.manifest.bytes = changedBytes.byteLength;
+    bundle.manifest.sha256 = createHash("sha256").update(changedBytes).digest("hex");
+    await writeFile(bundlePath, JSON.stringify(bundle));
+    if (!await projects.getByTestId(`project-open-saved-${stored.identity.id}`).isVisible())
+      await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const reopened = page.getByRole("region", { name: "Dataset library" });
+    await expect(reopened).toContainText("Source missing");
+    await expect(reopened).toContainText("Source changed");
+    await reopened.getByRole("searchbox", { name: "Search dataset library" }).fill("potential");
+    await expect(reopened).toContainText("1 of 2 datasets");
+    await expect(reopened).not.toContainText("Complex wave · Project scene");
+    await expect(reopened.getByRole("button", { name: "Open Potential from dataset library" }))
+      .toBeDisabled();
+  } finally {
+    await closeSurfaceApp(app);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", async () => {
   const app = await launchSurfaceApp();
   try {
@@ -95,7 +167,7 @@ test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", as
     const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
     const library = explorer.getByRole("region", { name: "Dataset library" });
     await expect(library).toContainText("Potential · scalar");
-    await expect(library).toContainText("Velocity vector · scene");
+    await expect(library).toContainText("Velocity vector · Project scene");
     await expect(library.getByRole("button", { name: "Open Velocity from dataset library" }))
       .toBeDisabled();
     await library.getByRole("button", { name: /Open Potential · scalar from dataset library/ }).click();
@@ -111,12 +183,12 @@ test("SCI-02 reopens a saved scalar layer from the Explorer dataset library", as
     await page.getByTestId("workspace-nav-surfaces").click();
     await page.getByTestId("workspace-nav-graphs").click();
     const restoredLibrary = page.getByRole("region", { name: "Dataset library" });
-    await expect(restoredLibrary).toContainText("Velocity vector · scene");
+    await expect(restoredLibrary).toContainText("Velocity vector · Project scene");
     await app.app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () =>
       ({ canceled: false, filePaths: [folder] }); },
     resolve("tests/fixtures/scientific-scene/quadratic-volume.sscene"));
     await restoredLibrary.getByRole("button", { name: "Browse scientific scene" }).click();
-    await expect(restoredLibrary).toContainText("Potential scalar · scene");
+    await expect(restoredLibrary).toContainText("Potential scalar · Project scene");
     await restoredLibrary.getByRole("button", { name: "Open Potential from dataset library" }).click();
     await expect(page.getByTestId("scientific-explorer-field-layer")
       .getByRole("figure", { name: /Verified volume for Potential scalar/ })).toBeVisible();

@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseScientificSceneManifest, type ScientificFieldDocument } from "@math3d/core";
-import { scientificExplorerLibrary } from "./scientificExplorerLibrary";
+import { scientificExplorerLibrary, scientificSceneReferenceFromManifest,
+  savedScientificExplorerEntries } from "./scientificExplorerLibrary";
 
 const manifest = (name: string) => {
   const parsed = parseScientificSceneManifest(readFileSync(resolve(import.meta.dirname,
@@ -31,5 +32,20 @@ describe("Field Explorer dataset library", () => {
       .toEqual([expect.objectContaining({ origin: "project", kind: "scalar",
         documentId: "temperature" }), expect.objectContaining({ origin: "project", kind: "complex",
         documentId: "wave" })]);
+  });
+
+  it("indexes several scene references with source status and no samples", () => {
+    const scenes = ["quadratic-volume", "complex-wave-volume"].map((name, index) =>
+      scientificSceneReferenceFromManifest(manifest(name), String(index + 1).repeat(64),
+        { kind: "directory", value: `C:/scenes/${name}.sscene` }));
+    const pending = savedScientificExplorerEntries(scenes, {});
+    expect(pending).toHaveLength(2);
+    expect(pending.every(entry => !entry.ready && entry.sourceStatus === "checking")).toBe(true);
+    const statuses = Object.fromEntries(scenes.map(scene =>
+      [`directory:${scene.locator.value}:${scene.fingerprint}`, "current" as const]));
+    expect(savedScientificExplorerEntries(scenes, statuses).map(entry => entry.kind))
+      .toEqual(["scalar", "complex"]);
+    expect(savedScientificExplorerEntries(scenes, statuses).every(entry => entry.ready)).toBe(true);
+    expect(JSON.stringify(scenes)).not.toContain("values");
   });
 });

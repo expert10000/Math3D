@@ -9,6 +9,7 @@ import {
   verifyGraph2DScientificVolume,
   parseScientificSceneManifest, createGraph2DFieldReference, inspectGraph2DFieldReference,
   isGraph2DFieldLocator,
+  scientificSceneLibraryKey, type ScientificSceneLibraryReference,
   createGraph2DVectorFieldReference, inspectGraph2DVectorFieldReference,
   reviewGraph2DVectorFieldRelink,
   reviewGraph2DFieldRelink,
@@ -72,7 +73,8 @@ import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResult
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
-import { scientificExplorerLibrary, type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
+import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedScientificExplorerEntries,
+  type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
   "../vectorfield3d/scientificExplorerLibrary";
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
@@ -105,6 +107,7 @@ import "./graphsWorkspace.css";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
 const EXPLORER_SCENE_SESSION_KEY = "math3d.scientific-field-explorer.scene.v1";
+const EMPTY_SCIENTIFIC_SCENES: readonly ScientificSceneLibraryReference[] = [];
 type ExplorerSceneSource = Readonly<{ manifestJson: string; fingerprint: string;
   locator: Graph2DFieldLocator }>;
 function readExplorerSceneSession(graphId: string): ExplorerSceneSource | null {
@@ -190,6 +193,9 @@ type Props = {
   openVectorField2DRequest?: { document: VectorField2DDocument; token: number } | null;
   onSaveVectorField2D?: (document: VectorField2DDocument) => void;
   savedScientificFields?: readonly ScientificFieldDocument[];
+  savedScientificScenes?: readonly ScientificSceneLibraryReference[];
+  onSaveScientificScene?: (scene: ScientificSceneLibraryReference) => void;
+  onRemoveScientificScene?: (scene: ScientificSceneLibraryReference) => void;
   openScientificFieldRequest?: { document: ScientificFieldDocument; token: number } | null;
   onSaveScientificField?: (document: ScientificFieldDocument) => void;
 };
@@ -202,7 +208,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D,
   savedVectorField3DPointResults, onSaveVectorField3DPointResult, onOpenVectorField3DProjectResults,
   onPromoteVectorField3DIsosurface,
-  savedScientificFields = [], openScientificFieldRequest, onSaveScientificField,
+  savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
+  onSaveScientificScene, onRemoveScientificScene,
+  openScientificFieldRequest, onSaveScientificField,
   savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
@@ -228,6 +236,42 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       { datasetId: string; component: string; shape: [number, number] | [number, number, number]; values?: never })[] } | null>(null);
   const [explorerScene, setExplorerScene] = useState<ExplorerSceneSource | null>(() =>
     readExplorerSceneSession(document.identity.id));
+  const [sceneSourceStatuses, setSceneSourceStatuses] = useState<Record<string,
+    "checking" | "current" | "missing" | "changed" | "error">>({});
+  const [sceneLibraryChecking, setSceneLibraryChecking] = useState(false);
+  const sceneStatusKey = (scene: ScientificSceneLibraryReference) =>
+    `${scientificSceneLibraryKey(scene)}:${scene.fingerprint}`;
+  useEffect(() => {
+    let active = true;
+    const bridge = window.scientificScenes;
+    if (!savedScientificScenes.length) { setSceneSourceStatuses({}); setSceneLibraryChecking(false); return; }
+    setSceneSourceStatuses(Object.fromEntries(savedScientificScenes.map(scene =>
+      [sceneStatusKey(scene), "checking"])));
+    if (!bridge?.checkGraphDatasetReference) {
+      setSceneSourceStatuses(Object.fromEntries(savedScientificScenes.map(scene =>
+        [sceneStatusKey(scene), "error"])));
+      return;
+    }
+    setSceneLibraryChecking(true);
+    void (async () => {
+      for (const scene of savedScientificScenes) {
+        let status: "current" | "missing" | "changed" | "error" = "error";
+        try {
+          const opened = await bridge.checkGraphDatasetReference({ locator: scene.locator,
+            sceneFingerprint: scene.fingerprint });
+          if (!opened.ok) status = opened.status;
+          else {
+            const parsed = parseScientificSceneManifest(opened.source.manifestJson);
+            status = parsed.ok && parsed.value.sceneId === scene.sceneId ? "current" : "error";
+          }
+        } catch { status = "error"; }
+        if (!active) break;
+        setSceneSourceStatuses(current => ({ ...current, [sceneStatusKey(scene)]: status }));
+      }
+      if (active) setSceneLibraryChecking(false);
+    })();
+    return () => { active = false; };
+  }, [savedScientificScenes, document.identity.id]);
   const [explorerFieldLayer, setExplorerFieldLayer] = useState<ScientificFieldDocument | null>(null);
   const explorerGraphId = useRef(document.identity.id);
   useEffect(() => {
@@ -325,9 +369,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     [scientificImport]);
   const explorerManifest = useMemo(() => explorerScene ?
     parseScientificSceneManifest(explorerScene.manifestJson) : null, [explorerScene]);
-  const explorerLibrary = scientificExplorerLibrary(explorerManifest?.ok ? explorerManifest.value : null,
+  const currentSceneIsSaved = !!explorerScene && savedScientificScenes.some(scene =>
+    scene.fingerprint === explorerScene.fingerprint &&
+    scene.locator.kind === explorerScene.locator.kind && scene.locator.value === explorerScene.locator.value);
+  const explorerLibrary = [...savedScientificExplorerEntries(savedScientificScenes, sceneSourceStatuses),
+    ...scientificExplorerLibrary(!currentSceneIsSaved && explorerManifest?.ok ? explorerManifest.value : null,
     [savedVectorField3D].filter((item): item is VectorField3DDocument => !!item),
-    savedScientificFields, explorerScene?.fingerprint);
+    savedScientificFields, explorerScene?.fingerprint)];
   const scientificDataset = scientificManifest?.ok ? scientificManifest.value.datasets.find(item => item.id === scientificSelected?.datasetId) : null;
   const scientificCoordinate = scientificManifest?.ok ? scientificManifest.value.coordinates.find(item => item.id === scientificDataset?.coordinateSystem) : null;
   const scientificExplorerDatasets = scientificManifest?.ok ? scientificManifest.value.datasets
@@ -574,6 +622,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     try {
       const parsed = parseScientificSceneManifest(source.manifestJson);
       if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
+      if (scientificImport) onSaveScientificScene?.(scientificSceneReferenceFromManifest(parsed.value,
+        source.fingerprint, source.locator));
       const dataset = parsed.value.datasets.find(item => item.id === datasetId);
       if (!dataset || dataset.shape.length !== 3)
         throw new TypeError("The selected 3D dataset is unavailable.");
@@ -639,6 +689,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (!parsed.ok) throw new TypeError(parsed.errors.join(" "));
       const source = { manifestJson: opened.source.manifestJson,
         fingerprint: opened.source.fingerprint, locator: opened.source.locator };
+      onSaveScientificScene?.(scientificSceneReferenceFromManifest(parsed.value,
+        source.fingerprint, source.locator));
       setExplorerScene(source);
       if (example) {
         const dataset = parsed.value.datasets.find(item => item.shape.length === 3);
@@ -653,9 +705,36 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     }
     if (selected) await openExplorerSceneDataset(selected.datasetId, selected.source);
   };
+  const recheckExplorerLibraryScene = async (entry: ExplorerLibraryEntry, openDataset = false) => {
+    const scene = savedScientificScenes.find(item => scientificSceneLibraryKey(item) === entry.sceneKey);
+    const bridge = window.scientificScenes;
+    if (!scene || !bridge?.checkGraphDatasetReference || scientificImportBusy) return;
+    const key = sceneStatusKey(scene);
+    setSceneSourceStatuses(current => ({ ...current, [key]: "checking" }));
+    setScientificImportError("");
+    let source: ExplorerSceneSource | null = null;
+    try {
+      const opened = await bridge.checkGraphDatasetReference({ locator: scene.locator,
+        sceneFingerprint: scene.fingerprint });
+      if (!opened.ok) {
+        setSceneSourceStatuses(current => ({ ...current, [key]: opened.status }));
+        return;
+      }
+      const parsed = parseScientificSceneManifest(opened.source.manifestJson);
+      const status = parsed.ok && parsed.value.sceneId === scene.sceneId ? "current" : "error";
+      setSceneSourceStatuses(current => ({ ...current, [key]: status }));
+      if (status === "current") source = { manifestJson: opened.source.manifestJson,
+        fingerprint: opened.source.fingerprint, locator: opened.source.locator };
+    } catch (error) {
+      setSceneSourceStatuses(current => ({ ...current, [key]: "error" }));
+      setScientificImportError((error as Error).message);
+    }
+    if (source && openDataset) await openExplorerSceneDataset(entry.datasetId, source);
+  };
   const openExplorerLibraryEntry = (entry: ExplorerLibraryEntry) => {
     if (!entry.ready) return;
     setScientificImportError("");
+    if (entry.sceneKey) { void recheckExplorerLibraryScene(entry, true); return; }
     if (entry.origin === "scene") { void openExplorerSceneDataset(entry.datasetId); return; }
     if (entry.kind === "vector") {
       const vector = [vectorField3DDocument, savedVectorField3D].find(item =>
@@ -2134,11 +2213,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${line.rows.length} verified ${line.origin.operation} samples to Graphs.`);
           }}
-          libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy}
+          libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy || sceneLibraryChecking}
           libraryError={scientificImportError}
           onBrowseLibraryScene={scientificImportAvailable ? () => void browseExplorerScene() : undefined}
           onOpenLibraryExample={scientificImportAvailable ? id => void browseExplorerScene(id) : undefined}
           onOpenLibraryEntry={openExplorerLibraryEntry}
+          onRecheckLibraryScene={entry => void recheckExplorerLibraryScene(entry)}
+          onRemoveLibraryScene={entry => {
+            const scene = savedScientificScenes.find(item => scientificSceneLibraryKey(item) === entry.sceneKey);
+            if (scene) {
+              if (explorerScene?.locator.kind === scene.locator.kind &&
+                  explorerScene.locator.value === scene.locator.value) setExplorerScene(null);
+              onRemoveScientificScene?.(scene);
+            }
+          }}
           fieldLayer={explorerFieldLayer} onReturnToVectorLayer={() => setExplorerFieldLayer(null)}
           onOpenFieldDetails={() => { if (explorerFieldLayer) {
             setScientificFieldDocument(explorerFieldLayer); setScientificFieldOpen(true);

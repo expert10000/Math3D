@@ -603,6 +603,8 @@ declare global {
         Promise<{ ok: true; source: Awaited<ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>> extends infer R ?
           R extends { ok: true; source: infer S } ? S : never : never } |
           { ok: false; status: "missing" | "changed" | "error"; error: string }>;
+      checkGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string }) =>
+        ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDatasetReference"]>;
       chooseGraphDatasetRelink: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
         locator: import("@math3d/core").Graph2DFieldLocator;
         datasets: { datasetId: string; component: string; shape: [number, number] | [number, number, number] }[] } } |

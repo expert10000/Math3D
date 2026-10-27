@@ -125,34 +125,44 @@ export function registerScientificSceneIpc(): void {
       return { ok: true, source: { ...source, locator: { kind: "preset", value: args[0] } } };
     } catch (error) { return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) }; }
   });
-  ipcMain.handle("scientificScenes:openGraphDatasetReference", async (event, ...args: unknown[]): Promise<ScientificGraphReferenceOpenResponse> => {
-    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
-      return { ok: false, status: "error", error: "Invalid Graph field reference request." };
+  const verifyGraphDatasetReference = async (args: unknown[]): Promise<{
+    result: ScientificGraphReferenceOpenResponse; directory: string | null }> => {
+    if (args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      return { result: { ok: false, status: "error", error: "Invalid Graph field reference request." }, directory: null };
     const request = args[0] as Record<string, unknown>;
     if (Object.keys(request).sort().join(",") !== "locator,sceneFingerprint" ||
         !isGraph2DFieldLocator(request.locator) ||
         request.locator.kind === "directory" && !isAbsolute(request.locator.value) ||
         typeof request.sceneFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.sceneFingerprint))
-      return { ok: false, status: "error", error: "Invalid Graph field reference request." };
+      return { result: { ok: false, status: "error", error: "Invalid Graph field reference request." }, directory: null };
     const locator = request.locator as Graph2DFieldLocator;
     const directory = locator.kind === "preset" ?
       Object.prototype.hasOwnProperty.call(GRAPH_DATASET_PRESETS, locator.value) ?
         graphPresetDirectory(GRAPH_DATASET_PRESETS[locator.value as keyof typeof GRAPH_DATASET_PRESETS]) :
         null : locator.value;
-    if (!directory) return { ok: false, status: "error", error: "Unknown Graph field preset." };
-    graphActive.delete(event.sender);
+    if (!directory) return { result: { ok: false, status: "error", error: "Unknown Graph field preset." }, directory: null };
     try {
       const source = await openScientificGraphDatasets(directory);
       if (source.fingerprint !== request.sceneFingerprint)
-        return { ok: false, status: "changed", error: "Saved field source has changed. Choose a matching source before viewing." };
-      graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
-      return { ok: true, source: { ...source, locator } };
+        return { result: { ok: false, status: "changed", error: "Saved field source has changed. Choose a matching source before viewing." }, directory };
+      return { result: { ok: true, source: { ...source, locator } }, directory };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, status: /ENOENT|not found|does not exist|missing/i.test(message) ? "missing" :
-        /integrity failed|checksum|fingerprint changed/i.test(message) ? "changed" : "error",
-        error: message };
+      return { result: { ok: false, status: /ENOENT|not found|does not exist|missing/i.test(message) ? "missing" :
+        /integrity failed|checksum|fingerprint changed|invalid scientific bundle file size|file identity changed|file truncated|file size changed/i.test(message) ? "changed" : "error",
+        error: message }, directory };
     }
+  };
+  ipcMain.handle("scientificScenes:checkGraphDatasetReference", async (event, ...args: unknown[]): Promise<ScientificGraphReferenceOpenResponse> =>
+    trustedSender(event) ? (await verifyGraphDatasetReference(args)).result :
+      { ok: false, status: "error", error: "Invalid Graph field reference request." });
+  ipcMain.handle("scientificScenes:openGraphDatasetReference", async (event, ...args: unknown[]): Promise<ScientificGraphReferenceOpenResponse> => {
+    if (!trustedSender(event)) return { ok: false, status: "error", error: "Invalid Graph field reference request." };
+    graphActive.delete(event.sender);
+    const verified = await verifyGraphDatasetReference(args);
+    if (verified.result.ok && verified.directory)
+      graphActive.set(event.sender, { directory: verified.directory, fingerprint: verified.result.source.fingerprint });
+    return verified.result;
   });
   ipcMain.handle("scientificScenes:chooseGraphDatasetRelink", async (event, ...args: unknown[]): Promise<ScientificGraphRelinkPickResponse> => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid Graph field relink request." };

@@ -84,6 +84,7 @@ export * from "./volumeDocument";
 export * from "./volumeCommands";
 export * from "./viewerProvenance";
 export * from "./mixedWorkspace";
+export * from "./scientificSceneLibrary";
 export * from "./math3dProject";
 export * from "./projectComposition";
 export * from "./quantumSceneDocument";

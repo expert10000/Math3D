@@ -16,6 +16,8 @@ import { normalizeScientificFieldDocument, type ScientificFieldDocument } from "
 import { normalizeViewerCommittedSelection, viewerSourceFromDocument, type ViewerCommittedSelection } from "./viewerProvenance";
 import { canonicalJsonByteLength, matchesScientificSourceGeneration, type ScientificSourceGeneration } from "./scientificJobs";
 import type { ValidationResult } from "./validation";
+import { isScientificSceneLibraryReference, scientificSceneLibraryKey,
+  type ScientificSceneLibraryReference } from "./scientificSceneLibrary";
 
 export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
@@ -51,13 +53,15 @@ export type MixedWorkspaceDocument = Readonly<{
   relations: readonly DocumentRelation[];
   committedSelection: ViewerCommittedSelection | null;
   constructions: readonly MixedConstructionSource[];
+  scientificScenes?: readonly ScientificSceneLibraryReference[];
 }>;
 export type MixedWorkspaceReplayAdapter = (entry: MixedWorkspaceEntry) => KernelWorkspaceDocument;
 export type MixedWorkspaceReplayAdapters = Partial<Record<KernelWorkspaceModule, MixedWorkspaceReplayAdapter>>;
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-const exact = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
-  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) && Object.keys(value).every((key) => keys.includes(key));
+const exact = (value: Record<string, unknown>, keys: readonly string[], optional: readonly string[] = []): boolean =>
+  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+  Object.keys(value).every((key) => keys.includes(key) || optional.includes(key));
 const jsonClone = <T>(value: T): T => JSON.parse(canonicalJsonStringify(value)) as T;
 const moduleSet = new Set<string>(KERNEL_WORKSPACE_MODULES);
 
@@ -83,7 +87,7 @@ const identityEquals = (left: DocumentIdentity, right: DocumentIdentity): boolea
 
 export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResult<MixedWorkspaceDocument> => {
   const errors: string[] = [];
-  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"]) ||
+  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes"]) ||
       value.format !== MIXED_WORKSPACE_FORMAT || value.schemaVersion !== MIXED_WORKSPACE_SCHEMA_VERSION) return { ok: false, errors: ["Invalid mixed workspace envelope."] };
   if (!Array.isArray(value.entries) || value.entries.length > 512) errors.push("Invalid mixed workspace entries.");
   const entries: MixedWorkspaceEntry[] = [];
@@ -159,6 +163,12 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
     if (!record(construction) || !exact(construction, ["kind", "source", "normalizedSceneScript"]) ||
         !["scratch", "workbook", "scene-script"].includes(String(construction.kind))) errors.push("Invalid construction source.");
     else constructions.push(construction as MixedConstructionSource);
+  }
+  if (value.scientificScenes !== undefined) {
+    if (!Array.isArray(value.scientificScenes) || value.scientificScenes.length > 64 ||
+        value.scientificScenes.some(scene => !isScientificSceneLibraryReference(scene)) ||
+        new Set((value.scientificScenes as ScientificSceneLibraryReference[]).map(scientificSceneLibraryKey)).size !== value.scientificScenes.length)
+      errors.push("Invalid scientific scene library references.");
   }
   try { if (canonicalJsonByteLength(value) > MAX_MIXED_WORKSPACE_BYTES) errors.push("Mixed workspace exceeds the compact format limit."); }
   catch (error) { errors.push(String((error as Error).message ?? error)); }

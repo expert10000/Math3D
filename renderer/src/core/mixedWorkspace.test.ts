@@ -45,6 +45,22 @@ const entries: MixedWorkspaceEntry[] = ([
 ] as const).map(([module, checkpoint]) => ({ module: module as KernelWorkspaceModule, checkpoint, expected: checkpoint.identity, replay: null }));
 
 describe("GK17 mixed workspace", () => {
+  it("round-trips bounded scene references while accepting older Projects without a library", () => {
+    const base = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [],
+      results: [], artifacts: [], relations: [], committedSelection: null, constructions: [] });
+    expect(parseMixedWorkspaceDocument(serializeMixedWorkspaceDocument(base)).scientificScenes).toBeUndefined();
+    const scene = { sceneId: "quadratic", title: "Quadratic potential",
+      locator: { kind: "directory" as const, value: "C:/scenes/quadratic.sscene" },
+      fingerprint: "a".repeat(64), datasets: [{ id: "potential", kind: "scalar" as const,
+        title: "Potential", shape: [3, 4, 5] as [number, number, number], unit: "V", ready: true }] };
+    const project = createMixedWorkspaceDocument({ ...base, scientificScenes: [scene] });
+    const reopened = parseMixedWorkspaceDocument(serializeMixedWorkspaceDocument(project));
+    expect(reopened.scientificScenes).toEqual([scene]);
+    expect(serializeMixedWorkspaceDocument(reopened)).not.toContain("values");
+    expect(() => createMixedWorkspaceDocument({ ...base, scientificScenes: [scene, scene] })).toThrow();
+    expect(() => parseMixedWorkspaceDocument(JSON.stringify({ ...base,
+      scientificScenes: [{ ...scene, datasets: [{ ...scene.datasets[0], values: [1, 2, 3] }] }] }))).toThrow();
+  });
   it("saves, reopens and replays all seven canonical module documents with exact identities", () => {
     const relation = createDocumentRelation({ kind: "derived-from", sources: [viewerSourceFromDocument(volume)], sourceOrder: "ordered",
       target: { type: "document", generation: viewerSourceFromDocument(surface) }, operation: "volume.extract.isosurface", parameters: { isoValue: 0 } });

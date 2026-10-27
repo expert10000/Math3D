@@ -1,5 +1,6 @@
 import type { ScientificFieldDocument, ScientificSceneManifest,
-  VectorField3DDocument } from "@math3d/core";
+  ScientificSceneLibraryReference, VectorField3DDocument } from "@math3d/core";
+import { scientificSceneLibraryKey } from "@math3d/core";
 import { scientificExplorerEligibility } from "../graph2d/scientificExplorerEligibility";
 
 export const BUILTIN_EXPLORER_SCENES = [
@@ -24,7 +25,40 @@ export type ExplorerLibraryEntry = Readonly<{
   ready: boolean;
   documentId?: string;
   sceneFingerprint?: string;
+  sceneKey?: string;
+  sceneTitle?: string;
+  sourceStatus?: "checking" | "current" | "missing" | "changed" | "error";
 }>;
+
+export function scientificSceneReferenceFromManifest(manifest: ScientificSceneManifest,
+  fingerprint: string, locator: ScientificSceneLibraryReference["locator"]): ScientificSceneLibraryReference {
+  const entries = scientificExplorerLibrary(manifest, [], [], fingerprint);
+  if (!entries.length) throw new TypeError("This scene has no 3D datasets for Explorer.");
+  return { sceneId: manifest.sceneId, title: manifest.title, fingerprint, locator,
+    datasets: entries.map(entry => ({ id: entry.datasetId, kind: entry.kind, title: entry.title,
+      shape: entry.shape as [number, number, number], unit: entry.unit, ready: entry.ready })) };
+}
+
+export function savedScientificExplorerEntries(scenes: readonly ScientificSceneLibraryReference[],
+  statuses: Readonly<Record<string, ExplorerLibraryEntry["sourceStatus"]>>): ExplorerLibraryEntry[] {
+  return scenes.flatMap(scene => {
+    const sceneKey = scientificSceneLibraryKey(scene);
+    const sourceStatus = statuses[`${sceneKey}:${scene.fingerprint}`] ?? "checking";
+    return scene.datasets.map(dataset => ({
+      id: `saved-scene:${sceneKey}:${dataset.id}`, origin: "scene" as const,
+      kind: dataset.kind, title: dataset.title, datasetId: dataset.id,
+      shape: dataset.shape, unit: dataset.unit, sceneFingerprint: scene.fingerprint,
+      sceneKey, sceneTitle: scene.title, sourceStatus,
+      ready: dataset.ready && sourceStatus === "current",
+      reason: sourceStatus === "current" ? dataset.ready ? "Reference current; field values verify when opened" :
+        "Requires a regular 3D Cartesian grid" : sourceStatus === "checking" ?
+        "Checking source…" : sourceStatus === "missing" ?
+        "Source missing · browse its .sscene folder again" : sourceStatus === "changed" ?
+        "Source changed · browse the updated .sscene folder to replace this reference" :
+        "Source could not be verified",
+    }));
+  });
+}
 
 /** Metadata only: samples remain in their verified source bundles. */
 export function scientificExplorerLibrary(manifest: ScientificSceneManifest | null,

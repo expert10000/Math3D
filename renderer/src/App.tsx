@@ -23187,6 +23187,7 @@ const App: React.FC = () => {
   const [vectorField2DOpenRequest, setVectorField2DOpenRequest] = useState<{ document: import("@math3d/core").VectorField2DDocument; token: number } | null>(null);
   const vectorField2DRequestSerial = useRef(0);
   const [scientificFieldDocuments, setScientificFieldDocuments] = useState<import("@math3d/core").ScientificFieldDocument[]>([]);
+  const [scientificSceneLibrary, setScientificSceneLibrary] = useState<import("@math3d/core").ScientificSceneLibraryReference[]>([]);
   const [scientificFieldOpenRequest, setScientificFieldOpenRequest] = useState<{ document: import("@math3d/core").ScientificFieldDocument; token: number } | null>(null);
   const scientificFieldRequestSerial = useRef(0);
   const [graph2dPromotions, setGraph2dPromotions] = useState<Graph2DAnyPromotion[]>([]);
@@ -77442,7 +77443,7 @@ case "mobius":
       const committedSelection = savedSelection && selectedEntry &&
         matchesScientificSourceGeneration(savedSelection.source, viewerSourceFromDocument({ identity: selectedEntry.expected })) ?
         savedSelection : null;
-      const next = createMixedWorkspaceDocument({ ...restored.workspace, entries,
+      const next = createMixedWorkspaceDocument({ ...restored.workspace, entries, scientificScenes: scientificSceneLibrary,
         committedSelection, activeDocumentIds: [...new Set([...restored.workspace.activeDocumentIds, ...entries.filter((entry) => !restored.workspace.entries.some((saved) => saved.expected.id === entry.expected.id)).map((entry) => entry.expected.id)])], results, relations, artifacts, constructions });
       restored.workspace = next;
       return next;
@@ -77512,7 +77513,7 @@ case "mobius":
       ...(Object.keys(geometryWorkbookSceneSeeds).length ? [{ kind: "workbook" as const, source: JSON.parse(JSON.stringify(geometryWorkbookSceneSeeds)) as CanonicalJsonValue, normalizedSceneScript: sceneScript }] : []),
       { kind: "scene-script" as const, source: sceneScript, normalizedSceneScript: sceneScript },
     ];
-    return createMixedWorkspaceDocument({ entries, activeDocumentIds,
+    return createMixedWorkspaceDocument({ entries, activeDocumentIds, scientificScenes: scientificSceneLibrary,
       results: uniqueResults, artifacts, relations: uniqueRelations,
       committedSelection: activeKernelSource ? { state: "committed", source: activeKernelSource, entityIds: activeKernelEvidence?.selectedEntityIds ?? [] } : null,
       constructions });
@@ -78686,6 +78687,7 @@ case "mobius":
 
   const reopenGraphWorkspace = (workspace: MixedWorkspaceDocument) => {
           restoredProjectRef.current = null; setAdditionalActiveId(null); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null);
+          setScientificSceneLibrary([...(workspace.scientificScenes ?? [])]);
           const field = workspace.entries.find((entry) => entry.module === "vector3d")?.checkpoint;
           setVectorField3DDocument(field?.format === "math3d.vector-field3d-document" ? field : null);
           setVectorField3DOpenRequest(null);
@@ -90191,6 +90193,13 @@ case "mobius":
             savedVectorField2D={vectorField2DDocument} openVectorField2DRequest={vectorField2DOpenRequest}
             onSaveVectorField2D={field => { setVectorField2DDocument(field); setVectorField2DOpenRequest(null); }}
             savedScientificFields={scientificFieldDocuments} openScientificFieldRequest={scientificFieldOpenRequest}
+            savedScientificScenes={scientificSceneLibrary}
+            onSaveScientificScene={scene => setScientificSceneLibrary(current =>
+              [...current.filter(item => item.locator.kind !== scene.locator.kind ||
+                item.locator.value !== scene.locator.value), scene].slice(-64))}
+            onRemoveScientificScene={scene => setScientificSceneLibrary(current =>
+              current.filter(item => item.locator.kind !== scene.locator.kind ||
+                item.locator.value !== scene.locator.value))}
             onSaveScientificField={field => { setScientificFieldDocuments(current => [field,
               ...current.filter(item => item.identity.id !== field.identity.id)]); setScientificFieldOpenRequest(null); }}
             onExportPersonalProject={id => exportPersonalGraphProject(captureMixedKernelWorkspace,id,localStorage)}
