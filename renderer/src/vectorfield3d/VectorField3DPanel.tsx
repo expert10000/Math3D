@@ -96,6 +96,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const probeEpoch = useRef(0);
   const previewEpoch = useRef(0);
   useEffect(() => {
+    cancelRequested.current = false;
     const previous = globalThis.document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
     return () => { cancelRequested.current = true; cancelRunRef.current?.(); probeEpoch.current++;
@@ -147,6 +148,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     undo: SeedEditSnapshot[]; redo: SeedEditSnapshot[] }>({ undo: [], redo: [] });
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
   const [error, setError] = useState("");
+  const [sourceVerification, setSourceVerification] = useState<
+    "pending" | "verifying" | "verified" | "failed">("pending");
   const [busy, setBusy] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
   const [busyAction, setBusyAction] = useState<"render" | "trajectory" | "equilibrium" | "isosurface" | null>(null);
@@ -341,7 +344,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     if (next.source.field.kind !== "scientific-bundle") throw new TypeError("Expected scientific source.");
     return next.source.field.references.map(ref => ref.component) as [string, string, string];
   };
-  const render = async () => {
+  const render = async (openedDocument?: VectorField3DDocument) => {
     if (busy || lineBusy) return;
     const epoch = ++previewEpoch.current;
     setSeedPlacementLayer(null); setSeedPlacement3DPlane(null); setSeedProposal(null);
@@ -350,7 +353,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
     let fingerprint: string | null = null;
     try {
-      const next = currentDocument();
+      const next = openedDocument ?? currentDocument();
+      if (next.source.field.kind === "scientific-bundle") setSourceVerification("verifying");
       if (next.source.field.kind === "expressions") {
         setArtifact(sampleVectorField3DArrows(next));
         if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe));
@@ -371,12 +375,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (epoch !== previewEpoch.current) return;
       if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes }));
-      setArtifact(result); setDocument(next);
+      setArtifact(result); setDocument(next); setSourceVerification("verified");
     } catch (cause) { if (epoch === previewEpoch.current) {
-      setArtifact(null); setError(cause instanceof Error ? cause.message : String(cause)); } }
+      setArtifact(null); setSourceVerification("failed");
+      setError(cause instanceof Error ? cause.message : String(cause)); } }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
-      setBusy(false); setBusyAction(null); }
+      if (epoch === previewEpoch.current) { setBusy(false); setBusyAction(null); } }
   };
+  // A scientific field opens with a checked first preview; no button press is required.
+  useEffect(() => {
+    if (initialDocument?.source.field.kind === "scientific-bundle") void render(initialDocument);
+  }, []);
   const previewSlice = async () => {
     if (busy || lineBusy || normalAxis === undefined) return;
     const coordinate = workspace.sliceCoordinates[normalAxis];
@@ -1173,7 +1182,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
       setDifferential(null);
       setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
-      setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
+      setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus("");
+      if (next.source.field.kind === "scientific-bundle") {
+        setSourceVerification("pending"); void render(next);
+      } }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   return createPortal(<div className="scientific-field-explorer" role="region"
@@ -1772,6 +1784,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </section>}
     <p>{datasetLink ? "Manifest-pinned dataset link" : "Expression field"} ·
       {datasetLink ? ` ${datasetLink.shape.join(" × ")} samples` : " bounded authored domain"}</p>
+    {datasetLink && <p role="status" aria-live="polite" data-testid="vector-field3d-source-verification">
+      Scene {datasetLink.sceneId} · dataset {datasetLink.datasetId}: {sourceVerification === "verified" ?
+        "verified source samples for the current 3D preview" : sourceVerification === "failed" ?
+        "verification failed; repair or relink the source" : sourceVerification === "verifying" ?
+        "verifying source data for the first 3D preview…" : "source verification pending"}.
+    </p>}
     {datasetLink && <details aria-label="Dataset provenance"><summary>Dataset provenance</summary>
       <p>Source hash <code>{datasetLink.sourceHash}</code></p>
       <p>Scene {datasetLink.sceneId} · dataset {datasetLink.datasetId}</p>

@@ -1082,6 +1082,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02 dataset choice.** The Graphs scientific import dialog lists every 3D dataset in the opened scene with shape, units, and an explicit Field Explorer eligibility result. Compatible three-component Cartesian velocity grids can be selected and opened directly. The dialog also shows the three bundled Explorer examples as separate scenes and can switch between them without returning to the preset menu. The preset picker offers a 3D Field Explorer filter with the small swirling example, the generated 80³ vortex, and the measured 47 × 85 × 55 Burgers treatment; the latter carries BCO-DMO CC BY 4.0 attribution. Reopening the Explorer in the same Graphs session keeps the last opened dataset as its source.
 
+**SCI-04 automatic source check.** Opening a manifest-linked field in Explorer now starts the verified arrow preview automatically. The status names the scene and dataset and distinguishes verification in progress, checked preview samples, and a failed source. A changed first-preview overview leaves the 3D view empty; repairing the source and pressing **Verify & render arrows** retries. Reopening a saved field performs the same check.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

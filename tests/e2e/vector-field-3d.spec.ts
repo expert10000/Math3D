@@ -388,9 +388,8 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await expect(editor).toContainText("east");
     await expect(editor).toContainText("north");
     await expect(editor).toContainText("up");
-    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
-    await expect(editor.getByTestId("vector-field3d-transfer-status"))
-      .toContainText("Initial verified transfer lattice: 8 × 8 × 8");
+    await expect(editor.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples", { timeout: 120_000 });
     await expect(editor.getByTestId("vector-field3d-transfer-status"))
       .toContainText("Full verified transfer lattice: 21 × 21 × 17");
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
@@ -428,8 +427,8 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
     await editor.getByRole("button", { name: "Save document" }).click();
     await editor.getByRole("button", { name: "Open saved document" }).click();
-    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
-    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples", { timeout: 120_000 });
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
 
     await editor.getByRole("button", { name: "Close" }).click();
@@ -446,8 +445,8 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await panel.getByTestId("project-viewer-document").selectOption(fieldId);
     editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toContainText("seed-1: (2");
-    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
-    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples", { timeout: 120_000 });
     await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toContainText("125 of 125 bounded samples");
 
     const resource = join(directory, "north.f64");
@@ -500,6 +499,47 @@ test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector3d-"))
       throw new Error("Unsafe vector-field fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Field Explorer verifies a v3 source automatically and refuses a changed first-preview overview", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-auto-verify-"));
+  const directory = join(root, "flow.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory,
+    { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    const importer = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await expect(importer).toContainText("Measured Burgers vortex");
+    const overviewPath = join(directory, "vx.overview.f64");
+    const original = await readFile(overviewPath);
+    const changed = Buffer.from(original); changed[0] ^= 1;
+    await writeFile(overviewPath, changed);
+    await importer.getByRole("button", { name: "Open in Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verification failed", { timeout: 120_000 });
+    await expect(editor.getByRole("alert")).toContainText(/integrity|checksum/i);
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toHaveCount(0);
+    await writeFile(overviewPath, original);
+    await editor.getByRole("button", { name: "Verify & render arrows" }).click();
+    await expect(editor.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples", { timeout: 120_000 });
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toBeVisible();
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-vector-auto-verify-"))
+      throw new Error("Unsafe automatic verifier fixture cleanup path");
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -773,6 +813,8 @@ test("SCI-04 larger generated scientific field shows verified overview before re
       .getByRole("button", { name: "Open in Field Explorer" }).click();
     const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(editor).toContainText("shape 80 × 80 × 80");
+    await expect(editor.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples", { timeout: 120_000 });
     await editor.evaluate(element => {
       const button = [...element.querySelectorAll("button")].find(item =>
         item.textContent?.includes("Verify & render arrows"));
