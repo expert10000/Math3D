@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 export type QuantumSceneExampleSummary = {
-  id: string; label: string; description: string; model: "SSH" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic";
+  id: string; label: string; description: string; model: "SSH" | "Rice–Mele" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic";
 };
 type BundledExample = QuantumSceneExampleSummary & {
   fixtureGroup: "quantum-scene" | "quantum-scene-orbitals";
@@ -22,6 +22,12 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "ssh-bands", label: "SSH · energy bands", description: "Two supplied bands along a one-dimensional k path",
     model: "SSH", fixtureGroup: "quantum-scene", folder: "run-145ac3f06cb940c28d457937345b0243-bands.qscene",
     fingerprint: "57e56d34e2dfe218f70a2c9bcd6068c6b733ac00abbdb8f72d63b57e9370521b" },
+  { id: "rice-mele-bands", label: "Rice–Mele · static periodic bands", description: "Two exact bands at fixed hopping and staggering; no pump cycle",
+    model: "Rice–Mele", fixtureGroup: "quantum-scene", folder: "run-c0be71581dc94fb599f4df7c7dab2031-bands.qscene",
+    fingerprint: "bddb5db99912697430c34d77518d2703153a4e5d04f6d478402cb27362b3225c" },
+  { id: "rice-mele-finite", label: "Rice–Mele · finite open chain", description: "Exact stored middle-pair density on 32 sites; no pump claim",
+    model: "Rice–Mele", fixtureGroup: "quantum-scene", folder: "run-c0be71581dc94fb599f4df7c7dab2031.qscene",
+    fingerprint: "345c7304d7d7d2ef463817d4792b06aa80697e8c03eb119baba652df783d92b4" },
   { id: "bhz-bands", label: "BHZ · paired-block bulk bands", description: "Four producer-supplied bands and spin-conserved Z₂ with mesh status; no edge-state claim",
     model: "BHZ", fixtureGroup: "quantum-scene", folder: "run-b918512202b94cfaa0e181c9afd1f158-bands.qscene",
     fingerprint: "83f2d740e1bae2de189a595a660eb948b5af11b6a5735a8d06f7ac8593491684" },
@@ -79,6 +85,9 @@ export const BUNDLED_QUANTUM_SCENE_EXAMPLES: readonly BundledExample[] = [
   { id: "hofstadter-tracked-edge", label: "Hofstadter · overlap-validated strip crossings", description: "One periodic bulk and two finite strips with producer-supplied eigenvector-overlap continuation and exact crossing samples",
     model: "Hofstadter", fixtureGroup: "quantum-scene", folder: "fixture-hofstadter-edge-1-6-tracked-edge.qscene",
     fingerprint: "0a76ce88110db94d181a1549172446ce3ade009a16a11d71203e1eaa22cf5b6d" },
+  { id: "hofstadter-edge-convergence", label: "Hofstadter · two-grid edge-flow convergence", description: "Matching strip terminations at 18/23 sites; exact 17/31-point crossings and periodic-seam diagnostics",
+    model: "Hofstadter", fixtureGroup: "quantum-scene", folder: "fixture-hofstadter-edge-1-5-two-grid-edge.qscene",
+    fingerprint: "bba3321e8ea4b668ec7310c841993a1e89243bfff8f723547305c4442637f5d3" },
   { id: "hydrogen-1s", label: "Hydrogenic · 1s", description: "Verified scalar and complex orbital field",
     model: "Hydrogenic", fixtureGroup: "quantum-scene-orbitals", folder: "orbital-1s.qscene",
     fingerprint: "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7" },

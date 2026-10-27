@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 28);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 28);
+  assert.equal(listBundledQuantumSceneExamples().length, 31);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 31);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -438,6 +438,25 @@ try {
   const changedOverlap=await readFile(join(changedTracked,"tracked-18-overlap.f64"));changedOverlap[0]^=1;
   await writeFile(join(changedTracked,"tracked-18-overlap.f64"),changedOverlap);
   await assert.rejects(importQuantumSceneBundle(changedTracked),/integrity|hash/i);
+  const convergenceFolder=join(fixtureRoot,bundledQuantumSceneExample("hofstadter-edge-convergence").folder);
+  const convergenceScene=await importQuantumSceneBundle(convergenceFolder);
+  const convergenceProducer=JSON.parse((await readFile(join(fixtureRoot,"hofstadter-edge-convergence-producer-results.json"))).toString("utf8"));
+  assert.equal(convergenceProducer.study.convergence.status,"consistent");
+  assert.deepEqual(convergenceProducer.study.convergence.terminations.map(item=>item.rightPhase),[2,2]);
+  assert.equal(convergenceScene.source.provenance.resultSha256,hash(Buffer.from(JSON.stringify(convergenceProducer.study))));
+  for(const [grid,width,sourceIndex] of [[17,18,3],[31,23,2]]){
+    const crossing=convergenceProducer.study.convergence.widths[width===18?0:1][grid===17?"coarseCrossings":"fineCrossings"][0];
+    const selected=inspectVerifiedScalarSample(convergenceScene,{fingerprint:sceneFingerprint(convergenceScene),
+      objectId:`grid-${grid}-${width}`,sampleIndex:0});
+    assert.equal(selected.position[0],crossing.ky);assert.equal(selected.value,crossing.overlap);
+    assert.ok(convergenceScene.source.annotations.find(note=>note.id===`grid-${grid}-${width}-0`)?.text.includes(
+      convergenceProducer.study.sources[sourceIndex].role));
+  }
+  const changedConvergence=join(root,"hofstadter-grid-changed.qscene");
+  await cp(convergenceFolder,changedConvergence,{recursive:true});
+  const changedGrid=await readFile(join(changedConvergence,"grid-17-18-overlap.f64"));changedGrid[0]^=1;
+  await writeFile(join(changedConvergence,"grid-17-18-overlap.f64"),changedGrid);
+  await assert.rejects(importQuantumSceneBundle(changedConvergence),/integrity|hash/i);
   for (const example of BUNDLED_QUANTUM_SCENE_EXAMPLES) {
     const directory = bundledQuantumSceneDirectory(example, resolve(), "C:\\Math3D-resources", false);
     assert.equal(directory, resolve("tests", "fixtures", example.fixtureGroup, example.folder));
@@ -456,10 +475,11 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 23, "Expected frozen SSH/QWZ plus bounded producer fixtures including tracked Hofstadter edges");
+  assert.equal(allFixtureNames.length, 26, "Expected frozen SSH/QWZ plus bounded producer fixtures including Rice–Mele");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
+  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
@@ -470,9 +490,10 @@ try {
   const butterflyFolderName=bundledQuantumSceneExample("hofstadter-butterfly").folder;
   const edgeFolderName=bundledQuantumSceneExample("hofstadter-bulk-edge").folder;
   const trackedFolderName=bundledQuantumSceneExample("hofstadter-tracked-edge").folder;
-  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName&&name!==stripFolderName&&name!==hallFolderName&&name!==butterflyFolderName&&name!==edgeFolderName&&name!==trackedFolderName);
+  const convergenceFolderName=bundledQuantumSceneExample("hofstadter-edge-convergence").folder;
+  const fixtureNames=allFixtureNames.filter(name=>!bhzFolders.has(name)&&!bbhFolders.has(name)&&!kitaevFolders.has(name)&&!riceFolders.has(name)&&name!==weylFolderName&&name!==nodalFolderName&&name!==landauFolderName&&name!==harperFolderName&&name!==chernFolderName&&name!==stripFolderName&&name!==hallFolderName&&name!==butterflyFolderName&&name!==edgeFolderName&&name!==trackedFolderName&&name!==convergenceFolderName);
   assert.equal(fixtureNames.length, 4, "Expected real Theory Lab SSH/QWZ standard and band bundles");
-  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau" && example.model!=="Hofstadter")
+  assert.deepEqual(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.filter(example => example.fixtureGroup === "quantum-scene" && example.model!=="BHZ" && example.model!=="BBH" && example.model!=="Kitaev" && example.model!=="Rice–Mele" && example.model!=="Weyl" && example.model!=="Nodal" && example.model!=="Landau" && example.model!=="Hofstadter")
     .map(example => example.model)), new Set(["QWZ", "SSH"]), "Q08 v0.1 has exactly two supported topological profiles");
   const expectedCoordinates = {
     "ssh/standard": { axes: ["site index", "display y", "display z"], units: ["site index", "dimensionless", "dimensionless"] },
@@ -609,6 +630,29 @@ try {
   const alteredCenters=join(alteredWilson,"wilson-x-negative-centers.f64"),centerBytes=await readFile(alteredCenters);
   centerBytes[0]^=1;await writeFile(alteredCenters,centerBytes);
   await assert.rejects(importQuantumSceneBundle(alteredWilson),/integrity|hash/i);
+  const riceBytes=await readFile(join(fixtureRoot,"rice-mele-producer-result.json"));
+  const riceResult=JSON.parse(riceBytes.toString("utf8"));
+  const riceBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-bands").folder));
+  const riceFinite=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite").folder));
+  for(const scene of [riceBands,riceFinite]){
+    assert.equal(scene.source.provenance.model,"rice_mele");
+    assert.equal(scene.source.provenance.runId,riceResult.runId);
+    assert.equal(scene.source.provenance.resultSha256,hash(riceBytes));
+    assert.equal(scene.source.provenance.source?.entryId,"rice_mele");
+    assert.equal(scene.source.topology,undefined,"Static result supplies no pump invariant");
+  }
+  assert.equal(riceBands.source.bands.kind,"path");
+  const riceBandSample=inspectVerifiedBandSample(riceBands,{fingerprint:sceneFingerprint(riceBands),objectId:"band-0",sampleIndex:25});
+  assert.equal(riceBandSample.k[0],riceResult.analysis.kValues[25]);
+  assert.equal(riceBandSample.energy,riceResult.analysis.lowerBand[25]);
+  const riceSite=inspectVerifiedScalarSample(riceFinite,{fingerprint:sceneFingerprint(riceFinite),objectId:"middle-density",sampleIndex:3});
+  assert.equal(riceSite.value,riceResult.analysis.middleDensity[3]);
+  assert.deepEqual(riceSite.position,[3,0,0]);
+  const riceChanged=join(root,"rice-mele-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite").folder),riceChanged,{recursive:true});
+  const riceDensityPath=join(riceChanged,"middle-density.f64"),riceDensityBytes=await readFile(riceDensityPath);
+  riceDensityBytes[0]^=1;await writeFile(riceDensityPath,riceDensityBytes);
+  await assert.rejects(importQuantumSceneBundle(riceChanged),/integrity|hash/i);
   const kitaevBytes=await readFile(join(fixtureRoot,"kitaev-producer-result.json"));
   const kitaevResult=JSON.parse(kitaevBytes.toString("utf8"));
   const kitaevBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-bands").folder));
