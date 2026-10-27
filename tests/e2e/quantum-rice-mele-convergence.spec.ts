@@ -24,6 +24,7 @@ test("five-run Rice–Mele scene keeps the two axes and exact samples after rest
       try {
         const page = await app.firstWindow(), profile = page.getByTestId("rice-convergence-profile");
         await expect(profile).toBeVisible();
+        await expect(page.getByTestId("quantum-scene-preview").getByText("Study:", { exact: true })).toBeVisible();
         await expect(profile).toContainText(study.studyId);
         await expect(page.getByTestId("rice-convergence-selection")).toHaveCount(0);
         await expect(page.getByTestId("rice-convergence-periodic")).toContainText("Cycle duration (inverse hopping energy)");

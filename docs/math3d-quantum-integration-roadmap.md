@@ -765,3 +765,19 @@ offers the pinned **Rice–Mele · five-run convergence** example.
 There is no fitted limit, extrapolation, shared-charge equality, or Math3D physics
 calculation. The two observables remain separate; the original broader Q08
 coverage status and the frozen Q10 profile are unchanged.
+
+### Selected source-run navigation (complete, 2026-10-27)
+
+The convergence profile now opens Theory Lab from an exact selected periodic or
+chain point. Math3D hides the generic scene-level source-run button, because the
+scene provenance ID names the study rather than one of its five saved runs. The
+main process reopens and verifies the full `.qscene`, checks the selected scalar
+value, sample index, source annotation, run ID and result hash, then verifies
+again after any Theory Lab checkout picker before sending the one-use launch
+intent. A changed active selection, changed bundle or missing file refuses the
+handoff. Lab remains responsible for verifying that the original saved run
+exists and matches its hash; Math3D does not fetch runs or calculate a result.
+
+Importer and Electron tests cover both series, restart, wrong/unselected IDs,
+and changed or missing bundle files. Theory Lab's source-run receiver acceptance
+also covers a missing local run, wrong hash and tampered saved run.

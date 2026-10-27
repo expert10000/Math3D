@@ -696,8 +696,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {sshError && <p role="alert">SSH view link refused: {sshError}</p>}
             </section>}
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
-            <div><b>Run:</b> {scene.provenance.runId}</div>
-            <div><b>Result SHA-256:</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
+            <div><b>{scene.provenance.model==="rice_mele_convergence_study"?"Study:":"Run:"}</b> {scene.provenance.runId}</div>
+            <div><b>{scene.provenance.model==="rice_mele_convergence_study"?"Study SHA-256:":"Result SHA-256:"}</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
             <div><b>Bundle:</b> <code data-testid="quantum-source-directory" style={{ overflowWrap: "anywhere" }}>{opened.directory}</code></div>
             <button type="button" data-testid="quantum-reveal-source" disabled={locating} onClick={() => void revealSource()}>
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}

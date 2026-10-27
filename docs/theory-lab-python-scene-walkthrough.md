@@ -71,11 +71,24 @@ It uses a `.qscene` directory. It does not use the Python `.sscene` publisher.
    shows two plots: periodic charge versus duration in **electron charge / cell**,
    and open-chain central-bond charge versus width in **electron charge**.
    Click a duration or width point to reverify its exact scalar value, dataset
-   index, source run ID, hash, status and recorded diagnostics.
+   index, source run ID, hash, status and recorded diagnostics. The source panel
+   labels the whole export as a **Study**; it is not itself a saved Lab run.
+   The generic **Open source run** action is therefore absent for this scene.
+   After selecting a point, click **Open selected run in Theory Lab**. Math3D
+   rechecks the `.qscene` and that point's run ID and hash before handing them
+   to the local Lab checkout. Lab then verifies its own saved run before opening.
 5. Close and restart Math3D, then reopen the same folder or its saved Project
    link. No point should start selected; choose one again to check source
    re-verification. For a quick viewer rehearsal without creating Lab runs, use
    **File → Verified quantum examples → Rice–Mele · five-run convergence**.
+
+The pinned example is a viewer rehearsal: its five producer run IDs are not
+installed in your local Theory Lab. **Open selected run in Theory Lab** on that
+example will start Lab with an exact source identity, but Lab should report the
+run unavailable. To test successful navigation, export a study from runs saved
+in your own Lab profile and keep those runs. If a run has been deleted or its
+hash changed, Lab refuses it. If any bundle file is missing or changed, Math3D
+refuses the handoff before starting Lab.
 
 The scene's 3D point positions are normalized for layout. The plots label their
 physical axes from the producer's saved metadata, and selection checks values
