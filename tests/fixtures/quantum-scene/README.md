@@ -47,3 +47,13 @@ The producer independently checks Pfaffian signs and the sampled real-pairing
 chiral winding. The pinned scene carries exact BdG curve and momentum samples,
 their source hash, conditional values and validity status. Math3D only inspects
 these supplied values. The older bands and finite-density bundles stay frozen.
+
+The separate `run-19f513c1ee9d4d1f8716a590fc7f1dc0-pump.qscene` was
+exported by Theory Lab's `scripts/export-rice-mele-pump-fixture.ts` from a
+verified closed-cycle run. `rice-mele-pump-producer-result.json` contains the
+exact saved result whose SHA-256 is embedded in the scene. Two band surfaces,
+plaquette phases and Wilson polarizations preserve exact source samples. The
+conditional occupied Chern and polarization winding are producer claims for
+ideal adiabatic transport of a filled band; neither finite-speed current nor
+finite-chain edge motion is supplied. The earlier static Rice–Mele pair is
+unchanged and makes no pump claim.

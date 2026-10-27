@@ -1,0 +1,260 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-19f513c1ee9d4d1f8716a590fc7f1dc0-pump",
+  "title": "Rice–Mele filled-band pump · saved cycle",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-19f513c1ee9d4d1f8716a590fc7f1dc0",
+    "jobId": "fixture-rice-mele-pump",
+    "model": "rice_mele_pump",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-27T11:08:45.060126+00:00",
+    "resultSha256": "18354596b230100af48d4b2d23256589fd9cc5928c2ff5d14ae47a4126602b54",
+    "adapter": "qvis/1",
+    "parameters": {
+      "baseHopping": 1,
+      "modulation": 0.4,
+      "staggerAmplitude": 0.6,
+      "staggerOffset": 0,
+      "kSamples": 32,
+      "phaseSamples": 32
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "rice_mele"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "cycle phase θ",
+      "Bloch momentum k",
+      "band energy"
+    ],
+    "units": [
+      "rad",
+      "rad / cell",
+      "hopping energy"
+    ]
+  },
+  "camera": {
+    "position": [
+      8,
+      -10,
+      8
+    ],
+    "target": [
+      3.141592653589793,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "band-0",
+      "label": "Occupied lower band",
+      "kind": "mesh",
+      "positions": "band-positions-0",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-0",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "band-1",
+      "label": "Empty upper band",
+      "kind": "mesh",
+      "positions": "band-positions-1",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 1
+      },
+      "scalars": "band-energy-1",
+      "indices": "band-triangles"
+    },
+    {
+      "id": "berry-plaquettes",
+      "label": "Exact stored FHS plaquette phases",
+      "kind": "point-cloud",
+      "positions": "cycle-coordinates",
+      "visible": true,
+      "style": {
+        "color": "#d99c73",
+        "opacity": 0.75,
+        "size": 0.04
+      },
+      "scalars": "plaquette-flux"
+    },
+    {
+      "id": "polarization-samples",
+      "label": "Occupied Wilson polarization at each saved phase",
+      "kind": "point-cloud",
+      "positions": "phase-positions",
+      "visible": true,
+      "style": {
+        "color": "#ad9ae0",
+        "opacity": 1,
+        "size": 0.15
+      },
+      "scalars": "polarization"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "cycle-coordinates",
+      "path": "cycle-coordinates.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1024,
+      "unit": "mixed: rad, rad / cell, display plane",
+      "bytes": 24576,
+      "sha256": "3063bbeef5ff4626ccaac12d6cd3d31a34a21d19a0edac48d6a36eb1affd217f"
+    },
+    {
+      "id": "band-triangles",
+      "path": "band-triangles.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1922,
+      "unit": "vertex index",
+      "bytes": 46128,
+      "sha256": "e28c1f1a8689a5b10196dce1b57ef886a8efaf4ba696077c4cd2b0e39f28531a"
+    },
+    {
+      "id": "band-energy-0",
+      "path": "band-energy-0.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 1024,
+      "unit": "hopping energy",
+      "bytes": 8192,
+      "sha256": "911e8214be92144e15bad879c36a5d80e575419d2875867240013218a4388576"
+    },
+    {
+      "id": "band-positions-0",
+      "path": "band-positions-0.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1024,
+      "unit": "mixed: phase, momentum, energy",
+      "bytes": 24576,
+      "sha256": "78fa3790b2ef3d581296666d66d975536f3fc0f5133c3fe11c966f84bffb2673"
+    },
+    {
+      "id": "band-energy-1",
+      "path": "band-energy-1.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 1024,
+      "unit": "hopping energy",
+      "bytes": 8192,
+      "sha256": "b89f90ef3acc9eea07cc815ef69b8ee79801aea85ea0b2f0c5999ba62c5bf63f"
+    },
+    {
+      "id": "band-positions-1",
+      "path": "band-positions-1.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1024,
+      "unit": "mixed: phase, momentum, energy",
+      "bytes": 24576,
+      "sha256": "617125211cadbf4c7fbcac5532b616e7cec69ac466eeb7dfebcdcd9f7d9bcb5a"
+    },
+    {
+      "id": "plaquette-flux",
+      "path": "plaquette-flux.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 1024,
+      "unit": "rad",
+      "bytes": 8192,
+      "sha256": "697ea9d66a8c6b8d5ca6ae37de3c71239d681d4abcbc2ead7d3d4172444759d4"
+    },
+    {
+      "id": "phase-positions",
+      "path": "phase-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 32,
+      "unit": "phase rad / schematic baseline",
+      "bytes": 768,
+      "sha256": "c9d6d8e2462898d56146047a7d4135f34a300942835171ac9d38337846492f66"
+    },
+    {
+      "id": "polarization",
+      "path": "polarization.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 32,
+      "unit": "electron charge / cell",
+      "bytes": 256,
+      "sha256": "ae678317ca93ee98979d0934275eda0d9a768dd9617cf057f1c5363e7f5f23f6"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "pump-scope",
+      "text": "Ideal adiabatic filled-band pump only · defined · Chern -1 · polarization winding -1. No finite-speed current or finite-chain edge motion.",
+      "position": [
+        3.141592653589793,
+        0,
+        5
+      ]
+    },
+    {
+      "id": "pump-gap",
+      "text": "Exact gap 1.20000; coarse/fine 1.20000 / 1.20000 hopping energy; periodic seams included.",
+      "position": [
+        3.141592653589793,
+        0,
+        -5
+      ]
+    }
+  ],
+  "topology": {
+    "quantities": [
+      {
+        "id": "plaquette-phase",
+        "label": "FHS occupied plaquette phase",
+        "kind": "berry-phase",
+        "object": "berry-plaquettes",
+        "dataset": "plaquette-flux",
+        "convention": "phase-major / k-fastest; each sample is a periodic-torus plaquette phase, not a continuous curvature interpolation"
+      }
+    ],
+    "invariants": [
+      {
+        "id": "pump-chern",
+        "label": "Occupied-band Chern",
+        "value": -1,
+        "status": "verified",
+        "method": "occupied-band FHS torus and independent k-Wilson-loop polarization winding; periodic seams included"
+      },
+      {
+        "id": "pump-winding",
+        "label": "Polarization winding",
+        "value": -1,
+        "status": "verified",
+        "method": "Independent k-Wilson polarization unwrapped across the closed cycle"
+      }
+    ],
+    "limitations": [
+      "Ideal adiabatic filled-band transport only.",
+      "No finite-speed current or finite-chain edge motion is stored.",
+      "The meshes and gap diagnostics come from the verified producer run."
+    ]
+  }
+}

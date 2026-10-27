@@ -562,6 +562,19 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Stored inputs: t₁={scene.provenance.parameters?.t1}, t₂={scene.provenance.parameters?.t2}, staggered Δ={scene.provenance.parameters?.delta}, open cells={scene.provenance.parameters?.cells}. {scene.bands ? `Select a band point for its exact stored k and energy (${scene.bands.energyUnit}).` : "Select a site for its exact stored middle-pair density (probability per site). A/B marker offsets are schematic."}</p>
               <p>Periodic bands and finite open-chain states are distinct saved views of one verified static run. Math3D calculates no Hamiltonian, parameter cycle, invariant or Thouless pump.</p>
             </section>}
+            {scene.provenance.model==="rice_mele_pump"&&<section data-testid="rice-mele-pump-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Rice–Mele · verified filled-band pump cycle</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Closed cycle: base hopping {scene.provenance.parameters?.baseHopping}, modulation {scene.provenance.parameters?.modulation}, stagger amplitude {scene.provenance.parameters?.staggerAmplitude}, offset {scene.provenance.parameters?.staggerOffset}; {scene.provenance.parameters?.kSamples} momentum and {scene.provenance.parameters?.phaseSamples} phase samples.</p>
+              {scene.topology?.invariants.map(item=><p key={item.id}>{item.label}: {item.value??"undefined"} · producer status {item.status} · {item.method}.</p>)}
+              {scene.annotations.map(note=><p key={note.id}>{note.text}</p>)}
+              <p>The two surfaces are exact stored band samples in (cycle phase, Bloch momentum, energy). Berry plaquette phases and Wilson polarizations are producer-supplied scalars. Select a sample for its source coordinates, value, dataset index and hash.</p>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {(["band-0","band-1","polarization-samples"] as const).map(id=><button key={id} type="button" aria-label={`Inspect pump first sample of ${id}`} disabled={verifyingScalar} onClick={()=>selectScalarSample(id,0)}>{id}: first sample</button>)}
+                <button type="button" aria-label="Inspect first pump plaquette phase" disabled={verifyingScalar} onClick={()=>selectScalarSample("berry-plaquettes",0)}>Plaquette phase: first sample</button>
+              </div>
+              <p>Ideal adiabatic transport of a filled band is the bounded producer claim. Finite-speed current and finite-chain edge motion are not supplied. Math3D performs no pump calculation.</p>
+            </section>}
             {scene.provenance.model==="kitaev_chain"&&<section data-testid="kitaev-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Kitaev · producer-supplied {scene.topology?.invariants.some(item=>item.id==="kitaev-pfaffian-parity") ? "bulk invariant diagnostics" : scene.bands ? "periodic BdG bands" : "finite open-chain end density"}</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>

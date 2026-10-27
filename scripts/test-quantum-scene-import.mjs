@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 31);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 31);
+  assert.equal(listBundledQuantumSceneExamples().length, 32);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 32);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -475,11 +475,11 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 26, "Expected frozen SSH/QWZ plus bounded producer fixtures including Rice–Mele");
+  assert.equal(allFixtureNames.length, 27, "Expected frozen SSH/QWZ plus bounded producer fixtures including the Rice–Mele pump");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
-  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite"].map(id=>bundledQuantumSceneExample(id).folder));
+  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
@@ -653,6 +653,26 @@ try {
   const riceDensityPath=join(riceChanged,"middle-density.f64"),riceDensityBytes=await readFile(riceDensityPath);
   riceDensityBytes[0]^=1;await writeFile(riceDensityPath,riceDensityBytes);
   await assert.rejects(importQuantumSceneBundle(riceChanged),/integrity|hash/i);
+  const pumpBytes=await readFile(join(fixtureRoot,"rice-mele-pump-producer-result.json"));
+  const pumpResult=JSON.parse(pumpBytes.toString("utf8"));
+  const pump=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-pump").folder));
+  assert.equal(pump.source.provenance.model,"rice_mele_pump");
+  assert.equal(pump.source.provenance.runId,pumpResult.runId);
+  assert.equal(pump.source.provenance.resultSha256,hash(pumpBytes));
+  assert.equal(pump.source.provenance.source?.entryId,"rice_mele");
+  assert.equal(pump.source.topology.invariants.find(item=>item.id==="pump-chern").value,pumpResult.analysis.chern);
+  assert.equal(pump.source.topology.invariants.find(item=>item.id==="pump-winding").value,pumpResult.analysis.polarizationWinding);
+  const pumpBand=inspectVerifiedScalarSample(pump,{fingerprint:sceneFingerprint(pump),objectId:"band-0",sampleIndex:0});
+  assert.equal(pumpBand.value,pumpResult.analysis.lowerBand[0]);
+  assert.equal(pumpBand.position[0],pumpResult.analysis.phaseValues[0]);
+  assert.equal(pumpBand.position[1],pumpResult.analysis.kValues[0]);
+  const pumpPolarization=inspectVerifiedScalarSample(pump,{fingerprint:sceneFingerprint(pump),objectId:"polarization-samples",sampleIndex:8});
+  assert.equal(pumpPolarization.value,pumpResult.analysis.polarization[8]);
+  const pumpChanged=join(root,"rice-mele-pump-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-pump").folder),pumpChanged,{recursive:true});
+  const pumpBandPath=join(pumpChanged,"band-energy-0.f64"),pumpBandBytes=await readFile(pumpBandPath);
+  pumpBandBytes[0]^=1;await writeFile(pumpBandPath,pumpBandBytes);
+  await assert.rejects(importQuantumSceneBundle(pumpChanged),/integrity|hash/i);
   const kitaevBytes=await readFile(join(fixtureRoot,"kitaev-producer-result.json"));
   const kitaevResult=JSON.parse(kitaevBytes.toString("utf8"));
   const kitaevBands=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("kitaev-bands").folder));

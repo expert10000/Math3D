@@ -68,6 +68,22 @@ source-backed inspector and negative/tamper test pass; and its browser/desktop
 capabilities are recorded. No Math3D-side physics calculation is an admission
 shortcut.
 
+## Post-v0.1 Rice–Mele pump admission (2026-10-27)
+
+The static Rice–Mele bands and open-chain scene remain separate from the
+new `run-19f513c1ee9d4d1f8716a590fc7f1dc0-pump.qscene`. Theory Lab's
+bounded cycle computes an occupied-band FHS Chern and independently checks
+Wilson polarization winding on coarse and refined periodic meshes. It saves
+the exact hoppings, stagger, energy samples, plaquette phases, gaps and
+conditional status in an immutable run. The scene carries that result's hash.
+
+Open **File → Verified quantum examples → Rice–Mele → filled-band pump**.
+The read-only profile exposes exact band, plaquette and polarization samples,
+producer status and units. Restart and changed-byte refusal are covered by
+`tests/e2e/quantum-rice-mele-pump.spec.ts`. The supported claim is ideal
+adiabatic transport for a filled band; no finite-speed current or finite-chain
+edge motion is supplied or calculated by Math3D.
+
 ## Post-v0.1 BBH admission (2026-10-25)
 
 Theory Lab computes a bounded four-orbital BBH Hamiltonian and a finite open
