@@ -72,13 +72,17 @@ export function RiceMeleConvergenceProfile({ scene, fingerprint }: { scene: Scen
   const [selection, setSelection] = useState<{ series: Series; point: Point; sample: ExactSample } | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [openingRun, setOpeningRun] = useState(false);
+  const [runStatus, setRunStatus] = useState("");
   const generation = useRef(0);
+  const launchGeneration = useRef(0);
   let series: Series[];
   try { series = readRiceMeleConvergenceSeries(scene); }
   catch (reason) { return <section data-testid="rice-convergence-profile"><p role="alert">Convergence view unavailable: {String((reason as Error).message)}</p></section>; }
   const inspect = async (chosen: Series, point: Point) => {
     const current = ++generation.current;
-    setSelection(null); setError(""); setBusy(true);
+    launchGeneration.current++;
+    setSelection(null); setError(""); setRunStatus(""); setOpeningRun(false); setBusy(true);
     try {
       if (!window.quantumScenes?.scalarSample) throw new Error("Verified source reader is unavailable");
       const sample = await window.quantumScenes.scalarSample({ fingerprint, objectId: `${chosen.key}-points`, sampleIndex: point.index });
@@ -92,6 +96,22 @@ export function RiceMeleConvergenceProfile({ scene, fingerprint }: { scene: Scen
     } catch (reason) { if (current === generation.current) setError(`Selection refused: ${String((reason as Error).message ?? reason)}`); }
     finally { if (current === generation.current) setBusy(false); }
   };
+  const openSelectedRun = async () => {
+    if (!selection || openingRun || !window.quantumScenes?.openStudySourceRun) return;
+    const current = ++launchGeneration.current;
+    const selected = selection;
+    setOpeningRun(true); setRunStatus("");
+    try {
+      const result = await window.quantumScenes.openStudySourceRun({ fingerprint, series: selected.series.key,
+        sampleIndex: selected.point.index, runId: selected.point.runId,
+        resultSha256: selected.point.resultSha256 });
+      if (current === launchGeneration.current) setRunStatus(result.ok
+        ? `Theory Lab launch requested for ${result.runId}; Lab will verify the exact saved result before opening it.`
+        : result.canceled ? "Theory Lab selection canceled." : `Selected source run unavailable: ${result.error}`);
+    } catch (reason) {
+      if (current === launchGeneration.current) setRunStatus(`Selected source run unavailable: ${String((reason as Error).message ?? reason)}`);
+    } finally { if (current === launchGeneration.current) setOpeningRun(false); }
+  };
   return <section data-testid="rice-convergence-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
     <h3 style={{ margin: 0 }}>Rice–Mele · saved-run convergence evidence</h3>
     <p>Study <code>{scene.provenance.runId}</code> · study SHA-256 <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code> · {scene.provenance.parameters?.sourceCount} distinct verified Lab runs.</p>
@@ -103,6 +123,9 @@ export function RiceMeleConvergenceProfile({ scene, fingerprint }: { scene: Scen
       <p>Status: {selection.point.status}. Diagnostics: {selection.point.checks}.</p>
       <p>Source run <code>{selection.point.runId}</code> · result SHA-256 <code style={{ overflowWrap: "anywhere" }}>{selection.point.resultSha256}</code>.</p>
       <p>Dataset {selection.sample.valueDatasetId}, exact sample index {selection.sample.sampleIndex}. Source bytes reverified on selection.</p>
+      <button type="button" data-testid="rice-convergence-open-selected-run" disabled={openingRun}
+        onClick={() => void openSelectedRun()}>{openingRun ? "Re-verifying selected run…" : "Open selected run in Theory Lab"}</button>
+      {runStatus && <p role="status" data-testid="rice-convergence-run-status">{runStatus}</p>}
     </div>}
     <p>The two charges have different units and physical definitions. The 3D source layout uses normalized display coordinates only. These plots connect recorded points; they do not fit, extrapolate, or claim a shared limit. Math3D performs no pump calculation.</p>
   </section>;
