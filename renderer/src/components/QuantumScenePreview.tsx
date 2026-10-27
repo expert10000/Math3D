@@ -562,7 +562,19 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               <p>Stored inputs: t₁={scene.provenance.parameters?.t1}, t₂={scene.provenance.parameters?.t2}, staggered Δ={scene.provenance.parameters?.delta}, open cells={scene.provenance.parameters?.cells}. {scene.bands ? `Select a band point for its exact stored k and energy (${scene.bands.energyUnit}).` : "Select a site for its exact stored middle-pair density (probability per site). A/B marker offsets are schematic."}</p>
               <p>Periodic bands and finite open-chain states are distinct saved views of one verified static run. Math3D calculates no Hamiltonian, parameter cycle, invariant or Thouless pump.</p>
             </section>}
-            {scene.provenance.model==="rice_mele_pump"&&scene.provenance.parameters?.duration!==undefined&&<section data-testid="rice-mele-finite-pump-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+            {scene.provenance.model==="rice_mele_pump"&&scene.provenance.parameters?.chainCells!==undefined&&<section data-testid="rice-mele-chain-pump-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{margin:0}}>Rice–Mele · verified finite open-chain motion</h3>
+              <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
+              <p>Half-filled open chain: {scene.provenance.parameters.chainCells} cells; duration {scene.provenance.parameters.duration} inverse hopping energy; {scene.provenance.parameters.stepsPerPhase} unitary steps per saved phase. No periodic end-to-end bond is present.</p>
+              {scene.annotations.map(note=><p key={note.id}>{note.text}</p>)}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {(["chain-density","chain-current","chain-charge","chain-left-edge","chain-right-edge"] as const).map(id=><button key={id} type="button" aria-label={`Inspect open-chain first sample of ${id}`} disabled={verifyingScalar} onClick={()=>selectScalarSample(id,0)}>{id}: first sample</button>)}
+                <button type="button" aria-label="Inspect open-chain density at time 8 site 5" disabled={verifyingScalar} onClick={()=>selectScalarSample("chain-density",8*Number(scene.provenance.parameters?.chainCells)*2+5)}>Density: time 8, site 5</button>
+                <button type="button" aria-label="Inspect open-chain current at time 8 bond 5" disabled={verifyingScalar} onClick={()=>selectScalarSample("chain-current",8*(2*Number(scene.provenance.parameters?.chainCells)-1)+5)}>Current: time 8, bond 5</button>
+              </div>
+              <p>Each selection re-verifies source bytes and reports the exact stored coordinate, value, dataset index and hash. Finite-size charge and edge populations are observations, not a quantized bulk pump invariant. Math3D runs no evolution.</p>
+            </section>}
+            {scene.provenance.model==="rice_mele_pump"&&scene.provenance.parameters?.duration!==undefined&&scene.provenance.parameters?.chainCells===undefined&&<section data-testid="rice-mele-finite-pump-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{margin:0}}>Rice–Mele · verified finite-speed filled-band transport</h3>
               <p>Run <code>{scene.provenance.runId}</code> · result SHA-256 <code style={{overflowWrap:"anywhere"}}>{scene.provenance.resultSha256}</code>.</p>
               <p>Recorded cycle duration {scene.provenance.parameters?.duration} inverse hopping energy; {scene.provenance.parameters?.stepsPerPhase} evolution steps per phase interval. The producer saved time-resolved current, transported charge, excited-band population and exact time–momentum current samples.</p>

@@ -94,6 +94,14 @@ static ideal invariant and finite-chain edge motion remain separate.
 Import, restart and changed-byte refusal are covered by
 `tests/e2e/quantum-rice-mele-pump.spec.ts`.
 
+The verified `run-c774dea48b574bf8b24b2dd01378e563-open-chain-pump.qscene`
+adds a distinct **Rice–Mele → finite open-chain motion** example. It is a
+half-filled open chain with exact producer-supplied site density, bond current,
+edge populations, central-bond charge and finite-size checks. Math3D exposes
+the stored samples and source hash read-only, with restart and tamper refusal.
+It does not identify a quantized pump from a finite chain or infer a unique
+edge channel. The periodic ideal and finite-speed bulk views remain separate.
+
 ## Post-v0.1 BBH admission (2026-10-25)
 
 Theory Lab computes a bounded four-orbital BBH Hamiltonian and a finite open

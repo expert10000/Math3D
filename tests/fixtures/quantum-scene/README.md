@@ -64,3 +64,13 @@ was exported by `scripts/export-rice-mele-finite-fixture.ts` in Theory Lab.
 SHA-256 the scene references. Exact time series and time–momentum current
 samples are supplied with units and convergence diagnostics. The finite-speed
 charge is not a quantized invariant, and no finite-chain edge motion is supplied.
+
+The separate `run-c774dea48b574bf8b24b2dd01378e563-open-chain-pump.qscene`
+was exported by Theory Lab's `scripts/export-rice-mele-chain-fixture.ts`.
+`rice-mele-chain-producer-result.json` is the exact immutable half-filled
+open-chain run. The scene stores every time/site density and time/bond current,
+central-bond charge and left/right edge population as source-backed arrays.
+It records norm, particle, continuity, time-step and width diagnostics.
+Finite-size motion is distinct from the periodic bulk pump; the scene makes
+no quantized transport or edge-channel claim. Math3D checks source bytes at
+open, selection and restart.

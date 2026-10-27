@@ -223,8 +223,8 @@ try {
   console.log("M3D-Q02 bounded verified orbital slice and sample passed");
 
   const fixtureRoot = resolve("tests/fixtures/quantum-scene");
-  assert.equal(listBundledQuantumSceneExamples().length, 33);
-  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 33);
+  assert.equal(listBundledQuantumSceneExamples().length, 34);
+  assert.equal(new Set(BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => item.id)).size, 34);
   assert.throws(() => bundledQuantumSceneExample("../outside"), /Unknown bundled/);
   const weylFolder=join(fixtureRoot,bundledQuantumSceneExample("weyl-local").folder);
   const weyl=await importQuantumSceneBundle(weylFolder);
@@ -475,11 +475,11 @@ try {
   const allFixtureNames = (await readdir(fixtureRoot, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && entry.name.endsWith(".qscene"))
     .map(entry => entry.name).sort();
-  assert.equal(allFixtureNames.length, 28, "Expected frozen SSH/QWZ plus bounded producer fixtures including the finite-speed Rice–Mele pump");
+  assert.equal(allFixtureNames.length, 29, "Expected frozen SSH/QWZ plus bounded producer fixtures including the finite open-chain Rice–Mele pump");
   const bhzFolders=new Set(["bhz-bands","bhz-general-continuum","bhz-general-lattice"].map(id=>bundledQuantumSceneExample(id).folder));
   const bbhFolders=new Set(["bbh-bands","bbh-finite","bbh-wilson"].map(id=>bundledQuantumSceneExample(id).folder));
   const kitaevFolders=new Set(["kitaev-bands","kitaev-finite","kitaev-invariant"].map(id=>bundledQuantumSceneExample(id).folder));
-  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump"].map(id=>bundledQuantumSceneExample(id).folder));
+  const riceFolders=new Set(["rice-mele-bands","rice-mele-finite","rice-mele-pump","rice-mele-finite-pump","rice-mele-open-chain-pump"].map(id=>bundledQuantumSceneExample(id).folder));
   const weylFolderName=bundledQuantumSceneExample("weyl-local").folder;
   const nodalFolderName=bundledQuantumSceneExample("nodal-ring").folder;
   const landauFolderName=bundledQuantumSceneExample("landau-levels").folder;
@@ -693,6 +693,27 @@ try {
     if(objectId==="finite-local-current")assert.equal(sample.position[1],finiteResult.analysis.dynamics.kValues[4]);
   }
   const finiteChanged=join(root,"rice-mele-finite-changed.qscene");
+  const chainBytes=await readFile(join(fixtureRoot,"rice-mele-chain-producer-result.json"));
+  const chainResult=JSON.parse(chainBytes.toString("utf8"));
+  const chain=await importQuantumSceneBundle(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-open-chain-pump").folder));
+  assert.equal(chain.source.provenance.runId,chainResult.runId);
+  assert.equal(chain.source.provenance.resultSha256,hash(chainBytes));
+  assert.equal(chain.source.provenance.parameters.chainCells,6);
+  assert.equal(chain.source.topology,undefined,"Finite-chain charge must not become a topological invariant");
+  for(const [objectId,index,expected] of [
+    ["chain-density",8*12+5,chainResult.analysis.finiteChain.siteDensity[8*12+5]],
+    ["chain-current",8*11+5,chainResult.analysis.finiteChain.bondElectronCurrent[8*11+5]],
+    ["chain-charge",8,chainResult.analysis.finiteChain.centralBondCharge[8]],
+  ]){
+    const sample=inspectVerifiedScalarSample(chain,{fingerprint:sceneFingerprint(chain),objectId,sampleIndex:index});
+    assert.equal(sample.value,expected);
+    assert.equal(sample.position[0],chainResult.analysis.finiteChain.timeValues[8]);
+  }
+  const chainChanged=join(root,"rice-mele-chain-changed.qscene");
+  await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-open-chain-pump").folder),chainChanged,{recursive:true});
+  const chainPath=join(chainChanged,"chain-site-density.f64"),chainData=await readFile(chainPath);
+  chainData[0]^=1;await writeFile(chainPath,chainData);
+  await assert.rejects(importQuantumSceneBundle(chainChanged),/integrity|hash/i);
   await cp(join(fixtureRoot,bundledQuantumSceneExample("rice-mele-finite-pump").folder),finiteChanged,{recursive:true});
   const finitePath=join(finiteChanged,"finite-current.f64"),finiteData=await readFile(finitePath);
   finiteData[0]^=1;await writeFile(finitePath,finiteData);

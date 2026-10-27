@@ -9,6 +9,66 @@ const fixture = resolve(__dirname, "..", "fixtures", "quantum-scene", "run-19f51
 const resultFile = resolve(__dirname, "..", "fixtures", "quantum-scene", "rice-mele-pump-producer-result.json");
 const finiteFixture = resolve(__dirname, "..", "fixtures", "quantum-scene", "run-91b9adc301184ef9be91ea7fe2b7af73-finite-pump.qscene");
 const finiteResultFile = resolve(__dirname, "..", "fixtures", "quantum-scene", "rice-mele-finite-producer-result.json");
+const chainFixture = resolve(__dirname, "..", "fixtures", "quantum-scene", "run-c774dea48b574bf8b24b2dd01378e563-open-chain-pump.qscene");
+const chainResultFile = resolve(__dirname, "..", "fixtures", "quantum-scene", "rice-mele-chain-producer-result.json");
+
+test("finite open-chain Rice–Mele scene inspects exact site and bond samples after restart", async () => {
+  test.setTimeout(180_000);
+  const root=await mkdtemp(join(tmpdir(),"m3d-rice-chain-"));
+  const result=JSON.parse(await readFile(chainResultFile,"utf8"));
+  const launch=()=>launchRepoElectron({args:[".","--quantum-scene",chainFixture],cwd:repo,
+    env:{...process.env,MATH3D_E2E_PROFILE_ROOT:join(root,"profile")}});
+  try{
+    for(let opening=0;opening<2;opening++){
+      const app=await launch();
+      try{
+        const page=await app.firstWindow();
+        const profile=page.getByTestId("rice-mele-chain-pump-profile");
+        await expect(profile).toContainText("finite open-chain motion");
+        await expect(profile).toContainText("not a quantized bulk pump invariant");
+        await expect(profile).toContainText(result.runId);
+        await page.getByRole("button",{name:"Inspect open-chain density at time 8 site 5"}).click();
+        await expect(page.getByTestId("quantum-scalar-selection")).toContainText(result.analysis.finiteChain.siteDensity[8*12+5].toPrecision(10));
+        await expect(page.getByTestId("quantum-scalar-selection")).toContainText(result.runId);
+        await page.getByRole("button",{name:"Inspect open-chain current at time 8 bond 5"}).click();
+        await expect(page.getByTestId("quantum-scalar-selection")).toContainText(result.analysis.finiteChain.bondElectronCurrent[8*11+5].toPrecision(10));
+      }finally{await app.close();}
+    }
+  }finally{
+    if(!root.startsWith(resolve(tmpdir())+sep)||!root.includes("m3d-rice-chain-"))throw new Error("Unsafe test cleanup");
+    await rm(root,{recursive:true,force:true});
+  }
+});
+
+test("finite open-chain Rice–Mele scene refuses altered density on selection and restart",async()=>{
+  test.setTimeout(150_000);
+  const root=await mkdtemp(join(tmpdir(),"m3d-rice-chain-"));
+  const altered=join(root,"altered.qscene");
+  try{
+    await cp(chainFixture,altered,{recursive:true});
+    const launch=()=>launchRepoElectron({args:[".","--quantum-scene",altered],cwd:repo,
+      env:{...process.env,MATH3D_E2E_PROFILE_ROOT:join(root,"profile")}});
+    const app=await launch();
+    try{
+      const page=await app.firstWindow();
+      await expect(page.getByTestId("rice-mele-chain-pump-profile")).toBeVisible();
+      const file=join(altered,"chain-site-density.f64"),bytes=await readFile(file);
+      bytes[0]^=1;await writeFile(file,bytes);
+      await page.getByRole("button",{name:"Inspect open-chain first sample of chain-density"}).click();
+      await expect(page.getByRole("alert")).toContainText(/refused|integrity|hash/i);
+      await expect(page.getByTestId("quantum-scalar-selection")).toHaveCount(0);
+    }finally{await app.close();}
+    const retry=await launch();
+    try{
+      const page=await retry.firstWindow();
+      await expect(page.getByTestId("rice-mele-chain-pump-profile")).toHaveCount(0);
+      await expect(page.getByText(/integrity|hash|invalid scene/i).first()).toBeVisible();
+    }finally{await retry.close();}
+  }finally{
+    if(!root.startsWith(resolve(tmpdir())+sep)||!root.includes("m3d-rice-chain-"))throw new Error("Unsafe test cleanup");
+    await rm(root,{recursive:true,force:true});
+  }
+});
 
 test("finite-speed Rice–Mele scene inspects exact saved samples after restart", async () => {
   test.setTimeout(180_000);
