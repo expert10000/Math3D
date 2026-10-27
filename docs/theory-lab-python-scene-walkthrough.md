@@ -90,6 +90,24 @@ in your own Lab profile and keep those runs. If a run has been deleted or its
 hash changed, Lab refuses it. If any bundle file is missing or changed, Math3D
 refuses the handoff before starting Lab.
 
+For a reproducible **real two-app acceptance**, build both checkouts, then run
+the following in the Math3D checkout on Windows:
+
+```powershell
+$env:QLAB_E2E_CHECKOUT = 'C:\path\to\theory-lab'
+npx playwright test tests/e2e/quantum-rice-mele-two-app.spec.ts --reporter=list
+```
+
+The test creates a temporary `rice-roundtrip-*` root containing an isolated Lab
+profile, five newly computed saved runs, and their exported `.qscene`. It opens
+that export in Math3D, selects the duration-30 periodic point and width-8 chain
+point, then observes each **real Lab window** over a loopback test-only DevTools
+connection. Each window must show the selected verified run ID, never the study
+ID. The test also removes one saved run and changes its result bytes in turn;
+Math3D can still verify the unchanged export, while Lab must refuse each source
+run. Test processes and the temporary root are cleaned up afterward. No user
+profile, scientific data, or rendering path is changed.
+
 The scene's 3D point positions are normalized for layout. The plots label their
 physical axes from the producer's saved metadata, and selection checks values
 against verified binary datasets. Math3D verifies the exported bundle; it does

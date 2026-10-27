@@ -781,3 +781,22 @@ exists and matches its hash; Math3D does not fetch runs or calculate a result.
 Importer and Electron tests cover both series, restart, wrong/unselected IDs,
 and changed or missing bundle files. Theory Lab's source-run receiver acceptance
 also covers a missing local run, wrong hash and tampered saved run.
+
+### Real convergence two-app acceptance (complete, 2026-10-27)
+
+The earlier capture launcher and receiver tests are now joined by
+`tests/e2e/quantum-rice-mele-two-app.spec.ts`. The fixture producer in Theory Lab
+computes and saves five fresh runs in an isolated profile, exports their exact
+convergence `.qscene`, and records the two selected source identities. Math3D
+opens that exported bundle, selects one periodic and one chain point, and launches
+real Theory Lab windows. A loopback test-only DevTools connection observes each
+window reopening the selected verified run ID. Separate cases remove and tamper
+with a Lab saved run; the unchanged Math3D scene still opens, but Lab refuses the
+source run. The test never treats the study ID as a saved run.
+
+Local Windows acceptance on 2026-10-27: Math3D `build:core` passed, Theory Lab
+`build` and `typecheck` passed, and the live Playwright test passed all four
+handoffs (periodic, chain, missing, tampered) in one test. The test-only TypeScript
+configuration passed after the final edit. See the walkthrough for the exact
+command and temporary-profile behavior. This extends acceptance evidence without
+altering the frozen Q10 v0.1 scope or adding physics or rendering code.
