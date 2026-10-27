@@ -99,6 +99,14 @@ const config = {
       to: "scientific-scenes/vortex-volume.sscene",
     },
     {
+      from: "output/scientific-vortex-80-overview.sscene",
+      to: "scientific-scenes/scientific-vortex-80-overview.sscene",
+    },
+    {
+      from: "output/scientific-burgers-horizontal-level1.sscene",
+      to: "scientific-scenes/scientific-burgers-horizontal-level1.sscene",
+    },
+    {
       from: "integrations/python/scientific_scene_publisher.py",
       to: "scientific-publisher/scientific_scene_publisher.py",
     },

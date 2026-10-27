@@ -51,7 +51,17 @@ const GRAPH_DATASET_PRESETS = {
   complexWaveVolume: { directory: "complex-wave-volume.sscene", fingerprint: "207290452e2066b36460e1b61e3bc09c18150ee147d5e2d3c9dd4fe4d92de0b4" },
   vortexFlow: { directory: "vortex-flow.sscene", fingerprint: "f06c249796ccd55de39ca3d27ce401e46ac1d34a6c469207613423383961fd01" },
   vortexVolume: { directory: "vortex-volume.sscene", fingerprint: "e117c3692fd2da6d549c7c93981e1a39b4c73609ae9e40ca9e3a63557bfc264c" },
+  vortex80: { directory: "scientific-vortex-80-overview.sscene",
+    devPath: "output/scientific-vortex-80-overview.sscene",
+    fingerprint: "f7ae6b4feee63df470c082aa13ae4ec3c91d3132eb3855a4eb75cac78c88998a" },
+  burgersMeasured: { directory: "scientific-burgers-horizontal-level1.sscene",
+    devPath: "output/scientific-burgers-horizontal-level1.sscene",
+    fingerprint: "38179ec5ca0234db91bdddf35868608d2fcbd7d831cce00929e812d007271c0c" },
 } as const;
+const graphPresetDirectory = (preset: (typeof GRAPH_DATASET_PRESETS)[keyof typeof GRAPH_DATASET_PRESETS]) =>
+  app.isPackaged ? join(process.resourcesPath, "scientific-scenes", preset.directory) :
+    join(app.getAppPath(), "devPath" in preset ? preset.devPath :
+      join("tests", "fixtures", "scientific-scene", preset.directory));
 const PINNED_REFERENCE_PUBLISHER = "86b39c33be4551e2ab1a3c12299e7418e16ab1a79866e6881dd703a90952a974";
 const bundledExampleDirectory = () => app.isPackaged ? join(process.resourcesPath, "scientific-scenes", "sincos.sscene") :
   join(app.getAppPath(), "tests", "fixtures", "scientific-scene", "sincos.sscene");
@@ -102,8 +112,7 @@ export function registerScientificSceneIpc(): void {
     graphActive.delete(event.sender);
     try {
       const preset = GRAPH_DATASET_PRESETS[args[0] as keyof typeof GRAPH_DATASET_PRESETS];
-      const directory = app.isPackaged ? join(process.resourcesPath, "scientific-scenes", preset.directory) :
-        join(app.getAppPath(), "tests", "fixtures", "scientific-scene", preset.directory);
+      const directory = graphPresetDirectory(preset);
       const source = await openScientificGraphDatasets(directory);
       if (source.fingerprint !== preset.fingerprint) throw new Error("Bundled Graph dataset preset changed");
       graphActive.set(event.sender, { directory, fingerprint: source.fingerprint });
@@ -122,8 +131,8 @@ export function registerScientificSceneIpc(): void {
     const locator = request.locator as Graph2DFieldLocator;
     const directory = locator.kind === "preset" ?
       Object.prototype.hasOwnProperty.call(GRAPH_DATASET_PRESETS, locator.value) ?
-        app.isPackaged ? join(process.resourcesPath, "scientific-scenes", GRAPH_DATASET_PRESETS[locator.value as keyof typeof GRAPH_DATASET_PRESETS].directory) :
-          join(app.getAppPath(), "tests", "fixtures", "scientific-scene", GRAPH_DATASET_PRESETS[locator.value as keyof typeof GRAPH_DATASET_PRESETS].directory) : null : locator.value;
+        graphPresetDirectory(GRAPH_DATASET_PRESETS[locator.value as keyof typeof GRAPH_DATASET_PRESETS]) :
+        null : locator.value;
     if (!directory) return { ok: false, status: "error", error: "Unknown Graph field preset." };
     graphActive.delete(event.sender);
     try {

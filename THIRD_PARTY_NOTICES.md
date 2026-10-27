@@ -20,6 +20,18 @@ published beside the release binaries. URLs and SHA-256 values are defined in
 `compliance/public-source-manifest.json` and materialized by
 `npm run release:source`.
 
+## Bundled measured scientific data
+
+The **Measured Burgers vortex** Field Explorer preset is a selected and unit-converted
+subset of Webster, D. R. (2021), *3D velocity fields for the Burger vortex flow
+treatments*, BCO-DMO, version 1, DOI
+[10.26008/1912/bco-dmo.834530.1](https://doi.org/10.26008/1912/bco-dmo.834530.1).
+The source is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Math3D selected `Flow_field=horizontal`, `Level=level1`, converted coordinate
+units from millimetres to metres, and stored the three measured velocity
+components in a verified scene. The original file hash and conversion recipe
+are recorded in [the curation notes](docs/scientific-burgers-measured-curation.md).
+
 ## Principal permissive components
 
 Math3D also distributes or depends on components under permissive licenses,

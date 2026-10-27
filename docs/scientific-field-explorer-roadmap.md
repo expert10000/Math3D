@@ -1080,6 +1080,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-09 Project Mesh promotion and rebuild.** Field Explorer can publish the indexed speed isosurface as a Mesh document and binary resource. The Project relation and Mesh origin retain the exact field generation, extraction recipe, source references, verified tile hashes, and topology metrics. Reopening rechecks required source tiles before declaring the Mesh current; changed tiles mark the saved Mesh stale. Mesh can rebuild with the saved level, clip, and budget through the verified extraction worker. A successful rebuild adds a revision and a current source relation while retaining the old resource in replay; cancellation or a failed required tile blocks publication and identifies the source to repair or relink.
 
+**SCI-02 dataset choice.** The Graphs scientific import dialog lists every 3D dataset in the opened scene with shape, units, and an explicit Field Explorer eligibility result. Compatible three-component Cartesian velocity grids can be selected and opened directly. The preset picker offers a 3D Field Explorer filter with the small swirling example, the generated 80³ vortex, and the measured 47 × 85 × 55 Burgers treatment; the latter carries BCO-DMO CC BY 4.0 attribution. Reopening the Explorer in the same Graphs session keeps the last opened dataset as its source.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

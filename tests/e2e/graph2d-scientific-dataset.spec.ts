@@ -597,6 +597,55 @@ test("Graphs opens bundled scalar, complex and vector field presets without a fo
   }
 });
 
+test("Graphs identifies Explorer-ready 3D datasets and opens the generated and measured presets", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    const presets = async () => {
+      await page.locator(".graph2d-toolbar-menu > summary").click();
+      await page.getByRole("button", { name: "Scientific field presets" }).click();
+      const chooser = page.getByRole("dialog", { name: "Scientific field presets" });
+      await chooser.getByLabel("Preset data type").selectOption("explorer");
+      await expect(chooser.getByRole("button", { name: "Swirling flow volume" })).toBeVisible();
+      await expect(chooser.getByRole("button", { name: "Generated vortex 80³" })).toBeVisible();
+      await expect(chooser.getByRole("button", { name: "Measured Burgers vortex" })).toBeVisible();
+      await expect(chooser.getByRole("button", { name: "Quadratic potential volume" })).toHaveCount(0);
+      return chooser;
+    };
+    let chooser = await presets();
+    await chooser.getByRole("button", { name: "Generated vortex 80³" }).click();
+    let dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await expect(dialog.getByRole("region", { name: "3D Field Explorer datasets" }))
+      .toContainText("Ready for Field Explorer");
+    await expect(dialog.getByTestId("scientific-explorer-dataset-field"))
+      .toContainText("80 × 80 × 80");
+    await dialog.getByRole("button", { name: "Open in Field Explorer" }).click();
+    let explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(explorer).toContainText("Manifest-linked bundle: large-vortex-80");
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await expect(page.getByTestId("scientific-explorer-current-source"))
+      .toContainText("large-vortex-80");
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(explorer).toContainText("Manifest-linked bundle: large-vortex-80");
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    chooser = await presets();
+    await chooser.getByRole("button", { name: "Measured Burgers vortex" }).click();
+    dialog = page.getByRole("dialog", { name: "Import verified scientific dataset" });
+    await expect(dialog.getByTestId("scientific-explorer-dataset-field"))
+      .toContainText("47 × 85 × 55");
+    await expect(dialog.getByTestId("scientific-explorer-dataset-field"))
+      .toContainText("Ready for Field Explorer");
+    await dialog.getByRole("button", { name: "Open in Field Explorer" }).click();
+    explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(explorer).toContainText("Manifest-linked bundle: bco-dmo-burgers-h1");
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("SCI-06 opens varied scalar presets and derives the quadratic volume", async () => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();

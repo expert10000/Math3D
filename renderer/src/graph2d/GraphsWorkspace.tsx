@@ -61,6 +61,7 @@ import { Graph2DPlot } from "./Graph2DPlot";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
+import { scientificExplorerEligibility } from "./scientificExplorerEligibility";
 import { ScientificFieldWorkspacePanel } from "./ScientificFieldWorkspacePanel";
 import { ScientificComplexVolumeLinesPanel } from "./ScientificComplexVolumeLinesPanel";
 import { ScientificComplexField3DWorkspacePanel } from "./ScientificComplexField3DWorkspacePanel";
@@ -109,7 +110,9 @@ const SCIENTIFIC_FIELD_PRESETS = [
   { id: "gaussianBump", kind: "scalar", title: "Gaussian bump", detail: "2D · localized peak with varying curvature" },
   { id: "quadraticVolume", kind: "scalar", title: "Quadratic potential volume", detail: "3D · u = x² + y² + z²; Laplacian = 6 V/m²" },
   { id: "vortexFlow", kind: "vector", title: "Planar vortex", detail: "2D · east and north velocity components" },
-  { id: "vortexVolume", kind: "vector", title: "Swirling flow volume", detail: "3D · rotate volume and inspect exact planes" },
+  { id: "vortexVolume", kind: "vector", explorer: true, title: "Swirling flow volume", detail: "3D vector · small Explorer example" },
+  { id: "vortex80", kind: "vector", explorer: true, title: "Generated vortex 80³", detail: "3D vector · analytic 80 × 80 × 80 grid for numerical checks" },
+  { id: "burgersMeasured", kind: "vector", explorer: true, title: "Measured Burgers vortex", detail: "3D vector · 47 × 85 × 55 laboratory velocity grid · BCO-DMO, CC BY 4.0" },
   { id: "complexWave", kind: "complex", title: "Complex wave packet", detail: "2D · real and imaginary wave components" },
   { id: "complexWaveVolume", kind: "complex", title: "Complex wave volume", detail: "3D · paired real and imaginary plane lines" },
 ] as const;
@@ -253,7 +256,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
-  const [scientificPresetKind, setScientificPresetKind] = useState<"all" | "scalar" | "vector" | "complex">("all");
+  const [scientificPresetKind, setScientificPresetKind] = useState<"all" | "scalar" | "vector" | "complex" | "explorer">("all");
   const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(readFieldExplorerSession);
   const [vectorField3DOpen, setVectorField3DOpen] = useState(() => readFieldExplorerSession() !== null);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<VectorField2DDocument | null>(null);
@@ -281,6 +284,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     [scientificImport]);
   const scientificDataset = scientificManifest?.ok ? scientificManifest.value.datasets.find(item => item.id === scientificSelected?.datasetId) : null;
   const scientificCoordinate = scientificManifest?.ok ? scientificManifest.value.coordinates.find(item => item.id === scientificDataset?.coordinateSystem) : null;
+  const scientificExplorerDatasets = scientificManifest?.ok ? scientificManifest.value.datasets
+    .filter(item => item.shape.length === 3)
+    .map(item => ({ dataset: item,
+      eligibility: scientificExplorerEligibility(scientificManifest.value, item) })) : [];
   const scientificSliceKey = scientificImport && scientificSelected?.shape?.length === 2 && scientificVaryingAxis !== null && scientificFixedIndex !== null ?
     `${scientificImport.fingerprint}:${scientificSelected.datasetId}:${scientificSelected.component}:${scientificVaryingAxis}:${scientificFixedIndex}` : "";
   const scientificPreview = useMemo(() => {
@@ -512,24 +519,21 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setScientificImportBusy(false); }
   };
   const openScientificVectorField3D = async () => {
-    if (!scientificImport || !scientificManifest?.ok || !scientificDataset || !scientificCoordinate ||
-        scientificDataset.semanticType !== "vector-field" || scientificDataset.shape.length !== 3 ||
-        scientificDataset.shape.some(size => size < 2) ||
-        scientificDataset.components?.length !== 3 || scientificCoordinate.axes.length !== 3 || scientificImportBusy) return;
+    if (!scientificImport || !scientificManifest?.ok || !scientificDataset || scientificImportBusy) return;
+    const eligibility = scientificExplorerEligibility(scientificManifest.value, scientificDataset);
+    if (!eligibility.ready || !eligibility.timeUnit || !scientificCoordinate) {
+      setScientificImportError(eligibility.reason); return;
+    }
     setScientificImportBusy(true);
     try {
-      const refs = scientificDataset.components.map(part => createGraph2DFieldReference(
+      const refs = scientificDataset.components!.map(part => createGraph2DFieldReference(
         scientificImport.manifestJson, scientificImport.fingerprint, scientificImport.locator,
         scientificDataset.id, part.name)) as [Graph2DFieldReference, Graph2DFieldReference, Graph2DFieldReference];
       const axes = scientificCoordinate.axes.map((axis, index) => ({ role: (["x", "y", "z"] as const)[index]!,
         label: axis.name, unit: axis.unit, min: scientificCoordinate.origin[index]!,
         max: scientificCoordinate.origin[index]! + scientificCoordinate.spacing[index]! *
           (scientificDataset.shape[index]! - 1) })) as unknown as VectorField3DSource["axes"];
-      const timeUnits = axes.map(axis => scientificDataset.quantity.unit.startsWith(`${axis.unit}/`) ?
-        scientificDataset.quantity.unit.slice(axis.unit.length + 1) : "");
-      if (!timeUnits[0] || new Set(timeUnits).size !== 1)
-        throw new TypeError("3D vector components need matching coordinate/time units (for example m/s).");
-      const source: VectorField3DSource = { axes, timeUnit: timeUnits[0], field: { kind: "scientific-bundle",
+      const source: VectorField3DSource = { axes, timeUnit: eligibility.timeUnit, field: { kind: "scientific-bundle",
         componentUnits: [scientificDataset.quantity.unit, scientificDataset.quantity.unit,
           scientificDataset.quantity.unit], references: refs }, seeds: [],
         display: { density: [5, 5, 5], maxGlyphs: 512, magnitudeScale: 1, colorBy: "speed" },
@@ -1895,7 +1899,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                     setScientificPresetOpen(true); }}>Scientific field presets</button>
                 <button type="button" disabled={!scientificImportAvailable}
                   onClick={event => { event.currentTarget.closest("details")?.removeAttribute("open");
-                    setVectorField3DDocument(savedVectorField3D ?? null); setVectorField3DOpen(true); }}>Scientific Field Explorer</button>
+                    setVectorField3DDocument(current => current ?? savedVectorField3D ?? null);
+                    setVectorField3DOpen(true); }}>Scientific Field Explorer</button>
+                {vectorField3DDocument?.source.field.kind === "scientific-bundle" &&
+                  <small data-testid="scientific-explorer-current-source">Current Explorer source:
+                    {" "}{vectorField3DDocument.source.field.references[0].sceneId} ·
+                    {" "}{vectorField3DDocument.source.field.references[0].datasetId}</small>}
                 <button type="button" data-testid="graph2d-parameters-open" disabled={status !== "ready"} onClick={event => {
                   parametersOpener.current = event.currentTarget; finishWheel(); setParametersOpen(value => !value); setParameterPreview(null);
                   setScalesOpen(false); closeGrid(true, false);
@@ -2061,9 +2070,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             onChange={event => setScientificPresetKind(event.target.value as typeof scientificPresetKind)}>
             <option value="all">All data types</option><option value="scalar">Scalar fields</option>
             <option value="vector">Vector fields</option><option value="complex">Complex fields</option>
+            <option value="explorer">3D Field Explorer datasets</option>
           </select></label>
-          {SCIENTIFIC_FIELD_PRESETS.filter(preset => scientificPresetKind === "all" ||
-            preset.kind === scientificPresetKind).map(preset => <div key={preset.id} className="graph2d-scientific-preset-option">
+          {SCIENTIFIC_FIELD_PRESETS.filter(preset => {
+            if (scientificPresetKind === "all") return true;
+            if (scientificPresetKind === "explorer") return "explorer" in preset && preset.explorer;
+            return preset.kind === scientificPresetKind;
+          })
+            .map(preset => <div key={preset.id} className="graph2d-scientific-preset-option">
             <button type="button" disabled={scientificImportBusy} onClick={() => void openScientificDataset(preset.id)}>
               {preset.title}</button><small>{preset.detail}</small>
           </div>)}
@@ -2127,12 +2141,29 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onPointerDown={event => event.stopPropagation()}>
           <h3>Import verified scientific dataset</h3>
           {scientificManifest?.ok && <p>{scientificManifest.value.title}</p>}
+          <section className="graph2d-scientific-explorer-datasets" aria-label="3D Field Explorer datasets">
+            <h4>3D datasets in this scene</h4>
+            {scientificExplorerDatasets.length ? scientificExplorerDatasets.map(({ dataset, eligibility }) =>
+              <div className="graph2d-scientific-explorer-dataset" key={dataset.id}
+                data-testid={`scientific-explorer-dataset-${dataset.id}`}>
+                <strong>{dataset.quantity.name}</strong> · {dataset.id} · {dataset.shape.join(" × ")} grid ·
+                {" "}{dataset.quantity.unit} · {eligibility.reason}
+                {scientificDataset?.id === dataset.id ? " · Selected" : ""}
+                {eligibility.ready && scientificDataset?.id !== dataset.id &&
+                  <button type="button" disabled={scientificImportBusy} onClick={() => {
+                    const first = dataset.components![0]!.name;
+                    setScientificDatasetId(`${dataset.id}:${first}`); resetScientificSlice();
+                    selectDefaultScientificSlice(dataset.shape);
+                  }}>Select for Explorer</button>}
+              </div>) : <p>No 3D dataset in this scene. Choose a 3D vector preset or open a 3D scene.</p>}
+          </section>
           <label>Dataset component <select value={scientificDatasetId} onChange={event => {
             setScientificDatasetId(event.target.value); resetScientificSlice();
             selectDefaultScientificSlice(scientificImport.datasets.find(item => `${item.datasetId}:${item.component}` === event.target.value)?.shape);
           }}>
             {scientificImport.datasets.map(item => <option key={`${item.datasetId}:${item.component}`}
-              value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component}</option>)}
+              value={`${item.datasetId}:${item.component}`}>{item.datasetId} · {item.component} ·
+              {" "}{item.shape ? `${item.shape.length}D` : "series"}</option>)}
           </select></label>
           {scientificSelected?.shape && <>
             <p>{scientificSelected.shape.length}D {scientificDataset?.semanticType ?? "field"} grid · {scientificSelected.component} component ·
@@ -2257,8 +2288,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               <button type="button" disabled={!scientificVectorPlane || scientificVectorFieldAlreadySaved ||
                 scientificImportBusy || !onAuthoringCommit} onClick={saveScientificVectorFieldReference}>
                 Save 2D vector field reference</button>}
-            {scientificDataset?.semanticType === "vector-field" && scientificDataset.shape.length === 3 &&
-              scientificDataset.shape.every(size => size >= 2) && scientificDataset.components?.length === 3 &&
+            {scientificDataset && scientificManifest?.ok &&
+              scientificExplorerEligibility(scientificManifest.value, scientificDataset).ready &&
               <button type="button" disabled={scientificImportBusy}
                 onClick={() => void openScientificVectorField3D()}>Open in Field Explorer</button>}
             <button type="button" onClick={() => { resetScientificSlice();
