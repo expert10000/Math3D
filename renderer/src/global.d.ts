@@ -679,7 +679,7 @@ declare global {
     };
     quantumScenes?: {
       open: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
-      examples: () => Promise<{ id: string; label: string; description: string; model: "SSH" | "QWZ" | "Hydrogenic" }[]>;
+      examples: () => Promise<{ id: string; label: string; description: string; model: "SSH" | "Rice–Mele" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic" }[]>;
       openExample: (id: string) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;

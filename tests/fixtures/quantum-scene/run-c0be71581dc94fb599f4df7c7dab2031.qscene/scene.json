@@ -1,0 +1,149 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-c0be71581dc94fb599f4df7c7dab2031",
+  "title": "rice mele · native",
+  "provenance": {
+    "runId": "run-c0be71581dc94fb599f4df7c7dab2031",
+    "jobId": "fixture-rice-mele-static",
+    "model": "rice_mele",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-27T10:24:17.782169+00:00",
+    "resultSha256": "a025b7731ebe2e73f9430ae15e92526e96770ea0899868174f8d212d5d89095a",
+    "adapter": "qvis/1",
+    "parameters": {
+      "t1": 0.6,
+      "t2": 1,
+      "delta": 0.2,
+      "cells": 16,
+      "kPoints": 101
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "rice_mele"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "site index",
+      "display y",
+      "display z"
+    ],
+    "units": [
+      "site index",
+      "dimensionless",
+      "dimensionless"
+    ]
+  },
+  "camera": {
+    "position": [
+      15.5,
+      -14.4,
+      9.6
+    ],
+    "target": [
+      15.5,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "middle-density",
+      "label": "Finite middle-pair density (color)",
+      "kind": "point-cloud",
+      "positions": "sites",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.35
+      },
+      "scalars": "middle-density"
+    },
+    {
+      "id": "sublattice-A",
+      "label": "Sublattice A · onsite 0.2",
+      "kind": "point-cloud",
+      "positions": "sublattice-A",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.18
+      }
+    },
+    {
+      "id": "sublattice-B",
+      "label": "Sublattice B · onsite -0.2",
+      "kind": "point-cloud",
+      "positions": "sublattice-B",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.18
+      }
+    }
+  ],
+  "datasets": [
+    {
+      "id": "sites",
+      "path": "sites.f64",
+      "format": "f64le",
+      "count": 32,
+      "components": 3,
+      "unit": "site index",
+      "bytes": 768,
+      "sha256": "b1b47a69ec30678a2a593e7ac81a7adc2acd38ce18361f60aa392889b7c23fac"
+    },
+    {
+      "id": "middle-density",
+      "path": "middle-density.f64",
+      "format": "f64le",
+      "count": 32,
+      "components": 1,
+      "unit": "probability per site",
+      "bytes": 256,
+      "sha256": "47825851903c1ffe3853f3c056ca8376b02ba5d27499bd9cba8457402da5434c"
+    },
+    {
+      "id": "sublattice-A",
+      "path": "sublattice-A.f64",
+      "format": "f64le",
+      "count": 16,
+      "components": 3,
+      "unit": "site index / schematic offset",
+      "bytes": 384,
+      "sha256": "905275f8dabf3398cc13bf4733b78836e6fb057e228d75322ac00b0b5610cbe3"
+    },
+    {
+      "id": "sublattice-B",
+      "path": "sublattice-B.f64",
+      "format": "f64le",
+      "count": 16,
+      "components": 3,
+      "unit": "site index / schematic offset",
+      "bytes": 384,
+      "sha256": "a7e21a1453b77c50e1cbae9fd7cc2b76bd5b3b6121090362def07070fef94393"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "rice-mele-scope",
+      "text": "Static Rice–Mele · t1=0.6, t2=1, Δ=0.2 · gap 0.894427 · no pump claim",
+      "position": [
+        15.5,
+        0,
+        1
+      ]
+    }
+  ]
+}
