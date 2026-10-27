@@ -25,6 +25,12 @@ The point Inspector keeps value, magnitude, divergence and curl in its compact v
 
 The 80³ oracle checks complex and real eigenvalues against the analytic Jacobian, including the one-sided boundary case. The measured Burgers desktop test checks the panel's verified tile hashes, rejection of a changed needed tile, and the same source and sample provenance after Project reopen and fresh analysis. The panel is collapsed after reopening; numerical results are recomputed from the saved source.
 
+### SCI-14 saved point results and Project lineage
+
+Each successful point Inspector calculation publishes a compact Project analysis result and an `analysis-of` relation to the exact Vector Field document generation. The result records its physical probe coordinates and coordinate units, source reference and hash, derivative method and stencil coordinates, verified sample SHA-256 values, Jacobian and entry units, divergence, curl, eigenvalues and units, condition estimate, and the eigenvalue confidence label. Repeating the same verified calculation reuses its deterministic result ID. Numerical values remain in the compact result summary; no resource payload is copied into the Project.
+
+After Project reopen, the result graph exposes source identity and lineage but withholds saved point values. The Inspector's **Open Project result graph** link selects its saved record directly. Field Explorer lists saved point results and reads the required source stencil again when **Reverify saved Inspector result** is selected. It compares the fresh result with the saved identity, parameters, numerical summary, and sample hashes before displaying the Inspector values. A changed tile or source generation leaves those values hidden and reports an error. V3 keeps its tile-local verifier; v1/v2 retain their bounded transfer path. The 80³ analytic test checks saved values and lineage, while the measured Burgers desktop test checks Project persistence and changed-tile rejection on reopen.
+
 One Windows run of `npm run benchmark:scientific:probe` measured first calculus result from the start of verified transfer through calculation:
 
 | Scene | Method | First result | Transfer values | Verified tiles per component |
@@ -77,7 +83,7 @@ All tile-search modes returned identical candidates, evaluations, attempted seed
 
 ## Equilibrium sampler profile
 
-The v3 tile sampler now computes each interpolation corner's tile index and offset once, reusing it for the missing-tile check and weighted value lookup. It retains the same corner and component accumulation order, supports independently tiled components, and keeps the manifest-pinned tile checks and 64 MiB limit. An independent cubic-field test covers mixed tile shapes, partial edge tiles, tile seams and domain boundaries. The benchmark pins candidate SHA-256 values from before the change for both fixtures.
+The v3 tile sampler now computes each interpolation corner's tile index and offset once, reusing it for the missing-tile check and weighted value lookup. It retains the same corner and component accumulation order, supports independently tiled components, and keeps the manifest-pinned tile checks and 64 MiB limit. An independent cubic-field test covers mixed tile shapes, partial edge tiles, tile seams and domain boundaries. The benchmark pins candidate geometry SHA-256 values and evaluation counts from before the eigenvalue classification change for both fixtures.
 
 | Scene | Sampler | Host transfer | Verified cache admission | Search calculation | First result |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -102,6 +108,12 @@ One Windows Electron run before this change and one after it measured:
 | Measured Burgers | f64 bytes + native hash | 334 ms | 49 ms | 30 ms | 50 ms | 0.8 ms | +15 MB | 5,273,400 |
 
 In another number-array run, tile round trip and renderer forwarding took 217/43 ms for the vortex and 105/18 ms for Burgers. Working-set delta is the renderer process's OS memory immediately before and after the search, not a peak or a complete Electron process-tree measurement. It can vary with garbage collection and other renderer activity. Timings are single desktop runs with warm file cache; rerun `npx playwright test tests/e2e/vector-field-3d.spec.ts -g "profiles Electron v3 equilibrium"` for local profiles. The direct benchmark now reports host transfer, native-hash admission, and core calculation separately; in its adaptive-prefetch mode it measured 59.5 ms for the vortex and 33.0 ms for Burgers, without Electron IPC. Both fixtures retained their pinned candidate hashes and evaluation counts. Unit and desktop tests cover corrupt tile rejection, cancellation, v2 rendering, provenance, and the cache cap.
+
+## SCI-08 equilibrium eigenstructure
+
+Equilibrium search now passes each candidate's existing numerical Jacobian to the point Inspector's full eigenvalue routine. Its expanded candidate detail shows the three real or complex eigenvalues and their physical unit. Signs of the real parts distinguish sources, sinks and saddles; a resolved complex pair adds the spiral label. Eigenvalues near the imaginary axis, tiny unresolved imaginary parts, poor Jacobian conditioning, incompatible units and disputed local smoothness keep the candidate uncertain. Nearly repeated roots are diagnosed separately because their individual values can be sensitive even when the signs remain clear. Search coverage remains incomplete by design.
+
+The calculation adds no source reads or field evaluations. Analytic linear fields exercise source, sink, saddle, spiral source, spiral sink and spiral saddle labels, plus near-zero and ill-conditioned cases. The tile benchmark pins candidate positions, residuals, Jacobians, condition estimates, attempted/rejected seeds and evaluation counts for the 80³ vortex and measured Burgers scenes. The measured Burgers desktop path checks verified tile provenance and changed-tile rejection after classification.
 
 ## Bounded seed batches
 

@@ -1,7 +1,7 @@
 import type { MeshDocument } from "@math3d/core";
 import type { MeshReplayBundle } from "../mesh/meshReplay";
 
-const kinds = new Set(["import", "bakedFromImplicit", "bakedFromExplicit", "bakedFromParam", "bakedFromWeierstrass", "detachedMesh", "geometryObject", "polyhedronPreset", "halfspaceIntersection", "convexHull", "csg", "proceduralObjects", "derivedSurface", "derivedCurve", "derivedVolume", "surface-tessellation"]);
+const kinds = new Set(["import", "bakedFromImplicit", "bakedFromExplicit", "bakedFromParam", "bakedFromWeierstrass", "detachedMesh", "geometryObject", "polyhedronPreset", "halfspaceIntersection", "convexHull", "csg", "proceduralObjects", "derivedSurface", "derivedCurve", "derivedVolume", "derivedVectorFieldIsosurface", "surface-tessellation"]);
 /** The resource-backed viewer consumes the saved buffers, never regenerating their originating recipe. */
 export const meshDocumentEditable = (document: MeshDocument): boolean => {
   const origin = document.source.origin as Record<string, unknown> | null;
@@ -25,6 +25,23 @@ export const meshDocumentEditable = (document: MeshDocument): boolean => {
   if (origin.kind === "derivedSurface") {
     const units = origin.units as Record<string, unknown> | undefined;
     if (!units || ["length", "area", "gaussianCurvature", "meanCurvature"].some((field) => typeof units[field] !== "string")) return false;
+  }
+  if (origin.kind === "derivedVectorFieldIsosurface") {
+    const source = origin.source as Record<string, unknown> | undefined;
+    const recipe = origin.recipe as Record<string, unknown> | undefined;
+    const topology = origin.topology as Record<string, unknown> | undefined;
+    if (!source || typeof source.documentId !== "string" ||
+        !Number.isSafeInteger(source.revision) ||
+        typeof source.structuralHash !== "string" ||
+        !recipe || typeof recipe.level !== "number" ||
+        typeof recipe.unit !== "string" ||
+        !Array.isArray(recipe.clipBounds) ||
+        !Number.isSafeInteger(recipe.triangleBudget) ||
+        !Array.isArray(recipe.gridShape) ||
+        !topology || typeof topology.watertight !== "boolean" ||
+        typeof topology.boundaryEdgeCount !== "number" ||
+        typeof topology.clipBoundaryEdgeCount !== "number" ||
+        typeof topology.nonManifoldEdgeCount !== "number") return false;
   }
   return true;
 };

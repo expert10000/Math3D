@@ -36,6 +36,7 @@ import { ProjectNavigation } from "./workspace/projectNavigation";
 import { readProjectWorkbook } from "./projects/projectWorkbookBinding";
 import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
+import { promoteScientificIsosurfaceMesh, reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
@@ -792,6 +793,8 @@ import {
   MAX_MIXED_WORKSPACE_REPLAY_BYTES,
   matchesScientificSourceGeneration,
   viewerSourceFromDocument,
+  VECTOR_FIELD3D_POINT_RESULT_TYPE,
+  vectorField3DPointResultRelation,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
   type ComplexAnalysisDocument,
@@ -23166,10 +23169,13 @@ const App: React.FC = () => {
   } | null>(null);
   const meshDatasetPublishTraceCounterRef = useRef(0);
   const meshDocumentAdapterRef = useRef<MeshDocumentAdapter | null>(null);
+  const [scientificMeshSourceStates, setScientificMeshSourceStates] = useState<Record<string,
+    "pending" | "current" | "stale">>({});
   const nativeMeshSelectionKeysRef = useRef("");
   const [meshKernelDocument, setMeshKernelDocument] = useState<MeshDocument | null>(null);
   const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
   const [vectorField3DDocument, setVectorField3DDocument] = useState<import("@math3d/core").VectorField3DDocument | null>(null);
+  const [vectorField3DPointResults, setVectorField3DPointResults] = useState<AnalysisResultEnvelope[]>([]);
   const [vectorField3DOpenRequest, setVectorField3DOpenRequest] = useState<{ document: import("@math3d/core").VectorField3DDocument; token: number } | null>(null);
   const vectorField3DRequestSerial = useRef(0);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<import("@math3d/core").VectorField2DDocument | null>(null);
@@ -76750,6 +76756,7 @@ case "mobius":
     setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: previous.layout }));
   }, [projectsOpen]);
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
+  const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
@@ -77410,9 +77417,13 @@ case "mobius":
         if (entry.module === "volume" && activeVolumeKernelAdapter.document().identity.id === entry.expected.id && volumeDocumentEditable(activeVolumeKernelAdapter.document())) restored.volumes.set(entry.expected.id, activeVolumeKernelAdapter);
       }
       const ids = new Set(entries.map((entry) => entry.expected.id));
-      const results = [...new Map([...restored.workspace.results, ...live.results.filter((result) => ids.has(result.provenance.source.documentId))].map((result) => [result.resultId, result])).values()];
+      const pointResults = vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId));
+      const results = [...new Map([...restored.workspace.results,
+        ...live.results.filter((result) => ids.has(result.provenance.source.documentId)),
+        ...pointResults].map((result) => [result.resultId, result])).values()];
       const resultIds = new Set(results.map((result) => result.resultId));
-      const relations = [...new Map([...restored.workspace.relations, ...live.relations.filter((relation) => relation.sources.every((source) => ids.has(source.documentId)) && (relation.target.type === "document" ? ids.has(relation.target.generation.documentId) : relation.target.type === "result" ? resultIds.has(relation.target.resultId) : live.artifacts.some((artifact) => artifact.handle.artifactId === (relation.target.type === "artifact" ? relation.target.artifactId : ""))))].map((relation) => [relation.relationId, relation])).values()];
+      const relations = [...new Map([...restored.workspace.relations, ...live.relations.filter((relation) => relation.sources.every((source) => ids.has(source.documentId)) && (relation.target.type === "document" ? ids.has(relation.target.generation.documentId) : relation.target.type === "result" ? resultIds.has(relation.target.resultId) : live.artifacts.some((artifact) => artifact.handle.artifactId === (relation.target.type === "artifact" ? relation.target.artifactId : "")))),
+        ...pointResults.map(vectorField3DPointResultRelation)].map((relation) => [relation.relationId, relation])).values()];
       const artifactIds = new Set([...results.flatMap((result) => result.artifacts.map((artifact) => artifact.artifactId)), ...relations.flatMap((relation) => relation.target.type === "artifact" ? [relation.target.artifactId] : [])]);
       const artifacts = [...new Map([...restored.workspace.artifacts, ...live.artifacts.filter((artifact) => artifactIds.has(artifact.handle.artifactId))].map((artifact) => [artifact.handle.artifactId, artifact])).values()];
       const constructions = restored.workspace.constructions.map((entry) => {
@@ -77473,10 +77484,13 @@ case "mobius":
       add("surface", openedCurveConstruction.record.target);
     }
     const ids = new Set(entries.map((entry) => entry.expected.id));
-    const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results()]
+    const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results(),
+      ...vectorField3DPointResults]
       .filter((result) => ids.has(result.provenance.source.documentId));
     const uniqueResults = [...new Map(results.map((result) => [result.resultId, result])).values()];
     const relations = [...volumeExtractionRecords.flatMap((record) => record.relations), ...surfaceHandoffs.flatMap((record) => record.relations),
+      ...vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId))
+        .map(vectorField3DPointResultRelation),
       ...(openedCurveConstruction ? [openedCurveConstruction.record.relation] : []), ...graph2dPromotions.map((item) => item.relation)];
     const uniqueRelations = [...new Map(relations.map((relation) => [relation.relationId, relation])).values()];
     const volumeArtifacts = new Map(volumeExtractionRecords.map((record) => [record.artifactId, { contentHash: record.contentHash, byteLength: record.byteLength }]));
@@ -79002,10 +79016,59 @@ case "mobius":
     reopenGraphWorkspace(checkpoint); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null);
     restoredProjectRef.current = { workspace, graphs, curves, surfaces, geometries, topologies, complexes, volumes, meshes, resources,
       projectTags: owner?.metadata.tags ?? [], additional, context };
+    const linked = [...meshes.values()].filter(adapter =>
+      (adapter.document().source.origin as { kind?: string })?.kind ===
+        "derivedVectorFieldIsosurface");
+    setScientificMeshSourceStates(Object.fromEntries(linked.map(adapter =>
+      [adapter.document().identity.id, "pending"] as const)));
+    for (const adapter of linked) {
+      const meshId = adapter.document().identity.id;
+      const origin = adapter.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
+      if (origin.kind !== "derivedVectorFieldIsosurface") continue;
+      const source = resolved.get(origin.source.documentId);
+      if (source?.format !== "math3d.vector-field3d-document") {
+        setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
+        continue;
+      }
+      if (origin.sourceReferences && !window.scientificScenes) {
+        setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
+        continue;
+      }
+      void reverifyScientificIsosurfaceMesh(origin, source, window.scientificScenes)
+        .then(status => setScientificMeshSourceStates(current =>
+          ({ ...current, [meshId]: status })))
+        .catch(() => setScientificMeshSourceStates(current =>
+          ({ ...current, [meshId]: "stale" })));
+    }
+    setVectorField3DPointResults(workspace.results.filter(result =>
+      result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE));
     if (owner) activeNotebookProjectRef.current = owner;
     const firstGraph = graphs.values().next().value;
     if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
     setAdditionalActiveId(null);
+  };
+
+  const promoteFieldIsosurfaceToMesh = (field: import("@math3d/core").VectorField3DDocument,
+    surface: import("@math3d/core").VectorField3DIsosurface) => {
+    const restored = restoredProjectRef.current;
+    const next = promoteScientificIsosurfaceMesh(captureMixedKernelWorkspace(), field, surface);
+    setVectorField3DDocument(field);
+    meshDocumentAdapterRef.current = next.adapter;
+    setMeshKernelDocument(next.adapter.document());
+    if (restored) {
+      restored.workspace = next.workspace;
+      restored.meshes.set(next.adapter.document().identity.id, next.adapter);
+      const id = next.adapter.document().identity.id;
+      const origin = next.adapter.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
+      setScientificMeshSourceStates(current => ({ ...current, [id]: "pending" }));
+      void reverifyScientificIsosurfaceMesh(origin, field, window.scientificScenes)
+        .then(status => setScientificMeshSourceStates(current => ({ ...current, [id]: status })))
+        .catch(() => setScientificMeshSourceStates(current => ({ ...current, [id]: "stale" })));
+      setAdditionalVersion(value => value + 1);
+    } else {
+      reopenProjectWorkspace(next.workspace);
+    }
+    navigateRestoredDocument(next.adapter.document().identity.id, "mesh");
   };
 
   const createMeshFromSavedSurface = (resolution: SurfaceStudyResolution = 33): string => {
@@ -79099,6 +79162,8 @@ case "mobius":
   const savedMeshSourceCurrent = () => {
     const restored = restoredProjectRef.current, mesh = meshDocumentAdapterRef.current;
     if (!restored || !mesh) return true;
+    if ((mesh.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface")
+      return scientificMeshSourceStates[mesh.document().identity.id] === "current";
     const lineage = restored.workspace.relations.find(relation => relation.operation === "surface.tessellate-saved" && relation.target.type === "document" && relation.target.generation.documentId === mesh.document().identity.id);
     if (!lineage) return true;
     const source = lineage.sources[0], parent = restored.additional.get(source.documentId)?.document() ?? restored.surfaces.get(source.documentId)?.document();
@@ -79717,6 +79782,7 @@ case "mobius":
         activeProjectDocumentId={activeProjectDocumentId}
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
+        resultRequest={projectResultRequest}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
@@ -82209,6 +82275,12 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
+      {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface" &&
+        <p role="status" data-testid="scientific-mesh-source-status" style={{ margin: "8px 18px",
+          padding: "7px 11px", border: "1px solid #b9cbe0", borderRadius: 8,
+          fontSize: 13 }}>Source {scientificMeshSourceStates[meshDocumentAdapterRef.current!.document().identity.id] ?? "pending"} ·
+          {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.boundaryEdgeCount} boundary edges ·
+          {" "}{(meshDocumentAdapterRef.current!.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin).topology.clipBoundaryEdgeCount} on clip planes</p>}
       {!hasSavedDocumentViewport && (<SavedMeshModuleFrame document={savedMeshModuleActive ? meshDocumentAdapterRef.current?.document() ?? null : null} projectTitle={activeNotebookProjectRef.current?.metadata.title} sourceSurfaceTitle={savedMeshSourceTitle} onProject={() => setProjectsOpen(true)} onStudy={() => setSavedMeshModuleView(false)} onSurface={savedMeshParent?.document && !activeNotebookProjectRef.current?.metadata.documents?.[savedMeshParent.generation.documentId]?.archived ? () => openSavedStudySurface(meshDocumentAdapterRef.current!.document().identity.id) : undefined} onClose={openNormalSurfacesWorkspace}>
         <SavedSurfaceModuleFrame projectTitle={activeNotebookProjectRef.current?.metadata.title} onProject={() => setProjectsOpen(true)} session={savedSurfaceModuleActive ? activeSavedSurfaceSession ?? null : null} title={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId ?? ""]?.title ?? "Saved Surface"} related={savedSurfaceModuleActive ? relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId!, restoredProjectRef.current?.context().documents) : undefined} onOpenRelated={navigateRestoredDocument} onChange={() => setAdditionalVersion(value => value + 1)} onCustom={() => setSavedSurfaceCustomView(true)} onClose={openNormalSurfacesWorkspace}><div
         data-testid="module-workspace"
@@ -90032,6 +90104,17 @@ case "mobius":
           <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} analysisRequest={projectGraphAnalysisRequest}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}
             onSaveVectorField3D={field => { setVectorField3DDocument(field); setVectorField3DOpenRequest(null); }}
+            onPromoteVectorField3DIsosurface={promoteFieldIsosurfaceToMesh}
+            savedVectorField3DPointResults={vectorField3DPointResults}
+            onSaveVectorField3DPointResult={(field, result) => {
+              setVectorField3DDocument(field);
+              setVectorField3DPointResults(current => current.some(item => item.resultId === result.resultId) ?
+                current : [...current, result]);
+            }}
+            onOpenVectorField3DProjectResults={id => {
+              setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+              setProjectsOpen(true);
+            }}
             savedVectorField2D={vectorField2DDocument} openVectorField2DRequest={vectorField2DOpenRequest}
             onSaveVectorField2D={field => { setVectorField2DDocument(field); setVectorField2DOpenRequest(null); }}
             savedScientificFields={scientificFieldDocuments} openScientificFieldRequest={scientificFieldOpenRequest}

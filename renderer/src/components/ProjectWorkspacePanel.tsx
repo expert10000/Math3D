@@ -74,6 +74,7 @@ type Props = {
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number } | null;
+  resultRequest?: { id: string; token: number } | null;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
@@ -87,7 +88,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -146,6 +147,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     workspacePanel.current?.scrollTo({ top: 0 });
     if (section) window.requestAnimationFrame(() => window.requestAnimationFrame(() => jumpTo(section)));
   };
+  useEffect(() => {
+    if (!open || !resultRequest) return;
+    setNotesOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(true);
+    setResultFocus(resultRequest); openDetailPage("results");
+  }, [open, resultRequest?.token]);
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
   const openingStarter = useRef(false);

@@ -1,6 +1,8 @@
 import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
 import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
+import { analyzeVectorField3DEigenvalues, type VectorField3DEigenvalue } from
+  "./vectorField3DEigenanalysis";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
 import { VectorField3DNeededTile, VectorField3DVerifiedTileCache } from "./vectorField3DVerifiedTileCache";
 
@@ -10,7 +12,11 @@ type ScientificSource = Readonly<{ manifestJson: string; fingerprint: string; vo
 export type VectorField3DEquilibrium = Readonly<{
   position: Vec3; residual: number; conditionEstimate: number | null;
   jacobian: Matrix3 | null; eigenvalueRealParts: Vec3 | null;
-  classification: "source" | "sink" | "saddle" | "degenerate/uncertain";
+  eigenvalues: readonly [VectorField3DEigenvalue, VectorField3DEigenvalue,
+    VectorField3DEigenvalue] | null;
+  eigenvalueUnit: string | null;
+  classification: "source" | "sink" | "saddle" | "spiral-source" | "spiral-sink" |
+    "spiral-saddle" | "degenerate/uncertain";
   diagnostics: readonly string[];
 }>;
 export type VectorField3DEquilibriumSearch = Readonly<{
@@ -61,26 +67,6 @@ const solve = (a: Matrix3, b: Vec3): Vec3 | null => {
   const adj = adjugate(a);
   const result = adj.map(row => row.reduce((sum, value, i) => sum + value * b[i], 0) / det) as [number, number, number];
   return result.every(Number.isFinite) ? result : null;
-};
-
-/** Real parts of the three roots of the real characteristic cubic. */
-const eigenvalueRealParts = (j: Matrix3): Vec3 | null => {
-  const a = -(j[0][0] + j[1][1] + j[2][2]);
-  const b = j[0][0] * j[1][1] + j[0][0] * j[2][2] + j[1][1] * j[2][2] -
-    j[0][1] * j[1][0] - j[0][2] * j[2][0] - j[1][2] * j[2][1];
-  const c = -determinant(j), p = b - a * a / 3;
-  const q = 2 * a ** 3 / 27 - a * b / 3 + c;
-  const d = q * q / 4 + p ** 3 / 27;
-  if (![a, b, c, p, q, d].every(Number.isFinite)) return null;
-  if (d >= 0) {
-    const u = Math.cbrt(-q / 2 + Math.sqrt(d));
-    const v = Math.cbrt(-q / 2 - Math.sqrt(d));
-    return [u + v - a / 3, -(u + v) / 2 - a / 3, -(u + v) / 2 - a / 3];
-  }
-  const radius = 2 * Math.sqrt(-p / 3);
-  const angle = Math.acos(Math.max(-1, Math.min(1, -q / (2 * Math.sqrt(-((p / 3) ** 3))))));
-  return [0, 1, 2].map(k => radius * Math.cos((angle + 2 * Math.PI * k) / 3) - a / 3) as
-    [number, number, number];
 };
 
 /** Bounded seeded search. No sampled search is a certificate of exhaustive coverage. */
@@ -271,22 +257,37 @@ function searchEquilibria(document: VectorField3DDocument,
       [number, number, number]) <= dedupeDistance)) continue;
     const j = jacobian(point, seedSample), det = j ? determinant(j) : 0;
     const condition = j && Math.abs(det) > 0 ? infinityNorm(j) * infinityNorm(adjugate(j)) / Math.abs(det) : null;
-    const eigen = j ? eigenvalueRealParts(j) : null;
+    const componentUnit = field.kind === "expressions" ? field.components[0].unit : field.componentUnits[0];
+    const eigenUnit = unitsCompatible ? componentUnit === `${axes[0].unit}/${checked.source.timeUnit}` ?
+      `1/${checked.source.timeUnit}` : `(${componentUnit})/${axes[0].unit}` : null;
+    const spectral = j ? analyzeVectorField3DEigenvalues(j, eigenUnit) : null;
+    const eigenvalues = spectral?.eigenvalues ?? null;
+    const eigen = eigenvalues ? eigenvalues.map(root => root.real) as [number, number, number] : null;
     const scale = j ? Math.max(1, infinityNorm(j)) : 1;
     const separated = eigen && eigen.every(value => Math.abs(value) > 1e-5 * scale);
+    const spiral = eigenvalues?.some(root => Math.abs(root.imaginary) > 1e-5 * scale) ?? false;
+    const unresolvedSpiral = eigenvalues?.some(root => root.imaginary !== 0 &&
+      Math.abs(root.imaginary) <= 1e-5 * scale) ?? false;
     const locallySmooth = j ? smoothStencil(point, value, j, seedSample) : false;
     const reliable = unitsCompatible && locallySmooth && separated && condition !== null &&
-      Number.isFinite(condition) && condition < 1e8 && norm(value) <= tolerance;
+      Number.isFinite(condition) && condition < 1e8 && !unresolvedSpiral &&
+      norm(value) <= tolerance;
     const classification = !reliable ? "degenerate/uncertain" :
-      eigen!.every(value => value > 0) ? "source" : eigen!.every(value => value < 0) ? "sink" : "saddle";
+      eigen!.every(value => value > 0) ? spiral ? "spiral-source" : "source" :
+      eigen!.every(value => value < 0) ? spiral ? "spiral-sink" : "sink" :
+      spiral ? "spiral-saddle" : "saddle";
     const diagnostics = [
       ...(!unitsCompatible ? ["Eigenvalue stability needs matching spatial and component units."] : []),
       ...(!separated ? ["An eigenvalue is near the imaginary axis or the Jacobian is unavailable."] : []),
+      ...(unresolvedSpiral ? ["An imaginary part is too small to distinguish spiral from non-spiral behavior."] : []),
+      ...(spectral?.diagnostics.some(message => message.includes("nearly repeated")) ?
+        ["Eigenvalues are nearly repeated; individual root values are uncertain."] : []),
       ...(!locallySmooth ? ["The point is on a domain boundary or opposite derivative stencils disagree; smooth local linearization is uncertain."] : []),
       ...(condition === null || condition >= 1e8 ? ["Jacobian is singular or poorly conditioned."] : []),
     ];
     candidates.push({ position: point, residual: norm(value), conditionEstimate: Number.isFinite(condition) ?
-      condition : null, jacobian: j, eigenvalueRealParts: eigen, classification, diagnostics });
+      condition : null, jacobian: j, eigenvalueRealParts: eigen, eigenvalues,
+      eigenvalueUnit: spectral?.unit ?? null, classification, diagnostics });
     } catch (cause) {
       if (verifiedTileSample && cause instanceof VectorField3DNeededTile)
         throw new VectorField3DEquilibriumNeedsTiles(cause.indicesBatch, {

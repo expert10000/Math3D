@@ -19,6 +19,7 @@ This site combines:
 - Curves professional roadmap: `curves-professional-implementation-roadmap.md` (15-commit consolidation plan and implementation record).
 - Curves v1 freeze: `curves-v1-freeze.md` (canonical workflow, mathematical conventions, result lifecycle, interoperability, QA, screenshot baselines, and change policy).
 - Curve spline conventions: `curves-spline-conventions.md` (Bézier/B-spline/NURBS basis, knot, weight, continuity, editing, and serialization rules).
+- Complex Analysis functionality map: `complex-analysis-existing-functionality-map.md` (current labs, computation/rendering layers, module boundaries, and roadmap opportunities).
 - Repository folder map: `repository-layout.md`.
 - Mobile roadmap: `mobile-roadmap.md` (completed MOB24–MOB63 sequence and the next phase plan).
 - Mobile Projects/Create/Import extension: `mobile-projects-create-import-extension-roadmap.md` (MOB55–MOB68 contracts, commit scopes, dependencies, and acceptance gates).

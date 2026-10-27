@@ -27,9 +27,12 @@ try {
     ["80³ analytic vortex", "output/scientific-vortex-80-overview.sscene", ["east", "north", "up"]],
     ["measured Burgers", "output/scientific-burgers-horizontal-level1.sscene", ["vx", "vy", "vz"]],
   ];
+  // Classification and eigenvalue metadata may evolve; pin the searched geometry and work.
   const expectedEquilibria = new Map([
-    ["80³ analytic vortex", "0fb12674d2b8f392ae28eacb2a2e57d13fdade3a0594b538d4c325cdbe9446a9"],
-    ["measured Burgers", "3a96a13b7e4f2c98a6271461c2fed12308676f6814ea89fc7e70818884d6aadd"],
+    ["80³ analytic vortex", { geometry: "0475ff83b7cb701554aa0b23d4e2f41ddf4e6bf476a09390d6e1677e15a764b9",
+      evaluations: 2829, attemptedSeeds: 126, rejectedSeeds: 60 }],
+    ["measured Burgers", { geometry: "abde0f9e4f344c113b77b83313aaf97326dd8c8fa4c1e875e26d38e703d8d6af",
+      evaluations: 3411, attemptedSeeds: 126, rejectedSeeds: 89 }],
   ]);
   const results = [];
   for (const [label, relative, names] of fixtures) {
@@ -140,6 +143,11 @@ try {
           candidates: mode === "equilibria" ? result.candidates : undefined,
           candidateSha256: mode === "equilibria" ?
             createHash("sha256").update(JSON.stringify(result.candidates)).digest("hex") : undefined,
+          candidateGeometrySha256: mode === "equilibria" ?
+            createHash("sha256").update(JSON.stringify(result.candidates.map(candidate => ({
+              position: candidate.position, residual: candidate.residual,
+              conditionEstimate: candidate.conditionEstimate, jacobian: candidate.jacobian,
+            })))).digest("hex") : undefined,
           evaluations: mode === "equilibria" ? result.evaluations : undefined,
           attemptedSeeds: mode === "equilibria" ? result.attemptedSeeds : undefined,
           rejectedSeeds: mode === "equilibria" ? result.rejectedSeeds : undefined });
@@ -152,8 +160,11 @@ try {
             variants[0].rejectedSeeds !== variant.rejectedSeeds))
         throw new Error(`Resumed equilibrium candidates differ: ${label}`);
       if (mode === "equilibria" && variants.some(variant =>
-          variant.candidateSha256 !== expectedEquilibria.get(label)))
-        throw new Error(`Equilibrium candidates changed from the pre-optimization baseline: ${label}`);
+          variant.candidateGeometrySha256 !== expectedEquilibria.get(label).geometry ||
+          variant.evaluations !== expectedEquilibria.get(label).evaluations ||
+          variant.attemptedSeeds !== expectedEquilibria.get(label).attemptedSeeds ||
+          variant.rejectedSeeds !== expectedEquilibria.get(label).rejectedSeeds))
+        throw new Error(`Equilibrium candidate geometry or evaluation counts changed: ${label}`);
       methods.push({ operation: mode,
         bounded: { firstResultMs: +boundedMs.toFixed(1),
           transferredValueBytes: volumes[0].values.length * 8 * 3,

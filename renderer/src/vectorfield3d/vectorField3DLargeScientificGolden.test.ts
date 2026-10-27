@@ -9,6 +9,8 @@ import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
   VectorField3DVerifiedTileCache,
   sampleVectorField3DDerivedSlice, sampleVectorField3DProbe, sampleVectorField3DSlice,
   createVectorField3DDerivedLine, validGraph2DDerivedFieldOrigin,
+  createVectorField3DPointResult, reverifyVectorField3DPointResult,
+  vectorField3DPointResultRelation, createMixedWorkspaceDocument,
   scientificTileLayout, scientificTileSampleLocation, sha256Checksum,
   vectorField3DSeedPreset, vectorField3DSpatialSeedPattern,
   vectorField3DSourceStencilPoints, vectorField3DSourceProbeStencilPoints,
@@ -235,6 +237,25 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
         });
       }
       expect(result.eigenanalysis.status).toBe(indices[0] === 0 ? "uncertain" : "resolved");
+      const saved = createVectorField3DPointResult(document, result, 1);
+      expect(saved.summary.jacobianRows).toEqual(result.jacobian);
+      expect(saved.summary.eigenvalues).toEqual(result.eigenanalysis.eigenvalues);
+      expect(saved.summary.verifiedSamples).toEqual(result.verifiedSamples);
+      expect(saved.provenance.operation.parameters.position).toEqual(point);
+      expect(saved.provenance.operation.parameters.sourceReference).toMatchObject({
+        kind: "scientific-bundle", components: [{ datasetId: "field" },
+          { datasetId: "field" }, { datasetId: "field" }] });
+      expect(() => reverifyVectorField3DPointResult(saved, document, result)).not.toThrow();
+      const relation = vectorField3DPointResultRelation(saved);
+      const workspace = createMixedWorkspaceDocument({ entries: [{ module: "vector3d",
+        checkpoint: document, expected: document.identity, replay: null }],
+      activeDocumentIds: [document.identity.id], results: [saved], relations: [relation],
+      artifacts: [], constructions: [], committedSelection: null });
+      expect(workspace.relations[0]?.target).toMatchObject({ type: "result",
+        resultId: saved.resultId });
+      expect(() => reverifyVectorField3DPointResult({ ...saved, summary: {
+        ...saved.summary, divergence: Number(saved.summary.divergence) + 1 } }, document, result))
+        .toThrow(/changed/);
       close(result.magnitudeLaplacian, expected.laplacian, 0.05);
       const changed = { ...samples, components: [{ ...samples.components[0]!,
         values: samples.components[0]!.values.map((value, index) => index === 0 ? value + 1 : value) },

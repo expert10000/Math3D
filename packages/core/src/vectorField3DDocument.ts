@@ -36,7 +36,8 @@ export type VectorField3DCameraState = Readonly<{ position: readonly [number, nu
   target: readonly [number, number, number]; zoom: number }>;
 export type VectorField3DEquilibriumConstruction = Readonly<{
   id: string; position: readonly [number, number, number]; residual: number;
-  classification: "source" | "sink" | "saddle" | "degenerate/uncertain";
+  classification: "source" | "sink" | "saddle" | "spiral-source" | "spiral-sink" |
+    "spiral-saddle" | "degenerate/uncertain";
   sourceRevision: number; sourceStructuralHash: string; sourceHash: string | null;
 }>;
 export type VectorField3DSeedGroupStyle = Readonly<{ id: string; name: string; color: string }>;
@@ -54,6 +55,8 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
   hiddenSeedGroups: readonly string[];
   seedGroupStyles: readonly VectorField3DSeedGroupStyle[];
   equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
+  isosurfaceLevel: number | null;
+  isosurfaceTriangleBudget: number;
   clipBounds: VectorField3DClipBounds;
   cameraPreset: VectorField3DCameraPreset;
   cameraState: VectorField3DCameraState | null }>;
@@ -65,6 +68,8 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, cameraPreset: "perspective",
   equilibriumConstructions: [],
+  isosurfaceLevel: null,
+  isosurfaceTriangleBudget: 40_000,
   hiddenSeedGroups: [],
   seedGroupStyles: [],
   sliceChannel: "component",
@@ -195,6 +200,10 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { equilibriumConstructions: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "clipBounds") ?
       { clipBounds: defaults.clipBounds } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "isosurfaceLevel") ?
+      { isosurfaceLevel: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "isosurfaceTriangleBudget") ?
+      { isosurfaceTriangleBudget: 40_000 } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "cameraPreset") ?
       { cameraPreset: defaults.cameraPreset } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "viewsLinked") ?
@@ -207,7 +216,10 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
+      workspace.isosurfaceLevel !== null && (!finite(workspace.isosurfaceLevel) ||
+        workspace.isosurfaceLevel < 0 || workspace.isosurfaceLevel > 1e9) ||
+      !integer(workspace.isosurfaceTriangleBudget, 1, 100_000) ||
       !Array.isArray(workspace.hiddenSeedGroups) || workspace.hiddenSeedGroups.length > 32 ||
       workspace.hiddenSeedGroups.some((group: unknown) => !text(group, 64)) ||
       new Set(workspace.hiddenSeedGroups).size !== workspace.hiddenSeedGroups.length ||
@@ -259,7 +271,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
         !text(item.id, 64) || !tuple3(item.position) ||
         item.position.some(value => !finite(value) || Math.abs(value) > 1e9) ||
         !finite(item.residual) || item.residual < 0 ||
-        !["source", "sink", "saddle", "degenerate/uncertain"].includes(String(item.classification)) ||
+        !["source", "sink", "saddle", "spiral-source", "spiral-sink", "spiral-saddle",
+          "degenerate/uncertain"].includes(String(item.classification)) ||
         !integer(item.sourceRevision, 1, Number.MAX_SAFE_INTEGER) ||
         !text(item.sourceStructuralHash, 160) ||
         item.sourceHash !== null && !text(item.sourceHash, 160)) ||
