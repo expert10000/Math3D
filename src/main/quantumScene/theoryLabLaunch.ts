@@ -68,9 +68,15 @@ export async function launchTheoryLab(target: TheoryLabTarget, runId: string, re
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.VITE_DEV_SERVER_URL;
+  // A loopback DevTools endpoint lets the isolated two-app acceptance inspect
+  // the real Lab window. Ordinary launches never enable remote debugging.
+  const debugPort = env.MATH3D_E2E === "1" ? env.MATH3D_E2E_LAB_DEBUG_PORT : undefined;
+  const debugArgs = debugPort && /^(?:[1-9]\d{3,4})$/.test(debugPort) && Number(debugPort) <= 65535
+    ? ["--remote-debugging-address=127.0.0.1", `--remote-debugging-port=${debugPort}`] : [];
+  delete env.MATH3D_E2E_LAB_DEBUG_PORT;
   await new Promise<void>((done, fail) => {
     const child = spawn(target.executable,
-      [target.directory, "--quantum-source-run", runId, resultSha256],
+      [...debugArgs, target.directory, "--quantum-source-run", runId, resultSha256],
       { cwd: target.directory, env, detached: true, stdio: "ignore", windowsHide: true });
     child.once("error", fail);
     child.once("spawn", () => { child.unref(); done(); });
