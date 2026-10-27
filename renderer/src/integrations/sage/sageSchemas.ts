@@ -25,6 +25,7 @@ export type SageHealthResponse = {
 export type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
+  jobId?: string;
 };
 
 export type SageRunResponse = {

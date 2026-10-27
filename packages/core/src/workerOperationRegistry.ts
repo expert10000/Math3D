@@ -221,7 +221,7 @@ const definitions = [
     title: "Symbolic factorization",
     canonicalOwner: "sage",
     method: "exact",
-    environments: ["server"],
+    environments: ["desktop", "server"],
     legacyRequestKinds: [],
   },
 ] as const satisfies readonly Math3DWorkerOperationDefinition[];

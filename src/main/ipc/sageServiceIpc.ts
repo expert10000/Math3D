@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { cancelSagePolynomialFactor, runSagePolynomialFactor } from "../python/sagePolynomialFactor";
 
 type SageOperation =
   | "sage.symbolic.simplify"
@@ -18,6 +19,7 @@ type SageOperation =
 type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
+  jobId?: string;
 };
 
 const baseUrl = String(process.env.MATH3D_SAGE_SERVICE_URL || "http://127.0.0.1:8767").replace(/\/+$/, "");
@@ -56,13 +58,19 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
 
 export function registerSageServiceIpc(): void {
   ipcMain.handle("sage:health", async () => requestJson("/health", { method: "GET" }));
-  ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) =>
-    requestJson("/run", {
+  ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) => {
+    if (req?.operation === "sage.polynomial.factor" && req.params?.coefficients !== undefined) {
+      return runSagePolynomialFactor(req.params, req.jobId);
+    }
+    return requestJson("/run", {
       method: "POST",
       body: JSON.stringify({
         operation: req?.operation,
         params: req?.params || {},
       }),
-    })
-  );
+    });
+  });
+  ipcMain.handle("sage:cancel", async (_evt, jobId: string) => ({
+    ok: typeof jobId === "string" && cancelSagePolynomialFactor(jobId),
+  }));
 }

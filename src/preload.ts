@@ -635,6 +635,8 @@ contextBridge.exposeInMainWorld("sageService", {
     ipcRenderer.invoke("sage:health"),
   run: (req: SageRunRequest): Promise<unknown> =>
     ipcRenderer.invoke("sage:run", req),
+  cancel: (jobId: string): Promise<unknown> =>
+    ipcRenderer.invoke("sage:cancel", jobId),
 });
 
 contextBridge.exposeInMainWorld("computeEngines", {

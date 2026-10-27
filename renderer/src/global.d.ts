@@ -765,6 +765,7 @@ declare global {
       health: () => Promise<SageHealthResponse>;
       getStatus: () => Promise<SageHealthResponse>;
       run: (req: SageRunRequest) => Promise<SageRunResponse>;
+      cancel: (jobId: string) => Promise<{ ok: boolean }>;
     };
     computeEngines?: {
       getStatus: () => Promise<ComputeEngineSnapshot>;

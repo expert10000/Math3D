@@ -17,7 +17,7 @@ const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
   "sage.matrix.eigen_exact": "Exact eigen",
   "sage.matrix.charpoly": "Characteristic polynomial",
   "sage.polynomial.roots_exact": "Exact roots",
-  "sage.polynomial.factor": "Polynomial factor",
+  "sage.polynomial.factor": "Exact polynomial factor (local WSL)",
   "sage.groebner.compute": "Groebner basis",
   "sage.numberTheory.gcd": "GCD",
   "sage.numberTheory.modInverse": "Mod inverse",
@@ -53,12 +53,15 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
   const [engine, setEngine] = useState<"auto" | "sagemath">("auto");
   const [operation, setOperation] = useState<SageSymbolicOperation>("sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
+  const [coefficientsText, setCoefficientsText] = useState("-1, 0, 1");
   const [variablesText, setVariablesText] = useState("x");
   const [health, setHealth] = useState<SageHealthResponse | null>(null);
   const [response, setResponse] = useState<SageRunResponse | null>(null);
   const [busy, setBusy] = useState<"none" | "health" | "run">("none");
   const [error, setError] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const localFactor = operation === "sage.polynomial.factor";
 
   const variables = useMemo(
     () => variablesText.split(",").map((part) => part.trim()).filter(Boolean),
@@ -80,20 +83,51 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
   const onRun = async () => {
     setBusy("run");
     setError(null);
+    setResponse(null);
     try {
+      let jobId: string | undefined;
+      let params: Record<string, unknown> = {
+        expression,
+        variables: variables.length ? variables : ["x"],
+      };
+      if (localFactor) {
+        if (!window.sageService?.run) {
+          throw new Error("Exact polynomial factoring requires the MATH3D desktop app with SageMath in WSL Ubuntu.");
+        }
+        const coefficients = coefficientsText.split(",").map((part) => part.trim());
+        if (
+          coefficients.length < 2 || coefficients.length > 13 ||
+          coefficients.some((value) => !/^-?(?:0|[1-9][0-9]{0,17})$/.test(value)) ||
+          /^-?0$/.test(coefficients[coefficients.length - 1])
+        ) {
+          throw new Error("Enter 2–13 integer coefficients, constant first, with a nonzero leading coefficient (up to 18 digits each).");
+        }
+        jobId = crypto.randomUUID();
+        setActiveJobId(jobId);
+        params = { coefficients };
+      }
       const result = await runSageOperation({
         operation,
-        params: {
-          expression,
-          variables: variables.length ? variables : ["x"],
-        },
+        jobId,
+        params,
       });
       setResponse(result);
       if (!result.success && result.error) setError(result.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run SageMath operation.");
     } finally {
+      setActiveJobId(null);
       setBusy("none");
+    }
+  };
+
+  const onCancel = async () => {
+    if (!activeJobId) return;
+    try {
+      const response = await window.sageService?.cancel(activeJobId);
+      if (!response?.ok) setError("The Sage factorization has already finished.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not cancel Sage factorization.");
     }
   };
 
@@ -103,6 +137,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
       <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 11 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>Engine</span>
+          {localFactor ? <span>Local WSL SageMath · exact QQ[x] · 20-second limit</span> : <>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <input type="radio" checked={engine === "auto"} onChange={() => setEngine("auto")} />
             Auto
@@ -116,6 +151,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
               {health.engine}: {health.status}
             </span>
           )}
+          </>}
         </div>
 
         <label style={{ display: "grid", gap: 4 }}>
@@ -129,6 +165,11 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
           </select>
         </label>
 
+        {localFactor ? <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>
+          <input value={coefficientsText} onChange={(event) => setCoefficientsText(event.target.value)} style={fieldStyle} placeholder="-1, 0, 1" />
+          <span>Example: -1, 0, 1 means x² − 1. Only coefficient data is sent to Sage; no expression is evaluated.</span>
+        </label> : <>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Expression</span>
           <textarea
@@ -143,14 +184,16 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
           <span style={{ fontWeight: 600 }}>Variables</span>
           <input value={variablesText} onChange={(event) => setVariablesText(event.target.value)} style={fieldStyle} />
         </label>
+        </>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
+          {!localFactor && <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
             {busy === "health" ? "Checking..." : "Check SageMath"}
-          </button>
+          </button>}
           <button type="button" onClick={() => void onRun()} disabled={busy !== "none"}>
             {busy === "run" ? "Running..." : "Run"}
           </button>
+          {localFactor && activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={showJson} onChange={(event) => setShowJson(event.target.checked)} />
             JSON
@@ -162,6 +205,13 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
             <div><strong>Success:</strong> {response.success ? "yes" : "no"}</div>
             <div><strong>Engine:</strong> {response.engine}</div>
             {response.elapsedMs != null && <div><strong>Elapsed:</strong> {response.elapsedMs}ms</div>}
+            {response.operation === "sage.polynomial.factor" && <>
+              <div><strong>Exact reconstruction:</strong> {response.result.verified === true ? "verified" : "not verified"}</div>
+              {typeof response.result.inputHash === "string" && <div><strong>Input SHA-256:</strong> <code>{response.result.inputHash}</code></div>}
+              {Array.isArray(response.result.diagnostics) && response.result.diagnostics.map((diagnostic, index) =>
+                typeof diagnostic === "string" ? <div key={index}><strong>Diagnostic:</strong> {diagnostic}</div> : null
+              )}
+            </>}
             <pre style={{ margin: "6px 0 0", whiteSpace: "pre-wrap", fontFamily: fieldStyle.fontFamily }}>
               {showJson ? JSON.stringify(response, null, 2) : resultText(response)}
             </pre>
