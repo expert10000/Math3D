@@ -155,6 +155,12 @@ type Props = {
   savedVectorField3D?: VectorField3DDocument | null;
   openVectorField3DRequest?: { document: VectorField3DDocument; token: number } | null;
   onSaveVectorField3D?: (document: VectorField3DDocument) => void;
+  savedVectorField3DPointResults?: readonly import("@math3d/core").AnalysisResultEnvelope[];
+  onSaveVectorField3DPointResult?: (document: VectorField3DDocument,
+    result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onOpenVectorField3DProjectResults?: (resultId: string) => void;
+  onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
+    surface: import("@math3d/core").VectorField3DIsosurface) => void;
   savedVectorField2D?: VectorField2DDocument | null;
   openVectorField2DRequest?: { document: VectorField2DDocument; token: number } | null;
   onSaveVectorField2D?: (document: VectorField2DDocument) => void;
@@ -169,6 +175,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
   savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D,
+  savedVectorField3DPointResults, onSaveVectorField3DPointResult, onOpenVectorField3DProjectResults,
+  onPromoteVectorField3DIsosurface,
   savedScientificFields = [], openScientificFieldRequest, onSaveScientificField,
   savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -1928,6 +1936,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {vectorField3DOpen && <VectorField3DPanel key={vectorField3DDocument?.identity.id ?? "new"}
           mount={viewerRef.current?.closest<HTMLElement>(".graph2d-workspace") ?? undefined}
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
+          savedPointResults={savedVectorField3DPointResults}
+          onSavePointResult={onSaveVectorField3DPointResult}
+          onOpenProjectResults={onOpenVectorField3DProjectResults}
+          onPromoteIsosurface={onPromoteVectorField3DIsosurface}
           isGraphLineImported={(selection, vectorDocument) => {
             const field = vectorDocument.source.field;
             if (field.kind !== "scientific-bundle") return false;

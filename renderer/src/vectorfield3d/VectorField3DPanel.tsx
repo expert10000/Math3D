@@ -75,7 +75,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
-  savedPointResults = [], onSavePointResult, onOpenProjectResults }: {
+  savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
@@ -86,6 +86,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   onOpenProjectResults?: (resultId: string) => void;
+  onPromoteIsosurface?: (document: VectorField3DDocument,
+    surface: VectorField3DIsosurface) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
@@ -1665,6 +1667,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           {" "}Resident cache {isosurface.residentTileBytes} bytes.</p>}
         <button type="button" disabled={isosurface.triangleCount === 0} onClick={downloadIsosurface}>
           Export mesh with provenance (.gltf)</button>
+        {onPromoteIsosurface && <button type="button" disabled={isosurface.triangleCount === 0}
+          onClick={() => { try { onPromoteIsosurface(document, isosurface); setError("");
+            setRunStatus("Source-linked Mesh added to the Project."); }
+          catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }}>
+          Add source-linked Mesh to Project</button>}
       </div>}
     </section>
     <section id="field-equilibria" aria-label="Field equilibria" className="vector-field3d-probe">

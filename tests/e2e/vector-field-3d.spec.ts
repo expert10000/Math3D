@@ -136,7 +136,7 @@ test("SCI-09 analytic sphere isosurface appears in the 3D Field Explorer", async
 });
 
 test("SCI-09 measured Burgers speed isosurface exports verified tiles and regenerates after Project reopen", async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-isosurface-"));
   const directory = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory, { recursive: true });
@@ -249,6 +249,54 @@ test("SCI-09 measured Burgers speed isosurface exports verified tiles and regene
     await expect(editor.getByTestId("vector-field3d-run-status"))
       .toContainText("Isosurface extraction cancelled; no partial mesh");
     await expect(editor.getByTestId("vector-field3d-isosurface")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    await expect(editor.getByTestId("vector-field3d-isosurface"))
+      .toContainText("Verified source tiles:", { timeout: 120_000 });
+    await editor.getByRole("button", { name: "Add source-linked Mesh to Project" }).click();
+    await expect(page.getByTestId("scientific-mesh-source-status"))
+      .toContainText("Source current", { timeout: 120_000 });
+    await expect(page.getByTestId("scientific-mesh-source-status"))
+      .toContainText("on clip planes");
+    if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
+    if (!await projectPanel.getByTestId("project-save").isVisible())
+      await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const meshProject = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const meshEntry = meshProject.workspace.entries.find((item: { module: string;
+      checkpoint: { source: { origin: { kind: string } } } }) =>
+      item.module === "mesh" && item.checkpoint.source.origin.kind === "derivedVectorFieldIsosurface");
+    expect(meshEntry).toBeDefined();
+    expect(meshEntry.checkpoint.source.origin).toMatchObject({ clipped: true,
+      topology: { watertight: false, boundaryEdgeCount: gltf.meshes[0].extras.topology.boundaryEdgeCount,
+        clipBoundaryEdgeCount: gltf.meshes[0].extras.topology.clipBoundaryEdgeCount },
+      sourceHash: gltf.meshes[0].extras.sourceHash,
+      verifiedTiles: expect.arrayContaining([expect.objectContaining({ name: "vx",
+        tileSha256: expect.any(Array) })]) });
+    expect(meshProject.workspace.relations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ operation: "vector3d.speed-isosurface-mesh",
+        sources: [expect.objectContaining({ documentId: fieldEntry.expected.id })] })]));
+    await projectPanel.getByTestId("project-detail-toggle").click();
+    await projectPanel.getByTestId(`project-preview-${meshProject.identity.id}`).click();
+    await projectPanel.getByTestId("project-restore-saved").click();
+    await projectPanel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("scientific-mesh-source-status"))
+      .toContainText("Source current", { timeout: 120_000 });
+    const requiredChanged = Buffer.from(original);
+    requiredChanged[16 * 85 * 55 * 8] ^= 1;
+    await writeFile(resource, requiredChanged);
+    if (!await projectPanel.getByTestId(`project-preview-${meshProject.identity.id}`).isVisible()) {
+      if (!await projectPanel.getByTestId("project-detail-toggle").isVisible())
+        await projectPanel.getByTestId("project-gallery-layout-toggle").click();
+      if (!await projectPanel.getByTestId(`project-preview-${meshProject.identity.id}`).isVisible())
+        await projectPanel.getByTestId("project-detail-toggle").click();
+    }
+    await projectPanel.getByTestId(`project-preview-${meshProject.identity.id}`).click();
+    await projectPanel.getByTestId("project-restore-saved").click();
+    await projectPanel.getByTestId("project-import-open").click();
+    await expect(page.getByTestId("scientific-mesh-source-status"))
+      .toContainText("Source stale", { timeout: 120_000 });
+    await writeFile(resource, original);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-isosurface-"))
