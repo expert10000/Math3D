@@ -57,3 +57,10 @@ conditional occupied Chern and polarization winding are producer claims for
 ideal adiabatic transport of a filled band; neither finite-speed current nor
 finite-chain edge motion is supplied. The earlier static Rice–Mele pair is
 unchanged and makes no pump claim.
+
+The separate `run-91b9adc301184ef9be91ea7fe2b7af73-finite-pump.qscene`
+was exported by `scripts/export-rice-mele-finite-fixture.ts` in Theory Lab.
+`rice-mele-finite-producer-result.json` holds the exact saved result whose
+SHA-256 the scene references. Exact time series and time–momentum current
+samples are supplied with units and convergence diagnostics. The finite-speed
+charge is not a quantized invariant, and no finite-chain edge motion is supplied.

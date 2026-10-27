@@ -84,6 +84,16 @@ producer status and units. Restart and changed-byte refusal are covered by
 adiabatic transport for a filled band; no finite-speed current or finite-chain
 edge motion is supplied or calculated by Math3D.
 
+The separate `run-91b9adc301184ef9be91ea7fe2b7af73-finite-pump.qscene`
+is a verified finite-speed Theory Lab run at duration 80. Open **File →
+Verified quantum examples → Rice–Mele → finite-speed pump** to inspect exact
+time, current, charge, excited-population and time–momentum current samples.
+The producer checks norm and time/momentum-grid charge drift. Math3D reads
+these saved arrays only; finite-speed charge is not labelled quantized. The
+static ideal invariant and finite-chain edge motion remain separate.
+Import, restart and changed-byte refusal are covered by
+`tests/e2e/quantum-rice-mele-pump.spec.ts`.
+
 ## Post-v0.1 BBH admission (2026-10-25)
 
 Theory Lab computes a bounded four-orbital BBH Hamiltonian and a finite open

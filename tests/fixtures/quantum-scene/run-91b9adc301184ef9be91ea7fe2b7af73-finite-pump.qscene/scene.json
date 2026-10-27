@@ -1,0 +1,197 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-91b9adc301184ef9be91ea7fe2b7af73-finite-pump",
+  "title": "Rice–Mele filled band · finite-speed transport",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-91b9adc301184ef9be91ea7fe2b7af73",
+    "jobId": "fixture-rice-mele-finite",
+    "model": "rice_mele_pump",
+    "engine": "native",
+    "engineVersion": "1.18.1",
+    "computedAt": "2026-10-27T11:47:24.872944+00:00",
+    "resultSha256": "4f2f133d9a53c588fe793d5b4d0edca9713ff01668fe01e28ec9f06e1e416679",
+    "adapter": "qvis/1",
+    "parameters": {
+      "baseHopping": 1,
+      "modulation": 0.4,
+      "staggerAmplitude": 0.6,
+      "staggerOffset": 0,
+      "kSamples": 32,
+      "phaseSamples": 32,
+      "duration": 80,
+      "stepsPerPhase": 16
+    },
+    "source": {
+      "repository": "https://github.com/expert10000/theory",
+      "revision": "48e2036ba7c7dd5c79d54749341a79d41770cbb7",
+      "entryId": "rice_mele"
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "time",
+      "Bloch momentum k",
+      "recorded value"
+    ],
+    "units": [
+      "inverse hopping energy",
+      "rad / cell",
+      "quantity-specific; see each dataset"
+    ]
+  },
+  "camera": {
+    "position": [
+      52,
+      -8,
+      4.0159853268324035
+    ],
+    "target": [
+      40,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "objects": [
+    {
+      "id": "finite-current",
+      "label": "Recorded filled-band current",
+      "kind": "point-cloud",
+      "positions": "finite-time-positions",
+      "visible": true,
+      "style": {
+        "color": "#50adbd",
+        "opacity": 1,
+        "size": 0.08
+      },
+      "scalars": "finite-current"
+    },
+    {
+      "id": "finite-charge",
+      "label": "Recorded transported charge",
+      "kind": "point-cloud",
+      "positions": "finite-time-positions",
+      "visible": true,
+      "style": {
+        "color": "#dc9e5c",
+        "opacity": 1,
+        "size": 0.08
+      },
+      "scalars": "finite-charge"
+    },
+    {
+      "id": "finite-excitation",
+      "label": "Recorded excited-band population",
+      "kind": "point-cloud",
+      "positions": "finite-time-positions",
+      "visible": true,
+      "style": {
+        "color": "#a68cd9",
+        "opacity": 1,
+        "size": 0.08
+      },
+      "scalars": "finite-excitation"
+    },
+    {
+      "id": "finite-local-current",
+      "label": "Exact time–momentum current samples",
+      "kind": "point-cloud",
+      "positions": "finite-local-positions",
+      "visible": true,
+      "style": {
+        "color": "#6abd9f",
+        "opacity": 0.75,
+        "size": 0.035
+      },
+      "scalars": "finite-current-by-k"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "finite-time-positions",
+      "path": "finite-time-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 33,
+      "unit": "inverse hopping energy; display baseline",
+      "bytes": 792,
+      "sha256": "b0e5cf49076b381ac2569aa951704e23596f759cd96f933aff957965195b4efb"
+    },
+    {
+      "id": "finite-current",
+      "path": "finite-current.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 33,
+      "unit": "electron charge / inverse hopping time",
+      "bytes": 264,
+      "sha256": "6f0d561e998a70edf6b07dbd76279071abc1f89ee292b83e35abe4fa88bb6935"
+    },
+    {
+      "id": "finite-charge",
+      "path": "finite-charge.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 33,
+      "unit": "electron charge / cell",
+      "bytes": 264,
+      "sha256": "55d24b4b8cd976629212ec6a5eadb518039ca5fbe3b377baf1bbb0ada0a62f54"
+    },
+    {
+      "id": "finite-excitation",
+      "path": "finite-excitation.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 33,
+      "unit": "probability",
+      "bytes": 264,
+      "sha256": "27bff04be9282cc041410da7fbaf6ab478d6dbea24885127c103b0a955604faa"
+    },
+    {
+      "id": "finite-local-positions",
+      "path": "finite-local-positions.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1056,
+      "unit": "inverse hopping energy, rad / cell, display plane",
+      "bytes": 25344,
+      "sha256": "b8ee895ff08f737fe15ea472731ed5e5ae1004e3c0ff3c68d42f2a89c027f3a1"
+    },
+    {
+      "id": "finite-current-by-k",
+      "path": "finite-current-by-k.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 1056,
+      "unit": "electron charge / inverse hopping time",
+      "bytes": 8448,
+      "sha256": "36cc95164131a951dc83e21627a4a7c162826cf70e3da227f4bfeaf1080b3836"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "finite-scope",
+      "text": "Finite-speed filled-band evolution at duration 80 inverse hopping energy; transported charge -1.0039963 electron charge / cell (resolved). This finite-speed charge is not labelled quantized. No finite-chain edge motion.",
+      "position": [
+        40,
+        0,
+        3
+      ]
+    },
+    {
+      "id": "finite-convergence",
+      "text": "Maximum norm drift 6.439e-15; time-step charge drift 2.937e-3; momentum-grid charge drift 8.119e-5. Ideal adiabatic Chern -1 is a separate reference.",
+      "position": [
+        40,
+        0,
+        -3
+      ]
+    }
+  ]
+}
