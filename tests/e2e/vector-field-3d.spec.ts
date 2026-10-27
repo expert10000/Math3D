@@ -89,7 +89,172 @@ test("SCI-08 searches, classifies and saves a linked equilibrium in the desktop 
     await expect(results).toContainText("Jacobian condition estimate");
     await results.getByRole("button", { name: "Save construction" }).first().click();
     await expect(editor.getByText(/Saved linked equilibria \(1\/32\)/)).toBeVisible();
+    await editor.getByLabel("P(x,y,z)").fill("x-2*y");
+    await editor.getByLabel("Q(x,y,z)").fill("2*x+y");
+    await editor.getByRole("button", { name: "Find equilibria" }).click();
+    await results.getByRole("button", { name: /spiral-source at/ }).first().click();
+    await expect(results).toContainText(/λ2 = .*i/);
+    await expect(results).toContainText(/λ3 = .*i/);
   } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-09 analytic sphere isosurface appears in the 3D Field Explorer", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByLabel("P(x,y,z)").fill("x");
+    await editor.getByLabel("Q(x,y,z)").fill("y");
+    await editor.getByLabel("R(x,y,z)").fill("z");
+    await editor.getByLabel("Isosurface speed level").fill("1");
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    const surface = editor.getByTestId("vector-field3d-isosurface");
+    await expect(surface).toContainText("complete within budget");
+    await expect(surface).toContainText("no open boundary at the clipping box");
+    await expect(surface).toContainText("0 boundary edges");
+    await expect(surface).toContainText("0 nonmanifold edges");
+    await expect(surface).toContainText("watertight");
+    await expect(editor.getByRole("figure", { name: "3D vector arrow renderer" })).toBeVisible();
+    await app.app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      (globalThis as typeof globalThis & { scientificIsosurfaceDownload?: string }).scientificIsosurfaceDownload = "";
+      window.webContents.session.once("will-download", (_event, item) => {
+        (globalThis as typeof globalThis & { scientificIsosurfaceDownload?: string }).scientificIsosurfaceDownload =
+          item.getFilename();
+        item.cancel();
+      });
+    });
+    await surface.getByRole("button", { name: "Export mesh with provenance (.gltf)" }).click();
+    await expect.poll(() => app.app.evaluate(() =>
+      (globalThis as typeof globalThis & { scientificIsosurfaceDownload?: string })
+        .scientificIsosurfaceDownload)).toBe("math3d-speed-isosurface.gltf");
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-09 measured Burgers speed isosurface exports verified tiles and regenerates after Project reopen", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-burgers-isosurface-"));
+  const directory = join(root, "burgers.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory, { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, directory);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    let editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await editor.getByLabel("Isosurface speed level").fill("0.0011");
+    await editor.getByLabel("Clip x min").fill("-0.002");
+    await editor.getByLabel("Clip x max").fill("0.002");
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    const surface = editor.getByTestId("vector-field3d-isosurface");
+    await expect(surface).toContainText("Verified source tiles:", { timeout: 120_000 });
+    await expect(surface).toContainText(/source sha256:[a-f0-9]{64}/);
+    await expect(surface).toContainText(/\d[\d,]* triangles/);
+    await expect(surface).toContainText("opened by the physical clipping box");
+    await expect(surface).toContainText("boundary edges");
+    expect(Number((await surface.innerText()).match(/vx (\d+)\/72/)?.[1])).toBeLessThan(72);
+    await expect(surface.getByRole("button", { name: "Export mesh with provenance (.gltf)" })).toBeEnabled();
+    await page.evaluate(() => {
+      const originalClick = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function() {
+        if (this.download.endsWith(".gltf")) {
+          (window as unknown as { capturedIsosurfaceUrl: string }).capturedIsosurfaceUrl = this.href;
+          return;
+        }
+        originalClick.call(this);
+      };
+    });
+    await surface.getByRole("button", { name: "Export mesh with provenance (.gltf)" }).click();
+    await expect(editor.getByRole("alert")).toHaveCount(0);
+    const gltf = await page.evaluate(async () => JSON.parse(await fetch(
+      (window as unknown as { capturedIsosurfaceUrl: string }).capturedIsosurfaceUrl).then(response =>
+        response.text())));
+    expect(gltf.meshes[0].extras).toMatchObject({ level: 0.0011, unit: "m/s",
+      clipped: true, complete: true, clipBounds: [[-0.002, 0.002], expect.any(Array),
+        expect.any(Array)],
+      sourceHash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      verifiedTiles: expect.arrayContaining([
+        expect.objectContaining({ name: "vx", tileSha256: expect.arrayContaining([
+          expect.stringMatching(/^[a-f0-9]{64}$/)]) })]) });
+    expect(gltf.meshes[0].primitives[0].indices).toBe(2);
+    expect(gltf.meshes[0].extras.topology.boundaryEdgeCount).toBeGreaterThan(0);
+    expect(gltf.meshes[0].extras.topology.clipBoundaryEdgeCount).toBeGreaterThan(0);
+    expect(gltf.meshes[0].extras.topology.watertight).toBe(false);
+    expect(gltf.meshes[0].extras.vertexCount).toBeLessThan(gltf.accessors[2].count);
+    await expect(surface).toContainText(
+      String(gltf.meshes[0].extras.topology.connectedComponents) + " connected component(s)");
+    await expect(surface).toContainText(
+      String(gltf.meshes[0].extras.topology.boundaryEdgeCount) + " boundary edges");
+    await expect(surface).toContainText(
+      String(gltf.meshes[0].extras.topology.nonManifoldEdgeCount) + " nonmanifold edges");
+    expect(gltf.accessors[0].count).toBeGreaterThan(0);
+    const resource = join(directory, "vx.f64"), original = await readFile(resource);
+    const outsideClip = Buffer.from(original); outsideClip[0] ^= 1;
+    await writeFile(resource, outsideClip);
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    await expect(editor.getByTestId("vector-field3d-isosurface"))
+      .toContainText("vx 48/72", { timeout: 120_000 });
+    await writeFile(resource, original);
+    const changed = Buffer.from(original); changed[16 * 85 * 55 * 8] ^= 1;
+    await writeFile(resource, changed);
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    await expect(editor.getByRole("alert").filter({ hasText: /integrity|checksum/i })).toBeVisible();
+    await expect(editor.getByTestId("vector-field3d-isosurface")).toHaveCount(0);
+    await writeFile(resource, original);
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    await expect(editor.getByTestId("vector-field3d-isosurface"))
+      .toContainText("Verified source tiles:", { timeout: 120_000 });
+    await expect(editor.getByTestId("vector-field3d-isosurface"))
+      .toContainText(gltf.meshes[0].extras.sourceHash);
+    await editor.getByRole("button", { name: "Save document" }).click();
+    await editor.getByRole("button", { name: "Close" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projectPanel = page.getByTestId("project-explorer-panel");
+    await projectPanel.getByTestId("project-save").click();
+    await expect(projectPanel.getByTestId("project-message")).toContainText("Saved");
+    const savedProject = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const fieldEntry = savedProject.workspace.entries.find((item: { module: string }) =>
+      item.module === "vector3d");
+    await projectPanel.getByTestId(`project-preview-${savedProject.identity.id}`).click();
+    await projectPanel.getByTestId(`project-open-field-explorer-${fieldEntry.expected.id}`).click();
+    editor = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(editor.getByLabel("Isosurface speed level")).toHaveValue("0.0011");
+    await expect(editor.getByLabel("Clip x min")).toHaveValue("-0.002");
+    await expect(editor.getByLabel("Clip x max")).toHaveValue("0.002");
+    await expect(editor.getByTestId("vector-field3d-isosurface")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    await expect(editor.getByTestId("vector-field3d-isosurface"))
+      .toContainText("Verified source tiles:", { timeout: 120_000 });
+    await expect(editor.getByTestId("vector-field3d-isosurface"))
+      .toContainText(gltf.meshes[0].extras.sourceHash);
+    await page.evaluate(() => {
+      const originalPost = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function(message) {
+        window.setTimeout(() => originalPost.call(this, message), 1200);
+      };
+    });
+    await editor.getByRole("button", { name: "Extract speed isosurface" }).click();
+    await editor.getByRole("button", { name: "Cancel isosurface" }).click();
+    await expect(editor.getByTestId("vector-field3d-run-status"))
+      .toContainText("Isosurface extraction cancelled; no partial mesh");
+    await expect(editor.getByTestId("vector-field3d-isosurface")).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-isosurface-"))
+      throw new Error("Unsafe Burgers isosurface fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("GRA-14 3D arrows reverify one complete vector bundle and reject changed or missing bytes", async () => {
@@ -589,6 +754,7 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     await expect(calculusResult).toContainText("bounded-finite-difference on the source grid");
     await expect(calculusResult).toContainText("Jacobian:");
     await expect(calculusResult).toContainText(/source sha256:[a-f0-9]{64}/);
+    await expect(calculusResult).toContainText(/Project result vector3d-point:[a-f0-9]{64}/);
     const eigenPanel = editor.getByTestId("vector-field3d-eigen-panel");
     await expect(eigenPanel).not.toHaveAttribute("open", "");
     await eigenPanel.locator("summary").click();
@@ -688,14 +854,46 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     const savedProject = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const fieldEntry = savedProject.workspace.entries.find((item: { module: string }) => item.module === "vector3d");
     expect(fieldEntry).toBeDefined();
+    const savedCalculus = savedProject.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
+      item.provenance.operation.type === "vector3d.point-calculus");
+    expect(savedCalculus).toBeDefined();
+    expect(savedCalculus.provenance.source.documentId).toBe(fieldEntry.expected.id);
+    expect(savedCalculus.provenance.operation.parameters).toMatchObject({
+      position: expect.arrayContaining([expect.any(Number), expect.any(Number), expect.any(Number)]),
+      coordinateUnits: ["m", "m", "m"], stencilGrid: "source",
+      sourceHash: originalSourceHash,
+      sourceReference: { kind: "scientific-bundle", components: [
+        { datasetId: "field", component: "vx" },
+        { datasetId: "field", component: "vy" },
+        { datasetId: "field", component: "vz" }] },
+    });
+    expect(savedCalculus.summary).toMatchObject({ derivativeMethod: "bounded-finite-difference",
+      eigenvalueUnit: "1/s", verifiedSamples: [
+        { name: "vx", sampleSha256: expect.stringMatching(/^[a-f0-9]{64}$/) },
+        { name: "vy", sampleSha256: expect.stringMatching(/^[a-f0-9]{64}$/) },
+        { name: "vz", sampleSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }] });
+    expect(savedCalculus.summary.jacobianRows).toHaveLength(3);
+    expect(savedCalculus.summary.eigenvalues).toHaveLength(3);
+    expect(savedProject.workspace.relations).toContainEqual(expect.objectContaining({
+      kind: "analysis-of", target: { type: "result", resultId: savedCalculus.resultId,
+        resultType: "vector3d.point-calculus" } }));
     if (!await projectPanel.isVisible()) await page.getByTestId("projects-toggle").click();
     await projectPanel.getByTestId(`project-preview-${savedProject.identity.id}`).click();
     await projectPanel.getByTestId(`project-open-field-explorer-${fieldEntry.expected.id}`).click();
     const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(reopened.getByTestId("vector-field3d-differential")).toHaveCount(0);
-    await reopened.getByRole("button", { name: "Analyze field calculus" }).click();
+    await expect(reopened.getByLabel("Saved point calculus results"))
+      .toContainText(savedCalculus.resultId);
+    await writeFile(calculusResource, calculusChanged);
+    await reopened.getByRole("button", { name: "Reverify saved Inspector result" }).click();
+    await expect(reopened.getByRole("alert").filter({ hasText: /changed|checksum|integrity/i }))
+      .toBeVisible();
+    await expect(reopened.getByTestId("vector-field3d-differential")).toHaveCount(0);
+    await writeFile(calculusResource, calculusOriginal);
+    await reopened.getByRole("button", { name: "Reverify saved Inspector result" }).click();
     const reopenedResult = reopened.getByTestId("vector-field3d-differential");
     await expect(reopenedResult).toContainText(`source ${originalSourceHash}`);
+    await expect(reopenedResult).toContainText(`Project result ${savedCalculus.resultId}`);
     const reopenedEigen = reopened.getByTestId("vector-field3d-eigen-panel");
     await expect(reopenedEigen).not.toHaveAttribute("open", "");
     await reopenedEigen.locator("summary").click();
@@ -703,6 +901,11 @@ test("SCI-12 measured Burgers vortex keeps source axes and values across Explore
     const reopenedProvenance = reopened.getByLabel("Field calculus sample provenance");
     await reopenedProvenance.locator("summary").click();
     expect(await reopenedProvenance.textContent()).toBe(originalProvenance);
+    await reopened.getByRole("button", { name: "Open Project result graph" }).click();
+    await expect(projectPanel).toBeVisible();
+    await expect(projectPanel.getByTestId("project-point-result-gated")).toBeVisible();
+    await expect(projectPanel.getByTestId("project-result-detail"))
+      .toContainText(savedCalculus.resultId);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-derived-"))
@@ -771,6 +974,12 @@ test("SCI-12 measured Burgers trajectories and equilibria use verified v3 tiles"
       .toContainText("Verified source tiles:");
     await expect(editor.getByLabel("Field equilibria"))
       .toContainText(/vx \d+\/72/);
+    await expect(editor.getByLabel("Field equilibria"))
+      .toContainText(/hash sha256:[a-f0-9]{64}/);
+    await expect(editor.getByLabel("Field equilibria")).toContainText("8 candidates");
+    await expect(editor.getByLabel("Field equilibria")).toContainText("3411/40000 evaluations");
+    await editor.getByLabel("Field equilibria").getByRole("button", { name: /at \(/ }).first().click();
+    await expect(editor.getByLabel("Field equilibria")).toContainText("eigenvalues λ1 =");
     const equilibriumText = await editor.getByLabel("Field equilibria").innerText();
     const verifiedTileCount = Number(equilibriumText.match(/vx (\d+)\/72/)?.[1]);
     const tileBatchCount = Number(equilibriumText.match(/Batched tile reads: (\d+)/)?.[1]);

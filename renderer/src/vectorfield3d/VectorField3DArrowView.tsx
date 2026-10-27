@@ -5,7 +5,7 @@ import { DoubleSide, OrthographicCamera, Raycaster, Vector2 } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { VectorField3DArrowArtifact, VectorField3DDocument,
   VectorField3DTrajectoryArtifact, VectorField3DCameraPreset,
-  VectorField3DClipBounds, VectorField3DCameraState } from "@math3d/core";
+  VectorField3DClipBounds, VectorField3DCameraState, VectorField3DIsosurface } from "@math3d/core";
 import { selectVectorField3DPreview, type VectorField3DPreviewDetail } from
   "./vectorField3DProgressivePreview";
 import { fieldPointToWorld, intersectFieldSeedPlane, seedPlaneNormalAxis,
@@ -80,11 +80,12 @@ function CameraPreset({ preset, controls, onReady, savedState }: { preset: Vecto
 export const pointInsideFieldClip = (point: readonly number[], clip: VectorField3DClipBounds) =>
   point.every((value, axis) => value >= clip[axis]![0] && value <= clip[axis]![1]);
 
-export function VectorField3DArrowView({ document, artifact, trajectories, probe,
+export function VectorField3DArrowView({ document, artifact, trajectories, isosurface, probe,
   onCameraStateChange, seedPlane, onSeedPlaneChange, onSeedFixedCoordinateChange,
   onSeedPropose, proposedSeed, seedPlacementDisabled }: {
   document: VectorField3DDocument; artifact: VectorField3DArrowArtifact;
   trajectories?: VectorField3DTrajectoryArtifact | null;
+  isosurface?: VectorField3DIsosurface | null;
   probe?: readonly [number, number, number] | null;
   onCameraStateChange?: (state: VectorField3DCameraState) => void;
   seedPlane?: SeedPlane3D | null;
@@ -209,6 +210,18 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
   }, [document, artifact, clip, preview]);
   const paths = useMemo(() => trajectoryGroupGeometry(document, trajectories, clip),
     [document, trajectories, clip]);
+  const surfacePositions = useMemo(() => {
+    if (!isosurface) return null;
+    const axes = document.source.axes;
+    const span = Math.max(...axes.map(axis => axis.max - axis.min));
+    const positions = new Float32Array(isosurface.positions.length);
+    for (let index = 0; index < positions.length; index++) {
+      const axis = index % 3;
+      positions[index] = (isosurface.positions[index]! -
+        (axes[axis]!.min + axes[axis]!.max) / 2) * 2 / span;
+    }
+    return positions;
+  }, [document.source.axes, isosurface]);
   const domainBox = useMemo(() => {
     const axes = document.source.axes, span = Math.max(...axes.map(axis => axis.max - axis.min));
     const half = axes.map(axis => (axis.max - axis.min) / span);
@@ -329,6 +342,14 @@ export function VectorField3DArrowView({ document, artifact, trajectories, probe
           </bufferGeometry>
           <lineBasicMaterial vertexColors toneMapped={false} />
         </lineSegments>
+        {surfacePositions && surfacePositions.length > 0 && <mesh>
+          <bufferGeometry>
+            <bufferAttribute attach="attributes-position" args={[surfacePositions, 3]} />
+            <bufferAttribute attach="attributes-normal" args={[isosurface!.normals, 3]} />
+            <bufferAttribute attach="index" args={[isosurface!.indices, 1]} />
+          </bufferGeometry>
+          <meshNormalMaterial side={DoubleSide} transparent opacity={0.72} depthWrite={false} />
+        </mesh>}
         <points>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[geometry.stationary, 3]} />

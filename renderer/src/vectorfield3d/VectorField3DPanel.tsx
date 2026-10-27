@@ -7,9 +7,12 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   sampleVectorField3DSlice, sampleVectorField3DProbe, vectorField3DSliceCoordinates,
   sampleVectorField3DSparseSlice, sampleVectorField3DSparseProbe,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
+  createVectorField3DPointResult, reverifyVectorField3DPointResult,
   verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
+  type AnalysisResultEnvelope,
   type VectorField3DEquilibriumSearch,
+  type VectorField3DIsosurface,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
   createVectorField3DDerivedLine, type VectorField3DDerivedLine,
   integrateVectorField3DScientificTrajectories,
@@ -38,6 +41,7 @@ import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGra
 import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerivedLine";
 import { cachedVerifiedVectorField3DSlice, invalidateVerifiedDerivedResults } from
   "./verifiedDerivedResultCache";
+import { exportVectorField3DIsosurfaceGltf } from "./exportVectorField3DIsosurface";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -70,7 +74,8 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 }
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
-  onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine }: {
+  onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
+  savedPointResults = [], onSavePointResult, onOpenProjectResults }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
@@ -78,6 +83,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
   onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
+  savedPointResults?: readonly AnalysisResultEnvelope[];
+  onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onOpenProjectResults?: (resultId: string) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const equilibriaButtonRef = useRef<HTMLButtonElement>(null);
@@ -109,7 +117,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     VectorField3DSliceArtifact>>>({});
   const [probeArtifact, setProbeArtifact] = useState<VectorField3DProbeArtifact | null>(null);
   const [differential, setDifferential] = useState<VectorField3DDifferentialArtifact | null>(null);
+  const [pointResultId, setPointResultId] = useState<string | null>(null);
   const [equilibriumSearch, setEquilibriumSearch] = useState<VectorField3DEquilibriumSearch | null>(null);
+  const [isosurface, setIsosurface] = useState<VectorField3DIsosurface | null>(null);
+  const [isosurfaceLevelDraft, setIsosurfaceLevelDraft] = useState(
+    String(document.workspace?.isosurfaceLevel ?? 1));
   const [selectedEquilibrium, setSelectedEquilibrium] = useState<number | null>(null);
   const [trajectories, setTrajectories] = useState<VectorField3DTrajectoryArtifact | null>(null);
   const [seedDraft, setSeedDraft] = useState<[string, string, string]>(document.source.axes.map(axis =>
@@ -135,7 +147,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [lineBusy, setLineBusy] = useState(false);
-  const [busyAction, setBusyAction] = useState<"render" | "trajectory" | "equilibrium" | null>(null);
+  const [busyAction, setBusyAction] = useState<"render" | "trajectory" | "equilibrium" | "isosurface" | null>(null);
   const [runStatus, setRunStatus] = useState("");
   const [seedProgress, setSeedProgress] = useState<{ completed: number; total: number } | null>(null);
   const [saveStatus, setSaveStatus] = useState("");
@@ -182,6 +194,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       next[axis][end] = value;
       const revised = reviseVectorField3DWorkspace(document, { ...workspace, clipBounds: next });
       setDocument(revised);
+      setIsosurface(null);
       setError("");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
@@ -246,7 +259,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setArtifact(null); setSlice(null);
     setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
-    setEquilibriumSearch(null); setSelectedEquilibrium(null);
+    setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
     setRunStatus(""); setSeedProgress(null);
     setSeedPlacementLayer(null); setSeedPlacement3DPlane(null);
     setSeedProposal(null); setSeedGroupChoice("manual");
@@ -332,7 +345,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setSeedPlacementLayer(null); setSeedPlacement3DPlane(null); setSeedProposal(null);
     setBusy(true); setBusyAction("render"); setArtifact(null); setSlice(null); setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
-    setEquilibriumSearch(null); setSelectedEquilibrium(null);
+    setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
@@ -525,16 +538,33 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
       if (epoch === probeEpoch.current) setBusy(false); }
   };
-  const analyzeDifferential = async () => {
-    if (!workspace.probe || busy || lineBusy) return;
-    const epoch = ++probeEpoch.current, position = workspace.probe;
-    setBusy(true); setDifferential(null); setError("");
+  const analyzeDifferential = async (saved?: AnalysisResultEnvelope) => {
+    if (busy || lineBusy) return;
+    const recordedPosition = saved?.provenance.operation.parameters.position;
+    const position = saved ? Array.isArray(recordedPosition) && recordedPosition.length === 3 &&
+      recordedPosition.every(value => typeof value === "number" && Number.isFinite(value)) ?
+      recordedPosition as unknown as [number, number, number] : null : workspace.probe;
+    if (!position) { setError("Select a valid saved probe position."); return; }
+    const epoch = ++probeEpoch.current, started = performance.now();
+    setBusy(true); setDifferential(null); setPointResultId(null); setError("");
     let fingerprint: string | null = null;
     try {
       const next = currentDocument();
+      const accept = (result: VectorField3DDifferentialArtifact) => {
+        if (result.status !== "ready") throw new TypeError("Point calculus is unavailable at this probe.");
+        if (saved) reverifyVectorField3DPointResult(saved, next, result);
+        const record = saved ?? createVectorField3DPointResult(next, result, performance.now() - started);
+        if (epoch === probeEpoch.current) {
+          const view = next.workspace ?? defaultVectorField3DWorkspace(next.source);
+          setDocument(reviseVectorField3DWorkspace(next, { ...view,
+            probe: [...position] as [number, number, number] }));
+          setDifferential(result); setPointResultId(saved || onSavePointResult ? record.resultId : null);
+          if (!saved) onSavePointResult?.(next, record);
+        }
+      };
       if (next.source.field.kind === "expressions") {
         const result = analyzeVectorField3DDifferential(next, position);
-        if (epoch === probeEpoch.current) { setDocument(next); setDifferential(result); }
+        accept(result);
         return;
       }
       const refs = next.source.field.references, bridge = window.scientificScenes;
@@ -553,7 +583,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             sourceIndex(next, axis, value)) as [number, number, number] } });
         const result = analyzeVectorField3DDifferential(next, position,
           { manifestJson: opened.source.manifestJson, fingerprint, samples });
-        if (epoch === probeEpoch.current) { setDocument(next); setDifferential(result); }
+        accept(result);
         return;
       }
       if (!bridge.previewVectorVolume)
@@ -562,11 +592,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         components: refs.map(ref => ref.component) as [string, string, string] });
       const result = analyzeVectorField3DDifferential(next, position,
         { manifestJson: opened.source.manifestJson, fingerprint, volumes });
-      if (epoch === probeEpoch.current) { setDocument(next); setDifferential(result); }
+      accept(result);
     } catch (cause) { if (epoch === probeEpoch.current) {
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
       setEquilibriumSearch(null); setSelectedEquilibrium(null);
       setDifferential(null);
+      setPointResultId(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
@@ -972,6 +1003,102 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setRunStatus(cancelRequested.current ? "Equilibrium search cancelled; no partial result was published." : "");
     }
   };
+  const runIsosurface = async () => {
+    if (busy || lineBusy) return;
+    const level = Number(isosurfaceLevelDraft);
+    if (!Number.isFinite(level) || level < 0 || level > 1e9 || !isosurfaceLevelDraft.trim()) {
+      setError("Enter a nonnegative finite speed level."); return;
+    }
+    cancelRequested.current = false;
+    setBusy(true); setBusyAction("isosurface"); setError(""); setIsosurface(null);
+    setRunStatus("Verifying source before bounded isosurface extraction…");
+    let fingerprint: string | null = null;
+    try {
+      const next = currentDocument();
+      const view = next.workspace ?? defaultVectorField3DWorkspace(next.source);
+      let scientific: { manifestJson: string; fingerprint: string;
+        volumes?: Parameters<typeof integrateVectorField3DScientificTrajectories>[3];
+        tileMode?: boolean } | undefined;
+      if (next.source.field.kind === "scientific-bundle") {
+        const refs = next.source.field.references, bridge = window.scientificScenes;
+        if (!bridge?.openGraphDatasetReference)
+          throw new Error("Isosurface extraction requires the desktop source verifier.");
+        const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
+          sceneFingerprint: refs[0].sceneFingerprint });
+        if (!opened.ok) throw new Error(`Saved source ${opened.status}: ${opened.error}`);
+        fingerprint = opened.source.fingerprint;
+        if (JSON.parse(opened.source.manifestJson).schema === "scientific-scene/v3") {
+          if (!bridge.previewVectorTiles) throw new Error("Verified source tile service is unavailable.");
+          scientific = { manifestJson: opened.source.manifestJson, fingerprint, tileMode: true };
+        } else {
+          if (!bridge.previewVectorVolume) throw new Error("Verified source volume service is unavailable.");
+          const volumes = await bridge.previewVectorVolume({ fingerprint, datasetId: refs[0].datasetId,
+            components: refs.map(ref => ref.component) as [string, string, string] });
+          scientific = { manifestJson: opened.source.manifestJson, fingerprint, volumes };
+        }
+      }
+      if (cancelRequested.current) throw new Error("Isosurface extraction cancelled.");
+      const result = await new Promise<VectorField3DIsosurface>((resolve, reject) => {
+        const worker = new Worker(new URL("./isosurfaceWorker.ts", import.meta.url), { type: "module" });
+        let finished = false;
+        const finish = () => { finished = true; worker.terminate(); cancelRunRef.current = null; };
+        cancelRunRef.current = () => { finish(); reject(new Error("Isosurface extraction cancelled.")); };
+        worker.onmessage = (event: MessageEvent<{ tileRequests: { indices: readonly (readonly [number, number, number])[] } } |
+          { ok: true; result: VectorField3DIsosurface } | { ok: false; error: string }>) => {
+          if ("tileRequests" in event.data) {
+            const refs = next.source.field.kind === "scientific-bundle" ? next.source.field.references : null;
+            if (!scientific || !refs || !window.scientificScenes?.previewVectorTiles) {
+              finish(); reject(new Error("Verified source tile service is unavailable.")); return;
+            }
+            void window.scientificScenes.previewVectorTiles({ fingerprint: scientific.fingerprint,
+              datasetId: refs[0].datasetId, components: refs.map(ref => ref.component) as
+                [string, string, string], indicesBatch: event.data.tileRequests.indices.map(point =>
+                  [...point] as [number, number, number]) })
+              .then(tiles => { if (!finished) worker.postMessage({ tilesResponse: tiles },
+                tileTransferBuffers(tiles)); })
+              .catch(cause => { if (!finished) { finish(); reject(cause); } });
+            return;
+          }
+          finish();
+          if (event.data.ok) resolve(event.data.result); else reject(new Error(event.data.error));
+        };
+        worker.onerror = event => { finish(); reject(new Error(event.message || "Isosurface worker failed.")); };
+        setRunStatus("Extracting speed isosurface… Cancel is available.");
+        worker.postMessage({ document: next, clipBounds: view.clipBounds, level,
+          triangleBudget: view.isosurfaceTriangleBudget, scientific });
+      });
+      if (cancelRequested.current) return;
+      setDocument(reviseVectorField3DWorkspace(next, { ...view, isosurfaceLevel: level }));
+      setIsosurface(result);
+      if (next.source.field.kind === "expressions") setArtifact(sampleVectorField3DArrows(next));
+      else {
+        const componentUnits = next.source.field.componentUnits;
+        setArtifact(previous => previous ?? {
+          source: result.source, verifiedSamples: null, density: next.source.display.density,
+          evaluated: 0, accepted: 0, rejected: 0, stationary: 0, arrows: [],
+          coordinateUnits: next.source.axes.map(axis => axis.unit) as [string, string, string],
+          componentUnits, timeUnit: next.source.timeUnit,
+          magnitudeScale: next.source.display.magnitudeScale, colorBy: next.source.display.colorBy });
+      }
+    } catch (cause) {
+      if (!cancelRequested.current) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
+      setBusy(false); setBusyAction(null);
+      setRunStatus(cancelRequested.current ? "Isosurface extraction cancelled; no partial mesh was published." : "");
+    }
+  };
+  const downloadIsosurface = () => {
+    if (!isosurface) return;
+    try {
+      const content = exportVectorField3DIsosurfaceGltf(isosurface);
+      const url = URL.createObjectURL(new Blob([content], { type: "model/gltf+json" }));
+      const anchor = window.document.createElement("a");
+      anchor.href = url; anchor.download = "math3d-speed-isosurface.gltf";
+      window.document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
   const saveEquilibrium = async (index: number) => {
     const candidate = equilibriumSearch?.candidates[index];
     if (!candidate || !equilibriumSearch || busy || lineBusy ||
@@ -1009,7 +1136,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setSaveStatus("Equilibrium linked to this field revision. Save the Project to retain it.");
       setError("");
     } catch (cause) {
-      setEquilibriumSearch(null); setSelectedEquilibrium(null);
+      setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -1043,7 +1170,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setGroupNameDrafts({}); setSeedHistory({ undo: [], redo: [] });
       setArtifact(null); setSlice(null); setLinkedSlices({}); setProbeArtifact(null);
       setDifferential(null);
-      setEquilibriumSearch(null); setSelectedEquilibrium(null);
+      setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
       setTrajectories(null); setError(""); setRunStatus(""); setSaveStatus(""); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
@@ -1090,6 +1217,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             const next = [...expressions] as [string, string, string]; next[index] = event.target.value;
             setExpressions(next); setArtifact(null); setSlice(null); setProbeArtifact(null);
             setDifferential(null); setEquilibriumSearch(null); setSelectedEquilibrium(null);
+            setIsosurface(null);
             setTrajectories(null); setError(""); }} />
         </label>)}
       </div> : <p>Manifest-linked bundle: {document.source.field.references[0].sceneId} · dataset
@@ -1350,6 +1478,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
             clipBounds: current.source.axes.map(axis => [axis.min, axis.max]) as
               unknown as VectorField3DClipBounds }));
+        setIsosurface(null);
         setError("");
       }}>Reset clipping</button>
       <label>3D camera preset <select aria-label="3D camera preset" value={workspace.cameraPreset}
@@ -1414,10 +1543,26 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <h5>Field calculus at probe</h5>
       <button type="button" disabled={!workspace.probe || busy || lineBusy}
         onClick={() => void analyzeDifferential()}>Analyze field calculus</button>
+      {savedPointResults.filter(result => result.provenance.source.documentId === document.identity.id).length > 0 &&
+        <div aria-label="Saved point calculus results">
+          <p>Saved Project results require fresh source verification before their values are shown.</p>
+          <ul>{savedPointResults.filter(result => result.provenance.source.documentId === document.identity.id)
+            .map(result => <li key={result.resultId}>
+              Probe {JSON.stringify(result.provenance.operation.parameters.position)} ·
+              {" "}<button type="button" disabled={busy || lineBusy}
+                onClick={() => void analyzeDifferential(result)}>Reverify saved Inspector result</button>
+              {" "}<code>{result.resultId}</code>
+            </li>)}</ul>
+        </div>}
       {!workspace.probe && <p>Place a physical-point probe to analyze this field.</p>}
       {workspace.probe && !differential && <p>Run a local analysis. Scientific bundles are
         reverified before each result.</p>}
       {differential && <div role="status" data-testid="vector-field3d-differential">
+        {pointResultId && <p>Project result <code>{pointResultId}</code>
+          {onOpenProjectResults && <> · <button type="button" onClick={() => {
+            onClose(); onOpenProjectResults(pointResultId);
+          }}>Open Project result graph</button></>}
+        </p>}
         <p>Approximate · {differential.method}{differential.stencilGrid === "source" ? " on the source grid" : ""} · source revision {differential.source.revision}
           {differential.sourceHash && ` · source ${differential.sourceHash}`}.</p>
         {differential.status === "ready" ? <>
@@ -1472,6 +1617,56 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {differential.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
       </div>}
     </section>
+    <section aria-label="Speed isosurface" className="vector-field3d-probe">
+      <h5>Speed isosurface · bounded extraction</h5>
+      <p>Extract |F| within the physical clipping box above. The saved level and clip can be
+        regenerated after Project reopen; source values are verified again.</p>
+      <label>Speed level ({document.source.field.kind === "scientific-bundle" ?
+        document.source.field.componentUnits[0] : document.source.field.components[0].unit})
+        <input type="number" min="0" step="any" aria-label="Isosurface speed level"
+          value={isosurfaceLevelDraft} disabled={busy}
+          onChange={event => { setIsosurfaceLevelDraft(event.target.value);
+            setIsosurface(null); }} /></label>
+      <label>Triangle budget
+        <input type="number" min="1" max="100000" step="1" aria-label="Isosurface triangle budget"
+          value={workspace.isosurfaceTriangleBudget} disabled={busy}
+          onChange={event => { try {
+            setDocument(current => reviseVectorField3DWorkspace(current,
+              { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
+                isosurfaceTriangleBudget: Number(event.target.value) }));
+            setIsosurface(null); setError("");
+          } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }} /></label>
+      <button type="button" disabled={busy || lineBusy} onClick={() => void runIsosurface()}>
+        Extract speed isosurface</button>
+      {busyAction === "isosurface" && <button type="button" onClick={() => {
+        cancelRequested.current = true; cancelRunRef.current?.();
+        setRunStatus("Cancelling isosurface extraction…"); }}>Cancel isosurface</button>}
+      {isosurface && <div role="status" data-testid="vector-field3d-isosurface">
+        <p>{isosurface.triangleCount.toLocaleString()} triangles of
+          {" "}{isosurface.triangleBudget.toLocaleString()} budget ·
+          {" "}{isosurface.complete ? "complete within budget" : "incomplete: triangle budget reached"} ·
+          {" "}{isosurface.clipped ? "opened by the physical clipping box" :
+            "no open boundary at the clipping box"}.</p>
+        <p>Indexed mesh: {isosurface.vertexCount.toLocaleString()} shared vertices ·
+          {" "}{isosurface.topology.connectedComponents} connected component(s) ·
+          {" "}{isosurface.topology.boundaryEdgeCount} boundary edges
+          {" "}({isosurface.topology.clipBoundaryEdgeCount} on clip planes) ·
+          {" "}{isosurface.topology.nonManifoldEdgeCount} nonmanifold edges ·
+          {" "}{isosurface.topology.watertight ? "watertight" : "open or incomplete"}.</p>
+        <p>Grid {isosurface.gridShape.join(" × ")} · {isosurface.sampledPoints.toLocaleString()} verified
+          {" "}or evaluated points · level {isosurface.level} {isosurface.unit} · vertex normals toward increasing speed.</p>
+        <p>Physical mesh bounds: {isosurface.bounds ? isosurface.bounds.map((bounds, axis) =>
+          document.source.axes[axis].label + " " + bounds[0].toPrecision(5) + "…" +
+          bounds[1].toPrecision(5) + " " + document.source.axes[axis].unit).join(" · ") : "no crossing"}.</p>
+        <p>Source revision {isosurface.source.revision} · structure <code>{isosurface.source.structuralHash}</code>
+          {isosurface.sourceHash && <> · source <code>{isosurface.sourceHash}</code></>}.</p>
+        {isosurface.verifiedTiles && <p>Verified source tiles: {isosurface.verifiedTiles.map(part =>
+          part.name + " " + part.verifiedTiles + "/" + part.totalTiles + " (" + part.tileSetSha256 + ")").join(" · ")}.
+          {" "}Resident cache {isosurface.residentTileBytes} bytes.</p>}
+        <button type="button" disabled={isosurface.triangleCount === 0} onClick={downloadIsosurface}>
+          Export mesh with provenance (.gltf)</button>
+      </div>}
+    </section>
     <section id="field-equilibria" aria-label="Field equilibria" className="vector-field3d-probe">
       <h5>Equilibria · bounded search</h5>
       <p>Searches a 5×5×5 seed grid and saved seeds. Results are local candidates, never a complete count.</p>
@@ -1505,8 +1700,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             onClick={() => void saveEquilibrium(index)}>Save construction</button>
           {selectedEquilibrium === index && <p>Residual {candidate.residual.toExponential(2)};
             {" "}Jacobian condition estimate {candidate.conditionEstimate?.toPrecision(4) ?? "unavailable"};
-            {" "}eigenvalue real parts {candidate.eigenvalueRealParts?.map(value => value.toPrecision(4)).join(", ") ??
-              "unavailable"}. {candidate.diagnostics.join(" ")}</p>}
+            {" "}eigenvalues {candidate.eigenvalues?.map((root, rootIndex) =>
+              `λ${rootIndex + 1} = ${root.real.toPrecision(5)}${root.imaginary ?
+                ` ${root.imaginary > 0 ? "+" : "−"} ${Math.abs(root.imaginary).toPrecision(5)}i` : ""}`)
+              .join(" · ") ?? "unavailable"} {candidate.eigenvalueUnit ?? ""}.
+            {" "}{candidate.diagnostics.join(" ")}</p>}
         </li>)}</ol>
       </div>}
       {workspace.equilibriumConstructions.length > 0 && <details>
@@ -1621,7 +1819,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         data-testid="vector-field3d-viewer-error">{error}</div>}
       {multiView ? <div className={`vector-field3d-linked-grid vector-field3d-linked-grid-${workspace.layout}`}>
         <div className="vector-field3d-linked-cell">{artifact ?
-          <VectorField3DArrowView document={document} artifact={artifact}
+          <VectorField3DArrowView document={document} artifact={artifact} isosurface={isosurface}
             trajectories={visibleTrajectories} probe={selectedEquilibrium !== null ?
               equilibriumSearch?.candidates[selectedEquilibrium]?.position ?? workspace.probe : workspace.probe}
             onCameraStateChange={setCameraState} seedPlane={seedPlacement3DPlane}
@@ -1664,7 +1862,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onProbeSelect={point => void selectProbe(point)} /> :
         <div role="status" className="scientific-field-explorer-empty">Choose a physical coordinate and preview this slice.
           Saved scientific bundles are reverified before values appear.</div> :
-        artifact ? <VectorField3DArrowView document={document} artifact={artifact}
+        artifact ? <VectorField3DArrowView document={document} artifact={artifact} isosurface={isosurface}
           trajectories={visibleTrajectories} probe={selectedEquilibrium !== null ?
             equilibriumSearch?.candidates[selectedEquilibrium]?.position ?? workspace.probe : workspace.probe}
           onCameraStateChange={setCameraState} seedPlane={seedPlacement3DPlane}

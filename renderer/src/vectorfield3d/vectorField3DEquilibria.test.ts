@@ -21,6 +21,9 @@ describe("SCI-08 bounded equilibrium search", () => {
     [["x", "2*y", "3*z"], "source"],
     [["-x", "-2*y", "-3*z"], "sink"],
     [["x", "-2*y", "-3*z"], "saddle"],
+    [["x-2*y", "2*x+y", "3*z"], "spiral-source"],
+    [["-x-2*y", "2*x-y", "-3*z"], "spiral-sink"],
+    [["x-2*y", "2*x+y", "-3*z"], "spiral-saddle"],
     [["x*x", "y", "z"], "degenerate/uncertain"],
   ] as const)("classifies %s as %s without claiming completeness", (components, expected) => {
     const result = searchVectorField3DEquilibria(field(components));
@@ -32,6 +35,12 @@ describe("SCI-08 bounded equilibrium search", () => {
     if (expected !== "degenerate/uncertain") {
       expect(center?.conditionEstimate).toBeGreaterThanOrEqual(1);
       expect(center?.eigenvalueRealParts).toHaveLength(3);
+      expect(center?.eigenvalues).toHaveLength(3);
+      expect(center?.eigenvalueUnit).toBe("1/s");
+      if (expected.startsWith("spiral")) {
+        expect(center?.eigenvalues?.[1]?.imaginary).toBeCloseTo(2, 5);
+        expect(center?.eigenvalues?.[2]?.imaginary).toBeCloseTo(-2, 5);
+      } else expect(center?.eigenvalues?.every(root => root.imaginary === 0)).toBe(true);
     }
   });
 
@@ -57,10 +66,23 @@ describe("SCI-08 bounded equilibrium search", () => {
       item.position[1] + 0.2, item.position[2] - 0.1) < 1e-4)).toBe(true);
   });
 
+  it("labels near-axis and ill-conditioned equilibria uncertain", () => {
+    const nearAxis = searchVectorField3DEquilibria(field(["0.0000001*x", "y", "2*z"]));
+    const near = nearAxis.candidates.find(item => Math.hypot(...item.position) < 1e-5);
+    expect(near?.classification).toBe("degenerate/uncertain");
+    expect(near?.diagnostics.join(" ")).toMatch(/near the imaginary axis/);
+    const ill = searchVectorField3DEquilibria(field(["x", "2*y", "0.000000001*z"]));
+    const center = ill.candidates.find(item => Math.hypot(...item.position) < 1e-5);
+    expect(center?.classification).toBe("degenerate/uncertain");
+    expect(center?.conditionEstimate).toBeGreaterThanOrEqual(1e8);
+    expect(center?.diagnostics.join(" ")).toMatch(/poorly conditioned/);
+  });
+
   it("round-trips linked constructions and marks their source revision", () => {
-    const document = field(["x", "y", "z"]);
+    const document = field(["x-2*y", "2*x+y", "3*z"]);
     const result = searchVectorField3DEquilibria(document);
     const candidate = result.candidates[0]!;
+    expect(candidate.classification).toBe("spiral-source");
     const saved = reviseVectorField3DWorkspace(document, { ...document.workspace!,
       equilibriumConstructions: [{ id: "equilibrium-1", position: candidate.position,
         residual: candidate.residual, classification: candidate.classification,
@@ -68,6 +90,8 @@ describe("SCI-08 bounded equilibrium search", () => {
         sourceStructuralHash: result.source.structuralHash, sourceHash: result.sourceHash }] });
     expect(parseVectorField3DDocument(serializeVectorField3DDocument(saved)).workspace
       ?.equilibriumConstructions[0]?.position).toEqual(candidate.position);
+    expect(parseVectorField3DDocument(serializeVectorField3DDocument(saved)).workspace
+      ?.equilibriumConstructions[0]?.classification).toBe("spiral-source");
     const changed = reviseVectorField3DDocument(saved, { ...saved.source,
       seeds: [{ id: "different", position: [1, 1, 1] }] });
     expect(changed.workspace?.equilibriumConstructions[0]?.sourceStructuralHash)

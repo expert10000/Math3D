@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
+import { VECTOR_FIELD3D_POINT_RESULT_TYPE, type KernelWorkspaceModule,
+  type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
 
@@ -106,7 +107,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <div><dt>Engine</dt><dd>{result.provenance.engine.name} {result.provenance.engine.version}</dd></div>
             <div><dt>Run time</dt><dd>{result.provenance.elapsedMs.toLocaleString()} ms</dd></div></dl>
           <h5>Summary</h5>
-          {Object.keys(result.summary).length ? <dl>{Object.entries(result.summary).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{readable(value)}</code></dd></div>)}</dl> : <p>No summary values recorded.</p>}
+          {result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE ?
+            <p data-testid="project-point-result-gated">Saved point values require fresh verification.
+              Open the source in Field Explorer and choose “Reverify saved Inspector result” to view them.</p> :
+            Object.keys(result.summary).length ? <dl>{Object.entries(result.summary).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{readable(value)}</code></dd></div>)}</dl> : <p>No summary values recorded.</p>}
           {result.artifacts.length > 0 && <><h5>Artifacts</h5><div className="project-results-links">{result.artifacts.map(handle => <button type="button" key={handle.artifactId}
             onClick={() => select({ kind: "artifact", id: handle.artifactId })}>{handle.role} · {handle.kind}</button>)}</div></>}
           {(result.warnings.length > 0 || result.diagnostics.length > 0) && <details><summary>Warnings and diagnostics ({result.warnings.length + result.diagnostics.length})</summary>
