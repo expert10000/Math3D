@@ -18,6 +18,7 @@ const { deriveVerifiedFieldSurface } = require("../dist/main/quantumScene/fieldS
 const { deriveVerifiedFieldVolume } = require("../dist/main/quantumScene/fieldVolume.js");
 const { inspectVerifiedBandSample } = require("../dist/main/quantumScene/bandSelection.js");
 const { inspectVerifiedScalarSample } = require("../dist/main/quantumScene/scalarSelection.js");
+const { resolveStudySourceRun } = require("../dist/main/quantumScene/studySourceRun.js");
 const { BUNDLED_QUANTUM_SCENE_EXAMPLES, bundledQuantumSceneExample,
   bundledQuantumSceneDirectory, listBundledQuantumSceneExamples } = require("../dist/main/quantumScene/examples.js");
 const { glyphSampleIndices, inspectVerifiedTopologySample, inspectVerifiedVectorSample } =
@@ -745,6 +746,18 @@ try {
   assert.deepEqual(riceStudyScene.source.coordinates.units,["display only","display only","display only"]);
   assert.equal(riceStudyScene.source.topology,undefined,"Distinct charges must not become a shared invariant");
   const riceById=new Map(riceStudy.sources.map(point=>[point.runId,point]));
+  const sourceRequest=(series,index,point)=>({fingerprint:sceneFingerprint(riceStudyScene),series,
+    sampleIndex:index,runId:point.runId,resultSha256:point.resultSha256});
+  assert.deepEqual(resolveStudySourceRun(riceStudyScene,sourceRequest("periodic",1,riceById.get(riceStudy.plan.anchorRunId))),
+    {runId:riceStudy.plan.anchorRunId,resultSha256:riceById.get(riceStudy.plan.anchorRunId).resultSha256});
+  assert.deepEqual(resolveStudySourceRun(riceStudyScene,sourceRequest("chain",2,riceById.get(riceStudy.widthRuns[2]))),
+    {runId:riceStudy.widthRuns[2],resultSha256:riceById.get(riceStudy.widthRuns[2]).resultSha256});
+  assert.throws(()=>resolveStudySourceRun(riceStudyScene,sourceRequest("periodic",1,riceById.get(riceStudy.durationRuns[0]))),/does not match/);
+  assert.throws(()=>resolveStudySourceRun(riceStudyScene,{...sourceRequest("chain",2,riceById.get(riceStudy.widthRuns[2])),
+    resultSha256:"0".repeat(64)}),/does not match/);
+  assert.throws(()=>resolveStudySourceRun(riceStudyScene,{...sourceRequest("periodic",1,riceById.get(riceStudy.plan.anchorRunId)),
+    series:"invalid"}),/Invalid selected/);
+  assert.throws(()=>resolveStudySourceRun(compare,sourceRequest("periodic",1,riceById.get(riceStudy.plan.anchorRunId))),/not a Rice/);
   for(const [series,runIds,field,unit] of [
     ["periodic",riceStudy.durationRuns,"periodicCharge","electron charge / cell"],
     ["chain",riceStudy.widthRuns,"chainCentralBondCharge","electron charge"]]){

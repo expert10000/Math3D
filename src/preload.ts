@@ -5,6 +5,7 @@ import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fiel
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
 import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
+import type { StudySourceRunRequest } from "./main/quantumScene/studySourceRun";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
 import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, ScientificGraphReferenceOpenResponse, ScientificGraphRelinkPickResponse, Graph2DFieldLocator,
   PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
@@ -548,6 +549,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:openSourceRun", { fingerprint }),
+  openStudySourceRun: (request: StudySourceRunRequest): Promise<
+    { ok: true; canceled: false; runId: string; resultSha256: string } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openStudySourceRun", request),
 }));
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
