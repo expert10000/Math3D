@@ -82,8 +82,32 @@ above; it did not affect the independent clean-runner result.
 
 ## 1.7.0-rc.1 two-VM candidate gate
 
-**Pending** until the exact installer artifact is retained and the second-VM
-UI round trip reports `status: passed`. Math3D uses the stable app identity with
-a `1.7.0-rc.1` package version; Theory Lab remains `0.1.0` for this paired
-candidate. Record the new workflow run, hashes, saved run and any failure here
-after the test. Do not substitute the host-built 1.5.0 files above.
+**Passed, not published.** [Workflow run 40674889325](https://github.com/expert10000/Math3D/actions/runs/40674889325)
+built both installers on one Windows VM, uploaded the exact files and manifest
+as `two-app-stable-candidate`, and installed those downloaded files on a second
+fresh Windows VM. The second VM reported `status: passed`,
+`candidateBytes: passed`, `install: passed`, and
+`installedUiRoundtrip: passed`, with `failure: null`.
+
+| Candidate file | Version and source | SHA-256 |
+| --- | --- | --- |
+| `Math3D Setup 1.7.0-rc.1.exe` | Stable product identity; Math3D `1.7.0-rc.1`; commit `0a2cdb3557eee1d8b2b697fd788bfe18f46f199b` | `08b720dc5b83d70b36d7ea953fb4466742bbd3a8e599666b51613696fb6d6de8` |
+| `Quantum-Hamiltonian-Lab-Setup-0.1.0.exe` | Theory Lab `0.1.0`; commit `3c883fa4a69da2ee9f59b1425ac181094a25c276` | `0f1b251dedec15ee72e5511803d50884565e5a04592e9a9ca19962fff8073407` |
+
+The downloaded candidate manifest SHA-256 was
+`25c601c4363d5c893959f624f65c963484f41939496309edad4dd19aed0ca0ec`.
+A second local copy of both installer files, the manifest, and the signoff JSON
+is retained at
+`C:\Users\janko\OneDrive\Dokumenty\Math3D-release-candidates\1.7.0-rc.1\run-40674889325`;
+both local installer hashes match the manifest. The CI artifact expires after
+90 days, so the local archive should be kept for any later release decision.
+
+The installed Lab UI created and saved SSH run
+`run-f7f3e4909b584b699845377cd72c8898`, whose result SHA-256 was
+`63c2e2863ee3c09b15a24a5e8a90d9609e975ee81e451354977658ff1e6ee1ed`.
+It exported `run-f7f3e4909b584b699845377cd72c8898.qscene` with matching
+provenance. Installed Math3D reopened that exact verified run in installed Lab.
+The test used neither a checkout fixture producer nor system Python/Conda paths
+in either app. No failure was reported in the passing run. The earlier local
+Sandbox connection failure remains recorded above and was not used as evidence
+for this candidate.

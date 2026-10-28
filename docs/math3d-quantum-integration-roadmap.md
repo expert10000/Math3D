@@ -846,7 +846,7 @@ installer identity itself was not installed in this run, so this evidence
 covers the full package content and handoff path, not stable-channel upgrade
 behavior. See [release signoff](release-smoke-tests.md#installed-theory-lab-handoff-signoff).
 
-### Versioned two-app release candidate (1.7.0-rc.1, in progress)
+### Versioned two-app release candidate (1.7.0-rc.1, validated 2026-10-28)
 
 The earlier dev-channel paragraph records an initial full-package test. A
 subsequent [stable-channel Windows signoff](stable-two-app-signoff.md) installed
@@ -862,3 +862,11 @@ same bytes on a separate fresh VM. The UI-only handoff remains the acceptance
 gate. Record the second-VM run and exact hashes in the release instructions
 before promoting any candidate. This does not alter the frozen M3D-Q10 v0.1
 science scope or claim a broader Q08 model set.
+
+[Run 40674889325](https://github.com/expert10000/Math3D/actions/runs/40674889325)
+completed that two-VM gate. The second VM verified both downloaded installer
+hashes against the build manifest, installed Math3D 1.7.0-rc.1 and Theory Lab
+0.1.0, created an SSH run through the installed Lab UI, exported its `.qscene`,
+and reopened the exact hash-verified run from installed Math3D. The files and
+checksums are retained in the [release instructions](stable-two-app-signoff.md).
+This is candidate acceptance, not publication or an upgrade-from-v1.6.0 test.
