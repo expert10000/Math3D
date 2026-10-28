@@ -888,3 +888,24 @@ remain **unverified**. The clean-install pass above remains scoped to clean
 installs. A repaired, separately versioned candidate must pass the upgrade
 gate on its own exact bytes before final 1.7.0 files are produced; those final
 files require another exact-byte test before publication.
+
+### Repaired v1.6.0 migration candidate (1.7.0-rc.2, passed 2026-10-28)
+
+Math3D `1.7.0-rc.2` repairs the registered, per-user v1.6.0 upgrade at the
+same destination. Its NSIS migration bypasses that version's failing silent
+uninstall command, installs the new package in place, and preserves the user
+profile outside the install directory. The repair does not claim per-machine,
+changed-destination, or other-version migration.
+
+[Run 40686567576](https://github.com/expert10000/Math3D/actions/runs/40686567576)
+passed the build, clean-install, and upgrade jobs on three Windows VMs. The
+upgrade VM installed the published v1.6.0 installer, saved a Graph Project and
+setting through its UI, installed the **same archived rc.2 bytes** in place,
+and found both retained. The installed Lab then created a run and `.qscene`;
+installed Math3D reopened its exact hash-verified source run. Installer hashes,
+source commits, run IDs, and both signoff JSON files are recorded in the
+[release evidence](stable-two-app-signoff.md#170-rc2-repaired-migration-candidate-2026-10-28).
+
+This is a passing **release candidate**, not the final release. The exact
+final 1.7.0 installer files must be built, hashed, and tested through both
+fresh-VM gates before publication. No rc.2 hash certifies different binaries.

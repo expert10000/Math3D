@@ -12,7 +12,7 @@ harness and builds the installer.
 ## Clean Windows VM procedure
 
 Run [Windows Stable Two-App Signoff](../.github/workflows/windows-stable-two-app-signoff.yml)
-with **Run workflow** on `main`. Its two `windows-latest` VMs:
+with **Run workflow** on `main`. Its three `windows-latest` VMs:
 
 1. Builds a complete `MATH3D_CHANNEL=stable` installer, including the frozen
    worker, web assets, and pinned scene examples.
@@ -31,6 +31,12 @@ with **Run workflow** on `main`. Its two `windows-latest` VMs:
 6. Upload `stable-two-app-signoff.json` with package versions, commits,
    installer SHA-256 values, installed paths, run ID, result SHA-256, check
    outcomes, and any failure. A failed UI test also uploads its Playwright trace.
+7. On a **third, fresh VM**, install the published v1.6.0 package, save a Graph
+   Project and setting through its UI, install the exact candidate over the
+   same directory and profile, then repeat the installed Lab → `.qscene` →
+   Math3D handoff. Upload `stable-upgrade-two-app.json` with the migration,
+   retained-state, and exact-run results. A clean-install pass does not replace
+   this upgrade gate.
 
 The local equivalent, after building both installers on a clean Windows VM and
 installing Math3D's test dependencies, is:
@@ -38,7 +44,7 @@ installing Math3D's test dependencies, is:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stable-two-app-signoff.ps1 `
   -TheoryLabRepo 'C:\path\to\theory-lab' `
-  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.1.exe' `
+  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.2.exe' `
   -TheoryLabInstaller 'C:\path\to\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe' `
   -CandidateManifest 'C:\path\to\candidate-manifest.json' `
   -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-two-app-signoff')
@@ -149,3 +155,42 @@ the old Project and settings during that repair. The final 1.7.0 installer files
 must separately pass the same upgrade and two-app tests; an RC hash cannot
 certify different final binaries. The local Windows Sandbox was not used for
 this gate because its guest connection failed before installers ran.
+
+## 1.7.0-rc.2 repaired migration candidate (2026-10-28)
+
+**Passed as a candidate; not published.** [Run 40686567576](https://github.com/expert10000/Math3D/actions/runs/40686567576)
+built the full stable-channel rc.2 Math3D installer and the paired Theory Lab
+installer on one Windows VM. A second fresh VM passed the clean installed-app
+handoff; a third fresh VM passed the published v1.6.0 → rc.2 upgrade gate using
+the **same archived installer bytes**.
+
+| Exact candidate file | Version and source | SHA-256 |
+| --- | --- | --- |
+| `Math3D Setup 1.7.0-rc.2.exe` | Stable product identity; Math3D `1.7.0-rc.2`; commit `6ffa79ecae9ea1627bce633ee7c648bae0f00514` | `836233788a302f8a345812d99280b162bf6f5bda7e470c19779ae30b952c2b27` |
+| `Quantum-Hamiltonian-Lab-Setup-0.1.0.exe` | Theory Lab `0.1.0`; commit `3c883fa4a69da2ee9f59b1425ac181094a25c276` | `30b6b47eaf0ecef4c15d2fcae8cf1d879d34ccd00b29d4ecd0299f2cc5adb412` |
+
+The candidate manifest SHA-256 is
+`f44d37fbfabf3d4abf13352564270fe9a4e13ef2f4f14fb5104cbe8763d89210`.
+The installers, manifest, and both signoff JSON files are retained at
+`C:\Users\janko\OneDrive\Dokumenty\Math3D-release-candidates\1.7.0-rc.2\run-40686567576`;
+the downloaded installer hashes match the manifest.
+
+The upgrade VM used the published v1.6.0 installer with SHA-256
+`5a785909352816e80995f203b1bb28263ed4f9423abf76664c5eec4813c36341`.
+The v1.6.0 UI saved `Upgrade Graph from v1.6.0` and turned off command-preview
+overlays. After installing rc.2 into that same directory and profile, the UI
+reopened the Project and found the setting still off. The installed migration
+marker reported `registered-v1.6.0-overlay`. The installed Lab UI then saved
+run `run-a96c7eafc7bc43d7b3445f2c73771571`, exported its `.qscene` with
+result SHA-256
+`d377d6b6a36b4126ebbbf19b962726725e7b5ee6ded5f333ec45a13503af7bd0`,
+and installed Math3D reopened that exact verified run. The clean-install VM
+also passed its independent installed UI round trip.
+
+The repair applies only to a registered **per-user v1.6.0 installation at the
+same destination**. It bypasses that version's failing uninstall command and
+overlays the new package while leaving the user profile outside the install
+directory intact. Per-machine, changed-directory, and other-version upgrades
+are outside this acceptance result. The final 1.7.0 installers must be built,
+hashed, and run through **both fresh-VM gates using those exact final files**
+before publication; the rc.2 hash cannot certify them.
