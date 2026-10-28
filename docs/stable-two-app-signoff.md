@@ -1,7 +1,7 @@
 # Stable Math3D ↔ Theory Lab release signoff
 
 This signoff covers the actual stable Math3D NSIS identity and the Theory Lab
-NSIS installer on a fresh Windows runner. The test uses the **installed Theory
+NSIS installer on a fresh Windows VM separate from the build VM. The test uses the **installed Theory
 Lab UI** to calculate and save an SSH run, exports a `.qscene` through Scenes,
 opens that bundle in the installed Math3D app, and follows **Open source run in
 Theory Lab** back to the exact saved run. It compares the scene's source hash
@@ -12,17 +12,23 @@ harness and builds the installer.
 ## Clean Windows VM procedure
 
 Run [Windows Stable Two-App Signoff](../.github/workflows/windows-stable-two-app-signoff.yml)
-with **Run workflow** on `main`. Its fresh `windows-latest` runner:
+with **Run workflow** on `main`. Its two `windows-latest` VMs:
 
 1. Builds a complete `MATH3D_CHANNEL=stable` installer, including the frozen
    worker, web assets, and pinned scene examples.
 2. Checks out Theory Lab, builds its pinned Python worker and full installer.
-3. Silently installs both packages into new directories under `RUNNER_TEMP`.
-4. Runs `quantum-installed-ui-roundtrip.spec.ts`, which creates the SSH run and
+3. Preserve both installer files and `candidate-manifest.json` in the
+   `two-app-stable-candidate` artifact for 90 days. The manifest pins package
+   versions, source commits, installer names and SHA-256 values. The release
+   owner should also retain a copy outside the expiring CI artifact.
+4. On a **second, fresh VM**, download those exact files, compare both hashes
+   and source identities with the manifest, then silently install both packages
+   into new directories under `RUNNER_TEMP`.
+5. Run `quantum-installed-ui-roundtrip.spec.ts`, which creates the SSH run and
    `.qscene` in the installed Lab UI and opens that exact run from installed
    Math3D. Python and Conda paths are removed from both app environments. Its
    profile and export directory are isolated and disposable.
-5. Uploads `stable-two-app-signoff.json` with package versions, commits,
+6. Upload `stable-two-app-signoff.json` with package versions, commits,
    installer SHA-256 values, installed paths, run ID, result SHA-256, check
    outcomes, and any failure. A failed UI test also uploads its Playwright trace.
 
@@ -32,8 +38,9 @@ installing Math3D's test dependencies, is:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stable-two-app-signoff.ps1 `
   -TheoryLabRepo 'C:\path\to\theory-lab' `
-  -Math3DInstaller 'C:\path\to\Math3D Setup 1.5.0.exe' `
+  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.1.exe' `
   -TheoryLabInstaller 'C:\path\to\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe' `
+  -CandidateManifest 'C:\path\to\candidate-manifest.json' `
   -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-two-app-signoff')
 ```
 
@@ -43,6 +50,11 @@ as passed. A build or setup failure is recorded by the workflow as
 `failed-before-signoff`; it is not a successful two-app result.
 
 ## 2026-10-28 stable release evidence
+
+The first single-VM signoff below tested a stable-channel Math3D build whose
+package version was still `1.5.0`. It does **not** certify the separately
+published Math3D v1.6.0 installer or the new `1.7.0-rc.1` candidate. The
+two-VM candidate gate above supplies the next release decision.
 
 | Check | Result |
 | --- | --- |
@@ -65,5 +77,13 @@ The installed Lab UI created and saved SSH run
 Scenes exported `run-526b8932433b4ba38fcc715064f39608.qscene` with matching
 provenance. Installed Math3D opened the selected run in installed Lab, which
 verified the exact saved result. This completes the stable two-app release
-gate for these installer builds. The failed local Sandbox launch is recorded
+gate for those 1.5.0 installer builds. The failed local Sandbox launch is recorded
 above; it did not affect the independent clean-runner result.
+
+## 1.7.0-rc.1 two-VM candidate gate
+
+**Pending** until the exact installer artifact is retained and the second-VM
+UI round trip reports `status: passed`. Math3D uses the stable app identity with
+a `1.7.0-rc.1` package version; Theory Lab remains `0.1.0` for this paired
+candidate. Record the new workflow run, hashes, saved run and any failure here
+after the test. Do not substitute the host-built 1.5.0 files above.

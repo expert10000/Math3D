@@ -2,6 +2,7 @@ param(
   [Parameter(Mandatory = $true)][string]$TheoryLabRepo,
   [Parameter(Mandatory = $true)][string]$Math3DInstaller,
   [Parameter(Mandatory = $true)][string]$TheoryLabInstaller,
+  [string]$CandidateManifest = "",
   [string]$InstallRoot = "",
   [string]$EvidencePath = ""
 )
@@ -49,11 +50,29 @@ $evidence = [ordered]@{
     installerName = [IO.Path]::GetFileName($labInstaller)
     installerSha256 = (Get-FileHash -LiteralPath $labInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
   }
-  checks = [ordered]@{ install = "pending"; installedUiRoundtrip = "pending" }
+  checks = [ordered]@{ candidateBytes = "pending"; install = "pending"; installedUiRoundtrip = "pending" }
   failure = $null
 }
 
 try {
+  if (-not [string]::IsNullOrWhiteSpace($CandidateManifest)) {
+    $manifestPath = (Resolve-Path -LiteralPath $CandidateManifest).Path
+    $candidate = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($candidate.schema -ne "math3d/two-app-candidate/v1" -or
+        $candidate.math3d.version -ne $evidence.math3d.version -or
+        $candidate.theoryLab.version -ne $evidence.theoryLab.version -or
+        $candidate.math3d.commit -ne $evidence.math3d.commit -or
+        $candidate.theoryLab.commit -ne $evidence.theoryLab.commit -or
+        $candidate.math3d.installerName -ne $evidence.math3d.installerName -or
+        $candidate.theoryLab.installerName -ne $evidence.theoryLab.installerName -or
+        $candidate.math3d.installerSha256 -ne $evidence.math3d.installerSha256 -or
+        $candidate.theoryLab.installerSha256 -ne $evidence.theoryLab.installerSha256) {
+      throw "Downloaded installer bytes or source identity differ from candidate manifest"
+    }
+    $evidence.candidateBuildRunId = $candidate.buildRunId
+    $evidence.candidateManifestSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+  $evidence.checks.candidateBytes = "passed"
   New-Item -ItemType Directory -Path $resolvedRoot | Out-Null
   foreach ($item in @(@($mathInstaller, $mathInstall), @($labInstaller, $labInstall))) {
     $installer, $destination = $item
