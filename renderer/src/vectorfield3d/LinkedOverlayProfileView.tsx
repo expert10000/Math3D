@@ -1,6 +1,7 @@
 import type { Graph2DScientificVolume, VectorField3DDocument,
   VectorField3DLinkedLineProfile, VectorField3DSliceArtifact } from "@math3d/core";
-import { sampleLinkedOverlayLineProfile, type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import { sampleLinkedOverlayLineProfile, type LinkedOverlayLineProfile,
+  type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 
 type SampleDigest = Readonly<{ name: string; sampleSha256: string }>;
 
@@ -21,7 +22,7 @@ const plot = (values: readonly (number | null)[]) => {
 };
 
 export function LinkedOverlayProfileView({ document, slice, probe, profile, vectorPlane,
-  scalarVolume, vectorSamples, status, mismatch, onChange }: {
+  scalarVolume, vectorSamples, status, mismatch, onChange, onSendToGraphs, sendBusy = false }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe: readonly [number, number, number] | null;
   profile: VectorField3DLinkedLineProfile | null;
@@ -30,6 +31,9 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
   vectorSamples: readonly SampleDigest[]; status: string;
   mismatch: string;
   onChange: (profile: VectorField3DLinkedLineProfile | null) => void;
+  onSendToGraphs?: (line: LinkedOverlayLineProfile, profile: VectorField3DLinkedLineProfile,
+    samples: readonly SampleDigest[]) => void;
+  sendBusy?: boolean;
 }) {
   const overlay = document.workspace?.scalarOverlay;
   if (!overlay?.visible) return null;
@@ -82,6 +86,9 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
       {active && !line && <p role="status">{error || status ||
         "Reverifying both sources before showing this line…"}</p>}
       {line && vectorPlot && scalarPlot && <>
+        {onSendToGraphs && <button type="button" data-testid="send-linked-overlay-line-to-graphs"
+          disabled={sendBusy} onClick={() => onSendToGraphs(line, profile, vectorSamples)}>
+          {sendBusy ? "Verifying linked line…" : "Send both linked lines to Graphs"}</button>}
         <p role="status">{vectorPlot.count}/{line.rows.length} vector samples;
           {" "}{scalarPlot.count}/{line.rows.length} scalar samples.
           {vectorPlot.count < line.rows.length || scalarPlot.count < line.rows.length ?

@@ -4,7 +4,7 @@ import type { VectorField3DDocument, VectorField3DSliceArtifact,
   Graph2DScientificVolume } from "@math3d/core";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
 import type { ScalarSliceOverlay, SliceOverlayArrow,
-  VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+  LinkedOverlayLineProfile, VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { LinkedOverlayProfileView } from "./LinkedOverlayProfileView";
 
 const color = (value: number | null, min: number, max: number) => {
@@ -19,7 +19,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
   scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
   overlayVectorPlane = null, scalarOverlayVolume = null,
-  linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange }: {
+  linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange,
+  onSendLinkedLineToGraphs, linkedLineBusy = false }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -41,6 +42,10 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   linkedLineProfile?: VectorField3DLinkedLineProfile | null;
   linkedProfileMismatch?: string;
   onLinkedLineProfileChange?: (profile: VectorField3DLinkedLineProfile | null) => void;
+  onSendLinkedLineToGraphs?: (line: LinkedOverlayLineProfile,
+    profile: VectorField3DLinkedLineProfile,
+    samples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
+  linkedLineBusy?: boolean;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
   onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
@@ -265,6 +270,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       probe={probe ?? null} profile={linkedLineProfile} vectorPlane={overlayVectorPlane}
       scalarVolume={scalarOverlayVolume} vectorSamples={overlayVectorSamples}
       status={overlayStatus} mismatch={linkedProfileMismatch}
-      onChange={onLinkedLineProfileChange} />}
+      onChange={onLinkedLineProfileChange} onSendToGraphs={onSendLinkedLineToGraphs}
+      sendBusy={linkedLineBusy} />}
   </figure>;
 }

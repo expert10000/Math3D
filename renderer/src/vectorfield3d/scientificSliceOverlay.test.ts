@@ -2,12 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGraph2DFieldReference, createVectorField3DDocument,
+  applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
+  Graph2DPointTableStore, parseGraph2DDocument, serializeGraph2DDocument,
   parseVectorField3DDocument, reviseVectorField3DWorkspace, sampleVectorField3DSlice,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
 import { sampleLinkedOverlayLineProfile, sampleScalarSliceOverlay,
   sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
+import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
+import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -103,6 +107,56 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       const atOne = line.rows.find(row => Math.abs(row.coordinate - 1) < 1e-9)!;
       expect(atOne.scalar).toBeCloseTo(1.25, 10);
       expect(atOne.vector).toBeCloseTo(normalAxis === 2 ? Math.sqrt(1.25) : 1, 10);
+    }
+  });
+
+  it("publishes two source-linked Graphs series with aligned physical positions and checked reopen", async () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const slice = sampleVectorField3DSlice(analytic, normalAxis, 0);
+      const point = [0, 0, 0] as [number, number, number];
+      point[slice.planeAxes[1]] = 0.5;
+      const profile = { normalAxis, varyingAxis: slice.planeAxes[0] as 0 | 1 | 2,
+        point, vectorChannel: "speed" as const, visible: true };
+      const withOverlay = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+        scalarOverlay: { reference: scalarReference, title: "Potential",
+          unit: "V", opacity: 0.7, visible: true }, linkedLineProfile: profile });
+      const line = sampleLinkedOverlayLineProfile(withOverlay, slice, profile,
+        sampleSliceOverlayVectorPlane(withOverlay, slice), scalarReference, scalarVolume, "V");
+      const pair = linkedOverlayGraphPair(withOverlay, profile, line, [], "Potential");
+      expect(pair[0].rows.map(row => row.x)).toEqual(pair[1].rows.map(row => row.x));
+      expect(pair[0].origin.yUnit).toBe("m/s");
+      expect(pair[1].origin.yUnit).toBe("V");
+      expect(pair[0].origin.scalarReference).toEqual(scalarReference);
+      const atOne = pair[0].rows.findIndex(row => Math.abs(row.x - 1) < 1e-9);
+      expect(pair[0].rows[atOne]?.y).toBeCloseTo(normalAxis === 2 ? Math.sqrt(1.25) : 1, 10);
+      expect(pair[1].rows[atOne]?.y).toBeCloseTo(1.25, 10);
+      const store = new Graph2DPointTableStore();
+      const drafts = pair.map((part, index) => ({ label: part.label,
+        table: store.publish(part.rows), mode: "line" as const, domain: part.domain,
+        linkedOrigin: part.origin, style: { color: index ? "#38bdf8" : "#fde047",
+          lineWidth: 2, lineStyle: "solid" as const, visible: true } })) as
+        [typeof pair[number] & { table: ReturnType<typeof store.publish> },
+          typeof pair[number] & { table: ReturnType<typeof store.publish> }];
+      const scene = applyGraph2DAuthoring(createEmptyGraph2DDocument(`overlay-${normalAxis}`),
+        { type: "create-point-series-pair", drafts });
+      const graph = createGraph2DDocument({ ...scene, stableKey: `overlay-${normalAxis}` });
+      const reopened = parseGraph2DDocument(serializeGraph2DDocument(graph));
+      expect(reopened.source.objects.map(object => object.kind === "point-series" ?
+        object.linkedOrigin?.series : null)).toEqual(["vector", "scalar"]);
+      const bridge = { openGraphDatasetReference: async () => ({ ok: true as const,
+        source: { manifestJson: scalarManifest, fingerprint: scalarFingerprint } }),
+        previewGraphVolume: async () => scalarVolume,
+        closeGraphDataset: async () => true } as unknown as NonNullable<typeof window.scientificScenes>;
+      await expect(reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin, bridge))
+        .resolves.toBeUndefined();
+      await expect(reverifyLinkedOverlayGraphPair(pair[0].origin,
+        { ...pair[1].origin, rowsSha256: `sha256:${"0".repeat(64)}` }, bridge))
+        .rejects.toThrow(/rows differ/);
+      const changed = { ...bridge, previewGraphVolume: async () => ({ ...scalarVolume,
+        values: [scalarVolume.values[0]! + 1, ...scalarVolume.values.slice(1)] }) } as
+        unknown as NonNullable<typeof window.scientificScenes>;
+      await expect(reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin, changed))
+        .rejects.toThrow();
     }
   });
 
