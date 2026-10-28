@@ -332,7 +332,9 @@ export function sampleSliceOverlayArrows(document: VectorField3DDocument,
 export function sampleLinkedOverlayLineProfile(document: VectorField3DDocument,
   slice: VectorField3DSliceArtifact, recipe: VectorField3DLinkedLineProfile,
   plane: VectorSliceOverlayPlane, scalarReference: Graph2DFieldReference,
-  scalarVolume: Graph2DScientificVolume, scalarUnit: string): LinkedOverlayLineProfile {
+  scalarVolume: Graph2DScientificVolume, scalarUnit: string,
+  complex?: Readonly<{ imaginaryReference: Graph2DFieldReference;
+    imaginaryVolume: Graph2DScientificVolume; mode: "magnitude" | "phase" }>): LinkedOverlayLineProfile {
   if (recipe.normalAxis !== slice.normalAxis ||
       Math.abs(recipe.point[slice.normalAxis] - slice.fixedCoordinate) > 1e-9)
     throw new RangeError("Linked line is on a different slice plane.");
@@ -340,12 +342,28 @@ export function sampleLinkedOverlayLineProfile(document: VectorField3DDocument,
       plane.sourceStructuralHash !== document.identity.structuralHash ||
       plane.shape[0] !== slice.shape[0] || plane.shape[1] !== slice.shape[1])
     throw new TypeError("Linked line vector plane does not match the current field.");
-  if (scalarReference.semanticType !== "scalar-field" || scalarReference.shape.length !== 3 ||
+  if (scalarReference.semanticType !== (complex ? "complex-scalar-field" : "scalar-field") ||
+      scalarReference.shape.length !== 3 ||
       scalarVolume.datasetId !== scalarReference.datasetId ||
       scalarVolume.component !== scalarReference.component ||
       scalarVolume.fingerprint !== scalarReference.sceneFingerprint ||
       scalarVolume.resourceSha256 !== scalarReference.resourceSha256)
     throw new TypeError("Linked line scalar source changed.");
+  if (complex && (scalarReference.component !== "real" ||
+      complex.imaginaryReference.semanticType !== "complex-scalar-field" ||
+      complex.imaginaryReference.component !== "imaginary" ||
+      complex.imaginaryReference.sceneFingerprint !== scalarReference.sceneFingerprint ||
+      complex.imaginaryReference.datasetId !== scalarReference.datasetId ||
+      complex.imaginaryReference.shape.length !== 3 ||
+      complex.imaginaryReference.axes.length !== 3 ||
+      complex.imaginaryReference.shape.some((size, index) => size !== scalarReference.shape[index]) ||
+      complex.imaginaryReference.axes.some((axis, index) =>
+        JSON.stringify(axis) !== JSON.stringify(scalarReference.axes[index])) ||
+      complex.imaginaryVolume.datasetId !== complex.imaginaryReference.datasetId ||
+      complex.imaginaryVolume.component !== complex.imaginaryReference.component ||
+      complex.imaginaryVolume.fingerprint !== complex.imaginaryReference.sceneFingerprint ||
+      complex.imaginaryVolume.resourceSha256 !== complex.imaginaryReference.resourceSha256))
+    throw new TypeError("Linked line imaginary source changed.");
   if (scalarReference.axes.some((axis, index) =>
     axis.name !== document.source.axes[index]!.label ||
     axis.unit !== document.source.axes[index]!.unit))
@@ -384,15 +402,22 @@ export function sampleLinkedOverlayLineProfile(document: VectorField3DDocument,
     const vectorComponents = plane.components.map(component => interpolate(component, index));
     const vector = componentIndex === null ? vectorComponents.every(value => value !== null) ?
       Math.hypot(...vectorComponents as number[]) : null : vectorComponents[componentIndex];
-    const scalar = linkedFieldPointStatus(point, scalarAxes,
-      document.source.axes.map(axis => axis.unit)) === "inside" ?
-      sampleLinkedFieldVolume(scalarVolume, scalarAxes, point) : null;
+    const inside = linkedFieldPointStatus(point, scalarAxes,
+      document.source.axes.map(axis => axis.unit)) === "inside";
+    const real = inside ? sampleLinkedFieldVolume(scalarVolume, scalarAxes, point) : null;
+    const imaginary = inside && complex ?
+      sampleLinkedFieldVolume(complex.imaginaryVolume, scalarAxes, point) : null;
+    const magnitude = real !== null && imaginary !== null ? Math.hypot(real, imaginary) : null;
+    const scalar = complex ? magnitude === null ? null : complex.mode === "phase" ?
+      magnitude > 1e-12 ? Math.atan2(imaginary!, real!) : null : magnitude : real;
     return { coordinate, vector: vector !== null && Number.isFinite(vector) ? vector : null,
       scalar: scalar !== null && Number.isFinite(scalar) ? scalar : null };
   });
   return { rows, coordinateUnit: document.source.axes[recipe.varyingAxis].unit,
     vectorUnit: componentIndex === null ? plane.units[0] : plane.units[componentIndex],
     scalarUnit, vectorChannel: recipe.vectorChannel,
-    scalarSampleSha256: scalarVolume.sampleSha256,
+    scalarSampleSha256: complex ? sha256Checksum(new TextEncoder().encode(
+      `${scalarVolume.sampleSha256}:${complex.imaginaryVolume.sampleSha256}`)).slice(7) :
+      scalarVolume.sampleSha256,
     vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash };
 }

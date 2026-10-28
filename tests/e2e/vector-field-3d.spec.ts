@@ -486,6 +486,12 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
     await explorer.getByRole("button", { name: "Preview slice" }).click();
     await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("imaginary:", { timeout: 60_000 });
+    let linked = figure.getByTestId("scientific-linked-overlay-profile");
+    await linked.getByRole("button", { name: "Link line through shared probe" }).click();
+    await expect(linked).toContainText("complex samples", { timeout: 60_000 });
+    await expect(linked).toContainText("Real ");
+    await expect(linked).toContainText("imaginary ");
+    await expect(linked.getByTestId("send-linked-overlay-line-to-graphs")).toHaveCount(0);
     const region = figure.getByTestId("scientific-overlay-region");
     await region.getByRole("button", { name: "Select rectangular region" }).click();
     await figure.locator('[data-probe-cell="9-9"]').click();
@@ -499,6 +505,7 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
       .toContainText("rad");
     await expect(region.getByTestId("scientific-overlay-region-summary"))
       .toContainText("(rad)");
+    await expect(linked).toContainText("(rad)");
     for (const plane of ["XZ", "YZ"] as const) {
       await explorer.getByRole("button", { name: `${plane} slice` }).click();
       await explorer.getByRole("button", { name: "Preview slice" }).click();
@@ -507,6 +514,11 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
         .toContainText("Complex", { timeout: 60_000 });
       await expect(figure.getByTestId("scientific-slice-overlay-status"))
         .toContainText("Partial complex domain overlap");
+      linked = figure.getByTestId("scientific-linked-overlay-profile");
+      await linked.getByRole("button", { name: "Link line through shared probe" }).click();
+      await linked.getByRole("combobox", { name: "Linked line direction" }).selectOption("2");
+      await expect(linked).toContainText("Gaps mark positions outside a field", { timeout: 60_000 });
+      await expect(linked).toContainText("(rad)");
     }
     await examples.getByRole("button", { name: /Generated vortex/ }).click();
     await explorer.getByRole("button", { name: "XY slice" }).click();
@@ -556,6 +568,11 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("imaginary:");
     await explorer.getByRole("combobox", { name: "Complex overlay mode" }).selectOption("phase");
+    await figure.locator('[data-probe-cell="12-12"]').click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    const linked = figure.getByTestId("scientific-linked-overlay-profile");
+    await linked.getByRole("button", { name: "Link line through shared probe" }).click();
+    await expect(linked).toContainText("complex samples", { timeout: 60_000 });
     const region = figure.getByTestId("scientific-overlay-region");
     await region.getByRole("button", { name: "Select rectangular region" }).click();
     await figure.locator('[data-probe-cell="12-12"]').click();
@@ -574,6 +591,8 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     expect(saved.complexOverlay.mode).toBe("phase");
     expect(saved.complexOverlay.real.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(saved.complexOverlay.imaginary.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(saved.linkedLineProfile.point).toHaveLength(3);
+    expect(saved.linkedLineProfile.normalAxis).toBe(2);
     expect(saved.overlayRegion.bounds).toHaveLength(2);
     expect(JSON.stringify(saved.complexOverlay)).not.toContain("values");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
@@ -588,6 +607,8 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
       .toContainText("imaginary:");
     await expect(reopened.getByTestId("scientific-overlay-region-summary"))
       .toContainText("(rad)");
+    await expect(reopened.getByTestId("scientific-linked-overlay-profile"))
+      .toContainText("complex samples");
     const imaginaryFile = join(complex, "imaginary.f64");
     const originalImaginary = await readFile(imaginaryFile), changedImaginary = Buffer.from(originalImaginary);
     changedImaginary[0] ^= 1;
@@ -598,6 +619,8 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
         { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
     await expect(reopened.getByTestId("scientific-overlay-region-summary")).toHaveCount(0);
+    await expect(reopened.getByTestId("scientific-linked-overlay-profile"))
+      .not.toContainText("complex samples");
     await writeFile(imaginaryFile, originalImaginary);
     await reopened.getByRole("button", { name: "Open saved document" }).click();
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
@@ -611,6 +634,8 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
       .toContainText(/withheld.*integrity|withheld.*checksum|withheld.*changed/i,
         { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
+    await expect(reopened.getByTestId("scientific-linked-overlay-profile"))
+      .not.toContainText("complex samples");
     await writeFile(realFile, originalReal);
     await reopened.getByRole("button", { name: "Back to Graphs" }).click();
     const tile = join(burgers, "vx.f64"), originalTile = await readFile(tile);
@@ -627,6 +652,8 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
       .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
     await expect(changed.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
     await expect(changed.getByTestId("scientific-overlay-region-summary")).toHaveCount(0);
+    await expect(changed.getByTestId("scientific-linked-overlay-profile"))
+      .toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-complex-overlay-"))

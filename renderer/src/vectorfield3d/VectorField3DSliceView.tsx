@@ -290,7 +290,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             " complete source resource verified"}</li>)}</ul>
     </details>}
     {profile.length > 0 && !(linkedLineProfile?.normalAxis === slice.normalAxis &&
-      linkedLineProfile.visible && document.workspace?.scalarOverlay?.visible) &&
+      linkedLineProfile.visible && (document.workspace?.scalarOverlay?.visible ||
+        document.workspace?.complexOverlay?.visible)) &&
       <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
       <label>Line direction <select aria-label="Line profile direction" value={profileDirection}
         onChange={event => setProfileDirection(Number(event.target.value) as 0 | 1)}>
@@ -331,7 +332,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     </section>}
     {onLinkedLineProfileChange && <LinkedOverlayProfileView document={document} slice={slice}
       probe={probe ?? null} profile={linkedLineProfile} vectorPlane={overlayVectorPlane}
-      scalarVolume={scalarOverlayVolume} vectorSamples={overlayVectorSamples}
+      scalarVolume={scalarOverlayVolume} complexVolumes={complexOverlayVolumes}
+      vectorSamples={overlayVectorSamples}
       status={overlayStatus} mismatch={linkedProfileMismatch}
       onChange={onLinkedLineProfileChange} onSendToGraphs={onSendLinkedLineToGraphs}
       sendBusy={linkedLineBusy} />}
