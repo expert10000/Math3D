@@ -62,18 +62,30 @@ test("real five-run convergence point opens exact Lab runs and refuses missing o
       const point = fixture.selected[series], port = await freePort();
       active.value = { port, runId: point.runId };
       const mathProfile = join(root, `math3d-${series}-${outcome}`);
-      const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: mathProfile,
-        MATH3D_E2E_USER_DATA_DIR: join(mathProfile, "user-data"), MATH3D_E2E: "1",
-        MATH3D_THEORY_LAB_HOME: installedLab || lab, QLAB_TEST_PROFILE: profile,
+      const mathUserData = join(mathProfile, "user-data");
+      await mkdir(mathUserData, { recursive: true });
+      await writeFile(join(mathUserData, "theory-lab-target.json"), JSON.stringify({
+        schema: "math3d/theory-lab-target/v2", path: installedLab || lab,
+      }) + "\n");
+      const env: Record<string, string | undefined> = { ...process.env, MATH3D_E2E_PROFILE_ROOT: mathProfile,
+        MATH3D_E2E_USER_DATA_DIR: mathUserData, MATH3D_E2E: "1",
+        QLAB_TEST_PROFILE: profile,
         MATH3D_E2E_LAB_DEBUG_PORT: String(port) };
+      delete env.MATH3D_THEORY_LAB_HOME;
       const app = installedMath3D
         ? await electron.launch({ executablePath: installedMath3D, cwd: dirname(installedMath3D),
-          args: [`--user-data-dir=${join(mathProfile, "user-data")}`, "--quantum-scene", fixture.bundle],
+          args: [`--user-data-dir=${mathUserData}`, "--quantum-scene", fixture.bundle],
           env: definedEnvironment(env) })
         : await launchRepoElectron({ args: [".", "--quantum-scene", fixture.bundle], cwd: math3d, env });
       try {
         const page = await app.firstWindow(), scene = page.getByTestId("rice-convergence-profile");
         await expect(scene).toBeVisible();
+        if (series === "periodic" && outcome === "opened") {
+          const status = await page.evaluate(() => (window as Window & { quantumScenes?: {
+            theoryLabTargetStatus: () => Promise<{ state: string; source: string; path?: string }>;
+          } }).quantumScenes?.theoryLabTargetStatus());
+          expect(status).toMatchObject({ state: "ready", source: "saved", path: installedLab || lab });
+        }
         await expect(scene).toContainText(fixture.studyId);
         await expect(page.getByTestId("rice-convergence-selection")).toHaveCount(0);
         await scene.getByRole("button", { name: series === "periodic"

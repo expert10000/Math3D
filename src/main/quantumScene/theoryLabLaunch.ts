@@ -7,6 +7,8 @@ import { app, BrowserWindow, dialog } from "electron";
 const CONFIG_FILE = "theory-lab-target.json";
 const CONFIG_SCHEMA = "math3d/theory-lab-target/v2";
 export type TheoryLabTarget = { kind: "checkout" | "installed"; directory: string; executable: string };
+export type TheoryLabTargetStatus = { state: "ready" | "unconfigured" | "invalid"; source: "saved" | "environment" | null;
+  kind?: TheoryLabTarget["kind"]; path?: string; error?: string };
 
 async function targetExecutable(path: string): Promise<TheoryLabTarget> {
   if (!isAbsolute(path) || resolve(path) !== path || path.includes("\0"))
@@ -61,6 +63,34 @@ async function rememberTarget(path: string): Promise<void> {
     await writeFile(temp, JSON.stringify({ schema: CONFIG_SCHEMA, path }) + "\n", { flag: "wx" });
     await rename(temp, join(parent, CONFIG_FILE));
   } finally { await unlink(temp).catch(() => {}); }
+}
+
+export async function theoryLabTargetStatus(): Promise<TheoryLabTargetStatus> {
+  const override = process.env.MATH3D_THEORY_LAB_HOME;
+  const path = override || await savedTarget();
+  const source = override ? "environment" : path ? "saved" : null;
+  if (!path) return { state: "unconfigured", source };
+  try {
+    const target = await targetExecutable(path);
+    return { state: "ready", source, kind: target.kind, path: target.kind === "installed" ? target.executable : target.directory };
+  } catch (error) {
+    return { state: "invalid", source, path, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function configureTheoryLabTarget(win: BrowserWindow, kind: TheoryLabTarget["kind"]): Promise<TheoryLabTargetStatus> {
+  if (process.env.MATH3D_THEORY_LAB_HOME) throw new Error("A test environment override controls the Theory Lab target");
+  const choice = await dialog.showOpenDialog(win, {
+    title: kind === "installed" ? "Choose Quantum Hamiltonian Lab.exe" : "Choose your Theory Lab checkout folder",
+    properties: [kind === "installed" ? "openFile" : "openDirectory"],
+    ...(kind === "installed" ? { filters: [{ name: "Quantum Hamiltonian Lab", extensions: ["exe"] }] } : {}),
+  });
+  if (choice.canceled || !choice.filePaths[0]) return theoryLabTargetStatus();
+  const path = resolve(choice.filePaths[0]);
+  const target = await targetExecutable(path);
+  if (target.kind !== kind) throw new Error("Selected Theory Lab target has the wrong installation type");
+  await rememberTarget(path);
+  return theoryLabTargetStatus();
 }
 
 export async function chooseTheoryLabTarget(win: BrowserWindow): Promise<TheoryLabTarget | null> {
