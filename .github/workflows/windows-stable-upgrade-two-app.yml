@@ -1,0 +1,83 @@
+name: Windows Stable Upgrade Two-App Signoff
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upgrade-and-handoff:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D upgrade test harness
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Install test harness dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+
+      - name: Download published v1.6.0 installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path installers/published -Force | Out-Null
+          gh release download v1.6.0 --repo expert10000/Math3D `
+            --pattern 'Math3D-Setup-1.6.0.exe' --dir installers/published
+          if ($LASTEXITCODE -ne 0) { throw 'Published v1.6.0 download failed' }
+
+      - name: Download exact 1.7.0-rc.1 candidate files
+        uses: actions/download-artifact@v7
+        with:
+          name: two-app-stable-candidate
+          run-id: 40674889325
+          github-token: ${{ github.token }}
+          path: installers/candidate
+
+      - name: Upgrade installed v1.6.0 and run two-app handoff
+        id: signoff
+        shell: pwsh
+        run: |
+          & scripts/stable-upgrade-two-app-signoff.ps1 `
+            -PublishedInstaller (Join-Path $PWD 'installers/published/Math3D-Setup-1.6.0.exe') `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-upgrade-two-app') `
+            -EvidencePath (Join-Path $PWD 'test-results/stable-upgrade-two-app.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Upgrade signoff failed' }
+
+      - name: Record setup failure
+        if: always()
+        shell: pwsh
+        run: |
+          $path = 'test-results/stable-upgrade-two-app.json'
+          if (-not (Test-Path -LiteralPath $path)) {
+            New-Item -ItemType Directory -Path test-results -Force | Out-Null
+            [ordered]@{
+              schema = 'math3d/stable-upgrade-two-app/v1'
+              checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+              status = 'failed-before-signoff'
+              signoff = '${{ steps.signoff.outcome }}'
+            } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding UTF8
+          }
+
+      - name: Upload upgrade evidence and failure traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-upgrade-two-app-signoff
+          if-no-files-found: error
+          path: |
+            test-results/stable-upgrade-two-app.json
+            test-results/playwright/stable-upgrade-project-settings*/trace.zip
+            test-results/playwright/quantum-installed-ui-round*/trace.zip
+            test-results/playwright/*/test-failed-*.png
