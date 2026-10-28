@@ -140,6 +140,8 @@ of code 2 has not yet been proven. The recorded outcome is `status: failed`,
 not a passed upgrade. Project/settings retention after upgrading and the
 installed Lab → `.qscene` → Math3D handoff were **not reached**. The earlier
 clean-install candidate signoff remains valid for clean installs only.
+The three failed-run JSON records are also retained in the local candidate
+archive's `upgrade-evidence` subfolder.
 
 Before releasing an upgrade over v1.6.0, repair the migration path in a **new
 candidate**, then run this gate against its exact new installer bytes. Preserve
