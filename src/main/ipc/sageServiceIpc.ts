@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { cancelSagePolynomialJob, runSagePolynomialJob } from "../python/sagePolynomialWorker";
+import { cancelSageSymbolicJob, checkLocalSageHealth, LOCAL_SYMBOLIC_OPERATIONS, runSageSymbolicJob } from "../python/sageSymbolicWorker";
 
 type SageOperation =
   | "sage.symbolic.simplify"
@@ -57,10 +58,14 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
 }
 
 export function registerSageServiceIpc(): void {
-  ipcMain.handle("sage:health", async () => requestJson("/health", { method: "GET" }));
+  ipcMain.handle("sage:health", async (_evt, scope?: "local" | "docker") =>
+    scope === "local" ? checkLocalSageHealth() : requestJson("/health", { method: "GET" }));
   ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) => {
     if (req?.operation === "sage.polynomial.factor" || req?.operation === "sage.polynomial.roots_exact") {
       return runSagePolynomialJob(req.operation, req.params || {}, req.jobId);
+    }
+    if (LOCAL_SYMBOLIC_OPERATIONS.includes(req?.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
+      return runSageSymbolicJob(req.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number], req.params || {}, req.jobId);
     }
     return requestJson("/run", {
       method: "POST",
@@ -71,6 +76,6 @@ export function registerSageServiceIpc(): void {
     });
   });
   ipcMain.handle("sage:cancel", async (_evt, jobId: string) => ({
-    ok: typeof jobId === "string" && cancelSagePolynomialJob(jobId),
+    ok: typeof jobId === "string" && (cancelSagePolynomialJob(jobId) || cancelSageSymbolicJob(jobId)),
   }));
 }

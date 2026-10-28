@@ -14,8 +14,10 @@ const sageServiceUnavailableMessage =
   "SageMath Docker service is unreachable. Start it with: docker compose -f services/sage-worker/docker-compose.yml up --build";
 const localSageUnavailableMessage =
   "Local SageMath web proxy is unavailable. Start MATH3D with its web proxy and install SageMath in WSL Ubuntu.";
-const isLocalPolynomial = (operation: string) =>
-  operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
+export const isLocalSageOperation = (operation: string) =>
+  operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact" ||
+  operation === "sage.symbolic.simplify" || operation === "sage.symbolic.factor" ||
+  operation === "sage.symbolic.expand" || operation === "sage.symbolic.solve";
 
 const asErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof Error && error.message) return error.message;
@@ -58,12 +60,14 @@ async function requestJson<T>(
 
 const getBridge = () => (typeof window === "undefined" ? undefined : window.sageService);
 
-export async function checkSageHealth(): Promise<SageHealthResponse> {
+export async function checkSageHealth(scope: "local" | "docker" = "docker"): Promise<SageHealthResponse> {
   const bridge = getBridge();
   if (bridge?.health) {
-    return normalizeSageHealth(await bridge.health());
+    return normalizeSageHealth(await bridge.health(scope));
   }
-  const payload = await requestJson<unknown>("GET", "/health");
+  const payload = scope === "local"
+    ? await requestJson<unknown>("GET", "/health", undefined, localSageBaseUrl, localSageUnavailableMessage)
+    : await requestJson<unknown>("GET", "/health");
   return normalizeSageHealth(payload);
 }
 
@@ -79,9 +83,11 @@ export async function runSageOperation(request: SageRunRequest): Promise<SageRun
 if (typeof window !== "undefined") {
   if (!window.sageService) {
     window.sageService = {
-      health: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
+      health: (scope?: "local" | "docker") => (scope === "local"
+        ? requestJson<unknown>("GET", "/health", undefined, localSageBaseUrl, localSageUnavailableMessage)
+        : requestJson<unknown>("GET", "/health")).then(normalizeSageHealth),
       getStatus: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
-      run: (request: SageRunRequest) => isLocalPolynomial(request.operation)
+      run: (request: SageRunRequest) => isLocalSageOperation(request.operation)
         ? requestJson<unknown>("POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000).then(normalizeSageRunResponse)
         : requestJson<unknown>("POST", "/run", request).then(normalizeSageRunResponse),
       cancel: (jobId: string) => requestJson<{ ok: boolean }>(

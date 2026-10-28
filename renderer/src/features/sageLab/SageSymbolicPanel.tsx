@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { checkSageHealth, runSageOperation } from "../../integrations/sage/sageClient";
+import { checkSageHealth, isLocalSageOperation, runSageOperation } from "../../integrations/sage/sageClient";
 import {
   SAGE_SYMBOLIC_OPERATIONS,
   type SageHealthResponse,
@@ -10,10 +10,10 @@ import {
 const DEFAULT_EXPRESSION = "sin(x)^2 + cos(x)^2";
 
 const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
-  "sage.symbolic.simplify": "Simplify",
-  "sage.symbolic.factor": "Factor",
-  "sage.symbolic.expand": "Expand",
-  "sage.symbolic.solve": "Solve",
+  "sage.symbolic.simplify": "Simplify (local WSL)",
+  "sage.symbolic.factor": "Factor (local WSL)",
+  "sage.symbolic.expand": "Expand (local WSL)",
+  "sage.symbolic.solve": "Solve (local WSL)",
   "sage.matrix.eigen_exact": "Exact eigen",
   "sage.matrix.charpoly": "Characteristic polynomial",
   "sage.polynomial.roots_exact": "Exact algebraic roots (local WSL)",
@@ -62,6 +62,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
   const [showJson, setShowJson] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const localPolynomial = operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
+  const localSage = isLocalSageOperation(operation);
 
   const variables = useMemo(
     () => variablesText.split(",").map((part) => part.trim()).filter(Boolean),
@@ -72,7 +73,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
     setBusy("health");
     setError(null);
     try {
-      setHealth(await checkSageHealth());
+      setHealth(await checkSageHealth(localSage ? "local" : "docker"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to check SageMath service.");
     } finally {
@@ -90,10 +91,14 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         expression,
         variables: variables.length ? variables : ["x"],
       };
-      if (localPolynomial) {
+      if (localSage) {
         if (!window.sageService?.run) {
-          throw new Error("Exact polynomial operations require local SageMath in WSL Ubuntu and the MATH3D desktop app or web proxy.");
+          throw new Error("Local Sage operations require SageMath in WSL Ubuntu and the MATH3D desktop app or web proxy.");
         }
+        jobId = crypto.randomUUID();
+        setActiveJobId(jobId);
+      }
+      if (localPolynomial) {
         const coefficients = coefficientsText.split(",").map((part) => part.trim());
         if (
           coefficients.length < 2 || coefficients.length > 13 ||
@@ -102,8 +107,6 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         ) {
           throw new Error("Enter 2–13 integer coefficients, constant first, with a nonzero leading coefficient (up to 18 digits each).");
         }
-        jobId = crypto.randomUUID();
-        setActiveJobId(jobId);
         params = { coefficients };
       }
       const result = await runSageOperation({
@@ -125,9 +128,9 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
     if (!activeJobId) return;
     try {
       const response = await window.sageService?.cancel(activeJobId);
-      if (!response?.ok) setError("The Sage polynomial job has already finished.");
+      if (!response?.ok) setError("The Sage job has already finished.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not cancel Sage polynomial job.");
+      setError(err instanceof Error ? err.message : "Could not cancel Sage job.");
     }
   };
 
@@ -137,7 +140,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
       <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 11 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>Engine</span>
-          {localPolynomial ? <span>Local WSL SageMath · exact QQ[x] / QQbar · 20-second limit</span> : <>
+          {localSage ? <span>Local WSL SageMath · 20-second limit</span> : <>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <input type="radio" checked={engine === "auto"} onChange={() => setEngine("auto")} />
             Auto
@@ -146,12 +149,12 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
             <input type="radio" checked={engine === "sagemath"} onChange={() => setEngine("sagemath")} />
             SageMath
           </label>
+          </>}
           {health && (
             <span style={{ color: health.available ? "#1f894f" : "#b42318" }}>
               {health.engine}: {health.status}
             </span>
           )}
-          </>}
         </div>
 
         <label style={{ display: "grid", gap: 4 }}>
@@ -170,7 +173,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
           </select>
         </label>
 
-        {!localPolynomial && <span>Exact polynomial factorization and roots are available in this local browser through WSL SageMath. Select either operation above; Simplify and the other operations use the separate Docker service.</span>}
+          {!localSage && <span>This operation uses the separate Docker SageMath service. Simplify, Factor, Expand, Solve, exact polynomial factorization, and exact roots use local WSL SageMath.</span>}
 
         {localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>
@@ -194,13 +197,13 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         </>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {!localPolynomial && <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
-            {busy === "health" ? "Checking..." : "Check SageMath"}
-          </button>}
+          <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
+            {busy === "health" ? "Checking..." : localSage ? "Check local SageMath" : "Check Docker SageMath"}
+          </button>
           <button type="button" onClick={() => void onRun()} disabled={busy !== "none"}>
             {busy === "run" ? "Running..." : "Run"}
           </button>
-          {localPolynomial && activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
+          {localSage && activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={showJson} onChange={(event) => setShowJson(event.target.checked)} />
             JSON

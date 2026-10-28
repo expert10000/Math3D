@@ -877,6 +877,9 @@ function readJsonBody(req, limitBytes = BODY_LIMIT_BYTES) {
 }
 
 const SAGE_POLYNOMIAL_OPERATIONS = new Set(["sage.polynomial.factor", "sage.polynomial.roots_exact"]);
+const SAGE_SYMBOLIC_OPERATIONS = new Set([
+  "sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand", "sage.symbolic.solve",
+]);
 
 function isLoopbackRequest(req) {
   const address = String(req.socket.remoteAddress || "");
@@ -900,6 +903,14 @@ function localSageWorker() {
   return require(workerPath);
 }
 
+function localSageSymbolicWorker() {
+  const workerPath = path.join(ROOT_DIR, "dist", "main", "python", "sageSymbolicWorker.js");
+  if (!fs.existsSync(workerPath)) {
+    throw new Error("Local Sage symbolic worker is not built. Run npm run build:main and restart the web proxy.");
+  }
+  return require(workerPath);
+}
+
 async function handleSageRoute(req, res, pathname) {
   if (!isLoopbackRequest(req)) {
     json(res, 403, { ok: false, error: "Local Sage operations accept only same-machine requests." });
@@ -908,6 +919,7 @@ async function handleSageRoute(req, res, pathname) {
   if (req.method === "GET" && pathname === "/api/sage/health") {
     try {
       localSageWorker();
+      localSageSymbolicWorker();
       const version = await new Promise((resolve, reject) => {
         const child = spawn("wsl.exe", ["-d", "Ubuntu", "--exec", "/usr/bin/sage", "--version"],
           { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
@@ -922,10 +934,10 @@ async function handleSageRoute(req, res, pathname) {
         });
       });
       json(res, 200, { engine: "sagemath", available: true, status: `Local WSL ${version}`,
-        operations: [...SAGE_POLYNOMIAL_OPERATIONS] });
+        operations: [...SAGE_POLYNOMIAL_OPERATIONS, ...SAGE_SYMBOLIC_OPERATIONS] });
     } catch (error) {
       json(res, 200, { engine: "sagemath", available: false, status: String(error?.message || error),
-        operations: [...SAGE_POLYNOMIAL_OPERATIONS] });
+        operations: [...SAGE_POLYNOMIAL_OPERATIONS, ...SAGE_SYMBOLIC_OPERATIONS] });
     }
     return;
   }
@@ -943,26 +955,28 @@ async function handleSageRoute(req, res, pathname) {
       json(res, 400, { ok: false, error: "A JSON object is required." });
       return;
     }
-    const worker = localSageWorker();
     if (pathname === "/api/sage/cancel") {
       if (typeof body.jobId !== "string") {
         json(res, 400, { ok: false, error: "A Sage job identifier is required." });
         return;
       }
-      json(res, 200, { ok: worker.cancelSagePolynomialJob(body.jobId) });
+      json(res, 200, { ok: localSageWorker().cancelSagePolynomialJob(body.jobId) ||
+        localSageSymbolicWorker().cancelSageSymbolicJob(body.jobId) });
       return;
     }
-    if (!SAGE_POLYNOMIAL_OPERATIONS.has(body.operation) || !body.params ||
+    if (!(SAGE_POLYNOMIAL_OPERATIONS.has(body.operation) || SAGE_SYMBOLIC_OPERATIONS.has(body.operation)) || !body.params ||
         typeof body.params !== "object" || Array.isArray(body.params)) {
-      json(res, 400, { ok: false, error: "Only local polynomial factorization and exact roots are supported." });
+      json(res, 400, { ok: false, error: "This Sage operation requires the separate Docker service." });
       return;
     }
-    const result = await worker.runSagePolynomialJob(body.operation, body.params, body.jobId);
+    const result = SAGE_POLYNOMIAL_OPERATIONS.has(body.operation)
+      ? await localSageWorker().runSagePolynomialJob(body.operation, body.params, body.jobId)
+      : await localSageSymbolicWorker().runSageSymbolicJob(body.operation, body.params, body.jobId);
     json(res, 200, result);
   } catch (error) {
     const message = String(error?.message || error);
     const status = /already running/i.test(message) ? 409 :
-      /coefficients|identifier|Invalid JSON|body too large/i.test(message) ? 400 : 503;
+      /coefficients|identifier|Invalid JSON|body too large|expression|variable|syntax|literal|exponent|equation/i.test(message) ? 400 : 503;
     json(res, status, { ok: false, error: message });
   }
 }

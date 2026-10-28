@@ -828,7 +828,7 @@ declare global {
       solve: (matrix: number[][], rhs: number[]) => Promise<OctaveSolveResponse>;
     };
     sageService?: {
-      health: () => Promise<SageHealthResponse>;
+      health: (scope?: "local" | "docker") => Promise<SageHealthResponse>;
       getStatus: () => Promise<SageHealthResponse>;
       run: (req: SageRunRequest) => Promise<SageRunResponse>;
       cancel: (jobId: string) => Promise<{ ok: boolean }>;

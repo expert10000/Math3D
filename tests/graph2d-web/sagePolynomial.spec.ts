@@ -9,6 +9,19 @@ test("local Chrome Sage panel factors and finds roots with rejection and cancell
 
   const panel = page.getByText("Symbolic Mathematics", { exact: true }).locator("..");
   await expect(panel).toBeVisible();
+  await expect(panel.getByLabel("Operation")).toHaveValue("sage.symbolic.simplify");
+  await panel.getByRole("button", { name: "Check local SageMath" }).click();
+  await expect(panel).toContainText("Local WSL SageMath version", { timeout: 30_000 });
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(panel).toContainText("Success: yes", { timeout: 60_000 });
+  await expect(panel).toContainText("LaTeX: 1");
+  await panel.getByLabel("Expression").fill("x.__class__");
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(panel).toContainText("unsupported syntax", { timeout: 60_000 });
+  await panel.getByLabel("Expression").fill("(x+1)^4");
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(panel).toContainText("Sage symbolic job cancelled.", { timeout: 30_000 });
   await panel.getByLabel("Operation").selectOption("sage.polynomial.factor");
   const coefficients = panel.getByLabel("Integer coefficients (constant first)");
   await coefficients.fill("1, wrong, 1");
@@ -26,9 +39,4 @@ test("local Chrome Sage panel factors and finds roots with rejection and cancell
   await expect(panel).toContainText("Algebraic roots (2 counting multiplicity)", { timeout: 60_000 });
   await expect(panel).toContainText("Minimal polynomial (constant first): -2, 0, 1");
 
-  await coefficients.fill("1, 0, 1");
-  await panel.getByRole("button", { name: "Run", exact: true }).click();
-  await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(panel).toContainText("Sage root calculation cancelled.", { timeout: 30_000 });
-  await expect(panel.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
 });
