@@ -21,6 +21,7 @@ type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
   jobId?: string;
+  backend?: "local" | "docker";
 };
 
 const baseUrl = String(process.env.MATH3D_SAGE_SERVICE_URL || "http://127.0.0.1:8767").replace(/\/+$/, "");
@@ -61,10 +62,18 @@ export function registerSageServiceIpc(): void {
   ipcMain.handle("sage:health", async (_evt, scope?: "local" | "docker") =>
     scope === "local" ? checkLocalSageHealth() : requestJson("/health", { method: "GET" }));
   ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) => {
-    if (req?.operation === "sage.polynomial.factor" || req?.operation === "sage.polynomial.roots_exact") {
+    if (req?.backend != null && req.backend !== "local" && req.backend !== "docker") {
+      throw new Error("Select Local WSL or Docker SageMath.");
+    }
+    if (req?.backend === "local" && req.operation !== "sage.polynomial.factor" &&
+        req.operation !== "sage.polynomial.roots_exact" &&
+        !LOCAL_SYMBOLIC_OPERATIONS.includes(req.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
+      throw new Error("This operation is not available on the local WSL backend. Select Docker SageMath.");
+    }
+    if (req?.backend !== "docker" && (req?.operation === "sage.polynomial.factor" || req?.operation === "sage.polynomial.roots_exact")) {
       return runSagePolynomialJob(req.operation, req.params || {}, req.jobId);
     }
-    if (LOCAL_SYMBOLIC_OPERATIONS.includes(req?.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
+    if (req?.backend !== "docker" && LOCAL_SYMBOLIC_OPERATIONS.includes(req?.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
       return runSageSymbolicJob(req.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number], req.params || {}, req.jobId);
     }
     return requestJson("/run", {

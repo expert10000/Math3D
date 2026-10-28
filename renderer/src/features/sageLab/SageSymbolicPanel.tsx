@@ -10,14 +10,14 @@ import {
 const DEFAULT_EXPRESSION = "sin(x)^2 + cos(x)^2";
 
 const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
-  "sage.symbolic.simplify": "Simplify (local WSL)",
-  "sage.symbolic.factor": "Factor (local WSL)",
-  "sage.symbolic.expand": "Expand (local WSL)",
-  "sage.symbolic.solve": "Solve (local WSL)",
+  "sage.symbolic.simplify": "Simplify",
+  "sage.symbolic.factor": "Factor",
+  "sage.symbolic.expand": "Expand",
+  "sage.symbolic.solve": "Solve",
   "sage.matrix.eigen_exact": "Exact eigen",
   "sage.matrix.charpoly": "Characteristic polynomial",
-  "sage.polynomial.roots_exact": "Exact algebraic roots (local WSL)",
-  "sage.polynomial.factor": "Exact polynomial factor (local WSL)",
+  "sage.polynomial.roots_exact": "Exact algebraic roots",
+  "sage.polynomial.factor": "Exact polynomial factor",
   "sage.groebner.compute": "Groebner basis",
   "sage.numberTheory.gcd": "GCD",
   "sage.numberTheory.modInverse": "Mod inverse",
@@ -50,7 +50,7 @@ const resultText = (response: SageRunResponse | null): string => {
 };
 
 const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
-  const [engine, setEngine] = useState<"auto" | "sagemath">("auto");
+  const [backend, setBackend] = useState<"local" | "docker">("local");
   const [operation, setOperation] = useState<SageSymbolicOperation>("sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
   const [coefficientsText, setCoefficientsText] = useState("-1, 0, 1");
@@ -62,7 +62,8 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
   const [showJson, setShowJson] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const localPolynomial = operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
-  const localSage = isLocalSageOperation(operation);
+  const localCapable = isLocalSageOperation(operation);
+  const localSage = backend === "local" && localCapable;
 
   const variables = useMemo(
     () => variablesText.split(",").map((part) => part.trim()).filter(Boolean),
@@ -107,12 +108,16 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         ) {
           throw new Error("Enter 2–13 integer coefficients, constant first, with a nonzero leading coefficient (up to 18 digits each).");
         }
-        params = { coefficients };
+        params = localSage ? { coefficients } : {
+          polynomial: coefficients.map((coefficient, index) => `(${coefficient})*x^${index}`).join(" + "),
+          variables: ["x"],
+        };
       }
       const result = await runSageOperation({
         operation,
         jobId,
         params,
+        backend,
       });
       setResponse(result);
       if (!result.success && result.error) setError(result.error);
@@ -140,16 +145,16 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
       <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 11 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>Engine</span>
-          {localSage ? <span>Local WSL SageMath · 20-second limit</span> : <>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <input type="radio" checked={engine === "auto"} onChange={() => setEngine("auto")} />
-            Auto
-          </label>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <input type="radio" checked={engine === "sagemath"} onChange={() => setEngine("sagemath")} />
-            SageMath
-          </label>
-          </>}
+          <select aria-label="SageMath backend" value={backend} disabled={busy !== "none"} onChange={(event) => {
+            setBackend(event.target.value as "local" | "docker");
+            setHealth(null);
+            setResponse(null);
+            setError(null);
+          }}>
+            <option value="local" disabled={!localCapable}>Local WSL</option>
+            <option value="docker">Docker service</option>
+          </select>
+          <span>{localSage ? "Bounded local worker · 20-second limit" : "Separate Docker service"}</span>
           {health && (
             <span style={{ color: health.available ? "#1f894f" : "#b42318" }}>
               {health.engine}: {health.status}
@@ -160,25 +165,28 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Operation</span>
           <select value={operation} disabled={busy !== "none"} onChange={(event) => {
-            setOperation(event.target.value as SageSymbolicOperation);
+            const next = event.target.value as SageSymbolicOperation;
+            setOperation(next);
+            if (!isLocalSageOperation(next)) setBackend("docker");
             setError(null);
             setHealth(null);
             setResponse(null);
           }} style={fieldStyle}>
             {SAGE_SYMBOLIC_OPERATIONS.map((item) => (
               <option key={item} value={item}>
-                {OPERATION_LABELS[item]}
+                {item === "sage.polynomial.roots_exact" && backend === "docker"
+                  ? "Polynomial roots (rational, Docker)" : OPERATION_LABELS[item]}
               </option>
             ))}
           </select>
         </label>
 
-          {!localSage && <span>This operation uses the separate Docker SageMath service. Simplify, Factor, Expand, Solve, exact polynomial factorization, and exact roots use local WSL SageMath.</span>}
+          {!localCapable && <span>This operation currently requires the Docker SageMath service. The six symbolic and polynomial operations above can use either backend.</span>}
 
         {localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>
           <input value={coefficientsText} disabled={busy !== "none"} onChange={(event) => setCoefficientsText(event.target.value)} style={fieldStyle} placeholder="-1, 0, 1" />
-          <span>Example: -1, 0, 1 means x² − 1. Only coefficient data is sent to Sage; no expression is evaluated. Roots use exact algebraic numbers; displayed decimal values are approximations.</span>
+          <span>Example: -1, 0, 1 means x² − 1. Local WSL receives only coefficients and supplies algebraic root certificates. Docker receives a polynomial built from those coefficients and currently returns roots over the rationals.</span>
         </label> : <>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Expression</span>
@@ -214,23 +222,26 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
           <div style={{ padding: "6px 8px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
             <div><strong>Success:</strong> {response.success ? "yes" : "no"}</div>
             <div><strong>Engine:</strong> {response.engine}</div>
+            <div><strong>Backend:</strong> {backend === "local" ? "Local WSL" : "Docker service"}</div>
             {response.elapsedMs != null && <div><strong>Elapsed:</strong> {response.elapsedMs}ms</div>}
             {(response.operation === "sage.polynomial.factor" || response.operation === "sage.polynomial.roots_exact") && <>
-              <div><strong>Exact reconstruction:</strong> {response.result.verified === true ? "verified" : "not verified"}</div>
+              {localSage && <div><strong>Exact reconstruction:</strong> {response.result.verified === true ? "verified" : "not verified"}</div>}
               {typeof response.result.inputHash === "string" && <div><strong>Input SHA-256:</strong> <code>{response.result.inputHash}</code></div>}
               {Array.isArray(response.result.diagnostics) && response.result.diagnostics.map((diagnostic, index) =>
                 typeof diagnostic === "string" ? <div key={index}><strong>Diagnostic:</strong> {diagnostic}</div> : null
               )}
             </>}
             {response.operation === "sage.polynomial.roots_exact" && Array.isArray(response.result.roots) && <div>
-              <strong>Algebraic roots ({String(response.result.rootCount ?? "?")} counting multiplicity)</strong>
+              <strong>{backend === "local"
+                ? `Algebraic roots (${String(response.result.rootCount ?? "?")} counting multiplicity)`
+                : `Rational roots (${response.result.roots.length} distinct)`}</strong>
               {response.result.roots.map((item, index) => {
                 if (!item || typeof item !== "object") return null;
                 const root = item as Record<string, unknown>;
                 return <div key={index} style={{ marginTop: 4 }}>
-                  <code>{String(root.approximation ?? "?")}</code> · multiplicity {String(root.multiplicity ?? "?")}
-                  <div>Minimal polynomial (constant first): <code>{Array.isArray(root.minimalPolynomialCoefficients) ? root.minimalPolynomialCoefficients.join(", ") : "?"}</code></div>
-                  <div>Isolating interval: <code>{String(root.isolatingInterval ?? "?")}</code></div>
+                  <code>{String(root.approximation ?? root.value ?? "?")}</code> · multiplicity {String(root.multiplicity ?? "?")}
+                  {Array.isArray(root.minimalPolynomialCoefficients) && <div>Minimal polynomial (constant first): <code>{root.minimalPolynomialCoefficients.join(", ")}</code></div>}
+                  {root.isolatingInterval != null && <div>Isolating interval: <code>{String(root.isolatingInterval)}</code></div>}
                 </div>;
               })}
             </div>}

@@ -534,6 +534,8 @@ declare global {
   type SageRunRequest = {
     operation: SageOperation;
     params: Record<string, unknown>;
+    jobId?: string;
+    backend?: "local" | "docker";
   };
 
   type SageRunResponse = {

@@ -26,6 +26,7 @@ export type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
   jobId?: string;
+  backend?: "local" | "docker";
 };
 
 export type SageRunResponse = {

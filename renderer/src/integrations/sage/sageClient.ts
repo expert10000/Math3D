@@ -19,6 +19,13 @@ export const isLocalSageOperation = (operation: string) =>
   operation === "sage.symbolic.simplify" || operation === "sage.symbolic.factor" ||
   operation === "sage.symbolic.expand" || operation === "sage.symbolic.solve";
 
+export const selectedSageBackend = (request: SageRunRequest): "local" | "docker" => {
+  if (request.backend != null && request.backend !== "local" && request.backend !== "docker") {
+    throw new Error("Select Local WSL or Docker SageMath.");
+  }
+  return request.backend ?? (isLocalSageOperation(request.operation) ? "local" : "docker");
+};
+
 const asErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error.trim()) return error;
@@ -72,11 +79,17 @@ export async function checkSageHealth(scope: "local" | "docker" = "docker"): Pro
 }
 
 export async function runSageOperation(request: SageRunRequest): Promise<SageRunResponse> {
+  const backend = selectedSageBackend(request);
+  if (backend === "local" && !isLocalSageOperation(request.operation)) {
+    throw new Error("This operation is not available on the local WSL backend. Select Docker SageMath.");
+  }
   const bridge = getBridge();
   if (bridge?.run) {
-    return normalizeSageRunResponse(await bridge.run(request));
+    return normalizeSageRunResponse(await bridge.run({ ...request, backend }));
   }
-  const payload = await requestJson<unknown>("POST", "/run", request);
+  const payload = backend === "local"
+    ? await requestJson<unknown>("POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000)
+    : await requestJson<unknown>("POST", "/run", request);
   return normalizeSageRunResponse(payload);
 }
 
@@ -87,7 +100,7 @@ if (typeof window !== "undefined") {
         ? requestJson<unknown>("GET", "/health", undefined, localSageBaseUrl, localSageUnavailableMessage)
         : requestJson<unknown>("GET", "/health")).then(normalizeSageHealth),
       getStatus: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
-      run: (request: SageRunRequest) => isLocalSageOperation(request.operation)
+      run: (request: SageRunRequest) => selectedSageBackend(request) === "local"
         ? requestJson<unknown>("POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000).then(normalizeSageRunResponse)
         : requestJson<unknown>("POST", "/run", request).then(normalizeSageRunResponse),
       cancel: (jobId: string) => requestJson<{ ok: boolean }>(
