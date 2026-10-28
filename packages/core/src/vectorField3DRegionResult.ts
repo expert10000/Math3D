@@ -6,6 +6,16 @@ import { type VectorField3DDocument, type VectorField3DOverlayRegion } from "./v
 import { viewerSourceFromDocument } from "./viewerProvenance";
 
 export const VECTOR_FIELD3D_REGION_RESULT_TYPE = "vector3d.linked-region" as const;
+export const VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE = "vector3d.linked-region-combined" as const;
+export type CombinedRegionStatistics = Readonly<{
+  count: number; gaps: number; mean: number | null; min: number | null;
+  max: number | null }>;
+export type CombinedRegionSummary = Readonly<{
+  sampleCount: 289;
+  vector: CombinedRegionStatistics; scalar: CombinedRegionStatistics;
+  complexMagnitude: CombinedRegionStatistics; complexPhase: CombinedRegionStatistics;
+  vectorUnit: string; scalarUnit: string; complexUnit: string;
+}>;
 export type VectorField3DRegionStatistics = Readonly<{ mean: number; min: number; max: number }>;
 export type VectorField3DRegionSummary = Readonly<{
   sampleCount: number; vectorCount: number; scalarCount: number; alignedCount: number;
@@ -68,13 +78,64 @@ export function createVectorField3DRegionResult(document: VectorField3DDocument,
 }
 
 export function vectorField3DRegionResultRelation(result: AnalysisResultEnvelope): DocumentRelation {
-  if (result.provenance.operation.type !== VECTOR_FIELD3D_REGION_RESULT_TYPE)
+  if (result.provenance.operation.type !== VECTOR_FIELD3D_REGION_RESULT_TYPE &&
+      result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE)
     throw new TypeError("Expected a linked region result.");
   return createDocumentRelation({ kind: "analysis-of", sources: [result.provenance.source],
     sourceOrder: "ordered", target: { type: "result", resultId: result.resultId,
-      resultType: VECTOR_FIELD3D_REGION_RESULT_TYPE },
-    operation: VECTOR_FIELD3D_REGION_RESULT_TYPE,
+      resultType: result.provenance.operation.type },
+    operation: result.provenance.operation.type,
     parameters: result.provenance.operation.parameters });
+}
+
+/** The combined result stores compact statistics and pinned references, never sample arrays. */
+export function createCombinedVectorField3DRegionResult(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, summary: CombinedRegionSummary,
+  vectorSamples: readonly VectorField3DRegionSampleDigest[],
+  scalarSampleSha256: string, realSampleSha256: string,
+  imaginarySampleSha256: string): AnalysisResultEnvelope {
+  const workspace = document.workspace;
+  const scalar = workspace?.scalarOverlay, complex = workspace?.complexOverlay;
+  const validStatistics = (value: CombinedRegionStatistics) =>
+    Number.isInteger(value.count) && value.count >= 0 && value.count <= 289 &&
+    value.gaps === 289 - value.count &&
+    (value.count === 0 ? value.mean === null && value.min === null && value.max === null :
+      value.min !== null && value.max !== null && Number.isFinite(value.min) &&
+      Number.isFinite(value.max) && (value.mean === null ||
+        Number.isFinite(value.mean) && value.min <= value.mean && value.mean <= value.max));
+  if (!workspace || !scalar?.visible || !complex?.visible || !region.visible ||
+      canonicalJsonStringify(workspace.overlayRegion) !== canonicalJsonStringify(region) ||
+      summary.sampleCount !== 289 ||
+      ![summary.vector, summary.scalar, summary.complexMagnitude,
+        summary.complexPhase].every(validStatistics) ||
+      summary.vector.count === 0 || summary.scalar.count === 0 ||
+      summary.complexMagnitude.count === 0 ||
+      !summary.vectorUnit || !summary.scalarUnit || !summary.complexUnit ||
+      summary.scalarUnit !== scalar.unit || summary.complexUnit !== complex.unit ||
+      vectorSamples.length !== (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+      [...vectorSamples.map(sample => sample.sampleSha256), scalarSampleSha256,
+        realSampleSha256, imaginarySampleSha256].some(hash => !/^[a-f0-9]{64}$/.test(hash)))
+    throw new TypeError("A combined region needs three freshly verified fields and valid statistics.");
+  const parameters: Record<string, CanonicalJsonValue> = {
+    region: region as unknown as CanonicalJsonValue,
+    vectorReferences: document.source.field.kind === "scientific-bundle" ?
+      document.source.field.references as unknown as CanonicalJsonValue : [],
+    scalarReference: scalar.reference as unknown as CanonicalJsonValue,
+    realReference: complex.real as unknown as CanonicalJsonValue,
+    imaginaryReference: complex.imaginary as unknown as CanonicalJsonValue,
+    vectorSamples: vectorSamples as unknown as CanonicalJsonValue,
+    scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
+  };
+  const source = viewerSourceFromDocument(document);
+  const compactSummary = summary as unknown as Record<string, CanonicalJsonValue>;
+  const resultId = `vector3d-combined-region:${structuralHash({ source, parameters,
+    compactSummary }).slice(7)}`;
+  return createAnalysisResultEnvelope({ resultId, status: "numerical",
+    provenance: { source, operation: { type: VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
+      algorithm: "independent-physical-region", algorithmVersion: "17x17-v2", parameters },
+      numericContext: { precision: { binaryBits: 53 } },
+      engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
+    summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });
 }
 
 export function reverifyVectorField3DRegionResult(saved: AnalysisResultEnvelope,

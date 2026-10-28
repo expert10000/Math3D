@@ -528,7 +528,7 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
 });
 
 test("SCI-02 scalar heatmap and complex contours reopen with independent source checks", async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-contour-overlay-"));
   const complex = join(root, "complex.sscene");
   await cp(resolve("examples/scientific-scenes/complex-wave-volume.sscene"), complex,
@@ -582,6 +582,12 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("Potential");
     await expect(combined.getByTestId("scientific-combined-complex-region"))
       .toContainText("phase");
+    await region.getByTestId("scientific-region-publish").click();
+    await expect(region.getByTestId("scientific-region-saved-status"))
+      .toContainText("vector source-current, scalar source-current, complex source-current");
+    await region.getByTestId("send-linked-region-to-graphs").click();
+    await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude and phase profiles",
+      { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
     await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     await page.getByTestId("projects-toggle").click();
@@ -598,6 +604,22 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     expect(saved.linkedProbe.point).toHaveLength(3);
     expect(saved.overlayRegion.bounds).toHaveLength(2);
     expect(JSON.stringify(saved)).not.toContain('"values"');
+    const combinedResult = stored.workspace.results.find((item: { provenance: {
+      operation: { type: string } } }) => item.provenance.operation.type ===
+      "vector3d.linked-region-combined");
+    expect(combinedResult.provenance.operation.parameters.region.bounds).toHaveLength(2);
+    expect(combinedResult.provenance.operation.parameters.scalarReference.resourceSha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(combinedResult.provenance.operation.parameters.imaginaryReference.resourceSha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(combinedResult)).not.toContain('"values"');
+    const linkedSeries = stored.workspace.entries.flatMap((entry: { checkpoint: {
+      source?: { objects?: { linkedOrigin?: { kind: string; series: string } }[] } } }) =>
+      entry.checkpoint.source?.objects?.filter(object => object.linkedOrigin?.kind ===
+        "vector-scalar-complex-linked-region/v2").map(object =>
+          object.linkedOrigin?.series) ?? []);
+    expect(linkedSeries).toEqual([
+      "vector", "scalar", "complex-magnitude", "complex-phase"]);
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
@@ -629,6 +651,27 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("Potential", { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-combined-complex-region"))
       .toContainText("withheld", { timeout: 60_000 });
+    await reopened.getByRole("button", { name: "Back to Graphs" }).click();
+    if (!await projects.isVisible()) await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${combinedResult.resultId}`).click();
+    await expect(outputs.getByTestId("project-combined-vector"))
+      .toContainText("count", { timeout: 60_000 });
+    await expect(outputs.getByTestId("project-combined-scalar"))
+      .toContainText("count");
+    await expect(outputs.getByTestId("project-combined-complexMagnitude"))
+      .toContainText("values withheld (changed)");
+    await expect(outputs.getByTestId("project-combined-complexPhase"))
+      .toContainText("values withheld (changed)");
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect(page.getByTestId("graph2d-plot").locator("path[data-graph2d-path][d^='M']"))
+      .toHaveCount(2, { timeout: 60_000 });
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-contour-overlay-"))

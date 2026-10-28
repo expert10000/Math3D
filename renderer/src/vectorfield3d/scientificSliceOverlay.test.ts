@@ -10,6 +10,7 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   createVectorField3DRegionResult, reverifyVectorField3DRegionResult,
+  createCombinedVectorField3DRegionResult,
   vectorField3DRegionResultRelation, createMixedWorkspaceDocument,
   createMath3DProject, parseMath3DProject, serializeMath3DProject,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
@@ -25,6 +26,9 @@ import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
   sampleVerifiedScalarPoint, sampleVerifiedScalarRegion,
   sampleVerifiedVectorRegion } from "./combinedFieldInspection";
+import { sampleCombinedRegion } from "./combinedFieldInspection";
+import { checkCombinedRegionGraphSeries, linkedCombinedRegionGraphs,
+  validateCombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
@@ -466,6 +470,115 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       ({ ok: false as const, status: "changed" as const, error: "Source changed" }) };
     expect(await checkSavedRegionResultSources(result, document, missing)).toBe("missing");
     expect(await checkSavedRegionResultSources(result, document, changed)).toBe("changed");
+  });
+
+  it("publishes and plots four independently verified combined region fields", async () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", overlayRegion: region,
+      scalarOverlay: { reference: scalarReference, title: "Quadratic potential",
+        unit: "V", opacity: 0.8, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours" } });
+    const slice = sampleVectorField3DSlice(document, 2, 0);
+    const inspection = sampleCombinedRegion(document, slice, region,
+      sampleSliceOverlayVectorPlane(document, slice), scalarReference, scalarVolume,
+      complexReal.reference, complexImaginary.reference,
+      [complexReal.volume, complexImaginary.volume]);
+    expect(inspection.summary.vector.count).toBe(289);
+    expect(inspection.summary.scalar.count).toBe(289);
+    expect(inspection.summary.complexMagnitude.count).toBe(289);
+    expect(inspection.summary.complexPhase.count).toBe(289);
+    expect(inspection.profiles.vector[8]!.y).toBeCloseTo(9 / 17, 8);
+    // Linear interpolation of the 17-point source grid lifts the quadratic mean.
+    expect(inspection.profiles.scalar[8]!.y).toBeCloseTo(7 / 17, 8);
+    expect(inspection.profiles["complex-phase"][8]!.y).toBeCloseTo(0, 3);
+    const result = createCombinedVectorField3DRegionResult(document, region,
+      inspection.summary, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256);
+    const relation = vectorField3DRegionResultRelation(result);
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "vector3d",
+      checkpoint: document, expected: document.identity, replay: null }],
+      activeDocumentIds: [document.identity.id], constructions: [],
+      results: [result], relations: [relation], artifacts: [], committedSelection: null });
+    const saved = serializeMath3DProject(createMath3DProject(workspace,
+      { stableKey: "combined-region" }));
+    expect(saved).not.toContain('"values"');
+    expect(parseMath3DProject(saved).workspace.results).toEqual([result]);
+    expect(result.provenance.operation.parameters.region).toEqual(region);
+    const group = linkedCombinedRegionGraphs(document, region, inspection, [],
+      scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256);
+    expect(group.map(item => item.origin.series)).toEqual([
+      "vector", "scalar", "complex-magnitude", "complex-phase"]);
+    expect(group.map(item => item.origin.yUnit)).toEqual(["m/s", "V", "1", "rad"]);
+    validateCombinedRegionGraphGroup(group.map(item => item.origin),
+      group.map(item => item.rows));
+    const store = new Graph2DPointTableStore();
+    const drafts = group.map((item, index) => ({ label: item.label,
+      table: store.publish(item.rows), mode: "line" as const, domain: item.domain,
+      linkedOrigin: item.origin, style: { color: ["#ff0000", "#0000ff", "#00ff00", "#800080"][index]!,
+        lineWidth: 2, lineStyle: "solid" as const, visible: true } }));
+    const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("combined-graph"),
+      { type: "create-point-series-group", drafts });
+    const reopened = parseGraph2DDocument(serializeGraph2DDocument(
+      createGraph2DDocument({ ...graph, stableKey: "combined-graph" })));
+    expect(reopened.source.objects).toHaveLength(4);
+    const bridge = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => ({ ok: true as const,
+      source: { manifestJson: locator.value === "quadraticVolume" ?
+        scalarManifest : complexManifest } }) } as unknown as
+      NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(result, document, bridge)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "source-current",
+      complex: "source-current" });
+    expect(await Promise.all(group.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, bridge)))).toEqual([
+      "current", "current", "current", "current"]);
+    const changedScalar = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => locator.value === "quadraticVolume" ?
+        { ok: false as const, status: "changed" as const,
+          error: "scalar bytes changed" } :
+        { ok: true as const, source: { manifestJson: complexManifest } } } as unknown as
+      NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(result, document, changedScalar)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "changed",
+      complex: "source-current" });
+    expect(await Promise.all(group.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, changedScalar)))).toEqual([
+      "current", "changed", "current", "current"]);
+    const changedWave = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => locator.value === "complexWaveVolume" ?
+        { ok: false as const, status: "missing" as const,
+          error: "complex bytes missing" } :
+        { ok: true as const, source: { manifestJson: scalarManifest } } } as unknown as
+      NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(result, document, changedWave)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "source-current",
+      complex: "missing" });
+    expect(await Promise.all(group.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, changedWave)))).toEqual([
+      "current", "current", "missing", "missing"]);
+    expect(() => validateCombinedRegionGraphGroup(group.map(item => item.origin),
+      group.map((item, index) => index === 1 ?
+        item.rows.map((row, rowIndex) => rowIndex === 8 ? { ...row, y: 999 } : row) :
+        item.rows))).toThrow(/incomplete or misaligned/);
+    const wider = { ...region, bounds: [[-6, 6], [-1, 1]] as const };
+    const wideDocument = reviseVectorField3DWorkspace(document,
+      { ...document.workspace!, overlayRegion: wider });
+    const wideSlice = sampleVectorField3DSlice(wideDocument, 2, 0);
+    const withGaps = sampleCombinedRegion(wideDocument, wideSlice, wider,
+      sampleSliceOverlayVectorPlane(wideDocument, wideSlice),
+      scalarReference, scalarVolume, complexReal.reference,
+      complexImaginary.reference, [complexReal.volume, complexImaginary.volume]);
+    expect(withGaps.summary.vector.gaps).toBeGreaterThan(0);
+    expect(withGaps.summary.scalar.gaps).toBeGreaterThan(0);
+    expect(withGaps.summary.complexMagnitude.gaps).toBeGreaterThan(0);
+    expect(withGaps.profiles.vector[0]!.y).toBeNull();
+    expect(withGaps.profiles.scalar[0]!.y).toBeNull();
+    expect(withGaps.profiles["complex-magnitude"][0]!.y).toBeNull();
+    expect(withGaps.profiles.vector[8]!.y).not.toBeNull();
   });
 
   it("sends aligned region column means to Graphs and reverifies both saved series", async () => {

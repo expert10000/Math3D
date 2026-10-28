@@ -1,4 +1,5 @@
-import { parseVectorField3DDocument, structuralHash, type Graph2DLinkedRegionOrigin,
+import { parseVectorField3DDocument, structuralHash,
+  type Graph2DLinkedCombinedRegionOrigin, type Graph2DLinkedRegionOrigin,
   type Graph2DPointRow, type VectorField3DOverlayRegion } from "@math3d/core";
 
 export type LinkedRegionGraphFocus = Readonly<{
@@ -20,8 +21,10 @@ type Selection = Readonly<{ kind: "point"; x: number }> |
   Readonly<{ kind: "interval"; min: number; max: number }>;
 
 /** Snap a Graphs selection to the exact saved 17-column physical lattice. */
-export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin,
-  overlay: Graph2DLinkedRegionOrigin, vectorRows: readonly Graph2DPointRow[],
+export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin |
+  Graph2DLinkedCombinedRegionOrigin,
+  overlay: Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin,
+  vectorRows: readonly Graph2DPointRow[],
   overlayRows: readonly Graph2DPointRow[], selection: Selection): LinkedRegionGraphFocus {
   const [min, max] = vector.region.bounds[0];
   if (vector.series !== "vector" || vector.pairId !== overlay.pairId ||

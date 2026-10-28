@@ -108,6 +108,7 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "edit-inequality"; objectId: string; draft: Graph2DInequalityDraft }>
   | Readonly<{ type: "create-point-series"; draft: Graph2DPointSeriesDraft }>
   | Readonly<{ type: "create-point-series-pair"; drafts: readonly [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft] }>
+  | Readonly<{ type: "create-point-series-group"; drafts: readonly Graph2DPointSeriesDraft[] }>
   | Readonly<{ type: "edit-point-series"; objectId: string; draft: Graph2DPointSeriesDraft }>
   | Readonly<{ type: "edit-point-series-pair"; edits: readonly [
     Readonly<{ objectId: string; draft: Graph2DPointSeriesDraft }>,
@@ -600,8 +601,12 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       displays[target] = { objectId: edit.objectId, ...draft.style };
     }
     selection = { objectId: document.selection.objectId, probe: null };
-  } else if (action.type === "create-point-series-pair") {
-    if (objects.length > GRAPH2D_MAX_OBJECTS - 2) throw new TypeError("Function limit reached.");
+  } else if (action.type === "create-point-series-pair" ||
+      action.type === "create-point-series-group") {
+    if (action.type === "create-point-series-group" && action.drafts.length !== 4)
+      throw new TypeError("The combined region needs four point series.");
+    if (objects.length > GRAPH2D_MAX_OBJECTS - action.drafts.length)
+      throw new TypeError("Function limit reached.");
     for (const draft of action.drafts) {
       const errors = validateGraph2DPointSeriesDraft(draft);
       if (errors.length) throw new TypeError(errors.join(" "));

@@ -12,6 +12,7 @@ import { phaseContourSegments } from "./scientificSliceOverlay";
 import { LinkedOverlayProfileView } from "./LinkedOverlayProfileView";
 import { OverlayRegionView } from "./OverlayRegionView";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
+import type { CombinedRegionInspection } from "./combinedFieldInspection";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -33,6 +34,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSendLinkedLineToGraphs, linkedLineBusy = false,
   overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
+  onSendCombinedRegionToGraphs,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
@@ -73,6 +75,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     summary: OverlayRegionSummary,
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     overlaySamples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
+  onSendCombinedRegionToGraphs?: (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => void;
   regionBusy?: boolean;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
@@ -420,7 +427,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       complexVolumes={complexOverlayVolumes ?? null}
       savedResults={savedRegionResults} resultStatuses={regionResultStatuses}
       onSaveResult={onSaveRegionResult}
-      onSendToGraphs={onSendRegionToGraphs} regionBusy={regionBusy}
+      onSendToGraphs={onSendRegionToGraphs}
+      onSendCombinedToGraphs={onSendCombinedRegionToGraphs} regionBusy={regionBusy}
       status={overlayStatus} onChange={onOverlayRegionChange}
       vectorStatus={vectorStatus} scalarStatus={scalarStatus} complexStatus={complexStatus}
       selecting={regionSelecting} onStartSelection={() => {

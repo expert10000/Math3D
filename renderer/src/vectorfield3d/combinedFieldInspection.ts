@@ -1,4 +1,5 @@
-import type { Graph2DFieldReference, Graph2DScientificVolume,
+import type { CombinedRegionSummary, Graph2DFieldReference, Graph2DPointRow,
+  Graph2DScientificVolume,
   VectorField3DAxis, VectorField3DDocument, VectorField3DOverlayRegion,
   VectorField3DSliceArtifact } from "@math3d/core";
 import { linkedFieldPointStatus, sampleLinkedFieldVolume,
@@ -182,4 +183,90 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   if (plane.components.some(values => values.length !== nx * ny))
     throw new TypeError("Verified vector plane has an unexpected sample count.");
   return { statistics: statistics(values), unit: plane.units[index ?? 0]! };
+}
+
+export type CombinedRegionSeries = "vector" | "scalar" | "complex-magnitude" | "complex-phase";
+export type CombinedRegionInspection = Readonly<{
+  summary: CombinedRegionSummary;
+  profiles: Readonly<Record<CombinedRegionSeries, readonly Graph2DPointRow[]>>;
+}>;
+
+/** Four independent column means on one physical 17×17 lattice. */
+export function sampleCombinedRegion(document: VectorField3DDocument,
+  slice: VectorField3DSliceArtifact, region: VectorField3DOverlayRegion,
+  plane: VectorSliceOverlayPlane, scalarReference: Graph2DFieldReference,
+  scalarVolume: Graph2DScientificVolume, realReference: Graph2DFieldReference,
+  imaginaryReference: Graph2DFieldReference,
+  complexVolumes: readonly [Graph2DScientificVolume, Graph2DScientificVolume]):
+  CombinedRegionInspection {
+  const speedRegion = { ...region, vectorChannel: "speed" as const };
+  const vector = sampleVerifiedVectorRegion(document, slice, speedRegion, plane);
+  const scalar = sampleVerifiedScalarRegion(region, scalarReference, scalarVolume,
+    document.source.axes);
+  const complex = sampleVerifiedComplexRegion(region, realReference,
+    imaginaryReference, complexVolumes, document.source.axes);
+  const series: CombinedRegionSeries[] = ["vector", "scalar", "complex-magnitude",
+    "complex-phase"];
+  const columns = Array.from({ length: 17 }, () =>
+    ({ vector: [] as number[], scalar: [] as number[],
+      "complex-magnitude": [] as number[], "complex-phase": [] as number[] }));
+  const ny = slice.shape[1];
+  const speedAt = (point: LinkedFieldPoint): number | null => {
+    const local = slice.planeAxes.map(axis => point[axis]);
+    if (local.some((value, axis) => value < slice.coordinates[axis]![0]! - 1e-9 ||
+        value > slice.coordinates[axis]!.at(-1)! + 1e-9)) return null;
+    const positions = local.map((value, axis) => {
+      const coordinates = slice.coordinates[axis]!;
+      let hi = coordinates.findIndex(coordinate => coordinate >= value - 1e-9);
+      if (hi < 0) hi = coordinates.length - 1;
+      const lo = Math.max(0, hi - 1);
+      return { lo, hi, fraction: hi === lo ? 0 : Math.max(0, Math.min(1,
+        (value - coordinates[lo]!) / (coordinates[hi]! - coordinates[lo]!))) };
+    });
+    const [a, b] = positions;
+    const values = plane.components.map(component => {
+      const at = (i: number, j: number) => component[i * ny + j];
+      const corners = [at(a!.lo, b!.lo), at(a!.hi, b!.lo),
+        at(a!.lo, b!.hi), at(a!.hi, b!.hi)];
+      return corners.every(Number.isFinite) ?
+        (corners[0]! * (1 - a!.fraction) + corners[1]! * a!.fraction) * (1 - b!.fraction) +
+        (corners[2]! * (1 - a!.fraction) + corners[3]! * a!.fraction) * b!.fraction : null;
+    });
+    return values.every(value => value !== null) ? Math.hypot(...values as number[]) : null;
+  };
+  const units = document.source.axes.map(axis => axis.unit);
+  for (let i = 0; i < 17; i++) for (let j = 0; j < 17; j++) {
+    const point = [0, 0, 0] as [number, number, number];
+    point[region.normalAxis] = region.fixedCoordinate;
+    point[slice.planeAxes[0]!] = region.bounds[0][0] +
+      (region.bounds[0][1] - region.bounds[0][0]) * i / 16;
+    point[slice.planeAxes[1]!] = region.bounds[1][0] +
+      (region.bounds[1][1] - region.bounds[1][0]) * j / 16;
+    const speed = speedAt(point);
+    if (speed !== null && Number.isFinite(speed)) columns[i]!.vector.push(speed);
+    const q = sampleVerifiedScalarPoint(scalarReference, scalarVolume,
+      document.source.axes, point, units).value;
+    if (q !== null) columns[i]!.scalar.push(q);
+    const wave = sampleVerifiedComplexPoint(realReference, imaginaryReference,
+      complexVolumes, document.source.axes, point, units);
+    if (wave.magnitude !== null) columns[i]!["complex-magnitude"].push(wave.magnitude);
+    if (wave.phase !== null) columns[i]!["complex-phase"].push(wave.phase);
+  }
+  const profiles = Object.fromEntries(series.map(key => [key,
+    columns.map((column, index) => ({ id: `row_${index + 1}`,
+      x: region.bounds[0][0] + (region.bounds[0][1] - region.bounds[0][0]) * index / 16,
+      y: key === "complex-phase" ? phaseStatistics(column[key]).mean :
+        statistics(column[key]).mean }))])) as Record<CombinedRegionSeries, Graph2DPointRow[]>;
+  // A wrapped phase jump has no unambiguous line segment across the branch cut.
+  for (let index = 1; index < 17; index++) {
+    const previous = profiles["complex-phase"][index - 1]!.y;
+    const current = profiles["complex-phase"][index]!.y;
+    if (previous !== null && current !== null && Math.abs(current - previous) > Math.PI)
+      profiles["complex-phase"][index] = { ...profiles["complex-phase"][index]!, y: null };
+  }
+  return { summary: { sampleCount: 289, vector: vector.statistics,
+    scalar, complexMagnitude: complex.magnitude, complexPhase: complex.phase,
+    vectorUnit: vector.unit,
+    scalarUnit: document.workspace!.scalarOverlay!.unit,
+    complexUnit: document.workspace!.complexOverlay!.unit }, profiles };
 }

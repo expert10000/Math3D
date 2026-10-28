@@ -65,6 +65,9 @@ import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
+import { linkedCombinedRegionGraphs, checkCombinedRegionGraphSeries,
+  type CombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
+import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -116,7 +119,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
   onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
-  onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries]) => void;
+  onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries,
+    LinkedOverlayGraphSeries] | CombinedRegionGraphGroup) => void;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
@@ -1161,6 +1165,25 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       await reverifyLinkedOverlayRegionGraphPair(pair[0].origin, pair[1].origin);
       onAddLinkedOverlayLine(pair);
       setRunStatus("Sent 17 aligned region mean samples per field to Graphs.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLineBusy(false); }
+  };
+  const sendCombinedRegion = async (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection, vectorSamples: readonly OverlaySampleDigest[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
+      const group = linkedCombinedRegionGraphs(document, region, inspection,
+        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256);
+      const statuses = await Promise.all(group.map(series =>
+        checkCombinedRegionGraphSeries(series.origin)));
+      if (statuses.some(status => status !== "current"))
+        throw new TypeError(`Combined region source checks: ${statuses.join(", ")}.`);
+      onAddLinkedOverlayLine(group);
+      setRunStatus("Sent vector speed, scalar Q, complex magnitude and phase profiles to Graphs.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
@@ -2582,7 +2605,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               linkedProfileMismatch={sharedProfileMismatch}
               onLinkedLineProfileChange={setLinkedLineProfile}
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
-              onSendRegionToGraphs={sendLinkedRegion} regionBusy={lineBusy || busy}
+              onSendRegionToGraphs={sendLinkedRegion}
+              onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2619,7 +2643,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         linkedProfileMismatch={sharedProfileMismatch}
         onLinkedLineProfileChange={setLinkedLineProfile}
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
-        onSendRegionToGraphs={sendLinkedRegion} regionBusy={lineBusy || busy}
+        onSendRegionToGraphs={sendLinkedRegion}
+        onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

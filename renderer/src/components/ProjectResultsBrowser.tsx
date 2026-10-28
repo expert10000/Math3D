@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE, type KernelWorkspaceModule,
+import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE, type KernelWorkspaceModule,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
@@ -24,7 +25,14 @@ const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) =
     ? { tone: "unavailable", label: "Missing source" } : status === "changed"
       ? { tone: "unavailable", label: "Changed source" } : status === "error"
         ? { tone: "unavailable", label: "Verification failed" }
-        : { tone: "unavailable", label: "Checking sources" };
+        : typeof status === "object" ?
+          { tone: [status.vector, status.scalar, status.complex].every(value =>
+              value === "source-current") ? "current" : "unavailable",
+            label: [status.vector, status.scalar, status.complex].every(value =>
+              value === "source-current") ? "All fields verified" : "Per-field status" } :
+          { tone: "unavailable", label: "Checking sources" };
+const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
+  operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE;
 
 export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {} }) => {
   const [query, setQuery] = useState("");
@@ -81,7 +89,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
         <h4>Results ({results.length})</h4>
         {filteredResults.map(item => {
           const status = inspection?.results.find(candidate => candidate.id === item.resultId);
-          const freshness = item.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE
+          const freshness = isRegionResult(item.provenance.operation.type)
             ? regionSourcePresentation(regionResultStatuses[item.resultId])
             : status && presentProjectFreshness(status.freshness);
           return <button type="button" key={item.resultId} data-testid={`project-result-select-${item.resultId}`}
@@ -108,7 +116,7 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       <section ref={detailRef} tabIndex={-1} className="project-results-detail" aria-label="Selected saved output" data-testid="project-result-detail">
         {result && <>
           <div className="project-results-detail-heading"><div><small>ANALYSIS RESULT</small><h4>{result.provenance.operation.type}</h4></div>
-            {result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE
+            {isRegionResult(result.provenance.operation.type)
               ? <span className="project-freshness-badge" data-tone={regionSourcePresentation(regionResultStatuses[result.resultId]).tone}>{regionSourcePresentation(regionResultStatuses[result.resultId]).label}</span>
               : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
           </div>
@@ -120,7 +128,25 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <div><dt>Engine</dt><dd>{result.provenance.engine.name} {result.provenance.engine.version}</dd></div>
             <div><dt>Run time</dt><dd>{result.provenance.elapsedMs.toLocaleString()} ms</dd></div></dl>
           <h5>Summary</h5>
-          {result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE &&
+          {result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
+            <div data-testid="project-combined-region-result">
+              <p>Physical rectangle: <code>{readable(result.provenance.operation.parameters.region)}</code></p>
+              {(["vector", "scalar", "complexMagnitude", "complexPhase"] as const).map(key => {
+                const state = regionResultStatuses[result.resultId];
+                const layer = key === "complexMagnitude" || key === "complexPhase" ?
+                  "complex" : key;
+                const source = typeof state === "object" ? state[layer] : state ?? "checking";
+                const unit = key === "vector" ? result.summary.vectorUnit :
+                  key === "scalar" ? result.summary.scalarUnit :
+                    key === "complexPhase" ? "rad" : result.summary.complexUnit;
+                return <p key={key} data-testid={`project-combined-${key}`}>
+                  {key} ({String(unit)}): {source === "source-current" ?
+                    <code>{readable(result.summary[key])}</code> :
+                    <>values withheld ({source})</>}
+                </p>;
+              })}
+            </div> :
+          result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE &&
             regionResultStatuses[result.resultId] !== "source-current" ?
             <p data-testid="project-region-result-gated">Saved region values are withheld.
               {regionResultStatuses[result.resultId] === "missing" ? " A source is missing." :

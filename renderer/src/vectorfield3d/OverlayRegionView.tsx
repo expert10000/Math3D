@@ -1,5 +1,7 @@
-import { canonicalJsonStringify, createVectorField3DRegionResult,
+import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
+  createVectorField3DRegionResult,
   reverifyVectorField3DRegionResult, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   type AnalysisResultEnvelope, type Graph2DScientificVolume, type VectorField3DDocument,
   type VectorField3DOverlayRegion, type VectorField3DSliceArtifact } from "@math3d/core";
 import { useState } from "react";
@@ -8,11 +10,14 @@ import { sampleOverlayRegion, type OverlayRegionSummary,
   type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
+import { sampleCombinedRegion, type CombinedRegionInspection } from
+  "./combinedFieldInspection";
 
 export function OverlayRegionView({ document, slice, region, vectorPlane, scalarVolume,
   complexVolumes, vectorSamples, status, vectorStatus = "", scalarStatus = "", complexStatus = "",
   onChange, onStartSelection, selecting,
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
+  onSendCombinedToGraphs,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
@@ -29,6 +34,11 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   onSendToGraphs?: (region: VectorField3DOverlayRegion, summary: OverlayRegionSummary,
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     overlaySamples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
+  onSendCombinedToGraphs?: (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => void;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
 }) {
@@ -55,11 +65,21 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         mode: complex!.mode }); }
     catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
   }
+  let combined: CombinedRegionInspection | null = null;
+  let combinedError = "";
+  if (selected && region?.visible && secondaryComplex && vectorPlane && slice &&
+      scalarVolume && complexVolumes) {
+    try { combined = sampleCombinedRegion(document, slice, region, vectorPlane,
+      scalar!.reference, scalarVolume, secondaryComplex.real,
+      secondaryComplex.imaginary, complexVolumes); }
+    catch (cause) { combinedError = cause instanceof Error ? cause.message : String(cause); }
+  }
   const labels = slice.planeAxes.map(axis => document.source.axes[axis]!.label);
   const units = slice.planeAxes.map(axis => document.source.axes[axis]!.unit);
   const format = (value: number) => value.toPrecision(5);
   const saved = [...savedResults].reverse().find(result =>
-    result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE &&
+    result.provenance.operation.type === (secondaryComplex ?
+      VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE : VECTOR_FIELD3D_REGION_RESULT_TYPE) &&
     result.provenance.source.documentId === document.identity.id && region &&
     result.provenance.operation.parameters.region &&
     canonicalJsonStringify(result.provenance.operation.parameters.region) ===
@@ -76,7 +96,10 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   let savedStatus = "";
   if (saved) {
     const sourceStatus = resultStatuses[saved.resultId] ?? "checking";
-    if (sourceStatus === "checking") savedStatus = "Checking saved region sources…";
+    if (typeof sourceStatus === "object") savedStatus =
+      `Saved Project region: vector ${sourceStatus.vector}, scalar ${
+        sourceStatus.scalar}, complex ${sourceStatus.complex}. Changed layers are withheld.`;
+    else if (sourceStatus === "checking") savedStatus = "Checking saved region sources…";
     else if (sourceStatus !== "source-current") savedStatus =
       `Saved Project region withheld: ${sourceStatus} source.`;
     else if (!summary || !region) savedStatus =
@@ -136,6 +159,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         scalarVolume={scalarVolume} complexVolumes={complexVolumes}
         vectorStatus={vectorStatus} scalarStatus={scalarStatus}
         complexStatus={complexStatus} />}
+      {region.visible && secondaryComplex && combinedError &&
+        <p role="alert">Combined region: {combinedError}</p>}
       {region.visible && !summary && <p role={error ? "alert" : "status"}>
         {error || status || "Reverifying both sources before showing the region…"}</p>}
       {summary && <div role="status" data-testid="scientific-overlay-region-summary">
@@ -162,21 +187,34 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           {complex && complexVolumes && ` Real ${complexVolumes[0].sampleSha256}; imaginary ${
             complexVolumes[1].sampleSha256}.`}</p>
       </div>}
-      {onSaveResult && summary?.alignedCount && <button type="button"
+      {onSaveResult && secondaryComplex && combined && scalarVolume && complexVolumes &&
+        <button type="button" data-testid="scientific-region-publish" onClick={() => {
+          try {
+            onSaveResult(createCombinedVectorField3DRegionResult(document, region,
+              combined!.summary, vectorSamples, scalarVolume.sampleSha256,
+              complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256));
+            setPublishError("");
+          } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Publish all three fields to Project</button>}
+      {onSaveResult && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="scientific-region-publish" onClick={() => {
           try {
             const result = createVectorField3DRegionResult(document, region, summary,
               vectorSamples, overlaySamples);
             onSaveResult(result); setPublishError("");
           } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
-        }}>{secondaryComplex ? "Publish vector + scalar result to Project" :
-          "Publish region result to Project"}</button>}
-      {onSendToGraphs && summary?.alignedCount && <button type="button"
+        }}>Publish region result to Project</button>}
+      {onSendCombinedToGraphs && secondaryComplex && combined && scalarVolume &&
+        complexVolumes && <button type="button" data-testid="send-linked-region-to-graphs"
+          disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
+            vectorSamples, scalarVolume.sampleSha256,
+            complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256)}>
+          {regionBusy ? "Verifying region…" : "Send four aligned profiles to Graphs"}
+        </button>}
+      {onSendToGraphs && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="send-linked-region-to-graphs" disabled={regionBusy}
         onClick={() => onSendToGraphs(region, summary!, vectorSamples, overlaySamples)}>
-        {regionBusy ? "Verifying region…" : secondaryComplex ?
-          "Send vector + scalar profile to Graphs" :
-          "Send aligned region profile to Graphs"}</button>}
+        {regionBusy ? "Verifying region…" : "Send aligned region profile to Graphs"}</button>}
       {publishError && <p role="alert">{publishError}</p>}
       {savedStatus && <p role={savedStatus.includes("withheld") ? "alert" : "status"}
         data-testid="scientific-region-saved-status">{savedStatus}</p>}

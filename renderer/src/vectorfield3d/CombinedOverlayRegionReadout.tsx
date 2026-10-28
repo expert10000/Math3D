@@ -23,7 +23,8 @@ export function CombinedOverlayRegionReadout({ document, region, slice = null,
   if (!scalar || !complex || !region.visible) return null;
   let vectorText = "", scalarText = "", complexText = "";
   try { vectorText = slice && vectorPlane ? (() => {
-    const result = sampleVerifiedVectorRegion(document, slice, region, vectorPlane);
+    const result = sampleVerifiedVectorRegion(document, slice,
+      { ...region, vectorChannel: "speed" }, vectorPlane);
     return `${formatStatistics(result.statistics, result.unit)}. Source ${
       slice.sourceHash ?? document.identity.structuralHash}.`;
   })() : vectorStatus || "Waiting for a verified vector plane."; }
@@ -47,7 +48,7 @@ export function CombinedOverlayRegionReadout({ document, region, slice = null,
     /withheld|missing|changed/i.test(value)) ? "alert" : "status"}
     data-testid="scientific-combined-region-summary">
     <h5>All visible fields on the same 17 × 17 physical grid</h5>
-    <p data-testid="scientific-combined-vector-region">Vector {region.vectorChannel}: {
+    <p data-testid="scientific-combined-vector-region">Vector speed: {
       vectorText}</p>
     <p data-testid="scientific-combined-scalar-region">{scalar.title}: {scalarText}</p>
     <p data-testid="scientific-combined-complex-region">{complex.title}: {complexText}</p>

@@ -802,6 +802,7 @@ import {
   VECTOR_FIELD3D_POINT_RESULT_TYPE,
   vectorField3DPointResultRelation,
   VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   vectorField3DRegionResultRelation,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
@@ -78710,7 +78711,8 @@ case "mobius":
           restoredProjectRef.current = null; setAdditionalActiveId(null); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null);
           regionResultCheckEpoch.current++;
           setVectorField3DRegionResults(workspace.results.filter(result =>
-            result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE));
+            result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
+            result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE));
           setVectorField3DRegionStatuses({});
           setScientificSceneLibrary([...(workspace.scientificScenes ?? [])]);
           const field = workspace.entries.find((entry) => entry.module === "vector3d")?.checkpoint;
@@ -79075,9 +79077,11 @@ case "mobius":
     setVectorField3DPointResults(workspace.results.filter(result =>
       result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE));
     setVectorField3DRegionResults(workspace.results.filter(result =>
-      result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE));
+      result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
+      result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE));
     const regionResults = workspace.results.filter(result =>
-      result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE);
+      result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
+      result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE);
     const checkEpoch = ++regionResultCheckEpoch.current;
     setVectorField3DRegionStatuses(Object.fromEntries(regionResults.map(result =>
       [result.resultId, "checking" as const])));
@@ -90328,7 +90332,10 @@ case "mobius":
               setVectorField3DRegionResults(current => current.some(item => item.resultId === result.resultId) ?
                 current : [...current, result]);
               setVectorField3DRegionStatuses(current => ({ ...current,
-                [result.resultId]: "source-current" }));
+                [result.resultId]: result.provenance.operation.type ===
+                  VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
+                  { kind: "combined", vector: "source-current", scalar: "source-current",
+                    complex: "source-current" } : "source-current" }));
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));

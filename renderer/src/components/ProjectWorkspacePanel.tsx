@@ -30,8 +30,11 @@ import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibi
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
-import { canonicalJsonStringify, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
-import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
+import { canonicalJsonStringify, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
+  type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
+import type { CombinedRegionSourceStatus, SavedRegionSourceStatus } from
+  "../vectorfield3d/checkSavedRegionResultSources";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 import { addRippleWaveResearch, instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
@@ -1321,7 +1324,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               {savedProjectEntry && <p>Saved {new Date(savedProjectEntry.savedAt).toLocaleString()}</p>}
               {dashboardDependencies && (dashboardDependencies.results.length > 0 || dashboardDependencies.artifacts.length > 0) && <div className="project-dashboard-outputs" aria-label="Saved output freshness">
                 <h5>Saved outputs</h5>
-                {dashboardDependencies.results.map(result => { const status = result.operation === VECTOR_FIELD3D_REGION_RESULT_TYPE
+                {dashboardDependencies.results.map(result => { const status = result.operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
+                  typeof regionResultStatuses[result.id] === "object" ?
+                    { tone: (["vector", "scalar", "complex"] as const).every(key =>
+                        (regionResultStatuses[result.id] as CombinedRegionSourceStatus)[key] ===
+                          "source-current") ? "current" : "unavailable",
+                      label: "Per-field check", detail: "Open this result to see each field's source status." } :
+                    { tone: "unavailable", label: "Checking sources", detail: "Region sources are being verified." } :
+                  result.operation === VECTOR_FIELD3D_REGION_RESULT_TYPE
                   ? regionResultStatuses[result.id] === "source-current" ? { tone: "current", label: "Source verified", detail: "Saved region result and all pinned source bytes verified." }
                     : { tone: "unavailable", label: regionResultStatuses[result.id] === "missing" ? "Missing source" :
                       regionResultStatuses[result.id] === "changed" ? "Changed source" : "Checking sources", detail: "Region values are withheld." }

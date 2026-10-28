@@ -27,6 +27,7 @@ import {
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DPointSeriesDraft, type Graph2DPointSeriesObject,
   type Graph2DLinkedLineOrigin, type Graph2DLinkedRegionOrigin,
+  type Graph2DLinkedCombinedRegionOrigin,
   type Graph2DScientificDatasetPreview,
   type VectorField3DDerivedLine,
   type Graph2DScientificPlane,
@@ -86,6 +87,9 @@ import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorFi
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "../vectorfield3d/reverifyLinkedOverlayRegionGraphPair";
+import { checkCombinedRegionGraphSeries, combinedRegionSeries,
+  validateCombinedRegionGraphGroup, type CombinedRegionGraphGroup } from
+  "../vectorfield3d/linkedCombinedRegionGraphs";
 import { linkedRegionGraphFocus, type LinkedRegionGraphFocus } from
   "../vectorfield3d/linkedRegionGraphFocus";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
@@ -116,6 +120,13 @@ import { Graph2DIntersectionResultsTable } from "./Graph2DIntersectionResultsTab
 import { Graph2DIntervalResultsPanel } from "./Graph2DIntervalResultsPanel";
 import { Graph2DPhaseEquilibriaTable } from "./Graph2DPhaseEquilibriaTable";
 import "./graphsWorkspace.css";
+
+const linkedVerificationKey = (origin: import("@math3d/core").Graph2DLinkedOverlayOrigin) =>
+  origin.kind === "vector-scalar-complex-linked-region/v2" ?
+    `${origin.pairId}:${origin.series}` : origin.pairId;
+const linkedVerified = (origin: import("@math3d/core").Graph2DLinkedOverlayOrigin) =>
+  origin.kind === "vector-scalar-complex-linked-region/v2" ?
+    "Verified source." : "Verified both sources.";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
 const EXPLORER_SCENE_SESSION_KEY = "math3d.scientific-field-explorer.scene.v1";
@@ -1162,13 +1173,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     let active = true;
     const linked = document.source.objects.filter((object): object is Graph2DPointSeriesObject =>
       object.kind === "point-series" && !!object.linkedOrigin);
-    const pairIds = [...new Set(linked.map(object => object.linkedOrigin!.pairId))];
+    const legacy = linked.filter(object =>
+      object.linkedOrigin?.kind !== "vector-scalar-complex-linked-region/v2");
+    const combined = linked.filter(object =>
+      object.linkedOrigin?.kind === "vector-scalar-complex-linked-region/v2");
+    const pairIds = [...new Set(legacy.map(object => object.linkedOrigin!.pairId))];
+    const combinedIds = [...new Set(combined.map(object => object.linkedOrigin!.pairId))];
     setLinkedPairVerification({ document,
-      states: Object.fromEntries(pairIds.map(id => [id, "Verifying both saved sources…"])) });
+      states: Object.fromEntries(linked.map(object => [
+        linkedVerificationKey(object.linkedOrigin!), "Verifying saved source…"])) });
     const verifyPairs = async () => { for (const id of pairIds) {
       if (!active) break;
       try {
-        const pair = linked.filter(object => object.linkedOrigin?.pairId === id);
+        const pair = legacy.filter(object => object.linkedOrigin?.pairId === id);
         const vector = pair.find(object => object.linkedOrigin?.series === "vector");
         const scalar = pair.find(object => object.linkedOrigin?.series === "scalar" ||
           object.linkedOrigin?.series === "complex");
@@ -1195,6 +1212,36 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           { ...previous, states: { ...previous.states, [id]: "Verified both sources." } } : previous);
       } catch (cause) { if (active) setLinkedPairVerification(previous => previous.document === document ?
         { ...previous, states: { ...previous.states, [id]: cause instanceof Error ? cause.message : String(cause) } } : previous); }
+    }
+    for (const id of combinedIds) {
+      if (!active) break;
+      const group = combinedRegionSeries.map(series => combined.find(object =>
+        object.linkedOrigin?.pairId === id && object.linkedOrigin.series === series));
+      const origins = group.map(object => object?.linkedOrigin as
+        Graph2DLinkedCombinedRegionOrigin | undefined);
+      const rows = group.map(object => object ? pointTableStore.resolve(object.table) : null);
+      try {
+        if (origins.some(origin => !origin) || rows.some(table => !table))
+          throw new TypeError("Saved combined region plots are incomplete.");
+        validateCombinedRegionGraphGroup(origins as Graph2DLinkedCombinedRegionOrigin[],
+          rows as NonNullable<typeof rows[number]>[]);
+        for (let index = 0; index < group.length; index++) {
+          if (!active) break;
+          const origin = origins[index]!;
+          const status = await checkCombinedRegionGraphSeries(origin);
+          if (active) setLinkedPairVerification(previous => previous.document === document ?
+            { ...previous, states: { ...previous.states,
+              [linkedVerificationKey(origin)]: status === "current" ?
+                "Verified source." : `${status} source; values withheld.` } } : previous);
+        }
+      } catch (cause) {
+        if (active) setLinkedPairVerification(previous => previous.document === document ?
+          { ...previous, states: { ...previous.states,
+            ...Object.fromEntries(origins.filter((origin): origin is
+              Graph2DLinkedCombinedRegionOrigin => !!origin).map(origin => [
+                linkedVerificationKey(origin), cause instanceof Error ? cause.message :
+                  String(cause)])) } } : previous);
+      }
     } };
     linkedVerificationQueue.current = linkedVerificationQueue.current.then(verifyPairs, verifyPairs);
     return () => { active = false; };
@@ -1205,7 +1252,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
       object.kind === "point-series" ? [[object.table.id,
         object.linkedOrigin && (linkedPairVerification.document !== document ||
-          linkedPairVerification.states[object.linkedOrigin.pairId] !== "Verified both sources.") ?
+          linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
+            linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
@@ -1417,16 +1465,28 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     parseVectorField3DDocument(selectedObject.linkedOrigin.vectorDocumentJson).source.field : null;
   const selectedLinkedReady = selectedObject?.kind !== "point-series" || !selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
-    linkedPairVerification.states[selectedObject.linkedOrigin.pairId] === "Verified both sources.";
+    linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
+      linkedVerified(selectedObject.linkedOrigin);
   const selectedRegionOrigin = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin &&
     "region" in selectedObject.linkedOrigin ? selectedObject.linkedOrigin : null;
   const regionPair = selectedRegionOrigin ? document.source.objects.filter((item): item is Graph2DPointSeriesObject =>
     item.kind === "point-series" && item.linkedOrigin?.pairId === selectedRegionOrigin.pairId) : [];
   const regionVector = regionPair.find(item => item.linkedOrigin?.series === "vector");
-  const regionOverlay = regionPair.find(item => item.linkedOrigin?.series === "scalar" ||
-    item.linkedOrigin?.series === "complex");
-  const regionVectorRows = selectedLinkedReady && regionVector ? pointTableStore.resolve(regionVector.table) : null;
-  const regionOverlayRows = selectedLinkedReady && regionOverlay ? pointTableStore.resolve(regionOverlay.table) : null;
+  const regionOverlay = selectedRegionOrigin?.kind ===
+    "vector-scalar-complex-linked-region/v2" && selectedRegionOrigin.series !== "vector" ?
+    regionPair.find(item => item.linkedOrigin?.series === selectedRegionOrigin.series) :
+    regionPair.find(item => item.linkedOrigin?.series === "scalar" ||
+      item.linkedOrigin?.series === "complex");
+  const regionVectorReady = regionVector?.linkedOrigin &&
+    linkedPairVerification.states[linkedVerificationKey(regionVector.linkedOrigin)] ===
+      linkedVerified(regionVector.linkedOrigin);
+  const regionOverlayReady = regionOverlay?.linkedOrigin &&
+    linkedPairVerification.states[linkedVerificationKey(regionOverlay.linkedOrigin)] ===
+      linkedVerified(regionOverlay.linkedOrigin);
+  const regionVectorRows = regionVectorReady && regionVector ?
+    pointTableStore.resolve(regionVector.table) : null;
+  const regionOverlayRows = regionOverlayReady && regionOverlay ?
+    pointTableStore.resolve(regionOverlay.table) : null;
   const regionRowsCurrent = !!regionVectorRows && !!regionOverlayRows &&
     regionVectorRows.length === 17 && regionOverlayRows.length === 17 &&
     structuralHash(regionVectorRows) === regionVector?.linkedOrigin?.rowsSha256 &&
@@ -1447,15 +1507,25 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
         !regionOverlay?.linkedOrigin || !regionVectorRows || !regionOverlayRows || linkedRegionOpenBusy)
       return;
-    const vectorOrigin = regionVector.linkedOrigin as Graph2DLinkedRegionOrigin;
-    const overlayOrigin = regionOverlay.linkedOrigin as Graph2DLinkedRegionOrigin;
+    const vectorOrigin = regionVector.linkedOrigin as Graph2DLinkedRegionOrigin |
+      Graph2DLinkedCombinedRegionOrigin;
+    const overlayOrigin = regionOverlay.linkedOrigin as Graph2DLinkedRegionOrigin |
+      Graph2DLinkedCombinedRegionOrigin;
     let focus: LinkedRegionGraphFocus;
     try { focus = linkedRegionGraphFocus(vectorOrigin, overlayOrigin,
       regionVectorRows, regionOverlayRows, selection); }
     catch (cause) { setLinkedRegionOpenError(cause instanceof Error ? cause.message : String(cause)); return; }
     setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
     try {
-      await reverifyLinkedOverlayRegionGraphPair(vectorOrigin, overlayOrigin);
+      if (vectorOrigin.kind === "vector-scalar-complex-linked-region/v2" &&
+          overlayOrigin.kind === vectorOrigin.kind) {
+        const checks = await Promise.all([checkCombinedRegionGraphSeries(vectorOrigin),
+          checkCombinedRegionGraphSeries(overlayOrigin)]);
+        if (checks.some(status => status !== "current"))
+          throw new TypeError(`Region source checks: ${checks.join(", ")}.`);
+      } else await reverifyLinkedOverlayRegionGraphPair(
+        vectorOrigin as Graph2DLinkedRegionOrigin,
+        overlayOrigin as Graph2DLinkedRegionOrigin);
       const originDocument = parseVectorField3DDocument(vectorOrigin.vectorDocumentJson);
       const source = [vectorField3DDocument, savedVectorField3D].find(candidate => candidate &&
         candidate.identity.id === focus.documentId &&
@@ -2040,7 +2110,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {selectedObject.derivedOrigin.lineSha256}</code></dd>
         </>}
         {selectedObject?.kind === "point-series" && selectedObject.linkedOrigin && <>
-          <dt>Linked series</dt><dd>{selectedObject.linkedOrigin.series} · pair
+          <dt>Linked series</dt><dd>{selectedObject.linkedOrigin.series} · group
             {" "}<code>{selectedObject.linkedOrigin.pairId}</code></dd>
           {"region" in selectedObject.linkedOrigin ?
             <><dt>Physical region profile</dt><dd>Mean along {selectedObject.linkedOrigin.xName}
@@ -2052,7 +2122,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
               {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd></>}
           <dt>Units</dt><dd>{selectedObject.linkedOrigin.xUnit} → {selectedObject.linkedOrigin.yUnit}</dd>
-          {selectedObject.linkedOrigin.kind === "vector-scalar-linked-line/v1" ||
+          {selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" &&
+            selectedLinkedReady && <><dt>Coverage gaps</dt><dd>{
+              pointTableStore.resolve(selectedObject.table)?.filter(row => row.y === null).length ?? 17
+            } of 17 physical columns.</dd></>}
+          {selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" ?
+            <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
+              {" "}{selectedObject.linkedOrigin.scalarReference.datasetId}</dd>
+              <dt>Complex source</dt><dd>{selectedObject.linkedOrigin.realReference.sceneId} /
+                {" "}{selectedObject.linkedOrigin.realReference.datasetId}</dd></> :
+           selectedObject.linkedOrigin.kind === "vector-scalar-linked-line/v1" ||
            selectedObject.linkedOrigin.kind === "vector-scalar-linked-region/v1" ?
             <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
               {" "}{selectedObject.linkedOrigin.scalarReference.datasetId} /
@@ -2070,7 +2149,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           <dt>Verified samples</dt><dd>{selectedObject.linkedOrigin.vectorSamples.map(part =>
             <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}
             {(selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
-              selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1") && <>
+              selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1" ||
+              selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2") && <>
               <div>Real: <code>{selectedObject.linkedOrigin.realSampleSha256}</code></div>
               <div>Imaginary: <code>{selectedObject.linkedOrigin.imaginarySampleSha256}</code></div></>}
             <div>{selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
@@ -2078,11 +2158,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               "Complex pair" : "Scalar"}: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div></dd>
           <dt>Source and row hashes</dt><dd><code>{selectedObject.linkedOrigin.vectorSourceHash}<br />
             {selectedObject.linkedOrigin.rowsSha256}</code></dd>
-          <dt>Project source check</dt><dd role={linkedPairVerification.states[selectedObject.linkedOrigin.pairId] ===
-            "Verified both sources." ? "status" : "alert"}>
+          <dt>Project source check</dt><dd role={linkedPairVerification.states[
+            linkedVerificationKey(selectedObject.linkedOrigin)] ===
+            linkedVerified(selectedObject.linkedOrigin) ? "status" : "alert"}>
             {linkedPairVerification.document === document ?
-              linkedPairVerification.states[selectedObject.linkedOrigin.pairId] ?? "Verifying both saved sources…" :
-              "Verifying both saved sources…"}</dd>
+              linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ??
+                "Verifying saved source…" : "Verifying saved source…"}</dd>
           {selectedRegionOrigin && <><dt>Field Explorer selection</dt><dd
             data-testid="graph2d-linked-region-selection">
             <p>The 17 physical columns run along {selectedRegionOrigin.xName}
@@ -2469,9 +2550,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${line.rows.length} verified ${line.origin.operation} samples to Graphs.`);
           }}
-          onAddLinkedOverlayLine={(pair: readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries]) => {
+          onAddLinkedOverlayLine={(pair: readonly [LinkedOverlayGraphSeries,
+            LinkedOverlayGraphSeries] | CombinedRegionGraphGroup) => {
             if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
-            if (document.source.objects.length > GRAPH2D_MAX_OBJECTS - 2)
+            if (document.source.objects.length > GRAPH2D_MAX_OBJECTS - pair.length)
               throw new TypeError("Graph object limit reached.");
             if (document.source.objects.some(item => item.kind === "point-series" &&
               item.linkedOrigin?.pairId === pair[0].origin.pairId))
@@ -2479,12 +2561,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             const drafts = pair.map((series, index) => ({ label: series.label,
               table: pointTableStore.publish(series.rows), mode: "line" as const,
               domain: series.domain, linkedOrigin: series.origin,
-              style: { color: index === 0 ? "#fde047" : "#38bdf8",
-                lineWidth: 2, lineStyle: "solid" as const, visible: true } })) as
-              [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft];
-            onAuthoringCommit({ type: "create-point-series-pair", drafts });
-            setToolHint(`Added ${pair[0].rows.length} aligned vector and ${
-              pair[1].origin.series} samples to Graphs.`);
+              style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa"][index]!,
+                lineWidth: 2, lineStyle: "solid" as const, visible: true } }));
+            if (pair.length === 4) {
+              onAuthoringCommit({ type: "create-point-series-group", drafts });
+              setToolHint("Added four aligned region profiles with independent source checks.");
+            } else {
+              onAuthoringCommit({ type: "create-point-series-pair",
+                drafts: drafts as [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft] });
+              setToolHint(`Added ${pair[0].rows.length} aligned vector and ${
+                pair[1].origin.series} samples to Graphs.`);
+            }
           }}
           libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy || sceneLibraryChecking}
           libraryError={scientificImportError}

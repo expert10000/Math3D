@@ -1,17 +1,26 @@
-import { canonicalJsonStringify, inspectGraph2DFieldReference,
+import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
+  inspectGraph2DFieldReference,
   isGraph2DFieldReference, matchesScientificSourceGeneration,
   reverifyVectorField3DRegionResult,
   viewerSourceFromDocument, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   type AnalysisResultEnvelope, type Graph2DFieldReference,
-  type VectorField3DDocument, type VectorField3DRegionSummary,
+  type CombinedRegionSummary, type VectorField3DDocument,
+  type VectorField3DRegionSummary,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
 
-export type SavedRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
+export type SingleRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
+export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
+  vector: SingleRegionSourceStatus; scalar: SingleRegionSourceStatus;
+  complex: SingleRegionSourceStatus }>;
+export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>, "checkGraphDatasetReference">;
 
 /** Read-only Project reopen check, including every pinned source resource. */
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
   document: VectorField3DDocument, bridge: Bridge | undefined): Promise<SavedRegionSourceStatus> {
+  if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE)
+    return checkSavedCombinedRegionResultSources(result, document, bridge);
   if (result.provenance.operation.type !== VECTOR_FIELD3D_REGION_RESULT_TYPE ||
       !matchesScientificSourceGeneration(result.provenance.source, viewerSourceFromDocument(document)) ||
       !bridge?.checkGraphDatasetReference) return "error";
@@ -67,4 +76,74 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
     } catch { return "error"; }
   }
   return "source-current";
+}
+
+async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvelope,
+  document: VectorField3DDocument, bridge: Bridge | undefined):
+  Promise<CombinedRegionSourceStatus> {
+  const all = (status: SingleRegionSourceStatus): CombinedRegionSourceStatus =>
+    ({ kind: "combined", vector: status, scalar: status, complex: status });
+  if (!matchesScientificSourceGeneration(result.provenance.source,
+      viewerSourceFromDocument(document)) || !bridge?.checkGraphDatasetReference)
+    return all("error");
+  const parameters = result.provenance.operation.parameters;
+  const vectorRefs = parameters.vectorReferences;
+  const scalarRef = parameters.scalarReference;
+  const realRef = parameters.realReference;
+  const imaginaryRef = parameters.imaginaryReference;
+  const region = document.workspace?.overlayRegion;
+  const hashes = [parameters.scalarSampleSha256, parameters.realSampleSha256,
+    parameters.imaginarySampleSha256];
+  if (!region || canonicalJsonStringify(parameters.region) !== canonicalJsonStringify(region) ||
+      !Array.isArray(vectorRefs) || !vectorRefs.every(isGraph2DFieldReference) ||
+      !isGraph2DFieldReference(scalarRef) || !isGraph2DFieldReference(realRef) ||
+      !isGraph2DFieldReference(imaginaryRef) ||
+      !Array.isArray(parameters.vectorSamples) ||
+      parameters.vectorSamples.some(item => !item || typeof item !== "object" ||
+        typeof (item as { sampleSha256?: unknown }).sampleSha256 !== "string") ||
+      hashes.some(hash => typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash)))
+    return all("changed");
+  try {
+    const fresh = createCombinedVectorField3DRegionResult(document, region,
+      result.summary as unknown as CombinedRegionSummary,
+      parameters.vectorSamples as unknown as VectorField3DRegionSampleDigest[],
+      hashes[0] as string, hashes[1] as string, hashes[2] as string);
+    if (fresh.resultId !== result.resultId ||
+        canonicalJsonStringify(fresh.provenance.operation) !==
+          canonicalJsonStringify(result.provenance.operation) ||
+        canonicalJsonStringify(fresh.summary) !== canonicalJsonStringify(result.summary))
+      return all("changed");
+  } catch { return all("changed"); }
+  const check = async (refs: readonly Graph2DFieldReference[]):
+    Promise<SingleRegionSourceStatus> => {
+    const groups = new Map<string, Graph2DFieldReference[]>();
+    for (const reference of refs) {
+      const key = `${reference.locator.kind}:${reference.locator.value}:${reference.sceneFingerprint}`;
+      groups.set(key, [...(groups.get(key) ?? []), reference]);
+    }
+    for (const members of groups.values()) {
+      const first = members[0]!;
+      try {
+        const checked = await bridge.checkGraphDatasetReference({ locator: first.locator,
+          sceneFingerprint: first.sceneFingerprint, verifyResources: true });
+        if (!checked.ok) return checked.status;
+        if (members.some(ref => inspectGraph2DFieldReference(ref,
+          checked.source.manifestJson) !== "current")) return "changed";
+      } catch { return "error"; }
+    }
+    return "source-current";
+  };
+  const vector = canonicalJsonStringify(vectorRefs) === canonicalJsonStringify(
+    document.source.field.kind === "scientific-bundle" ? document.source.field.references : []) ?
+    check(vectorRefs as Graph2DFieldReference[]) : Promise.resolve("changed" as const);
+  const scalar = canonicalJsonStringify(scalarRef) === canonicalJsonStringify(
+    document.workspace?.scalarOverlay?.reference) ? check([scalarRef]) :
+    Promise.resolve("changed" as const);
+  const complex = canonicalJsonStringify([realRef, imaginaryRef]) === canonicalJsonStringify(
+    document.workspace?.complexOverlay ? [document.workspace.complexOverlay.real,
+      document.workspace.complexOverlay.imaginary] : []) ?
+    check([realRef, imaginaryRef]) : Promise.resolve("changed" as const);
+  const [vectorStatus, scalarStatus, complexStatus] = await Promise.all([vector, scalar, complex]);
+  return { kind: "combined", vector: vectorStatus, scalar: scalarStatus,
+    complex: complexStatus };
 }

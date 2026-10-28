@@ -170,7 +170,20 @@ export type Graph2DLinkedRegionOrigin =
     realReference: Graph2DFieldReference; imaginaryReference: Graph2DFieldReference;
     mode: "magnitude" | "phase";
     realSampleSha256: string; imaginarySampleSha256: string }>);
-export type Graph2DLinkedOverlayOrigin = Graph2DLinkedLineOrigin | Graph2DLinkedRegionOrigin;
+export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
+  kind: "vector-scalar-complex-linked-region/v2";
+  pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase";
+  vectorDocumentJson: string; region: VectorField3DOverlayRegion;
+  xName: string; xUnit: string; yUnit: string;
+  vectorSourceHash: string;
+  vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
+  scalarReference: Graph2DFieldReference;
+  realReference: Graph2DFieldReference; imaginaryReference: Graph2DFieldReference;
+  scalarSampleSha256: string; realSampleSha256: string;
+  imaginarySampleSha256: string; rowsSha256: string;
+}>;
+export type Graph2DLinkedOverlayOrigin = Graph2DLinkedLineOrigin |
+  Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -478,6 +491,56 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
   catch { return false; }
 };
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
+  if (record(value) && value.kind === "vector-scalar-complex-linked-region/v2") {
+    if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
+      "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
+      "scalarReference", "realReference", "imaginaryReference",
+      "scalarSampleSha256", "realSampleSha256", "imaginarySampleSha256", "rowsSha256"]) ||
+      typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
+      !["vector", "scalar", "complex-magnitude", "complex-phase"].includes(String(value.series)) ||
+      typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
+      !isGraph2DFieldReference(value.scalarReference) ||
+      value.scalarReference.semanticType !== "scalar-field" ||
+      !isGraph2DFieldReference(value.realReference) ||
+      !isGraph2DFieldReference(value.imaginaryReference) ||
+      value.realReference.semanticType !== "complex-scalar-field" ||
+      value.imaginaryReference.semanticType !== "complex-scalar-field" ||
+      value.realReference.component !== "real" ||
+      value.imaginaryReference.component !== "imaginary" ||
+      value.realReference.sceneFingerprint !== value.imaginaryReference.sceneFingerprint ||
+      value.realReference.datasetId !== value.imaginaryReference.datasetId ||
+      !record(value.region) || !exact(value.region, ["normalAxis", "fixedCoordinate",
+        "bounds", "vectorChannel", "visible"]) ||
+      ![0, 1, 2].includes(value.region.normalAxis as number) ||
+      !finite(value.region.fixedCoordinate) || value.region.visible !== true ||
+      !Array.isArray(value.region.bounds) || value.region.bounds.length !== 2 ||
+      !value.region.bounds.every((bounds: unknown) => Array.isArray(bounds) &&
+        bounds.length === 2 && bounds.every(finite) && bounds[1] > bounds[0]) ||
+      !["p", "q", "r", "speed"].includes(String(value.region.vectorChannel)) ||
+      !bounded(value.xName, 160) || !bounded(value.xUnit, 80) ||
+      !bounded(value.yUnit, 80) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.vectorSourceHash)) ||
+      !Array.isArray(value.vectorSamples) || ![0, 3].includes(value.vectorSamples.length) ||
+      !value.vectorSamples.every((part: unknown) => record(part) &&
+        exact(part, ["name", "sampleSha256"]) && bounded(part.name, 64) &&
+        /^[a-f0-9]{64}$/.test(String(part.sampleSha256))) ||
+      ![value.scalarSampleSha256, value.realSampleSha256,
+        value.imaginarySampleSha256].every(hash => /^[a-f0-9]{64}$/.test(String(hash))) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256))) return false;
+    try {
+      const document = parseVectorField3DDocument(value.vectorDocumentJson);
+      return canonicalJsonStringify(document.workspace?.overlayRegion) ===
+          canonicalJsonStringify(value.region) &&
+        canonicalJsonStringify(document.workspace?.scalarOverlay?.reference) ===
+          canonicalJsonStringify(value.scalarReference) &&
+        canonicalJsonStringify(document.workspace?.complexOverlay?.real) ===
+          canonicalJsonStringify(value.realReference) &&
+        canonicalJsonStringify(document.workspace?.complexOverlay?.imaginary) ===
+          canonicalJsonStringify(value.imaginaryReference) &&
+        (document.source.field.kind === "expressions" ? value.vectorSamples.length === 0 :
+          value.vectorSamples.length === 3);
+    } catch { return false; }
+  }
   if (record(value) && ["vector-scalar-linked-region/v1", "vector-complex-linked-region/v1"]
     .includes(String(value.kind))) {
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
