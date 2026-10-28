@@ -6,7 +6,8 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
-import { sampleScalarSliceOverlay, sampleSliceOverlayArrows } from "./scientificSliceOverlay";
+import { sampleLinkedOverlayLineProfile, sampleScalarSliceOverlay,
+  sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -52,22 +53,88 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
   it("keeps the overlay recipe across Project serialization without copying samples", () => {
     const withOverlay = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
       selectedLayer: "xy", scalarOverlay: { reference: scalarReference,
-        title: "Potential", unit: "V", opacity: 0.7, visible: true } });
+        title: "Potential", unit: "V", opacity: 0.7, visible: true },
+      linkedLineProfile: { normalAxis: 2, varyingAxis: 0, point: [0, 0.5, 0],
+        vectorChannel: "speed", visible: true } });
     expect(withOverlay.identity).toEqual(analytic.identity);
     const serialized = serializeVectorField3DDocument(withOverlay);
     expect(serialized).not.toContain("values");
     expect(parseVectorField3DDocument(serialized).workspace?.scalarOverlay)
       .toEqual(withOverlay.workspace?.scalarOverlay);
+    expect(parseVectorField3DDocument(serialized).workspace?.linkedLineProfile)
+      .toEqual(withOverlay.workspace?.linkedLineProfile);
+    const invalid = JSON.parse(serialized);
+    invalid.workspace.linkedLineProfile.varyingAxis = 2;
+    expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
     const legacy = JSON.parse(serializeVectorField3DDocument(analytic));
     delete legacy.workspace.scalarOverlay;
+    delete legacy.workspace.linkedLineProfile;
     expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.scalarOverlay).toBeNull();
+    expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.linkedLineProfile).toBeNull();
+  });
+
+  it("aligns vector speed and scalar potential along one off-lattice physical line", () => {
+    const slice = sampleVectorField3DSlice(analytic, 2, 0);
+    const plane = sampleSliceOverlayVectorPlane(analytic, slice);
+    const line = sampleLinkedOverlayLineProfile(analytic, slice,
+      { normalAxis: 2, varyingAxis: 0, point: [0, 0.5, 0],
+        vectorChannel: "speed", visible: true }, plane,
+      scalarReference, scalarVolume, "V");
+    expect(line.rows).toHaveLength(slice.shape[0]);
+    const xOne = line.rows.find(row => Math.abs(row.coordinate - 1) < 1e-9)!;
+    expect(xOne.vector).toBeCloseTo(Math.hypot(0.5, 1), 10);
+    expect(xOne.scalar).toBeCloseTo(1.25, 10);
+    expect(line.coordinateUnit).toBe("m");
+    expect(line.vectorUnit).toBe("m/s");
+    expect(line.scalarUnit).toBe("V");
+    expect(line.scalarSampleSha256).toBe(scalarVolume.sampleSha256);
+  });
+
+  it("uses the same physical line positions on XY, XZ and YZ", () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const slice = sampleVectorField3DSlice(analytic, normalAxis, 0);
+      const fixedAxis = slice.planeAxes[1];
+      const point = [0, 0, 0] as [number, number, number];
+      point[fixedAxis] = 0.5;
+      const line = sampleLinkedOverlayLineProfile(analytic, slice,
+        { normalAxis, varyingAxis: slice.planeAxes[0] as 0 | 1 | 2,
+          point, vectorChannel: "speed", visible: true },
+        sampleSliceOverlayVectorPlane(analytic, slice), scalarReference, scalarVolume, "V");
+      const atOne = line.rows.find(row => Math.abs(row.coordinate - 1) < 1e-9)!;
+      expect(atOne.scalar).toBeCloseTo(1.25, 10);
+      expect(atOne.vector).toBeCloseTo(normalAxis === 2 ? Math.sqrt(1.25) : 1, 10);
+    }
+  });
+
+  it("leaves explicit gaps where the scalar domain ends before the vector line", () => {
+    const wide = createVectorField3DDocument({ ...analytic.source,
+      axes: axes.map(axis => ({ ...axis, min: -6, max: 6 })) as VectorField3DSource["axes"] },
+    { stableKey: "overlay-wide" });
+    const slice = sampleVectorField3DSlice(wide, 2, 0);
+    const line = sampleLinkedOverlayLineProfile(wide, slice,
+      { normalAxis: 2, varyingAxis: 0, point: [0, 0, 0],
+        vectorChannel: "p", visible: true },
+      sampleSliceOverlayVectorPlane(wide, slice), scalarReference, scalarVolume, "V");
+    expect(line.rows[0]?.vector).toBe(0);
+    expect(line.rows[0]?.scalar).toBeNull();
+    expect(line.rows.find(row => Math.abs(row.coordinate) < 1e-9)?.scalar).toBe(0);
+    expect(line.rows.at(-1)?.scalar).toBeNull();
   });
 
   it("withholds coordinate-unit, axis-order and domain mismatches", () => {
     const slice = sampleVectorField3DSlice(analytic, 2, 0);
+    const plane = sampleSliceOverlayVectorPlane(analytic, slice);
+    const recipe = { normalAxis: 2, varyingAxis: 0, point: [0, 0, 0],
+      vectorChannel: "speed", visible: true } as const;
     expect(() => sampleScalarSliceOverlay(analytic, slice, { ...scalarReference,
       axes: scalarReference.axes.map((axis, index) => index === 0 ? { ...axis, unit: "mm" } : axis) },
     scalarVolume, "Potential", "V", 0.85)).toThrow(/units/);
+    expect(() => sampleLinkedOverlayLineProfile(analytic, slice, recipe, plane,
+      { ...scalarReference, axes: scalarReference.axes.map((axis, index) => index === 0 ?
+        { ...axis, unit: "mm" } : axis) }, scalarVolume, "V")).toThrow(/units/);
+    expect(() => sampleLinkedOverlayLineProfile(analytic, slice, recipe,
+      { ...plane, units: ["m/s", "mm/s", "m/s"] }, scalarReference,
+      scalarVolume, "V")).toThrow(/component units differ/);
     expect(() => sampleScalarSliceOverlay(analytic, slice, { ...scalarReference,
       axes: [scalarReference.axes[1]!, scalarReference.axes[0]!, scalarReference.axes[2]!] },
     scalarVolume, "Potential", "V", 0.85)).toThrow(/axes/);

@@ -504,6 +504,11 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .vector-field3d-line-profile p { margin: 0; }
 .vector-field3d-line-profile label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .vector-field3d-line-profile svg { width: 100%; max-height: 150px; }
+.scientific-linked-overlay-profile details { max-height: 240px; overflow: auto; }
+.scientific-linked-overlay-profile table { width: 100%; border-collapse: collapse;
+  font-variant-numeric: tabular-nums; font-size: 12px; }
+.scientific-linked-overlay-profile th, .scientific-linked-overlay-profile td {
+  padding: 4px 7px; text-align: right; border-bottom: 1px solid #475569; }
 .scientific-field-explorer-empty { place-self: center; max-width: 32rem; padding: 20px; color: #e5efff; text-align: center; }
 @media (max-width: 960px) {
   .vector-field3d-linked-grid-split, .vector-field3d-linked-grid-quad { grid-template-columns: minmax(0, 1fr); }

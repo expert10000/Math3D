@@ -155,6 +155,26 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
           .toContainText("Physical point: 0 m · 0 m · 0 m");
       }
       await expect(figure.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
+      const linkedLine = figure.getByTestId("scientific-linked-overlay-profile");
+      await linkedLine.getByRole("button", { name: "Link line through shared probe" }).click();
+      await expect(linkedLine).toContainText(/vector samples;.*scalar samples/);
+      if (plane === "XY") {
+        await linkedLine.getByRole("combobox", { name: "Linked vector quantity" }).selectOption("q");
+        await linkedLine.getByText("Aligned sample values and gaps").click();
+        const row = linkedLine.locator("tbody tr").nth(15);
+        const x = Number(await row.locator("td").nth(0).innerText());
+        expect(Number(await row.locator("td").nth(1).innerText()))
+          .toBeCloseTo(x * Math.exp(-x * x / 18), 4);
+        expect(Number(await row.locator("td").nth(2).innerText())).toBeCloseTo(x * x, 4);
+        const shared = explorer.getByTestId("scientific-explorer-cross-layer-probe");
+        await shared.locator('input[aria-label="Linked probe y"]').fill("0.5");
+        await expect(linkedLine).toContainText("y = 0.5 m");
+        expect(Number(await row.locator("td").nth(2).innerText())).toBeCloseTo(x * x + 0.25, 4);
+        await shared.locator('input[aria-label="Linked probe y"]').fill("9");
+        await expect(linkedLine.getByRole("alert")).toContainText("outside the vector field domain");
+        await expect(linkedLine.locator("tbody")).toHaveCount(0);
+        await shared.locator('input[aria-label="Linked probe y"]').fill("0");
+      }
     }
     await examples.getByRole("button", { name: /Generated vortex/ }).click();
     await explorer.getByRole("button", { name: "XY slice" }).click();
@@ -165,6 +185,19 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
     await expect(large.getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("1024/1024 cells", { timeout: 60_000 });
     await expect(large.getByTestId("scientific-slice-overlay-arrows")).toBeVisible();
+    await large.locator('[data-probe-cell="16-16"]').click();
+    const largeLine = large.getByTestId("scientific-linked-overlay-profile");
+    await largeLine.getByRole("button", { name: "Link line through shared probe" }).click();
+    await expect(largeLine).toContainText("32/32 vector samples; 32/32 scalar samples");
+    await largeLine.getByText("Aligned sample values and gaps").click();
+    const physicalLine = await largeLine.getByText(/Physical line: vary/).innerText();
+    const y = Number(physicalLine.match(/y = ([0-9.eE+-]+)/)?.[1]);
+    const z = Number(physicalLine.match(/z = ([0-9.eE+-]+)/)?.[1]);
+    const row = largeLine.locator("tbody tr").nth(20);
+    const x = Number(await row.locator("td").nth(0).innerText());
+    const t = x * x + y * y, a = 16 / (16 + t);
+    const expectedSpeed = Math.sqrt(t * a * a + Math.sin(z) ** 2 / 16);
+    expect(Number(await row.locator("td").nth(1).innerText())).toBeCloseTo(expectedSpeed, 4);
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -202,6 +235,11 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await explorer.getByRole("button", { name: "Preview slice" }).click();
     await expect(explorer.getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("Potential", { timeout: 60_000 });
+    const linkedLine = explorer.getByTestId("scientific-linked-overlay-profile");
+    await explorer.getByRole("figure", { name: "XY field slice" })
+      .locator('[data-probe-cell="16-16"]').click();
+    await linkedLine.getByRole("button", { name: "Link line through shared probe" }).click();
+    await expect(linkedLine).toContainText(/vector samples;.*scalar samples/);
     await explorer.getByRole("button", { name: "Save document" }).click();
     await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     await page.getByTestId("projects-toggle").click();
@@ -209,11 +247,17 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
-    const recipe = stored.workspace.entries.find((entry: { module: string }) =>
-      entry.module === "vector3d")?.checkpoint.workspace.scalarOverlay;
+    const vectorCheckpoint = stored.workspace.entries.find((entry: { module: string }) =>
+      entry.module === "vector3d")?.checkpoint;
+    const recipe = vectorCheckpoint.workspace.scalarOverlay;
     expect(recipe.reference.sceneId).toBe("quadratic-volume");
     expect(recipe.reference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(recipe)).not.toContain("values");
+    const savedLine = vectorCheckpoint.workspace.linkedLineProfile;
+    expect(savedLine.normalAxis).toBe(2);
+    expect(savedLine.varyingAxis).toBe(0);
+    expect(savedLine.vectorChannel).toBe("speed");
+    expect(savedLine.point).toEqual(vectorCheckpoint.workspace.probe);
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
@@ -223,6 +267,8 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
       .toContainText("Potential", { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-scalar-overlay-status"))
       .toContainText("Verified scalar samples");
+    await expect(reopened.getByTestId("scientific-linked-overlay-profile"))
+      .toContainText(/vector samples;.*scalar samples/);
     const scalarFile = join(scalarDirectory, "scalar.f64");
     const originalScalar = await readFile(scalarFile), changedScalar = Buffer.from(originalScalar);
     changedScalar[0] ^= 1;
@@ -232,6 +278,8 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
       .toContainText(/withheld.*integrity|withheld.*checksum|withheld.*changed/i,
         { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
+    await expect(reopened.getByTestId("scientific-linked-overlay-profile")).not
+      .toContainText(/vector samples;.*scalar samples/);
     await writeFile(scalarFile, originalScalar);
     await reopened.getByRole("button", { name: "Open saved document" }).click();
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
@@ -249,6 +297,8 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await expect(changedExplorer.getByRole("alert"))
       .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
     await expect(changedExplorer.getByTestId("scientific-slice-overlay-provenance"))
+      .toHaveCount(0);
+    await expect(changedExplorer.getByTestId("scientific-linked-overlay-profile"))
       .toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);
