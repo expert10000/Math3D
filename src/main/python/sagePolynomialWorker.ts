@@ -1,32 +1,29 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 
-const SAGE_FACTOR_SCRIPT = String.raw`
+const SAGE_POLYNOMIAL_SCRIPT = String.raw`
 import json
 import sys
-from sage.all import PolynomialRing, QQ, ZZ, latex
+from sage.all import ComplexIntervalField, PolynomialRing, QQ, QQbar, ZZ, latex
 
 request = json.load(sys.stdin)
 coefficients = request["parameters"]["coefficients"]
 ring = PolynomialRing(QQ, "x")
 polynomial = ring([ZZ(value) for value in coefficients])
-factorization = polynomial.factor()
-reconstructed = ring(factorization.unit())
-factors = []
-for factor, multiplicity in factorization:
-    reconstructed *= factor ** multiplicity
-    factors.append({
-        "coefficients": [str(value) for value in factor.list()],
-        "multiplicity": int(multiplicity),
-    })
-if reconstructed != polynomial:
-    raise RuntimeError("Exact factor product did not reconstruct the input")
-print(json.dumps({
-    "schemaVersion": 1,
-    "jobId": request["jobId"],
-    "operation": "symbolic.factor",
-    "status": "succeeded",
-    "result": {
+operation = request["operation"]
+if operation == "symbolic.factor":
+    factorization = polynomial.factor()
+    reconstructed = ring(factorization.unit())
+    factors = []
+    for factor, multiplicity in factorization:
+        reconstructed *= factor ** multiplicity
+        factors.append({
+            "coefficients": [str(value) for value in factor.list()],
+            "multiplicity": int(multiplicity),
+        })
+    if reconstructed != polynomial:
+        raise RuntimeError("Exact factor product did not reconstruct the input")
+    result = {
         "inputCoefficients": coefficients,
         "unit": str(factorization.unit()),
         "factors": factors,
@@ -34,10 +31,59 @@ print(json.dumps({
         "verified": True,
         "text": str(factorization),
         "latex": str(latex(factorization)),
-    },
-    "diagnostics": ["Exact factor product verified in QQ[x]"],
+    }
+    diagnostics = ["Exact factor product verified in QQ[x]"]
+elif operation == "polynomial.roots_exact":
+    roots = polynomial.roots(ring=QQbar)
+    precision_bits = 128
+    while True:
+        intervals = [root.interval(ComplexIntervalField(precision_bits)) for root, _ in roots]
+        if all(not intervals[i].overlaps(intervals[j]) for i in range(len(intervals)) for j in range(i + 1, len(intervals))):
+            break
+        precision_bits *= 2
+        if precision_bits > 1024:
+            raise RuntimeError("Could not isolate all algebraic roots within the precision limit")
+    algebraic_ring = PolynomialRing(QQbar, "x")
+    x = algebraic_ring.gen()
+    reconstructed = algebraic_ring(polynomial.leading_coefficient())
+    entries = []
+    for (root, multiplicity), interval in zip(roots, intervals):
+        if polynomial(root) != 0:
+            raise RuntimeError("An algebraic root did not satisfy the input polynomial")
+        reconstructed *= (x - root) ** multiplicity
+        entries.append({
+            "minimalPolynomialCoefficients": [str(value) for value in root.minpoly().list()],
+            "isolatingInterval": str(interval),
+            "approximation": str(root),
+            "multiplicity": int(multiplicity),
+        })
+    if sum(entry["multiplicity"] for entry in entries) != polynomial.degree() or reconstructed != algebraic_ring(polynomial):
+        raise RuntimeError("Algebraic roots did not reconstruct the input polynomial")
+    result = {
+        "inputCoefficients": coefficients,
+        "leadingCoefficient": str(polynomial.leading_coefficient()),
+        "degree": int(polynomial.degree()),
+        "rootCount": sum(entry["multiplicity"] for entry in entries),
+        "isolationPrecisionBits": precision_bits,
+        "roots": entries,
+        "verified": True,
+        "text": "; ".join(entry["approximation"] + " (multiplicity " + str(entry["multiplicity"]) + ")" for entry in entries),
+        "latex": str(latex([root for root, _ in roots])),
+    }
+    diagnostics = ["All roots verified exactly in QQbar; multiplicities reconstruct the input polynomial"]
+else:
+    raise ValueError("Unsupported polynomial operation")
+print(json.dumps({
+    "schemaVersion": 1,
+    "jobId": request["jobId"],
+    "operation": operation,
+    "status": "succeeded",
+    "result": result,
+    "diagnostics": diagnostics,
 }, separators=(",", ":")))
 `;
+
+type LocalPolynomialOperation = "sage.polynomial.factor" | "sage.polynomial.roots_exact";
 
 type ActiveJob = {
   child: ChildProcessWithoutNullStreams;
@@ -46,7 +92,7 @@ type ActiveJob = {
 
 const activeJobs = new Map<string, ActiveJob>();
 
-export function cancelSagePolynomialFactor(jobId: string): boolean {
+export function cancelSagePolynomialJob(jobId: string): boolean {
   const job = activeJobs.get(jobId);
   if (!job) return false;
   job.cancelled = true;
@@ -54,7 +100,8 @@ export function cancelSagePolynomialFactor(jobId: string): boolean {
   return true;
 }
 
-export async function runSagePolynomialFactor(
+export async function runSagePolynomialJob(
+  operation: LocalPolynomialOperation,
   params: Record<string, unknown>,
   requestedJobId?: string,
 ): Promise<Record<string, unknown>> {
@@ -72,7 +119,7 @@ export async function runSagePolynomialFactor(
     throw new Error("Enter 2–13 integer coefficients in constant-first order, with a nonzero leading coefficient (up to 18 digits each).");
   }
   if (activeJobs.size > 0) {
-    throw new Error("A local Sage factorization is already running. Wait for it or cancel it first.");
+    throw new Error("A local Sage polynomial job is already running. Wait for it or cancel it first.");
   }
 
   const jobId = requestedJobId ?? randomUUID();
@@ -82,7 +129,7 @@ export async function runSagePolynomialFactor(
   const contract = {
     schemaVersion: 1,
     jobId,
-    operation: "symbolic.factor",
+    operation: operation === "sage.polynomial.factor" ? "symbolic.factor" : "polynomial.roots_exact",
     parameters: { coefficients },
   };
   const inputHash = createHash("sha256")
@@ -97,7 +144,7 @@ export async function runSagePolynomialFactor(
         "-d", "Ubuntu", "--exec",
         "/usr/bin/timeout", "--kill-after=1s", "20s",
         "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--",
-        "/usr/bin/sage", "-python", "-c", SAGE_FACTOR_SCRIPT,
+        "/usr/bin/sage", "-python", "-c", SAGE_POLYNOMIAL_SCRIPT,
       ],
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
     );
@@ -135,8 +182,9 @@ export async function runSagePolynomialFactor(
     });
     child.once("error", (error) => finish(error));
     child.once("close", (code) => {
-      if (job.cancelled) return finish(new Error("Sage factorization cancelled."));
-      if (timedOut || code === 124) return finish(new Error("Sage factorization exceeded the 20-second limit."));
+      const taskName = operation === "sage.polynomial.factor" ? "factorization" : "root calculation";
+      if (job.cancelled) return finish(new Error(`Sage ${taskName} cancelled.`));
+      if (timedOut || code === 124) return finish(new Error(`Sage ${taskName} exceeded the 20-second limit.`));
       if (code !== 0) return finish(new Error(`Sage worker exited with code ${code}: ${stderr.trim().slice(-2000)}`));
       try {
         const reply = JSON.parse(stdout.trim()) as {
@@ -149,14 +197,14 @@ export async function runSagePolynomialFactor(
         };
         if (
           reply.schemaVersion !== 1 || reply.jobId !== jobId ||
-          reply.operation !== "symbolic.factor" || reply.status !== "succeeded" ||
+          reply.operation !== contract.operation || reply.status !== "succeeded" ||
           !reply.result || reply.result.verified !== true
         ) {
-          throw new Error("Sage worker returned an invalid factorization contract.");
+          throw new Error("Sage worker returned an invalid polynomial contract.");
         }
         finish(undefined, {
           engine: "sagemath",
-          operation: "sage.polynomial.factor",
+          operation,
           success: true,
           latex: reply.result.latex,
           result: {

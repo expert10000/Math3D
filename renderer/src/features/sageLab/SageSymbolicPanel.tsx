@@ -16,7 +16,7 @@ const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
   "sage.symbolic.solve": "Solve",
   "sage.matrix.eigen_exact": "Exact eigen",
   "sage.matrix.charpoly": "Characteristic polynomial",
-  "sage.polynomial.roots_exact": "Exact roots",
+  "sage.polynomial.roots_exact": "Exact algebraic roots (local WSL)",
   "sage.polynomial.factor": "Exact polynomial factor (local WSL)",
   "sage.groebner.compute": "Groebner basis",
   "sage.numberTheory.gcd": "GCD",
@@ -61,7 +61,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
   const [error, setError] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const localFactor = operation === "sage.polynomial.factor";
+  const localPolynomial = operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
 
   const variables = useMemo(
     () => variablesText.split(",").map((part) => part.trim()).filter(Boolean),
@@ -90,9 +90,9 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         expression,
         variables: variables.length ? variables : ["x"],
       };
-      if (localFactor) {
+      if (localPolynomial) {
         if (!window.sageService?.run) {
-          throw new Error("Exact polynomial factoring requires the MATH3D desktop app with SageMath in WSL Ubuntu.");
+          throw new Error("Exact polynomial operations require the MATH3D desktop app with SageMath in WSL Ubuntu.");
         }
         const coefficients = coefficientsText.split(",").map((part) => part.trim());
         if (
@@ -125,9 +125,9 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
     if (!activeJobId) return;
     try {
       const response = await window.sageService?.cancel(activeJobId);
-      if (!response?.ok) setError("The Sage factorization has already finished.");
+      if (!response?.ok) setError("The Sage polynomial job has already finished.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not cancel Sage factorization.");
+      setError(err instanceof Error ? err.message : "Could not cancel Sage polynomial job.");
     }
   };
 
@@ -137,7 +137,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
       <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 11 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>Engine</span>
-          {localFactor ? <span>Local WSL SageMath · exact QQ[x] · 20-second limit</span> : <>
+          {localPolynomial ? <span>Local WSL SageMath · exact QQ[x] / QQbar · 20-second limit</span> : <>
           <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <input type="radio" checked={engine === "auto"} onChange={() => setEngine("auto")} />
             Auto
@@ -156,7 +156,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
 
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Operation</span>
-          <select value={operation} onChange={(event) => setOperation(event.target.value as SageSymbolicOperation)} style={fieldStyle}>
+          <select value={operation} disabled={busy !== "none"} onChange={(event) => setOperation(event.target.value as SageSymbolicOperation)} style={fieldStyle}>
             {SAGE_SYMBOLIC_OPERATIONS.map((item) => (
               <option key={item} value={item}>
                 {OPERATION_LABELS[item]}
@@ -165,10 +165,10 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
           </select>
         </label>
 
-        {localFactor ? <label style={{ display: "grid", gap: 4 }}>
+        {localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>
-          <input value={coefficientsText} onChange={(event) => setCoefficientsText(event.target.value)} style={fieldStyle} placeholder="-1, 0, 1" />
-          <span>Example: -1, 0, 1 means x² − 1. Only coefficient data is sent to Sage; no expression is evaluated.</span>
+          <input value={coefficientsText} disabled={busy !== "none"} onChange={(event) => setCoefficientsText(event.target.value)} style={fieldStyle} placeholder="-1, 0, 1" />
+          <span>Example: -1, 0, 1 means x² − 1. Only coefficient data is sent to Sage; no expression is evaluated. Roots use exact algebraic numbers; displayed decimal values are approximations.</span>
         </label> : <>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Expression</span>
@@ -187,13 +187,13 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         </>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {!localFactor && <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
+          {!localPolynomial && <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
             {busy === "health" ? "Checking..." : "Check SageMath"}
           </button>}
           <button type="button" onClick={() => void onRun()} disabled={busy !== "none"}>
             {busy === "run" ? "Running..." : "Run"}
           </button>
-          {localFactor && activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
+          {localPolynomial && activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={showJson} onChange={(event) => setShowJson(event.target.checked)} />
             JSON
@@ -205,13 +205,25 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
             <div><strong>Success:</strong> {response.success ? "yes" : "no"}</div>
             <div><strong>Engine:</strong> {response.engine}</div>
             {response.elapsedMs != null && <div><strong>Elapsed:</strong> {response.elapsedMs}ms</div>}
-            {response.operation === "sage.polynomial.factor" && <>
+            {(response.operation === "sage.polynomial.factor" || response.operation === "sage.polynomial.roots_exact") && <>
               <div><strong>Exact reconstruction:</strong> {response.result.verified === true ? "verified" : "not verified"}</div>
               {typeof response.result.inputHash === "string" && <div><strong>Input SHA-256:</strong> <code>{response.result.inputHash}</code></div>}
               {Array.isArray(response.result.diagnostics) && response.result.diagnostics.map((diagnostic, index) =>
                 typeof diagnostic === "string" ? <div key={index}><strong>Diagnostic:</strong> {diagnostic}</div> : null
               )}
             </>}
+            {response.operation === "sage.polynomial.roots_exact" && Array.isArray(response.result.roots) && <div>
+              <strong>Algebraic roots ({String(response.result.rootCount ?? "?")} counting multiplicity)</strong>
+              {response.result.roots.map((item, index) => {
+                if (!item || typeof item !== "object") return null;
+                const root = item as Record<string, unknown>;
+                return <div key={index} style={{ marginTop: 4 }}>
+                  <code>{String(root.approximation ?? "?")}</code> · multiplicity {String(root.multiplicity ?? "?")}
+                  <div>Minimal polynomial (constant first): <code>{Array.isArray(root.minimalPolynomialCoefficients) ? root.minimalPolynomialCoefficients.join(", ") : "?"}</code></div>
+                  <div>Isolating interval: <code>{String(root.isolatingInterval ?? "?")}</code></div>
+                </div>;
+              })}
+            </div>}
             <pre style={{ margin: "6px 0 0", whiteSpace: "pre-wrap", fontFamily: fieldStyle.fontFamily }}>
               {showJson ? JSON.stringify(response, null, 2) : resultText(response)}
             </pre>

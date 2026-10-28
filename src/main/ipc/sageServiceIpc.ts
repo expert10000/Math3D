@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { cancelSagePolynomialFactor, runSagePolynomialFactor } from "../python/sagePolynomialFactor";
+import { cancelSagePolynomialJob, runSagePolynomialJob } from "../python/sagePolynomialWorker";
 
 type SageOperation =
   | "sage.symbolic.simplify"
@@ -59,8 +59,8 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
 export function registerSageServiceIpc(): void {
   ipcMain.handle("sage:health", async () => requestJson("/health", { method: "GET" }));
   ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) => {
-    if (req?.operation === "sage.polynomial.factor" && req.params?.coefficients !== undefined) {
-      return runSagePolynomialFactor(req.params, req.jobId);
+    if (req?.operation === "sage.polynomial.factor" || req?.operation === "sage.polynomial.roots_exact") {
+      return runSagePolynomialJob(req.operation, req.params || {}, req.jobId);
     }
     return requestJson("/run", {
       method: "POST",
@@ -71,6 +71,6 @@ export function registerSageServiceIpc(): void {
     });
   });
   ipcMain.handle("sage:cancel", async (_evt, jobId: string) => ({
-    ok: typeof jobId === "string" && cancelSagePolynomialFactor(jobId),
+    ok: typeof jobId === "string" && cancelSagePolynomialJob(jobId),
   }));
 }
