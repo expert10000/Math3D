@@ -1,11 +1,13 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
   VectorField3DClipBounds, VectorField3DLinkedLineProfile,
+  VectorField3DOverlayRegion,
   Graph2DScientificVolume } from "@math3d/core";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
 import type { ScalarSliceOverlay, SliceOverlayArrow,
   LinkedOverlayLineProfile, VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { LinkedOverlayProfileView } from "./LinkedOverlayProfileView";
+import { OverlayRegionView } from "./OverlayRegionView";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -20,7 +22,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
   overlayVectorPlane = null, scalarOverlayVolume = null,
   linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange,
-  onSendLinkedLineToGraphs, linkedLineBusy = false }: {
+  onSendLinkedLineToGraphs, linkedLineBusy = false,
+  overlayRegion = null, onOverlayRegionChange }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -46,6 +49,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     profile: VectorField3DLinkedLineProfile,
     samples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
   linkedLineBusy?: boolean;
+  overlayRegion?: VectorField3DOverlayRegion | null;
+  onOverlayRegionChange?: (region: VectorField3DOverlayRegion | null) => void;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
   onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
@@ -53,6 +58,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   derivedLineBusy?: boolean;
 }) {
   const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
+  const [regionSelecting, setRegionSelecting] = useState(false);
+  const [regionFirstCorner, setRegionFirstCorner] = useState<readonly [number, number, number] | null>(null);
+  useEffect(() => { setRegionSelecting(false); setRegionFirstCorner(null); },
+    [slice.normalAxis, slice.fixedCoordinate, document.identity.structuralHash,
+      document.workspace?.scalarOverlay?.visible]);
   const arrowMarkerId = useId().replace(/:/g, "");
   const [first, second] = slice.planeAxes;
   const { left, top, width, height } = slicePlot;
@@ -75,6 +85,17 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       24 + index * 272 / Math.max(profile.length - 1, 1)},${
       104 - (row.value - profileMin) * 80 / profileSpan}`).join(" ");
   const seedMarker = proposedSeed ? sliceSeedMarkerAtPoint(slice, proposedSeed) : null;
+  const regionCorners = overlayRegion?.normalAxis === slice.normalAxis &&
+    Math.abs(overlayRegion.fixedCoordinate - slice.fixedCoordinate) < 1e-9 ?
+    overlayRegion.bounds.map((_, local) => local) : null;
+  const regionMarkers = regionCorners ? [0, 1].map(end => {
+    const point = [0, 0, 0] as [number, number, number];
+    point[slice.normalAxis] = slice.fixedCoordinate;
+    point[first] = overlayRegion!.bounds[0][end]!;
+    point[second] = overlayRegion!.bounds[1][end]!;
+    return sliceSeedMarkerAtPoint(slice, point);
+  }) : null;
+  const pendingRegionMarker = regionFirstCorner ? sliceSeedMarkerAtPoint(slice, regionFirstCorner) : null;
   const crosshairCoordinate = (coordinates: readonly number[], value: number,
     start: number, cell: number) => {
     if (value < coordinates[0]! - 1e-9 || value > coordinates.at(-1)! + 1e-9) return null;
@@ -120,6 +141,23 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     <svg viewBox={`${640 * center[0] - 320 / zoom} ${560 * center[1] - 280 / zoom} ${640 / zoom} ${560 / zoom}`}
       role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}
       onClick={event => {
+        if (regionSelecting && onOverlayRegionChange && document.workspace?.scalarOverlay?.visible) {
+          const transform = event.currentTarget.getScreenCTM();
+          const local = transform ? new DOMPoint(event.clientX, event.clientY)
+            .matrixTransform(transform.inverse()) : null;
+          const point = local ? sliceSeedPointAtSvgPosition(slice, local.x, local.y) : null;
+          if (!point) return;
+          if (!regionFirstCorner) { setRegionFirstCorner(point); return; }
+          const bounds = slice.planeAxes.map(axis => [Math.min(regionFirstCorner[axis], point[axis]),
+            Math.max(regionFirstCorner[axis], point[axis])]) as
+            [[number, number], [number, number]];
+          if (bounds.some(([low, high]) => high - low < 1e-10)) return;
+          onOverlayRegionChange({ normalAxis: slice.normalAxis,
+            fixedCoordinate: slice.fixedCoordinate, bounds,
+            vectorChannel: overlayRegion?.vectorChannel ?? "speed", visible: true });
+          setRegionFirstCorner(null); setRegionSelecting(false);
+          return;
+        }
         if (!seedPlacementActive || !onSeedPropose) return;
         const transform = event.currentTarget.getScreenCTM();
         if (!transform) { onSeedPropose(null); return; }
@@ -147,7 +185,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             color(value, slice.min, slice.max)}
           opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
-            if (!onProbeSelect || seedPlacementActive) return;
+            if (!onProbeSelect || seedPlacementActive ||
+                (regionSelecting && document.workspace?.scalarOverlay?.visible)) return;
             const point = [0, 0, 0] as [number, number, number];
             point[slice.normalAxis] = slice.fixedCoordinate;
             point[first] = slice.coordinates[0][x]!;
@@ -174,6 +213,17 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             markerEnd={`url(#${arrowMarkerId})`} />;
         })}
       </g>}
+      {regionMarkers?.[0] && regionMarkers?.[1] && overlayRegion?.visible &&
+        <rect data-testid="scientific-overlay-region-marker" pointerEvents="none"
+          x={Math.min(regionMarkers[0][0], regionMarkers[1][0])}
+          y={Math.min(regionMarkers[0][1], regionMarkers[1][1])}
+          width={Math.abs(regionMarkers[1][0] - regionMarkers[0][0])}
+          height={Math.abs(regionMarkers[1][1] - regionMarkers[0][1])}
+          fill="#38bdf8" fillOpacity="0.14" stroke="#38bdf8" strokeWidth="2" />}
+      {pendingRegionMarker && regionSelecting && <circle
+        data-testid="scientific-overlay-region-first-corner" pointerEvents="none"
+        cx={pendingRegionMarker[0]} cy={pendingRegionMarker[1]} r="7"
+        fill="#38bdf8" stroke="#fff" strokeWidth="2" />}
       {crosshairX !== null && crosshairY !== null && <g data-testid="vector-field3d-slice-crosshair"
         stroke="#fff" strokeWidth="2" pointerEvents="none">
         <line x1={crosshairX} y1="16"
@@ -272,5 +322,12 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       status={overlayStatus} mismatch={linkedProfileMismatch}
       onChange={onLinkedLineProfileChange} onSendToGraphs={onSendLinkedLineToGraphs}
       sendBusy={linkedLineBusy} />}
+    {onOverlayRegionChange && <OverlayRegionView document={document} slice={slice}
+      region={overlayRegion} vectorPlane={overlayVectorPlane ?? null}
+      scalarVolume={scalarOverlayVolume ?? null} vectorSamples={overlayVectorSamples}
+      status={overlayStatus} onChange={onOverlayRegionChange}
+      selecting={regionSelecting} onStartSelection={() => {
+        setRegionSelecting(!regionSelecting); setRegionFirstCorner(null);
+      }} />}
   </figure>;
 }

@@ -31,6 +31,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type VectorField3DSeedGroupStyle,
   type VectorField3DScalarOverlay,
   type VectorField3DLinkedLineProfile,
+  type VectorField3DOverlayRegion,
   type Graph2DScientificVolume,
   inspectGraph2DFieldReference, verifyGraph2DScientificVolume,
   type VectorField3DVerifiedTile } from "@math3d/core";
@@ -410,6 +411,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setDocument(current => reviseVectorField3DWorkspace(current, {
       ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
       linkedLineProfile: profile }));
+  };
+  const setOverlayRegion = (region: VectorField3DOverlayRegion | null) => {
+    setDocument(current => reviseVectorField3DWorkspace(current, {
+      ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
+      overlayRegion: region }));
   };
   const setViewZoom = (layer: "xy" | "xz" | "yz", zoom: number) => {
     setDocument(current => { const view = current.workspace ?? defaultVectorField3DWorkspace(current.source);
@@ -2322,6 +2328,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               overlayVectorPlane={overlayVectorPlanes[layer]}
               scalarOverlayVolume={linkedProfileScalarVolume}
               linkedLineProfile={workspace.linkedLineProfile}
+              overlayRegion={workspace.overlayRegion}
+              onOverlayRegionChange={setOverlayRegion}
               linkedProfileMismatch={sharedProfileMismatch}
               onLinkedLineProfileChange={setLinkedLineProfile}
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
@@ -2347,6 +2355,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         overlayVectorPlane={overlayVectorPlanes[workspace.selectedLayer as SeedSliceLayer]}
         scalarOverlayVolume={linkedProfileScalarVolume}
         linkedLineProfile={workspace.linkedLineProfile}
+        overlayRegion={workspace.overlayRegion}
+        onOverlayRegionChange={setOverlayRegion}
         linkedProfileMismatch={sharedProfileMismatch}
         onLinkedLineProfileChange={setLinkedLineProfile}
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}

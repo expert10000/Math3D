@@ -8,7 +8,7 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
-import { sampleLinkedOverlayLineProfile, sampleScalarSliceOverlay,
+import { sampleLinkedOverlayLineProfile, sampleOverlayRegion, sampleScalarSliceOverlay,
   sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
@@ -59,6 +59,8 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       selectedLayer: "xy", scalarOverlay: { reference: scalarReference,
         title: "Potential", unit: "V", opacity: 0.7, visible: true },
       linkedLineProfile: { normalAxis: 2, varyingAxis: 0, point: [0, 0.5, 0],
+        vectorChannel: "speed", visible: true },
+      overlayRegion: { normalAxis: 2, fixedCoordinate: 0, bounds: [[-1, 1], [-1, 1]],
         vectorChannel: "speed", visible: true } });
     expect(withOverlay.identity).toEqual(analytic.identity);
     const serialized = serializeVectorField3DDocument(withOverlay);
@@ -67,14 +69,62 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       .toEqual(withOverlay.workspace?.scalarOverlay);
     expect(parseVectorField3DDocument(serialized).workspace?.linkedLineProfile)
       .toEqual(withOverlay.workspace?.linkedLineProfile);
+    expect(parseVectorField3DDocument(serialized).workspace?.overlayRegion)
+      .toEqual(withOverlay.workspace?.overlayRegion);
     const invalid = JSON.parse(serialized);
     invalid.workspace.linkedLineProfile.varyingAxis = 2;
     expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
     const legacy = JSON.parse(serializeVectorField3DDocument(analytic));
     delete legacy.workspace.scalarOverlay;
     delete legacy.workspace.linkedLineProfile;
+    delete legacy.workspace.overlayRegion;
     expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.scalarOverlay).toBeNull();
     expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.linkedLineProfile).toBeNull();
+    expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.overlayRegion).toBeNull();
+    const invalidRegion = JSON.parse(serialized);
+    invalidRegion.workspace.overlayRegion.bounds[0] = [2, -2];
+    expect(() => parseVectorField3DDocument(JSON.stringify(invalidRegion))).toThrow();
+  });
+
+  it("summarizes aligned physical rectangles on all planes with separate units", () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const slice = sampleVectorField3DSlice(analytic, normalAxis, 0);
+      const region = { normalAxis, fixedCoordinate: 0, bounds: [[-1, 1], [-1, 1]],
+        vectorChannel: "speed" as const, visible: true };
+      const result = sampleOverlayRegion(analytic, slice, region,
+        sampleSliceOverlayVectorPlane(analytic, slice), scalarReference, scalarVolume, "V");
+      expect(result.alignedCount).toBe(289);
+      expect(result.scalarOutsideAreaPercent).toBe(0);
+      expect(result.scalar?.min).toBeCloseTo(0, 12);
+      expect(result.scalar?.max).toBeCloseTo(2, 12);
+      expect(result.vector?.max).toBeCloseTo(normalAxis === 2 ? Math.SQRT2 : 1, 10);
+      expect(result.vectorUnit).toBe("m/s");
+      expect(result.scalarUnit).toBe("V");
+      expect(result.scalarSampleSha256).toBe(scalarVolume.sampleSha256);
+    }
+  });
+
+  it("flags scalar area beyond its domain and rejects changed or incompatible sources", () => {
+    const wide = createVectorField3DDocument({ ...analytic.source,
+      axes: axes.map(axis => ({ ...axis, min: -6, max: 6 })) as VectorField3DSource["axes"] },
+    { stableKey: "overlay-region-wide" });
+    const slice = sampleVectorField3DSlice(wide, 2, 0);
+    const plane = sampleSliceOverlayVectorPlane(wide, slice);
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-6, 6], [-6, 6]] as const,
+      vectorChannel: "p" as const, visible: true };
+    const result = sampleOverlayRegion(wide, slice, region, plane,
+      scalarReference, scalarVolume, "V");
+    expect(result.vectorCount).toBe(289);
+    expect(result.scalarCount).toBeLessThan(289);
+    expect(result.scalarOutsideAreaPercent).toBeCloseTo(100 * (1 - 16 / 36), 10);
+    expect(() => sampleOverlayRegion(wide, slice, region, plane,
+      scalarReference, { ...scalarVolume, sampleSha256: "sha256:changed",
+        resourceSha256: "changed" }, "V")).toThrow(/changed/);
+    expect(() => sampleOverlayRegion(wide, slice, region, plane,
+      { ...scalarReference, axes: scalarReference.axes.map((axis, index) =>
+        index === 0 ? { ...axis, unit: "mm" } : axis) }, scalarVolume, "V"))
+      .toThrow(/coordinate units/);
   });
 
   it("aligns vector speed and scalar potential along one off-lattice physical line", () => {
@@ -230,5 +280,30 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(overlay.covered).toBe(1024);
     expect(overlay.values[0]).toBeGreaterThan(32);
     expect(overlay.values.at(-1)).toBeCloseTo(overlay.values[0]!, 10);
+    const components = [[], [], []] as [number[], number[], number[]];
+    for (let i = 0; i < 32; i++) for (let j = 0; j < 32; j++) {
+      const x = coordinates[i]!, y = coordinates[j]!;
+      const factor = 16 / (16 + x * x + y * y), offset = i * 32 + j;
+      components[0][offset] = -y * factor;
+      components[1][offset] = x * factor;
+      components[2][offset] = Math.sin(fixedCoordinate) / 4;
+    }
+    const region = sampleOverlayRegion(vector, slice,
+      { normalAxis: 2, fixedCoordinate, bounds: [[-1, 1], [-1, 1]],
+        vectorChannel: "speed", visible: true },
+      { shape: [32, 32], sourceStructuralHash: vector.identity.structuralHash,
+        components, units: ["m/s", "m/s", "m/s"] },
+      scalarReference, scalarVolume, "V");
+    const expectedSpeed = Array.from({ length: 17 ** 2 }, (_, index) => {
+      const x = -1 + Math.floor(index / 17) / 8, y = -1 + index % 17 / 8;
+      const factor = 16 / (16 + x * x + y * y);
+      return Math.hypot(x * factor, y * factor, Math.sin(fixedCoordinate) / 4);
+    }).reduce((sum, value) => sum + value, 0) / 17 ** 2;
+    expect(region.alignedCount).toBe(289);
+    expect(region.vector?.mean).toBeCloseTo(expectedSpeed, 2);
+    // The 17³ scalar source is trilinearly interpolated, so its quadratic
+    // minimum can differ from the continuous formula between source nodes.
+    expect(Math.abs(region.scalar!.min - fixedCoordinate ** 2)).toBeLessThan(0.08);
+    expect(region.scalarOutsideAreaPercent).toBe(0);
   });
 });
