@@ -502,7 +502,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           "xy" : (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer }));
     setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
     setOverlayVectorSamples({}); setOverlayReadGeneration(0); setError("");
-    if (field) onReturnToVectorLayer?.();
+    if (field) { setReopenPreview(value => value + 1); onReturnToVectorLayer?.(); }
   };
   const setComplexOverlay = (fieldId: string) => {
     const field = complexOverlayChoices.find(item => item.source.reference.id === fieldId);
@@ -518,7 +518,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           "xy" : (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer }));
     setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
     setOverlayVectorSamples({}); setOverlayReadGeneration(0); setError("");
-    if (field) onReturnToVectorLayer?.();
+    if (field) { setReopenPreview(value => value + 1); onReturnToVectorLayer?.(); }
   };
   const setLinkedLineProfile = (profile: VectorField3DLinkedLineProfile | null) => {
     setDocument(current => reviseVectorField3DWorkspace(current, {

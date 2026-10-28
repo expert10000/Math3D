@@ -139,8 +139,10 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
     await explorer.getByRole("button", { name: "XY slice" }).click();
     await examples.getByRole("button", { name: /Quadratic potential/ }).click();
     await explorer.getByRole("button", { name: "Show this scalar as overlay on vector slices" }).click();
+    await expect(explorer.getByTestId("scientific-scalar-overlay-status"))
+      .toContainText("Verified scalar samples", { timeout: 60_000 });
     for (const plane of ["XY", "XZ", "YZ"] as const) {
-      await explorer.getByRole("button", { name: `${plane} slice` }).click();
+      await explorer.getByRole("button", { name: `${plane} slice`, exact: true }).click();
       await explorer.getByRole("button", { name: "Preview slice" }).click();
       await expect(explorer.getByTestId("scientific-scalar-overlay-status"))
         .toContainText("Verified scalar samples");
@@ -474,7 +476,6 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
     await explorer.getByRole("button", { name: "XY slice" }).click();
     await examples.getByRole("button", { name: /Complex wave/ }).click();
     await explorer.getByRole("button", { name: "Show this complex field as overlay on vector slices" }).click();
-    await explorer.getByRole("button", { name: "Preview slice" }).click();
     await expect(explorer.getByTestId("scientific-complex-overlay-status"))
       .toContainText("Verified real", { timeout: 60_000 });
     let figure = explorer.getByRole("figure", { name: "XY field slice" });
@@ -524,7 +525,6 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
     await explorer.getByRole("button", { name: "XY slice" }).click();
     await examples.getByRole("button", { name: /Complex wave/ }).click();
     await explorer.getByRole("button", { name: "Show this complex field as overlay on vector slices" }).click();
-    await explorer.getByRole("button", { name: "Preview slice" }).click();
     await expect(explorer.getByRole("figure", { name: "XY field slice" })
       .getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("1024/1024 cells", { timeout: 60_000 });
@@ -574,7 +574,6 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     await library.getByRole("button", { name: "Browse scientific scene" }).click();
     await library.getByRole("button", { name: "Open Wave amplitude from dataset library" }).click();
     await explorer.getByRole("button", { name: "Show this complex field as overlay on vector slices" }).click();
-    await explorer.getByRole("button", { name: "Preview slice" }).click();
     await expect(explorer.getByTestId("scientific-complex-overlay-status"))
       .toContainText("Verified real", { timeout: 60_000 });
     const figure = explorer.getByRole("figure", { name: "XY field slice" });
