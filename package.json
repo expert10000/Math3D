@@ -94,6 +94,7 @@
     "test:projects:contracts": "node scripts/unified-projects-contracts.mjs",
     "test:projects:desktop": "playwright test tests/e2e/unified-projects.spec.ts tests/e2e/kernel-workspace.spec.ts tests/e2e/graph2d-gallery.spec.ts tests/e2e/project-freeze.spec.ts --reporter=list",
     "test:projects:installed-sage": "node scripts/projects-installed-sage.mjs",
+    "test:sage:desktop": "playwright test tests/e2e/sage-polynomial-desktop.spec.ts --reporter=list",
     "test:projects:fixtures": "node scripts/projects-freeze-fixtures.mjs",
     "test:projects:web": "playwright test --config playwright.projects.config.ts",
     "test:projects:acceptance": "npm run test:projects:contracts && npm run typecheck:noemit && npm --prefix apps/mobile run typecheck && npm run build:core && npm run build:web && npm run test:projects:desktop && npm run test:projects:web && npm run check:kernel:boundaries",
