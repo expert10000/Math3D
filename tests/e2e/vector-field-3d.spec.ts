@@ -187,6 +187,17 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
           .toContainText("aligned vector and scalar samples", { timeout: 60_000 });
       }
     }
+    await examples.getByRole("button", { name: /Complex wave/ }).click();
+    const complexRegion = explorer.getByTestId("scientific-explorer-linked-region-summary");
+    await expect(complexRegion).toContainText("real (1)", { timeout: 60_000 });
+    await expect(complexRegion).toContainText("imaginary (1)");
+    await expect(complexRegion).toContainText("complex-wave-volume / field");
+    await explorer.getByRole("button", { name: "Back to vector layer" }).click();
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    const scalarRegion = explorer.getByTestId("scientific-explorer-linked-region-summary");
+    await expect(scalarRegion).toContainText("scalar (V)", { timeout: 60_000 });
+    await expect(scalarRegion).toContainText("quadratic-volume / field");
+    await explorer.getByRole("button", { name: "Back to vector layer" }).click();
     await examples.getByRole("button", { name: /Generated vortex/ }).click();
     await explorer.getByRole("button", { name: "XY slice" }).click();
     await examples.getByRole("button", { name: /Quadratic potential/ }).click();
@@ -203,6 +214,10 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
     await expect(largeRegion.getByTestId("scientific-overlay-region-summary"))
       .toContainText("Aligned physical samples: 289/289");
     await expect(largeRegion).toContainText("Physical rectangle: x");
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    await expect(explorer.getByTestId("scientific-explorer-linked-region-summary"))
+      .toContainText("289/289 physical positions covered", { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Back to vector layer" }).click();
     await large.locator('[data-probe-cell="16-16"]').click();
     const largeLine = large.getByTestId("scientific-linked-overlay-profile");
     await largeLine.getByRole("button", { name: "Link line through shared probe" }).click();
@@ -233,9 +248,12 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
   const root = await mkdtemp(join(tmpdir(), "m3d-scalar-overlay-"));
   const directory = join(root, "burgers.sscene");
   const scalarDirectory = join(root, "potential.sscene");
+  const complexDirectory = join(root, "complex.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), directory,
     { recursive: true });
   await cp(resolve("examples/scientific-scenes/quadratic-volume.sscene"), scalarDirectory,
+    { recursive: true });
+  await cp(resolve("examples/scientific-scenes/complex-wave-volume.sscene"), complexDirectory,
     { recursive: true });
   const app = await launchSurfaceApp();
   try {
@@ -270,6 +288,24 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await figure.locator('[data-probe-cell="20-20"]').click();
     await expect(region.getByTestId("scientific-overlay-region-summary"))
       .toContainText("Scalar field outside selected area:");
+    const boundsEditor = explorer.getByTestId("scientific-explorer-cross-layer-region");
+    await boundsEditor.getByRole("spinbutton", { name: "Region x min" }).fill("-0.02");
+    await boundsEditor.getByRole("spinbutton", { name: "Region x max" }).fill("0.02");
+    await boundsEditor.getByRole("spinbutton", { name: "Region y min" }).fill("-0.03");
+    await boundsEditor.getByRole("spinbutton", { name: "Region y max" }).fill("0.03");
+    await boundsEditor.getByRole("spinbutton", { name: "Region y max" }).blur();
+    await expect(region.getByTestId("scientific-overlay-region-summary"))
+      .toContainText("Vector field outside selected area:");
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, complexDirectory);
+    await library.getByRole("button", { name: "Browse scientific scene" }).click();
+    await library.getByRole("button", { name: "Open Wave amplitude from dataset library" }).click();
+    const complexRegion = explorer.getByTestId("scientific-explorer-linked-region-summary");
+    await expect(complexRegion).toContainText("real (1)", { timeout: 60_000 });
+    await expect(complexRegion).toContainText("imaginary (1)");
+    await expect(complexRegion).toContainText("verified samples");
+    await explorer.getByRole("button", { name: "Back to vector layer" }).click();
     const linkedLine = explorer.getByTestId("scientific-linked-overlay-profile");
     await explorer.getByRole("figure", { name: "XY field slice" })
       .locator('[data-probe-cell="16-16"]').click();
@@ -320,6 +356,7 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     expect(savedRegion.normalAxis).toBe(2);
     expect(savedRegion.fixedCoordinate).toBe(vectorCheckpoint.workspace.sliceCoordinates[2]);
     expect(savedRegion.bounds).toHaveLength(2);
+    expect(savedRegion.bounds).toEqual([[-0.02, 0.02], [-0.03, 0.03]]);
     expect(savedRegion.vectorChannel).toBe("speed");
     expect(JSON.stringify(savedRegion)).not.toContain("values");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
@@ -339,6 +376,11 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
       .toContainText(/vector samples;.*scalar samples/);
     await expect(reopened.getByTestId("scientific-overlay-region-summary"))
       .toContainText("Scalar field outside selected area:");
+    const reopenedLibrary = reopened.getByRole("region", { name: "Dataset library" });
+    await reopenedLibrary.getByRole("button", { name: "Open Wave amplitude from dataset library" }).click();
+    await expect(reopened.getByTestId("scientific-explorer-linked-region-summary"))
+      .toContainText("imaginary (1)", { timeout: 60_000 });
+    await reopened.getByRole("button", { name: "Back to vector layer" }).click();
     const scalarFile = join(scalarDirectory, "scalar.f64");
     const originalScalar = await readFile(scalarFile), changedScalar = Buffer.from(originalScalar);
     changedScalar[0] ^= 1;
@@ -358,6 +400,26 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await expect(reopened.getByTestId("scientific-overlay-region-summary"))
       .toContainText("Scalar field outside selected area:");
     await reopened.getByRole("button", { name: "Back to Graphs" }).click();
+    const realFile = join(complexDirectory, "real.f64");
+    const originalReal = await readFile(realFile), changedReal = Buffer.from(originalReal);
+    changedReal[0] ^= 1;
+    await writeFile(realFile, changedReal);
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const changedComplex = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(changedComplex.getByRole("region", { name: "Dataset library" })
+      .getByRole("button", { name: "Open Wave amplitude from dataset library" }))
+      .toBeDisabled({ timeout: 60_000 });
+    await expect(changedComplex.getByRole("region", { name: "Dataset library" }))
+      .toContainText("Source changed");
+    await expect(changedComplex.getByTestId("scientific-explorer-linked-region-summary"))
+      .toHaveCount(0);
+    await changedComplex.getByRole("button", { name: "Back to Graphs" }).click();
+    await writeFile(realFile, originalReal);
     const tile = join(directory, "vx.f64"), original = await readFile(tile);
     const changed = Buffer.from(original); changed[0] ^= 1;
     await writeFile(tile, changed);
@@ -382,6 +444,12 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await expect(changedExplorer.getByTestId("scientific-linked-overlay-profile"))
       .toHaveCount(0);
     await expect(changedExplorer.getByTestId("scientific-overlay-region-summary"))
+      .toHaveCount(0);
+    await changedExplorer.getByRole("region", { name: "Dataset library" })
+      .getByRole("button", { name: "Open Wave amplitude from dataset library" }).click();
+    await expect(changedExplorer.getByTestId("scientific-explorer-linked-region"))
+      .toContainText("Region withheld: Vector source withheld", { timeout: 60_000 });
+    await expect(changedExplorer.getByTestId("scientific-explorer-linked-region-summary"))
       .toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);

@@ -271,12 +271,10 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
         workspace.overlayRegion.fixedCoordinate > source.axes[workspace.overlayRegion.normalAxis as number]!.max ||
         !Array.isArray(workspace.overlayRegion.bounds) ||
         workspace.overlayRegion.bounds.length !== 2 ||
-        workspace.overlayRegion.bounds.some((bounds: unknown, index: number) => {
-          const axis = ([0, 1, 2] as const).filter(value =>
-            value !== (workspace.overlayRegion as { normalAxis: number }).normalAxis)[index]!;
+        workspace.overlayRegion.bounds.some((bounds: unknown) => {
           return !Array.isArray(bounds) || bounds.length !== 2 ||
             !finite(bounds[0]) || !finite(bounds[1]) || bounds[0] >= bounds[1] ||
-            bounds[0] < source.axes[axis]!.min || bounds[1] > source.axes[axis]!.max;
+            Math.abs(bounds[0]) > 1e9 || Math.abs(bounds[1]) > 1e9;
         }) ||
         !["speed", "p", "q", "r"].includes(workspace.overlayRegion.vectorChannel as string) ||
         typeof workspace.overlayRegion.visible !== "boolean") ||

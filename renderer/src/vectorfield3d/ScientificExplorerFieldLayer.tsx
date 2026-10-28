@@ -4,18 +4,24 @@ import { createScientificDatasetLink, deriveVerifiedScientificScalarVolume,
   scientificScalarDerivationLabel, scientificScalarDerivationUnit,
   verifyGraph2DScientificVolume,
   type Graph2DScientificVolume, type ScientificCoordinateSystem,
-  type ScientificFieldDocument, type ScientificFieldTransfer } from "@math3d/core";
+  type ScientificFieldDocument, type ScientificFieldTransfer,
+  type VectorField3DAxis, type VectorField3DOverlayRegion } from "@math3d/core";
 import { ScientificFieldVolume } from "../graph2d/ScientificFieldVolume";
 import { linkedFieldPointStatus, sampleLinkedFieldVolume,
   type LinkedExplorerProbe } from "./linkedFieldProbe";
+import { sampleLinkedFieldRegion } from "./linkedFieldRegion";
 
 type VerifiedLayer = Readonly<{ coordinate: ScientificCoordinateSystem;
   volumes: readonly Graph2DScientificVolume[]; label: string; unit: string }>;
 
 /** Render only fresh, independently verified transfers in the shared Explorer viewer. */
-export function ScientificExplorerFieldLayer({ document, onOpenDetails, linkedProbe }: {
+export function ScientificExplorerFieldLayer({ document, onOpenDetails, linkedProbe,
+  linkedRegion, vectorAxes, linkedVectorReady, linkedVectorStatus }: {
   document: ScientificFieldDocument; onOpenDetails: () => void;
   linkedProbe: LinkedExplorerProbe | null;
+  linkedRegion: VectorField3DOverlayRegion | null;
+  vectorAxes: readonly [VectorField3DAxis, VectorField3DAxis, VectorField3DAxis];
+  linkedVectorReady: boolean; linkedVectorStatus: string;
 }) {
   const [layer, setLayer] = useState<VerifiedLayer | null>(null);
   const [status, setStatus] = useState("Verifying source before drawing…");
@@ -79,6 +85,13 @@ export function ScientificExplorerFieldLayer({ document, onOpenDetails, linkedPr
     spacing: layer.coordinate.spacing[index]!, count: layer.volumes[0]!.sourceShape[index]! })) ?? [];
   const probeState = linkedProbe && layer ? linkedFieldPointStatus(linkedProbe.point,
     axes, linkedProbe.units) : null;
+  let regionSummary: ReturnType<typeof sampleLinkedFieldRegion> | null = null;
+  let regionError = "";
+  if (linkedRegion?.visible && layer && linkedVectorReady) {
+    try { regionSummary = sampleLinkedFieldRegion(linkedRegion, vectorAxes,
+      document, layer.volumes); }
+    catch (cause) { regionError = cause instanceof Error ? cause.message : String(cause); }
+  }
   return <section className="scientific-explorer-field-layer" aria-label={`${document.source.paired ?
     "Complex" : "Scalar"} field layer`} data-testid="scientific-explorer-field-layer">
     <header><h4>{document.metadata.title}</h4>
@@ -98,6 +111,31 @@ export function ScientificExplorerFieldLayer({ document, onOpenDetails, linkedPr
               `${volume.component}: ${volume.sampleSha256}`).join(" · ")}</small>
         </>}
     </div>}
+    {linkedRegion && <section aria-label="Linked physical region"
+      data-testid="scientific-explorer-linked-region">
+      <h5>Linked physical region</h5>
+      <p>{vectorAxes[linkedRegion.normalAxis].label} = {linkedRegion.fixedCoordinate}
+        {" "}{vectorAxes[linkedRegion.normalAxis].unit};
+        {" "}{([0, 1, 2] as const).filter(axis => axis !== linkedRegion.normalAxis)
+          .map((axis, local) => `${vectorAxes[axis].label} ${linkedRegion.bounds[local]![0]}–${
+            linkedRegion.bounds[local]![1]} ${vectorAxes[axis].unit}`).join(" · ")}.</p>
+      {!linkedRegion.visible ? <p>Region display is hidden.</p> :
+        regionSummary ? <div role="status" data-testid="scientific-explorer-linked-region-summary">
+          <p>{regionSummary.alignedCount}/{regionSummary.sampleCount} physical positions covered;
+            {" "}{regionSummary.outsideAreaPercent.toPrecision(5)}% of the rectangle lies outside this field domain.
+            {" "}Gaps mark positions outside the field or without finite samples.</p>
+          {regionSummary.components.map(component => <p key={component.name}>
+            {component.name} ({regionSummary.unit}): {component.count}/{regionSummary.sampleCount}
+            {" "}samples; {component.count ?
+              `mean ${component.mean.toPrecision(6)}, min ${component.min.toPrecision(6)}, max ${component.max.toPrecision(6)}` :
+              "no value in selected area"}.</p>)}
+          <small>Source {regionSummary.source}; verified samples
+            {" "}{regionSummary.components.map(component =>
+              `${component.name}: ${component.sampleSha256}`).join(" · ")}.</small>
+        </div> : <p role={regionError || status.startsWith("Field withheld") ||
+          linkedVectorStatus.startsWith("Vector source withheld") ? "alert" : "status"}>
+          Region withheld: {regionError || (!linkedVectorReady && linkedVectorStatus) || status}</p>}
+    </section>}
     {layer && <div className="scientific-explorer-field-volumes">{layer.volumes.map(volume =>
       <ScientificFieldVolume key={`${volume.component}:${volume.sampleSha256}`} volume={volume}
         coordinate={layer.coordinate} label={`${layer.label} ${volume.component}`}
