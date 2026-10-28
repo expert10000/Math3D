@@ -298,6 +298,9 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await boundsEditor.getByRole("spinbutton", { name: "Region y max" }).blur();
     await expect(region.getByTestId("scientific-overlay-region-summary"))
       .toContainText("Vector field outside selected area:");
+    await region.getByTestId("scientific-region-publish").click();
+    await expect(region.getByTestId("scientific-region-saved-status"))
+      .toContainText("numerical summary reverified");
     await app.app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, complexDirectory);
@@ -326,6 +329,17 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const savedRegionResult = stored.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
+      item.provenance.operation.type === "vector3d.linked-region");
+    expect(savedRegionResult).toBeTruthy();
+    expect(savedRegionResult.provenance.operation.parameters.region.bounds)
+      .toEqual([[-0.02, 0.02], [-0.03, 0.03]]);
+    expect(savedRegionResult.provenance.operation.parameters.vectorReferences).toHaveLength(3);
+    expect(savedRegionResult.provenance.operation.parameters.overlayReferences).toHaveLength(1);
+    expect(JSON.stringify(savedRegionResult)).not.toContain('"values"');
+    expect(stored.workspace.relations).toContainEqual(expect.objectContaining({
+      kind: "analysis-of", target: { type: "result", resultId: savedRegionResult.resultId,
+        resultType: "vector3d.linked-region" } }));
     const graphEntry = stored.workspace.entries.find((entry: { module: string }) => entry.module === "graph2d");
     const graphObjects = [...(graphEntry.replay?.payload?.transactions ?? [])].reverse()
       .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
@@ -362,6 +376,16 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     expect(savedRegion.vectorChannel).toBe("speed");
     expect(JSON.stringify(savedRegion)).not.toContain("values");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await expect(projects.getByTestId(`project-result-freshness-${savedRegionResult.resultId}`))
+      .toContainText("Source verified", { timeout: 60_000 });
+    await projects.getByTestId("project-detail-tab-results").click();
+    const currentOutput = projects.getByTestId("project-results-browser");
+    await currentOutput.getByTestId(`project-result-select-${savedRegionResult.resultId}`).click();
+    await expect(currentOutput.getByTestId("project-region-result-gated")).toHaveCount(0);
+    await expect(currentOutput.getByTestId("project-result-detail"))
+      .toContainText("alignedCount");
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();
@@ -378,6 +402,8 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
       .toContainText(/vector samples;.*scalar samples/);
     await expect(reopened.getByTestId("scientific-overlay-region-summary"))
       .toContainText("Scalar field outside selected area:");
+    await expect(reopened.getByTestId("scientific-region-saved-status"))
+      .toContainText("numerical summary reverified", { timeout: 60_000 });
     const reopenedLibrary = reopened.getByRole("region", { name: "Dataset library" });
     await reopenedLibrary.getByRole("button", { name: "Open Wave amplitude from dataset library" }).click();
     await expect(reopened.getByTestId("scientific-explorer-linked-region-summary"))
@@ -427,6 +453,15 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await writeFile(tile, changed);
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await expect(projects.getByTestId(`project-result-freshness-${savedRegionResult.resultId}`))
+      .toContainText("Changed source", { timeout: 60_000 });
+    await projects.getByTestId("project-detail-tab-results").click();
+    const savedOutput = projects.getByTestId("project-results-browser");
+    await savedOutput.getByTestId(`project-result-select-${savedRegionResult.resultId}`).click();
+    await expect(savedOutput.getByTestId("project-region-result-gated"))
+      .toContainText("A source has changed");
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();

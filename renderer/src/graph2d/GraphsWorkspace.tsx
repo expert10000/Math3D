@@ -83,6 +83,7 @@ import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedS
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
+import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
@@ -192,6 +193,10 @@ type Props = {
   savedVectorField3DPointResults?: readonly import("@math3d/core").AnalysisResultEnvelope[];
   onSaveVectorField3DPointResult?: (document: VectorField3DDocument,
     result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  savedVectorField3DRegionResults?: readonly import("@math3d/core").AnalysisResultEnvelope[];
+  vectorField3DRegionStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
+  onSaveVectorField3DRegionResult?: (document: VectorField3DDocument,
+    result: import("@math3d/core").AnalysisResultEnvelope) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
     surface: import("@math3d/core").VectorField3DIsosurface) => void;
@@ -212,7 +217,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
   savedVectorField3D, openVectorField3DRequest, onSaveVectorField3D,
-  savedVectorField3DPointResults, onSaveVectorField3DPointResult, onOpenVectorField3DProjectResults,
+  savedVectorField3DPointResults, onSaveVectorField3DPointResult,
+  savedVectorField3DRegionResults, vectorField3DRegionStatuses,
+  onSaveVectorField3DRegionResult, onOpenVectorField3DProjectResults,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
@@ -2254,6 +2261,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
           savedPointResults={savedVectorField3DPointResults}
           onSavePointResult={onSaveVectorField3DPointResult}
+          savedRegionResults={savedVectorField3DRegionResults}
+          regionResultStatuses={vectorField3DRegionStatuses}
+          onSaveRegionResult={onSaveVectorField3DRegionResult}
           onOpenProjectResults={onOpenVectorField3DProjectResults}
           onPromoteIsosurface={onPromoteVectorField3DIsosurface}
           isGraphLineImported={(selection, vectorDocument) => {

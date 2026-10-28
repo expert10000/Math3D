@@ -119,6 +119,41 @@ export async function readScientificSceneBundleMetadata(directory: string): Prom
     directory, bundleSchema: envelope.schema as ScientificSceneBundleMetadata["bundleSchema"] };
 }
 
+/** Check every pinned resource byte while keeping memory use independent of scene size. */
+export async function verifyScientificSceneBundleResources(directory: string): Promise<ScientificSceneBundleMetadata> {
+  const metadata = await readScientificSceneBundleMetadata(directory);
+  const verifyFile = async (path: string, bytes: number, expectedHash: string, label: string) => {
+    const info = await lstat(path);
+    if (!info.isFile() || info.isSymbolicLink() || info.size !== bytes)
+      throw new Error(`Scientific resource file size changed: ${label}`);
+    const file = await open(path, "r");
+    try {
+      const before = await file.stat();
+      if (!before.isFile() || before.dev !== info.dev || before.ino !== info.ino || before.size !== bytes)
+        throw new Error(`Scientific resource file identity changed: ${label}`);
+      const digest = createHash("sha256"), buffer = Buffer.allocUnsafe(Math.min(bytes, 1024 * 1024));
+      let offset = 0;
+      while (offset < bytes) {
+        const { bytesRead } = await file.read(buffer, 0, Math.min(buffer.length, bytes - offset), offset);
+        if (!bytesRead) throw new Error(`Scientific resource file truncated: ${label}`);
+        digest.update(buffer.subarray(0, bytesRead));
+        offset += bytesRead;
+      }
+      const after = await file.stat();
+      if (after.dev !== before.dev || after.ino !== before.ino || after.size !== bytes)
+        throw new Error(`Scientific resource file identity changed: ${label}`);
+      if (digest.digest("hex") !== expectedHash)
+        throw new Error(`Scientific resource integrity failed: ${label}`);
+    } finally { await file.close(); }
+  };
+  for (const resource of metadata.manifest.resources) {
+    await verifyFile(join(directory, resource.path), resource.bytes, resource.sha256, resource.id);
+    if (resource.overview) await verifyFile(join(directory, resource.overview.path),
+      resource.overview.bytes, resource.overview.sha256, `${resource.id} overview`);
+  }
+  return metadata;
+}
+
 /** Verify the complete bounded v3 overview sidecar for one component. */
 export async function readScientificSceneOverview(metadata: ScientificSceneBundleMetadata,
   resourceId: string): Promise<Buffer> {

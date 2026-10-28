@@ -514,6 +514,9 @@ declare global {
     | "sage.symbolic.factor"
     | "sage.symbolic.expand"
     | "sage.symbolic.solve"
+    | "sage.symbolic.gradient"
+    | "sage.symbolic.hessian"
+    | "sage.symbolic.singularities"
     | "sage.matrix.eigen_exact"
     | "sage.matrix.charpoly"
     | "sage.polynomial.roots_exact"
@@ -605,7 +608,7 @@ declare global {
         Promise<{ ok: true; source: Awaited<ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDataset"]>> extends infer R ?
           R extends { ok: true; source: infer S } ? S : never : never } |
           { ok: false; status: "missing" | "changed" | "error"; error: string }>;
-      checkGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string }) =>
+      checkGraphDatasetReference: (request: { locator: import("@math3d/core").Graph2DFieldLocator; sceneFingerprint: string; verifyResources?: true }) =>
         ReturnType<NonNullable<Window["scientificScenes"]>["openGraphDatasetReference"]>;
       chooseGraphDatasetRelink: () => Promise<{ ok: true; source: { manifestJson: string; fingerprint: string;
         locator: import("@math3d/core").Graph2DFieldLocator;

@@ -11,6 +11,7 @@ import { openScientificGraphDatasets, previewScientificGraphSlice, previewScient
   type ScientificGraphDatasetSource } from "../scientificScene/graphDataset";
 import { preparePythonPublisher, runPythonPublisher, type PreparedPythonPublisher,
   type PythonPublisherRun } from "../scientificScene/pythonPublisher";
+import { verifyScientificSceneBundleResources } from "../scientificScene/bundle";
 
 export type ScientificSceneOpenResponse =
   | { ok: true; scene: ScientificHeightSurface & { sourceKind: "bundled" | "external";
@@ -142,10 +143,12 @@ export function registerScientificSceneIpc(): void {
     if (args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
       return { result: { ok: false, status: "error", error: "Invalid Graph field reference request." }, directory: null };
     const request = args[0] as Record<string, unknown>;
-    if (Object.keys(request).sort().join(",") !== "locator,sceneFingerprint" ||
+    if (!["locator,sceneFingerprint", "locator,sceneFingerprint,verifyResources"].includes(
+          Object.keys(request).sort().join(",")) ||
         !isGraph2DFieldLocator(request.locator) ||
         request.locator.kind === "directory" && !isAbsolute(request.locator.value) ||
-        typeof request.sceneFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.sceneFingerprint))
+        typeof request.sceneFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.sceneFingerprint) ||
+        (request.verifyResources !== undefined && request.verifyResources !== true))
       return { result: { ok: false, status: "error", error: "Invalid Graph field reference request." }, directory: null };
     const locator = request.locator as Graph2DFieldLocator;
     const directory = locator.kind === "preset" ?
@@ -157,11 +160,16 @@ export function registerScientificSceneIpc(): void {
       const source = await openScientificGraphDatasets(directory);
       if (source.fingerprint !== request.sceneFingerprint)
         return { result: { ok: false, status: "changed", error: "Saved field source has changed. Choose a matching source before viewing." }, directory };
+      if (request.verifyResources === true) {
+        const checked = await verifyScientificSceneBundleResources(directory);
+        if (checked.fingerprint !== source.fingerprint)
+          return { result: { ok: false, status: "changed", error: "Saved field source changed during verification." }, directory };
+      }
       return { result: { ok: true, source: { ...source, locator } }, directory };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { result: { ok: false, status: /ENOENT|not found|does not exist|missing/i.test(message) ? "missing" :
-        /integrity failed|checksum|fingerprint changed|invalid scientific bundle file size|file identity changed|file truncated|file size changed/i.test(message) ? "changed" : "error",
+        /integrity failed|checksum|fingerprint changed|does not match source|invalid scientific bundle file size|file identity changed|file truncated|file size changed/i.test(message) ? "changed" : "error",
         error: message }, directory };
     }
   };

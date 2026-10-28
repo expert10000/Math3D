@@ -30,7 +30,8 @@ import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibi
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
 import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
-import { canonicalJsonStringify, structuralHash, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
+import { canonicalJsonStringify, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE, type ProjectNoteAnchor, type StableDocumentId } from "@math3d/core";
+import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { pointTableStore, installPortablePointTables } from "../graph2d/pointTableStore";
 import { prepareProjectExampleCollection, importProjectExamples, SAMSUNG_EXAMPLE_COUNT } from "../projects/projectExampleCollection";
 import { addRippleWaveResearch, instantiateNotebookStarter, NOTEBOOK_STARTERS, type NotebookStarterId } from "../projects/notebookStarters";
@@ -75,6 +76,7 @@ type Props = {
   onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number } | null;
   resultRequest?: { id: string; token: number } | null;
+  regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
   capture: () => MixedWorkspaceDocument;
@@ -88,7 +90,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -1319,7 +1321,11 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               {savedProjectEntry && <p>Saved {new Date(savedProjectEntry.savedAt).toLocaleString()}</p>}
               {dashboardDependencies && (dashboardDependencies.results.length > 0 || dashboardDependencies.artifacts.length > 0) && <div className="project-dashboard-outputs" aria-label="Saved output freshness">
                 <h5>Saved outputs</h5>
-                {dashboardDependencies.results.map(result => { const status = presentProjectFreshness(result.freshness); return <div key={result.id}>
+                {dashboardDependencies.results.map(result => { const status = result.operation === VECTOR_FIELD3D_REGION_RESULT_TYPE
+                  ? regionResultStatuses[result.id] === "source-current" ? { tone: "current", label: "Source verified", detail: "Saved region result and all pinned source bytes verified." }
+                    : { tone: "unavailable", label: regionResultStatuses[result.id] === "missing" ? "Missing source" :
+                      regionResultStatuses[result.id] === "changed" ? "Changed source" : "Checking sources", detail: "Region values are withheld." }
+                  : presentProjectFreshness(result.freshness); return <div key={result.id}>
                   <span>{result.operation}</span><span className="project-freshness-badge" data-tone={status.tone} data-testid={`project-result-freshness-${result.id}`} title={status.detail}>{status.label}</span>
                 </div>; })}
                 {dashboardDependencies.artifacts.map(artifact => <div key={artifact.id}>
@@ -1404,6 +1410,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <h3>Results and artifacts</h3>
           <p className="project-workspace-section-hint">Inspect recorded analyses, provenance and captured resources.</p>
           {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
+            regionResultStatuses={regionResultStatuses}
             canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} focusResult={resultFocus} />}
         </section>}
         {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">

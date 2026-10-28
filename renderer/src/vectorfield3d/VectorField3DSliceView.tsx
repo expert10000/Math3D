@@ -2,7 +2,8 @@ import { useEffect, useId, useState } from "react";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
   VectorField3DClipBounds, VectorField3DLinkedLineProfile,
   VectorField3DOverlayRegion,
-  Graph2DScientificVolume } from "@math3d/core";
+  Graph2DScientificVolume, AnalysisResultEnvelope } from "@math3d/core";
+import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
 import type { ScalarSliceOverlay, SliceOverlayArrow,
   LinkedOverlayLineProfile, VectorSliceOverlayPlane } from "./scientificSliceOverlay";
@@ -25,7 +26,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   overlayVectorPlane = null, scalarOverlayVolume = null, complexOverlayVolumes = null,
   linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange,
   onSendLinkedLineToGraphs, linkedLineBusy = false,
-  overlayRegion = null, onOverlayRegionChange }: {
+  overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
+  regionResultStatuses = {}, onSaveRegionResult }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -54,6 +56,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   linkedLineBusy?: boolean;
   overlayRegion?: VectorField3DOverlayRegion | null;
   onOverlayRegionChange?: (region: VectorField3DOverlayRegion | null) => void;
+  savedRegionResults?: readonly AnalysisResultEnvelope[];
+  regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
+  onSaveRegionResult?: (result: AnalysisResultEnvelope) => void;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
   onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
@@ -341,6 +346,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       region={overlayRegion} vectorPlane={overlayVectorPlane ?? null}
       scalarVolume={scalarOverlayVolume ?? null} vectorSamples={overlayVectorSamples}
       complexVolumes={complexOverlayVolumes ?? null}
+      savedResults={savedRegionResults} resultStatuses={regionResultStatuses}
+      onSaveResult={onSaveRegionResult}
       status={overlayStatus} onChange={onOverlayRegionChange}
       selecting={regionSelecting} onStartSelection={() => {
         setRegionSelecting(!regionSelecting); setRegionFirstCorner(null);

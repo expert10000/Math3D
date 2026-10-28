@@ -1,9 +1,14 @@
-import type { Graph2DScientificVolume, VectorField3DDocument,
-  VectorField3DOverlayRegion, VectorField3DSliceArtifact } from "@math3d/core";
+import { canonicalJsonStringify, createVectorField3DRegionResult,
+  reverifyVectorField3DRegionResult, VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  type AnalysisResultEnvelope, type Graph2DScientificVolume, type VectorField3DDocument,
+  type VectorField3DOverlayRegion, type VectorField3DSliceArtifact } from "@math3d/core";
+import { useState } from "react";
+import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sampleOverlayRegion, type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 
 export function OverlayRegionView({ document, slice, region, vectorPlane, scalarVolume,
-  complexVolumes, vectorSamples, status, onChange, onStartSelection, selecting }: {
+  complexVolumes, vectorSamples, status, onChange, onStartSelection, selecting,
+  savedResults = [], resultStatuses = {}, onSaveResult }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   vectorPlane: VectorSliceOverlayPlane | null;
@@ -12,7 +17,11 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
   status: string; onChange: (region: VectorField3DOverlayRegion | null) => void;
   onStartSelection: () => void; selecting: boolean;
+  savedResults?: readonly AnalysisResultEnvelope[];
+  resultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
+  onSaveResult?: (result: AnalysisResultEnvelope) => void;
 }) {
+  const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
   const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
   if (!scalar && !complex) return null;
@@ -33,6 +42,34 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   const labels = slice.planeAxes.map(axis => document.source.axes[axis]!.label);
   const units = slice.planeAxes.map(axis => document.source.axes[axis]!.unit);
   const format = (value: number) => value.toPrecision(5);
+  const saved = [...savedResults].reverse().find(result =>
+    result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE &&
+    result.provenance.source.documentId === document.identity.id && region &&
+    result.provenance.operation.parameters.region &&
+    canonicalJsonStringify(result.provenance.operation.parameters.region) ===
+      canonicalJsonStringify(region));
+  const overlaySamples = complex && complexVolumes ? [
+    { name: "real", sampleSha256: complexVolumes[0].sampleSha256 },
+    { name: "imaginary", sampleSha256: complexVolumes[1].sampleSha256 }] :
+    scalar && scalarVolume ? [{ name: scalar.reference.component,
+      sampleSha256: scalarVolume.sampleSha256 }] : [];
+  let savedStatus = "";
+  if (saved) {
+    const sourceStatus = resultStatuses[saved.resultId] ?? "checking";
+    if (sourceStatus === "checking") savedStatus = "Checking saved region sources…";
+    else if (sourceStatus !== "source-current") savedStatus =
+      `Saved Project region withheld: ${sourceStatus} source.`;
+    else if (!summary || !region) savedStatus =
+      "Saved Project region withheld until the vector slice and overlay are freshly verified.";
+    else {
+      try {
+        reverifyVectorField3DRegionResult(saved, document, region, summary,
+          vectorSamples, overlaySamples);
+        savedStatus = "Saved Project region current: numerical summary reverified.";
+      } catch (cause) { savedStatus = `Saved Project region withheld: ${
+        cause instanceof Error ? cause.message : String(cause)}`; }
+    }
+  }
   return <section aria-label="Linked heatmap and vector region" data-testid="scientific-overlay-region">
     <h4>Linked {complex ? "complex" : "scalar"} + vector region</h4>
     <button type="button" aria-pressed={selecting} onClick={onStartSelection}>
@@ -77,6 +114,17 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           {complex && complexVolumes && ` Real ${complexVolumes[0].sampleSha256}; imaginary ${
             complexVolumes[1].sampleSha256}.`}</p>
       </div>}
+      {onSaveResult && summary?.alignedCount && <button type="button"
+        data-testid="scientific-region-publish" onClick={() => {
+          try {
+            const result = createVectorField3DRegionResult(document, region, summary,
+              vectorSamples, overlaySamples);
+            onSaveResult(result); setPublishError("");
+          } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Publish region result to Project</button>}
+      {publishError && <p role="alert">{publishError}</p>}
+      {savedStatus && <p role={savedStatus.includes("withheld") ? "alert" : "status"}
+        data-testid="scientific-region-saved-status">{savedStatus}</p>}
     </>}
   </section>;
 }

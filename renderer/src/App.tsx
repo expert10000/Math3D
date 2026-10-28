@@ -39,6 +39,8 @@ import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource }
 import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
   reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
+import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
+  "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
@@ -799,6 +801,8 @@ import {
   viewerSourceFromDocument,
   VECTOR_FIELD3D_POINT_RESULT_TYPE,
   vectorField3DPointResultRelation,
+  VECTOR_FIELD3D_REGION_RESULT_TYPE,
+  vectorField3DRegionResultRelation,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
   type ComplexAnalysisDocument,
@@ -23183,6 +23187,9 @@ const App: React.FC = () => {
   const [graph2dDocument, setGraph2dDocument] = useState<Graph2DDocument>(() => createEmptyGraph2DDocument("desktop-web-default"));
   const [vectorField3DDocument, setVectorField3DDocument] = useState<import("@math3d/core").VectorField3DDocument | null>(null);
   const [vectorField3DPointResults, setVectorField3DPointResults] = useState<AnalysisResultEnvelope[]>([]);
+  const [vectorField3DRegionResults, setVectorField3DRegionResults] = useState<AnalysisResultEnvelope[]>([]);
+  const [vectorField3DRegionStatuses, setVectorField3DRegionStatuses] = useState<Record<string, SavedRegionSourceStatus>>({});
+  const regionResultCheckEpoch = useRef(0);
   const [vectorField3DOpenRequest, setVectorField3DOpenRequest] = useState<{ document: import("@math3d/core").VectorField3DDocument; token: number } | null>(null);
   const vectorField3DRequestSerial = useRef(0);
   const [vectorField2DDocument, setVectorField2DDocument] = useState<import("@math3d/core").VectorField2DDocument | null>(null);
@@ -77434,12 +77441,14 @@ case "mobius":
       }
       const ids = new Set(entries.map((entry) => entry.expected.id));
       const pointResults = vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId));
+      const regionResults = vectorField3DRegionResults.filter(result => ids.has(result.provenance.source.documentId));
       const results = [...new Map([...restored.workspace.results,
         ...live.results.filter((result) => ids.has(result.provenance.source.documentId)),
-        ...pointResults].map((result) => [result.resultId, result])).values()];
+        ...pointResults, ...regionResults].map((result) => [result.resultId, result])).values()];
       const resultIds = new Set(results.map((result) => result.resultId));
       const relations = [...new Map([...restored.workspace.relations, ...live.relations.filter((relation) => relation.sources.every((source) => ids.has(source.documentId)) && (relation.target.type === "document" ? ids.has(relation.target.generation.documentId) : relation.target.type === "result" ? resultIds.has(relation.target.resultId) : live.artifacts.some((artifact) => artifact.handle.artifactId === (relation.target.type === "artifact" ? relation.target.artifactId : "")))),
-        ...pointResults.map(vectorField3DPointResultRelation)].map((relation) => [relation.relationId, relation])).values()];
+        ...pointResults.map(vectorField3DPointResultRelation),
+        ...regionResults.map(vectorField3DRegionResultRelation)].map((relation) => [relation.relationId, relation])).values()];
       const artifactIds = new Set([...results.flatMap((result) => result.artifacts.map((artifact) => artifact.artifactId)), ...relations.flatMap((relation) => relation.target.type === "artifact" ? [relation.target.artifactId] : [])]);
       const artifacts = [...new Map([...restored.workspace.artifacts, ...live.artifacts.filter((artifact) => artifactIds.has(artifact.handle.artifactId))].map((artifact) => [artifact.handle.artifactId, artifact])).values()];
       const constructions = restored.workspace.constructions.map((entry) => {
@@ -77501,12 +77510,14 @@ case "mobius":
     }
     const ids = new Set(entries.map((entry) => entry.expected.id));
     const results = [...volumeExtractionRecords.map((record) => record.result), ...meshAnalysisKernelBridge.results(),
-      ...vectorField3DPointResults]
+      ...vectorField3DPointResults, ...vectorField3DRegionResults]
       .filter((result) => ids.has(result.provenance.source.documentId));
     const uniqueResults = [...new Map(results.map((result) => [result.resultId, result])).values()];
     const relations = [...volumeExtractionRecords.flatMap((record) => record.relations), ...surfaceHandoffs.flatMap((record) => record.relations),
       ...vectorField3DPointResults.filter(result => ids.has(result.provenance.source.documentId))
         .map(vectorField3DPointResultRelation),
+      ...vectorField3DRegionResults.filter(result => ids.has(result.provenance.source.documentId))
+        .map(vectorField3DRegionResultRelation),
       ...(openedCurveConstruction ? [openedCurveConstruction.record.relation] : []), ...graph2dPromotions.map((item) => item.relation)];
     const uniqueRelations = [...new Map(relations.map((relation) => [relation.relationId, relation])).values()];
     const volumeArtifacts = new Map(volumeExtractionRecords.map((record) => [record.artifactId, { contentHash: record.contentHash, byteLength: record.byteLength }]));
@@ -78697,6 +78708,10 @@ case "mobius":
 
   const reopenGraphWorkspace = (workspace: MixedWorkspaceDocument) => {
           restoredProjectRef.current = null; setAdditionalActiveId(null); setRestoredCurveAdapter(null); setRestoredSurfaceAdapter(null); setRestoredTopologyAdapter(null); setRestoredComplexAdapter(null); setRestoredVolumeAdapter(null);
+          regionResultCheckEpoch.current++;
+          setVectorField3DRegionResults(workspace.results.filter(result =>
+            result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE));
+          setVectorField3DRegionStatuses({});
           setScientificSceneLibrary([...(workspace.scientificScenes ?? [])]);
           const field = workspace.entries.find((entry) => entry.module === "vector3d")?.checkpoint;
           setVectorField3DDocument(field?.format === "math3d.vector-field3d-document" ? field : null);
@@ -79059,6 +79074,25 @@ case "mobius":
     }
     setVectorField3DPointResults(workspace.results.filter(result =>
       result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE));
+    setVectorField3DRegionResults(workspace.results.filter(result =>
+      result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE));
+    const regionResults = workspace.results.filter(result =>
+      result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE);
+    const checkEpoch = ++regionResultCheckEpoch.current;
+    setVectorField3DRegionStatuses(Object.fromEntries(regionResults.map(result =>
+      [result.resultId, "checking" as const])));
+    for (const result of regionResults) {
+      const source = resolved.get(result.provenance.source.documentId);
+      if (source?.format !== "math3d.vector-field3d-document") {
+        setVectorField3DRegionStatuses(current => ({ ...current, [result.resultId]: "error" }));
+        continue;
+      }
+      void checkSavedRegionResultSources(result, source, window.scientificScenes)
+        .then(status => { if (checkEpoch === regionResultCheckEpoch.current)
+          setVectorField3DRegionStatuses(current => ({ ...current, [result.resultId]: status })); })
+        .catch(() => { if (checkEpoch === regionResultCheckEpoch.current)
+          setVectorField3DRegionStatuses(current => ({ ...current, [result.resultId]: "error" })); });
+    }
     if (owner) activeNotebookProjectRef.current = owner;
     const firstGraph = graphs.values().next().value;
     if (firstGraph) { graph2dAdapterRef.current = firstGraph; setGraph2dDocument(firstGraph.document()); }
@@ -79945,6 +79979,7 @@ case "mobius":
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
         resultRequest={projectResultRequest}
+        regionResultStatuses={vectorField3DRegionStatuses}
         onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
@@ -90285,6 +90320,15 @@ case "mobius":
               setVectorField3DDocument(field);
               setVectorField3DPointResults(current => current.some(item => item.resultId === result.resultId) ?
                 current : [...current, result]);
+            }}
+            savedVectorField3DRegionResults={vectorField3DRegionResults}
+            vectorField3DRegionStatuses={vectorField3DRegionStatuses}
+            onSaveVectorField3DRegionResult={(field, result) => {
+              setVectorField3DDocument(field);
+              setVectorField3DRegionResults(current => current.some(item => item.resultId === result.resultId) ?
+                current : [...current, result]);
+              setVectorField3DRegionStatuses(current => ({ ...current,
+                [result.resultId]: "source-current" }));
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));

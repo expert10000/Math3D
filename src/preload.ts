@@ -570,7 +570,7 @@ contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({
     ipcRenderer.invoke("scientificScenes:openGraphDatasetPreset", id),
   openGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string }):
     Promise<ScientificGraphReferenceOpenResponse> => ipcRenderer.invoke("scientificScenes:openGraphDatasetReference", request),
-  checkGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string }):
+  checkGraphDatasetReference: (request: { locator: Graph2DFieldLocator; sceneFingerprint: string; verifyResources?: true }):
     Promise<ScientificGraphReferenceOpenResponse> => ipcRenderer.invoke("scientificScenes:checkGraphDatasetReference", request),
   chooseGraphDatasetRelink: (): Promise<ScientificGraphRelinkPickResponse> =>
     ipcRenderer.invoke("scientificScenes:chooseGraphDatasetRelink"),

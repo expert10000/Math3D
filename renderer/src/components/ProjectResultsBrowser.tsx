@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { VECTOR_FIELD3D_POINT_RESULT_TYPE, type KernelWorkspaceModule,
+import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE, type KernelWorkspaceModule,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
+import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 
 type Selection = { kind: "result" | "artifact"; id: string };
 type Props = {
@@ -12,12 +13,20 @@ type Props = {
   canOpen: (id: string, module: KernelWorkspaceModule) => boolean;
   onOpen: (id: string, module: KernelWorkspaceModule) => void;
   focusResult?: { id: string; token: number } | null;
+  regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
 };
 
 const readable = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
 const bytes = (value: number | null) => value === null ? "Size not recorded" : `${value.toLocaleString()} bytes`;
 
-export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult }) => {
+const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) => status === "source-current"
+  ? { tone: "current", label: "Source verified" } : status === "missing"
+    ? { tone: "unavailable", label: "Missing source" } : status === "changed"
+      ? { tone: "unavailable", label: "Changed source" } : status === "error"
+        ? { tone: "unavailable", label: "Verification failed" }
+        : { tone: "unavailable", label: "Checking sources" };
+
+export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {} }) => {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const detailRef = useRef<HTMLElement>(null);
@@ -72,7 +81,9 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
         <h4>Results ({results.length})</h4>
         {filteredResults.map(item => {
           const status = inspection?.results.find(candidate => candidate.id === item.resultId);
-          const freshness = status && presentProjectFreshness(status.freshness);
+          const freshness = item.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE
+            ? regionSourcePresentation(regionResultStatuses[item.resultId])
+            : status && presentProjectFreshness(status.freshness);
           return <button type="button" key={item.resultId} data-testid={`project-result-select-${item.resultId}`}
             aria-current={active?.kind === "result" && active.id === item.resultId ? "true" : undefined}
             onClick={() => select({ kind: "result", id: item.resultId })}>
@@ -97,7 +108,9 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
       <section ref={detailRef} tabIndex={-1} className="project-results-detail" aria-label="Selected saved output" data-testid="project-result-detail">
         {result && <>
           <div className="project-results-detail-heading"><div><small>ANALYSIS RESULT</small><h4>{result.provenance.operation.type}</h4></div>
-            {resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
+            {result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE
+              ? <span className="project-freshness-badge" data-tone={regionSourcePresentation(regionResultStatuses[result.resultId]).tone}>{regionSourcePresentation(regionResultStatuses[result.resultId]).label}</span>
+              : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
           </div>
           <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
           <dl><div><dt>Source document</dt><dd>{sourceButton(result.provenance.source.documentId)}</dd></div>
@@ -107,7 +120,13 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <div><dt>Engine</dt><dd>{result.provenance.engine.name} {result.provenance.engine.version}</dd></div>
             <div><dt>Run time</dt><dd>{result.provenance.elapsedMs.toLocaleString()} ms</dd></div></dl>
           <h5>Summary</h5>
-          {result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE ?
+          {result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE &&
+            regionResultStatuses[result.resultId] !== "source-current" ?
+            <p data-testid="project-region-result-gated">Saved region values are withheld.
+              {regionResultStatuses[result.resultId] === "missing" ? " A source is missing." :
+                regionResultStatuses[result.resultId] === "changed" ? " A source has changed." :
+                  " Source verification is pending or unavailable."}</p> :
+          result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE ?
             <p data-testid="project-point-result-gated">Saved point values require fresh verification.
               Open the source in Field Explorer and choose “Reverify saved Inspector result” to view them.</p> :
             Object.keys(result.summary).length ? <dl>{Object.entries(result.summary).map(([key, value]) => <div key={key}><dt>{key}</dt><dd><code>{readable(value)}</code></dd></div>)}</dl> : <p>No summary values recorded.</p>}

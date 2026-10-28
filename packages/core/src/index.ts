@@ -143,6 +143,7 @@ export * from "./vectorField3DDerivedLine";
 export * from "./vectorField3DDifferential";
 export * from "./vectorField3DEigenanalysis";
 export * from "./vectorField3DPointResult";
+export * from "./vectorField3DRegionResult";
 export * from "./vectorField3DTrajectories";
 export * from "./topologyDocument";
 export * from "./topologyPersistence";

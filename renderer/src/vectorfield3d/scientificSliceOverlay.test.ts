@@ -7,12 +7,16 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   parseVectorField3DDocument, reviseVectorField3DWorkspace, sampleVectorField3DSlice,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
+  createVectorField3DRegionResult, reverifyVectorField3DRegionResult,
+  vectorField3DRegionResultRelation, createMixedWorkspaceDocument,
+  createMath3DProject, parseMath3DProject, serializeMath3DProject,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
 import { sampleComplexSliceOverlay, sampleLinkedOverlayLineProfile,
   sampleOverlayRegion, sampleScalarSliceOverlay,
   sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
+import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -275,6 +279,49 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       expect(result.scalarUnit).toBe("V");
       expect(result.scalarSampleSha256).toBe(scalarVolume.sampleSha256);
     }
+  });
+
+  it("publishes a compact linked region that survives Project reopen and rejects changed values", async () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const,
+      vectorChannel: "speed" as const, visible: true };
+    const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", overlayRegion: region,
+      scalarOverlay: { reference: scalarReference, title: "Potential", unit: "V",
+        opacity: 0.8, visible: true } });
+    const slice = sampleVectorField3DSlice(document, 2, 0);
+    const summary = sampleOverlayRegion(document, slice, region,
+      sampleSliceOverlayVectorPlane(document, slice), scalarReference, scalarVolume, "V");
+    const overlaySamples = [{ name: "scalar", sampleSha256: scalarVolume.sampleSha256 }];
+    const result = createVectorField3DRegionResult(document, region, summary, [], overlaySamples);
+    const relation = vectorField3DRegionResultRelation(result);
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "vector3d",
+      checkpoint: document, expected: document.identity, replay: null }],
+      activeDocumentIds: [document.identity.id], constructions: [],
+      results: [result], relations: [relation], artifacts: [], committedSelection: null });
+    const saved = serializeMath3DProject(createMath3DProject(workspace,
+      { stableKey: "linked-region" }));
+    expect(saved).not.toContain('"values"');
+    const reopened = parseMath3DProject(saved);
+    expect(reopened.workspace.results).toEqual([result]);
+    expect(reopened.workspace.relations).toEqual([relation]);
+    expect(result.provenance.operation.parameters.region).toEqual(region);
+    expect(result.provenance.operation.parameters.overlayReferences).toEqual([scalarReference]);
+    expect(result.provenance.operation.parameters.overlaySamples).toEqual(overlaySamples);
+    expect(() => reverifyVectorField3DRegionResult(result, document, region,
+      summary, [], overlaySamples)).not.toThrow();
+    expect(() => reverifyVectorField3DRegionResult(result, document, region,
+      { ...summary, scalar: { ...summary.scalar!, mean: summary.scalar!.mean + 1 } },
+      [], overlaySamples)).toThrow(/differs/);
+    expect(() => reverifyVectorField3DRegionResult(result, document, region,
+      summary, [], [{ ...overlaySamples[0]!, sampleSha256: "changed" }]))
+      .toThrow(/differs/);
+    const missing = { checkGraphDatasetReference: async () =>
+      ({ ok: false as const, status: "missing" as const, error: "Source missing" }) };
+    const changed = { checkGraphDatasetReference: async () =>
+      ({ ok: false as const, status: "changed" as const, error: "Source changed" }) };
+    expect(await checkSavedRegionResultSources(result, document, missing)).toBe("missing");
+    expect(await checkSavedRegionResultSources(result, document, changed)).toBe("changed");
   });
 
   it("flags scalar area beyond its domain and rejects changed or incompatible sources", () => {

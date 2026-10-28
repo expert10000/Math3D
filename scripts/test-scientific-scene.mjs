@@ -6,7 +6,8 @@ import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { readScientificSceneBundle } = require("../dist/main/scientificScene/bundle.js");
+const { readScientificSceneBundle, verifyScientificSceneBundleResources } =
+  require("../dist/main/scientificScene/bundle.js");
 const { openScientificGraphDatasets, previewScientificGraphSlice, previewScientificGraphPlane,
   previewScientificGraphVolume, previewScientificGraphVectorVolume,
   previewScientificGraphComplexVolumeLines } =
@@ -91,6 +92,7 @@ assert.equal(picked.sampleId, `${picked.sceneId}:f:212`);
 await assert.rejects(inspectScientificHeightSample(fixture, scalar.fingerprint, "f", 289), /outside/);
 
 const verified = await readScientificSceneBundle(fixture);
+assert.equal((await verifyScientificSceneBundleResources(fixture)).fingerprint, verified.fingerprint);
 const overLimit = { ...verified,
   resources: new Map([[verified.manifest.datasets[0].real, Buffer.alloc(4097 * 8)]]) };
 assert.throws(() => adaptVerifiedHeightSurface(overLimit), /bounded display sample limit/);
@@ -112,6 +114,7 @@ try {
   const changed = Buffer.from(originalData); changed[0] ^= 1;
   await writeFile(dataPath, changed);
   await assert.rejects(readScientificSceneBundle(directory), /resource integrity/);
+  await assert.rejects(verifyScientificSceneBundleResources(directory), /resource integrity/);
   await writeFile(dataPath, originalData);
 
   const manifestPath = join(directory, "manifest.json");

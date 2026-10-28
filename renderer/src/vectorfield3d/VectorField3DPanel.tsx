@@ -60,6 +60,7 @@ import { sampleComplexSliceOverlay, sampleScalarSliceOverlay, sampleSliceOverlay
   type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair, type LinkedOverlayGraphSeries } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
+import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -97,7 +98,8 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine,
-  savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
+  savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
+  onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
@@ -112,6 +114,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries]) => void;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  savedRegionResults?: readonly AnalysisResultEnvelope[];
+  regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
+  onSaveRegionResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
     surface: VectorField3DIsosurface) => void;
@@ -2489,6 +2494,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               complexOverlayVolumes={linkedRegionComplexVolumes}
               linkedLineProfile={workspace.linkedLineProfile}
               overlayRegion={workspace.overlayRegion}
+              savedRegionResults={savedRegionResults}
+              regionResultStatuses={regionResultStatuses}
+              onSaveRegionResult={onSaveRegionResult ? result => onSaveRegionResult(document, result) : undefined}
               onOverlayRegionChange={setOverlayRegion}
               linkedProfileMismatch={sharedProfileMismatch}
               onLinkedLineProfileChange={setLinkedLineProfile}
@@ -2517,6 +2525,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         complexOverlayVolumes={linkedRegionComplexVolumes}
         linkedLineProfile={workspace.linkedLineProfile}
         overlayRegion={workspace.overlayRegion}
+        savedRegionResults={savedRegionResults}
+        regionResultStatuses={regionResultStatuses}
+        onSaveRegionResult={onSaveRegionResult ? result => onSaveRegionResult(document, result) : undefined}
         onOverlayRegionChange={setOverlayRegion}
         linkedProfileMismatch={sharedProfileMismatch}
         onLinkedLineProfileChange={setLinkedLineProfile}
