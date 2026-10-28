@@ -43,6 +43,10 @@ export type VectorField3DEquilibriumConstruction = Readonly<{
 export type VectorField3DSeedGroupStyle = Readonly<{ id: string; name: string; color: string }>;
 export type VectorField3DScalarOverlay = Readonly<{ reference: Graph2DFieldReference;
   title: string; unit: string; opacity: number; visible: boolean }>;
+export type VectorField3DLinkedLineProfile = Readonly<{
+  normalAxis: 0 | 1 | 2; varyingAxis: 0 | 1 | 2;
+  point: readonly [number, number, number];
+  vectorChannel: "speed" | "p" | "q" | "r"; visible: boolean }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   sliceChannel: "component" | "divergence" | "curl-magnitude" |
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
@@ -57,6 +61,7 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
   linkedProbe: Readonly<{ point: readonly [number, number, number];
     units: readonly [string, string, string] }> | null;
   scalarOverlay: VectorField3DScalarOverlay | null;
+  linkedLineProfile: VectorField3DLinkedLineProfile | null;
   hiddenSeedGroups: readonly string[];
   seedGroupStyles: readonly VectorField3DSeedGroupStyle[];
   equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
@@ -71,7 +76,8 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
   workspace?: VectorField3DWorkspace }>;
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
-  selectedLayer: "arrows", layout: "three-pane", probe: null, linkedProbe: null, scalarOverlay: null,
+  selectedLayer: "arrows", layout: "three-pane", probe: null, linkedProbe: null,
+  scalarOverlay: null, linkedLineProfile: null,
   cameraPreset: "perspective",
   equilibriumConstructions: [],
   isosurfaceLevel: null,
@@ -202,6 +208,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { linkedProbe: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "scalarOverlay") ?
       { scalarOverlay: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "linkedLineProfile") ?
+      { linkedLineProfile: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "hiddenSeedGroups") ?
       { hiddenSeedGroups: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "seedGroupStyles") ?
@@ -226,7 +234,7 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "linkedLineProfile", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
       workspace.scalarOverlay !== null && (!record(workspace.scalarOverlay) ||
         !exact(workspace.scalarOverlay, ["reference", "title", "unit", "opacity", "visible"]) ||
         !isGraph2DFieldReference(workspace.scalarOverlay.reference) ||
@@ -236,6 +244,18 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
         !text(workspace.scalarOverlay.title, 160) || !text(workspace.scalarOverlay.unit) ||
         !finite(workspace.scalarOverlay.opacity) || workspace.scalarOverlay.opacity < 0.1 ||
         workspace.scalarOverlay.opacity > 1 || typeof workspace.scalarOverlay.visible !== "boolean") ||
+      workspace.linkedLineProfile !== null && (!record(workspace.linkedLineProfile) ||
+        !exact(workspace.linkedLineProfile,
+          ["normalAxis", "varyingAxis", "point", "vectorChannel", "visible"]) ||
+        ![0, 1, 2].includes(workspace.linkedLineProfile.normalAxis as number) ||
+        ![0, 1, 2].includes(workspace.linkedLineProfile.varyingAxis as number) ||
+        workspace.linkedLineProfile.normalAxis === workspace.linkedLineProfile.varyingAxis ||
+        !tuple3(workspace.linkedLineProfile.point) ||
+        !(workspace.linkedLineProfile.point as number[]).every((coordinate, axis) =>
+          finite(coordinate) && coordinate >= source.axes[axis]!.min &&
+          coordinate <= source.axes[axis]!.max) ||
+        !["speed", "p", "q", "r"].includes(workspace.linkedLineProfile.vectorChannel as string) ||
+        typeof workspace.linkedLineProfile.visible !== "boolean") ||
       workspace.isosurfaceLevel !== null && (!finite(workspace.isosurfaceLevel) ||
         workspace.isosurfaceLevel < 0 || workspace.isosurfaceLevel > 1e9) ||
       !integer(workspace.isosurfaceTriangleBudget, 1, 100_000) ||

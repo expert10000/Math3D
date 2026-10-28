@@ -30,6 +30,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type VectorField3DSpatialSeedPattern,
   type VectorField3DSeedGroupStyle,
   type VectorField3DScalarOverlay,
+  type VectorField3DLinkedLineProfile,
   type Graph2DScientificVolume,
   inspectGraph2DFieldReference, verifyGraph2DScientificVolume,
   type VectorField3DVerifiedTile } from "@math3d/core";
@@ -51,8 +52,9 @@ import { BUILTIN_EXPLORER_SCENES, type BuiltinExplorerSceneId,
 import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
 import { LinkedExplorerVectorProbe } from "./LinkedExplorerVectorProbe";
 import type { LinkedExplorerProbe } from "./linkedFieldProbe";
-import { sampleScalarSliceOverlay, sampleSliceOverlayArrows,
-  type SliceOverlayArrow } from "./scientificSliceOverlay";
+import { sampleScalarSliceOverlay, sampleSliceOverlayVectorPlane,
+  sliceOverlayArrowsFromPlane, type SliceOverlayArrow,
+  type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -154,6 +156,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     VectorField3DSliceArtifact>>>({});
   const [overlayVectorArrows, setOverlayVectorArrows] = useState<Partial<Record<SeedSliceLayer,
     readonly SliceOverlayArrow[]>>>({});
+  const [overlayVectorPlanes, setOverlayVectorPlanes] = useState<Partial<Record<SeedSliceLayer,
+    VectorSliceOverlayPlane>>>({});
   const [overlayVectorSamples, setOverlayVectorSamples] = useState<Partial<Record<SeedSliceLayer,
     readonly OverlaySampleDigest[]>>>({});
   const [verifiedScalarOverlay, setVerifiedScalarOverlay] = useState<{
@@ -210,6 +214,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       entry.datasetId === document.source.field.references[0].datasetId);
   const workspace = document.workspace ?? defaultVectorField3DWorkspace(document.source);
   const scalarOverlay = workspace.scalarOverlay;
+  const linkedProfileScalarVolume = scalarOverlay?.visible && verifiedScalarOverlay &&
+    verifiedScalarOverlay.referenceId === scalarOverlay.reference.id &&
+    verifiedScalarOverlay.resourceSha256 === scalarOverlay.reference.resourceSha256 ?
+    verifiedScalarOverlay.volume : null;
   const scalarOverlayChoices = [fieldLayer, ...overlayFields]
     .filter((field): field is ScientificFieldDocument => !!field && !field.source.paired &&
       !field.source.derivation && field.source.reference.semanticType === "scalar-field" &&
@@ -282,21 +290,34 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     max: axis.origin + axis.spacing * (fieldLayer.source.reference.shape[index]! - 1) })) :
     document.source.axes;
   const linkedUnits = linkedAxes.map(axis => axis.unit) as [string, string, string];
+  const sharedProfileMismatch = linkedProbe && !linkedProbe.units.every((unit, axis) =>
+    unit === document.source.axes[axis]!.unit) ?
+    "Shared probe coordinate units do not match the vector field." :
+    linkedProbe && !scientificPointWithinBounds(linkedProbe.point, document.source.axes) ?
+      "Shared probe is outside the vector field domain." : "";
+  const sharedProfileProbe = linkedProbe && linkedProbe.units.every((unit, axis) =>
+    unit === document.source.axes[axis]!.unit) &&
+    scientificPointWithinBounds(linkedProbe.point, document.source.axes) ?
+    linkedProbe.point : workspace.probe;
   const changeLinkedProbe = (probe: LinkedExplorerProbe | null) => {
-    const aligned = !!probe && probe.units.every((unit, axis) =>
+    const physicallyCompatible = !!probe && probe.units.every((unit, axis) =>
       unit === document.source.axes[axis]!.unit) &&
-      scientificPointWithinBounds(probe.point, document.source.axes) &&
+      scientificPointWithinBounds(probe.point, document.source.axes);
+    const aligned = physicallyCompatible &&
       (document.source.field.kind === "expressions" || probe.point.every((value, axis) =>
         vectorField3DSliceCoordinates(document, axis as 0 | 1 | 2).some(sample =>
           Math.abs(sample - value) < 1e-9)));
     if (aligned && workspace.viewsLinked && probe.point.some((value, axis) =>
       Math.abs(value - workspace.sliceCoordinates[axis]!) > 1e-9)) {
-      setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+      setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setOverlayVectorSamples({}); setOverlayReadGeneration(0);
     }
     setDocument(current => {
       const view = current.workspace ?? defaultVectorField3DWorkspace(current.source);
       return reviseVectorField3DWorkspace(current, { ...view, linkedProbe: probe,
+        linkedLineProfile: physicallyCompatible && view.linkedLineProfile ?
+          { ...view.linkedLineProfile, point: [...probe.point] as [number, number, number] } :
+          view.linkedLineProfile,
         ...(aligned ? { probe: [...probe.point] as [number, number, number],
           sliceCoordinates: view.viewsLinked ? [...probe.point] as [number, number, number] :
             view.sliceCoordinates } : {}) });
@@ -318,7 +339,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const selectLayer = (selectedLayer: VectorField3DLayer) => {
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), selectedLayer }));
-    if (!multiView) { setSlice(null); setOverlayVectorArrows({}); setOverlayVectorSamples({}); }
+    if (!multiView) { setSlice(null); setOverlayVectorArrows({}); setOverlayVectorPlanes({}); setOverlayVectorSamples({}); }
     setSeedPlacementLayer(null); setSeedPlacement3DPlane(null); setSeedProposal(null);
     setError("");
   };
@@ -334,7 +355,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       const sliceCoordinates = [...currentWorkspace.sliceCoordinates] as [number, number, number];
       sliceCoordinates[axis] = coordinate;
       return reviseVectorField3DWorkspace(current, { ...currentWorkspace, sliceCoordinates }); });
-    setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+    setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
     setOverlayVectorSamples({}); setError("");
     setOverlayReadGeneration(0);
   };
@@ -364,7 +385,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         workspace.sliceCoordinates });
     setDocument(next);
     if (viewsLinked && workspace.probe) { setSlice(null); setLinkedSlices({});
-      setOverlayVectorArrows({}); setOverlayVectorSamples({}); setOverlayReadGeneration(0); }
+      setOverlayVectorArrows({}); setOverlayVectorPlanes({}); setOverlayVectorSamples({}); setOverlayReadGeneration(0); }
     setError("");
   };
   const setScalarOverlay = (fieldId: string) => {
@@ -377,9 +398,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         selectedLayer: field && !["xy", "xz", "yz"].includes(
           (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer) ?
           "xy" : (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer }));
-    setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+    setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
     setOverlayVectorSamples({}); setError("");
     if (field) onReturnToVectorLayer?.();
+  };
+  const setLinkedLineProfile = (profile: VectorField3DLinkedLineProfile | null) => {
+    setDocument(current => reviseVectorField3DWorkspace(current, {
+      ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
+      linkedLineProfile: profile }));
   };
   const setViewZoom = (layer: "xy" | "xz" | "yz", zoom: number) => {
     setDocument(current => { const view = current.workspace ?? defaultVectorField3DWorkspace(current.source);
@@ -402,7 +428,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const setLayout = (layout: typeof workspace.layout) => {
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), layout }));
-    setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+    setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
     setOverlayVectorSamples({});
     setSeedPlacementLayer(null); setSeedPlacement3DPlane(null); setSeedProposal(null); setError("");
   };
@@ -423,7 +449,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setDocument(final);
     if (!options?.preserveSeedHistory) setSeedHistory({ undo: [], redo: [] });
     setGroupNameDrafts({});
-    setArtifact(null); setSlice(null); setOverlayVectorArrows({}); setOverlayVectorSamples({});
+    setArtifact(null); setSlice(null); setOverlayVectorArrows({}); setOverlayVectorPlanes({}); setOverlayVectorSamples({});
     setLinkedSlices({});
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
@@ -563,7 +589,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     if (busy || lineBusy || overlayReading || normalAxis === undefined) return;
     const coordinate = workspace.sliceCoordinates[normalAxis];
     setSeedProposal(null);
-    setBusy(true); setSlice(null); setOverlayVectorArrows({}); setOverlayVectorSamples({});
+    setBusy(true); setSlice(null); setOverlayVectorArrows({}); setOverlayVectorPlanes({}); setOverlayVectorSamples({});
     setOverlayReadGeneration(0); setVerifiedScalarOverlay(null);
     setProbeArtifact(null); setDifferential(null); setError("");
     let fingerprint: string | null = null;
@@ -573,9 +599,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       overlayVisible = !!next.workspace?.scalarOverlay?.visible;
       if (next.source.field.kind === "expressions") {
         const result = sampleSelectedSlice(next, normalAxis, coordinate);
-        if (next.workspace?.scalarOverlay?.visible)
+        if (next.workspace?.scalarOverlay?.visible) {
+          const plane = sampleSliceOverlayVectorPlane(next, result);
+          setOverlayVectorPlanes({ [next.workspace.selectedLayer]: plane });
           setOverlayVectorArrows({ [next.workspace.selectedLayer]:
-            sampleSliceOverlayArrows(next, result) });
+            sliceOverlayArrowsFromPlane(result, plane) });
+        }
         if (next.workspace?.scalarOverlay?.visible) setOverlayVectorSamples({
           [next.workspace.selectedLayer]: [] });
         setSlice(result);
@@ -604,8 +633,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             await bridge.previewVectorSamples({ fingerprint, datasetId: refs[0].datasetId,
               components: componentNames(next), selection: { kind: "slice", normalAxis,
                 fixedIndex: sourceIndex(next, normalAxis, coordinate) } });
-          setOverlayVectorArrows({ [next.workspace.selectedLayer]: sampleSliceOverlayArrows(next,
-            result, { manifestJson: opened.source.manifestJson, fingerprint, samples: arrowSamples }) });
+          const plane = sampleSliceOverlayVectorPlane(next, result,
+            { manifestJson: opened.source.manifestJson, fingerprint, samples: arrowSamples });
+          setOverlayVectorPlanes({ [next.workspace.selectedLayer]: plane });
+          setOverlayVectorArrows({ [next.workspace.selectedLayer]:
+            sliceOverlayArrowsFromPlane(result, plane) });
           setOverlayVectorSamples({ [next.workspace.selectedLayer]: arrowSamples.components.map(part =>
             ({ name: part.name, sampleSha256: part.sampleSha256 })) });
         }
@@ -625,9 +657,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         components: refs.map(ref => ref.component) as [string, string, string] });
       const scientific = { manifestJson: opened.source.manifestJson, fingerprint, volumes };
       const result = sampleSelectedSlice(next, normalAxis, coordinate, scientific);
-      if (next.workspace?.scalarOverlay?.visible)
-        setOverlayVectorArrows({ [next.workspace.selectedLayer]: sampleSliceOverlayArrows(next,
-          result, scientific) });
+      if (next.workspace?.scalarOverlay?.visible) {
+        const plane = sampleSliceOverlayVectorPlane(next, result, scientific);
+        setOverlayVectorPlanes({ [next.workspace.selectedLayer]: plane });
+        setOverlayVectorArrows({ [next.workspace.selectedLayer]:
+          sliceOverlayArrowsFromPlane(result, plane) });
+      }
       if (next.workspace?.scalarOverlay?.visible) setOverlayVectorSamples({
         [next.workspace.selectedLayer]: volumes.map(part =>
           ({ name: part.component, sampleSha256: part.sampleSha256 })) });
@@ -636,7 +671,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (next.workspace?.probe) setProbeArtifact(sampleVectorField3DProbe(next, next.workspace.probe,
         scientific));
       setDocument(next);
-    } catch (cause) { previewReady = false; setSlice(null); setOverlayVectorArrows({});
+    } catch (cause) { previewReady = false; setSlice(null); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setOverlayVectorSamples({});
       setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
@@ -649,7 +684,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     const epoch = ++previewEpoch.current;
     setSeedProposal(null);
     setBusy(true); setArtifact(null); setSlice(null); setLinkedSlices({});
-    setOverlayVectorArrows({}); setOverlayVectorSamples({});
+    setOverlayVectorArrows({}); setOverlayVectorPlanes({}); setOverlayVectorSamples({});
     setOverlayReadGeneration(0); setVerifiedScalarOverlay(null);
     setProbeArtifact(null); setDifferential(null); setTrajectories(null); setError("");
     let fingerprint: string | null = null;
@@ -665,10 +700,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (next.source.field.kind === "expressions") {
         const arrows = sampleVectorField3DArrows(next), views = make();
         const point = next.workspace?.probe ? sampleVectorField3DProbe(next, next.workspace.probe) : null;
-        if (next.workspace?.scalarOverlay?.visible) setOverlayVectorArrows({
-          xy: sampleSliceOverlayArrows(next, views.xy),
-          xz: sampleSliceOverlayArrows(next, views.xz),
-          yz: sampleSliceOverlayArrows(next, views.yz) });
+        if (next.workspace?.scalarOverlay?.visible) {
+          const planes = { xy: sampleSliceOverlayVectorPlane(next, views.xy),
+            xz: sampleSliceOverlayVectorPlane(next, views.xz),
+            yz: sampleSliceOverlayVectorPlane(next, views.yz) };
+          setOverlayVectorPlanes(planes);
+          setOverlayVectorArrows({
+            xy: sliceOverlayArrowsFromPlane(views.xy, planes.xy),
+            xz: sliceOverlayArrowsFromPlane(views.xz, planes.xz),
+            yz: sliceOverlayArrowsFromPlane(views.yz, planes.yz) });
+        }
         if (next.workspace?.scalarOverlay?.visible) setOverlayVectorSamples({
           xy: [], xz: [], yz: [] });
         setArtifact(arrows); setLinkedSlices(views); setProbeArtifact(point); setDocument(next);
@@ -698,16 +739,19 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             await bridge.previewVectorSamples({ fingerprint: fingerprint!, datasetId: refs[0].datasetId,
               components: componentNames(next), selection: { kind: "slice", normalAxis: axis,
                 fixedIndex: sourceIndex(next, axis, coordinate) } }) : samples;
-          return { slice, samples: arrowSamples.components.map(part =>
+          const plane = next.workspace?.scalarOverlay?.visible ? sampleSliceOverlayVectorPlane(next,
+            slice, { manifestJson: opened.source.manifestJson, fingerprint: fingerprint!,
+              samples: arrowSamples }) : null;
+          return { slice, plane, samples: arrowSamples.components.map(part =>
             ({ name: part.name, sampleSha256: part.sampleSha256 })),
-            arrows: next.workspace?.scalarOverlay?.visible ?
-            sampleSliceOverlayArrows(next, slice, { manifestJson: opened.source.manifestJson,
-              fingerprint: fingerprint!, samples: arrowSamples }) : [] };
+            arrows: plane ? sliceOverlayArrowsFromPlane(slice, plane) : [] };
         }));
         if (epoch !== previewEpoch.current) return;
         setLinkedSlices({ xy: slices[0]!.slice, xz: slices[1]!.slice, yz: slices[2]!.slice });
         if (next.workspace?.scalarOverlay?.visible) setOverlayVectorArrows({
           xy: slices[0]!.arrows, xz: slices[1]!.arrows, yz: slices[2]!.arrows });
+        if (next.workspace?.scalarOverlay?.visible) setOverlayVectorPlanes({
+          xy: slices[0]!.plane!, xz: slices[1]!.plane!, yz: slices[2]!.plane! });
         if (next.workspace?.scalarOverlay?.visible) setOverlayVectorSamples({
           xy: slices[0]!.samples, xz: slices[1]!.samples, yz: slices[2]!.samples });
         setDocument(next);
@@ -736,10 +780,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       const views = make(scientific);
       const point = next.workspace?.probe ? sampleVectorField3DProbe(next, next.workspace.probe,
         scientific) : null;
-      if (next.workspace?.scalarOverlay?.visible) setOverlayVectorArrows({
-        xy: sampleSliceOverlayArrows(next, views.xy, scientific),
-        xz: sampleSliceOverlayArrows(next, views.xz, scientific),
-        yz: sampleSliceOverlayArrows(next, views.yz, scientific) });
+      if (next.workspace?.scalarOverlay?.visible) {
+        const planes = { xy: sampleSliceOverlayVectorPlane(next, views.xy, scientific),
+          xz: sampleSliceOverlayVectorPlane(next, views.xz, scientific),
+          yz: sampleSliceOverlayVectorPlane(next, views.yz, scientific) };
+        setOverlayVectorPlanes(planes);
+        setOverlayVectorArrows({
+          xy: sliceOverlayArrowsFromPlane(views.xy, planes.xy),
+          xz: sliceOverlayArrowsFromPlane(views.xz, planes.xz),
+          yz: sliceOverlayArrowsFromPlane(views.yz, planes.yz) });
+      }
       if (next.workspace?.scalarOverlay?.visible) {
         const samples = volumes.map(part => ({ name: part.component,
           sampleSha256: part.sampleSha256 }));
@@ -748,7 +798,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setArtifact(arrows); setLinkedSlices(views); setProbeArtifact(point); setDocument(next);
       previewReady = true;
     } catch (cause) { if (epoch === previewEpoch.current) {
-      setArtifact(null); setLinkedSlices({}); setOverlayVectorArrows({});
+      setArtifact(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setOverlayVectorSamples({});
       setError(cause instanceof Error ? cause.message : String(cause)); } }
     finally { if (fingerprint) await window.scientificScenes?.closeGraphDataset(fingerprint);
@@ -865,7 +915,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         { manifestJson: opened.source.manifestJson, fingerprint, volumes });
       accept(result);
     } catch (cause) { if (epoch === probeEpoch.current) {
-      setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+      setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setProbeArtifact(null);
       setEquilibriumSearch(null); setSelectedEquilibrium(null);
       setDifferential(null);
@@ -1411,7 +1461,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setError("");
     } catch (cause) {
       setEquilibriumSearch(null); setSelectedEquilibrium(null); setIsosurface(null);
-      setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+      setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setProbeArtifact(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -1448,7 +1498,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setSeedPlacementLayer(null); setSeedPlacement3DPlane(null);
       setSeedProposal(null); setSeedGroupChoice("manual");
       setGroupNameDrafts({}); setSeedHistory({ undo: [], redo: [] });
-      setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({});
+      setArtifact(null); setSlice(null); setLinkedSlices({}); setOverlayVectorArrows({}); setOverlayVectorPlanes({});
       setOverlayVectorSamples({});
       setProbeArtifact(null);
       setDifferential(null);
@@ -2248,9 +2298,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           [normalAxis === 1 ? "xz" : normalAxis === 0 ? "yz" : "xy"] as const).map(layer =>
           <div className="vector-field3d-linked-cell" key={layer}>{linkedSlices[layer] ?
             <VectorField3DSliceView document={document} slice={linkedSlices[layer]!}
-              clipBounds={workspace.clipBounds} probe={workspace.probe}
+              clipBounds={workspace.clipBounds} probe={sharedProfileProbe}
               scalarOverlay={overlayForSlice(linkedSlices[layer]!, layer).sample}
               overlayArrows={overlayVectorArrows[layer]}
+              overlayVectorPlane={overlayVectorPlanes[layer]}
+              scalarOverlayVolume={linkedProfileScalarVolume}
+              linkedLineProfile={workspace.linkedLineProfile}
+              linkedProfileMismatch={sharedProfileMismatch}
+              onLinkedLineProfileChange={setLinkedLineProfile}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2267,9 +2322,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             <p role="status">{busy ? "Verifying" : "Preview all views to show"}
               {" "}the {layer.toUpperCase()} slice.</p>}</div>)}</div> :
       normalAxis !== undefined ? slice ? <VectorField3DSliceView document={document} slice={slice}
-        clipBounds={workspace.clipBounds} probe={workspace.probe}
+        clipBounds={workspace.clipBounds} probe={sharedProfileProbe}
         scalarOverlay={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).sample}
         overlayArrows={overlayVectorArrows[workspace.selectedLayer as SeedSliceLayer]}
+        overlayVectorPlane={overlayVectorPlanes[workspace.selectedLayer as SeedSliceLayer]}
+        scalarOverlayVolume={linkedProfileScalarVolume}
+        linkedLineProfile={workspace.linkedLineProfile}
+        linkedProfileMismatch={sharedProfileMismatch}
+        onLinkedLineProfileChange={setLinkedLineProfile}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}
