@@ -136,14 +136,23 @@ export type Graph2DDerivedFieldOrigin = Readonly<{
   verifiedSamples: readonly Readonly<{ name: string; sampleSha256: string;
     verifiedChunks?: number; totalChunks?: number; verifiedTiles?: number; totalTiles?: number }>[];
 }>;
-export type Graph2DLinkedOverlayOrigin = Readonly<{
-  kind: "vector-scalar-linked-line/v1"; pairId: string; series: "vector" | "scalar";
-  vectorDocumentJson: string; scalarReference: Graph2DFieldReference;
+type Graph2DLinkedOverlayCommon = Readonly<{
+  pairId: string;
+  vectorDocumentJson: string;
   profile: Readonly<Omit<VectorField3DLinkedLineProfile, "point"> & { point: readonly number[] }>;
   xName: string; xUnit: string; yUnit: string;
   vectorSourceHash: string; vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
   scalarSampleSha256: string; rowsSha256: string;
 }>;
+export type Graph2DLinkedOverlayOrigin =
+  | (Graph2DLinkedOverlayCommon & Readonly<{
+    kind: "vector-scalar-linked-line/v1"; series: "vector" | "scalar";
+    scalarReference: Graph2DFieldReference }>)
+  | (Graph2DLinkedOverlayCommon & Readonly<{
+    kind: "vector-complex-linked-line/v1"; series: "vector" | "complex";
+    realReference: Graph2DFieldReference; imaginaryReference: Graph2DFieldReference;
+    mode: "magnitude" | "phase";
+    realSampleSha256: string; imaginarySampleSha256: string }>);
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -451,14 +460,33 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
   catch { return false; }
 };
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
-  if (!record(value) || !exact(value, ["kind", "pairId", "series", "vectorDocumentJson",
-    "scalarReference", "profile", "xName", "xUnit", "yUnit", "vectorSourceHash",
-    "vectorSamples", "scalarSampleSha256", "rowsSha256"]) ||
-    value.kind !== "vector-scalar-linked-line/v1" ||
+  if (!record(value) || !["vector-scalar-linked-line/v1", "vector-complex-linked-line/v1"]
+    .includes(String(value.kind)) ||
+    !exact(value, ["kind", "pairId", "series", "vectorDocumentJson",
+      ...(value.kind === "vector-scalar-linked-line/v1" ? ["scalarReference"] :
+        ["realReference", "imaginaryReference", "mode", "realSampleSha256",
+          "imaginarySampleSha256"]),
+      "profile", "xName", "xUnit", "yUnit", "vectorSourceHash",
+      "vectorSamples", "scalarSampleSha256", "rowsSha256"]) ||
     typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
-    !["vector", "scalar"].includes(String(value.series)) ||
+    !(value.kind === "vector-scalar-linked-line/v1" ?
+      ["vector", "scalar"].includes(String(value.series)) :
+      ["vector", "complex"].includes(String(value.series))) ||
     typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
-    !isGraph2DFieldReference(value.scalarReference) ||
+    (value.kind === "vector-scalar-linked-line/v1" ?
+      !isGraph2DFieldReference(value.scalarReference) ||
+        value.scalarReference.semanticType !== "scalar-field" :
+      !isGraph2DFieldReference(value.realReference) ||
+      !isGraph2DFieldReference(value.imaginaryReference) ||
+      value.realReference.semanticType !== "complex-scalar-field" ||
+      value.imaginaryReference.semanticType !== "complex-scalar-field" ||
+      value.realReference.component !== "real" ||
+      value.imaginaryReference.component !== "imaginary" ||
+      value.realReference.datasetId !== value.imaginaryReference.datasetId ||
+      value.realReference.sceneFingerprint !== value.imaginaryReference.sceneFingerprint ||
+      !["magnitude", "phase"].includes(String(value.mode)) ||
+      !/^[a-f0-9]{64}$/.test(String(value.realSampleSha256)) ||
+      !/^[a-f0-9]{64}$/.test(String(value.imaginarySampleSha256))) ||
     !record(value.profile) || !exact(value.profile, ["normalAxis", "varyingAxis", "point",
       "vectorChannel", "visible"]) ||
     ![0, 1, 2].includes(value.profile.normalAxis as number) ||

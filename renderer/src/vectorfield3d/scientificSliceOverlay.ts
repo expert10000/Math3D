@@ -24,7 +24,8 @@ export type LinkedOverlayLineProfile = Readonly<{
     scalar: number | null }>[];
   coordinateUnit: string; vectorUnit: string; scalarUnit: string;
   vectorChannel: VectorField3DLinkedLineProfile["vectorChannel"];
-  scalarSampleSha256: string; vectorSourceHash: string }>;
+  scalarSampleSha256: string; vectorSourceHash: string;
+  complexSamples?: Readonly<{ real: string; imaginary: string }> }>;
 export type OverlayRegionSummary = Readonly<{
   sampleCount: number; vectorCount: number; scalarCount: number; alignedCount: number;
   vector: Readonly<{ mean: number; min: number; max: number }> | null;
@@ -419,5 +420,7 @@ export function sampleLinkedOverlayLineProfile(document: VectorField3DDocument,
     scalarSampleSha256: complex ? sha256Checksum(new TextEncoder().encode(
       `${scalarVolume.sampleSha256}:${complex.imaginaryVolume.sampleSha256}`)).slice(7) :
       scalarVolume.sampleSha256,
+    ...(complex ? { complexSamples: { real: scalarVolume.sampleSha256,
+      imaginary: complex.imaginaryVolume.sampleSha256 } } : {}),
     vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash };
 }

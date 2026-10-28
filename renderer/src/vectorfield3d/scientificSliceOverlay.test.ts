@@ -390,6 +390,85 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     }
   });
 
+  it("publishes aligned complex Graphs pairs with wrapped phase and both component hashes", async () => {
+    for (const mode of ["magnitude", "phase"] as const) {
+      for (const normalAxis of [2, 1, 0] as const) {
+        const slice = sampleVectorField3DSlice(analytic, normalAxis, 0);
+        const point = [0, 0, 0] as [number, number, number];
+        point[slice.planeAxes[1]] = 0.5;
+        const profile = { normalAxis, varyingAxis: slice.planeAxes[0] as 0 | 1 | 2,
+          point, vectorChannel: "speed" as const, visible: true };
+        const saved = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+          selectedLayer: ({ 0: "yz", 1: "xz", 2: "xy" } as const)[normalAxis],
+          complexOverlay: { ...complexRecipe, mode }, linkedLineProfile: profile });
+        const line = sampleLinkedOverlayLineProfile(saved, slice, profile,
+          sampleSliceOverlayVectorPlane(saved, slice), complexReal.reference,
+          complexReal.volume, mode === "phase" ? "rad" : "1",
+          { imaginaryReference: complexImaginary.reference,
+            imaginaryVolume: complexImaginary.volume, mode });
+        const pair = linkedOverlayGraphPair(saved, profile, line, [],
+          `Wave amplitude ${mode}`);
+        expect(pair[0].origin.kind).toBe("vector-complex-linked-line/v1");
+        expect(pair.map(part => part.origin.series)).toEqual(["vector", "complex"]);
+        expect(pair[0].rows.map(row => row.x)).toEqual(pair[1].rows.map(row => row.x));
+        for (const [index, row] of pair[1].rows.entries()) {
+          if (row.y === line.rows[index]!.scalar) continue;
+          expect(mode).toBe("phase");
+          expect(row.y).toBeNull();
+          expect(Math.abs(line.rows[index]!.scalar! - line.rows[index - 1]!.scalar!))
+            .toBeGreaterThan(Math.PI);
+        }
+        expect(pair[1].origin.yUnit).toBe(mode === "phase" ? "rad" : "1");
+        if (pair[0].origin.kind !== "vector-complex-linked-line/v1") throw new Error("Wrong origin");
+        expect(pair[0].origin.realReference).toEqual(complexReal.reference);
+        expect(pair[0].origin.imaginaryReference).toEqual(complexImaginary.reference);
+        expect(pair[0].origin.realSampleSha256).toBe(complexReal.volume.sampleSha256);
+        expect(pair[0].origin.imaginarySampleSha256).toBe(complexImaginary.volume.sampleSha256);
+        if (mode === "phase" && normalAxis === 2) {
+          expect(line.rows.some((row, index) => index > 0 && row.scalar !== null &&
+            line.rows[index - 1]!.scalar !== null &&
+            Math.abs(row.scalar - line.rows[index - 1]!.scalar!) > Math.PI)).toBe(true);
+          expect(pair[1].rows.filter(row => row.y === null).length)
+            .toBeGreaterThan(line.rows.filter(row => row.scalar === null).length);
+        }
+        const store = new Graph2DPointTableStore();
+        const drafts = pair.map((part, index) => ({ label: part.label,
+          table: store.publish(part.rows), mode: "line" as const, domain: part.domain,
+          linkedOrigin: part.origin, style: { color: index ? "#38bdf8" : "#fde047",
+            lineWidth: 2, lineStyle: "solid" as const, visible: true } })) as
+          [typeof pair[number] & { table: ReturnType<typeof store.publish> },
+            typeof pair[number] & { table: ReturnType<typeof store.publish> }];
+        const scene = applyGraph2DAuthoring(createEmptyGraph2DDocument(`complex-${mode}-${normalAxis}`),
+          { type: "create-point-series-pair", drafts });
+        const reopened = parseGraph2DDocument(serializeGraph2DDocument(
+          createGraph2DDocument({ ...scene, stableKey: `complex-${mode}-${normalAxis}` })));
+        expect(reopened.source.objects.map(object => object.kind === "point-series" ?
+          object.linkedOrigin?.series : null)).toEqual(["vector", "complex"]);
+        const bridge = { openGraphDatasetReference: async () => ({ ok: true as const,
+          source: { manifestJson: complexManifest, fingerprint: complexFingerprint } }),
+        previewGraphVolume: async ({ component }: { component: string }) =>
+          component === "real" ? complexReal.volume : complexImaginary.volume,
+        closeGraphDataset: async () => true } as unknown as
+          NonNullable<typeof window.scientificScenes>;
+        await expect(reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin, bridge))
+          .resolves.toBeUndefined();
+        const changed = { ...bridge, previewGraphVolume: async ({ component }: { component: string }) =>
+          component === "real" ? complexReal.volume : { ...complexImaginary.volume,
+            sampleSha256: "0".repeat(64) } } as unknown as NonNullable<typeof window.scientificScenes>;
+        await expect(reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin, changed))
+          .rejects.toThrow();
+        const changedReal = { ...bridge, previewGraphVolume: async ({ component }: { component: string }) =>
+          component === "real" ? { ...complexReal.volume, sampleSha256: "0".repeat(64) } :
+            complexImaginary.volume } as unknown as NonNullable<typeof window.scientificScenes>;
+        await expect(reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin, changedReal))
+          .rejects.toThrow();
+        await expect(reverifyLinkedOverlayGraphPair(pair[0].origin,
+          { ...pair[1].origin, rowsSha256: `sha256:${"0".repeat(64)}` }, bridge))
+          .rejects.toThrow(/rows differ/);
+      }
+    }
+  });
+
   it("leaves explicit gaps where the scalar domain ends before the vector line", () => {
     const wide = createVectorField3DDocument({ ...analytic.source,
       axes: axes.map(axis => ({ ...axis, min: -6, max: 6 })) as VectorField3DSource["axes"] },

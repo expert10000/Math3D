@@ -1108,10 +1108,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
       const pair = linkedOverlayGraphPair(document, profile, line, samples,
-        document.workspace?.scalarOverlay?.title ?? "Scalar field");
+        document.workspace?.complexOverlay?.visible ?
+          `${document.workspace.complexOverlay.title} ${document.workspace.complexOverlay.mode}` :
+          document.workspace?.scalarOverlay?.title ?? "Scalar field");
       await reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin);
       onAddLinkedOverlayLine(pair);
-      setRunStatus(`Sent ${line.rows.length} aligned vector and scalar samples to Graphs.`);
+      setRunStatus(`Sent ${line.rows.length} aligned vector and ${
+        pair[1].origin.series} samples to Graphs.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
