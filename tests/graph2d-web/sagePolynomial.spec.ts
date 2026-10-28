@@ -1,5 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+test("Surface Services runs exact calculus and Analysis exposes its result actions", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Palette", exact: true }).click();
+  await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
+    .fill("Open backend services panel");
+  await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+  const panel = page.getByText("Symbolic Mathematics", { exact: true }).locator("..");
+  await panel.getByRole("button", { name: "Gradient", exact: true }).click();
+  await expect(panel.getByLabel("Expression")).toHaveValue(/x.*y.*z/);
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  const analysis = page.getByTestId("sage-analysis-result");
+  await expect(analysis).toContainText("Gradient", { timeout: 60_000 });
+  await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
+  await analysis.getByRole("button", { name: "Visualize vector field" }).click();
+  await expect(analysis).toContainText("normalized gradient directions");
+  await panel.getByRole("button", { name: "Hessian", exact: true }).click();
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(analysis).toContainText("Hessian", { timeout: 60_000 });
+  await panel.getByRole("button", { name: "Singularities", exact: true }).click();
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(analysis).toContainText("0 singular points", { timeout: 60_000 });
+  await analysis.getByRole("button", { name: "Save to Workbook" }).click();
+  await expect(page.getByRole("button", { name: "Workbook", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("textbox", { name: "Block title" }).last()).toHaveValue("SageMath singularities");
+  await page.getByRole("button", { name: "Inspector", exact: true }).click();
+  await panel.getByLabel("Operation").selectOption("sage.symbolic.simplify");
+  await panel.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(analysis).toContainText("Simplified expression", { timeout: 60_000 });
+  await analysis.getByRole("button", { name: "Create geometry" }).click();
+  await expect(analysis).toContainText("Created an implicit surface from the exact scalar expression.");
+});
+
 test("local Chrome Sage panel factors and finds roots with rejection and cancellation", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Palette", exact: true }).click();
@@ -59,7 +92,9 @@ test("Chrome Sage panel explicitly routes shared operations to Docker when selec
     requests.push(payload);
     await route.fulfill({ status: 200, contentType: "application/json", headers,
       body: JSON.stringify({ engine: "sagemath", operation: payload.operation, success: true,
-        result: { text: "docker-result" }, latex: "1", warnings: [] }) });
+        result: payload.operation === "sage.symbolic.gradient"
+          ? { components: ["2*x", "2*y", "2*z"], text: "[2*x, 2*y, 2*z]" }
+          : { text: "docker-result" }, latex: "1", warnings: [] }) });
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Palette", exact: true }).click();
@@ -80,6 +115,10 @@ test("Chrome Sage panel explicitly routes shared operations to Docker when selec
     { operation: "sage.symbolic.simplify" },
     { operation: "sage.polynomial.factor", params: { polynomial: "(-1)*x^0 + (0)*x^1 + (1)*x^2", variables: ["x"] } },
   ]);
+  await panel.getByRole("button", { name: "Gradient", exact: true }).click();
+  await panel.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByTestId("sage-analysis-result")).toContainText("2*x ; 2*y ; 2*z");
+  expect(requests.at(-1)).toMatchObject({ operation: "sage.symbolic.gradient", params: { variables: ["x", "y", "z"] } });
   await panel.getByLabel("Operation").selectOption("sage.matrix.charpoly");
   await expect(panel.getByLabel("SageMath backend")).toHaveValue("docker");
   await expect(panel.getByLabel("SageMath backend").locator('option[value="local"]')).toBeDisabled();

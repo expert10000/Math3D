@@ -879,6 +879,7 @@ function readJsonBody(req, limitBytes = BODY_LIMIT_BYTES) {
 const SAGE_POLYNOMIAL_OPERATIONS = new Set(["sage.polynomial.factor", "sage.polynomial.roots_exact"]);
 const SAGE_SYMBOLIC_OPERATIONS = new Set([
   "sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand", "sage.symbolic.solve",
+  "sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities",
 ]);
 
 function isLoopbackRequest(req) {

@@ -312,7 +312,8 @@ import { VolumeViewer, type VolumeCameraState } from "./components/VolumeViewer"
 import { VolumeInspectorPanel } from "./components/VolumeInspectorPanel";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
-import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
+import SageSymbolicPanel, { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel";
+import { SageSymbolicAnalysisCard } from "./features/sageLab/SageSymbolicAnalysisCard";
 import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
@@ -44608,6 +44609,10 @@ const App: React.FC = () => {
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
+  const [symbolicAnalysisRecord, setSymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
+  const [symbolicActionStatus, setSymbolicActionStatus] = useState<string | null>(null);
+  const [symbolicGradientOverlaySource, setSymbolicGradientOverlaySource] = useState<string | null>(null);
+  const [symbolicGradientOverlayLines, setSymbolicGradientOverlayLines] = useState<OverlayPolylineGroup["lines"]>([]);
   const resetSurfaceLeftPanelScroll = () => {
     if (surfaceLeftPanelRef.current) surfaceLeftPanelRef.current.scrollTop = 0;
     requestAnimationFrame(() => {
@@ -72797,8 +72802,12 @@ case "mobius":
   const meshWorkspaceOverlayPolylineGroupsWithDiagnostics = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups = [...(meshViewerOverlayPolylineGroupsWithDiagnostics ?? [])];
     if (meshWorkspaceEntryBoundsOverlayGroups?.length) groups.push(...meshWorkspaceEntryBoundsOverlayGroups);
+    if (surfaceViewerKind === "implicit" && symbolicGradientOverlaySource === activeImplicitExpr && symbolicGradientOverlayLines.length) {
+      groups.push({ lines: symbolicGradientOverlayLines, color: 0x07a9cf, radiusWorld: 0.012, opacity: 0.95 });
+    }
     return groups.length ? groups : null;
-  }, [meshViewerOverlayPolylineGroupsWithDiagnostics, meshWorkspaceEntryBoundsOverlayGroups]);
+  }, [meshViewerOverlayPolylineGroupsWithDiagnostics, meshWorkspaceEntryBoundsOverlayGroups,
+    surfaceViewerKind, symbolicGradientOverlaySource, activeImplicitExpr, symbolicGradientOverlayLines]);
   const meshWorkspaceProvenanceEntries = useMemo<MeshWorkspaceProvenanceEntry[]>(() => {
     const historyEntries = meshOperationHistory.slice(0, 32);
     const knownIds = new Set(historyEntries.map((entry) => entry.id));
@@ -79496,7 +79505,93 @@ case "mobius":
                             showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
                             onParamGeodesicState={handleParamGeodesicState}
                           />);
+  const handleSymbolicVisualize = () => {
+    const record = symbolicAnalysisRecord;
+    if (!record || record.response.operation !== "sage.symbolic.gradient" ||
+        record.sourceSurfaceExpression !== activeImplicitExpr) return;
+    const components = record.response.result.components;
+    if (!Array.isArray(components) || components.length !== 3 || !surfaceSampleSet?.samples?.length) {
+      setSymbolicActionStatus("The gradient or surface samples are unavailable for an overlay.");
+      return;
+    }
+    const compiled = components.map((component) => compileExpression(String(component), ["x", "y", "z"]));
+    if (compiled.some((entry) => !entry.fn || entry.error)) {
+      setSymbolicActionStatus("The exact gradient cannot be evaluated by the viewer expression parser.");
+      return;
+    }
+    const lines: OverlayPolylineGroup["lines"] = [];
+    const samples = surfaceSampleSet.samples;
+    const stride = Math.max(1, Math.ceil(samples.length / 64));
+    for (let index = 0; index < samples.length; index += stride) {
+      const p = samples[index].position;
+      const vector = compiled.map((entry) => entry.fn!({ x: p.x, y: p.y, z: p.z }));
+      const length = Math.hypot(vector[0], vector[1], vector[2]);
+      if (!Number.isFinite(length) || length < 1e-8) continue;
+      const scale = 0.25 / length;
+      lines.push([{ x: p.x, y: p.y, z: p.z },
+        { x: p.x + vector[0] * scale, y: p.y + vector[1] * scale, z: p.z + vector[2] * scale }]);
+    }
+    setSymbolicGradientOverlayLines(lines);
+    setSymbolicGradientOverlaySource(activeImplicitExpr);
+    setSymbolicActionStatus(lines.length ? `Showing ${lines.length} normalized gradient directions on the surface.` : "No finite nonzero gradient samples were found.");
+  };
+  const handleSymbolicCreateGeometry = () => {
+    const record = symbolicAnalysisRecord;
+    if (!record || !["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(record.response.operation)) return;
+    const expression = record.response.result.text;
+    if (typeof expression !== "string" || !expression.trim() || compileExpression(expression, ["x", "y", "z"]).error) {
+      setSymbolicActionStatus("This exact expression cannot be converted to a MATH3D implicit surface.");
+      return;
+    }
+    setImplicitExpr(expression);
+    setImplicitSurfaceId("implicit_custom");
+    setDatasetKind("surface");
+    setSurfaceViewerKind("implicit");
+    setSymbolicActionStatus("Created an implicit surface from the exact scalar expression.");
+  };
+  const handleSymbolicSaveWorkbook = () => {
+    const record = symbolicAnalysisRecord;
+    if (!record || IS_REPLAY_MODE) return;
+    const { response } = record;
+    const block: WorkbookBlock = {
+      id: makeId(), type: "text", title: `SageMath ${response.operation.replace("sage.symbolic.", "")}`,
+      text: [
+        `Source: F = ${record.expression}`,
+        `Operation: ${response.operation}`,
+        `Engine: SageMath (${record.backend === "local" ? "Local WSL" : "Docker"})`,
+        `Result: ${typeof response.result.text === "string" ? response.result.text : JSON.stringify(response.result)}`,
+        response.latex ? `LaTeX: $${response.latex}$` : "",
+        `Input hash: ${String(response.result.inputHash ?? "not reported")}`,
+      ].filter(Boolean).join("\n\n"),
+      outputs: [{ id: "text", label: "Text", type: "text" }],
+    };
+    const targetId = activeWorkbookId ?? makeId();
+    setWorkbooks((previous) => {
+      const exists = previous.some((workbook) => workbook.id === targetId);
+      const base = exists ? previous : [{ ...createDefaultWorkbook(makeId), id: targetId, title: "Scientific results" }, ...previous];
+      return base.map((workbook) => workbook.id !== targetId ? workbook : {
+        ...workbook, updatedAt: Date.now(),
+        stages: workbook.stages.map((stage) => stage.id !== "explain" ? stage : {
+          ...stage, blocks: [...stage.blocks, block],
+        }),
+      });
+    });
+    setActiveWorkbookId(targetId);
+    setActiveStageId("explain");
+    setRightPanelTab("workbook");
+    setSymbolicActionStatus("Saved exact result to the Workbook Explain stage.");
+  };
   const renderNativeSurfaceInspector = () => (<>
+                    {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
+                      record={symbolicAnalysisRecord}
+                      stale={Boolean(symbolicAnalysisRecord.sourceSurfaceExpression && symbolicAnalysisRecord.sourceSurfaceExpression !== activeImplicitExpr)}
+                      onVisualize={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
+                        ? handleSymbolicVisualize : undefined}
+                      onCreateGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(symbolicAnalysisRecord.response.operation)
+                        ? handleSymbolicCreateGeometry : undefined}
+                      onSaveWorkbook={handleSymbolicSaveWorkbook}
+                      actionStatus={symbolicActionStatus}
+                    />}
                     {(activeSavedSurfaceBinding || surfacesLeftTab === "analysis") && <SurfaceAnalysisInspectorPanel
                       definition={activeCanonicalSurfaceDefinition}
                       preferredTab={activeSurfaceComputation === "surface-probe" ? "probe" : "result"}
@@ -86050,9 +86145,6 @@ case "mobius":
                     </details>
                     </>
                   )}
-                  <div style={{ marginBottom: 10 }}>
-                    <SageSymbolicPanel compact />
-                  </div>
                   {renderSurfacesInspectorPanel("analysis")}
                     </div>
                   </details>
@@ -86100,7 +86192,14 @@ case "mobius":
                   </div>
                   <ComputeEngineManagerPanel embedded />
                   <OctaveLabPanel />
-                  <SageSymbolicPanel compact />
+                  <SageSymbolicPanel compact sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
+                    onResult={(record) => {
+                      setSymbolicAnalysisRecord(record);
+                      setSymbolicActionStatus(null);
+                      setSymbolicGradientOverlayLines([]);
+                      setRightPanelTab("inspector");
+                      setShowRightPanel(true);
+                    }} />
                 </div>
               )}
               </div>

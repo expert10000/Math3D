@@ -140,6 +140,27 @@ def _symbolic_solve(operation, params):
     )
 
 
+def _surface_calculus(operation, params):
+    variables = _variables(params, ("x", "y", "z"))
+    if set(variables) != {"x", "y", "z"} or len(variables) != 3:
+        raise SageRequestError("Surface calculus requires x, y, z as the three variables.")
+    expression = _symbolic_expression(params.get("expression"), variables)
+    axes = [SR(name) for name in ("x", "y", "z")]
+    gradient = [expression.diff(axis).simplify_full() for axis in axes]
+    if operation == "sage.symbolic.gradient":
+        return _success(operation, {"components": [str(item) for item in gradient], "text": str(gradient)}, latex(gradient))
+    if operation == "sage.symbolic.hessian":
+        hessian = [[item.diff(axis).simplify_full() for axis in axes] for item in gradient]
+        return _success(operation, {"matrix": [[str(item) for item in row] for row in hessian], "text": str(hessian)}, latex(hessian))
+    points = solve([expression == 0] + [item == 0 for item in gradient], axes, solution_dict=True)
+    if len(points) > 64:
+        raise SageRequestError("More than 64 singularities; narrow the surface equation.")
+    if any(any(axis not in point for axis in axes) for point in points):
+        raise SageRequestError("The singular set is not a finite list of isolated points.")
+    return _success(operation, {"points": [{str(axis): str(point[axis]) for axis in axes if axis in point} for point in points],
+                                "criterion": "F=0 and gradient F=0", "text": str(points)}, latex(points))
+
+
 def _matrix_eigen_exact(operation, params):
     mat = _matrix(params)
     eigenvalues = mat.eigenvalues()
@@ -485,6 +506,9 @@ OPERATIONS = {
     "sage.symbolic.factor": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.factor()),
     "sage.symbolic.expand": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.expand()),
     "sage.symbolic.solve": _symbolic_solve,
+    "sage.symbolic.gradient": _surface_calculus,
+    "sage.symbolic.hessian": _surface_calculus,
+    "sage.symbolic.singularities": _surface_calculus,
     "sage.matrix.eigen_exact": _matrix_eigen_exact,
     "sage.matrix.charpoly": _matrix_charpoly,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,

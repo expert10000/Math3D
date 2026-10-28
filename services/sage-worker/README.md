@@ -3,8 +3,8 @@
 Dockerized SageMath symbolic/exact backend for Math3D.
 
 MATH3D's Symbolic Mathematics panel has an explicit **Local WSL / Docker service** selector.
-Simplify, Factor, Expand, Solve, polynomial factorization, and exact roots support both
-choices. Local WSL is the default for those six operations and uses the bounded desktop
+Simplify, Factor, Expand, Solve, Gradient, Hessian, Singularities, polynomial factorization,
+and exact roots support both choices. Local WSL is the default for those nine operations and uses the bounded desktop
 worker or the same-machine web proxy. Matrix, Groebner, and number-theory operations
 currently use Docker. The Docker polynomial roots endpoint works over the rationals;
 choose Local WSL for algebraic root certificates. Switching backends does not start or
@@ -57,6 +57,9 @@ Result shape:
 - `sage.symbolic.factor`
 - `sage.symbolic.expand`
 - `sage.symbolic.solve`
+- `sage.symbolic.gradient` (exact derivatives of a three-variable surface equation)
+- `sage.symbolic.hessian` (exact second derivatives)
+- `sage.symbolic.singularities` (isolated solutions of F = 0 and grad F = 0, at most 64)
 - `sage.matrix.eigen_exact`
 - `sage.matrix.charpoly`
 - `sage.polynomial.roots_exact`

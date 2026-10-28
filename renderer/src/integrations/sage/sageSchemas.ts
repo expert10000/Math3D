@@ -3,6 +3,9 @@ export type SageOperation =
   | "sage.symbolic.factor"
   | "sage.symbolic.expand"
   | "sage.symbolic.solve"
+  | "sage.symbolic.gradient"
+  | "sage.symbolic.hessian"
+  | "sage.symbolic.singularities"
   | "sage.matrix.eigen_exact"
   | "sage.matrix.charpoly"
   | "sage.polynomial.roots_exact"
@@ -45,6 +48,9 @@ export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
   "sage.symbolic.factor",
   "sage.symbolic.expand",
   "sage.symbolic.solve",
+  "sage.symbolic.gradient",
+  "sage.symbolic.hessian",
+  "sage.symbolic.singularities",
   "sage.matrix.eigen_exact",
   "sage.matrix.charpoly",
   "sage.polynomial.roots_exact",

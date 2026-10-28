@@ -7,6 +7,14 @@ import {
   type SageRunResponse,
 } from "../../integrations/sage/sageSchemas";
 
+export type SymbolicResultRecord = {
+  response: SageRunResponse;
+  expression: string;
+  variables: string[];
+  backend: "local" | "docker";
+  sourceSurfaceExpression?: string;
+};
+
 const DEFAULT_EXPRESSION = "sin(x)^2 + cos(x)^2";
 
 const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
@@ -14,6 +22,9 @@ const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
   "sage.symbolic.factor": "Factor",
   "sage.symbolic.expand": "Expand",
   "sage.symbolic.solve": "Solve",
+  "sage.symbolic.gradient": "Gradient",
+  "sage.symbolic.hessian": "Hessian",
+  "sage.symbolic.singularities": "Singularities",
   "sage.matrix.eigen_exact": "Exact eigen",
   "sage.matrix.charpoly": "Characteristic polynomial",
   "sage.polynomial.roots_exact": "Exact algebraic roots",
@@ -49,7 +60,11 @@ const resultText = (response: SageRunResponse | null): string => {
   return JSON.stringify(response.result, null, 2);
 };
 
-const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
+const SageSymbolicPanel: React.FC<{
+  compact?: boolean;
+  sourceExpression?: string;
+  onResult?: (record: SymbolicResultRecord) => void;
+}> = ({ compact = false, sourceExpression, onResult }) => {
   const [backend, setBackend] = useState<"local" | "docker">("local");
   const [operation, setOperation] = useState<SageSymbolicOperation>("sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
@@ -120,6 +135,8 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         backend,
       });
       setResponse(result);
+      if (result.success) onResult?.({ response: result, expression, variables: variables.length ? variables : ["x"], backend,
+        sourceSurfaceExpression: sourceExpression === expression ? sourceExpression : undefined });
       if (!result.success && result.error) setError(result.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run SageMath operation.");
@@ -143,6 +160,10 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
     <details style={panelStyle} open>
       <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Symbolic Mathematics</summary>
       <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 11 }}>
+        <div style={{ display: "grid", gap: 3, padding: "7px 8px", borderRadius: 7, background: "#eef6ff" }}>
+          <strong>Scientific engines</strong>
+          <span>Choose an operation here. Inspect its exact result and actions in Analysis.</span>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>Engine</span>
           <select aria-label="SageMath backend" value={backend} disabled={busy !== "none"} onChange={(event) => {
@@ -160,6 +181,22 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
               {health.engine}: {health.status}
             </span>
           )}
+        </div>
+
+        <strong>Symbolic operations</strong>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Surface math shortcuts">
+          {(["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.solve", "sage.symbolic.factor", "sage.symbolic.singularities"] as const).map((item) => (
+            <button key={item} type="button" disabled={busy !== "none"} aria-pressed={operation === item}
+              onClick={() => {
+                setOperation(item);
+                if (sourceExpression) {
+                  setExpression(sourceExpression); setVariablesText("x,y,z");
+                }
+                setResponse(null); setError(null);
+              }}>
+              {OPERATION_LABELS[item]}
+            </button>
+          ))}
         </div>
 
         <label style={{ display: "grid", gap: 4 }}>
@@ -181,13 +218,16 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
           </select>
         </label>
 
-          {!localCapable && <span>This operation currently requires the Docker SageMath service. The six symbolic and polynomial operations above can use either backend.</span>}
+          {!localCapable && <span>This operation currently requires the Docker SageMath service. Symbolic and polynomial operations can use either backend.</span>}
 
         {localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>
           <input value={coefficientsText} disabled={busy !== "none"} onChange={(event) => setCoefficientsText(event.target.value)} style={fieldStyle} placeholder="-1, 0, 1" />
           <span>Example: -1, 0, 1 means x² − 1. Local WSL receives only coefficients and supplies algebraic root certificates. Docker receives a polynomial built from those coefficients and currently returns roots over the rationals.</span>
         </label> : <>
+        {sourceExpression && <button type="button" onClick={() => {
+          setExpression(sourceExpression); setVariablesText("x,y,z"); setResponse(null); setError(null);
+        }} style={{ justifySelf: "start" }}>Use current surface F(x,y,z)</button>}
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Expression</span>
           <textarea
@@ -219,7 +259,10 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
         </div>
 
         {response && (
-          <div style={{ padding: "6px 8px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
+          <details style={{ padding: "6px 8px", border: "1px solid #e2e8f0", borderRadius: 6, background: "#f8fafc" }}>
+            <summary role="status" style={{ cursor: "pointer", fontWeight: 700 }}>
+              {response.success ? "Completed · Inspect and use result in Analysis" : "Operation failed · View technical response"}
+            </summary>
             <div><strong>Success:</strong> {response.success ? "yes" : "no"}</div>
             <div><strong>Engine:</strong> {response.engine}</div>
             <div><strong>Backend:</strong> {backend === "local" ? "Local WSL" : "Docker service"}</div>
@@ -249,7 +292,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
               {showJson ? JSON.stringify(response, null, 2) : resultText(response)}
             </pre>
             {response.latex && <div style={{ marginTop: 6, wordBreak: "break-word" }}><strong>LaTeX:</strong> {response.latex}</div>}
-          </div>
+          </details>
         )}
 
         {error && <div style={{ color: "#b42318" }}>{error}</div>}

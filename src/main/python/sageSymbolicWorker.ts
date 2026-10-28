@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 export const LOCAL_SYMBOLIC_OPERATIONS = [
   "sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand", "sage.symbolic.solve",
+  "sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities",
 ] as const;
 export type LocalSymbolicOperation = typeof LOCAL_SYMBOLIC_OPERATIONS[number];
 
@@ -83,8 +84,30 @@ else:
     if operation == "sage.symbolic.simplify": value = value.simplify_full()
     elif operation == "sage.symbolic.factor": value = value.factor()
     elif operation == "sage.symbolic.expand": value = value.expand()
+    elif operation in ("sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"):
+        if len(variables) != 3 or set(variables) != {"x", "y", "z"}:
+            raise ValueError("Surface calculus requires x, y, z as the three variables.")
+        axes = [symbols[name] for name in ("x", "y", "z")]
+        gradient = [value.diff(axis).simplify_full() for axis in axes]
+        if operation == "sage.symbolic.gradient":
+            result = {"components": [str(item) for item in gradient], "text": str(gradient)}
+            value = gradient
+        elif operation == "sage.symbolic.hessian":
+            matrix = [[item.diff(axis).simplify_full() for axis in axes] for item in gradient]
+            result = {"matrix": [[str(item) for item in row] for row in matrix], "text": str(matrix)}
+            value = matrix
+        else:
+            solutions = solve([value == 0] + [item == 0 for item in gradient], axes, solution_dict=True)
+            if len(solutions) > 64:
+                raise ValueError("More than 64 singularities; narrow the surface equation.")
+            if any(any(axis not in solution for axis in axes) for solution in solutions):
+                raise ValueError("The singular set is not a finite list of isolated points.")
+            result = {"points": [{str(axis): str(solution[axis]) for axis in axes if axis in solution} for solution in solutions],
+                      "text": str(solutions), "criterion": "F=0 and gradient F=0"}
+            value = solutions
     else: raise ValueError("Unsupported local Sage operation.")
-    result = {"text": str(value)}
+    if operation not in ("sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"):
+        result = {"text": str(value)}
 print(json.dumps({"schemaVersion": 1, "jobId": request["jobId"], "operation": operation,
     "status": "succeeded", "result": result, "latex": str(latex(value))}, separators=(",", ":")))
 `;

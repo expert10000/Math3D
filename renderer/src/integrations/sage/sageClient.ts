@@ -17,7 +17,9 @@ const localSageUnavailableMessage =
 export const isLocalSageOperation = (operation: string) =>
   operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact" ||
   operation === "sage.symbolic.simplify" || operation === "sage.symbolic.factor" ||
-  operation === "sage.symbolic.expand" || operation === "sage.symbolic.solve";
+  operation === "sage.symbolic.expand" || operation === "sage.symbolic.solve" ||
+  operation === "sage.symbolic.gradient" || operation === "sage.symbolic.hessian" ||
+  operation === "sage.symbolic.singularities";
 
 export const selectedSageBackend = (request: SageRunRequest): "local" | "docker" => {
   if (request.backend != null && request.backend !== "local" && request.backend !== "docker") {
