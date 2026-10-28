@@ -870,3 +870,21 @@ hashes against the build manifest, installed Math3D 1.7.0-rc.1 and Theory Lab
 and reopened the exact hash-verified run from installed Math3D. The files and
 checksums are retained in the [release instructions](stable-two-app-signoff.md).
 This is candidate acceptance, not publication or an upgrade-from-v1.6.0 test.
+
+### Stable v1.6.0 upgrade gate (failed 2026-10-28)
+
+The exact `1.7.0-rc.1` candidate has **not** passed an in-place upgrade from
+the published v1.6.0 Windows installer. A fresh Windows runner installed the
+published package and saved a Graph Project and a setting through its UI, but
+the RC installer did not exit during the upgrade. A bounded repeat confirmed
+the stall. An independent disposable-install probe found that the published
+v1.6.0 uninstaller exits with code 2 when invoked with the silent,
+keep-app-data flags used by the upgrade path. The underlying cause of that
+uninstaller exit code is not yet established. See the [exact hashes, run links,
+and failed-gate evidence](stable-two-app-signoff.md#published-v160-to-170-rc1-upgrade-gate-2026-10-28).
+
+Project/settings retention after upgrading and the installed two-app handoff
+remain **unverified**. The clean-install pass above remains scoped to clean
+installs. A repaired, separately versioned candidate must pass the upgrade
+gate on its own exact bytes before final 1.7.0 files are produced; those final
+files require another exact-byte test before publication.

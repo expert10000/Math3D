@@ -111,3 +111,39 @@ The test used neither a checkout fixture producer nor system Python/Conda paths
 in either app. No failure was reported in the passing run. The earlier local
 Sandbox connection failure remains recorded above and was not used as evidence
 for this candidate.
+
+## Published v1.6.0 to 1.7.0-rc.1 upgrade gate (2026-10-28)
+
+**Failed; the RC is not approved as an in-place upgrade.** The
+[Windows Stable Upgrade Two-App Signoff](../.github/workflows/windows-stable-upgrade-two-app.yml)
+workflow uses a fresh Windows runner, verifies installer SHA-256 values, and
+keeps the Math3D install directory and profile fixed across versions. It uses
+the published `Math3D-Setup-1.6.0.exe` (SHA-256
+`5a785909352816e80995f203b1bb28263ed4f9423abf76664c5eec4813c36341`)
+and the exact archived `1.7.0-rc.1` candidate files listed above.
+
+In [run 40679888053](https://github.com/expert10000/Math3D/actions/runs/40679888053),
+v1.6.0 installed and its UI saved a Graph Project and a setting. The RC
+installer then remained open; the diagnostic run was cancelled after more than
+15 minutes. In [run 40682887301](https://github.com/expert10000/Math3D/actions/runs/40682887301),
+the same v1.6.0 UI seed passed again, and the RC installer was stopped after a
+bounded 180-second wait. The saved Graph Project was
+`Upgrade Graph from v1.6.0`; the command-preview overlay setting was off.
+There was no Math3D app process left running before the upgrade installer.
+
+The next fresh-runner [uninstaller probe 40684191144](https://github.com/expert10000/Math3D/actions/runs/40684191144)
+installed the published v1.6.0 package into a disposable directory and invoked
+its installed uninstaller with the silent, keep-app-data flags used during an
+NSIS upgrade. That uninstaller exited with **code 2**. This establishes a
+failure in the published package's uninstall path; the precise internal cause
+of code 2 has not yet been proven. The recorded outcome is `status: failed`,
+not a passed upgrade. Project/settings retention after upgrading and the
+installed Lab → `.qscene` → Math3D handoff were **not reached**. The earlier
+clean-install candidate signoff remains valid for clean installs only.
+
+Before releasing an upgrade over v1.6.0, repair the migration path in a **new
+candidate**, then run this gate against its exact new installer bytes. Preserve
+the old Project and settings during that repair. The final 1.7.0 installer files
+must separately pass the same upgrade and two-app tests; an RC hash cannot
+certify different final binaries. The local Windows Sandbox was not used for
+this gate because its guest connection failed before installers ran.
