@@ -57,9 +57,11 @@ import { LinkedRegionBoundsEditor } from "./LinkedRegionBoundsEditor";
 import type { LinkedExplorerProbe } from "./linkedFieldProbe";
 import { sampleComplexSliceOverlay, sampleScalarSliceOverlay, sampleSliceOverlayVectorPlane,
   sliceOverlayArrowsFromPlane, type LinkedOverlayLineProfile, type SliceOverlayArrow,
-  type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+  type OverlayRegionSummary, type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair, type LinkedOverlayGraphSeries } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
+import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
+import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -1120,6 +1122,24 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       onAddLinkedOverlayLine(pair);
       setRunStatus(`Sent ${line.rows.length} aligned vector and ${
         pair[1].origin.series} samples to Graphs.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLineBusy(false); }
+  };
+  const sendLinkedRegion = async (region: VectorField3DOverlayRegion,
+    summary: OverlayRegionSummary, vectorSamples: readonly OverlaySampleDigest[],
+    overlaySamples: readonly OverlaySampleDigest[]) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
+      const pair = linkedOverlayRegionGraphPair(document, region, summary,
+        vectorSamples, overlaySamples,
+        document.workspace?.complexOverlay?.visible ?
+          `${document.workspace.complexOverlay.title} ${document.workspace.complexOverlay.mode}` :
+          document.workspace?.scalarOverlay?.title ?? "Scalar field");
+      await reverifyLinkedOverlayRegionGraphPair(pair[0].origin, pair[1].origin);
+      onAddLinkedOverlayLine(pair);
+      setRunStatus("Sent 17 aligned region mean samples per field to Graphs.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
@@ -2501,6 +2521,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               linkedProfileMismatch={sharedProfileMismatch}
               onLinkedLineProfileChange={setLinkedLineProfile}
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
+              onSendRegionToGraphs={sendLinkedRegion} regionBusy={lineBusy || busy}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2532,6 +2553,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         linkedProfileMismatch={sharedProfileMismatch}
         onLinkedLineProfileChange={setLinkedLineProfile}
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
+        onSendRegionToGraphs={sendLinkedRegion} regionBusy={lineBusy || busy}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

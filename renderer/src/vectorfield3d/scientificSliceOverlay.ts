@@ -32,7 +32,9 @@ export type OverlayRegionSummary = Readonly<{
   scalar: Readonly<{ mean: number; min: number; max: number }> | null;
   scalarOutsideAreaPercent: number; vectorOutsideAreaPercent: number;
   vectorUnit: string; scalarUnit: string;
-  scalarSampleSha256: string; vectorSourceHash: string }>;
+  scalarSampleSha256: string; vectorSourceHash: string;
+  profileRows: readonly Readonly<{ coordinate: number; vector: number | null;
+    scalar: number | null; alignedCount: number }>[] }>;
 
 /** Summarize aligned physical samples on a fixed 17×17 lattice inside a saved rectangle. */
 export function sampleOverlayRegion(document: VectorField3DDocument,
@@ -119,6 +121,9 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
       (corners[2]! * (1 - a.fraction) + corners[3]! * a.fraction) * b.fraction : null;
   };
   const vectors: number[] = [], scalars: number[] = [];
+  const columns = Array.from({ length: 17 }, (_, index) => ({
+    coordinate: recipe.bounds[0][0] + boundsWidth[0]! * index / 16,
+    vectors: [] as number[], scalars: [] as number[] }));
   let vectorCount = 0, scalarCount = 0;
   for (let i = 0; i < 17; i++) for (let j = 0; j < 17; j++) {
     const firstValue = recipe.bounds[0][0] + boundsWidth[0]! * i / 16;
@@ -146,11 +151,23 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
     const scalarValid = scalar !== null && Number.isFinite(scalar);
     if (vectorValid) vectorCount++;
     if (scalarValid) scalarCount++;
-    if (vectorValid && scalarValid) { vectors.push(vector!); scalars.push(scalar!); }
+    if (vectorValid && scalarValid) {
+      vectors.push(vector!); scalars.push(scalar!);
+      columns[i]!.vectors.push(vector!); columns[i]!.scalars.push(scalar!);
+    }
   }
   const stats = (values: number[]) => values.length ? {
     mean: values.reduce((sum, value) => sum + value, 0) / values.length,
     min: Math.min(...values), max: Math.max(...values) } : null;
+  const mean = (values: number[]) => values.length ?
+    values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const phaseMean = (values: number[]) => {
+    if (!values.length) return null;
+    const sine = values.reduce((sum, value) => sum + Math.sin(value), 0);
+    const cosine = values.reduce((sum, value) => sum + Math.cos(value), 0);
+    return Math.hypot(sine, cosine) / values.length < 1e-12 ? null :
+      Math.atan2(sine, cosine);
+  };
   return { sampleCount: 289, vectorCount, scalarCount,
     alignedCount: vectors.length, vector: stats(vectors), scalar: stats(scalars),
     scalarOutsideAreaPercent, vectorOutsideAreaPercent,
@@ -159,7 +176,11 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
     scalarSampleSha256: complex ? sha256Checksum(new TextEncoder().encode(
       `${volume.sampleSha256}:${complex.imaginaryVolume.sampleSha256}`)).slice(7) :
       volume.sampleSha256,
-    vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash };
+    vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash,
+    profileRows: columns.map(column => ({ coordinate: column.coordinate,
+      vector: mean(column.vectors), scalar: complex?.mode === "phase" ?
+        phaseMean(column.scalars) : mean(column.scalars),
+      alignedCount: column.vectors.length })) };
 }
 
 /** Resample a checked scalar transfer at the vector slice's physical coordinates. */

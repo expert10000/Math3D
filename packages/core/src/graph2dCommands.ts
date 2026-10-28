@@ -32,8 +32,9 @@ export const graph2dCommandDefinitions: readonly CommandDefinition<Graph2DComman
       : { ok: false, errors: ["Graph2D viewport command requires a valid viewport."] },
   project: (state, payload) => {
     const viewport = (payload as { viewport: Graph2DViewport }).viewport;
-    const display = { ...state.document.display, viewport };
-    const candidate = { ...state.document, display, requiredCapabilities: graph2DRequiredCapabilities(state.document.source, display) };
+    const current = state.document as Graph2DDocument;
+    const display = { ...current.display, viewport };
+    const candidate = { ...current, display, requiredCapabilities: graph2DRequiredCapabilities(current.source, display) };
     const normalized = normalizeGraph2DDocument(candidate);
     if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
     return { document: normalized.value };
@@ -67,10 +68,10 @@ export const graph2dCommandDefinitions: readonly CommandDefinition<Graph2DComman
       : { ok: false, errors: ["Graph2D construction command requires a typed construction set or null."] },
   project: (state, payload) => {
     const next = (payload as { constructions: Graph2DConstructionSet | null }).constructions;
-    const source: Graph2DSource & { constructions?: Graph2DConstructionSet } = { ...state.document.source };
+    const current = state.document as Graph2DDocument;
+    const source: Graph2DSource & { constructions?: Graph2DConstructionSet } = { ...current.source };
     if (next === null) delete source.constructions;
     else source.constructions = next;
-    const current = state.document;
     const changed = structuralHash(source) !== current.identity.structuralHash;
     const candidate = { ...current, source, requiredCapabilities: graph2DRequiredCapabilities(source, current.display),
       identity: changed ? advanceDocumentIdentity(current.identity, source) : current.identity };

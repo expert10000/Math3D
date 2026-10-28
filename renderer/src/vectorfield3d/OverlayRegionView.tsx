@@ -4,11 +4,13 @@ import { canonicalJsonStringify, createVectorField3DRegionResult,
   type VectorField3DOverlayRegion, type VectorField3DSliceArtifact } from "@math3d/core";
 import { useState } from "react";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
-import { sampleOverlayRegion, type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import { sampleOverlayRegion, type OverlayRegionSummary,
+  type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 
 export function OverlayRegionView({ document, slice, region, vectorPlane, scalarVolume,
   complexVolumes, vectorSamples, status, onChange, onStartSelection, selecting,
-  savedResults = [], resultStatuses = {}, onSaveResult }: {
+  savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
+  regionBusy = false }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   vectorPlane: VectorSliceOverlayPlane | null;
@@ -20,6 +22,10 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   savedResults?: readonly AnalysisResultEnvelope[];
   resultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onSaveResult?: (result: AnalysisResultEnvelope) => void;
+  onSendToGraphs?: (region: VectorField3DOverlayRegion, summary: OverlayRegionSummary,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    overlaySamples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
+  regionBusy?: boolean;
 }) {
   const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
@@ -122,6 +128,10 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
             onSaveResult(result); setPublishError("");
           } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
         }}>Publish region result to Project</button>}
+      {onSendToGraphs && summary?.alignedCount && <button type="button"
+        data-testid="send-linked-region-to-graphs" disabled={regionBusy}
+        onClick={() => onSendToGraphs(region, summary!, vectorSamples, overlaySamples)}>
+        {regionBusy ? "Verifying region…" : "Send aligned region profile to Graphs"}</button>}
       {publishError && <p role="alert">{publishError}</p>}
       {savedStatus && <p role={savedStatus.includes("withheld") ? "alert" : "status"}
         data-testid="scientific-region-saved-status">{savedStatus}</p>}

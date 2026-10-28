@@ -301,6 +301,9 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await region.getByTestId("scientific-region-publish").click();
     await expect(region.getByTestId("scientific-region-saved-status"))
       .toContainText("numerical summary reverified");
+    await region.getByTestId("send-linked-region-to-graphs").click();
+    await expect(explorer.getByTestId("vector-field3d-run-status"))
+      .toContainText("17 aligned region mean samples", { timeout: 60_000 });
     await app.app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, complexDirectory);
@@ -327,7 +330,9 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
-    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    await expect(projects.getByTestId("project-view-mode"))
+      .toContainText("Saved in Your saved projects", { timeout: 60_000 });
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1"))).not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const savedRegionResult = stored.workspace.results.find((item: { provenance: { operation: { type: string } } }) =>
       item.provenance.operation.type === "vector3d.linked-region");
@@ -346,17 +351,26 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
         transaction.commands[0]?.command.payload.source?.objects)
       .find((value: unknown) => Array.isArray(value)) ?? graphEntry.checkpoint.source.objects;
     const linkedGraphObjects = graphObjects.filter((item: { linkedOrigin?: unknown }) => item.linkedOrigin);
-    expect(linkedGraphObjects).toHaveLength(2);
-    expect(linkedGraphObjects.map((item: { linkedOrigin: { series: string } }) => item.linkedOrigin.series))
+    expect(linkedGraphObjects).toHaveLength(4);
+    const regionGraphObjects = linkedGraphObjects.filter((item: { linkedOrigin: { kind: string } }) =>
+      item.linkedOrigin.kind === "vector-scalar-linked-region/v1");
+    expect(regionGraphObjects).toHaveLength(2);
+    expect(regionGraphObjects.map((item: { linkedOrigin: { series: string } }) => item.linkedOrigin.series))
       .toEqual(["vector", "scalar"]);
-    expect(linkedGraphObjects[0].linkedOrigin.vectorSamples).toHaveLength(3);
-    const linkedVectorRefs = JSON.parse(linkedGraphObjects[0].linkedOrigin.vectorDocumentJson)
+    expect(regionGraphObjects[0].linkedOrigin.region.bounds)
+      .toEqual([[-0.02, 0.02], [-0.03, 0.03]]);
+    expect(regionGraphObjects[0].linkedOrigin.vectorSamples).toHaveLength(3);
+    expect(regionGraphObjects[0].linkedOrigin.rowsSha256).toMatch(/^sha256:[a-f0-9]{64}$/);
+    const lineGraphObjects = linkedGraphObjects.filter((item: { linkedOrigin: { kind: string } }) =>
+      item.linkedOrigin.kind === "vector-scalar-linked-line/v1");
+    expect(lineGraphObjects).toHaveLength(2);
+    const linkedVectorRefs = JSON.parse(lineGraphObjects[0].linkedOrigin.vectorDocumentJson)
       .source.field.references;
     expect(linkedVectorRefs).toHaveLength(3);
     expect(linkedVectorRefs[0].sceneFingerprint).toMatch(/^[a-f0-9]{64}$/);
-    expect(linkedGraphObjects[0].linkedOrigin.scalarReference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(linkedGraphObjects[0].linkedOrigin.profile.point).toHaveLength(3);
-    expect(linkedGraphObjects[0].linkedOrigin.rowsSha256).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(lineGraphObjects[0].linkedOrigin.scalarReference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(lineGraphObjects[0].linkedOrigin.profile.point).toHaveLength(3);
+    expect(lineGraphObjects[0].linkedOrigin.rowsSha256).toMatch(/^sha256:[a-f0-9]{64}$/);
     const vectorCheckpoint = stored.workspace.entries.find((entry: { module: string }) =>
       entry.module === "vector3d")?.checkpoint;
     const recipe = vectorCheckpoint.workspace.scalarOverlay;
@@ -469,7 +483,7 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
       .getByLabel("Source and sampling details"))
       .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
     await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
-      paths.length === 2 && paths.every(path => !path.getAttribute("d"))))
+      paths.length === 4 && paths.every(path => !path.getAttribute("d"))))
       .toBe(true);
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();

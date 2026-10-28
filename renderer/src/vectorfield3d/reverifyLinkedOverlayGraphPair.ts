@@ -2,7 +2,7 @@ import { canonicalJsonStringify, createGraph2DFieldReference,
   inspectGraph2DFieldReference, parseVectorField3DDocument, scientificCoordinateIndex,
   sampleVectorField3DSlice, sha256Checksum, structuralHash,
   verifyGraph2DScientificVolume, verifyVectorField3DSparseSamples,
-  verifyVectorField3DVolumes, type Graph2DLinkedOverlayOrigin,
+  verifyVectorField3DVolumes, type Graph2DLinkedLineOrigin,
   type Graph2DScientificVolume, type VectorField3DLinkedLineProfile } from "@math3d/core";
 import { cachedVerifiedVectorField3DSlice, type VerifiedVectorTransfer } from "./verifiedDerivedResultCache";
 import { sampleLinkedOverlayLineProfile, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
@@ -13,8 +13,8 @@ type ScientificBridge = Pick<NonNullable<typeof window.scientificScenes>,
   "previewGraphVolume" | "closeGraphDataset">;
 
 /** Recheck both saved resources and the exact vector slice samples backing a Graphs pair. */
-export async function reverifyLinkedOverlayGraphPair(origin: Graph2DLinkedOverlayOrigin,
-  scalarOrigin: Graph2DLinkedOverlayOrigin,
+export async function reverifyLinkedOverlayGraphPair(origin: Graph2DLinkedLineOrigin,
+  scalarOrigin: Graph2DLinkedLineOrigin,
   bridge: ScientificBridge | undefined = typeof window === "undefined" ? undefined : window.scientificScenes):
   Promise<void> {
   if (!bridge?.openGraphDatasetReference || !bridge.previewGraphVolume ||

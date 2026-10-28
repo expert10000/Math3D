@@ -26,6 +26,7 @@ import {
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
   type Graph2DPointSeriesDraft, type Graph2DPointSeriesObject,
+  type Graph2DLinkedLineOrigin, type Graph2DLinkedRegionOrigin,
   type Graph2DScientificDatasetPreview,
   type VectorField3DDerivedLine,
   type Graph2DScientificPlane,
@@ -83,6 +84,7 @@ import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedS
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
+import { reverifyLinkedOverlayRegionGraphPair } from "../vectorfield3d/reverifyLinkedOverlayRegionGraphPair";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
@@ -1172,7 +1174,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             vectorRows.length !== scalarRows.length ||
             vectorRows.some((row, index) => row.x !== scalarRows[index]?.x))
           throw new TypeError("Saved linked Graphs tables changed or lost alignment.");
-        await reverifyLinkedOverlayGraphPair(vector.linkedOrigin, scalar.linkedOrigin);
+        if (vector.linkedOrigin.kind === "vector-scalar-linked-region/v1" ||
+            vector.linkedOrigin.kind === "vector-complex-linked-region/v1")
+          await reverifyLinkedOverlayRegionGraphPair(vector.linkedOrigin,
+            scalar.linkedOrigin as Graph2DLinkedRegionOrigin);
+        else await reverifyLinkedOverlayGraphPair(vector.linkedOrigin as Graph2DLinkedLineOrigin,
+          scalar.linkedOrigin as Graph2DLinkedLineOrigin);
         if (active) setLinkedPairVerification(previous => previous.document === document ?
           { ...previous, states: { ...previous.states, [id]: "Verified both sources." } } : previous);
       } catch (cause) { if (active) setLinkedPairVerification(previous => previous.document === document ?
@@ -1959,11 +1966,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {selectedObject?.kind === "point-series" && selectedObject.linkedOrigin && <>
           <dt>Linked series</dt><dd>{selectedObject.linkedOrigin.series} · pair
             {" "}<code>{selectedObject.linkedOrigin.pairId}</code></dd>
-          <dt>Physical line</dt><dd>Vary {selectedObject.linkedOrigin.xName} (axis
-            {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
-            {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd>
+          {"region" in selectedObject.linkedOrigin ?
+            <><dt>Physical region profile</dt><dd>Mean along {selectedObject.linkedOrigin.xName}
+              {" "}over 17 aligned samples per column; bounds
+              {" "}{selectedObject.linkedOrigin.region.bounds.map(bounds =>
+                `[${bounds[0]}, ${bounds[1]}]`).join(" × ")}; fixed coordinate
+              {" "}{selectedObject.linkedOrigin.region.fixedCoordinate}.</dd></> :
+            <><dt>Physical line</dt><dd>Vary {selectedObject.linkedOrigin.xName} (axis
+              {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
+              {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd></>}
           <dt>Units</dt><dd>{selectedObject.linkedOrigin.xUnit} → {selectedObject.linkedOrigin.yUnit}</dd>
-          {selectedObject.linkedOrigin.kind === "vector-scalar-linked-line/v1" ?
+          {selectedObject.linkedOrigin.kind === "vector-scalar-linked-line/v1" ||
+           selectedObject.linkedOrigin.kind === "vector-scalar-linked-region/v1" ?
             <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
               {" "}{selectedObject.linkedOrigin.scalarReference.datasetId} /
               {" "}{selectedObject.linkedOrigin.scalarReference.component}</dd></> :
@@ -1979,10 +1993,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             "Authored expression field"}</dd>
           <dt>Verified samples</dt><dd>{selectedObject.linkedOrigin.vectorSamples.map(part =>
             <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}
-            {selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" && <>
+            {(selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
+              selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1") && <>
               <div>Real: <code>{selectedObject.linkedOrigin.realSampleSha256}</code></div>
               <div>Imaginary: <code>{selectedObject.linkedOrigin.imaginarySampleSha256}</code></div></>}
-            <div>{selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ?
+            <div>{selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
+              selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1" ?
               "Complex pair" : "Scalar"}: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div></dd>
           <dt>Source and row hashes</dt><dd><code>{selectedObject.linkedOrigin.vectorSourceHash}<br />
             {selectedObject.linkedOrigin.rowsSha256}</code></dd>
@@ -2335,7 +2351,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               throw new TypeError("Graph object limit reached.");
             if (document.source.objects.some(item => item.kind === "point-series" &&
               item.linkedOrigin?.pairId === pair[0].origin.pairId))
-              throw new TypeError("This linked line is already in Graphs.");
+              throw new TypeError("This linked profile is already in Graphs.");
             const drafts = pair.map((series, index) => ({ label: series.label,
               table: pointTableStore.publish(series.rows), mode: "line" as const,
               domain: series.domain, linkedOrigin: series.origin,

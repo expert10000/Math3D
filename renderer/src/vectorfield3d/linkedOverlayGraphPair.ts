@@ -1,11 +1,12 @@
 import { graph2DPointDomain, serializeVectorField3DDocument, sha256Checksum, structuralHash,
-  type Graph2DLinkedOverlayOrigin, type Graph2DPointRow,
+  type Graph2DLinkedOverlayOrigin, type Graph2DLinkedLineOrigin,
+  type Graph2DPointRow,
   type VectorField3DDocument, type VectorField3DLinkedLineProfile } from "@math3d/core";
 import type { LinkedOverlayLineProfile } from "./scientificSliceOverlay";
 
-export type LinkedOverlayGraphSeries = Readonly<{
+export type LinkedOverlayGraphSeries<Origin extends Graph2DLinkedOverlayOrigin = Graph2DLinkedOverlayOrigin> = Readonly<{
   label: string; rows: readonly Graph2DPointRow[];
-  domain: ReturnType<typeof graph2DPointDomain>; origin: Graph2DLinkedOverlayOrigin;
+  domain: ReturnType<typeof graph2DPointDomain>; origin: Origin;
 }>;
 
 /** A null at a phase branch cut prevents Graphs from drawing a false vertical jump. */
@@ -24,7 +25,8 @@ export function linkedOverlayGraphRows(line: LinkedOverlayLineProfile,
 export function linkedOverlayGraphPair(document: VectorField3DDocument,
   profile: VectorField3DLinkedLineProfile, line: LinkedOverlayLineProfile,
   vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
-  fieldTitle: string): readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries] {
+  fieldTitle: string): readonly [LinkedOverlayGraphSeries<Graph2DLinkedLineOrigin>,
+    LinkedOverlayGraphSeries<Graph2DLinkedLineOrigin>] {
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
   const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
   if ((!scalar && !complex) || !profile.visible ||
@@ -37,12 +39,13 @@ export function linkedOverlayGraphPair(document: VectorField3DDocument,
     xUnit: line.coordinateUnit, vectorSourceHash: line.vectorSourceHash,
     vectorSamples, scalarSampleSha256: line.scalarSampleSha256 };
   const make = (series: "vector" | "scalar", unit: string, label: string,
-    origin: Omit<Graph2DLinkedOverlayOrigin, "series" | "yUnit" | "rowsSha256">): LinkedOverlayGraphSeries => {
+    origin: Omit<Graph2DLinkedLineOrigin, "series" | "yUnit" | "rowsSha256">):
+    LinkedOverlayGraphSeries<Graph2DLinkedLineOrigin> => {
     const rows = linkedOverlayGraphRows(line, series, series === "scalar" &&
       complex?.mode === "phase");
     return { label, rows, domain: graph2DPointDomain(rows), origin: {
       ...origin, series: series === "scalar" && complex ? "complex" : series,
-      yUnit: unit, rowsSha256: structuralHash(rows) } as Graph2DLinkedOverlayOrigin };
+      yUnit: unit, rowsSha256: structuralHash(rows) } as Graph2DLinkedLineOrigin };
   };
   if (complex) {
     const samples = line.complexSamples;

@@ -16,6 +16,8 @@ import { sampleComplexSliceOverlay, sampleLinkedOverlayLineProfile,
   sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
+import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
+import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
@@ -322,6 +324,99 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       ({ ok: false as const, status: "changed" as const, error: "Source changed" }) };
     expect(await checkSavedRegionResultSources(result, document, missing)).toBe("missing");
     expect(await checkSavedRegionResultSources(result, document, changed)).toBe("changed");
+  });
+
+  it("sends aligned region column means to Graphs and reverifies both saved series", async () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const region = { normalAxis, fixedCoordinate: 0,
+        bounds: [[-1, 1], [-1, 1]] as const,
+        vectorChannel: "speed" as const, visible: true };
+      const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+        selectedLayer: ({ 0: "yz", 1: "xz", 2: "xy" } as const)[normalAxis],
+        overlayRegion: region, scalarOverlay: { reference: scalarReference,
+          title: "Potential", unit: "V", opacity: 0.8, visible: true } });
+      const slice = sampleVectorField3DSlice(document, normalAxis, 0);
+      const summary = sampleOverlayRegion(document, slice, region,
+        sampleSliceOverlayVectorPlane(document, slice), scalarReference, scalarVolume, "V");
+      const pair = linkedOverlayRegionGraphPair(document, region, summary, [],
+        [{ name: "scalar", sampleSha256: scalarVolume.sampleSha256 }], "Potential");
+      expect(pair[0].rows).toHaveLength(17);
+      expect(pair[0].rows.map(row => row.x)).toEqual(pair[1].rows.map(row => row.x));
+      expect(pair[0].origin.region).toEqual(region);
+      expect(pair[0].origin.yUnit).toBe("m/s");
+      expect(pair[1].origin.yUnit).toBe("V");
+      expect(pair[0].rows.every(row => row.y !== null)).toBe(true);
+      const atZero = pair[1].rows[8]!;
+      expect(atZero.x).toBeCloseTo(0, 12);
+      expect(atZero.y).toBeCloseTo(summary.profileRows[8]!.scalar!, 12);
+      const store = new Graph2DPointTableStore();
+      const drafts = pair.map((part, index) => ({ label: part.label,
+        table: store.publish(part.rows), mode: "line" as const, domain: part.domain,
+        linkedOrigin: part.origin, style: { color: index ? "#38bdf8" : "#fde047",
+          lineWidth: 2, lineStyle: "solid" as const, visible: true } })) as
+        [typeof pair[number] & { table: ReturnType<typeof store.publish> },
+          typeof pair[number] & { table: ReturnType<typeof store.publish> }];
+      const scene = applyGraph2DAuthoring(createEmptyGraph2DDocument(`region-${normalAxis}`),
+        { type: "create-point-series-pair", drafts });
+      const reopened = parseGraph2DDocument(serializeGraph2DDocument(
+        createGraph2DDocument({ ...scene, stableKey: `region-${normalAxis}` })));
+      expect(reopened.source.objects.map(object => object.kind === "point-series" ?
+        object.linkedOrigin?.kind : null)).toEqual([
+          "vector-scalar-linked-region/v1", "vector-scalar-linked-region/v1"]);
+      const bridge = { checkGraphDatasetReference: async () => ({ ok: true as const,
+        source: { manifestJson: scalarManifest, fingerprint: scalarFingerprint } }),
+        openGraphDatasetReference: async () => ({ ok: true as const,
+          source: { manifestJson: scalarManifest, fingerprint: scalarFingerprint } }),
+        previewGraphVolume: async () => scalarVolume,
+        closeGraphDataset: async () => true } as unknown as
+          NonNullable<typeof window.scientificScenes>;
+      await expect(reverifyLinkedOverlayRegionGraphPair(pair[0].origin,
+        pair[1].origin, bridge)).resolves.toBeUndefined();
+      const changed = { ...bridge, checkGraphDatasetReference: async () => ({
+        ok: false as const, status: "changed" as const, error: "resource changed" }) } as
+        unknown as NonNullable<typeof window.scientificScenes>;
+      await expect(reverifyLinkedOverlayRegionGraphPair(pair[0].origin,
+        pair[1].origin, changed)).rejects.toThrow(/changed/);
+    }
+  });
+
+  it("keeps explicit region gaps and hashes both complex phase components", async () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-6, 6], [-1, 1]] as const,
+      vectorChannel: "speed" as const, visible: true };
+    const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", overlayRegion: region,
+      complexOverlay: { ...complexRecipe, mode: "phase" } });
+    const slice = sampleVectorField3DSlice(document, 2, 0);
+    const summary = sampleOverlayRegion(document, slice, region,
+      sampleSliceOverlayVectorPlane(document, slice), complexReal.reference,
+      complexReal.volume, "rad", { imaginaryReference: complexImaginary.reference,
+        imaginaryVolume: complexImaginary.volume, mode: "phase" });
+    const pair = linkedOverlayRegionGraphPair(document, region, summary, [], [
+      { name: "real", sampleSha256: complexReal.volume.sampleSha256 },
+      { name: "imaginary", sampleSha256: complexImaginary.volume.sampleSha256 }],
+    "Wave amplitude phase");
+    expect(pair.map(part => part.origin.series)).toEqual(["vector", "complex"]);
+    expect(pair[0].origin.kind).toBe("vector-complex-linked-region/v1");
+    expect(pair[0].rows.map(row => row.x)).toEqual(pair[1].rows.map(row => row.x));
+    expect(pair[0].rows[0]!.y).toBeNull();
+    expect(pair[1].rows[0]!.y).toBeNull();
+    expect(pair[1].origin.yUnit).toBe("rad");
+    const bridge = { checkGraphDatasetReference: async () => ({ ok: true as const,
+      source: { manifestJson: complexManifest, fingerprint: complexFingerprint } }),
+      openGraphDatasetReference: async () => ({ ok: true as const,
+        source: { manifestJson: complexManifest, fingerprint: complexFingerprint } }),
+      previewGraphVolume: async ({ component }: { component: string }) =>
+        component === "real" ? complexReal.volume : complexImaginary.volume,
+      closeGraphDataset: async () => true } as unknown as
+        NonNullable<typeof window.scientificScenes>;
+    await expect(reverifyLinkedOverlayRegionGraphPair(pair[0].origin,
+      pair[1].origin, bridge)).resolves.toBeUndefined();
+    const missing = { ...bridge, checkGraphDatasetReference: async () => ({
+      ok: false as const, status: "missing" as const, error: "resource missing" }) } as
+      unknown as NonNullable<typeof window.scientificScenes>;
+    await expect(reverifyLinkedOverlayRegionGraphPair(pair[0].origin,
+      pair[1].origin, missing)).rejects.toThrow(/missing/);
   });
 
   it("flags scalar area beyond its domain and rejects changed or incompatible sources", () => {

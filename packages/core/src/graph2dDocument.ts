@@ -11,7 +11,8 @@ import { isGraph2DFieldReference, isGraph2DFieldLocator,
   type Graph2DFieldReference, type Graph2DFieldLocator } from "./graph2dFieldReference";
 import { isGraph2DVectorFieldReference, type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 import { isGraph2DViewport } from "./graph2dViewport";
-import { parseVectorField3DDocument, type VectorField3DLinkedLineProfile } from "./vectorField3DDocument";
+import { parseVectorField3DDocument, type VectorField3DLinkedLineProfile,
+  type VectorField3DOverlayRegion } from "./vectorField3DDocument";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
   type Graph2DConstructionSet } from "./graph2dConstructions";
@@ -144,7 +145,7 @@ type Graph2DLinkedOverlayCommon = Readonly<{
   vectorSourceHash: string; vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
   scalarSampleSha256: string; rowsSha256: string;
 }>;
-export type Graph2DLinkedOverlayOrigin =
+export type Graph2DLinkedLineOrigin =
   | (Graph2DLinkedOverlayCommon & Readonly<{
     kind: "vector-scalar-linked-line/v1"; series: "vector" | "scalar";
     scalarReference: Graph2DFieldReference }>)
@@ -153,6 +154,23 @@ export type Graph2DLinkedOverlayOrigin =
     realReference: Graph2DFieldReference; imaginaryReference: Graph2DFieldReference;
     mode: "magnitude" | "phase";
     realSampleSha256: string; imaginarySampleSha256: string }>);
+type Graph2DLinkedRegionCommon = Readonly<{
+  pairId: string; vectorDocumentJson: string; region: VectorField3DOverlayRegion;
+  xName: string; xUnit: string; yUnit: string;
+  vectorSourceHash: string;
+  vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
+  scalarSampleSha256: string; rowsSha256: string;
+}>;
+export type Graph2DLinkedRegionOrigin =
+  | (Graph2DLinkedRegionCommon & Readonly<{
+    kind: "vector-scalar-linked-region/v1"; series: "vector" | "scalar";
+    scalarReference: Graph2DFieldReference }> )
+  | (Graph2DLinkedRegionCommon & Readonly<{
+    kind: "vector-complex-linked-region/v1"; series: "vector" | "complex";
+    realReference: Graph2DFieldReference; imaginaryReference: Graph2DFieldReference;
+    mode: "magnitude" | "phase";
+    realSampleSha256: string; imaginarySampleSha256: string }>);
+export type Graph2DLinkedOverlayOrigin = Graph2DLinkedLineOrigin | Graph2DLinkedRegionOrigin;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -460,6 +478,57 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
   catch { return false; }
 };
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
+  if (record(value) && ["vector-scalar-linked-region/v1", "vector-complex-linked-region/v1"]
+    .includes(String(value.kind))) {
+    if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
+      ...(value.kind === "vector-scalar-linked-region/v1" ? ["scalarReference"] :
+        ["realReference", "imaginaryReference", "mode", "realSampleSha256",
+          "imaginarySampleSha256"]), "xName", "xUnit", "yUnit", "vectorSourceHash",
+      "vectorSamples", "scalarSampleSha256", "rowsSha256"]) ||
+      typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
+      !(value.kind === "vector-scalar-linked-region/v1" ?
+        ["vector", "scalar"].includes(String(value.series)) :
+        ["vector", "complex"].includes(String(value.series))) ||
+      typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
+      (value.kind === "vector-scalar-linked-region/v1" ?
+        !isGraph2DFieldReference(value.scalarReference) ||
+          value.scalarReference.semanticType !== "scalar-field" :
+        !isGraph2DFieldReference(value.realReference) ||
+        !isGraph2DFieldReference(value.imaginaryReference) ||
+        value.realReference.semanticType !== "complex-scalar-field" ||
+        value.imaginaryReference.semanticType !== "complex-scalar-field" ||
+        value.realReference.component !== "real" ||
+        value.imaginaryReference.component !== "imaginary" ||
+        value.realReference.datasetId !== value.imaginaryReference.datasetId ||
+        value.realReference.sceneFingerprint !== value.imaginaryReference.sceneFingerprint ||
+        !["magnitude", "phase"].includes(String(value.mode)) ||
+        !/^[a-f0-9]{64}$/.test(String(value.realSampleSha256)) ||
+        !/^[a-f0-9]{64}$/.test(String(value.imaginarySampleSha256))) ||
+      !record(value.region) || !exact(value.region, ["normalAxis", "fixedCoordinate",
+        "bounds", "vectorChannel", "visible"]) ||
+      ![0, 1, 2].includes(value.region.normalAxis as number) ||
+      !finite(value.region.fixedCoordinate) ||
+      !Array.isArray(value.region.bounds) || value.region.bounds.length !== 2 ||
+      !value.region.bounds.every((bounds: unknown) => Array.isArray(bounds) &&
+        bounds.length === 2 && bounds.every(finite) && bounds[1] > bounds[0]) ||
+      !["p", "q", "r", "speed"].includes(String(value.region.vectorChannel)) ||
+      value.region.visible !== true ||
+      !bounded(value.xName, 160) || !bounded(value.xUnit, 80) || !bounded(value.yUnit, 80) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.vectorSourceHash)) ||
+      !Array.isArray(value.vectorSamples) || ![0, 3].includes(value.vectorSamples.length) ||
+      !value.vectorSamples.every((part: unknown) => record(part) && exact(part, ["name", "sampleSha256"]) &&
+        bounded(part.name, 64) && typeof part.sampleSha256 === "string" &&
+        /^[a-f0-9]{64}$/.test(part.sampleSha256)) ||
+      !/^[a-f0-9]{64}$/.test(String(value.scalarSampleSha256)) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256))) return false;
+    try {
+      const document = parseVectorField3DDocument(value.vectorDocumentJson);
+      return canonicalJsonStringify(document.workspace?.overlayRegion) ===
+          canonicalJsonStringify(value.region) &&
+        (document.source.field.kind === "expressions" ? value.vectorSamples.length === 0 :
+          value.vectorSamples.length === 3);
+    } catch { return false; }
+  }
   if (!record(value) || !["vector-scalar-linked-line/v1", "vector-complex-linked-line/v1"]
     .includes(String(value.kind)) ||
     !exact(value, ["kind", "pairId", "series", "vectorDocumentJson",
