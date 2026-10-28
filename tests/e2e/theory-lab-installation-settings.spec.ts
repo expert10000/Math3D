@@ -1,16 +1,23 @@
 import { expect, test } from "@playwright/test";
+import { _electron as electron } from "playwright";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
-import { launchRepoElectron } from "./helpers/electronLauncher";
+import { dirname, join, resolve, sep } from "node:path";
+import { definedEnvironment, launchRepoElectron } from "./helpers/electronLauncher";
 
 test("Settings validates a selected installed Theory Lab before remembering it", async () => {
   test.skip(process.platform !== "win32" || !process.env.QLAB_E2E_INSTALLED_EXE,
     "Set QLAB_E2E_INSTALLED_EXE to the clean installed Lab executable");
   const root = await mkdtemp(join(tmpdir(), "math3d-lab-settings-"));
   const installed = resolve(process.env.QLAB_E2E_INSTALLED_EXE!);
-  const app = await launchRepoElectron({ cwd: resolve(__dirname, "..", ".."), args: ["."],
-    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root } });
+  const installedMath3D = process.env.MATH3D_E2E_INSTALLED_EXE;
+  const env: Record<string, string | undefined> = { ...process.env, MATH3D_E2E: "1", MATH3D_E2E_PROFILE_ROOT: root,
+    MATH3D_E2E_USER_DATA_DIR: join(root, "user-data") };
+  delete env.MATH3D_THEORY_LAB_HOME;
+  const app = installedMath3D
+    ? await electron.launch({ executablePath: installedMath3D, cwd: dirname(installedMath3D),
+      args: [`--user-data-dir=${join(root, "user-data")}`], env: definedEnvironment(env) })
+    : await launchRepoElectron({ cwd: resolve(__dirname, "..", ".."), args: ["."], env });
   try {
     const page = await app.firstWindow();
     await page.getByTestId("top-settings-button").click();
