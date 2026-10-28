@@ -91,8 +91,10 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const regionMarkers = regionCorners ? [0, 1].map(end => {
     const point = [0, 0, 0] as [number, number, number];
     point[slice.normalAxis] = slice.fixedCoordinate;
-    point[first] = overlayRegion!.bounds[0][end]!;
-    point[second] = overlayRegion!.bounds[1][end]!;
+    point[first] = Math.max(slice.coordinates[0][0]!, Math.min(
+      slice.coordinates[0].at(-1)!, overlayRegion!.bounds[0][end]!));
+    point[second] = Math.max(slice.coordinates[1][0]!, Math.min(
+      slice.coordinates[1].at(-1)!, overlayRegion!.bounds[1][end]!));
     return sliceSeedMarkerAtPoint(slice, point);
   }) : null;
   const pendingRegionMarker = regionFirstCorner ? sliceSeedMarkerAtPoint(slice, regionFirstCorner) : null;

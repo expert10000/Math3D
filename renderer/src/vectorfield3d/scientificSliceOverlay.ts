@@ -50,10 +50,8 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
   const [first, second] = slice.planeAxes;
   for (let local = 0; local < 2; local++) {
     const [low, high] = recipe.bounds[local]!;
-    const coordinates = slice.coordinates[local]!;
-    if (!(high > low) || low < coordinates[0]! - 1e-9 ||
-        high > coordinates.at(-1)! + 1e-9)
-      throw new RangeError("Selected region lies outside the vector slice domain.");
+    if (!Number.isFinite(low) || !Number.isFinite(high) || !(high > low))
+      throw new RangeError("Selected region needs finite, ordered physical bounds.");
   }
   const channelIndex = { p: 0, q: 1, r: 2 } as const;
   const componentIndex = recipe.vectorChannel === "speed" ? null : channelIndex[recipe.vectorChannel];
@@ -63,6 +61,13 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
     unit: axis.unit, origin: axis.origin, spacing: axis.spacing,
     count: reference.shape[index]! }));
   const boundsWidth = recipe.bounds.map(([low, high]) => high - low);
+  const vectorOverlap = recipe.bounds.map(([low, high], local) => {
+    const coordinates = slice.coordinates[local]!;
+    return Math.max(0, Math.min(high, coordinates.at(-1)!) -
+      Math.max(low, coordinates[0]!));
+  });
+  const vectorOutsideAreaPercent = 100 * (1 -
+    vectorOverlap[0]! * vectorOverlap[1]! / (boundsWidth[0]! * boundsWidth[1]!));
   const overlap = recipe.bounds.map(([low, high], local) => {
     const axis = reference.axes[slice.planeAxes[local]!]!;
     const end = axis.origin + axis.spacing * (reference.shape[slice.planeAxes[local]!]! - 1);
@@ -102,7 +107,11 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
     const point = [0, 0, 0] as [number, number, number];
     point[slice.normalAxis] = slice.fixedCoordinate;
     point[first] = firstValue; point[second] = secondValue;
-    const components = plane.components.map(component => interpolate(component, firstValue, secondValue));
+    const vectorInside = [firstValue, secondValue].every((value, local) =>
+      value >= slice.coordinates[local]![0]! - 1e-9 &&
+      value <= slice.coordinates[local]!.at(-1)! + 1e-9);
+    const components = vectorInside ? plane.components.map(component =>
+      interpolate(component, firstValue, secondValue)) : [null, null, null];
     const vector = componentIndex === null ? components.every(value => value !== null) ?
       Math.hypot(...components as number[]) : null : components[componentIndex];
     const scalar = linkedFieldPointStatus(point, scalarAxes,
@@ -119,7 +128,7 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
     min: Math.min(...values), max: Math.max(...values) } : null;
   return { sampleCount: 289, vectorCount, scalarCount,
     alignedCount: vectors.length, vector: stats(vectors), scalar: stats(scalars),
-    scalarOutsideAreaPercent, vectorOutsideAreaPercent: 0,
+    scalarOutsideAreaPercent, vectorOutsideAreaPercent,
     vectorUnit: componentIndex === null ? plane.units[0] :
       plane.units[componentIndex], scalarUnit, scalarSampleSha256: volume.sampleSha256,
     vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash };
