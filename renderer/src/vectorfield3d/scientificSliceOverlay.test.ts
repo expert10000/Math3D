@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createGraph2DFieldReference, createVectorField3DDocument,
   applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
@@ -20,6 +22,10 @@ import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
 import { linkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
+import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
+  sampleVerifiedScalarPoint, sampleVerifiedScalarRegion,
+  sampleVerifiedVectorRegion } from "./combinedFieldInspection";
+import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -177,6 +183,97 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     const invalid = JSON.parse(serialized);
     invalid.workspace.complexOverlay.mode = "phase";
     expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
+  });
+
+  it("reads all three verified fields at one saved physical point independently", () => {
+    const point = [1, 0, 0] as const, units = ["m", "m", "m"] as const;
+    const saved = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      scalarOverlay: { reference: scalarReference, title: "Potential",
+        unit: "V", opacity: 0.7, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours" },
+      linkedProbe: { point, units } });
+    const reopened = parseVectorField3DDocument(serializeVectorField3DDocument(saved));
+    expect(reopened.workspace?.linkedProbe?.point).toEqual(point);
+    const scalar = sampleVerifiedScalarPoint(scalarReference, scalarVolume,
+      reopened.source.axes, point, units);
+    const complex = sampleVerifiedComplexPoint(complexReal.reference,
+      complexImaginary.reference, [complexReal.volume, complexImaginary.volume],
+      reopened.source.axes, point, units);
+    expect(scalar.value).toBeCloseTo(1, 10);
+    expect(complex.magnitude).toBeCloseTo(Math.exp(-1 / 18), 1);
+    expect(complex.phase).toBeCloseTo(1.3, 1);
+    expect(sampleVerifiedScalarPoint(scalarReference, scalarVolume, reopened.source.axes,
+      [9, 0, 0], units)).toEqual({ status: "outside", value: null });
+    expect(sampleVerifiedScalarPoint(scalarReference, scalarVolume, reopened.source.axes,
+      point, ["mm", "m", "m"]).status).toBe("incompatible-units");
+    expect(() => sampleVerifiedComplexPoint(complexReal.reference,
+      complexImaginary.reference, [complexReal.volume,
+        { ...complexImaginary.volume, resourceSha256: "changed" }],
+      reopened.source.axes, point, units)).toThrow(/changed/);
+    expect(sampleVerifiedScalarPoint(scalarReference, scalarVolume,
+      reopened.source.axes, point, units).value).toBe(1);
+  });
+
+  it("reports independent vector, scalar, complex magnitude and phase rectangle gaps", () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const slice = sampleVectorField3DSlice(analytic, 2, 0);
+    const plane = sampleSliceOverlayVectorPlane(analytic, slice);
+    const vector = sampleVerifiedVectorRegion(analytic, slice, region, plane);
+    const scalar = sampleVerifiedScalarRegion(region, scalarReference, scalarVolume,
+      analytic.source.axes);
+    const complex = sampleVerifiedComplexRegion(region, complexReal.reference,
+      complexImaginary.reference, [complexReal.volume, complexImaginary.volume],
+      analytic.source.axes);
+    expect(vector.statistics.count).toBe(289);
+    expect(vector.unit).toBe("m/s");
+    const expectedSpeedMean = Array.from({ length: 17 }, (_, i) => -1 + i / 8)
+      .flatMap(x => Array.from({ length: 17 }, (_, j) => Math.hypot(x, -1 + j / 8)))
+      .reduce((sum, value) => sum + value, 0) / 289;
+    expect(vector.statistics.mean).toBeCloseTo(expectedSpeedMean, 10);
+    expect(scalar.count).toBe(289);
+    expect(scalar.mean).toBeGreaterThan(0);
+    expect(complex.magnitude.count).toBe(289);
+    expect(complex.phase.count).toBe(289);
+    const partial = { ...region, bounds: [[3, 5], [-1, 1]] as const };
+    expect(sampleVerifiedScalarRegion(partial, scalarReference, scalarVolume,
+      analytic.source.axes).gaps).toBeGreaterThan(0);
+    expect(sampleVerifiedComplexRegion(partial, complexReal.reference,
+      complexImaginary.reference, [complexReal.volume, complexImaginary.volume],
+      analytic.source.axes).magnitude.gaps).toBeGreaterThan(0);
+    expect(sampleVerifiedVectorRegion(analytic, slice, partial, plane).statistics.gaps)
+      .toBeGreaterThan(0);
+    expect(() => sampleVerifiedScalarRegion(region, scalarReference,
+      { ...scalarVolume, resourceSha256: "changed" }, analytic.source.axes)).toThrow(/changed/);
+    expect(sampleVerifiedComplexRegion(region, complexReal.reference,
+      complexImaginary.reference, [complexReal.volume, complexImaginary.volume],
+      analytic.source.axes).magnitude.count).toBe(289);
+  });
+
+  it("keeps verified scalar and complex rectangle values when the vector plane is withheld", () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const saved = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      scalarOverlay: { reference: scalarReference, title: "Potential",
+        unit: "V", opacity: 0.7, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours" },
+      overlayRegion: region });
+    const document = parseVectorField3DDocument(serializeVectorField3DDocument(saved));
+    const html = renderToStaticMarkup(createElement(CombinedOverlayRegionReadout, {
+      document, region, scalarVolume, complexVolumes: [complexReal.volume,
+        complexImaginary.volume], vectorStatus: "Vector source withheld: changed" }));
+    expect(html).toContain("Vector source withheld: changed");
+    expect(html).toContain("Potential");
+    expect(html).toContain("289/289 samples");
+    expect(html).toContain("phase");
+    const changed = renderToStaticMarkup(createElement(CombinedOverlayRegionReadout, {
+      document, region, scalarVolume, complexVolumes: null,
+      vectorStatus: "Vector source withheld: changed",
+      complexStatus: "Complex overlay withheld: resource changed" }));
+    expect(changed).toContain("Potential");
+    expect(changed).toContain("Complex overlay withheld: resource changed");
   });
 
   it("aligns complex magnitude and phase on XY, XZ and YZ physical slices", () => {

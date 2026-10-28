@@ -7,9 +7,11 @@ import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sampleOverlayRegion, type OverlayRegionSummary,
   type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
+import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 
 export function OverlayRegionView({ document, slice, region, vectorPlane, scalarVolume,
-  complexVolumes, vectorSamples, status, onChange, onStartSelection, selecting,
+  complexVolumes, vectorSamples, status, vectorStatus = "", scalarStatus = "", complexStatus = "",
+  onChange, onStartSelection, selecting,
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
@@ -19,6 +21,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   complexVolumes: readonly [Graph2DScientificVolume, Graph2DScientificVolume] | null;
   vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
   status: string; onChange: (region: VectorField3DOverlayRegion | null) => void;
+  vectorStatus?: string; scalarStatus?: string; complexStatus?: string;
   onStartSelection: () => void; selecting: boolean;
   savedResults?: readonly AnalysisResultEnvelope[];
   resultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
@@ -35,6 +38,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     { ...document.workspace.complexOverlay,
       mode: (document.workspace.complexOverlay.mode === "phase-contours" ?
         "phase" : document.workspace.complexOverlay.mode) as "phase" | "magnitude" } : null;
+  const secondaryComplex = scalar && document.workspace?.complexOverlay?.visible ?
+    document.workspace.complexOverlay : null;
   if (!scalar && !complex) return null;
   const selected = region?.normalAxis === slice.normalAxis &&
     Math.abs(region.fixedCoordinate - slice.fixedCoordinate) < 1e-9;
@@ -86,7 +91,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     }
   }
   return <section aria-label="Linked heatmap and vector region" data-testid="scientific-overlay-region">
-    <h4>Linked {complex ? "complex" : "scalar"} + vector region</h4>
+    <h4>{secondaryComplex ? "Linked vector + scalar + complex region" :
+      `Linked ${complex ? "complex" : "scalar"} + vector region`}</h4>
     {selected && linkedRegionFocus && <p data-testid="scientific-region-graph-focus"
       role={summary ? "status" : status.includes("withheld") ? "alert" : "status"}>
       Graphs selection: columns {linkedRegionFocus.columns[0] + 1}–{linkedRegionFocus.columns[1] + 1},
@@ -125,9 +131,15 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         {" "}{format(region.bounds[1][0])} to {format(region.bounds[1][1])} {units[1]};
         {" "}{document.source.axes[slice.normalAxis]!.label} = {format(slice.fixedCoordinate)}
         {" "}{slice.fixedUnit}.</p>
+      {region.visible && secondaryComplex && <CombinedOverlayRegionReadout
+        document={document} region={region} slice={slice} vectorPlane={vectorPlane}
+        scalarVolume={scalarVolume} complexVolumes={complexVolumes}
+        vectorStatus={vectorStatus} scalarStatus={scalarStatus}
+        complexStatus={complexStatus} />}
       {region.visible && !summary && <p role={error ? "alert" : "status"}>
         {error || status || "Reverifying both sources before showing the region…"}</p>}
       {summary && <div role="status" data-testid="scientific-overlay-region-summary">
+        {secondaryComplex && <h5>Existing vector + scalar linked pair</h5>}
         <p>Aligned physical samples: {summary.alignedCount}/{summary.sampleCount}
           {" "}on a 17 × 17 grid. Vector available: {summary.vectorCount};
           {" "}{complex ? "complex" : "scalar"} available: {summary.scalarCount}.
@@ -157,11 +169,14 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
               vectorSamples, overlaySamples);
             onSaveResult(result); setPublishError("");
           } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
-        }}>Publish region result to Project</button>}
+        }}>{secondaryComplex ? "Publish vector + scalar result to Project" :
+          "Publish region result to Project"}</button>}
       {onSendToGraphs && summary?.alignedCount && <button type="button"
         data-testid="send-linked-region-to-graphs" disabled={regionBusy}
         onClick={() => onSendToGraphs(region, summary!, vectorSamples, overlaySamples)}>
-        {regionBusy ? "Verifying region…" : "Send aligned region profile to Graphs"}</button>}
+        {regionBusy ? "Verifying region…" : secondaryComplex ?
+          "Send vector + scalar profile to Graphs" :
+          "Send aligned region profile to Graphs"}</button>}
       {publishError && <p role="alert">{publishError}</p>}
       {savedStatus && <p role={savedStatus.includes("withheld") ? "alert" : "status"}
         data-testid="scientific-region-saved-status">{savedStatus}</p>}

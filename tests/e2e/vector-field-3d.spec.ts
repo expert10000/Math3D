@@ -566,6 +566,22 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("rad");
     await expect(figure.getByTestId("scientific-slice-phase-contours").locator("line").first())
       .toBeVisible();
+    await figure.locator('[data-probe-cell="10-10"]').click();
+    await expect(explorer.getByTestId("scientific-combined-field-probe"))
+      .toContainText("Potential", { timeout: 60_000 });
+    await expect(explorer.getByTestId("scientific-combined-complex-point"))
+      .toContainText("phase", { timeout: 60_000 });
+    const region = figure.getByTestId("scientific-overlay-region");
+    await region.getByRole("button", { name: "Select rectangular region" }).click();
+    await figure.locator('[data-probe-cell="8-8"]').click();
+    await figure.locator('[data-probe-cell="13-13"]').click();
+    const combined = figure.getByTestId("scientific-combined-region-summary");
+    await expect(combined.getByTestId("scientific-combined-vector-region"))
+      .toContainText("289/289 samples", { timeout: 60_000 });
+    await expect(combined.getByTestId("scientific-combined-scalar-region"))
+      .toContainText("Potential");
+    await expect(combined.getByTestId("scientific-combined-complex-region"))
+      .toContainText("phase");
     await explorer.getByRole("button", { name: "Save document" }).click();
     await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     await page.getByTestId("projects-toggle").click();
@@ -579,6 +595,8 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     expect(saved.scalarOverlay.reference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(saved.complexOverlay.mode).toBe("phase-contours");
     expect(saved.complexOverlay.imaginary.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(saved.linkedProbe.point).toHaveLength(3);
+    expect(saved.overlayRegion.bounds).toHaveLength(2);
     expect(JSON.stringify(saved)).not.toContain('"values"');
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
@@ -590,6 +608,10 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("Potential", { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-slice-contour-provenance"))
       .toContainText("imaginary:", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-combined-field-probe"))
+      .toContainText("Potential", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-combined-region-summary"))
+      .toContainText("magnitude", { timeout: 60_000 });
     const imaginaryFile = join(complex, "imaginary.f64");
     const changed = Buffer.from(await readFile(imaginaryFile));
     changed[0] ^= 1;
@@ -601,6 +623,12 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await expect(reopened.getByTestId("scientific-slice-phase-contours")).toHaveCount(0);
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("Potential", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-combined-complex-point"))
+      .toContainText("withheld", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-combined-scalar-region"))
+      .toContainText("Potential", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-combined-complex-region"))
+      .toContainText("withheld", { timeout: 60_000 });
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-contour-overlay-"))

@@ -53,6 +53,8 @@ import { BUILTIN_EXPLORER_SCENES, type BuiltinExplorerSceneId,
   type ExplorerLibraryEntry } from "./scientificExplorerLibrary";
 import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
 import { LinkedExplorerVectorProbe } from "./LinkedExplorerVectorProbe";
+import { CombinedOverlayProbe } from "./CombinedOverlayProbe";
+import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 import { LinkedRegionBoundsEditor } from "./LinkedRegionBoundsEditor";
 import type { LinkedExplorerProbe } from "./linkedFieldProbe";
 import { sampleComplexSliceOverlay, sampleScalarSliceOverlay, sampleSliceOverlayVectorPlane,
@@ -326,11 +328,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     let active = true;
     setVerifiedScalarOverlay(null);
     if (!scalarOverlay?.visible) { setScalarOverlayStatus(""); setOverlayReading(false); return; }
-    if (!overlayReadGeneration) {
-      setScalarOverlayStatus("Waiting for verified vector preview before reading the scalar source…");
-      setOverlayReading(false);
-      return;
-    }
     setScalarOverlayStatus("Verifying scalar overlay source…");
     setOverlayReading(true);
     const verify = async () => {
@@ -368,10 +365,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     let active = true;
     setVerifiedComplexOverlay(null);
     if (!complexOverlay?.visible) { setComplexOverlayStatus(""); return; }
-    if (!overlayReadGeneration) {
-      setComplexOverlayStatus("Waiting for verified vector preview before reading the complex source…");
-      return;
-    }
     setComplexOverlayStatus("Verifying both complex components…");
     setOverlayReading(true);
     const verify = async () => {
@@ -463,6 +456,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       return !workspace.hiddenSeedGroups.includes(group);
     }) } : null;
   const multiView = workspace.layout === "split" || workspace.layout === "quad";
+  const visibleRegionSlice = regionLayer && (multiView ? linkedSlices[regionLayer] :
+    workspace.selectedLayer === regionLayer ? slice : null);
   const normalAxis = ({ xy: 2, xz: 1, yz: 0 } as const)[workspace.selectedLayer as "xy" | "xz" | "yz"];
   const sliceOptions = normalAxis === undefined ? [] :
     vectorField3DSliceCoordinates(document, normalAxis);
@@ -2095,10 +2090,21 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           `${value} ${linkedProbe.units[axis]}`).join(" · ")}.</p>
         <button type="button" onClick={() => changeLinkedProbe(null)}>Clear linked point</button>
         {!fieldLayer && <LinkedExplorerVectorProbe document={document} linkedProbe={linkedProbe} />}
+        {!fieldLayer && <CombinedOverlayProbe document={document} probe={linkedProbe}
+          scalarVolume={linkedProfileScalarVolume} complexVolumes={linkedRegionComplexVolumes}
+          scalarStatus={scalarOverlayStatus} complexStatus={complexOverlayStatus} />}
       </>}
     </section>
     <LinkedRegionBoundsEditor region={workspace.overlayRegion}
       axes={document.source.axes} onChange={setOverlayRegion} />
+    {workspace.overlayRegion?.visible && scalarOverlay?.visible && complexOverlay?.visible &&
+      !visibleRegionSlice && <section aria-label="Combined field rectangle inspection"
+        className="vector-field3d-probe">
+        <CombinedOverlayRegionReadout document={document} region={workspace.overlayRegion}
+          scalarVolume={linkedProfileScalarVolume}
+          complexVolumes={linkedRegionComplexVolumes} vectorStatus={linkedVectorStatus}
+          scalarStatus={scalarOverlayStatus} complexStatus={complexOverlayStatus} />
+      </section>}
     <section aria-label="Display clipping box" className="vector-field3d-view-controls">
       <h5>Display clipping box</h5>
       <p>Hide samples outside these bounds. Field values, probes and saved source data stay unchanged.</p>
@@ -2560,6 +2566,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               scalarOverlay={overlayForSlice(linkedSlices[layer]!, layer).sample}
               contourOverlay={contourForSlice(linkedSlices[layer]!, layer).sample}
               contourStatus={contourForSlice(linkedSlices[layer]!, layer).status}
+              scalarStatus={scalarOverlayStatus} complexStatus={complexOverlayStatus}
+              vectorStatus={linkedVectorStatus}
               overlayArrows={overlayVectorArrows[layer]}
               overlayVectorPlane={overlayVectorPlanes[layer]}
               scalarOverlayVolume={linkedProfileScalarVolume}
@@ -2595,6 +2603,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         scalarOverlay={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).sample}
         contourOverlay={contourForSlice(slice, workspace.selectedLayer as SeedSliceLayer).sample}
         contourStatus={contourForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
+        scalarStatus={scalarOverlayStatus} complexStatus={complexOverlayStatus}
+        vectorStatus={linkedVectorStatus}
         overlayArrows={overlayVectorArrows[workspace.selectedLayer as SeedSliceLayer]}
         overlayVectorPlane={overlayVectorPlanes[workspace.selectedLayer as SeedSliceLayer]}
         scalarOverlayVolume={linkedProfileScalarVolume}

@@ -25,7 +25,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
   onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
   seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
-  scalarOverlay, contourOverlay = null, contourStatus = "",
+  scalarOverlay, contourOverlay = null, contourStatus = "", scalarStatus = "",
+  complexStatus = "", vectorStatus = "",
   overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
   overlayVectorPlane = null, scalarOverlayVolume = null, complexOverlayVolumes = null,
   linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange,
@@ -48,6 +49,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   scalarOverlay?: ScalarSliceOverlay | null;
   contourOverlay?: ScalarSliceOverlay | null;
   contourStatus?: string;
+  scalarStatus?: string; complexStatus?: string; vectorStatus?: string;
   overlayArrows?: readonly SliceOverlayArrow[];
   overlayVectorSamples?: readonly Readonly<{ name: string; sampleSha256: string }>[];
   overlayStatus?: string;
@@ -420,6 +422,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       onSaveResult={onSaveRegionResult}
       onSendToGraphs={onSendRegionToGraphs} regionBusy={regionBusy}
       status={overlayStatus} onChange={onOverlayRegionChange}
+      vectorStatus={vectorStatus} scalarStatus={scalarStatus} complexStatus={complexStatus}
       selecting={regionSelecting} onStartSelection={() => {
         setRegionSelecting(!regionSelecting); setRegionFirstCorner(null);
       }} />}
