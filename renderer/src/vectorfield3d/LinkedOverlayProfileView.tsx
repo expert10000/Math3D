@@ -100,7 +100,7 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
       {active && !line && <p role="status">{error || status ||
         "Reverifying both sources before showing this line…"}</p>}
       {line && vectorPlot && scalarPlot && <>
-        {scalar && onSendToGraphs && <button type="button" data-testid="send-linked-overlay-line-to-graphs"
+        {onSendToGraphs && <button type="button" data-testid="send-linked-overlay-line-to-graphs"
           disabled={sendBusy} onClick={() => onSendToGraphs(line, profile, vectorSamples)}>
           {sendBusy ? "Verifying linked line…" : "Send both linked lines to Graphs"}</button>}
         <p role="status">{vectorPlot.count}/{line.rows.length} vector samples;

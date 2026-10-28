@@ -1150,8 +1150,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       try {
         const pair = linked.filter(object => object.linkedOrigin?.pairId === id);
         const vector = pair.find(object => object.linkedOrigin?.series === "vector");
-        const scalar = pair.find(object => object.linkedOrigin?.series === "scalar");
+        const scalar = pair.find(object => object.linkedOrigin?.series === "scalar" ||
+          object.linkedOrigin?.series === "complex");
         if (pair.length !== 2 || !vector || !scalar || !vector.linkedOrigin || !scalar.linkedOrigin ||
+            vector.linkedOrigin.kind !== scalar.linkedOrigin.kind ||
             canonicalJsonStringify({ ...vector.linkedOrigin, series: "vector", yUnit: "", rowsSha256: "" }) !==
               canonicalJsonStringify({ ...scalar.linkedOrigin, series: "vector", yUnit: "", rowsSha256: "" }))
           throw new TypeError("Saved linked Graphs pair is incomplete or misaligned.");
@@ -1954,15 +1956,27 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
             {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd>
           <dt>Units</dt><dd>{selectedObject.linkedOrigin.xUnit} → {selectedObject.linkedOrigin.yUnit}</dd>
-          <dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
-            {" "}{selectedObject.linkedOrigin.scalarReference.datasetId} /
-            {" "}{selectedObject.linkedOrigin.scalarReference.component}</dd>
+          {selectedObject.linkedOrigin.kind === "vector-scalar-linked-line/v1" ?
+            <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
+              {" "}{selectedObject.linkedOrigin.scalarReference.datasetId} /
+              {" "}{selectedObject.linkedOrigin.scalarReference.component}</dd></> :
+            <><dt>Complex mode</dt><dd>{selectedObject.linkedOrigin.mode}</dd>
+              <dt>Complex real source</dt><dd>{selectedObject.linkedOrigin.realReference.sceneId} /
+                {" "}{selectedObject.linkedOrigin.realReference.datasetId} /
+                {" "}{selectedObject.linkedOrigin.realReference.component}</dd>
+              <dt>Complex imaginary source</dt><dd>{selectedObject.linkedOrigin.imaginaryReference.sceneId} /
+                {" "}{selectedObject.linkedOrigin.imaginaryReference.datasetId} /
+                {" "}{selectedObject.linkedOrigin.imaginaryReference.component}</dd></>}
           <dt>Vector source</dt><dd>{selectedLinkedVectorField?.kind === "scientific-bundle" ?
             `${selectedLinkedVectorField.references[0].sceneId} / ${selectedLinkedVectorField.references[0].datasetId}` :
             "Authored expression field"}</dd>
           <dt>Verified samples</dt><dd>{selectedObject.linkedOrigin.vectorSamples.map(part =>
             <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}
-            <div>Scalar: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div></dd>
+            {selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" && <>
+              <div>Real: <code>{selectedObject.linkedOrigin.realSampleSha256}</code></div>
+              <div>Imaginary: <code>{selectedObject.linkedOrigin.imaginarySampleSha256}</code></div></>}
+            <div>{selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ?
+              "Complex pair" : "Scalar"}: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div></dd>
           <dt>Source and row hashes</dt><dd><code>{selectedObject.linkedOrigin.vectorSourceHash}<br />
             {selectedObject.linkedOrigin.rowsSha256}</code></dd>
           <dt>Project source check</dt><dd role={linkedPairVerification.states[selectedObject.linkedOrigin.pairId] ===
@@ -2319,7 +2333,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 lineWidth: 2, lineStyle: "solid" as const, visible: true } })) as
               [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft];
             onAuthoringCommit({ type: "create-point-series-pair", drafts });
-            setToolHint(`Added ${pair[0].rows.length} aligned vector and scalar samples to Graphs.`);
+            setToolHint(`Added ${pair[0].rows.length} aligned vector and ${
+              pair[1].origin.series} samples to Graphs.`);
           }}
           libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy || sceneLibraryChecking}
           libraryError={scientificImportError}

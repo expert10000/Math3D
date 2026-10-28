@@ -491,7 +491,7 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
     await expect(linked).toContainText("complex samples", { timeout: 60_000 });
     await expect(linked).toContainText("Real ");
     await expect(linked).toContainText("imaginary ");
-    await expect(linked.getByTestId("send-linked-overlay-line-to-graphs")).toHaveCount(0);
+    await expect(linked.getByTestId("send-linked-overlay-line-to-graphs")).toBeVisible();
     const region = figure.getByTestId("scientific-overlay-region");
     await region.getByRole("button", { name: "Select rectangular region" }).click();
     await figure.locator('[data-probe-cell="9-9"]').click();
@@ -528,6 +528,19 @@ test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", as
     await expect(explorer.getByRole("figure", { name: "XY field slice" })
       .getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("1024/1024 cells", { timeout: 60_000 });
+    figure = explorer.getByRole("figure", { name: "XY field slice" });
+    await figure.locator('[data-probe-cell="16-16"]').click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    linked = figure.getByTestId("scientific-linked-overlay-profile");
+    await linked.getByRole("button", { name: "Link line through shared probe" }).click();
+    await linked.getByTestId("send-linked-overlay-line-to-graphs").click();
+    await expect(explorer.getByTestId("vector-field3d-run-status"))
+      .toContainText("aligned vector and complex samples", { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
+      paths.length === 2 && paths.every(path => !!path.getAttribute("d"))))
+      .toBe(true);
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -573,6 +586,9 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     const linked = figure.getByTestId("scientific-linked-overlay-profile");
     await linked.getByRole("button", { name: "Link line through shared probe" }).click();
     await expect(linked).toContainText("complex samples", { timeout: 60_000 });
+    await linked.getByTestId("send-linked-overlay-line-to-graphs").click();
+    await expect(explorer.getByTestId("vector-field3d-run-status"))
+      .toContainText("aligned vector and complex samples", { timeout: 60_000 });
     const region = figure.getByTestId("scientific-overlay-region");
     await region.getByRole("button", { name: "Select rectangular region" }).click();
     await figure.locator('[data-probe-cell="12-12"]').click();
@@ -581,11 +597,33 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
       .toContainText("Complex field outside selected area:");
     await explorer.getByRole("button", { name: "Save document" }).click();
     await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
+      paths.length === 2 && paths.every(path => !!path.getAttribute("d"))))
+      .toBe(true);
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const graphEntry = stored.workspace.entries.find((entry: { module: string }) =>
+      entry.module === "graph2d");
+    const graphObjects = [...(graphEntry.replay?.payload?.transactions ?? [])].reverse()
+      .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+        transaction.commands[0]?.command.payload.source?.objects)
+      .find((value: unknown) => Array.isArray(value)) ?? graphEntry.checkpoint.source.objects;
+    const linkedGraphObjects = graphObjects.filter((item: { linkedOrigin?: unknown }) => item.linkedOrigin);
+    expect(linkedGraphObjects).toHaveLength(2);
+    expect(linkedGraphObjects.map((item: { linkedOrigin: { series: string } }) => item.linkedOrigin.series))
+      .toEqual(["vector", "complex"]);
+    expect(linkedGraphObjects[0].linkedOrigin.vectorSamples).toHaveLength(3);
+    expect(JSON.parse(linkedGraphObjects[0].linkedOrigin.vectorDocumentJson).source.field.references)
+      .toHaveLength(3);
+    expect(linkedGraphObjects[0].linkedOrigin.realReference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(linkedGraphObjects[0].linkedOrigin.imaginaryReference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(linkedGraphObjects[0].linkedOrigin.realSampleSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(linkedGraphObjects[0].linkedOrigin.imaginarySampleSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(linkedGraphObjects[0].linkedOrigin.mode).toBe("phase");
     const saved = stored.workspace.entries.find((entry: { module: string }) =>
       entry.module === "vector3d")?.checkpoint.workspace;
     expect(saved.complexOverlay.mode).toBe("phase");
@@ -598,6 +636,10 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
+      paths.length === 2 && paths.every(path => !!path.getAttribute("d"))))
+      .toBe(true);
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
@@ -621,6 +663,19 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     await expect(reopened.getByTestId("scientific-overlay-region-summary")).toHaveCount(0);
     await expect(reopened.getByTestId("scientific-linked-overlay-profile"))
       .not.toContainText("complex samples");
+    await reopened.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
+      paths.length === 2 && paths.every(path => !path.getAttribute("d"))))
+      .toBe(true);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    await expect(reopened.getByTestId("scientific-complex-overlay-status"))
+      .toContainText(/withheld.*integrity|withheld.*checksum|withheld.*changed/i,
+        { timeout: 60_000 });
     await writeFile(imaginaryFile, originalImaginary);
     await reopened.getByRole("button", { name: "Open saved document" }).click();
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
@@ -645,6 +700,10 @@ test("SCI-02 Burgers and complex heatmap reverify after Project reopen and rejec
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
+      paths.length === 2 && paths.every(path => !path.getAttribute("d"))))
+      .toBe(true);
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const changed = page.getByRole("region", { name: "Scientific Field Explorer" });
