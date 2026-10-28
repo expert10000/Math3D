@@ -1720,6 +1720,22 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       fieldLayer?.metadata.title ?? document.metadata.title}</h3>
     <p>{fieldLayer ? "Verified scalar or complex field layer." :
       "Independent 3D document · bounded arrows and adaptive numerical trajectories."}</p>
+    <details className="scientific-field-explorer-overlay-guide" aria-label="Field overlay guide">
+      <summary>How the field overlays relate</summary>
+      <p>With a scalar heatmap and Phase contours selected, background color shows a real
+        scalar field, contour lines show equal phase from a complex field, and white
+        arrows show the vector field.
+        Each layer is sampled at the same physical x, y, z position.</p>
+      <p>Built-in example: choose Swirling flow and an XY slice, add Quadratic potential with
+        “Show this scalar as overlay on vector slices”, then add Complex wave with
+        “Show this complex field as overlay on vector slices”. In the right Inspector,
+        choose Phase contours and Preview slice.</p>
+      <p>Quadratic potential is Q = x² + y² + z² (V). Complex wave is a separate,
+        dimensionless complex field with magnitude A = exp[−(x² + y²)/18 − z²/12]
+        and phase φ = 1.3x + 0.8y + 0.65z + 0.25 sin(y). Numerically, on z = 0,
+        |f| = exp(−Q/18), but Q alone does not determine the phase.
+        Field Explorer aligns and verifies the sources; it does not calculate one from the other.</p>
+    </details>
     {seedProgress && <label role="status">Trajectory seeds {seedProgress.completed}/{seedProgress.total}
       <progress aria-label="Trajectory seed progress" value={seedProgress.completed}
         max={Math.max(1, seedProgress.total)} /></label>}</div>

@@ -407,6 +407,12 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .scientific-field-explorer-header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between;
   gap: 12px; padding: 4px 10px; border-bottom: 1px solid var(--border); }
 .scientific-field-explorer-header h3, .scientific-field-explorer-header p { margin: 0 0 4px; }
+.scientific-field-explorer-overlay-guide { max-width: 72ch; font-size: 13px; }
+.scientific-field-explorer-overlay-guide summary { cursor: pointer; font-weight: 600; }
+.scientific-field-explorer-overlay-guide[open] { max-height: 240px; overflow: auto;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel-strong); }
+.scientific-field-explorer-overlay-guide p { margin: 7px 0 0; }
 .scientific-field-explorer-header > div:last-child { display: flex; flex-wrap: wrap; gap: 5px; justify-content: flex-end; }
 .scientific-field-explorer-controls, .scientific-field-explorer-inspector { min-width: 0; min-height: 0;
   overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-strong); }
