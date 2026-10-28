@@ -11,7 +11,7 @@ import { isGraph2DFieldReference, isGraph2DFieldLocator,
   type Graph2DFieldReference, type Graph2DFieldLocator } from "./graph2dFieldReference";
 import { isGraph2DVectorFieldReference, type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
 import { isGraph2DViewport } from "./graph2dViewport";
-import { parseVectorField3DDocument } from "./vectorField3DDocument";
+import { parseVectorField3DDocument, type VectorField3DLinkedLineProfile } from "./vectorField3DDocument";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
   type Graph2DConstructionSet } from "./graph2dConstructions";
@@ -136,6 +136,14 @@ export type Graph2DDerivedFieldOrigin = Readonly<{
   verifiedSamples: readonly Readonly<{ name: string; sampleSha256: string;
     verifiedChunks?: number; totalChunks?: number; verifiedTiles?: number; totalTiles?: number }>[];
 }>;
+export type Graph2DLinkedOverlayOrigin = Readonly<{
+  kind: "vector-scalar-linked-line/v1"; pairId: string; series: "vector" | "scalar";
+  vectorDocumentJson: string; scalarReference: Graph2DFieldReference;
+  profile: Readonly<Omit<VectorField3DLinkedLineProfile, "point"> & { point: readonly number[] }>;
+  xName: string; xUnit: string; yUnit: string;
+  vectorSourceHash: string; vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
+  scalarSampleSha256: string; rowsSha256: string;
+}>;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -147,6 +155,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   origin?: Graph2DScientificDatasetOrigin;
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
   derivedOrigin?: Graph2DDerivedFieldOrigin;
+  linkedOrigin?: Graph2DLinkedOverlayOrigin;
 }>;
 export type Graph2DPiece = Readonly<{
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
@@ -441,17 +450,49 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
   try { return parseVectorField3DDocument(value.sourceDocumentJson).source.field.kind === "scientific-bundle"; }
   catch { return false; }
 };
+export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
+  if (!record(value) || !exact(value, ["kind", "pairId", "series", "vectorDocumentJson",
+    "scalarReference", "profile", "xName", "xUnit", "yUnit", "vectorSourceHash",
+    "vectorSamples", "scalarSampleSha256", "rowsSha256"]) ||
+    value.kind !== "vector-scalar-linked-line/v1" ||
+    typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
+    !["vector", "scalar"].includes(String(value.series)) ||
+    typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
+    !isGraph2DFieldReference(value.scalarReference) ||
+    !record(value.profile) || !exact(value.profile, ["normalAxis", "varyingAxis", "point",
+      "vectorChannel", "visible"]) ||
+    ![0, 1, 2].includes(value.profile.normalAxis as number) ||
+    ![0, 1, 2].includes(value.profile.varyingAxis as number) ||
+    value.profile.normalAxis === value.profile.varyingAxis ||
+    !Array.isArray(value.profile.point) || value.profile.point.length !== 3 ||
+    !value.profile.point.every(finite) ||
+    !["p", "q", "r", "speed"].includes(String(value.profile.vectorChannel)) ||
+    typeof value.profile.visible !== "boolean" ||
+    !bounded(value.xName, 160) || !bounded(value.xUnit, 80) || !bounded(value.yUnit, 80) ||
+    !/^sha256:[a-f0-9]{64}$/.test(String(value.vectorSourceHash)) ||
+    !Array.isArray(value.vectorSamples) || ![0, 3].includes(value.vectorSamples.length) ||
+    !value.vectorSamples.every((part: unknown) => record(part) && exact(part, ["name", "sampleSha256"]) &&
+      bounded(part.name, 64) && typeof part.sampleSha256 === "string" && /^[a-f0-9]{64}$/.test(part.sampleSha256)) ||
+    !/^[a-f0-9]{64}$/.test(String(value.scalarSampleSha256)) ||
+    !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256))) return false;
+  try {
+    const field = parseVectorField3DDocument(value.vectorDocumentJson).source.field;
+    return field.kind === "expressions" ? value.vectorSamples.length === 0 : value.vectorSamples.length === 3;
+  } catch { return false; }
+};
 const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObject => record(value) &&
   exact(value, ["id", "kind", "label", "table", "mode", "missing", "domain",
     ...(value.origin === undefined ? [] : ["origin"]),
     ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"]),
-    ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"])]) && objectId(value.id) &&
+    ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"]),
+    ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
-  [value.origin, value.analyticOrigin, value.derivedOrigin].filter(item => item !== undefined).length <= 1 &&
+  [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
   (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
-  (value.derivedOrigin === undefined || validGraph2DDerivedFieldOrigin(value.derivedOrigin));
+  (value.derivedOrigin === undefined || validGraph2DDerivedFieldOrigin(value.derivedOrigin)) &&
+  (value.linkedOrigin === undefined || validGraph2DLinkedOverlayOrigin(value.linkedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
   if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
       value.kind !== "piecewise" || !bounded(value.label, 160) || !Array.isArray(value.pieces) ||
