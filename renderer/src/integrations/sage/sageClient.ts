@@ -8,9 +8,14 @@ import {
 
 const baseUrlRaw = (import.meta as any)?.env?.VITE_SAGE_SERVICE_URL as string | undefined;
 const sageBaseUrl = (baseUrlRaw?.trim() || "http://127.0.0.1:8767").replace(/\/+$/, "");
+const localSageBaseUrl = "/api/sage";
 
 const sageServiceUnavailableMessage =
   "SageMath Docker service is unreachable. Start it with: docker compose -f services/sage-worker/docker-compose.yml up --build";
+const localSageUnavailableMessage =
+  "Local SageMath web proxy is unavailable. Start MATH3D with its web proxy and install SageMath in WSL Ubuntu.";
+const isLocalPolynomial = (operation: string) =>
+  operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
 
 const asErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof Error && error.message) return error.message;
@@ -18,17 +23,22 @@ const asErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-async function requestJson<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+async function requestJson<T>(
+  method: "GET" | "POST", path: string, body?: unknown,
+  baseUrl = sageBaseUrl, unavailableMessage = sageServiceUnavailableMessage,
+  timeoutMs = 15_000,
+): Promise<T> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${sageBaseUrl}${path}`, {
+    const response = await fetch(`${baseUrl}${path}`, {
       method,
       headers: { "Content-Type": "application/json" },
       body: body == null ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
     const payload = (await response.json().catch(() => null)) as any;
+    if (!payload || typeof payload !== "object") throw new Error(unavailableMessage);
     if (!response.ok) {
       const detail = typeof payload?.detail === "string" ? payload.detail : null;
       const serverError = typeof payload?.error === "string" ? payload.error : detail || `HTTP ${response.status}`;
@@ -36,9 +46,9 @@ async function requestJson<T>(method: "GET" | "POST", path: string, body?: unkno
     }
     return payload as T;
   } catch (error) {
-    const message = asErrorMessage(error, sageServiceUnavailableMessage);
+    const message = asErrorMessage(error, unavailableMessage);
     if (/failed to fetch|networkerror|abort/i.test(message)) {
-      throw new Error(sageServiceUnavailableMessage);
+      throw new Error(unavailableMessage);
     }
     throw new Error(message);
   } finally {
@@ -71,8 +81,12 @@ if (typeof window !== "undefined") {
     window.sageService = {
       health: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
       getStatus: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
-      run: (request: SageRunRequest) => requestJson<unknown>("POST", "/run", request).then(normalizeSageRunResponse),
-      cancel: async () => { throw new Error("Sage job cancellation is available only in the desktop app."); },
+      run: (request: SageRunRequest) => isLocalPolynomial(request.operation)
+        ? requestJson<unknown>("POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000).then(normalizeSageRunResponse)
+        : requestJson<unknown>("POST", "/run", request).then(normalizeSageRunResponse),
+      cancel: (jobId: string) => requestJson<{ ok: boolean }>(
+        "POST", "/cancel", { jobId }, localSageBaseUrl, localSageUnavailableMessage, 10_000,
+      ),
     };
   }
 }

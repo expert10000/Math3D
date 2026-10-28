@@ -92,7 +92,7 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
       };
       if (localPolynomial) {
         if (!window.sageService?.run) {
-          throw new Error("Exact polynomial operations require the MATH3D desktop app with SageMath in WSL Ubuntu.");
+          throw new Error("Exact polynomial operations require local SageMath in WSL Ubuntu and the MATH3D desktop app or web proxy.");
         }
         const coefficients = coefficientsText.split(",").map((part) => part.trim());
         if (
@@ -156,7 +156,12 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
 
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Operation</span>
-          <select value={operation} disabled={busy !== "none"} onChange={(event) => setOperation(event.target.value as SageSymbolicOperation)} style={fieldStyle}>
+          <select value={operation} disabled={busy !== "none"} onChange={(event) => {
+            setOperation(event.target.value as SageSymbolicOperation);
+            setError(null);
+            setHealth(null);
+            setResponse(null);
+          }} style={fieldStyle}>
             {SAGE_SYMBOLIC_OPERATIONS.map((item) => (
               <option key={item} value={item}>
                 {OPERATION_LABELS[item]}
@@ -164,6 +169,8 @@ const SageSymbolicPanel: React.FC<{ compact?: boolean }> = ({ compact = false })
             ))}
           </select>
         </label>
+
+        {!localPolynomial && <span>Exact polynomial factorization and roots are available in this local browser through WSL SageMath. Select either operation above; Simplify and the other operations use the separate Docker service.</span>}
 
         {localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>

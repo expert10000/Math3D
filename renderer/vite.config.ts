@@ -58,6 +58,10 @@ const workerProxy: Record<string, ProxyOptions> | undefined = proxyEnabled
           });
         },
       },
+      "/api/sage": {
+        target: proxyTarget,
+        changeOrigin: true,
+      },
     }
   : undefined;
 
