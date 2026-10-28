@@ -65,6 +65,33 @@ Expected package-build notes:
 7. If any failure occurs, collect diagnostics log from:
    - `%APPDATA%\Math3D\logs\python-worker-diagnostics.log`
 
+## Installed Theory Lab handoff signoff
+
+Build the full Math3D package with `npm run build:python-worker`, `npm run
+build:core`, and `npm run build:web`, then package with the normal
+`electron-builder.config.cjs`. Use `MATH3D_CHANNEL=dev` to install into a clean
+directory without replacing an existing stable installation; the dev channel
+changes only the product identity and output directory. The handoff probe
+configuration is not release evidence.
+
+Install a freshly built Theory Lab NSIS package in a clean directory. In
+Math3D, open **Settings → Theory Lab installation**, choose its `Quantum
+Hamiltonian Lab.exe`, and check that **Validate again** reports Ready. For
+automated acceptance, set `QLAB_E2E_CHECKOUT` to the fixture-producing Lab
+checkout, `QLAB_E2E_INSTALLED_EXE` to the clean Lab executable, and
+`MATH3D_E2E_INSTALLED_EXE` to the full Math3D executable. Run:
+
+```powershell
+npx playwright test tests/e2e/theory-lab-installation-settings.spec.ts tests/e2e/quantum-rice-mele-two-app.spec.ts --reporter=list
+```
+
+The Settings test rejects an invalid target before saving and accepts the
+installed app. The two-app test uses a saved target preference, opens exact
+periodic and chain source runs, then checks restart, removed-run refusal, and
+changed-run refusal. See the [scene walkthrough](theory-lab-python-scene-walkthrough.md)
+for package and installation commands. The fixture producer is a test setup
+script; ordinary installed-app navigation needs no checkout.
+
 ## GitHub Actions
 
 - Build + worker smoke workflow: `.github/workflows/ci-build-and-worker-smoke.yml`

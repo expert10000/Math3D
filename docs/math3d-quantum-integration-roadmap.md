@@ -821,3 +821,27 @@ setup; ordinary installed-app navigation does not require that checkout. The
 probe omits optional Math3D compute workers and is not a full release-package
 signoff. See [the walkthrough](theory-lab-python-scene-walkthrough.md) for the
 exact build, install, and acceptance commands.
+
+### Full installed-app signoff (complete for the dev-channel package, 2026-10-28)
+
+Math3D Settings now shows the selected Theory Lab executable, validates the
+installed application and its frozen worker/schema resources, and lets users
+change the target. Invalid picks do not replace a saved valid target. The
+ordinary `electron-builder.config.cjs` package was built with its Python
+worker, web app, scene examples, and publisher; a fresh dev-channel NSIS
+installation kept the user's stable Math3D installation intact. A separate
+fresh Theory Lab NSIS installation supplied the exact-run receiver and passed
+`accept-packaged.mjs` worker readiness plus two-level spectrum. The dev
+channel changes product identity and output path only; it does not use the
+reduced handoff-probe configuration.
+
+Local Windows acceptance: the installed Settings picker test passed (1/1,
+2.9 s), and the installed two-app Rice–Mele round trip passed (1/1, 24.8 s):
+periodic and chain points reopened exact run IDs, a Math3D restart required
+fresh selection, and missing or tampered Lab runs were refused. The test used
+Math3D's saved target preference rather than `MATH3D_THEORY_LAB_HOME`. The
+five-run fixture producer remained a checkout script for controlled setup;
+the installed windows and handoff ran from their packages. The stable-channel
+installer identity itself was not installed in this run, so this evidence
+covers the full package content and handoff path, not stable-channel upgrade
+behavior. See [release signoff](release-smoke-tests.md#installed-theory-lab-handoff-signoff).

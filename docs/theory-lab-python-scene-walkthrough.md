@@ -111,34 +111,56 @@ Math3D can still verify the unchanged export, while Lab must refuse each source
 run. Test processes and the temporary root are cleaned up afterward. No user
 profile, scientific data, or rendering path is changed.
 
-To repeat the route with installed executables, first build the Theory Lab
-Windows installer with `npm run package:win:installer` and install it into a new
-directory. Build Math3D's isolated handoff probe installer from a Math3D
-checkout after `npm run build:core`:
+To repeat the route with installed executables, build the Theory Lab Windows
+installer with `npm run package:win:installer` and install it into a new
+directory. Build Math3D with its complete Python worker, web assets, and the
+normal Windows installer configuration:
 
 ```powershell
-.\node_modules\.bin\electron-builder.cmd --win nsis --config scripts/quantum-handoff-installed-probe.config.cjs
+npm run build:python-worker
+npm run build:core
+npm run build:web
+$env:MATH3D_CHANNEL = 'dev'
+.\node_modules\.bin\electron-builder.cmd --win nsis --config electron-builder.config.cjs --publish never
 ```
 
-Install the generated `output/quantum-handoff-installed-probe/Math3D-Quantum-Handoff-Probe-Setup-*.exe`
-into another new directory. This probe uses Math3D's production main and
-renderer code under a distinct app identity, so it does not replace a user's
-normal Math3D installation. Its optional compute workers are omitted because
-the verified scene handoff is read-only. Then run:
+Install the generated `release-dev/Math3D Dev Setup *.exe` into another new
+directory. The dev channel uses the normal installer configuration and full
+resources under a distinct app identity, preserving any existing stable
+Math3D installation. A stable release uses the same configuration with
+`MATH3D_CHANNEL=stable` and outputs to `release/`. Then run:
 
 ```powershell
 $env:QLAB_E2E_CHECKOUT = 'C:\path\to\theory-lab' # fixture producer only
 $env:QLAB_E2E_INSTALLED_EXE = 'C:\path\to\Quantum Hamiltonian Lab.exe'
-$env:MATH3D_E2E_INSTALLED_EXE = 'C:\path\to\Math3D Quantum Handoff Probe.exe'
+$env:MATH3D_E2E_INSTALLED_EXE = 'C:\path\to\Math3D Dev.exe'
+npx playwright test tests/e2e/theory-lab-installation-settings.spec.ts --reporter=list
 npx playwright test tests/e2e/quantum-rice-mele-two-app.spec.ts --reporter=list
 ```
 
 The fixture producer still runs from the checkout to create five controlled
 saved runs. Both interactive windows and the selected-run handoff use the
-installed executables. The test repeats a selection after Math3D restart,
+installed executables. The test reads Math3D's saved target preference, rather
+than a test environment override, and checks **Settings → Theory Lab
+installation → Validate again**. It repeats a selection after Math3D restart,
 then checks missing-run and changed-run refusal in the installed Lab. Ordinary
 use of the two installed apps needs no source checkout; keep the original saved
 runs in the Lab profile used to produce the exported scene.
+
+For ordinary use, open Math3D **Settings → Theory Lab installation → Choose
+installed application…**, select `Quantum Hamiltonian Lab.exe`, and confirm
+the **Ready · installed application** status and path. **Validate again**
+rechecks the files if the installation has moved or changed. The selection is
+stored in Math3D's user profile. A source checkout remains available as an
+explicit alternative.
+
+On Windows, 2026-10-28, the complete dev-channel Math3D NSIS installer
+(413,644,513 bytes) and a fresh Theory Lab NSIS install passed these two
+installed-app tests: Settings target validation (1/1, 2.9 s) and the five-run
+round trip (1/1, 24.8 s). The installed Math3D resources included its frozen
+worker, web app, quantum examples, and Python publisher. The dev channel uses
+the normal package configuration and a separate product identity; a stable
+Math3D upgrade was not exercised by this isolated signoff.
 
 The scene's 3D point positions are normalized for layout. The plots label their
 physical axes from the producer's saved metadata, and selection checks values

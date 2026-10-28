@@ -82,8 +82,10 @@ for exact steps, build requirements, saved-run distinctions and verification.
 
 For Rice–Mele convergence studies, select a verified plot point and choose
 **Open selected run in Theory Lab**. On first use Math3D accepts either the
-installed `Quantum Hamiltonian Lab.exe` or a built Lab checkout. The selected
-run ID and result hash are checked again by Lab. The
+installed `Quantum Hamiltonian Lab.exe` or a built Lab checkout. To inspect or
+change the target later, open **Settings → Theory Lab installation** and use
+**Validate again** or **Choose installed application…**. The selected run ID
+and result hash are checked again by Lab. The
 [scene walkthrough](docs/theory-lab-python-scene-walkthrough.md#d-ricemele-convergence-lab--verified-export--math3d)
 includes an installed-to-installed acceptance path.
 
@@ -202,7 +204,9 @@ For packaged installers:
 npm run dist
 ```
 
-Current packaged installer target is Windows (NSIS `.exe`).
+Current packaged installer target is Windows (NSIS `.exe`). The [installed-app
+signoff steps](docs/theory-lab-python-scene-walkthrough.md#d-ricemele-convergence-lab--verified-export--math3d)
+build the full Math3D installer and exercise its handoff to a clean installed Lab.
 
 ### Browser app (web)
 
