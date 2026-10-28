@@ -43,6 +43,10 @@ export type VectorField3DEquilibriumConstruction = Readonly<{
 export type VectorField3DSeedGroupStyle = Readonly<{ id: string; name: string; color: string }>;
 export type VectorField3DScalarOverlay = Readonly<{ reference: Graph2DFieldReference;
   title: string; unit: string; opacity: number; visible: boolean }>;
+export type VectorField3DComplexOverlay = Readonly<{
+  real: Graph2DFieldReference; imaginary: Graph2DFieldReference;
+  title: string; unit: string; mode: "magnitude" | "phase";
+  opacity: number; visible: boolean }>;
 export type VectorField3DLinkedLineProfile = Readonly<{
   normalAxis: 0 | 1 | 2; varyingAxis: 0 | 1 | 2;
   point: readonly [number, number, number];
@@ -65,6 +69,7 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
   linkedProbe: Readonly<{ point: readonly [number, number, number];
     units: readonly [string, string, string] }> | null;
   scalarOverlay: VectorField3DScalarOverlay | null;
+  complexOverlay: VectorField3DComplexOverlay | null;
   linkedLineProfile: VectorField3DLinkedLineProfile | null;
   overlayRegion: VectorField3DOverlayRegion | null;
   hiddenSeedGroups: readonly string[];
@@ -82,7 +87,7 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, linkedProbe: null,
-  scalarOverlay: null, linkedLineProfile: null, overlayRegion: null,
+  scalarOverlay: null, complexOverlay: null, linkedLineProfile: null, overlayRegion: null,
   cameraPreset: "perspective",
   equilibriumConstructions: [],
   isosurfaceLevel: null,
@@ -213,6 +218,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { linkedProbe: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "scalarOverlay") ?
       { scalarOverlay: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "complexOverlay") ?
+      { complexOverlay: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "linkedLineProfile") ?
       { linkedLineProfile: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "overlayRegion") ?
@@ -241,7 +248,7 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "linkedLineProfile", "overlayRegion", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "complexOverlay", "linkedLineProfile", "overlayRegion", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
       workspace.scalarOverlay !== null && (!record(workspace.scalarOverlay) ||
         !exact(workspace.scalarOverlay, ["reference", "title", "unit", "opacity", "visible"]) ||
         !isGraph2DFieldReference(workspace.scalarOverlay.reference) ||
@@ -251,6 +258,32 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
         !text(workspace.scalarOverlay.title, 160) || !text(workspace.scalarOverlay.unit) ||
         !finite(workspace.scalarOverlay.opacity) || workspace.scalarOverlay.opacity < 0.1 ||
         workspace.scalarOverlay.opacity > 1 || typeof workspace.scalarOverlay.visible !== "boolean") ||
+      workspace.complexOverlay !== null && (!record(workspace.complexOverlay) ||
+        !exact(workspace.complexOverlay,
+          ["real", "imaginary", "title", "unit", "mode", "opacity", "visible"]) ||
+        !isGraph2DFieldReference(workspace.complexOverlay.real) ||
+        !isGraph2DFieldReference(workspace.complexOverlay.imaginary) ||
+        workspace.complexOverlay.real.semanticType !== "complex-scalar-field" ||
+        workspace.complexOverlay.imaginary.semanticType !== "complex-scalar-field" ||
+        workspace.complexOverlay.real.component !== "real" ||
+        workspace.complexOverlay.imaginary.component !== "imaginary" ||
+        workspace.complexOverlay.real.shape.length !== 3 ||
+        workspace.complexOverlay.imaginary.shape.length !== 3 ||
+        workspace.complexOverlay.real.sceneFingerprint !==
+          workspace.complexOverlay.imaginary.sceneFingerprint ||
+        workspace.complexOverlay.real.datasetId !== workspace.complexOverlay.imaginary.datasetId ||
+        workspace.complexOverlay.real.shape.some((size: number, index: number) =>
+          size !== (workspace.complexOverlay as VectorField3DComplexOverlay).imaginary.shape[index]) ||
+        workspace.complexOverlay.real.axes.some((axis: Graph2DFieldReference["axes"][number],
+          index: number) => JSON.stringify(axis) !== JSON.stringify(
+            (workspace.complexOverlay as VectorField3DComplexOverlay).imaginary.axes[index])) ||
+        !text(workspace.complexOverlay.title, 160) || !text(workspace.complexOverlay.unit) ||
+        !["magnitude", "phase"].includes(workspace.complexOverlay.mode as string) ||
+        !finite(workspace.complexOverlay.opacity) || workspace.complexOverlay.opacity < 0.1 ||
+        workspace.complexOverlay.opacity > 1 ||
+        typeof workspace.complexOverlay.visible !== "boolean") ||
+      workspace.scalarOverlay !== null && workspace.complexOverlay !== null &&
+        workspace.scalarOverlay.visible && workspace.complexOverlay.visible ||
       workspace.linkedLineProfile !== null && (!record(workspace.linkedLineProfile) ||
         !exact(workspace.linkedLineProfile,
           ["normalAxis", "varyingAxis", "point", "vectorChannel", "visible"]) ||
