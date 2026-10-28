@@ -822,7 +822,7 @@ probe omits optional Math3D compute workers and is not a full release-package
 signoff. See [the walkthrough](theory-lab-python-scene-walkthrough.md) for the
 exact build, install, and acceptance commands.
 
-### Full installed-app signoff (complete for the dev-channel package, 2026-10-28)
+### Historical full installed-app signoff (dev-channel package, 2026-10-28)
 
 Math3D Settings now shows the selected Theory Lab executable, validates the
 installed application and its frozen worker/schema resources, and lets users
@@ -845,3 +845,28 @@ the installed windows and handoff ran from their packages. The stable-channel
 installer identity itself was not installed in this run, so this evidence
 covers the full package content and handoff path, not stable-channel upgrade
 behavior. See [release signoff](release-smoke-tests.md#installed-theory-lab-handoff-signoff).
+
+### Versioned two-app release candidate (1.7.0-rc.1, validated 2026-10-28)
+
+The earlier dev-channel paragraph records an initial full-package test. A
+subsequent [stable-channel Windows signoff](stable-two-app-signoff.md) installed
+both full NSIS packages and created a new SSH run and `.qscene` in the installed
+Theory Lab UI before returning from Math3D to the exact hash-verified run. That
+single-VM run passed, but its Math3D package version was 1.5.0; it did not
+certify the separately published v1.6.0 installer.
+
+The next candidate is Math3D **1.7.0-rc.1** (stable product identity) paired
+with Theory Lab **0.1.0**. The release workflow builds both installers on one
+Windows VM, retains their exact files and SHA-256 manifest, and installs those
+same bytes on a separate fresh VM. The UI-only handoff remains the acceptance
+gate. Record the second-VM run and exact hashes in the release instructions
+before promoting any candidate. This does not alter the frozen M3D-Q10 v0.1
+science scope or claim a broader Q08 model set.
+
+[Run 40674889325](https://github.com/expert10000/Math3D/actions/runs/40674889325)
+completed that two-VM gate. The second VM verified both downloaded installer
+hashes against the build manifest, installed Math3D 1.7.0-rc.1 and Theory Lab
+0.1.0, created an SSH run through the installed Lab UI, exported its `.qscene`,
+and reopened the exact hash-verified run from installed Math3D. The files and
+checksums are retained in the [release instructions](stable-two-app-signoff.md).
+This is candidate acceptance, not publication or an upgrade-from-v1.6.0 test.
