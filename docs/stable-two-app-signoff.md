@@ -42,7 +42,7 @@ an existing installation. Review the JSON and trace before marking the release
 as passed. A build or setup failure is recorded by the workflow as
 `failed-before-signoff`; it is not a successful two-app result.
 
-## 2026-10-28 evidence and open gate
+## 2026-10-28 stable release evidence
 
 | Check | Result |
 | --- | --- |
@@ -51,8 +51,19 @@ as passed. A build or setup failure is recorded by the workflow as
 | Installed-app UI-only round trip on host | Passed: the packaged Lab created/saved an SSH run, exported `.qscene`, and packaged Math3D reopened the exact hash-verified run (1/1, 16.2 s). This run used the separate Math3D Dev product identity. |
 | Current stable package rehearsal on host | Passed against `release/win-unpacked/Math3D.exe` and the installed Lab with Python/Conda removed from the apps' `PATH` (1/1, 17.2 s); saved run `run-0a3be6381d5949518a1aab1c81e386f1`, result SHA-256 `a55b2d10e38a6e53e9e5c12f0d924978929838a83a5ee5e5c4463ed5acce743d`. This checks current stable package bytes, not the installer transaction or a clean VM. |
 | Local Windows Sandbox clean VM | **Blocked**: the guest lost its connection during startup twice, including with vGPU disabled. Neither installer ran inside that guest. |
-| Fresh Windows runner stable signoff | **Pending** until the workflow runs and its artifact reports `status: passed`. |
+| Fresh Windows runner stable signoff | **Passed** in [run 40671123105](https://github.com/expert10000/Math3D/actions/runs/40671123105). Artifact `stable-two-app-signoff.json` reports `status: passed`, install passed, installed UI round trip passed, and no failure. |
 
-The host installed-app result proves the UI path and removes the fixture
-producer from that path. The stable release gate remains open until both
-installers and that same UI test pass together on a fresh Windows runner.
+The clean runner built and installed Math3D **1.5.0 stable** from
+`045ed7f414b95a251aa4b355f5912de055af4644` (installer SHA-256
+`570d822caa79f4165edd99809e7c861c44c966c09e5f837c6575debdad6a6d79`)
+and Theory Lab **0.1.0** from
+`3c883fa4a69da2ee9f59b1425ac181094a25c276` (installer SHA-256
+`d744b5f738df4fef3c06b4a61b0324e7218f4f3098dfceb2b42e7e13d6ba166e`).
+The installed Lab UI created and saved SSH run
+`run-526b8932433b4ba38fcc715064f39608`; its result SHA-256 was
+`dfb8f212310678cb4c31ec6c0b1f886722c3131785a54aecfd36daaf1754f636`.
+Scenes exported `run-526b8932433b4ba38fcc715064f39608.qscene` with matching
+provenance. Installed Math3D opened the selected run in installed Lab, which
+verified the exact saved result. This completes the stable two-app release
+gate for these installer builds. The failed local Sandbox launch is recorded
+above; it did not affect the independent clean-runner result.
