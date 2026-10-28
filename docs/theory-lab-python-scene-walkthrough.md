@@ -154,6 +154,12 @@ rechecks the files if the installation has moved or changed. The selection is
 stored in Math3D's user profile. A source checkout remains available as an
 explicit alternative.
 
+For the release test that creates the source run and `.qscene` through the
+installed Lab UI, use the [stable two-app signoff](stable-two-app-signoff.md).
+Unlike the five-run convergence fixture setup above, that test has no Lab
+checkout producer. It records both installer hashes and the exact saved-run
+hash in its evidence artifact.
+
 On Windows, 2026-10-28, the complete dev-channel Math3D NSIS installer
 (413,644,513 bytes) and a fresh Theory Lab NSIS install passed these two
 installed-app tests: Settings target validation (1/1, 2.9 s) and the five-run

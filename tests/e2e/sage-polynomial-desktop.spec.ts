@@ -75,7 +75,8 @@ test("desktop Sage algebraic roots handles valid input, rejection, and cancellat
 
     const nativeRejection = await page.evaluate(async () => {
       try {
-        await window.sageService?.run({ operation: "sage.polynomial.roots_exact", params: { coefficients: ["1", "0"] } });
+        const sageService = (window as Window & { sageService?: { run: (request: unknown) => Promise<unknown> } }).sageService;
+        await sageService?.run({ operation: "sage.polynomial.roots_exact", params: { coefficients: ["1", "0"] } });
         return "accepted";
       } catch (error) {
         return String(error);

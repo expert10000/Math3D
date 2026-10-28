@@ -53,8 +53,10 @@ import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
 import { LinkedExplorerVectorProbe } from "./LinkedExplorerVectorProbe";
 import type { LinkedExplorerProbe } from "./linkedFieldProbe";
 import { sampleScalarSliceOverlay, sampleSliceOverlayVectorPlane,
-  sliceOverlayArrowsFromPlane, type SliceOverlayArrow,
+  sliceOverlayArrowsFromPlane, type LinkedOverlayLineProfile, type SliceOverlayArrow,
   type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import { linkedOverlayGraphPair, type LinkedOverlayGraphSeries } from "./linkedOverlayGraphPair";
+import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -89,6 +91,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
+  onAddLinkedOverlayLine,
   savedPointResults = [], onSavePointResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
@@ -101,6 +104,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   isGraphLineImported?: (selection: VectorField3DGraphLineSelection, document: VectorField3DDocument) => boolean;
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
   onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
+  onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries]) => void;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   onOpenProjectResults?: (resultId: string) => void;
@@ -975,6 +979,20 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (!onAddDerivedLine) throw new Error("Graph authoring is unavailable.");
       onAddDerivedLine(fresh);
       setRunStatus(`Sent ${fresh.rows.length} verified ${fresh.origin.operation} samples to Graphs.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLineBusy(false); }
+  };
+  const sendLinkedLine = async (line: LinkedOverlayLineProfile,
+    profile: VectorField3DLinkedLineProfile, samples: readonly OverlaySampleDigest[]) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
+      const pair = linkedOverlayGraphPair(document, profile, line, samples,
+        document.workspace?.scalarOverlay?.title ?? "Scalar field");
+      await reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin);
+      onAddLinkedOverlayLine(pair);
+      setRunStatus(`Sent ${line.rows.length} aligned vector and scalar samples to Graphs.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
@@ -2306,6 +2324,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               linkedLineProfile={workspace.linkedLineProfile}
               linkedProfileMismatch={sharedProfileMismatch}
               onLinkedLineProfileChange={setLinkedLineProfile}
+              onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2330,6 +2349,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         linkedLineProfile={workspace.linkedLineProfile}
         linkedProfileMismatch={sharedProfileMismatch}
         onLinkedLineProfileChange={setLinkedLineProfile}
+        onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

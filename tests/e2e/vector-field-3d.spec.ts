@@ -129,6 +129,7 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
   try {
     const page = app.page;
     await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
@@ -174,6 +175,9 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
         await expect(linkedLine.getByRole("alert")).toContainText("outside the vector field domain");
         await expect(linkedLine.locator("tbody")).toHaveCount(0);
         await shared.locator('input[aria-label="Linked probe y"]').fill("0");
+        await linkedLine.getByTestId("send-linked-overlay-line-to-graphs").click();
+        await expect(explorer.getByTestId("vector-field3d-run-status"))
+          .toContainText("aligned vector and scalar samples", { timeout: 60_000 });
       }
     }
     await examples.getByRole("button", { name: /Generated vortex/ }).click();
@@ -198,6 +202,15 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
     const t = x * x + y * y, a = 16 / (16 + t);
     const expectedSpeed = Math.sqrt(t * a * a + Math.sin(z) ** 2 / 16);
     expect(Number(await row.locator("td").nth(1).innerText())).toBeCloseTo(expectedSpeed, 4);
+    await largeLine.getByTestId("send-linked-overlay-line-to-graphs").click();
+    await expect(explorer.getByTestId("vector-field3d-run-status"))
+      .toContainText("32 aligned vector and scalar samples", { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect(page.getByRole("complementary", { name: "Graph functions" })
+      .getByRole("listitem")).toHaveCount(4);
+    await expect(page.getByRole("complementary", { name: "Graph inspector" }).getByLabel("Source and sampling details"))
+      .toContainText("Verified both sources.", { timeout: 60_000 });
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -214,6 +227,7 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
   try {
     const page = app.page;
     await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-nav-graphs").click();
     await app.app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
@@ -240,13 +254,36 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
       .locator('[data-probe-cell="16-16"]').click();
     await linkedLine.getByRole("button", { name: "Link line through shared probe" }).click();
     await expect(linkedLine).toContainText(/vector samples;.*scalar samples/);
+    await linkedLine.getByTestId("send-linked-overlay-line-to-graphs").click();
+    await expect(explorer.getByTestId("vector-field3d-run-status"))
+      .toContainText("aligned vector and scalar samples", { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
     await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect(page.getByRole("complementary", { name: "Graph inspector" }).getByLabel("Source and sampling details"))
+      .toContainText("Verified both sources.", { timeout: 60_000 });
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const graphEntry = stored.workspace.entries.find((entry: { module: string }) => entry.module === "graph2d");
+    const graphObjects = [...(graphEntry.replay?.payload?.transactions ?? [])].reverse()
+      .map((transaction: { commands: { command: { payload: { source?: { objects?: unknown[] } } } }[] }) =>
+        transaction.commands[0]?.command.payload.source?.objects)
+      .find((value: unknown) => Array.isArray(value)) ?? graphEntry.checkpoint.source.objects;
+    const linkedGraphObjects = graphObjects.filter((item: { linkedOrigin?: unknown }) => item.linkedOrigin);
+    expect(linkedGraphObjects).toHaveLength(2);
+    expect(linkedGraphObjects.map((item: { linkedOrigin: { series: string } }) => item.linkedOrigin.series))
+      .toEqual(["vector", "scalar"]);
+    expect(linkedGraphObjects[0].linkedOrigin.vectorSamples).toHaveLength(3);
+    const linkedVectorRefs = JSON.parse(linkedGraphObjects[0].linkedOrigin.vectorDocumentJson)
+      .source.field.references;
+    expect(linkedVectorRefs).toHaveLength(3);
+    expect(linkedVectorRefs[0].sceneFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(linkedGraphObjects[0].linkedOrigin.scalarReference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(linkedGraphObjects[0].linkedOrigin.profile.point).toHaveLength(3);
+    expect(linkedGraphObjects[0].linkedOrigin.rowsSha256).toMatch(/^sha256:[a-f0-9]{64}$/);
     const vectorCheckpoint = stored.workspace.entries.find((entry: { module: string }) =>
       entry.module === "vector3d")?.checkpoint;
     const recipe = vectorCheckpoint.workspace.scalarOverlay;
@@ -259,7 +296,11 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     expect(savedLine.vectorChannel).toBe("speed");
     expect(savedLine.point).toEqual(vectorCheckpoint.workspace.probe);
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect(page.getByRole("complementary", { name: "Graph inspector" }).getByLabel("Source and sampling details"))
+      .toContainText("Verified both sources.", { timeout: 60_000 });
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
@@ -290,7 +331,15 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await writeFile(tile, changed);
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await expect(page.getByRole("complementary", { name: "Graph inspector" })
+      .getByLabel("Source and sampling details"))
+      .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
+    await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
+      paths.length === 2 && paths.every(path => !path.getAttribute("d"))))
+      .toBe(true);
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const changedExplorer = page.getByRole("region", { name: "Scientific Field Explorer" });

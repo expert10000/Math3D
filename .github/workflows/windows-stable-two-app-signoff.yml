@@ -1,0 +1,131 @@
+name: Windows Stable Two-App Signoff
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stable-two-app:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      electron_config_cache: ${{ github.workspace }}\.cache\electron
+      MATH3D_CHANNEL: stable
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: "600000"
+      MATH3D_ELECTRON_EXTRACT_TIMEOUT_MS: "180000"
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: "2"
+
+    steps:
+      - name: Check out Math3D
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Set up Python for Math3D worker
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
+
+      - name: Build full stable Math3D installer
+        id: math_build
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+          npm --prefix renderer install
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D renderer install failed' }
+          python -m pip install pyinstaller numpy scipy sympy vtk
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D worker dependencies failed' }
+          npm run build:python-worker
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D worker build failed' }
+          npm run build:core
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D core build failed' }
+          npm run build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D web build failed' }
+          $env:CI = 'false'
+          & .\node_modules\.bin\electron-builder.cmd --win nsis --config electron-builder.config.cjs --publish never
+          if ($LASTEXITCODE -ne 0) { throw 'Stable Math3D NSIS build failed' }
+
+      - name: Check out Theory Lab producer
+        id: lab_checkout
+        uses: actions/checkout@v7
+        with:
+          repository: expert10000/theory-lab
+          ref: main
+          path: theory-lab
+
+      - name: Set up pinned Python for Theory Lab worker
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Build full Theory Lab installer
+        id: lab_build
+        working-directory: theory-lab
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab npm ci failed' }
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab venv creation failed' }
+          & .\.venv\Scripts\python.exe -m pip install -c workers/quantum-python/requirements.lock -e workers/quantum-python
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab pinned worker install failed' }
+          & .\.venv\Scripts\python.exe -m pip install -r workers/quantum-python/requirements-packaging.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab frozen worker dependencies failed' }
+          $env:CI = 'false'
+          npm run package:win:installer
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab NSIS build failed' }
+
+      - name: Install both stable packages and run UI-only source handoff
+        id: signoff
+        shell: pwsh
+        run: |
+          $math = @(Get-ChildItem -LiteralPath release -Filter 'Math3D Setup *.exe' -File)
+          $lab = @(Get-ChildItem -LiteralPath theory-lab/release -Filter 'Quantum-Hamiltonian-Lab-Setup-*.exe' -File)
+          if ($math.Count -ne 1 -or $lab.Count -ne 1) { throw 'Expected exactly one installer from each build' }
+          & scripts/stable-two-app-signoff.ps1 -TheoryLabRepo theory-lab `
+            -Math3DInstaller $math[0].FullName -TheoryLabInstaller $lab[0].FullName `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-two-app-signoff') `
+            -EvidencePath (Join-Path $PWD 'test-results/stable-two-app-signoff.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Stable two-app signoff failed' }
+
+      - name: Record workflow failure before signoff
+        if: always()
+        shell: pwsh
+        run: |
+          $path = 'test-results/stable-two-app-signoff.json'
+          if (-not (Test-Path -LiteralPath $path)) {
+            New-Item -ItemType Directory -Path 'test-results' -Force | Out-Null
+            [ordered]@{
+              schema = 'math3d/stable-two-app-signoff/v1'
+              checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+              environment = 'clean Windows runner'
+              status = 'failed-before-signoff'
+              math3dBuild = '${{ steps.math_build.outcome }}'
+              theoryLabCheckout = '${{ steps.lab_checkout.outcome }}'
+              theoryLabBuild = '${{ steps.lab_build.outcome }}'
+              signoff = '${{ steps.signoff.outcome }}'
+            } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding UTF8
+          }
+
+      - name: Upload installer hashes and UI evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stable-two-app-signoff
+          if-no-files-found: error
+          path: |
+            test-results/stable-two-app-signoff.json
+            test-results/playwright/quantum-installed-ui-round*/trace.zip
+            test-results/playwright/quantum-installed-ui-round*/test-failed-*.png
