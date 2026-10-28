@@ -44,7 +44,7 @@ installing Math3D's test dependencies, is:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stable-two-app-signoff.ps1 `
   -TheoryLabRepo 'C:\path\to\theory-lab' `
-  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.2.exe' `
+  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.3.exe' `
   -TheoryLabInstaller 'C:\path\to\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe' `
   -CandidateManifest 'C:\path\to\candidate-manifest.json' `
   -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-two-app-signoff')
