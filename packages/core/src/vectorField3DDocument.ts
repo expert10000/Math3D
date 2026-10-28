@@ -47,6 +47,10 @@ export type VectorField3DLinkedLineProfile = Readonly<{
   normalAxis: 0 | 1 | 2; varyingAxis: 0 | 1 | 2;
   point: readonly [number, number, number];
   vectorChannel: "speed" | "p" | "q" | "r"; visible: boolean }>;
+export type VectorField3DOverlayRegion = Readonly<{
+  normalAxis: 0 | 1 | 2; fixedCoordinate: number;
+  bounds: readonly [readonly [number, number], readonly [number, number]];
+  vectorChannel: "speed" | "p" | "q" | "r"; visible: boolean }>;
 export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLayer;
   sliceChannel: "component" | "divergence" | "curl-magnitude" |
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
@@ -62,6 +66,7 @@ export type VectorField3DWorkspace = Readonly<{ selectedLayer: VectorField3DLaye
     units: readonly [string, string, string] }> | null;
   scalarOverlay: VectorField3DScalarOverlay | null;
   linkedLineProfile: VectorField3DLinkedLineProfile | null;
+  overlayRegion: VectorField3DOverlayRegion | null;
   hiddenSeedGroups: readonly string[];
   seedGroupStyles: readonly VectorField3DSeedGroupStyle[];
   equilibriumConstructions: readonly VectorField3DEquilibriumConstruction[];
@@ -77,7 +82,7 @@ export type VectorField3DDocument = Readonly<{ format: typeof VECTOR_FIELD3D_DOC
 
 export const defaultVectorField3DWorkspace = (source: VectorField3DSource): VectorField3DWorkspace => ({
   selectedLayer: "arrows", layout: "three-pane", probe: null, linkedProbe: null,
-  scalarOverlay: null, linkedLineProfile: null,
+  scalarOverlay: null, linkedLineProfile: null, overlayRegion: null,
   cameraPreset: "perspective",
   equilibriumConstructions: [],
   isosurfaceLevel: null,
@@ -210,6 +215,8 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { scalarOverlay: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "linkedLineProfile") ?
       { linkedLineProfile: null } : {}),
+    ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "overlayRegion") ?
+      { overlayRegion: null } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "hiddenSeedGroups") ?
       { hiddenSeedGroups: [] } : {}),
     ...(!Object.prototype.hasOwnProperty.call(legacyWorkspace, "seedGroupStyles") ?
@@ -234,7 +241,7 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
       { cameraState: null } : {}),
   } : legacyWorkspace;
   if (!record(workspace) || !exact(workspace,
-      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "linkedLineProfile", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
+      ["selectedLayer", "sliceChannel", "layout", "sliceCoordinates", "viewsLinked", "viewZoom", "viewCenter", "probe", "linkedProbe", "scalarOverlay", "linkedLineProfile", "overlayRegion", "hiddenSeedGroups", "seedGroupStyles", "equilibriumConstructions", "isosurfaceLevel", "isosurfaceTriangleBudget", "clipBounds", "cameraPreset", "cameraState"]) ||
       workspace.scalarOverlay !== null && (!record(workspace.scalarOverlay) ||
         !exact(workspace.scalarOverlay, ["reference", "title", "unit", "opacity", "visible"]) ||
         !isGraph2DFieldReference(workspace.scalarOverlay.reference) ||
@@ -256,6 +263,23 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
           coordinate <= source.axes[axis]!.max) ||
         !["speed", "p", "q", "r"].includes(workspace.linkedLineProfile.vectorChannel as string) ||
         typeof workspace.linkedLineProfile.visible !== "boolean") ||
+      workspace.overlayRegion !== null && (!record(workspace.overlayRegion) ||
+        !exact(workspace.overlayRegion, ["normalAxis", "fixedCoordinate", "bounds", "vectorChannel", "visible"]) ||
+        ![0, 1, 2].includes(workspace.overlayRegion.normalAxis as number) ||
+        !finite(workspace.overlayRegion.fixedCoordinate) ||
+        workspace.overlayRegion.fixedCoordinate < source.axes[workspace.overlayRegion.normalAxis as number]!.min ||
+        workspace.overlayRegion.fixedCoordinate > source.axes[workspace.overlayRegion.normalAxis as number]!.max ||
+        !Array.isArray(workspace.overlayRegion.bounds) ||
+        workspace.overlayRegion.bounds.length !== 2 ||
+        workspace.overlayRegion.bounds.some((bounds: unknown, index: number) => {
+          const axis = ([0, 1, 2] as const).filter(value =>
+            value !== (workspace.overlayRegion as { normalAxis: number }).normalAxis)[index]!;
+          return !Array.isArray(bounds) || bounds.length !== 2 ||
+            !finite(bounds[0]) || !finite(bounds[1]) || bounds[0] >= bounds[1] ||
+            bounds[0] < source.axes[axis]!.min || bounds[1] > source.axes[axis]!.max;
+        }) ||
+        !["speed", "p", "q", "r"].includes(workspace.overlayRegion.vectorChannel as string) ||
+        typeof workspace.overlayRegion.visible !== "boolean") ||
       workspace.isosurfaceLevel !== null && (!finite(workspace.isosurfaceLevel) ||
         workspace.isosurfaceLevel < 0 || workspace.isosurfaceLevel > 1e9) ||
       !integer(workspace.isosurfaceTriangleBudget, 1, 100_000) ||
