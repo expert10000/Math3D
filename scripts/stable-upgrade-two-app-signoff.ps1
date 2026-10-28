@@ -46,6 +46,24 @@ $evidence = [ordered]@{
   failure = $null
 }
 
+function Get-InstallerProcessSnapshot {
+  @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(Math3D|Quantum Hamiltonian Lab|.*Setup.*|.*Uninstall.*)' } |
+    Select-Object Name, ProcessId, ParentProcessId, ExecutablePath, CommandLine)
+}
+
+function Invoke-BoundedInstaller([string]$installer, [string]$destination, [string]$phase) {
+  Write-Host "Starting $phase installer: $([IO.Path]::GetFileName($installer))"
+  $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', "/D=$destination") `
+    -WindowStyle Hidden -PassThru
+  if (-not $process.WaitForExit(180000)) {
+    $evidence.installerProcesses = Get-InstallerProcessSnapshot
+    try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
+    throw "$phase installer did not exit within 180 seconds; inspect installerProcesses in evidence"
+  }
+  if ($process.ExitCode -ne 0) { throw "$phase installer exited with code $($process.ExitCode)" }
+  Write-Host "$phase installer exited successfully"
+}
+
 try {
   if ($oldSha -ne "5a785909352816e80995f203b1bb28263ed4f9423abf76664c5eec4813c36341" -or
       $newSha -ne $manifest.math3d.installerSha256 -or
@@ -59,12 +77,8 @@ try {
   $profile = Join-Path $root "profile"
   $mathExe = Join-Path $mathInstall "Math3D.exe"
   $labExe = Join-Path $labInstall "Quantum Hamiltonian Lab.exe"
-  foreach ($item in @(@($old, $mathInstall), @($lab, $labInstall))) {
-    $installer, $destination = $item
-    $process = Start-Process -FilePath $installer -ArgumentList @("/S", "/CURRENTUSER", "/D=$destination") `
-      -WindowStyle Hidden -Wait -PassThru
-    if ($process.ExitCode -ne 0) { throw "Initial installer exited with code $($process.ExitCode): $installer" }
-  }
+  Invoke-BoundedInstaller $old $mathInstall 'Published v1.6.0'
+  Invoke-BoundedInstaller $lab $labInstall 'Candidate Theory Lab'
   foreach ($required in @($mathExe, $labExe)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Installed executable missing: $required" }
   }
@@ -84,10 +98,9 @@ try {
   if ($seedExit -ne 0) { throw "Published v1.6.0 Project/settings seed failed (exit $seedExit)" }
   $evidence.seed = Get-Content -LiteralPath $env:MATH3D_UPGRADE_PHASE_RESULT_PATH -Raw | ConvertFrom-Json
   $evidence.checks.oldProjectAndSetting = "passed"
+  $evidence.beforeUpgradeProcesses = Get-InstallerProcessSnapshot
 
-  $upgrade = Start-Process -FilePath $new -ArgumentList @("/S", "/CURRENTUSER", "/D=$mathInstall") `
-    -WindowStyle Hidden -Wait -PassThru
-  if ($upgrade.ExitCode -ne 0) { throw "Candidate upgrade exited with code $($upgrade.ExitCode)" }
+  Invoke-BoundedInstaller $new $mathInstall 'Candidate Math3D upgrade'
   if (-not (Test-Path -LiteralPath $mathExe -PathType Leaf)) { throw "Upgraded Math3D executable missing" }
   $evidence.checks.inPlaceUpgrade = "passed"
 
