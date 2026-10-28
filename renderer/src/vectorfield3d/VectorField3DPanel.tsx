@@ -61,6 +61,7 @@ import { sampleComplexSliceOverlay, sampleScalarSliceOverlay, sampleSliceOverlay
 import { linkedOverlayGraphPair, type LinkedOverlayGraphSeries } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
+import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
@@ -99,7 +100,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
-  onAddLinkedOverlayLine,
+  onAddLinkedOverlayLine, linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
@@ -114,6 +115,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
   onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
   onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries]) => void;
+  linkedRegionFocus?: LinkedRegionGraphFocus | null;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   savedRegionResults?: readonly AnalysisResultEnvelope[];
@@ -2514,6 +2516,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               complexOverlayVolumes={linkedRegionComplexVolumes}
               linkedLineProfile={workspace.linkedLineProfile}
               overlayRegion={workspace.overlayRegion}
+              linkedRegionFocus={linkedRegionFocus}
               savedRegionResults={savedRegionResults}
               regionResultStatuses={regionResultStatuses}
               onSaveRegionResult={onSaveRegionResult ? result => onSaveRegionResult(document, result) : undefined}
@@ -2546,6 +2549,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         complexOverlayVolumes={linkedRegionComplexVolumes}
         linkedLineProfile={workspace.linkedLineProfile}
         overlayRegion={workspace.overlayRegion}
+        linkedRegionFocus={linkedRegionFocus}
         savedRegionResults={savedRegionResults}
         regionResultStatuses={regionResultStatuses}
         onSaveRegionResult={onSaveRegionResult ? result => onSaveRegionResult(document, result) : undefined}

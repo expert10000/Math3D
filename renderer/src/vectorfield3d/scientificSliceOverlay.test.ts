@@ -18,6 +18,7 @@ import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
+import { linkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
@@ -346,6 +347,24 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       expect(pair[0].origin.yUnit).toBe("m/s");
       expect(pair[1].origin.yUnit).toBe("V");
       expect(pair[0].rows.every(row => row.y !== null)).toBe(true);
+      const pointFocus = linkedRegionGraphFocus(pair[0].origin, pair[1].origin,
+        pair[0].rows, pair[1].rows, { kind: "point", x: pair[0].rows[8]!.x });
+      expect(pointFocus.columns).toEqual([8, 8]);
+      expect(pointFocus.xBounds[0]).toBeLessThan(pair[0].rows[8]!.x);
+      expect(pointFocus.xBounds[1]).toBeGreaterThan(pair[0].rows[8]!.x);
+      expect(pointFocus.xUnit).toBe("m");
+      expect(pointFocus.vectorUnit).toBe("m/s");
+      expect(pointFocus.overlayUnit).toBe("V");
+      const intervalFocus = linkedRegionGraphFocus(pair[0].origin, pair[1].origin,
+        pair[0].rows, pair[1].rows,
+        { kind: "interval", min: pair[0].rows[4]!.x, max: pair[0].rows[7]!.x });
+      expect(intervalFocus.columns).toEqual([4, 7]);
+      expect(() => linkedRegionGraphFocus(pair[0].origin, pair[1].origin,
+        pair[0].rows, pair[1].rows, { kind: "interval", min: 0.01, max: -0.01 }))
+        .toThrow(/increasing interval/);
+      expect(() => linkedRegionGraphFocus(pair[0].origin, pair[1].origin,
+        pair[0].rows.map((row, index) => index === 8 ? { ...row, y: 999 } : row),
+        pair[1].rows, { kind: "point", x: 0 })).toThrow(/point tables/);
       const atZero = pair[1].rows[8]!;
       expect(atZero.x).toBeCloseTo(0, 12);
       expect(atZero.y).toBeCloseTo(summary.profileRows[8]!.scalar!, 12);
@@ -401,6 +420,10 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(pair[0].rows.map(row => row.x)).toEqual(pair[1].rows.map(row => row.x));
     expect(pair[0].rows[0]!.y).toBeNull();
     expect(pair[1].rows[0]!.y).toBeNull();
+    const gapFocus = linkedRegionGraphFocus(pair[0].origin, pair[1].origin,
+      pair[0].rows, pair[1].rows, { kind: "point", x: pair[0].rows[0]!.x });
+    expect(gapFocus.vectorGaps).toBe(1);
+    expect(gapFocus.overlayGaps).toBe(1);
     expect(pair[1].origin.yUnit).toBe("rad");
     const bridge = { checkGraphDatasetReference: async () => ({ ok: true as const,
       source: { manifestJson: complexManifest, fingerprint: complexFingerprint } }),

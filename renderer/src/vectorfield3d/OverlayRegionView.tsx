@@ -6,11 +6,12 @@ import { useState } from "react";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sampleOverlayRegion, type OverlayRegionSummary,
   type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 
 export function OverlayRegionView({ document, slice, region, vectorPlane, scalarVolume,
   complexVolumes, vectorSamples, status, onChange, onStartSelection, selecting,
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
-  regionBusy = false }: {
+  regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   vectorPlane: VectorSliceOverlayPlane | null;
@@ -26,6 +27,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     overlaySamples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
   regionBusy?: boolean;
+  linkedRegionFocus?: LinkedRegionGraphFocus | null;
 }) {
   const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
@@ -59,6 +61,10 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     { name: "imaginary", sampleSha256: complexVolumes[1].sampleSha256 }] :
     scalar && scalarVolume ? [{ name: scalar.reference.component,
       sampleSha256: scalarVolume.sampleSha256 }] : [];
+  const focusedRows = summary && linkedRegionFocus ? summary.profileRows.slice(
+    linkedRegionFocus.columns[0], linkedRegionFocus.columns[1] + 1) : null;
+  const focusedVectorCount = focusedRows?.filter(row => row.vector !== null).length ?? 0;
+  const focusedOverlayCount = focusedRows?.filter(row => row.scalar !== null).length ?? 0;
   let savedStatus = "";
   if (saved) {
     const sourceStatus = resultStatuses[saved.resultId] ?? "checking";
@@ -78,6 +84,27 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   }
   return <section aria-label="Linked heatmap and vector region" data-testid="scientific-overlay-region">
     <h4>Linked {complex ? "complex" : "scalar"} + vector region</h4>
+    {selected && linkedRegionFocus && <p data-testid="scientific-region-graph-focus"
+      role={summary ? "status" : status.includes("withheld") ? "alert" : "status"}>
+      Graphs selection: columns {linkedRegionFocus.columns[0] + 1}–{linkedRegionFocus.columns[1] + 1},
+      {" "}{format(linkedRegionFocus.xBounds[0])} to
+      {" "}{format(linkedRegionFocus.xBounds[1])} {linkedRegionFocus.xUnit}.
+      {focusedRows ? <>
+        {" "}Graphs profile gaps: vector {linkedRegionFocus.vectorGaps},
+        {" "}{complex ? "complex" : "scalar"} {linkedRegionFocus.overlayGaps}.
+        {" "}Vector column means: {focusedVectorCount}/{focusedRows.length} available
+        {" "}({focusedRows.length - focusedVectorCount} gaps), {linkedRegionFocus.vectorUnit};
+        {" "}{complex ? "complex" : "scalar"} column means: {focusedOverlayCount}/{focusedRows.length}
+        {" "}available ({focusedRows.length - focusedOverlayCount} gaps),
+        {" "}{linkedRegionFocus.overlayUnit}.
+        {focusedRows.length === 1 && <>
+          {" "}Values: vector {focusedRows[0]!.vector === null ? "gap" :
+            `${format(focusedRows[0]!.vector)} ${linkedRegionFocus.vectorUnit}`};
+          {" "}{complex ? "complex" : "scalar"} {focusedRows[0]!.scalar === null ? "gap" :
+            `${format(focusedRows[0]!.scalar)} ${linkedRegionFocus.overlayUnit}`}.
+        </>}
+      </> : " Source values are withheld until the vector and overlay verify."}
+    </p>}
     <button type="button" aria-pressed={selecting} onClick={onStartSelection}>
       {selecting ? "Click two corners on the slice" : "Select rectangular region"}</button>
     {selected && <>

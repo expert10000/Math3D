@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { canonicalJsonStringify, structuralHash } from "@math3d/core";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
   VectorField3DClipBounds, VectorField3DLinkedLineProfile,
   VectorField3DOverlayRegion,
@@ -9,6 +10,7 @@ import type { ScalarSliceOverlay, SliceOverlayArrow,
   LinkedOverlayLineProfile, OverlayRegionSummary, VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { LinkedOverlayProfileView } from "./LinkedOverlayProfileView";
 import { OverlayRegionView } from "./OverlayRegionView";
+import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -28,7 +30,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSendLinkedLineToGraphs, linkedLineBusy = false,
   overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
-  regionBusy = false }: {
+  regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -56,6 +58,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     samples: readonly Readonly<{ name: string; sampleSha256: string }>[]) => void;
   linkedLineBusy?: boolean;
   overlayRegion?: VectorField3DOverlayRegion | null;
+  linkedRegionFocus?: LinkedRegionGraphFocus | null;
   onOverlayRegionChange?: (region: VectorField3DOverlayRegion | null) => void;
   savedRegionResults?: readonly AnalysisResultEnvelope[];
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
@@ -127,6 +130,24 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const crosshairYFromBottom = probeOnPlane ? crosshairCoordinate(slice.coordinates[1],
     probe[second], 0, cellHeight) : null;
   const crosshairY = crosshairYFromBottom === null ? null : top + height - crosshairYFromBottom;
+  const graphFocusMatches = !!linkedRegionFocus && !!overlayRegion &&
+    linkedRegionFocus.documentId === document.identity.id &&
+    linkedRegionFocus.sourceHash === document.identity.structuralHash &&
+    linkedRegionFocus.recipeHash === structuralHash({
+      scalarOverlay: document.workspace?.scalarOverlay ?? null,
+      complexOverlay: document.workspace?.complexOverlay ?? null,
+      sliceChannel: document.workspace?.sliceChannel ?? "component" }) &&
+    canonicalJsonStringify(linkedRegionFocus.region) === canonicalJsonStringify(overlayRegion) &&
+    linkedRegionFocus.region.normalAxis === slice.normalAxis &&
+    Math.abs(linkedRegionFocus.region.fixedCoordinate - slice.fixedCoordinate) < 1e-9;
+  const focusLow = graphFocusMatches ? Math.max(linkedRegionFocus.xBounds[0],
+    slice.coordinates[0][0]!) : 0;
+  const focusHigh = graphFocusMatches ? Math.min(linkedRegionFocus.xBounds[1],
+    slice.coordinates[0].at(-1)!) : 0;
+  const focusX0 = focusLow < focusHigh ? crosshairCoordinate(slice.coordinates[0],
+    focusLow, left, cellWidth) : null;
+  const focusX1 = focusLow < focusHigh ? crosshairCoordinate(slice.coordinates[0],
+    focusHigh, left, cellWidth) : null;
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
@@ -239,6 +260,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           width={Math.abs(regionMarkers[1][0] - regionMarkers[0][0])}
           height={Math.abs(regionMarkers[1][1] - regionMarkers[0][1])}
           fill="#38bdf8" fillOpacity="0.14" stroke="#38bdf8" strokeWidth="2" />}
+      {scalarOverlay && overlayVectorPlane && regionMarkers?.[0] && regionMarkers?.[1] &&
+        focusX0 !== null && focusX1 !== null && <rect
+          data-testid="scientific-region-graph-focus-marker" pointerEvents="none"
+          x={Math.min(focusX0, focusX1)}
+          y={Math.min(regionMarkers[0][1], regionMarkers[1][1])}
+          width={Math.abs(focusX1 - focusX0)}
+          height={Math.abs(regionMarkers[1][1] - regionMarkers[0][1])}
+          fill="#facc15" fillOpacity="0.28" stroke="#facc15" strokeWidth="2" />}
       {pendingRegionMarker && regionSelecting && <circle
         data-testid="scientific-overlay-region-first-corner" pointerEvents="none"
         cx={pendingRegionMarker[0]} cy={pendingRegionMarker[1]} r="7"
@@ -350,6 +379,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       sendBusy={linkedLineBusy} />}
     {onOverlayRegionChange && <OverlayRegionView document={document} slice={slice}
       region={overlayRegion} vectorPlane={overlayVectorPlane ?? null}
+      linkedRegionFocus={graphFocusMatches ? linkedRegionFocus : null}
       scalarVolume={scalarOverlayVolume ?? null} vectorSamples={overlayVectorSamples}
       complexVolumes={complexOverlayVolumes ?? null}
       savedResults={savedRegionResults} resultStatuses={regionResultStatuses}

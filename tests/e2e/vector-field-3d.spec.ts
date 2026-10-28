@@ -246,7 +246,7 @@ test("SCI-02 overlays a verified scalar heatmap with physical vector glyphs on a
 });
 
 test("SCI-02 Burgers overlay reopens with source links and rejects a changed vector tile", async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(300_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-scalar-overlay-"));
   const directory = join(root, "burgers.sscene");
   const scalarDirectory = join(root, "potential.sscene");
@@ -405,6 +405,19 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await page.getByTestId("workspace-dock-reset-recommended").click();
     await expect(page.getByRole("complementary", { name: "Graph inspector" }).getByLabel("Source and sampling details"))
       .toContainText("Verified both sources.", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Select Vector speed region mean" }).click();
+    const graphRegion = page.getByRole("complementary", { name: "Graph inspector" })
+      .getByTestId("graph2d-linked-region-selection");
+    await expect(graphRegion).toContainText("17 physical columns");
+    await graphRegion.getByRole("spinbutton", { name: "Linked region interval from" }).fill("-0.01");
+    await graphRegion.getByRole("spinbutton", { name: "Linked region interval to" }).fill("0.01");
+    await graphRegion.getByTestId("graph2d-open-region-interval").click();
+    const graphOpenedRegion = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(graphOpenedRegion.getByTestId("scientific-region-graph-focus-marker"))
+      .toBeVisible({ timeout: 60_000 });
+    await expect(graphOpenedRegion.getByTestId("scientific-region-graph-focus"))
+      .toContainText("gaps), V", { timeout: 60_000 });
+    await graphOpenedRegion.getByRole("button", { name: "Back to Graphs" }).click();
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
@@ -482,6 +495,10 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await expect(page.getByRole("complementary", { name: "Graph inspector" })
       .getByLabel("Source and sampling details"))
       .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
+    await page.getByRole("button", { name: "Select Vector speed region mean" }).click();
+    await expect(page.getByRole("complementary", { name: "Graph inspector" })
+      .getByTestId("graph2d-linked-region-selection"))
+      .toContainText("withheld until both sources");
     await expect.poll(() => page.locator("[data-graph2d-path]").evaluateAll(paths =>
       paths.length === 4 && paths.every(path => !path.getAttribute("d"))))
       .toBe(true);
