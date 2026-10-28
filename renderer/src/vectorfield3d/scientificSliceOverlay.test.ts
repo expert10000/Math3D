@@ -164,6 +164,73 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       complexReal.volume, complexImaginary.volume)).toThrow(/units/);
   });
 
+  it("links complex magnitude and phase to the vector line on every plane", () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const slice = sampleVectorField3DSlice(analytic, normalAxis, 0);
+      const point = [0, 0, 0] as [number, number, number];
+      point[slice.planeAxes[1]] = 0.5;
+      const recipe = { normalAxis, varyingAxis: slice.planeAxes[0] as 0 | 1 | 2,
+        point, vectorChannel: "speed" as const, visible: true };
+      const plane = sampleSliceOverlayVectorPlane(analytic, slice);
+      const paired = (mode: "magnitude" | "phase") => sampleLinkedOverlayLineProfile(
+        analytic, slice, recipe, plane, complexReal.reference, complexReal.volume,
+        mode === "phase" ? "rad" : "1", { imaginaryReference: complexImaginary.reference,
+          imaginaryVolume: complexImaginary.volume, mode });
+      const magnitude = paired("magnitude"), phase = paired("phase");
+      expect(magnitude.rows.map(row => row.coordinate))
+        .toEqual(phase.rows.map(row => row.coordinate));
+      expect(magnitude.rows.map(row => row.vector))
+        .toEqual(phase.rows.map(row => row.vector));
+      expect(magnitude.scalarUnit).toBe("1");
+      expect(phase.scalarUnit).toBe("rad");
+      expect(magnitude.vectorUnit).toBe("m/s");
+      const atOne = magnitude.rows.findIndex(row => Math.abs(row.coordinate - 1) < 1e-9);
+      expect(atOne).toBeGreaterThanOrEqual(0);
+      const physical = [...point];
+      physical[recipe.varyingAxis] = 1;
+      const [x, y, z] = physical;
+      const expectedMagnitude = Math.exp(-(x! ** 2 + y! ** 2) / 18 - z! ** 2 / 12);
+      const expectedPhase = 1.3 * x! + 0.8 * y! + 0.65 * z! + 0.25 * Math.sin(y!);
+      expect(Math.abs(magnitude.rows[atOne]!.scalar! - expectedMagnitude)).toBeLessThan(0.08);
+      expect(Math.abs(phase.rows[atOne]!.scalar! - expectedPhase)).toBeLessThan(0.1);
+      expect(magnitude.rows[atOne]!.vector).toBeCloseTo(Math.hypot(x!, y!), 10);
+    }
+  });
+
+  it("keeps complex line gaps, source checks and its physical recipe after Project reopen", () => {
+    const slice = sampleVectorField3DSlice(analytic, 1, 0);
+    const recipe = { normalAxis: 1 as const, varyingAxis: 2 as const,
+      point: [0, 0, 0] as [number, number, number],
+      vectorChannel: "p" as const, visible: true };
+    const plane = sampleSliceOverlayVectorPlane(analytic, slice);
+    const imaginary = { imaginaryReference: complexImaginary.reference,
+      imaginaryVolume: complexImaginary.volume, mode: "phase" as const };
+    const line = sampleLinkedOverlayLineProfile(analytic, slice, recipe, plane,
+      complexReal.reference, complexReal.volume, "rad", imaginary);
+    expect(line.rows[0]!.vector).toBeCloseTo(0, 12);
+    expect(line.rows[0]!.scalar).toBeNull();
+    expect(line.rows.at(-1)!.scalar).toBeNull();
+    expect(line.rows.find(row => Math.abs(row.coordinate) < 1e-9)?.scalar).toBeCloseTo(0, 2);
+    expect(() => sampleLinkedOverlayLineProfile(analytic, slice, recipe, plane,
+      complexReal.reference, complexReal.volume, "rad", { ...imaginary,
+        imaginaryVolume: { ...complexImaginary.volume, resourceSha256: "changed" } }))
+      .toThrow(/imaginary source changed/);
+    const wrongAxes = complexReal.reference.axes.map((axis, index) =>
+      index === 0 ? { ...axis, unit: "mm" } : axis);
+    expect(() => sampleLinkedOverlayLineProfile(analytic, slice, recipe, plane,
+      { ...complexReal.reference, axes: wrongAxes }, complexReal.volume, "rad",
+      { ...imaginary, imaginaryReference: { ...complexImaginary.reference,
+        axes: wrongAxes } })).toThrow(/coordinate axes or units/);
+    const saved = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xz", complexOverlay: { ...complexRecipe, mode: "phase" },
+      linkedLineProfile: recipe });
+    const serialized = serializeVectorField3DDocument(saved);
+    expect(serialized).not.toContain("values");
+    const reopened = parseVectorField3DDocument(serialized);
+    expect(reopened.workspace?.linkedLineProfile).toEqual(recipe);
+    expect(reopened.workspace?.complexOverlay?.mode).toBe("phase");
+  });
+
   it("keeps the selected vector and complex rectangle aligned in both modes", () => {
     const slice = sampleVectorField3DSlice(analytic, 2, 0);
     const plane = sampleSliceOverlayVectorPlane(analytic, slice);
@@ -414,6 +481,21 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       components[1][offset] = x * factor;
       components[2][offset] = Math.sin(fixedCoordinate) / 4;
     }
+    const profile = { normalAxis: 2 as const, varyingAxis: 0 as const,
+      point: [centerX, centerY, fixedCoordinate] as [number, number, number],
+      vectorChannel: "speed" as const, visible: true };
+    const line = sampleLinkedOverlayLineProfile(vector, slice, profile,
+      { shape: [32, 32], sourceStructuralHash: vector.identity.structuralHash,
+        components, units: ["m/s", "m/s", "m/s"] },
+      complexReal.reference, complexReal.volume, "rad",
+      { imaginaryReference: complexImaginary.reference,
+        imaginaryVolume: complexImaginary.volume, mode: "phase" });
+    expect(line.rows[16]!.coordinate).toBe(centerX);
+    expect(Math.abs(line.rows[16]!.scalar! - expectedWavePhase)).toBeLessThan(0.05);
+    expect(line.rows[16]!.vector).toBeCloseTo(Math.hypot(
+      -centerY * 16 / (16 + centerX ** 2 + centerY ** 2),
+      centerX * 16 / (16 + centerX ** 2 + centerY ** 2),
+      Math.sin(fixedCoordinate) / 4), 10);
     const region = sampleOverlayRegion(vector, slice,
       { normalAxis: 2, fixedCoordinate, bounds: [[-1, 1], [-1, 1]],
         vectorChannel: "speed", visible: true },

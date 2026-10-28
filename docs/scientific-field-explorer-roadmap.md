@@ -1102,6 +1102,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02 complex slice overlay.** A verified paired 3D complex field can supply magnitude or signed phase beneath planar vector arrows on XY/XZ/YZ slices. Both components are checked against the saved scene reference before the heatmap appears; phase uses a cyclic color scale and radians, while magnitude retains the field unit. The shared physical probe and rectangle remain on the same vector slice, and incomplete domain overlap leaves explicit gaps. Project saves only the complex pair references, mode, opacity and visibility. Reopening verifies the vector plane and both complex components before drawing or reporting aligned region values.
 
+**SCI-02 complex linked line.** The overlay's saved physical line now compares vector speed or a selected component with complex magnitude or signed phase at the same XY/XZ/YZ positions. It shows separate units, domain gaps and checked hashes for the vector plane and both complex components. Phase discontinuities break the drawn line at the wrap. The Project keeps the line coordinates and display settings with the complex overlay recipe, then reverifies all three sources before showing the line on reopen. The existing Graphs export remains scoped to raw scalar overlays.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

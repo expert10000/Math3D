@@ -5,29 +5,36 @@ import { sampleLinkedOverlayLineProfile, type LinkedOverlayLineProfile,
 
 type SampleDigest = Readonly<{ name: string; sampleSha256: string }>;
 
-const plot = (values: readonly (number | null)[]) => {
+const plot = (values: readonly (number | null)[], phase = false) => {
   const finite = values.filter((value): value is number => value !== null && Number.isFinite(value));
   const min = finite.length ? Math.min(...finite) : 0;
   const max = finite.length ? Math.max(...finite) : 0;
   const span = max - min || 1;
   let drawing = false;
+  let previous: number | null = null;
   const path = values.map((value, index) => {
-    if (value === null || !Number.isFinite(value)) { drawing = false; return ""; }
+    if (value === null || !Number.isFinite(value)) {
+      drawing = false; previous = null; return "";
+    }
+    if (phase && previous !== null && Math.abs(value - previous) > Math.PI) drawing = false;
     const segment = `${drawing ? "L" : "M"}${24 + index * 272 / Math.max(values.length - 1, 1)},${
       104 - (value - min) * 80 / span}`;
     drawing = true;
+    previous = value;
     return segment;
   }).join(" ");
   return { path, count: finite.length, min, max };
 };
 
 export function LinkedOverlayProfileView({ document, slice, probe, profile, vectorPlane,
-  scalarVolume, vectorSamples, status, mismatch, onChange, onSendToGraphs, sendBusy = false }: {
+  scalarVolume, complexVolumes, vectorSamples, status, mismatch, onChange,
+  onSendToGraphs, sendBusy = false }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe: readonly [number, number, number] | null;
   profile: VectorField3DLinkedLineProfile | null;
   vectorPlane: VectorSliceOverlayPlane | null;
   scalarVolume: Graph2DScientificVolume | null;
+  complexVolumes: readonly [Graph2DScientificVolume, Graph2DScientificVolume] | null;
   vectorSamples: readonly SampleDigest[]; status: string;
   mismatch: string;
   onChange: (profile: VectorField3DLinkedLineProfile | null) => void;
@@ -35,26 +42,33 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
     samples: readonly SampleDigest[]) => void;
   sendBusy?: boolean;
 }) {
-  const overlay = document.workspace?.scalarOverlay;
-  if (!overlay?.visible) return null;
+  const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
+  const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  if (!scalar && !complex) return null;
+  const source = scalar?.reference ?? complex!.real;
+  const sourceUnit = complex?.mode === "phase" ? "rad" : (scalar?.unit ?? complex!.unit);
+  const sourceTitle = complex ? `${complex.title} ${complex.mode}` : scalar!.title;
+  const sourceKind = complex ? "complex" : "scalar";
   const onPlane = probe && Math.abs(probe[slice.normalAxis] - slice.fixedCoordinate) < 1e-9;
   const selected = profile?.normalAxis === slice.normalAxis;
   const active = selected && profile.visible && !mismatch;
   let line: ReturnType<typeof sampleLinkedOverlayLineProfile> | null = null;
   let error = "";
-  if (active && vectorPlane && scalarVolume) {
+  if (active && vectorPlane && (scalar && scalarVolume || complex && complexVolumes)) {
     try { line = sampleLinkedOverlayLineProfile(document, slice, profile,
-      vectorPlane, overlay.reference, scalarVolume, overlay.unit); }
+      vectorPlane, source, scalar ? scalarVolume! : complexVolumes![0], sourceUnit,
+      complex ? { imaginaryReference: complex.imaginary,
+        imaginaryVolume: complexVolumes![1], mode: complex.mode } : undefined); }
     catch (cause) { error = cause instanceof Error ? cause.message : String(cause); }
   }
   const vectorPlot = line ? plot(line.rows.map(row => row.vector)) : null;
-  const scalarPlot = line ? plot(line.rows.map(row => row.scalar)) : null;
+  const scalarPlot = line ? plot(line.rows.map(row => row.scalar), complex?.mode === "phase") : null;
   const varyingLabel = selected ? document.source.axes[profile.varyingAxis].label : "";
   const fixedAxis = selected ? slice.planeAxes.find(axis => axis !== profile.varyingAxis) : undefined;
   return <section className="vector-field3d-line-profile scientific-linked-overlay-profile"
-    aria-label="Linked scalar and vector line profile"
+    aria-label="Linked heatmap and vector line profile"
     data-testid="scientific-linked-overlay-profile">
-    <h4>Linked scalar + vector line</h4>
+    <h4>Linked {sourceKind} + vector line</h4>
     {!selected && <button type="button" disabled={!onPlane || !!mismatch}
       onClick={() => onPlane && !mismatch && onChange({ normalAxis: slice.normalAxis,
         varyingAxis: slice.planeAxes[0] as 0 | 1 | 2,
@@ -86,16 +100,16 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
       {active && !line && <p role="status">{error || status ||
         "Reverifying both sources before showing this line…"}</p>}
       {line && vectorPlot && scalarPlot && <>
-        {onSendToGraphs && <button type="button" data-testid="send-linked-overlay-line-to-graphs"
+        {scalar && onSendToGraphs && <button type="button" data-testid="send-linked-overlay-line-to-graphs"
           disabled={sendBusy} onClick={() => onSendToGraphs(line, profile, vectorSamples)}>
           {sendBusy ? "Verifying linked line…" : "Send both linked lines to Graphs"}</button>}
         <p role="status">{vectorPlot.count}/{line.rows.length} vector samples;
-          {" "}{scalarPlot.count}/{line.rows.length} scalar samples.
+          {" "}{scalarPlot.count}/{line.rows.length} {sourceKind} samples.
           {vectorPlot.count < line.rows.length || scalarPlot.count < line.rows.length ?
             " Gaps mark positions outside a field or without finite samples." : ""}</p>
         {([{ label: `Vector ${line.vectorChannel}`, data: vectorPlot,
           unit: line.vectorUnit, color: "#fde047" },
-        { label: overlay.title, data: scalarPlot,
+        { label: sourceTitle, data: scalarPlot,
           unit: line.scalarUnit, color: "#38bdf8" }] as const).map(series =>
           <div key={series.label}><strong>{series.label} ({series.unit})</strong>
             <svg viewBox="0 0 320 130" role="img"
@@ -107,17 +121,19 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
         <p>Line positions: {varyingLabel} ({line.coordinateUnit}).
           {" "}Vector source {line.vectorSourceHash}; verified samples {vectorSamples.map(part =>
             `${part.name}: ${part.sampleSha256}`).join(" · ") || "authored expression"}.
-          {" "}Scalar source {overlay.reference.sceneId} / {overlay.reference.datasetId};
-          {" "}verified sample SHA-256 {line.scalarSampleSha256}.</p>
+          {" "}{complex ? "Complex" : "Scalar"} source {source.sceneId} / {source.datasetId};
+          {" "}verified sample SHA-256 {line.scalarSampleSha256}.
+          {complex && complexVolumes && ` Real ${complexVolumes[0].sampleSha256}; imaginary ${
+            complexVolumes[1].sampleSha256}.`}</p>
         <details><summary>Aligned sample values and gaps</summary>
           <table><thead><tr><th scope="col">{varyingLabel} ({line.coordinateUnit})</th>
             <th scope="col">Vector {line.vectorChannel} ({line.vectorUnit})</th>
-            <th scope="col">{overlay.title} ({line.scalarUnit})</th></tr></thead>
+            <th scope="col">{sourceTitle} ({line.scalarUnit})</th></tr></thead>
             <tbody>{line.rows.map((row, index) => <tr key={index}>
               <td>{row.coordinate.toPrecision(6)}</td>
               <td data-testid={`linked-vector-sample-${index}`}>
                 {row.vector === null ? "gap" : row.vector.toPrecision(6)}</td>
-              <td data-testid={`linked-scalar-sample-${index}`}>
+              <td data-testid={`linked-${sourceKind}-sample-${index}`}>
                 {row.scalar === null ? "gap" : row.scalar.toPrecision(6)}</td>
             </tr>)}</tbody></table>
         </details>
