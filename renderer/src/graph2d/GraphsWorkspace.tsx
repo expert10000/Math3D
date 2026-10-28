@@ -17,6 +17,7 @@ import {
   analyzeGraph2DParametricLocalDifferential, isGraph2DParametricLocalDifferentialCurrent,
   analyzeGraph2DPolarMeasurement, isGraph2DPolarMeasurementCurrent,
   GRAPH2D_DEFAULT_VIEWPORT, GRAPH2D_WORKSPACE_CONTRACT,
+  GRAPH2D_MAX_OBJECTS,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
   graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed,
   isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
@@ -24,6 +25,7 @@ import {
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
+  type Graph2DPointSeriesDraft, type Graph2DPointSeriesObject,
   type Graph2DScientificDatasetPreview,
   type VectorField3DDerivedLine,
   type Graph2DScientificPlane,
@@ -47,7 +49,8 @@ import {
   type Graph2DRegression, type Graph2DRegressionModel,
   projectGraph2DGrid, projectGraph2DPolarGrid,
   structuralHash, canonicalJsonStringify,
-  createVectorField3DDocument, type VectorField3DDocument, type VectorField3DSource,
+  createVectorField3DDocument, parseVectorField3DDocument,
+  type VectorField3DDocument, type VectorField3DSource,
   createVectorField2DDocument, reviseVectorField2DDocument, type VectorField2DDocument,
   createScientificFieldDocument, reviseScientificFieldDocument,
   scientificFieldGraphResultState, scientificFieldResultBinding, type ScientificFieldDocument,
@@ -79,6 +82,8 @@ import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedS
   "../vectorfield3d/scientificExplorerLibrary";
 import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
+import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
+import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
 import { pointTableStore } from "./pointTableStore";
@@ -342,6 +347,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const scientificPreviewEpoch = useRef(0);
   const [scientificImportBusy, setScientificImportBusy] = useState(false);
   const [scientificImportError, setScientificImportError] = useState("");
+  const [linkedPairVerification, setLinkedPairVerification] = useState<{
+    document: Graph2DDocument | null; states: Record<string, string> }>({ document: null, states: {} });
+  const linkedVerificationQueue = useRef<Promise<void>>(Promise.resolve());
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
   const [scientificPresetKind, setScientificPresetKind] = useState<"all" | "scalar" | "vector" | "complex" | "explorer">("all");
   const [vectorField3DDocument, setVectorField3DDocument] = useState<VectorField3DDocument | null>(readFieldExplorerSession);
@@ -1130,12 +1138,49 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     (projectGraph2DGrid(viewport, size, displayAxes.gridOptions).warnings ?? []), [displayAxes, viewport, size]);
   const manualGrid = displayAxes.gridOptions?.xStep != null || displayAxes.gridOptions?.yStep != null;
   const renderedDisplay = useMemo(() => ({ ...document.display, axes: displayAxes, viewport, ...(parameterPreviewActive ? { pinnedProbes: [] } : {}) }), [document.display, displayAxes, viewport, parameterPreviewActive]);
+  useEffect(() => {
+    let active = true;
+    const linked = document.source.objects.filter((object): object is Graph2DPointSeriesObject =>
+      object.kind === "point-series" && !!object.linkedOrigin);
+    const pairIds = [...new Set(linked.map(object => object.linkedOrigin!.pairId))];
+    setLinkedPairVerification({ document,
+      states: Object.fromEntries(pairIds.map(id => [id, "Verifying both saved sources…"])) });
+    const verifyPairs = async () => { for (const id of pairIds) {
+      if (!active) break;
+      try {
+        const pair = linked.filter(object => object.linkedOrigin?.pairId === id);
+        const vector = pair.find(object => object.linkedOrigin?.series === "vector");
+        const scalar = pair.find(object => object.linkedOrigin?.series === "scalar");
+        if (pair.length !== 2 || !vector || !scalar || !vector.linkedOrigin || !scalar.linkedOrigin ||
+            canonicalJsonStringify({ ...vector.linkedOrigin, series: "vector", yUnit: "", rowsSha256: "" }) !==
+              canonicalJsonStringify({ ...scalar.linkedOrigin, series: "vector", yUnit: "", rowsSha256: "" }))
+          throw new TypeError("Saved linked Graphs pair is incomplete or misaligned.");
+        const vectorRows = pointTableStore.resolve(vector.table);
+        const scalarRows = pointTableStore.resolve(scalar.table);
+        if (!vectorRows || !scalarRows ||
+            structuralHash(vectorRows) !== vector.linkedOrigin.rowsSha256 ||
+            structuralHash(scalarRows) !== scalar.linkedOrigin.rowsSha256 ||
+            vectorRows.length !== scalarRows.length ||
+            vectorRows.some((row, index) => row.x !== scalarRows[index]?.x))
+          throw new TypeError("Saved linked Graphs tables changed or lost alignment.");
+        await reverifyLinkedOverlayGraphPair(vector.linkedOrigin, scalar.linkedOrigin);
+        if (active) setLinkedPairVerification(previous => previous.document === document ?
+          { ...previous, states: { ...previous.states, [id]: "Verified both sources." } } : previous);
+      } catch (cause) { if (active) setLinkedPairVerification(previous => previous.document === document ?
+        { ...previous, states: { ...previous.states, [id]: cause instanceof Error ? cause.message : String(cause) } } : previous); }
+    } };
+    linkedVerificationQueue.current = linkedVerificationQueue.current.then(verifyPairs, verifyPairs);
+    return () => { active = false; };
+  }, [document]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null || phaseSeedPreview !== null,
     separatePhaseAnalysis: true,
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
-      object.kind === "point-series" ? [[object.table.id, pointTableStore.resolve(object.table)]] : [])),
-  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview]);
+      object.kind === "point-series" ? [[object.table.id,
+        object.linkedOrigin && (linkedPairVerification.document !== document ||
+          linkedPairVerification.states[object.linkedOrigin.pairId] !== "Verified both sources.") ?
+          null : pointTableStore.resolve(object.table)]] : [])),
+  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1341,6 +1386,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const selectedLinkedVectorField = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin ?
+    parseVectorField3DDocument(selectedObject.linkedOrigin.vectorDocumentJson).source.field : null;
+  const selectedLinkedReady = selectedObject?.kind !== "point-series" || !selectedObject.linkedOrigin ||
+    linkedPairVerification.document === document &&
+    linkedPairVerification.states[selectedObject.linkedOrigin.pairId] === "Verified both sources.";
   const selectedFieldOrigin = selectedObject?.kind === "point-series" ? selectedObject.origin : undefined;
   const selectedSavedField = savedScientificFields.find(item =>
     item.identity.id === selectedFieldOrigin?.fieldDocument?.id);
@@ -1379,7 +1429,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     polarMin < polarMax && polarMin >= selectedObject.domain.min && polarMax <= selectedObject.domain.max;
   const areaUnavailable = graph2DIntervalAnalysisUnavailable(document, document.selection.objectId, "area");
   const arcUnavailable = graph2DIntervalAnalysisUnavailable(document, document.selection.objectId, "arc-length");
-  const toolRowsAvailable = selectedObject?.kind !== "point-series" || !!pointTableStore.resolve(selectedObject.table);
+  const toolRowsAvailable = selectedLinkedReady &&
+    (selectedObject?.kind !== "point-series" || !!pointTableStore.resolve(selectedObject.table));
   const routeTool = (tool: Graph2DTool) => {
     const reason = graph2DToolUnavailable(document, tool, toolRowsAvailable);
     if (reason) { setToolHint(reason); return; }
@@ -1401,7 +1452,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (section) { section.tabIndex = -1; section.focus(); section.scrollIntoView({ block: "nearest" }); }
     });
   };
-  const currentRegression = regression && regression.model === regressionModel && regression.objectId === selectedObject?.id &&
+  const currentRegression = selectedLinkedReady && regression && regression.model === regressionModel && regression.objectId === selectedObject?.id &&
     isGraph2DRegressionCurrent(regression, document) ? regression : null;
   const focusedNumericalProbe = focusedNumericalPoint?.origin === "regression" &&
     focusedNumericalPoint.resultId === currentRegression?.publication.resultId ? focusedNumericalPoint.point :
@@ -1599,10 +1650,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <span role="status">{derivedLineStatus.message}</span>}</>}
     </header>
     {constructions}
-    {selectedObject?.kind === "point-series" && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression}
+    {selectedObject?.kind === "point-series" && selectedLinkedReady && <Graph2DRegressionPanel document={document} model={regressionModel} onModel={setRegressionModel} result={regression} onResult={setRegression}
       onResidualFocus={(row, result) => setFocusedNumericalPoint({ origin: "regression", resultId: result.publication.resultId,
         point: { objectId: result.objectId, x: row.x, y: row.observed } })} />}
-    {selectedObject?.kind === "point-series" && <Graph2DFourierPanel document={document} />}
+    {selectedObject?.kind === "point-series" && selectedLinkedReady && <Graph2DFourierPanel document={document} />}
     {(selectedObject?.kind === "parametric" || selectedObject?.kind === "explicit-cartesian" ||
       selectedObject?.kind === "point-series" && selectedObject.origin?.component === "real" && !!selectedObject.origin.slice) &&
       <Graph2DComplexMappingPanel document={document} onPlace={onComplexContourPlace} />}
@@ -1895,6 +1946,30 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}</dd>
           <dt>Source and line hashes</dt><dd><code>{selectedObject.derivedOrigin.sourceHash}<br />
             {selectedObject.derivedOrigin.lineSha256}</code></dd>
+        </>}
+        {selectedObject?.kind === "point-series" && selectedObject.linkedOrigin && <>
+          <dt>Linked series</dt><dd>{selectedObject.linkedOrigin.series} · pair
+            {" "}<code>{selectedObject.linkedOrigin.pairId}</code></dd>
+          <dt>Physical line</dt><dd>Vary {selectedObject.linkedOrigin.xName} (axis
+            {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
+            {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd>
+          <dt>Units</dt><dd>{selectedObject.linkedOrigin.xUnit} → {selectedObject.linkedOrigin.yUnit}</dd>
+          <dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
+            {" "}{selectedObject.linkedOrigin.scalarReference.datasetId} /
+            {" "}{selectedObject.linkedOrigin.scalarReference.component}</dd>
+          <dt>Vector source</dt><dd>{selectedLinkedVectorField?.kind === "scientific-bundle" ?
+            `${selectedLinkedVectorField.references[0].sceneId} / ${selectedLinkedVectorField.references[0].datasetId}` :
+            "Authored expression field"}</dd>
+          <dt>Verified samples</dt><dd>{selectedObject.linkedOrigin.vectorSamples.map(part =>
+            <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}
+            <div>Scalar: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div></dd>
+          <dt>Source and row hashes</dt><dd><code>{selectedObject.linkedOrigin.vectorSourceHash}<br />
+            {selectedObject.linkedOrigin.rowsSha256}</code></dd>
+          <dt>Project source check</dt><dd role={linkedPairVerification.states[selectedObject.linkedOrigin.pairId] ===
+            "Verified both sources." ? "status" : "alert"}>
+            {linkedPairVerification.document === document ?
+              linkedPairVerification.states[selectedObject.linkedOrigin.pairId] ?? "Verifying both saved sources…" :
+              "Verifying both saved sources…"}</dd>
         </>}
         <dt>{inspected.kind === "parametric" ? "Parameter t" : inspected.kind === "polar" ? "Angle θ" : inspected.kind === "time-ode" ? "Time domain" : "X domain"}</dt>
         <dd>{inspected.domain.includeMin ? "[" : "("}{inspected.domain.min}, {inspected.domain.max}{inspected.domain.includeMax ? "]" : ")"}</dd>
@@ -2229,6 +2304,22 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
                 lineWidth: 2, lineStyle: "solid", visible: true } } });
             setToolHint(`Added ${line.rows.length} verified ${line.origin.operation} samples to Graphs.`);
+          }}
+          onAddLinkedOverlayLine={(pair: readonly [LinkedOverlayGraphSeries, LinkedOverlayGraphSeries]) => {
+            if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
+            if (document.source.objects.length > GRAPH2D_MAX_OBJECTS - 2)
+              throw new TypeError("Graph object limit reached.");
+            if (document.source.objects.some(item => item.kind === "point-series" &&
+              item.linkedOrigin?.pairId === pair[0].origin.pairId))
+              throw new TypeError("This linked line is already in Graphs.");
+            const drafts = pair.map((series, index) => ({ label: series.label,
+              table: pointTableStore.publish(series.rows), mode: "line" as const,
+              domain: series.domain, linkedOrigin: series.origin,
+              style: { color: index === 0 ? "#fde047" : "#38bdf8",
+                lineWidth: 2, lineStyle: "solid" as const, visible: true } })) as
+              [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft];
+            onAuthoringCommit({ type: "create-point-series-pair", drafts });
+            setToolHint(`Added ${pair[0].rows.length} aligned vector and scalar samples to Graphs.`);
           }}
           libraryEntries={explorerLibrary} libraryBusy={scientificImportBusy || sceneLibraryChecking}
           libraryError={scientificImportError}
