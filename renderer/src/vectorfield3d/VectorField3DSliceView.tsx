@@ -1,8 +1,11 @@
 import { useId, useState } from "react";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
-  VectorField3DClipBounds } from "@math3d/core";
+  VectorField3DClipBounds, VectorField3DLinkedLineProfile,
+  Graph2DScientificVolume } from "@math3d/core";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
-import type { ScalarSliceOverlay, SliceOverlayArrow } from "./scientificSliceOverlay";
+import type { ScalarSliceOverlay, SliceOverlayArrow,
+  VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import { LinkedOverlayProfileView } from "./LinkedOverlayProfileView";
 
 const color = (value: number | null, min: number, max: number) => {
   if (value === null) return "#64748b";
@@ -14,7 +17,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
   onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
   seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
-  scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "" }: {
+  scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
+  overlayVectorPlane = null, scalarOverlayVolume = null,
+  linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
   clipBounds?: VectorField3DClipBounds;
@@ -31,6 +36,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   overlayArrows?: readonly SliceOverlayArrow[];
   overlayVectorSamples?: readonly Readonly<{ name: string; sampleSha256: string }>[];
   overlayStatus?: string;
+  overlayVectorPlane?: VectorSliceOverlayPlane | null;
+  scalarOverlayVolume?: Graph2DScientificVolume | null;
+  linkedLineProfile?: VectorField3DLinkedLineProfile | null;
+  linkedProfileMismatch?: string;
+  onLinkedLineProfileChange?: (profile: VectorField3DLinkedLineProfile | null) => void;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
   onSendDerivedLineToGraphs?: (slice: VectorField3DSliceArtifact, varyingAxis: 0 | 1 | 2,
@@ -211,7 +221,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             ` ${part.verifiedChunks} of ${part.totalChunks} source chunks verified` :
             " complete source resource verified"}</li>)}</ul>
     </details>}
-    {profile.length > 0 && <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
+    {profile.length > 0 && !(linkedLineProfile?.normalAxis === slice.normalAxis &&
+      linkedLineProfile.visible && document.workspace?.scalarOverlay?.visible) &&
+      <section className="vector-field3d-line-profile" aria-label="Line profile through probe">
       <label>Line direction <select aria-label="Line profile direction" value={profileDirection}
         onChange={event => setProfileDirection(Number(event.target.value) as 0 | 1)}>
         <option value="0">Vary {firstAxis.label}</option>
@@ -249,5 +261,10 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             probe![slice.planeAxes[1 - profileDirection]])}>
           {derivedLineBusy ? "Verifying derived line…" : "Send derived line to Graphs"}</button>}
     </section>}
+    {onLinkedLineProfileChange && <LinkedOverlayProfileView document={document} slice={slice}
+      probe={probe ?? null} profile={linkedLineProfile} vectorPlane={overlayVectorPlane}
+      scalarVolume={scalarOverlayVolume} vectorSamples={overlayVectorSamples}
+      status={overlayStatus} mismatch={linkedProfileMismatch}
+      onChange={onLinkedLineProfileChange} />}
   </figure>;
 }
