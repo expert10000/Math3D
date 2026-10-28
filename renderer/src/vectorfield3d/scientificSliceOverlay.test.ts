@@ -8,7 +8,8 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
-import { sampleLinkedOverlayLineProfile, sampleOverlayRegion, sampleScalarSliceOverlay,
+import { sampleComplexSliceOverlay, sampleLinkedOverlayLineProfile,
+  sampleOverlayRegion, sampleScalarSliceOverlay,
   sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
@@ -25,6 +26,32 @@ const scalarVolume: Graph2DScientificVolume = verifyGraph2DScientificVolume(scal
     resourceSha256: scalarReference.resourceSha256,
     sampleSha256: sha256Checksum(scalarBytes).slice(7),
     values: Array.from({ length: 17 ** 3 }, (_, index) => scalarBytes.readDoubleLE(index * 8)) });
+const complexDirectory = resolve(import.meta.dirname,
+  "../../../examples/scientific-scenes/complex-wave-volume.sscene");
+const complexManifest = readFileSync(resolve(complexDirectory, "manifest.json"), "utf8");
+const complexFingerprint = sha256Checksum(new TextEncoder().encode(complexManifest)).slice(7);
+const complexPart = (component: "real" | "imaginary") => {
+  const reference = createGraph2DFieldReference(complexManifest, complexFingerprint,
+    { kind: "preset", value: "complexWaveVolume" }, "field", component);
+  const bytes = readFileSync(resolve(complexDirectory, `${component}.f64`));
+  const sampleShape = reference.shape.map(count => Math.min(count, 32));
+  const selected = sampleShape.map((count, axis) => Array.from({ length: count }, (_, index) =>
+    Math.round(index * (reference.shape[axis]! - 1) / (count - 1))));
+  const values = selected[0]!.flatMap(i => selected[1]!.flatMap(j => selected[2]!.map(k =>
+    bytes.readDoubleLE(((i * reference.shape[1]! + j) * reference.shape[2]! + k) * 8))));
+  const sampleBytes = Buffer.alloc(values.length * 8);
+  values.forEach((value, index) => sampleBytes.writeDoubleLE(value, index * 8));
+  const volume = verifyGraph2DScientificVolume(complexManifest, complexFingerprint,
+    { fingerprint: complexFingerprint, datasetId: "field", component,
+      sourceShape: reference.shape, sampleShape,
+      resourceSha256: reference.resourceSha256,
+      sampleSha256: sha256Checksum(sampleBytes).slice(7), values });
+  return { reference, volume };
+};
+const complexReal = complexPart("real"), complexImaginary = complexPart("imaginary");
+const complexRecipe = { real: complexReal.reference, imaginary: complexImaginary.reference,
+  title: "Wave amplitude", unit: "1", mode: "magnitude" as const,
+  opacity: 0.85, visible: true };
 
 const axes = (["x", "y", "z"] as const).map(role => ({ role, label: role,
   unit: "m", min: -4, max: 4 })) as VectorField3DSource["axes"];
@@ -76,14 +103,93 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
     const legacy = JSON.parse(serializeVectorField3DDocument(analytic));
     delete legacy.workspace.scalarOverlay;
+    delete legacy.workspace.complexOverlay;
     delete legacy.workspace.linkedLineProfile;
     delete legacy.workspace.overlayRegion;
     expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.scalarOverlay).toBeNull();
     expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.linkedLineProfile).toBeNull();
     expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.overlayRegion).toBeNull();
+    expect(parseVectorField3DDocument(JSON.stringify(legacy)).workspace?.complexOverlay).toBeNull();
     const invalidRegion = JSON.parse(serialized);
     invalidRegion.workspace.overlayRegion.bounds[0] = [2, -2];
     expect(() => parseVectorField3DDocument(JSON.stringify(invalidRegion))).toThrow();
+  });
+
+  it("keeps a complex overlay recipe without source samples and rejects a changed pair", () => {
+    const saved = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", scalarOverlay: null, complexOverlay: complexRecipe });
+    const serialized = serializeVectorField3DDocument(saved);
+    expect(serialized).not.toContain("values");
+    expect(parseVectorField3DDocument(serialized).workspace?.complexOverlay).toEqual(complexRecipe);
+    const invalid = JSON.parse(serialized);
+    invalid.workspace.complexOverlay.imaginary.sceneFingerprint = "0".repeat(64);
+    expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
+    invalid.workspace.complexOverlay.imaginary = invalid.workspace.complexOverlay.real;
+    expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
+  });
+
+  it("aligns complex magnitude and phase on XY, XZ and YZ physical slices", () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const slice = sampleVectorField3DSlice(analytic, normalAxis, 0);
+      const magnitude = sampleComplexSliceOverlay(analytic, slice, complexRecipe,
+        complexReal.volume, complexImaginary.volume);
+      const phase = sampleComplexSliceOverlay(analytic, slice,
+        { ...complexRecipe, mode: "phase" }, complexReal.volume, complexImaginary.volume);
+      expect(magnitude.covered).toBe(normalAxis === 2 ?
+        slice.shape[0] * slice.shape[1] : 13 * slice.shape[0]);
+      expect(phase.covered).toBe(magnitude.covered);
+      expect(magnitude.unit).toBe("1");
+      expect(phase.unit).toBe("rad");
+      expect(phase.min).toBeCloseTo(-Math.PI, 12);
+      expect(phase.max).toBeCloseTo(Math.PI, 12);
+      expect(magnitude.verifiedComponents?.map(part => part.sampleSha256))
+        .toEqual([complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256]);
+      const center = 12 * slice.shape[1] + 12;
+      // Interpolating real and imaginary on a bounded lattice attenuates the peak.
+      expect(Math.abs(magnitude.values[center]! - 1)).toBeLessThan(0.08);
+      expect(phase.values[center]).toBeCloseTo(0, 2);
+    }
+    const xy = sampleVectorField3DSlice(analytic, 2, 0);
+    const phase = sampleComplexSliceOverlay(analytic, xy,
+      { ...complexRecipe, mode: "phase" }, complexReal.volume, complexImaginary.volume);
+    const atXOne = phase.values[15 * xy.shape[1] + 12];
+    expect(atXOne).toBeCloseTo(1.3, 1);
+    expect(() => sampleComplexSliceOverlay(analytic, xy, complexRecipe,
+      complexReal.volume, { ...complexImaginary.volume, resourceSha256: "changed" }))
+      .toThrow(/changed/);
+    expect(() => sampleComplexSliceOverlay(analytic, xy,
+      { ...complexRecipe, real: { ...complexReal.reference,
+        axes: complexReal.reference.axes.map((axis, index) => index === 0 ?
+          { ...axis, unit: "mm" } : axis) } },
+      complexReal.volume, complexImaginary.volume)).toThrow(/units/);
+  });
+
+  it("keeps the selected vector and complex rectangle aligned in both modes", () => {
+    const slice = sampleVectorField3DSlice(analytic, 2, 0);
+    const plane = sampleSliceOverlayVectorPlane(analytic, slice);
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const magnitude = sampleOverlayRegion(analytic, slice, region, plane,
+      complexReal.reference, complexReal.volume, "1",
+      { imaginaryReference: complexImaginary.reference,
+        imaginaryVolume: complexImaginary.volume, mode: "magnitude" });
+    const phase = sampleOverlayRegion(analytic, slice, region, plane,
+      complexReal.reference, complexReal.volume, "rad",
+      { imaginaryReference: complexImaginary.reference,
+        imaginaryVolume: complexImaginary.volume, mode: "phase" });
+    expect(magnitude.alignedCount).toBe(289);
+    expect(phase.alignedCount).toBe(289);
+    expect(magnitude.vector?.mean).toBeCloseTo(phase.vector!.mean, 12);
+    expect(magnitude.scalarUnit).toBe("1");
+    expect(phase.scalarUnit).toBe("rad");
+    expect(magnitude.scalar!.mean).toBeGreaterThan(0.8);
+    expect(Math.abs(phase.scalar!.mean)).toBeLessThan(0.1);
+    expect(() => sampleOverlayRegion(analytic, slice, region, plane,
+      complexReal.reference, complexReal.volume, "rad",
+      { imaginaryReference: complexImaginary.reference,
+        imaginaryVolume: { ...complexImaginary.volume, resourceSha256: "changed" },
+        mode: "phase" })).toThrow(/imaginary source changed/);
   });
 
   it("summarizes aligned physical rectangles on all planes with separate units", () => {
@@ -287,6 +393,19 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(overlay.covered).toBe(1024);
     expect(overlay.values[0]).toBeGreaterThan(32);
     expect(overlay.values.at(-1)).toBeCloseTo(overlay.values[0]!, 10);
+    const waveMagnitude = sampleComplexSliceOverlay(vector, slice, complexRecipe,
+      complexReal.volume, complexImaginary.volume);
+    const wavePhase = sampleComplexSliceOverlay(vector, slice,
+      { ...complexRecipe, mode: "phase" }, complexReal.volume, complexImaginary.volume);
+    expect(waveMagnitude.covered).toBe(1024);
+    const centerX = coordinates[16]!, centerY = coordinates[16]!;
+    const centerIndex = 16 * 32 + 16;
+    const expectedWaveMagnitude = Math.exp(-(centerX ** 2 + centerY ** 2) / 18 -
+      fixedCoordinate ** 2 / 12);
+    const expectedWavePhase = 1.3 * centerX + 0.8 * centerY +
+      0.65 * fixedCoordinate + 0.25 * Math.sin(centerY);
+    expect(Math.abs(waveMagnitude.values[centerIndex]! - expectedWaveMagnitude)).toBeLessThan(0.03);
+    expect(Math.abs(wavePhase.values[centerIndex]! - expectedWavePhase)).toBeLessThan(0.05);
     const components = [[], [], []] as [number[], number[], number[]];
     for (let i = 0; i < 32; i++) for (let j = 0; j < 32; j++) {
       const x = coordinates[i]!, y = coordinates[j]!;

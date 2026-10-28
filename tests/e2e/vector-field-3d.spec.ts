@@ -459,6 +459,182 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
   }
 });
 
+test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", async () => {
+  test.setTimeout(180_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const examples = explorer.getByRole("region", { name: "Built-in scientific scenes" });
+    await examples.getByRole("button", { name: /Swirling flow/ }).click();
+    await explorer.getByRole("button", { name: "XY slice" }).click();
+    await examples.getByRole("button", { name: /Complex wave/ }).click();
+    await explorer.getByRole("button", { name: "Show this complex field as overlay on vector slices" }).click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    await expect(explorer.getByTestId("scientific-complex-overlay-status"))
+      .toContainText("Verified real", { timeout: 60_000 });
+    let figure = explorer.getByRole("figure", { name: "XY field slice" });
+    await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("real:");
+    await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("imaginary:");
+    await figure.locator('[data-probe-cell="12-12"]').click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("imaginary:", { timeout: 60_000 });
+    const region = figure.getByTestId("scientific-overlay-region");
+    await region.getByRole("button", { name: "Select rectangular region" }).click();
+    await figure.locator('[data-probe-cell="9-9"]').click();
+    await figure.locator('[data-probe-cell="15-15"]').click();
+    await expect(region.getByTestId("scientific-overlay-region-summary"))
+      .toContainText("Complex field outside selected area:");
+    await expect(figure.getByTestId("vector-field3d-slice-crosshair")).toBeVisible();
+    await expect(figure.getByTestId("scientific-overlay-region-marker")).toBeVisible();
+    await explorer.getByRole("combobox", { name: "Complex overlay mode" }).selectOption("phase");
+    await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("rad");
+    await expect(region.getByTestId("scientific-overlay-region-summary"))
+      .toContainText("(rad)");
+    for (const plane of ["XZ", "YZ"] as const) {
+      await explorer.getByRole("button", { name: `${plane} slice` }).click();
+      await explorer.getByRole("button", { name: "Preview slice" }).click();
+      figure = explorer.getByRole("figure", { name: `${plane} field slice` });
+      await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+        .toContainText("Complex", { timeout: 60_000 });
+      await expect(figure.getByTestId("scientific-slice-overlay-status"))
+        .toContainText("Partial complex domain overlap");
+    }
+    await examples.getByRole("button", { name: /Generated vortex/ }).click();
+    await explorer.getByRole("button", { name: "XY slice" }).click();
+    await examples.getByRole("button", { name: /Complex wave/ }).click();
+    await explorer.getByRole("button", { name: "Show this complex field as overlay on vector slices" }).click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    await expect(explorer.getByRole("figure", { name: "XY field slice" })
+      .getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("1024/1024 cells", { timeout: 60_000 });
+  } finally { await closeSurfaceApp(app); }
+});
+
+test("SCI-02 Burgers and complex heatmap reverify after Project reopen and reject tampering", async () => {
+  test.setTimeout(240_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-complex-overlay-"));
+  const burgers = join(root, "burgers.sscene"), complex = join(root, "complex.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
+    { recursive: true });
+  await cp(resolve("examples/scientific-scenes/complex-wave-volume.sscene"), complex,
+    { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, burgers);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await explorer.getByRole("button", { name: "XY slice" }).click();
+    await explorer.getByLabel("Slice physical coordinate").selectOption({ index: 0 });
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, complex);
+    const library = explorer.getByRole("region", { name: "Dataset library" });
+    await library.getByRole("button", { name: "Browse scientific scene" }).click();
+    await library.getByRole("button", { name: "Open Wave amplitude from dataset library" }).click();
+    await explorer.getByRole("button", { name: "Show this complex field as overlay on vector slices" }).click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    await expect(explorer.getByTestId("scientific-complex-overlay-status"))
+      .toContainText("Verified real", { timeout: 60_000 });
+    const figure = explorer.getByRole("figure", { name: "XY field slice" });
+    await expect(figure.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("imaginary:");
+    await explorer.getByRole("combobox", { name: "Complex overlay mode" }).selectOption("phase");
+    const region = figure.getByTestId("scientific-overlay-region");
+    await region.getByRole("button", { name: "Select rectangular region" }).click();
+    await figure.locator('[data-probe-cell="12-12"]').click();
+    await figure.locator('[data-probe-cell="20-20"]').click();
+    await expect(region.getByTestId("scientific-overlay-region-summary"))
+      .toContainText("Complex field outside selected area:");
+    await explorer.getByRole("button", { name: "Save document" }).click();
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const saved = stored.workspace.entries.find((entry: { module: string }) =>
+      entry.module === "vector3d")?.checkpoint.workspace;
+    expect(saved.complexOverlay.mode).toBe("phase");
+    expect(saved.complexOverlay.real.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(saved.complexOverlay.imaginary.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(saved.overlayRegion.bounds).toHaveLength(2);
+    expect(JSON.stringify(saved.complexOverlay)).not.toContain("values");
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(reopened.getByTestId("scientific-complex-overlay-status"))
+      .toContainText("Verified real", { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("imaginary:");
+    await expect(reopened.getByTestId("scientific-overlay-region-summary"))
+      .toContainText("(rad)");
+    const imaginaryFile = join(complex, "imaginary.f64");
+    const originalImaginary = await readFile(imaginaryFile), changedImaginary = Buffer.from(originalImaginary);
+    changedImaginary[0] ^= 1;
+    await writeFile(imaginaryFile, changedImaginary);
+    await reopened.getByRole("button", { name: "Open saved document" }).click();
+    await expect(reopened.getByTestId("scientific-complex-overlay-status"))
+      .toContainText(/withheld.*integrity|withheld.*checksum|withheld.*changed/i,
+        { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
+    await expect(reopened.getByTestId("scientific-overlay-region-summary")).toHaveCount(0);
+    await writeFile(imaginaryFile, originalImaginary);
+    await reopened.getByRole("button", { name: "Open saved document" }).click();
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
+      .toContainText("imaginary:", { timeout: 60_000 });
+    const realFile = join(complex, "real.f64");
+    const originalReal = await readFile(realFile), changedReal = Buffer.from(originalReal);
+    changedReal[0] ^= 1;
+    await writeFile(realFile, changedReal);
+    await reopened.getByRole("button", { name: "Open saved document" }).click();
+    await expect(reopened.getByTestId("scientific-complex-overlay-status"))
+      .toContainText(/withheld.*integrity|withheld.*checksum|withheld.*changed/i,
+        { timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
+    await writeFile(realFile, originalReal);
+    await reopened.getByRole("button", { name: "Back to Graphs" }).click();
+    const tile = join(burgers, "vx.f64"), originalTile = await readFile(tile);
+    const changedTile = Buffer.from(originalTile); changedTile[0] ^= 1;
+    await writeFile(tile, changedTile);
+    await page.getByTestId("projects-toggle").click();
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const changed = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await expect(changed.getByRole("alert"))
+      .toContainText(/integrity|checksum|changed/i, { timeout: 60_000 });
+    await expect(changed.getByTestId("scientific-slice-overlay-provenance")).toHaveCount(0);
+    await expect(changed.getByTestId("scientific-overlay-region-summary")).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-complex-overlay-"))
+      throw new Error("Unsafe complex-overlay fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("SCI-02 Burgers linked probe survives Project reopen with verified source", async () => {
   const app = await launchSurfaceApp();
   try {

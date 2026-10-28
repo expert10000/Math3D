@@ -1,15 +1,18 @@
-import { evaluateGraph2DExpression, verifyVectorField3DSparseSamples,
+import { evaluateGraph2DExpression, sha256Checksum, verifyVectorField3DSparseSamples,
   verifyVectorField3DVolumes, type Graph2DFieldReference,
   type Graph2DScientificVolume, type VectorField3DDocument,
   type VectorField3DLinkedLineProfile,
   type VectorField3DOverlayRegion,
+  type VectorField3DComplexOverlay,
   type VectorField3DSliceArtifact, type VectorField3DSparseSamples,
   type VectorField3DVolumes } from "@math3d/core";
 import { linkedFieldPointStatus, sampleLinkedFieldVolume } from "./linkedFieldProbe";
 
 export type ScalarSliceOverlay = Readonly<{ values: readonly (number | null)[];
   min: number; max: number; covered: number; title: string; unit: string;
-  source: string; sampleSha256: string; opacity: number }>;
+  source: string; sampleSha256: string; opacity: number;
+  mode?: "scalar" | "complex-magnitude" | "complex-phase";
+  verifiedComponents?: readonly Readonly<{ name: string; sampleSha256: string }>[] }>;
 export type SliceOverlayArrow = Readonly<{ firstIndex: number; secondIndex: number;
   firstComponent: number; secondComponent: number; normalComponent: number }>;
 export type VectorSliceOverlayPlane = Readonly<{
@@ -34,19 +37,34 @@ export type OverlayRegionSummary = Readonly<{
 export function sampleOverlayRegion(document: VectorField3DDocument,
   slice: VectorField3DSliceArtifact, recipe: VectorField3DOverlayRegion,
   plane: VectorSliceOverlayPlane, reference: Graph2DFieldReference,
-  volume: Graph2DScientificVolume, scalarUnit: string): OverlayRegionSummary {
+  volume: Graph2DScientificVolume, scalarUnit: string,
+  complex?: Readonly<{ imaginaryReference: Graph2DFieldReference;
+    imaginaryVolume: Graph2DScientificVolume; mode: "magnitude" | "phase" }>): OverlayRegionSummary {
   if (recipe.normalAxis !== slice.normalAxis ||
       Math.abs(recipe.fixedCoordinate - slice.fixedCoordinate) > 1e-9 ||
       plane.sourceStructuralHash !== document.identity.structuralHash ||
       plane.shape[0] !== slice.shape[0] || plane.shape[1] !== slice.shape[1])
     throw new TypeError("Selected region is on a different verified vector plane.");
-  if (reference.semanticType !== "scalar-field" || reference.shape.length !== 3 ||
+  if (reference.semanticType !== (complex ? "complex-scalar-field" : "scalar-field") ||
+      reference.shape.length !== 3 ||
       volume.datasetId !== reference.datasetId || volume.component !== reference.component ||
       volume.fingerprint !== reference.sceneFingerprint ||
       volume.resourceSha256 !== reference.resourceSha256 ||
       reference.axes.some((axis, index) => axis.name !== document.source.axes[index]!.label ||
         axis.unit !== document.source.axes[index]!.unit))
     throw new TypeError("Selected region scalar source or coordinate units changed.");
+  if (complex && (complex.imaginaryReference.semanticType !== "complex-scalar-field" ||
+      complex.imaginaryReference.component !== "imaginary" ||
+      reference.component !== "real" ||
+      complex.imaginaryReference.sceneFingerprint !== reference.sceneFingerprint ||
+      complex.imaginaryReference.datasetId !== reference.datasetId ||
+      complex.imaginaryVolume.datasetId !== complex.imaginaryReference.datasetId ||
+      complex.imaginaryVolume.component !== complex.imaginaryReference.component ||
+      complex.imaginaryVolume.fingerprint !== complex.imaginaryReference.sceneFingerprint ||
+      complex.imaginaryVolume.resourceSha256 !== complex.imaginaryReference.resourceSha256 ||
+      complex.imaginaryReference.axes.some((axis, index) =>
+        axis.name !== reference.axes[index]!.name || axis.unit !== reference.axes[index]!.unit)))
+    throw new TypeError("Selected region imaginary source changed.");
   const [first, second] = slice.planeAxes;
   for (let local = 0; local < 2; local++) {
     const [low, high] = recipe.bounds[local]!;
@@ -114,9 +132,15 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
       interpolate(component, firstValue, secondValue)) : [null, null, null];
     const vector = componentIndex === null ? components.every(value => value !== null) ?
       Math.hypot(...components as number[]) : null : components[componentIndex];
-    const scalar = linkedFieldPointStatus(point, scalarAxes,
-      document.source.axes.map(axis => axis.unit)) === "inside" ?
-      sampleLinkedFieldVolume(volume, scalarAxes, point) : null;
+    const inside = linkedFieldPointStatus(point, scalarAxes,
+      document.source.axes.map(axis => axis.unit)) === "inside";
+    const realValue = inside ? sampleLinkedFieldVolume(volume, scalarAxes, point) : null;
+    const imaginaryValue = inside && complex ?
+      sampleLinkedFieldVolume(complex.imaginaryVolume, scalarAxes, point) : null;
+    const magnitude = realValue !== null && imaginaryValue !== null ?
+      Math.hypot(realValue, imaginaryValue) : null;
+    const scalar = complex ? magnitude === null ? null : complex.mode === "phase" ?
+      magnitude > 1e-12 ? Math.atan2(imaginaryValue!, realValue!) : null : magnitude : realValue;
     const vectorValid = vector !== null && Number.isFinite(vector);
     const scalarValid = scalar !== null && Number.isFinite(scalar);
     if (vectorValid) vectorCount++;
@@ -130,7 +154,10 @@ export function sampleOverlayRegion(document: VectorField3DDocument,
     alignedCount: vectors.length, vector: stats(vectors), scalar: stats(scalars),
     scalarOutsideAreaPercent, vectorOutsideAreaPercent,
     vectorUnit: componentIndex === null ? plane.units[0] :
-      plane.units[componentIndex], scalarUnit, scalarSampleSha256: volume.sampleSha256,
+      plane.units[componentIndex], scalarUnit,
+    scalarSampleSha256: complex ? sha256Checksum(new TextEncoder().encode(
+      `${volume.sampleSha256}:${complex.imaginaryVolume.sampleSha256}`)).slice(7) :
+      volume.sampleSha256,
     vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash };
 }
 
@@ -163,6 +190,57 @@ export function sampleScalarSliceOverlay(document: VectorField3DDocument,
   return { values, min: Math.min(...finite), max: Math.max(...finite), covered: finite.length,
     title, unit, source: `${reference.sceneId} / ${reference.datasetId}`,
     sampleSha256: volume.sampleSha256, opacity };
+}
+
+/** Resample both checked complex components at the vector slice's physical coordinates. */
+export function sampleComplexSliceOverlay(document: VectorField3DDocument,
+  slice: VectorField3DSliceArtifact, recipe: VectorField3DComplexOverlay,
+  realVolume: Graph2DScientificVolume,
+  imaginaryVolume: Graph2DScientificVolume): ScalarSliceOverlay {
+  const real = recipe.real, imaginary = recipe.imaginary;
+  if (real.semanticType !== "complex-scalar-field" ||
+      imaginary.semanticType !== "complex-scalar-field" ||
+      real.shape.length !== 3 || imaginary.shape.length !== 3 ||
+      real.component !== "real" || imaginary.component !== "imaginary" ||
+      real.datasetId !== imaginary.datasetId ||
+      real.sceneFingerprint !== imaginary.sceneFingerprint ||
+      [real, imaginary].some((reference, index) => {
+        const volume = index === 0 ? realVolume : imaginaryVolume;
+        return volume.datasetId !== reference.datasetId ||
+          volume.component !== reference.component ||
+          volume.fingerprint !== reference.sceneFingerprint ||
+          volume.resourceSha256 !== reference.resourceSha256 ||
+          reference.axes.some((axis, axisIndex) => axis.name !== document.source.axes[axisIndex]!.label ||
+            axis.unit !== document.source.axes[axisIndex]!.unit);
+      })) throw new TypeError("Complex overlay components, axes or coordinate units changed.");
+  const axes = real.axes.map((axis, index) => ({ name: axis.name, unit: axis.unit,
+    origin: axis.origin, spacing: axis.spacing, count: real.shape[index]! }));
+  const [first, second] = slice.planeAxes;
+  const values = slice.coordinates[0].flatMap(firstValue => slice.coordinates[1].map(secondValue => {
+    const point = [0, 0, 0] as [number, number, number];
+    point[slice.normalAxis] = slice.fixedCoordinate;
+    point[first] = firstValue; point[second] = secondValue;
+    if (linkedFieldPointStatus(point, axes,
+      document.source.axes.map(axis => axis.unit)) !== "inside") return null;
+    const a = sampleLinkedFieldVolume(realVolume, axes, point);
+    const b = sampleLinkedFieldVolume(imaginaryVolume, axes, point);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    const magnitude = Math.hypot(a, b);
+    return recipe.mode === "phase" ? magnitude > 1e-12 ? Math.atan2(b, a) : null : magnitude;
+  }));
+  const finite = values.filter((value): value is number => value !== null && Number.isFinite(value));
+  if (!finite.length) throw new RangeError("The selected slice has no complex values in its domain.");
+  const components = [{ name: "real", sampleSha256: realVolume.sampleSha256 },
+    { name: "imaginary", sampleSha256: imaginaryVolume.sampleSha256 }];
+  return { values, min: recipe.mode === "phase" ? -Math.PI : Math.min(...finite),
+    max: recipe.mode === "phase" ? Math.PI : Math.max(...finite),
+    covered: finite.length, title: `${recipe.title} ${recipe.mode}`,
+    unit: recipe.mode === "phase" ? "rad" : recipe.unit,
+    source: `${real.sceneId} / ${real.datasetId}`,
+    sampleSha256: sha256Checksum(new TextEncoder().encode(
+      `${realVolume.sampleSha256}:${imaginaryVolume.sampleSha256}`)).slice(7),
+    opacity: recipe.opacity, mode: recipe.mode === "phase" ?
+      "complex-phase" : "complex-magnitude", verifiedComponents: components };
 }
 
 type CheckedVectorSource = Readonly<{ manifestJson: string; fingerprint: string;

@@ -14,13 +14,15 @@ const color = (value: number | null, min: number, max: number) => {
   const t = max === min ? .5 : Math.max(0, Math.min(1, (value - min) / (max - min)));
   return `rgb(${Math.round(35 + 212 * t)}, ${Math.round(105 + 110 * (1 - Math.abs(2 * t - 1)))}, ${Math.round(224 - 184 * t)})`;
 };
+const phaseColor = (value: number) =>
+  `hsl(${((value + Math.PI) / (2 * Math.PI) * 360) % 360} 84% 58%)`;
 
 export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoom = 1,
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
   onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
   seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
   scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
-  overlayVectorPlane = null, scalarOverlayVolume = null,
+  overlayVectorPlane = null, scalarOverlayVolume = null, complexOverlayVolumes = null,
   linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange,
   onSendLinkedLineToGraphs, linkedLineBusy = false,
   overlayRegion = null, onOverlayRegionChange }: {
@@ -42,6 +44,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   overlayStatus?: string;
   overlayVectorPlane?: VectorSliceOverlayPlane | null;
   scalarOverlayVolume?: Graph2DScientificVolume | null;
+  complexOverlayVolumes?: readonly [Graph2DScientificVolume, Graph2DScientificVolume] | null;
   linkedLineProfile?: VectorField3DLinkedLineProfile | null;
   linkedProfileMismatch?: string;
   onLinkedLineProfileChange?: (profile: VectorField3DLinkedLineProfile | null) => void;
@@ -62,7 +65,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const [regionFirstCorner, setRegionFirstCorner] = useState<readonly [number, number, number] | null>(null);
   useEffect(() => { setRegionSelecting(false); setRegionFirstCorner(null); },
     [slice.normalAxis, slice.fixedCoordinate, document.identity.structuralHash,
-      document.workspace?.scalarOverlay?.visible]);
+      document.workspace?.scalarOverlay?.visible, document.workspace?.complexOverlay?.visible]);
   const arrowMarkerId = useId().replace(/:/g, "");
   const [first, second] = slice.planeAxes;
   const { left, top, width, height } = slicePlot;
@@ -143,7 +146,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     <svg viewBox={`${640 * center[0] - 320 / zoom} ${560 * center[1] - 280 / zoom} ${640 / zoom} ${560 / zoom}`}
       role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}
       onClick={event => {
-        if (regionSelecting && onOverlayRegionChange && document.workspace?.scalarOverlay?.visible) {
+        if (regionSelecting && onOverlayRegionChange &&
+            (document.workspace?.scalarOverlay?.visible || document.workspace?.complexOverlay?.visible)) {
           const transform = event.currentTarget.getScreenCTM();
           const local = transform ? new DOMPoint(event.clientX, event.clientY)
             .matrixTransform(transform.inverse()) : null;
@@ -183,12 +187,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           x={left + x * cellWidth} y={top + (slice.shape[1] - 1 - y) * cellHeight}
           width={cellWidth + .3} height={cellHeight + .3}
           fill={scalarOverlay ? scalarValue !== null && scalarValue !== undefined ?
-            color(scalarValue, scalarOverlay.min, scalarOverlay.max) : "#334155" :
+            scalarOverlay.mode === "complex-phase" ? phaseColor(scalarValue) :
+              color(scalarValue, scalarOverlay.min, scalarOverlay.max) : "#334155" :
             color(value, slice.min, slice.max)}
           opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
             if (!onProbeSelect || seedPlacementActive ||
-                (regionSelecting && document.workspace?.scalarOverlay?.visible)) return;
+                (regionSelecting && (document.workspace?.scalarOverlay?.visible ||
+                  document.workspace?.complexOverlay?.visible))) return;
             const point = [0, 0, 0] as [number, number, number];
             point[slice.normalAxis] = slice.fixedCoordinate;
             point[first] = slice.coordinates[0][x]!;
@@ -251,9 +257,12 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       </g>
     </svg>
     {scalarOverlay && <p data-testid="scientific-slice-overlay-provenance">
-      Scalar {scalarOverlay.title}: {scalarOverlay.covered}/{scalarOverlay.values.length} cells ·
+      {scalarOverlay.mode?.startsWith("complex-") ? "Complex" : "Scalar"}
+      {" "}{scalarOverlay.title}: {scalarOverlay.covered}/{scalarOverlay.values.length} cells ·
       {" "}{scalarOverlay.min.toPrecision(4)}–{scalarOverlay.max.toPrecision(4)} {scalarOverlay.unit}.
       {" "}Source {scalarOverlay.source}; verified sample SHA-256 {scalarOverlay.sampleSha256}.
+      {scalarOverlay.verifiedComponents?.length ? ` Components ${scalarOverlay.verifiedComponents.map(part =>
+        `${part.name}: ${part.sampleSha256}`).join(" · ")}.` : ""}
       {" "}{overlayArrows.length} vector glyphs sampled on this plane; +/− marks the signed normal component.
       {slice.sourceHash && ` Vector source ${slice.sourceHash}.`}
       {overlayVectorSamples.length ? ` Verified arrow samples ${overlayVectorSamples.map(part =>
@@ -261,7 +270,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         " Authored expression vectors on this plane."}</p>}
     <div className="vector-field3d-slice-legend" role="img"
       aria-label={`Color legend, ${(scalarOverlay?.min ?? slice.min).toPrecision(4)} to ${(scalarOverlay?.max ?? slice.max).toPrecision(4)} ${scalarOverlay?.unit ?? slice.unit}`}>
-      <span>{(scalarOverlay?.min ?? slice.min).toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar" />
+      <span>{(scalarOverlay?.min ?? slice.min).toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar"
+        style={scalarOverlay?.mode === "complex-phase" ? { background:
+          "linear-gradient(90deg, #f15353, #e9e74e, #50d7aa, #5f9ff0, #f15353)" } : undefined} />
       <span>{(scalarOverlay?.max ?? slice.max).toPrecision(4)} {scalarOverlay?.unit ?? slice.unit}</span>
     </div>
     <p role="status">{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit};
@@ -327,6 +338,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     {onOverlayRegionChange && <OverlayRegionView document={document} slice={slice}
       region={overlayRegion} vectorPlane={overlayVectorPlane ?? null}
       scalarVolume={scalarOverlayVolume ?? null} vectorSamples={overlayVectorSamples}
+      complexVolumes={complexOverlayVolumes ?? null}
       status={overlayStatus} onChange={onOverlayRegionChange}
       selecting={regionSelecting} onStartSelection={() => {
         setRegionSelecting(!regionSelecting); setRegionFirstCorner(null);
