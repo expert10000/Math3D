@@ -43,7 +43,10 @@ export function LinkedOverlayProfileView({ document, slice, probe, profile, vect
   sendBusy?: boolean;
 }) {
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
-  const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  const complex = !scalar && document.workspace?.complexOverlay?.visible ?
+    { ...document.workspace.complexOverlay,
+      mode: (document.workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" : document.workspace.complexOverlay.mode) as "phase" | "magnitude" } : null;
   if (!scalar && !complex) return null;
   const source = scalar?.reference ?? complex!.real;
   const sourceUnit = complex?.mode === "phase" ? "rad" : (scalar?.unit ?? complex!.unit);

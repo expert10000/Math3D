@@ -268,7 +268,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       item.source.reference.id === field.source.reference.id) === index);
   const overlayForSlice = (candidate: VectorField3DSliceArtifact,
     layer: SeedSliceLayer) => {
-    if (complexOverlay?.visible) {
+    if (complexOverlay?.visible && complexOverlay.mode !== "phase-contours") {
       if (!verifiedComplexOverlay || verifiedComplexOverlay.realId !== complexOverlay.real.id ||
           verifiedComplexOverlay.imaginaryId !== complexOverlay.imaginary.id ||
           verifiedComplexOverlay.realHash !== complexOverlay.real.resourceSha256 ||
@@ -301,6 +301,26 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     }
     catch (cause) { return { sample: null,
       status: `Scalar overlay withheld: ${cause instanceof Error ? cause.message : String(cause)}` }; }
+  };
+  const contourForSlice = (candidate: VectorField3DSliceArtifact,
+    layer: SeedSliceLayer) => {
+    if (!complexOverlay?.visible || complexOverlay.mode !== "phase-contours")
+      return { sample: null, status: "" };
+    if (!verifiedComplexOverlay || verifiedComplexOverlay.realId !== complexOverlay.real.id ||
+        verifiedComplexOverlay.imaginaryId !== complexOverlay.imaginary.id ||
+        verifiedComplexOverlay.realHash !== complexOverlay.real.resourceSha256 ||
+        verifiedComplexOverlay.imaginaryHash !== complexOverlay.imaginary.resourceSha256)
+      return { sample: null, status: complexOverlayStatus || "Verifying complex contour source…" };
+    if (!overlayVectorArrows[layer]) return { sample: null,
+      status: "Verifying vector arrows on this slice…" };
+    try {
+      const sample = sampleComplexSliceOverlay(document, candidate, complexOverlay,
+        verifiedComplexOverlay.real, verifiedComplexOverlay.imaginary);
+      return { sample, status: sample.covered < sample.values.length ?
+        `Partial complex contour coverage: ${sample.covered}/${sample.values.length} cells covered.` :
+        complexOverlayStatus };
+    } catch (cause) { return { sample: null,
+      status: `Complex contours withheld: ${cause instanceof Error ? cause.message : String(cause)}` }; }
   };
   useEffect(() => {
     let active = true;
@@ -505,7 +525,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       unit: field.source.quantity.unit, opacity: 0.85, visible: true } : null;
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
-        scalarOverlay: next, complexOverlay: null,
+        scalarOverlay: next,
+        complexOverlay: next && current.workspace?.complexOverlay?.visible &&
+          current.workspace.complexOverlay.mode !== "phase-contours" ?
+          { ...current.workspace.complexOverlay, visible: false } : current.workspace?.complexOverlay ?? null,
         selectedLayer: field && !["xy", "xz", "yz"].includes(
           (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer) ?
           "xy" : (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer }));
@@ -518,10 +541,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     const next: VectorField3DComplexOverlay | null = field?.source.paired ? {
       real: field.source.reference, imaginary: field.source.paired.imaginary,
       title: field.metadata.title, unit: field.source.quantity.unit,
-      mode: "magnitude", opacity: 0.85, visible: true } : null;
+      mode: scalarOverlay?.visible ? "phase-contours" : "magnitude",
+      opacity: 0.85, visible: true } : null;
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
-        scalarOverlay: null, complexOverlay: next,
+        complexOverlay: next,
         selectedLayer: field && !["xy", "xz", "yz"].includes(
           (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer) ?
           "xy" : (current.workspace ?? defaultVectorField3DWorkspace(current.source)).selectedLayer }));
@@ -1117,7 +1141,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
       const pair = linkedOverlayGraphPair(document, profile, line, samples,
-        document.workspace?.complexOverlay?.visible ?
+        !document.workspace?.scalarOverlay?.visible && document.workspace?.complexOverlay?.visible ?
           `${document.workspace.complexOverlay.title} ${document.workspace.complexOverlay.mode}` :
           document.workspace?.scalarOverlay?.title ?? "Scalar field");
       await reverifyLinkedOverlayGraphPair(pair[0].origin, pair[1].origin);
@@ -1136,7 +1160,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
       const pair = linkedOverlayRegionGraphPair(document, region, summary,
         vectorSamples, overlaySamples,
-        document.workspace?.complexOverlay?.visible ?
+        !document.workspace?.scalarOverlay?.visible && document.workspace?.complexOverlay?.visible ?
           `${document.workspace.complexOverlay.title} ${document.workspace.complexOverlay.mode}` :
           document.workspace?.scalarOverlay?.title ?? "Scalar field");
       await reverifyLinkedOverlayRegionGraphPair(pair[0].origin, pair[1].origin);
@@ -2337,7 +2361,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           checked={scalarOverlay.visible} disabled={busy}
           onChange={event => setDocument(current => reviseVectorField3DWorkspace(current,
             { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
-              scalarOverlay: { ...scalarOverlay, visible: event.target.checked } }))} />
+              scalarOverlay: { ...scalarOverlay, visible: event.target.checked },
+              complexOverlay: event.target.checked && complexOverlay?.visible &&
+                complexOverlay.mode !== "phase-contours" ?
+                { ...complexOverlay, visible: false } : complexOverlay }))} />
           Show overlay</label>
           <label>Heatmap opacity <input type="range" min="0.1" max="1" step="0.05"
             aria-label="Scalar overlay opacity" value={scalarOverlay.opacity}
@@ -2348,7 +2375,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             "Overlay hidden; source will be reverified when shown."}</p></>}
       </section>
       <section aria-label="Complex overlay" data-testid="scientific-complex-overlay-controls">
-        <h6>Complex magnitude or phase + vector arrows</h6>
+        <h6>Complex magnitude, phase, or phase contours + vector arrows</h6>
         <label>Complex source <select aria-label="Complex overlay source"
           value={complexOverlay?.real.id ?? ""} disabled={busy}
           onChange={event => setComplexOverlay(event.target.value)}>
@@ -2360,21 +2387,26 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             value={field.source.reference.id}>{field.metadata.title}</option>)}
         </select></label>
         {complexOverlay && <>
-          <label>Complex heatmap <select aria-label="Complex overlay mode"
+          <label>Complex display <select aria-label="Complex overlay mode"
             value={complexOverlay.mode} onChange={event => setDocument(current =>
               reviseVectorField3DWorkspace(current, {
                 ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
                 complexOverlay: { ...complexOverlay,
-                  mode: event.target.value as VectorField3DComplexOverlay["mode"] } }))}>
-            <option value="magnitude">Magnitude</option><option value="phase">Phase</option>
+                  mode: event.target.value as VectorField3DComplexOverlay["mode"] },
+                scalarOverlay: event.target.value !== "phase-contours" && scalarOverlay?.visible ?
+                  { ...scalarOverlay, visible: false } : scalarOverlay }))}>
+            <option value="magnitude">Magnitude heatmap</option><option value="phase">Phase heatmap</option>
+            <option value="phase-contours">Phase contours</option>
           </select></label>
           <label><input type="checkbox" aria-label="Show complex overlay"
             checked={complexOverlay.visible} disabled={busy}
             onChange={event => setDocument(current => reviseVectorField3DWorkspace(current,
               { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
-                complexOverlay: { ...complexOverlay, visible: event.target.checked } }))} />
+                complexOverlay: { ...complexOverlay, visible: event.target.checked },
+                scalarOverlay: event.target.checked && complexOverlay.mode !== "phase-contours" &&
+                  scalarOverlay?.visible ? { ...scalarOverlay, visible: false } : scalarOverlay }))} />
             Show overlay</label>
-          <label>Heatmap opacity <input type="range" min="0.1" max="1" step="0.05"
+          <label>{complexOverlay.mode === "phase-contours" ? "Contour" : "Heatmap"} opacity <input type="range" min="0.1" max="1" step="0.05"
             aria-label="Complex overlay opacity" value={complexOverlay.opacity}
             onChange={event => setDocument(current => reviseVectorField3DWorkspace(current,
               { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
@@ -2510,6 +2542,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             <VectorField3DSliceView document={document} slice={linkedSlices[layer]!}
               clipBounds={workspace.clipBounds} probe={sharedProfileProbe}
               scalarOverlay={overlayForSlice(linkedSlices[layer]!, layer).sample}
+              contourOverlay={contourForSlice(linkedSlices[layer]!, layer).sample}
+              contourStatus={contourForSlice(linkedSlices[layer]!, layer).status}
               overlayArrows={overlayVectorArrows[layer]}
               overlayVectorPlane={overlayVectorPlanes[layer]}
               scalarOverlayVolume={linkedProfileScalarVolume}
@@ -2543,6 +2577,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       normalAxis !== undefined ? slice ? <VectorField3DSliceView document={document} slice={slice}
         clipBounds={workspace.clipBounds} probe={sharedProfileProbe}
         scalarOverlay={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).sample}
+        contourOverlay={contourForSlice(slice, workspace.selectedLayer as SeedSliceLayer).sample}
+        contourStatus={contourForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         overlayArrows={overlayVectorArrows[workspace.selectedLayer as SeedSliceLayer]}
         overlayVectorPlane={overlayVectorPlanes[workspace.selectedLayer as SeedSliceLayer]}
         scalarOverlayVolume={linkedProfileScalarVolume}

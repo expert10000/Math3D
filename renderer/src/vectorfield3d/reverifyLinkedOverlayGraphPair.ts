@@ -22,7 +22,10 @@ export async function reverifyLinkedOverlayGraphPair(origin: Graph2DLinkedLineOr
   const document = parseVectorField3DDocument(origin.vectorDocumentJson);
   const field = document.source.field;
   const scalar = document.workspace?.scalarOverlay;
-  const complex = document.workspace?.complexOverlay;
+  const complex = !scalar?.visible && document.workspace?.complexOverlay ?
+    { ...document.workspace.complexOverlay,
+      mode: document.workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" as const : document.workspace.complexOverlay.mode } : null;
   const linkedRecipe = document.workspace?.linkedLineProfile;
   if (!linkedRecipe || origin.series !== "vector" || scalarOrigin.kind !== origin.kind ||
       scalarOrigin.series !== (origin.kind === "vector-complex-linked-line/v1" ?

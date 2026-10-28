@@ -26,7 +26,10 @@ export function linkedOverlayRegionGraphPair(document: VectorField3DDocument,
   fieldTitle: string): readonly [LinkedOverlayGraphSeries<Graph2DLinkedRegionOrigin>,
     LinkedOverlayGraphSeries<Graph2DLinkedRegionOrigin>] {
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
-  const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  const complex = !scalar && document.workspace?.complexOverlay?.visible ?
+    { ...document.workspace.complexOverlay,
+      mode: document.workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" as const : document.workspace.complexOverlay.mode } : null;
   if ((!scalar && !complex) || !region.visible ||
       summary.profileRows.length !== 17 || summary.alignedCount < 1 ||
       summary.profileRows.some(row => row.alignedCount < 0 || row.alignedCount > 17) ||

@@ -41,7 +41,8 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
             document.workspace.complexOverlay.imaginary] : [])) ||
       (parameters.overlayKind === "complex" &&
         (!document.workspace?.complexOverlay?.visible ||
-          parameters.overlayMode !== document.workspace.complexOverlay.mode)) ||
+          parameters.overlayMode !== (document.workspace.complexOverlay.mode ===
+            "phase-contours" ? "phase" : document.workspace.complexOverlay.mode))) ||
       !["scalar", "complex"].includes(String(parameters.overlayKind)) ||
       !validDigests(parameters.vectorSamples) || !validDigests(parameters.overlaySamples))
     return "changed";

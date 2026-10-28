@@ -34,7 +34,10 @@ export async function reverifyLinkedOverlayRegionGraphPair(vectorOrigin: Graph2D
   if (!region || canonicalJsonStringify(region) !== canonicalJsonStringify(vectorOrigin.region))
     throw new TypeError("Saved linked region physical bounds changed.");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
-  const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  const complex = !scalar && document.workspace?.complexOverlay?.visible ?
+    { ...document.workspace.complexOverlay,
+      mode: (document.workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" : document.workspace.complexOverlay.mode) as "phase" | "magnitude" } : null;
   if (vectorOrigin.kind === "vector-scalar-linked-region/v1" ?
       !scalar || !!complex || canonicalJsonStringify(scalar.reference) !==
         canonicalJsonStringify(vectorOrigin.scalarReference) :

@@ -45,7 +45,7 @@ export type VectorField3DScalarOverlay = Readonly<{ reference: Graph2DFieldRefer
   title: string; unit: string; opacity: number; visible: boolean }>;
 export type VectorField3DComplexOverlay = Readonly<{
   real: Graph2DFieldReference; imaginary: Graph2DFieldReference;
-  title: string; unit: string; mode: "magnitude" | "phase";
+  title: string; unit: string; mode: "magnitude" | "phase" | "phase-contours";
   opacity: number; visible: boolean }>;
 export type VectorField3DLinkedLineProfile = Readonly<{
   normalAxis: 0 | 1 | 2; varyingAxis: 0 | 1 | 2;
@@ -278,12 +278,13 @@ export const normalizeVectorField3DDocument = (value: unknown): ValidationResult
           index: number) => JSON.stringify(axis) !== JSON.stringify(
             (workspace.complexOverlay as VectorField3DComplexOverlay).imaginary.axes[index])) ||
         !text(workspace.complexOverlay.title, 160) || !text(workspace.complexOverlay.unit) ||
-        !["magnitude", "phase"].includes(workspace.complexOverlay.mode as string) ||
+        !["magnitude", "phase", "phase-contours"].includes(workspace.complexOverlay.mode as string) ||
         !finite(workspace.complexOverlay.opacity) || workspace.complexOverlay.opacity < 0.1 ||
         workspace.complexOverlay.opacity > 1 ||
         typeof workspace.complexOverlay.visible !== "boolean") ||
       workspace.scalarOverlay !== null && workspace.complexOverlay !== null &&
-        workspace.scalarOverlay.visible && workspace.complexOverlay.visible ||
+        workspace.scalarOverlay.visible && workspace.complexOverlay.visible &&
+        workspace.complexOverlay.mode !== "phase-contours" ||
       workspace.linkedLineProfile !== null && (!record(workspace.linkedLineProfile) ||
         !exact(workspace.linkedLineProfile,
           ["normalAxis", "varyingAxis", "point", "vectorChannel", "visible"]) ||

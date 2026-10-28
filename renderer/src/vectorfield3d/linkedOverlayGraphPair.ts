@@ -28,7 +28,10 @@ export function linkedOverlayGraphPair(document: VectorField3DDocument,
   fieldTitle: string): readonly [LinkedOverlayGraphSeries<Graph2DLinkedLineOrigin>,
     LinkedOverlayGraphSeries<Graph2DLinkedLineOrigin>] {
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
-  const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  const complex = !scalar && document.workspace?.complexOverlay?.visible ?
+    { ...document.workspace.complexOverlay,
+      mode: document.workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" as const : document.workspace.complexOverlay.mode } : null;
   if ((!scalar && !complex) || !profile.visible ||
       line.scalarSampleSha256.length !== 64 ||
       (document.source.field.kind === "scientific-bundle" && vectorSamples.length !== 3))

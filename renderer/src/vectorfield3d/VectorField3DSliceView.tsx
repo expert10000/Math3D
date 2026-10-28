@@ -8,6 +8,7 @@ import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
 import type { ScalarSliceOverlay, SliceOverlayArrow,
   LinkedOverlayLineProfile, OverlayRegionSummary, VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import { phaseContourSegments } from "./scientificSliceOverlay";
 import { LinkedOverlayProfileView } from "./LinkedOverlayProfileView";
 import { OverlayRegionView } from "./OverlayRegionView";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
@@ -24,7 +25,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   center = [0.5, 0.5], onZoomChange, onCenterChange, onProbeSelect, onSendLineToGraphs,
   onSendDerivedLineToGraphs, derivedLineBusy, seedPlacementActive = false,
   seedPlacementDisabled = false, onSeedPlacementToggle, onSeedPropose, proposedSeed,
-  scalarOverlay, overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
+  scalarOverlay, contourOverlay = null, contourStatus = "",
+  overlayArrows = [], overlayVectorSamples = [], overlayStatus = "",
   overlayVectorPlane = null, scalarOverlayVolume = null, complexOverlayVolumes = null,
   linkedLineProfile = null, linkedProfileMismatch = "", onLinkedLineProfileChange,
   onSendLinkedLineToGraphs, linkedLineBusy = false,
@@ -44,6 +46,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSeedPropose?: (point: readonly [number, number, number] | null) => void;
   proposedSeed?: readonly [number, number, number] | null;
   scalarOverlay?: ScalarSliceOverlay | null;
+  contourOverlay?: ScalarSliceOverlay | null;
+  contourStatus?: string;
   overlayArrows?: readonly SliceOverlayArrow[];
   overlayVectorSamples?: readonly Readonly<{ name: string; sampleSha256: string }>[];
   overlayStatus?: string;
@@ -84,6 +88,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const [first, second] = slice.planeAxes;
   const { left, top, width, height } = slicePlot;
   const cellWidth = width / slice.shape[0], cellHeight = height / slice.shape[1];
+  const contours = contourOverlay ? phaseContourSegments(contourOverlay.values, slice.shape) : [];
   const firstAxis = document.source.axes[first], secondAxis = document.source.axes[second];
   const normalAxis = document.source.axes[slice.normalAxis];
   const probeOnPlane = probe && Math.abs(probe[slice.normalAxis] - slice.fixedCoordinate) < 1e-9;
@@ -153,6 +158,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
     {overlayStatus && <p role={overlayStatus.includes("withheld") ? "alert" : "status"}
       data-testid="scientific-slice-overlay-status">{overlayStatus}</p>}
+    {contourStatus && <p role={contourStatus.includes("withheld") ? "alert" : "status"}
+      data-testid="scientific-slice-contour-status">{contourStatus}</p>}
     {onSeedPlacementToggle && <button type="button"
       aria-label={`Place seed on ${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} slice`}
       aria-pressed={seedPlacementActive} disabled={seedPlacementDisabled}
@@ -203,7 +210,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
         onSeedPropose(sliceSeedPointAtSvgPosition(slice, local.x, local.y));
       }}>
       <rect x={left} y={top} width={width} height={height} fill="#0d1726" />
-      {scalarOverlay && <defs><marker id={arrowMarkerId} markerWidth="5" markerHeight="5"
+      {(scalarOverlay || contourOverlay) && <defs><marker id={arrowMarkerId} markerWidth="5" markerHeight="5"
         refX="4" refY="2.5" orient="auto" markerUnits="strokeWidth">
         <path d="M0 0L5 2.5L0 5Z" fill="#fff" /></marker></defs>}
       {slice.values.map((value, index) => {
@@ -234,7 +241,25 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             onProbeSelect(point);
           }} />;
       })}
-      {scalarOverlay && <g data-testid="scientific-slice-overlay-arrows" pointerEvents="none"
+      {contourOverlay && <g data-testid="scientific-slice-contour-gaps" pointerEvents="none"
+        fill="none" stroke="#fbbf24" strokeOpacity="0.55" strokeWidth="1"
+        strokeDasharray="3 3">
+        {contourOverlay.values.map((value, index) => value === null ? <rect key={index}
+          x={left + Math.floor(index / slice.shape[1]) * cellWidth}
+          y={top + (slice.shape[1] - 1 - index % slice.shape[1]) * cellHeight}
+          width={cellWidth} height={cellHeight} /> : null)}
+      </g>}
+      {contourOverlay && <g data-testid="scientific-slice-phase-contours"
+        pointerEvents="none" stroke="#fbbf24" strokeWidth="2.4"
+        strokeLinecap="round" opacity={contourOverlay.opacity}>
+        {contours.map((segment, index) => <line key={index}
+          data-phase-level={segment.level.toPrecision(4)}
+          x1={left + (segment.from[0] + .5) * cellWidth}
+          y1={top + (slice.shape[1] - segment.from[1] - .5) * cellHeight}
+          x2={left + (segment.to[0] + .5) * cellWidth}
+          y2={top + (slice.shape[1] - segment.to[1] - .5) * cellHeight} />)}
+      </g>}
+      {(scalarOverlay || contourOverlay) && <g data-testid="scientific-slice-overlay-arrows" pointerEvents="none"
         stroke="#fff" strokeWidth="2.2" strokeLinecap="round">
         {overlayArrows.map((arrow, index) => {
           const magnitude = Math.hypot(arrow.firstComponent, arrow.secondComponent);
@@ -299,6 +324,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     {scalarOverlay && <p data-testid="scientific-slice-overlay-provenance">
       {scalarOverlay.mode?.startsWith("complex-") ? "Complex" : "Scalar"}
       {" "}{scalarOverlay.title}: {scalarOverlay.covered}/{scalarOverlay.values.length} cells ·
+      {" "}{scalarOverlay.values.length - scalarOverlay.covered} coverage gaps ·
       {" "}{scalarOverlay.min.toPrecision(4)}–{scalarOverlay.max.toPrecision(4)} {scalarOverlay.unit}.
       {" "}Source {scalarOverlay.source}; verified sample SHA-256 {scalarOverlay.sampleSha256}.
       {scalarOverlay.verifiedComponents?.length ? ` Components ${scalarOverlay.verifiedComponents.map(part =>
@@ -308,6 +334,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       {overlayVectorSamples.length ? ` Verified arrow samples ${overlayVectorSamples.map(part =>
         `${part.name}: ${part.sampleSha256}`).join(" · ")}.` :
         " Authored expression vectors on this plane."}</p>}
+    {contourOverlay && <p data-testid="scientific-slice-contour-provenance">
+      Complex phase contours {contourOverlay.title}: {contourOverlay.covered}/{
+        contourOverlay.values.length} cells covered; {contourOverlay.values.length -
+        contourOverlay.covered} coverage gaps · {contours.length} contour segments ·
+      {" "}phase −π to π {contourOverlay.unit}. Source {contourOverlay.source};
+      {" "}verified real and imaginary samples {contourOverlay.verifiedComponents?.map(part =>
+        `${part.name}: ${part.sampleSha256}`).join(" · ")}.
+    </p>}
     <div className="vector-field3d-slice-legend" role="img"
       aria-label={`Color legend, ${(scalarOverlay?.min ?? slice.min).toPrecision(4)} to ${(scalarOverlay?.max ?? slice.max).toPrecision(4)} ${scalarOverlay?.unit ?? slice.unit}`}>
       <span>{(scalarOverlay?.min ?? slice.min).toPrecision(4)}</span><span className="vector-field3d-slice-legend-bar"

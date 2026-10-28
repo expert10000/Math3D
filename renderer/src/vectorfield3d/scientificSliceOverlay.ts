@@ -248,21 +248,59 @@ export function sampleComplexSliceOverlay(document: VectorField3DDocument,
     const b = sampleLinkedFieldVolume(imaginaryVolume, axes, point);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
     const magnitude = Math.hypot(a, b);
-    return recipe.mode === "phase" ? magnitude > 1e-12 ? Math.atan2(b, a) : null : magnitude;
+    return recipe.mode !== "magnitude" ? magnitude > 1e-12 ? Math.atan2(b, a) : null : magnitude;
   }));
   const finite = values.filter((value): value is number => value !== null && Number.isFinite(value));
   if (!finite.length) throw new RangeError("The selected slice has no complex values in its domain.");
   const components = [{ name: "real", sampleSha256: realVolume.sampleSha256 },
     { name: "imaginary", sampleSha256: imaginaryVolume.sampleSha256 }];
-  return { values, min: recipe.mode === "phase" ? -Math.PI : Math.min(...finite),
-    max: recipe.mode === "phase" ? Math.PI : Math.max(...finite),
+  return { values, min: recipe.mode !== "magnitude" ? -Math.PI : Math.min(...finite),
+    max: recipe.mode !== "magnitude" ? Math.PI : Math.max(...finite),
     covered: finite.length, title: `${recipe.title} ${recipe.mode}`,
-    unit: recipe.mode === "phase" ? "rad" : recipe.unit,
+    unit: recipe.mode !== "magnitude" ? "rad" : recipe.unit,
     source: `${real.sceneId} / ${real.datasetId}`,
     sampleSha256: sha256Checksum(new TextEncoder().encode(
       `${realVolume.sampleSha256}:${imaginaryVolume.sampleSha256}`)).slice(7),
-    opacity: recipe.opacity, mode: recipe.mode === "phase" ?
+    opacity: recipe.opacity, mode: recipe.mode !== "magnitude" ?
       "complex-phase" : "complex-magnitude", verifiedComponents: components };
+}
+
+export type PhaseContourSegment = Readonly<{
+  from: readonly [number, number]; to: readonly [number, number]; level: number }>;
+
+/** Contours use the same physical grid nodes as the slice; null cells and phase wraps break lines. */
+export function phaseContourSegments(values: readonly (number | null)[],
+  shape: readonly [number, number], maxSegments = 6000): readonly PhaseContourSegment[] {
+  const [nx, ny] = shape;
+  if (nx < 2 || ny < 2 || values.length !== nx * ny) return [];
+  const levels = [-3 * Math.PI / 4, -Math.PI / 2, -Math.PI / 4, 0,
+    Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4];
+  const segments: PhaseContourSegment[] = [];
+  const at = (x: number, y: number) => values[x * ny + y];
+  for (let x = 0; x < nx - 1; x++) for (let y = 0; y < ny - 1; y++) {
+    const corners = [at(x, y), at(x + 1, y), at(x + 1, y + 1), at(x, y + 1)];
+    if (corners.some(value => value === null || !Number.isFinite(value))) continue;
+    const numeric = corners as number[];
+    if (Math.max(...numeric) - Math.min(...numeric) > Math.PI) continue;
+    const points: readonly (readonly [number, number])[] = [
+      [x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]];
+    for (const level of levels) {
+      const crossings: [number, number][] = [];
+      for (let edge = 0; edge < 4; edge++) {
+        const next = (edge + 1) % 4;
+        const a = numeric[edge]!, b = numeric[next]!;
+        if ((a < level) === (b < level) || a === b) continue;
+        const fraction = (level - a) / (b - a);
+        crossings.push([points[edge]![0] + fraction * (points[next]![0] - points[edge]![0]),
+          points[edge]![1] + fraction * (points[next]![1] - points[edge]![1])]);
+      }
+      for (let pair = 0; pair + 1 < crossings.length; pair += 2) {
+        segments.push({ from: crossings[pair]!, to: crossings[pair + 1]!, level });
+        if (segments.length >= maxSegments) return segments;
+      }
+    }
+  }
+  return segments;
 }
 
 type CheckedVectorSource = Readonly<{ manifestJson: string; fingerprint: string;

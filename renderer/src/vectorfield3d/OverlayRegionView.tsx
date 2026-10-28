@@ -31,7 +31,10 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
 }) {
   const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
-  const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  const complex = !scalar && document.workspace?.complexOverlay?.visible ?
+    { ...document.workspace.complexOverlay,
+      mode: (document.workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" : document.workspace.complexOverlay.mode) as "phase" | "magnitude" } : null;
   if (!scalar && !complex) return null;
   const selected = region?.normalAxis === slice.normalAxis &&
     Math.abs(region.fixedCoordinate - slice.fixedCoordinate) < 1e-9;

@@ -24,7 +24,10 @@ export function createVectorField3DRegionResult(document: VectorField3DDocument,
   overlaySamples: readonly VectorField3DRegionSampleDigest[]): AnalysisResultEnvelope {
   const workspace = document.workspace;
   const scalar = workspace?.scalarOverlay?.visible ? workspace.scalarOverlay : null;
-  const complex = workspace?.complexOverlay?.visible ? workspace.complexOverlay : null;
+  const complex = !scalar && workspace?.complexOverlay?.visible ?
+    { ...workspace.complexOverlay,
+      mode: workspace.complexOverlay.mode === "phase-contours" ?
+        "phase" as const : workspace.complexOverlay.mode } : null;
   if (!workspace || !region.visible ||
       canonicalJsonStringify(workspace.overlayRegion) !== canonicalJsonStringify(region) ||
       Number(!!scalar) + Number(!!complex) !== 1 || summary.alignedCount < 1 ||

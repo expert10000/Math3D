@@ -11,7 +11,7 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   vectorField3DRegionResultRelation, createMixedWorkspaceDocument,
   createMath3DProject, parseMath3DProject, serializeMath3DProject,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
-import { sampleComplexSliceOverlay, sampleLinkedOverlayLineProfile,
+import { phaseContourSegments, sampleComplexSliceOverlay, sampleLinkedOverlayLineProfile,
   sampleOverlayRegion, sampleScalarSliceOverlay,
   sampleSliceOverlayArrows, sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
 import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
@@ -132,6 +132,50 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     invalid.workspace.complexOverlay.imaginary.sceneFingerprint = "0".repeat(64);
     expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
     invalid.workspace.complexOverlay.imaginary = invalid.workspace.complexOverlay.real;
+    expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
+  });
+
+  it("saves two references, aligns phase contours, and leaves gaps at missing or wrapped cells", () => {
+    const saved = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", scalarOverlay: { reference: scalarReference,
+        title: "Potential", unit: "V", opacity: 0.7, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours", opacity: 0.9 },
+      overlayRegion: { normalAxis: 2, fixedCoordinate: 0,
+        bounds: [[-1, 1], [-1, 1]], vectorChannel: "speed", visible: true } });
+    const serialized = serializeVectorField3DDocument(saved);
+    expect(serialized).not.toContain('"values"');
+    const reopened = parseVectorField3DDocument(serialized);
+    expect(reopened.workspace?.scalarOverlay?.reference).toEqual(scalarReference);
+    expect(reopened.workspace?.complexOverlay?.imaginary).toEqual(complexImaginary.reference);
+    const slice = sampleVectorField3DSlice(reopened, 2, 0);
+    const heatmap = sampleScalarSliceOverlay(reopened, slice, scalarReference,
+      scalarVolume, "Potential", "V", 0.7);
+    const phase = sampleComplexSliceOverlay(reopened, slice,
+      reopened.workspace!.complexOverlay!, complexReal.volume, complexImaginary.volume);
+    expect(heatmap.unit).toBe("V");
+    expect(phase.unit).toBe("rad");
+    expect(phaseContourSegments(phase.values, slice.shape).length).toBeGreaterThan(0);
+    expect(() => sampleComplexSliceOverlay(reopened, slice,
+      reopened.workspace!.complexOverlay!, complexReal.volume,
+      { ...complexImaginary.volume, resourceSha256: "changed" })).toThrow(/changed/);
+    expect(sampleScalarSliceOverlay(reopened, slice, scalarReference,
+      scalarVolume, "Potential", "V", 0.7).covered).toBe(heatmap.covered);
+    expect(() => sampleScalarSliceOverlay(reopened, slice, scalarReference,
+      { ...scalarVolume, resourceSha256: "changed" }, "Potential", "V", 0.7))
+      .toThrow(/changed/);
+    expect(sampleComplexSliceOverlay(reopened, slice,
+      reopened.workspace!.complexOverlay!, complexReal.volume,
+      complexImaginary.volume).covered).toBe(phase.covered);
+    const summary = sampleOverlayRegion(reopened, slice, reopened.workspace!.overlayRegion!,
+      sampleSliceOverlayVectorPlane(reopened, slice), scalarReference, scalarVolume, "V");
+    const result = createVectorField3DRegionResult(reopened, reopened.workspace!.overlayRegion!,
+      summary, [], [{ name: "scalar", sampleSha256: scalarVolume.sampleSha256 }]);
+    expect(result.provenance.operation.parameters.overlayKind).toBe("scalar");
+    expect(result.provenance.operation.parameters.overlayReferences).toEqual([scalarReference]);
+    expect(phaseContourSegments([-1, 1, null, 1], [2, 2])).toHaveLength(0);
+    expect(phaseContourSegments([-3, 3, -3, 3], [2, 2])).toHaveLength(0);
+    const invalid = JSON.parse(serialized);
+    invalid.workspace.complexOverlay.mode = "phase";
     expect(() => parseVectorField3DDocument(JSON.stringify(invalid))).toThrow();
   });
 
