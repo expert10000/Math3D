@@ -314,6 +314,7 @@ import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import SageSymbolicPanel from "./features/sageLab/SageSymbolicPanel";
 import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
+import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
@@ -110879,7 +110880,7 @@ case "mobius":
             >
               <div>
                 <div style={{ fontSize: 13, fontWeight: 800 }}>Settings / Preferences</div>
-                <div style={{ fontSize: 11, color: "#667085" }}>Command previews and compute engines</div>
+                <div style={{ fontSize: 11, color: "#667085" }}>Theory Lab installation, command previews, and compute engines</div>
               </div>
               <button type="button" onClick={() => setPreferencesOpen(false)} style={{ padding: "4px 8px", fontSize: 11 }}>
                 Close
@@ -110972,6 +110973,7 @@ case "mobius":
                   </button>
                 </div>
               </section>
+              <TheoryLabInstallationPanel />
               <ComputeEngineManagerPanel />
             </div>
           </div>

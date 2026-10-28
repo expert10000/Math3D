@@ -6,7 +6,7 @@ import { deriveVerifiedFieldVolume, type FieldVolumeRequest } from "../quantumSc
 import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
 import { isAbsolute, resolve } from "node:path";
-import { chooseTheoryLabTarget, launchTheoryLab } from "../quantumScene/theoryLabLaunch";
+import { chooseTheoryLabTarget, configureTheoryLabTarget, launchTheoryLab, theoryLabTargetStatus } from "../quantumScene/theoryLabLaunch";
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
 import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantumScene/scalarSelection";
 import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
@@ -43,6 +43,15 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 }
 
 export function registerQuantumSceneIpc(initialDirectory: string | null = null, initialError: string | null = null): void {
+  ipcMain.handle("quantumScenes:theoryLabTargetStatus", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length) throw new Error("Invalid Theory Lab installation status request");
+    return theoryLabTargetStatus();
+  });
+  ipcMain.handle("quantumScenes:configureTheoryLabTarget", (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || (args[0] !== "installed" && args[0] !== "checkout"))
+      throw new Error("Invalid Theory Lab installation selection");
+    return configureTheoryLabTarget(BrowserWindow.fromWebContents(event.sender)!, args[0]);
+  });
   let launchDirectory = initialDirectory;
   let launchError = initialError;
   const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; directory: string; imported: ImportedQuantumScene }>();

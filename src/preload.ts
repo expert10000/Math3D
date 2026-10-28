@@ -526,6 +526,10 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 });
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
+  theoryLabTargetStatus: (): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
+    ipcRenderer.invoke("quantumScenes:theoryLabTargetStatus"),
+  configureTheoryLabTarget: (kind: "installed" | "checkout"): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
+    ipcRenderer.invoke("quantumScenes:configureTheoryLabTarget", kind),
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
   examples: (): Promise<QuantumSceneExampleSummary[]> => ipcRenderer.invoke("quantumScenes:examples"),
   openExample: (id: string): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openExample", id),

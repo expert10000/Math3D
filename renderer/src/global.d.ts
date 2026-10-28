@@ -681,6 +681,10 @@ declare global {
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };
     quantumScenes?: {
+      theoryLabTargetStatus: () => Promise<{ state: "ready" | "unconfigured" | "invalid"; source: "saved" | "environment" | null;
+        kind?: "installed" | "checkout"; path?: string; error?: string }>;
+      configureTheoryLabTarget: (kind: "installed" | "checkout") => Promise<{ state: "ready" | "unconfigured" | "invalid";
+        source: "saved" | "environment" | null; kind?: "installed" | "checkout"; path?: string; error?: string }>;
       open: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       examples: () => Promise<{ id: string; label: string; description: string; model: "SSH" | "Rice–Mele" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic" }[]>;
       openExample: (id: string) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
