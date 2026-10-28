@@ -2,6 +2,11 @@ name: Windows Stable Upgrade Two-App Signoff
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Build run containing the exact two-app-stable-candidate artifact
+        required: true
+        type: string
 
 jobs:
   upgrade-and-handoff:
@@ -36,11 +41,11 @@ jobs:
             --pattern 'Math3D-Setup-1.6.0.exe' --dir installers/published
           if ($LASTEXITCODE -ne 0) { throw 'Published v1.6.0 download failed' }
 
-      - name: Download exact 1.7.0-rc.1 candidate files
+      - name: Download exact candidate files
         uses: actions/download-artifact@v7
         with:
           name: two-app-stable-candidate
-          run-id: 40674889325
+          run-id: ${{ inputs.candidate_run_id }}
           github-token: ${{ github.token }}
           path: installers/candidate
 

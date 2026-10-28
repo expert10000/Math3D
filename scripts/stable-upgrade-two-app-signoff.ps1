@@ -1,6 +1,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$PublishedInstaller,
   [Parameter(Mandatory = $true)][string]$CandidateDirectory,
+  [string]$ExpectedVersion = "",
   [string]$InstallRoot = "",
   [string]$EvidencePath = ""
 )
@@ -21,8 +22,11 @@ $old = (Resolve-Path -LiteralPath $PublishedInstaller).Path
 $candidateRoot = (Resolve-Path -LiteralPath $CandidateDirectory).Path
 $manifestFile = Join-Path $candidateRoot "candidate-manifest.json"
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) {
+  $ExpectedVersion = (Get-Content -LiteralPath (Join-Path $repo 'package.json') -Raw | ConvertFrom-Json).version
+}
 if ($manifest.schema -ne "math3d/two-app-candidate/v1" -or
-    $manifest.math3d.version -ne "1.7.0-rc.1" -or $manifest.math3d.channel -ne "stable" -or
+    $manifest.math3d.version -ne $ExpectedVersion -or $manifest.math3d.channel -ne "stable" -or
     $manifest.theoryLab.version -ne "0.1.0") { throw "Unexpected release candidate manifest" }
 $new = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $manifest.math3d.installerName)).Path
 $lab = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $manifest.theoryLab.installerName)).Path
@@ -41,7 +45,7 @@ $evidence = [ordered]@{
     math3d = $manifest.math3d
     theoryLab = $manifest.theoryLab
   }
-  checks = [ordered]@{ exactBytes = "pending"; oldUninstaller = "pending"; oldInstall = "pending"; oldProjectAndSetting = "pending";
+  checks = [ordered]@{ exactBytes = "pending"; oldInstall = "pending"; oldProjectAndSetting = "pending";
     inPlaceUpgrade = "pending"; retainedProjectAndSetting = "pending"; installedUiRoundtrip = "pending" }
   failure = $null
 }
@@ -77,25 +81,6 @@ try {
   $profile = Join-Path $root "profile"
   $mathExe = Join-Path $mathInstall "Math3D.exe"
   $labExe = Join-Path $labInstall "Quantum Hamiltonian Lab.exe"
-  # Probe the published v1.6.0 uninstaller before creating the real upgrade
-  # installation. NSIS runs this old uninstaller when the candidate upgrades.
-  $probeInstall = Join-Path $root 'OldUninstallerProbe'
-  Invoke-BoundedInstaller $old $probeInstall 'Published v1.6.0 uninstall probe install'
-  $probeUninstaller = @(Get-ChildItem -LiteralPath $probeInstall -File -Filter '*uninstall*.exe') | Select-Object -First 1
-  if (-not $probeUninstaller) { throw 'Published v1.6.0 uninstaller was not installed' }
-  $probeUninstallerCopy = Join-Path $root 'old-uninstaller-probe.exe'
-  Copy-Item -LiteralPath $probeUninstaller.FullName -Destination $probeUninstallerCopy
-  $probeProcess = Start-Process -FilePath $probeUninstallerCopy `
-    -ArgumentList @('/S', '/KEEP_APP_DATA', '/currentuser', '--updated', "_?=$probeInstall") `
-    -WindowStyle Hidden -PassThru
-  if (-not $probeProcess.WaitForExit(60000)) {
-    $evidence.installerProcesses = Get-InstallerProcessSnapshot
-    try { Stop-Process -Id $probeProcess.Id -Force -ErrorAction Stop } catch { }
-    throw 'Published v1.6.0 uninstaller did not exit within 60 seconds'
-  }
-  $evidence.oldUninstallerExitCode = $probeProcess.ExitCode
-  if ($probeProcess.ExitCode -ne 0) { throw "Published v1.6.0 uninstaller exited with code $($probeProcess.ExitCode)" }
-  $evidence.checks.oldUninstaller = 'passed'
   Invoke-BoundedInstaller $old $mathInstall 'Published v1.6.0'
   Invoke-BoundedInstaller $lab $labInstall 'Candidate Theory Lab'
   foreach ($required in @($mathExe, $labExe)) {
@@ -121,9 +106,15 @@ try {
 
   Invoke-BoundedInstaller $new $mathInstall 'Candidate Math3D upgrade'
   if (-not (Test-Path -LiteralPath $mathExe -PathType Leaf)) { throw "Upgraded Math3D executable missing" }
+  $installRegistration = @(Get-ChildItem -Path 'HKCU:\Software' | ForEach-Object {
+    Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue
+  } | Where-Object { $_.InstallLocation -eq $mathInstall -and $_.Math3DUpgradeFrom -eq '1.6.0' })
+  if ($installRegistration.Count -ne 1) { throw 'The bounded v1.6.0 migration marker was not registered' }
+  $evidence.migration = 'registered-v1.6.0-overlay'
   $evidence.checks.inPlaceUpgrade = "passed"
 
   $env:MATH3D_UPGRADE_PHASE = "verify"
+  $env:MATH3D_UPGRADE_EXPECTED_VERSION = $ExpectedVersion
   $env:MATH3D_UPGRADE_PHASE_RESULT_PATH = Join-Path $root "verify.json"
   Push-Location $repo
   try {

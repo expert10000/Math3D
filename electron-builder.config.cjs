@@ -137,6 +137,7 @@ const config = {
     allowToChangeInstallationDirectory: true,
     perMachine: false,
     uninstallDisplayName: productName,
+    include: "packaging/nsis-v16-upgrade.nsh",
   },
 };
 

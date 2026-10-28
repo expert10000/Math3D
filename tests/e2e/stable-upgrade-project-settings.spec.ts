@@ -22,7 +22,7 @@ test("published v1.6.0 Graph Project and setting survive the stable candidate up
     args: [`--user-data-dir=${userData}`], env });
   try {
     const version = await app.evaluate(({ app }) => app.getVersion());
-    expect(version).toBe(phase === "seed" ? "1.6.0" : "1.7.0-rc.1");
+    expect(version).toBe(phase === "seed" ? "1.6.0" : process.env.MATH3D_UPGRADE_EXPECTED_VERSION);
     const page = await app.firstWindow();
     await page.getByTestId("top-settings-button").click();
     const setting = page.getByTestId("settings-command-preview-overlays-toggle");
