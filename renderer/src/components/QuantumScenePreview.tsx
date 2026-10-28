@@ -710,7 +710,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               </button>
               {runStatus && <p role="status" data-testid="quantum-source-run-status">{runStatus}</p>}
             </>}
-            <p>Bundle reveal locates this export. Opening an original run requires a local Theory Lab checkout and a matching hash-verified saved run there; it does not call a worker from Math3D.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>
+            <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there; it does not call a worker from Math3D.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
             {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
               {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>

@@ -67,6 +67,11 @@ Expected package-build notes:
 
 ## Installed Theory Lab handoff signoff
 
+For the stable-channel, clean Windows runner procedure and its evidence record,
+see [Stable two-app signoff](stable-two-app-signoff.md). That workflow creates a
+saved run in the **installed Lab UI** and exports its `.qscene` from the UI;
+it has no checkout-based fixture producer.
+
 Build the full Math3D package with `npm run build:python-worker`, `npm run
 build:core`, and `npm run build:web`, then package with the normal
 `electron-builder.config.cjs`. Use `MATH3D_CHANNEL=dev` to install into a clean
