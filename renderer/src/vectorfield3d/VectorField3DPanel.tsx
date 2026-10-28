@@ -52,6 +52,7 @@ import { BUILTIN_EXPLORER_SCENES, type BuiltinExplorerSceneId,
   type ExplorerLibraryEntry } from "./scientificExplorerLibrary";
 import { ScientificExplorerFieldLayer } from "./ScientificExplorerFieldLayer";
 import { LinkedExplorerVectorProbe } from "./LinkedExplorerVectorProbe";
+import { LinkedRegionBoundsEditor } from "./LinkedRegionBoundsEditor";
 import type { LinkedExplorerProbe } from "./linkedFieldProbe";
 import { sampleScalarSliceOverlay, sampleSliceOverlayVectorPlane,
   sliceOverlayArrowsFromPlane, type LinkedOverlayLineProfile, type SliceOverlayArrow,
@@ -218,6 +219,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       entry.sceneFingerprint === document.source.field.references[0].sceneFingerprint &&
       entry.datasetId === document.source.field.references[0].datasetId);
   const workspace = document.workspace ?? defaultVectorField3DWorkspace(document.source);
+  const regionLayer = workspace.overlayRegion ?
+    ({ 0: "yz", 1: "xz", 2: "xy" } as const)[workspace.overlayRegion.normalAxis] : null;
+  const regionPlane = regionLayer ? overlayVectorPlanes[regionLayer] : null;
+  const linkedVectorReady = document.source.field.kind === "expressions" ||
+    !!regionPlane && regionPlane.sourceStructuralHash === document.identity.structuralHash &&
+    !!regionLayer && overlayVectorSamples[regionLayer]?.length === 3;
+  const linkedVectorStatus = error ? `Vector source withheld: ${error}` :
+    "Verifying the saved rectangle's vector source plane…";
   const scalarOverlay = workspace.scalarOverlay;
   const linkedProfileScalarVolume = scalarOverlay?.visible && verifiedScalarOverlay &&
     verifiedScalarOverlay.referenceId === scalarOverlay.reference.id &&
@@ -1911,6 +1920,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {!fieldLayer && <LinkedExplorerVectorProbe document={document} linkedProbe={linkedProbe} />}
       </>}
     </section>
+    <LinkedRegionBoundsEditor region={workspace.overlayRegion}
+      axes={document.source.axes} onChange={setOverlayRegion} />
     <section aria-label="Display clipping box" className="vector-field3d-view-controls">
       <h5>Display clipping box</h5>
       <p>Hide samples outside these bounds. Field values, probes and saved source data stay unchanged.</p>
@@ -2303,7 +2314,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       data-multiview={multiView ? workspace.layout : undefined}>
       {fieldLayer ? <ScientificExplorerFieldLayer
         key={`${fieldLayer.identity.id}:${fieldLayer.identity.structuralHash}`} document={fieldLayer}
-        linkedProbe={linkedProbe}
+        linkedProbe={linkedProbe} linkedRegion={workspace.overlayRegion}
+        vectorAxes={document.source.axes} linkedVectorReady={linkedVectorReady}
+        linkedVectorStatus={linkedVectorStatus}
         onOpenDetails={() => onOpenFieldDetails?.()} /> : <>
       {error && <div role="alert" className="scientific-field-explorer-viewer-error"
         data-testid="vector-field3d-viewer-error">{error}</div>}

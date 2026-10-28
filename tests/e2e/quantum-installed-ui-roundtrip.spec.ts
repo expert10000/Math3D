@@ -53,7 +53,9 @@ test("installed Lab UI creates a saved SSH run and exports a scene that installe
   const mathExe = resolve(process.env.MATH3D_E2E_INSTALLED_EXE!);
   const root = await mkdtemp(join(tmpdir(), "installed-ui-roundtrip-"));
   const labProfile = join(root, "lab-profile"), sceneParent = join(root, "exports");
-  const mathUserData = join(root, "math3d-profile", "user-data");
+  const mathProfileRoot = process.env.MATH3D_SIGNOFF_MATH_PROFILE
+    ? resolve(process.env.MATH3D_SIGNOFF_MATH_PROFILE) : join(root, "math3d-profile");
+  const mathUserData = join(mathProfileRoot, "user-data");
   const port = await freePort();
   let runId = "";
   await mkdir(labProfile); await mkdir(sceneParent); await mkdir(mathUserData, { recursive: true });
@@ -98,7 +100,7 @@ test("installed Lab UI creates a saved SSH run and exports a scene that installe
       schema: "math3d/theory-lab-target/v2", path: labExe,
     }) + "\n");
     const mathEnv: Record<string, string | undefined> = { ...process.env, MATH3D_E2E: "1",
-      MATH3D_E2E_USER_DATA_DIR: mathUserData, MATH3D_E2E_PROFILE_ROOT: join(root, "math3d-profile"),
+      MATH3D_E2E_USER_DATA_DIR: mathUserData, MATH3D_E2E_PROFILE_ROOT: mathProfileRoot,
       MATH3D_E2E_LAB_DEBUG_PORT: String(port), QLAB_TEST_PROFILE: labProfile };
     delete mathEnv.MATH3D_THEORY_LAB_HOME;
     const math = await electron.launch({ executablePath: mathExe, cwd: dirname(mathExe),

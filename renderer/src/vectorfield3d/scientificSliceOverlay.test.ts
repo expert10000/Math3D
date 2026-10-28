@@ -118,6 +118,13 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(result.vectorCount).toBe(289);
     expect(result.scalarCount).toBeLessThan(289);
     expect(result.scalarOutsideAreaPercent).toBeCloseTo(100 * (1 - 16 / 36), 10);
+    const beyondVector = sampleOverlayRegion(analytic,
+      sampleVectorField3DSlice(analytic, 2, 0),
+      { ...region, bounds: [[-6, 6], [-6, 6]] },
+      sampleSliceOverlayVectorPlane(analytic, sampleVectorField3DSlice(analytic, 2, 0)),
+      scalarReference, scalarVolume, "V");
+    expect(beyondVector.vectorCount).toBeLessThan(289);
+    expect(beyondVector.vectorOutsideAreaPercent).toBeCloseTo(100 * (1 - 16 / 36), 10);
     expect(() => sampleOverlayRegion(wide, slice, region, plane,
       scalarReference, { ...scalarVolume, sampleSha256: "sha256:changed",
         resourceSha256: "changed" }, "V")).toThrow(/changed/);
