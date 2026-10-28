@@ -2,6 +2,7 @@ import { evaluateGraph2DExpression, verifyVectorField3DSparseSamples,
   verifyVectorField3DVolumes, type Graph2DFieldReference,
   type Graph2DScientificVolume, type VectorField3DDocument,
   type VectorField3DLinkedLineProfile,
+  type VectorField3DOverlayRegion,
   type VectorField3DSliceArtifact, type VectorField3DSparseSamples,
   type VectorField3DVolumes } from "@math3d/core";
 import { linkedFieldPointStatus, sampleLinkedFieldVolume } from "./linkedFieldProbe";
@@ -21,6 +22,108 @@ export type LinkedOverlayLineProfile = Readonly<{
   coordinateUnit: string; vectorUnit: string; scalarUnit: string;
   vectorChannel: VectorField3DLinkedLineProfile["vectorChannel"];
   scalarSampleSha256: string; vectorSourceHash: string }>;
+export type OverlayRegionSummary = Readonly<{
+  sampleCount: number; vectorCount: number; scalarCount: number; alignedCount: number;
+  vector: Readonly<{ mean: number; min: number; max: number }> | null;
+  scalar: Readonly<{ mean: number; min: number; max: number }> | null;
+  scalarOutsideAreaPercent: number; vectorOutsideAreaPercent: number;
+  vectorUnit: string; scalarUnit: string;
+  scalarSampleSha256: string; vectorSourceHash: string }>;
+
+/** Summarize aligned physical samples on a fixed 17×17 lattice inside a saved rectangle. */
+export function sampleOverlayRegion(document: VectorField3DDocument,
+  slice: VectorField3DSliceArtifact, recipe: VectorField3DOverlayRegion,
+  plane: VectorSliceOverlayPlane, reference: Graph2DFieldReference,
+  volume: Graph2DScientificVolume, scalarUnit: string): OverlayRegionSummary {
+  if (recipe.normalAxis !== slice.normalAxis ||
+      Math.abs(recipe.fixedCoordinate - slice.fixedCoordinate) > 1e-9 ||
+      plane.sourceStructuralHash !== document.identity.structuralHash ||
+      plane.shape[0] !== slice.shape[0] || plane.shape[1] !== slice.shape[1])
+    throw new TypeError("Selected region is on a different verified vector plane.");
+  if (reference.semanticType !== "scalar-field" || reference.shape.length !== 3 ||
+      volume.datasetId !== reference.datasetId || volume.component !== reference.component ||
+      volume.fingerprint !== reference.sceneFingerprint ||
+      volume.resourceSha256 !== reference.resourceSha256 ||
+      reference.axes.some((axis, index) => axis.name !== document.source.axes[index]!.label ||
+        axis.unit !== document.source.axes[index]!.unit))
+    throw new TypeError("Selected region scalar source or coordinate units changed.");
+  const [first, second] = slice.planeAxes;
+  for (let local = 0; local < 2; local++) {
+    const [low, high] = recipe.bounds[local]!;
+    const coordinates = slice.coordinates[local]!;
+    if (!(high > low) || low < coordinates[0]! - 1e-9 ||
+        high > coordinates.at(-1)! + 1e-9)
+      throw new RangeError("Selected region lies outside the vector slice domain.");
+  }
+  const channelIndex = { p: 0, q: 1, r: 2 } as const;
+  const componentIndex = recipe.vectorChannel === "speed" ? null : channelIndex[recipe.vectorChannel];
+  if (componentIndex === null && plane.units.some(unit => unit !== plane.units[0]))
+    throw new TypeError("Vector component units differ; speed cannot be combined.");
+  const scalarAxes = reference.axes.map((axis, index) => ({ name: axis.name,
+    unit: axis.unit, origin: axis.origin, spacing: axis.spacing,
+    count: reference.shape[index]! }));
+  const boundsWidth = recipe.bounds.map(([low, high]) => high - low);
+  const overlap = recipe.bounds.map(([low, high], local) => {
+    const axis = reference.axes[slice.planeAxes[local]!]!;
+    const end = axis.origin + axis.spacing * (reference.shape[slice.planeAxes[local]!]! - 1);
+    return Math.max(0, Math.min(high, Math.max(axis.origin, end)) -
+      Math.max(low, Math.min(axis.origin, end)));
+  });
+  const scalarNormal = reference.axes[slice.normalAxis]!;
+  const scalarNormalEnd = scalarNormal.origin + scalarNormal.spacing *
+    (reference.shape[slice.normalAxis]! - 1);
+  const normalInside = slice.fixedCoordinate >= Math.min(scalarNormal.origin, scalarNormalEnd) - 1e-9 &&
+    slice.fixedCoordinate <= Math.max(scalarNormal.origin, scalarNormalEnd) + 1e-9;
+  const scalarOutsideAreaPercent = normalInside ? 100 * (1 -
+    overlap[0]! * overlap[1]! / (boundsWidth[0]! * boundsWidth[1]!)) : 100;
+  const interpolate = (component: readonly number[], firstValue: number,
+    secondValue: number): number | null => {
+    const indices = [firstValue, secondValue].map((value, local) => {
+      const coords = slice.coordinates[local]!;
+      const upper = coords.findIndex(coordinate => coordinate >= value - 1e-9);
+      const hi = upper < 0 ? coords.length - 1 : upper;
+      const lo = Math.max(0, hi - 1);
+      const fraction = hi === lo ? 0 : Math.max(0, Math.min(1,
+        (value - coords[lo]!) / (coords[hi]! - coords[lo]!)));
+      return { lo, hi, fraction };
+    });
+    const a = indices[0]!, b = indices[1]!;
+    const at = (i: number, j: number) => component[i * slice.shape[1] + j];
+    const corners = [at(a.lo, b.lo), at(a.hi, b.lo), at(a.lo, b.hi), at(a.hi, b.hi)];
+    return corners.every(value => Number.isFinite(value)) ?
+      (corners[0]! * (1 - a.fraction) + corners[1]! * a.fraction) * (1 - b.fraction) +
+      (corners[2]! * (1 - a.fraction) + corners[3]! * a.fraction) * b.fraction : null;
+  };
+  const vectors: number[] = [], scalars: number[] = [];
+  let vectorCount = 0, scalarCount = 0;
+  for (let i = 0; i < 17; i++) for (let j = 0; j < 17; j++) {
+    const firstValue = recipe.bounds[0][0] + boundsWidth[0]! * i / 16;
+    const secondValue = recipe.bounds[1][0] + boundsWidth[1]! * j / 16;
+    const point = [0, 0, 0] as [number, number, number];
+    point[slice.normalAxis] = slice.fixedCoordinate;
+    point[first] = firstValue; point[second] = secondValue;
+    const components = plane.components.map(component => interpolate(component, firstValue, secondValue));
+    const vector = componentIndex === null ? components.every(value => value !== null) ?
+      Math.hypot(...components as number[]) : null : components[componentIndex];
+    const scalar = linkedFieldPointStatus(point, scalarAxes,
+      document.source.axes.map(axis => axis.unit)) === "inside" ?
+      sampleLinkedFieldVolume(volume, scalarAxes, point) : null;
+    const vectorValid = vector !== null && Number.isFinite(vector);
+    const scalarValid = scalar !== null && Number.isFinite(scalar);
+    if (vectorValid) vectorCount++;
+    if (scalarValid) scalarCount++;
+    if (vectorValid && scalarValid) { vectors.push(vector!); scalars.push(scalar!); }
+  }
+  const stats = (values: number[]) => values.length ? {
+    mean: values.reduce((sum, value) => sum + value, 0) / values.length,
+    min: Math.min(...values), max: Math.max(...values) } : null;
+  return { sampleCount: 289, vectorCount, scalarCount,
+    alignedCount: vectors.length, vector: stats(vectors), scalar: stats(scalars),
+    scalarOutsideAreaPercent, vectorOutsideAreaPercent: 0,
+    vectorUnit: componentIndex === null ? plane.units[0] :
+      plane.units[componentIndex], scalarUnit, scalarSampleSha256: volume.sampleSha256,
+    vectorSourceHash: slice.sourceHash ?? document.identity.structuralHash };
+}
 
 /** Resample a checked scalar transfer at the vector slice's physical coordinates. */
 export function sampleScalarSliceOverlay(document: VectorField3DDocument,
