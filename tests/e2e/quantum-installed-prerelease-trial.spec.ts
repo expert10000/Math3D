@@ -28,8 +28,9 @@ test("installed prerelease opens pinned QWZ and 2p scenes with usable field fram
   try {
     const page = await app.firstWindow();
     const settings = page.getByTestId("settings-preferences-panel");
-    if (await settings.isVisible())
-      await settings.locator("..").getByRole("button", { name: "Close", exact: true }).click();
+    await expect(settings).toBeVisible({ timeout: 15_000 });
+    await settings.locator("..").getByRole("button", { name: "Close", exact: true }).click();
+    await expect(settings).toHaveCount(0);
     const openExamples = async () => {
       await page.getByRole("button", { name: "Palette", exact: true }).click();
       await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")

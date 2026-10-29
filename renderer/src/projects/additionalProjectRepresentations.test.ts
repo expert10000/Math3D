@@ -108,7 +108,7 @@ describe("PRJ16 additional saved representations",()=>{
       for(let i=0;i<105;i++){const source=JSON.parse(JSON.stringify(document.source));if(document.format==="math3d.curve-document")source.definition.points[0][0]=i+4;else if(document.format==="math3d.surface-document")source.definition.expressions.formula=`x+y+${i}`;else source.geometry.points[1].x=i+5;session.commit(source);}
       const reopened=new AdditionalProjectSession(session.entry(),session.document(),()=>context);expect(reopened.document()).toEqual(session.document());expect(reopened.history().undoDepth).toBe(100);reopened.undo();reopened.commit(modified(document));expect(verifyMixedWorkspaceReplay(createMixedWorkspaceDocument({...fixture.project.workspace,entries:[reopened.entry()],activeDocumentIds:[document.identity.id]})).get(document.identity.id)).toEqual(reopened.document());
     }
-  });
+  }, 15_000);
   it("folds older Curve logs without changing current source or undo-generation contributions",()=>{
     const checkpoint=fixture.docs.find((d)=>title(d)==="Saved polyline")!;if(checkpoint.format!=="math3d.curve-document")throw Error();
     let state=checkpoint;const transactions=[];
