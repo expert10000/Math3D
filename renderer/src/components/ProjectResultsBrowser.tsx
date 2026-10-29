@@ -26,9 +26,11 @@ const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) =
       ? { tone: "unavailable", label: "Changed source" } : status === "error"
         ? { tone: "unavailable", label: "Verification failed" }
         : typeof status === "object" ?
-          { tone: [status.vector, status.scalar, status.complex].every(value =>
+          { tone: [status.vector, status.scalar, status.complex,
+              ...(status.divergence === undefined ? [] : [status.divergence])].every(value =>
               value === "source-current") ? "current" : "unavailable",
-            label: [status.vector, status.scalar, status.complex].every(value =>
+            label: [status.vector, status.scalar, status.complex,
+              ...(status.divergence === undefined ? [] : [status.divergence])].every(value =>
               value === "source-current") ? "All fields verified" : "Per-field status" } :
           { tone: "unavailable", label: "Checking sources" };
 const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
@@ -131,14 +133,18 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           {result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
             <div data-testid="project-combined-region-result">
               <p>Physical rectangle: <code>{readable(result.provenance.operation.parameters.region)}</code></p>
-              {(["vector", "scalar", "complexMagnitude", "complexPhase"] as const).map(key => {
+              {(["vector", "scalar", "complexMagnitude", "complexPhase",
+                ...(result.provenance.operation.algorithmVersion === "17x17-v3" ?
+                  ["divergence" as const] : [])] as const).map(key => {
                 const state = regionResultStatuses[result.resultId];
                 const layer = key === "complexMagnitude" || key === "complexPhase" ?
                   "complex" : key;
-                const source = typeof state === "object" ? state[layer] : state ?? "checking";
+                const source = typeof state === "object" ? state[layer] ?? "checking" :
+                  state ?? "checking";
                 const unit = key === "vector" ? result.summary.vectorUnit :
                   key === "scalar" ? result.summary.scalarUnit :
-                    key === "complexPhase" ? "rad" : result.summary.complexUnit;
+                    key === "complexPhase" ? "rad" : key === "divergence" ?
+                      result.summary.divergenceUnit : result.summary.complexUnit;
                 return <p key={key} data-testid={`project-combined-${key}`}>
                   {key} ({String(unit)}): {source === "source-current" ?
                     <code>{readable(result.summary[key])}</code> :

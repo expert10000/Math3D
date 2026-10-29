@@ -16,6 +16,9 @@ export type CombinedRegionSummary = Readonly<{
   complexMagnitude: CombinedRegionStatistics; complexPhase: CombinedRegionStatistics;
   vectorUnit: string; scalarUnit: string; complexUnit: string;
 }>;
+export type CombinedDerivedRegionSummary = CombinedRegionSummary & Readonly<{
+  divergence: CombinedRegionStatistics; divergenceUnit: string;
+}>;
 export type VectorField3DRegionStatistics = Readonly<{ mean: number; min: number; max: number }>;
 export type VectorField3DRegionSummary = Readonly<{
   sampleCount: number; vectorCount: number; scalarCount: number; alignedCount: number;
@@ -26,6 +29,13 @@ export type VectorField3DRegionSummary = Readonly<{
   scalarSampleSha256: string; vectorSourceHash: string;
 }>;
 export type VectorField3DRegionSampleDigest = Readonly<{ name: string; sampleSha256: string }>;
+const validCombinedStatistics = (value: CombinedRegionStatistics) =>
+  Number.isInteger(value.count) && value.count >= 0 && value.count <= 289 &&
+  value.gaps === 289 - value.count &&
+  (value.count === 0 ? value.mean === null && value.min === null && value.max === null :
+    value.min !== null && value.max !== null && Number.isFinite(value.min) &&
+    Number.isFinite(value.max) && (value.mean === null ||
+      Number.isFinite(value.mean) && value.min <= value.mean && value.mean <= value.max));
 
 /** Save a compact, source-linked 17×17 region calculation; no field lattice enters the Project. */
 export function createVectorField3DRegionResult(document: VectorField3DDocument,
@@ -96,18 +106,11 @@ export function createCombinedVectorField3DRegionResult(document: VectorField3DD
   imaginarySampleSha256: string): AnalysisResultEnvelope {
   const workspace = document.workspace;
   const scalar = workspace?.scalarOverlay, complex = workspace?.complexOverlay;
-  const validStatistics = (value: CombinedRegionStatistics) =>
-    Number.isInteger(value.count) && value.count >= 0 && value.count <= 289 &&
-    value.gaps === 289 - value.count &&
-    (value.count === 0 ? value.mean === null && value.min === null && value.max === null :
-      value.min !== null && value.max !== null && Number.isFinite(value.min) &&
-      Number.isFinite(value.max) && (value.mean === null ||
-        Number.isFinite(value.mean) && value.min <= value.mean && value.mean <= value.max));
   if (!workspace || !scalar?.visible || !complex?.visible || !region.visible ||
       canonicalJsonStringify(workspace.overlayRegion) !== canonicalJsonStringify(region) ||
       summary.sampleCount !== 289 ||
       ![summary.vector, summary.scalar, summary.complexMagnitude,
-        summary.complexPhase].every(validStatistics) ||
+        summary.complexPhase].every(validCombinedStatistics) ||
       summary.vector.count === 0 || summary.scalar.count === 0 ||
       summary.complexMagnitude.count === 0 ||
       !summary.vectorUnit || !summary.scalarUnit || !summary.complexUnit ||
@@ -133,6 +136,41 @@ export function createCombinedVectorField3DRegionResult(document: VectorField3DD
   return createAnalysisResultEnvelope({ resultId, status: "numerical",
     provenance: { source, operation: { type: VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
       algorithm: "independent-physical-region", algorithmVersion: "17x17-v2", parameters },
+      numericContext: { precision: { binaryBits: 53 } },
+      engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
+    summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });
+}
+
+/** V3 adds derived divergence statistics while v2 saved results remain readable. */
+export function createCombinedVectorField3DRegionResultWithDivergence(
+  document: VectorField3DDocument, region: VectorField3DOverlayRegion,
+  summary: CombinedDerivedRegionSummary,
+  vectorSamples: readonly VectorField3DRegionSampleDigest[],
+  scalarSampleSha256: string, realSampleSha256: string,
+  imaginarySampleSha256: string,
+  divergenceSamples: readonly VectorField3DRegionSampleDigest[]): AnalysisResultEnvelope {
+  const { divergence, divergenceUnit, ...baseSummary } = summary;
+  const base = createCombinedVectorField3DRegionResult(document, region, baseSummary,
+    vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256);
+  if (!validCombinedStatistics(divergence) ||
+      divergenceUnit !== `1/${document.source.timeUnit}` ||
+      divergenceSamples.length !== (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+      divergenceSamples.some(item => !item.name || !/^[a-f0-9]{64}$/.test(item.sampleSha256)))
+    throw new TypeError("Divergence requires valid statistics, units and verified vector samples.");
+  const parameters: Record<string, CanonicalJsonValue> = {
+    ...base.provenance.operation.parameters,
+    divergenceMethod: "bounded-finite-difference",
+    divergenceSamples: divergenceSamples as unknown as CanonicalJsonValue,
+  };
+  const compactSummary: Record<string, CanonicalJsonValue> = {
+    ...base.summary, divergence, divergenceUnit };
+  const source = viewerSourceFromDocument(document);
+  const resultId = `vector3d-combined-region:${structuralHash({ source, parameters,
+    compactSummary }).slice(7)}`;
+  return createAnalysisResultEnvelope({ resultId, status: "numerical",
+    provenance: { source, operation: { type: VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
+      algorithm: "independent-physical-region", algorithmVersion: "17x17-v3",
+      parameters },
       numericContext: { precision: { binaryBits: 53 } },
       engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
     summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });

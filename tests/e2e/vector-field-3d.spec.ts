@@ -633,7 +633,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("phase");
     await region.getByTestId("scientific-region-publish").click();
     await expect(region.getByTestId("scientific-region-saved-status"))
-      .toContainText("vector source-current, scalar source-current, complex source-current");
+      .toContainText("vector source-current, scalar source-current, complex source-current, divergence source-current");
     await region.getByTestId("send-linked-region-to-graphs").click();
     await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase and divergence profiles",
       { timeout: 60_000 });
@@ -681,6 +681,11 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       operation: { type: string } } }) => item.provenance.operation.type ===
       "vector3d.linked-region-combined");
     expect(combinedResult.provenance.operation.parameters.region.bounds).toHaveLength(2);
+    expect(combinedResult.provenance.operation.algorithmVersion).toBe("17x17-v3");
+    expect(combinedResult.summary.divergenceUnit).toBe("1/s");
+    expect(combinedResult.summary.divergence.count).toBe(289);
+    expect(combinedResult.summary.divergence.gaps).toBe(0);
+    expect(combinedResult.provenance.operation.parameters.divergenceSamples).toHaveLength(3);
     expect(combinedResult.provenance.operation.parameters.scalarReference.resourceSha256)
       .toMatch(/^[a-f0-9]{64}$/);
     expect(combinedResult.provenance.operation.parameters.imaginaryReference.resourceSha256)
@@ -796,6 +801,8 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("count", { timeout: 60_000 });
     await expect(outputs.getByTestId("project-combined-scalar"))
       .toContainText("count");
+    await expect(outputs.getByTestId("project-combined-divergence"))
+      .toContainText("count");
     await expect(outputs.getByTestId("project-combined-complexMagnitude"))
       .toContainText("values withheld (changed)");
     await expect(outputs.getByTestId("project-combined-complexPhase"))
@@ -856,6 +863,9 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
     await figure.locator('[data-probe-cell="20-20"]').click();
     await expect(figure.getByTestId("scientific-combined-region-summary"))
       .toContainText("magnitude 289/289", { timeout: 60_000 });
+    await region.getByTestId("scientific-region-publish").click();
+    await expect(region.getByTestId("scientific-region-saved-status"))
+      .toContainText("divergence source-current", { timeout: 60_000 });
     await region.getByTestId("send-linked-region-to-graphs").click();
     await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase and divergence profiles",
       { timeout: 60_000 });
@@ -872,6 +882,11 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
     await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")))
       .not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const published = stored.workspace.results.find((item: { provenance: {
+      operation: { type: string } } }) => item.provenance.operation.type ===
+      "vector3d.linked-region-combined");
+    expect(published.provenance.operation.algorithmVersion).toBe("17x17-v3");
+    expect(published.summary.divergenceUnit).toBe("1/s");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
@@ -895,7 +910,11 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
-    if (await explorer.isVisible()) await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    if (await explorer.isVisible()) {
+      await expect(explorer.getByTestId("scientific-region-saved-status"))
+        .toContainText("divergence changed", { timeout: 60_000 });
+      await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    }
     if (await projects.isVisible()) await page.getByTestId("projects-toggle").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))

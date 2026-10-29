@@ -1,18 +1,20 @@
 import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
+  createCombinedVectorField3DRegionResultWithDivergence,
   inspectGraph2DFieldReference,
   isGraph2DFieldReference, matchesScientificSourceGeneration,
   reverifyVectorField3DRegionResult,
   viewerSourceFromDocument, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   type AnalysisResultEnvelope, type Graph2DFieldReference,
-  type CombinedRegionSummary, type VectorField3DDocument,
+  type CombinedRegionSummary, type CombinedDerivedRegionSummary,
+  type VectorField3DDocument,
   type VectorField3DRegionSummary,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
 
 export type SingleRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
 export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
   vector: SingleRegionSourceStatus; scalar: SingleRegionSourceStatus;
-  complex: SingleRegionSourceStatus }>;
+  complex: SingleRegionSourceStatus; divergence?: SingleRegionSourceStatus }>;
 export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>, "checkGraphDatasetReference">;
 
@@ -81,8 +83,12 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
 async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvelope,
   document: VectorField3DDocument, bridge: Bridge | undefined):
   Promise<CombinedRegionSourceStatus> {
+  const version = result.provenance.operation.algorithmVersion;
+  const derived = version === "17x17-v3";
   const all = (status: SingleRegionSourceStatus): CombinedRegionSourceStatus =>
-    ({ kind: "combined", vector: status, scalar: status, complex: status });
+    ({ kind: "combined", vector: status, scalar: status, complex: status,
+      ...(derived ? { divergence: status } : {}) });
+  if (version !== "17x17-v2" && !derived) return all("changed");
   if (!matchesScientificSourceGeneration(result.provenance.source,
       viewerSourceFromDocument(document)) || !bridge?.checkGraphDatasetReference)
     return all("error");
@@ -101,13 +107,24 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
       !Array.isArray(parameters.vectorSamples) ||
       parameters.vectorSamples.some(item => !item || typeof item !== "object" ||
         typeof (item as { sampleSha256?: unknown }).sampleSha256 !== "string") ||
+      derived && (parameters.divergenceMethod !== "bounded-finite-difference" ||
+        !Array.isArray(parameters.divergenceSamples) ||
+        parameters.divergenceSamples.length !==
+          (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+        parameters.divergenceSamples.some(item => !item || typeof item !== "object" ||
+          typeof (item as { name?: unknown }).name !== "string" ||
+          !/^[a-f0-9]{64}$/.test(String((item as { sampleSha256?: unknown }).sampleSha256)))) ||
       hashes.some(hash => typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash)))
     return all("changed");
   try {
-    const fresh = createCombinedVectorField3DRegionResult(document, region,
-      result.summary as unknown as CombinedRegionSummary,
-      parameters.vectorSamples as unknown as VectorField3DRegionSampleDigest[],
-      hashes[0] as string, hashes[1] as string, hashes[2] as string);
+    const vectorSamples = parameters.vectorSamples as unknown as VectorField3DRegionSampleDigest[];
+    const fresh = derived ? createCombinedVectorField3DRegionResultWithDivergence(
+      document, region, result.summary as unknown as CombinedDerivedRegionSummary,
+      vectorSamples, hashes[0] as string, hashes[1] as string, hashes[2] as string,
+      parameters.divergenceSamples as unknown as VectorField3DRegionSampleDigest[]) :
+      createCombinedVectorField3DRegionResult(document, region,
+        result.summary as unknown as CombinedRegionSummary, vectorSamples,
+        hashes[0] as string, hashes[1] as string, hashes[2] as string);
     if (fresh.resultId !== result.resultId ||
         canonicalJsonStringify(fresh.provenance.operation) !==
           canonicalJsonStringify(result.provenance.operation) ||
@@ -145,5 +162,5 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
     check([realRef, imaginaryRef]) : Promise.resolve("changed" as const);
   const [vectorStatus, scalarStatus, complexStatus] = await Promise.all([vector, scalar, complex]);
   return { kind: "combined", vector: vectorStatus, scalar: scalarStatus,
-    complex: complexStatus };
+    complex: complexStatus, ...(derived ? { divergence: vectorStatus } : {}) };
 }

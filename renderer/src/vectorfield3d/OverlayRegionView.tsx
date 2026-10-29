@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
+import { canonicalJsonStringify,
   createVectorField3DRegionResult,
   reverifyVectorField3DRegionResult, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
@@ -18,7 +18,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   complexVolumes, vectorSamples, status, vectorStatus = "", scalarStatus = "", complexStatus = "",
   onChange, onStartSelection, selecting,
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
-  onSendCombinedToGraphs,
+  onSendCombinedToGraphs, onPublishCombined,
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
   graphSelectionFirstX = null, graphSelectionBusy = false, graphSelectionError = "",
   onGraphSelectionMode }: {
@@ -42,6 +42,11 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => void;
+  onPublishCombined?: (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => Promise<void>;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
@@ -106,7 +111,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     const sourceStatus = resultStatuses[saved.resultId] ?? "checking";
     if (typeof sourceStatus === "object") savedStatus =
       `Saved Project region: vector ${sourceStatus.vector}, scalar ${
-        sourceStatus.scalar}, complex ${sourceStatus.complex}. Changed layers are withheld.`;
+        sourceStatus.scalar}, complex ${sourceStatus.complex}${sourceStatus.divergence ?
+          `, divergence ${sourceStatus.divergence}` : ""}. Changed layers are withheld.`;
     else if (sourceStatus === "checking") savedStatus = "Checking saved region sources…";
     else if (sourceStatus !== "source-current") savedStatus =
       `Saved Project region withheld: ${sourceStatus} source.`;
@@ -228,15 +234,15 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           {complex && complexVolumes && ` Real ${complexVolumes[0].sampleSha256}; imaginary ${
             complexVolumes[1].sampleSha256}.`}</p>
       </div>}
-      {onSaveResult && secondaryComplex && combined && scalarVolume && complexVolumes &&
-        <button type="button" data-testid="scientific-region-publish" onClick={() => {
-          try {
-            onSaveResult(createCombinedVectorField3DRegionResult(document, region,
-              combined!.summary, vectorSamples, scalarVolume.sampleSha256,
-              complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256));
-            setPublishError("");
-          } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
-        }}>Publish all three fields to Project</button>}
+      {onPublishCombined && secondaryComplex && combined && scalarVolume && complexVolumes &&
+        <button type="button" data-testid="scientific-region-publish" disabled={regionBusy}
+          onClick={() => { setPublishError(""); void onPublishCombined(region, combined!,
+            vectorSamples, scalarVolume.sampleSha256,
+            complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256)
+            .catch(cause => setPublishError(cause instanceof Error ? cause.message :
+              String(cause))); }}>
+          {regionBusy ? "Verifying divergence…" : "Publish all fields and divergence to Project"}
+        </button>}
       {onSaveResult && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="scientific-region-publish" onClick={() => {
           try {

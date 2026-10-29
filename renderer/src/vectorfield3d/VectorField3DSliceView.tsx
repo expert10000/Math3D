@@ -35,7 +35,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSendLinkedLineToGraphs, linkedLineBusy = false,
   overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
-  onSendCombinedRegionToGraphs, onFocusRegionInGraphs,
+  onSendCombinedRegionToGraphs, onPublishCombinedRegion, onFocusRegionInGraphs,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
@@ -81,6 +81,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => void;
+  onPublishCombinedRegion?: (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => Promise<void>;
   onFocusRegionInGraphs?: (region: VectorField3DOverlayRegion,
     physical: Graph2DLinkedRegionSelection["physical"]) => Promise<void>;
   regionBusy?: boolean;
@@ -473,6 +478,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       onSaveResult={onSaveRegionResult}
       onSendToGraphs={onSendRegionToGraphs}
       onSendCombinedToGraphs={onSendCombinedRegionToGraphs} regionBusy={regionBusy}
+      onPublishCombined={onPublishCombinedRegion}
       graphSelectionMode={graphSelectionMode} graphSelectionFirstX={graphSelectionFirstX}
       graphSelectionBusy={graphSelectionBusy} graphSelectionError={graphSelectionError}
       onGraphSelectionMode={onFocusRegionInGraphs ? mode => {

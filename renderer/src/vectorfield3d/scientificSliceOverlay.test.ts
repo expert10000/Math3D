@@ -12,6 +12,7 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   createVectorField3DRegionResult, reverifyVectorField3DRegionResult,
   createCombinedVectorField3DRegionResult,
+  createCombinedVectorField3DRegionResultWithDivergence,
   validGraph2DLinkedOverlayOrigin,
   vectorField3DRegionResultRelation, createMixedWorkspaceDocument,
   createMath3DProject, parseMath3DProject, serializeMath3DProject,
@@ -631,6 +632,23 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(derived.count).toBe(289);
     expect(derived.gaps).toBe(0);
     expect(derived.rows.every(row => row.y !== null && Math.abs(row.y) < 1e-10)).toBe(true);
+    const result = createCombinedVectorField3DRegionResultWithDivergence(document,
+      region, { ...inspection.summary,
+        divergence: { count: derived.count, gaps: derived.gaps,
+          mean: derived.mean, min: derived.min, max: derived.max },
+        divergenceUnit: derived.unit }, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256, []);
+    expect(result.provenance.operation.algorithmVersion).toBe("17x17-v3");
+    expect(result.summary.divergenceUnit).toBe("1/s");
+    const project = createMath3DProject(createMixedWorkspaceDocument({
+      entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
+        replay: null }], activeDocumentIds: [document.identity.id],
+      constructions: [], results: [result],
+      relations: [vectorField3DRegionResultRelation(result)], artifacts: [],
+      committedSelection: null }), { stableKey: "derived-region-result" });
+    expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
+      .toEqual([result]);
+    expect(serializeMath3DProject(project)).not.toContain('"values"');
     const group = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
       [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
       complexImaginary.volume.sampleSha256, { ...derived, samples: [] });
@@ -662,6 +680,21 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(await Promise.all(group.map(item =>
       checkCombinedRegionGraphSeries(item.origin, bridge)))).toEqual([
       "current", "changed", "current", "current", "current"]);
+    expect(await checkSavedRegionResultSources(result, document, bridge)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "changed",
+      complex: "source-current", divergence: "source-current" });
+    const checked = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => ({ ok: true as const,
+      source: { manifestJson: locator.value === "quadraticVolume" ?
+        scalarManifest : complexManifest } }) } as unknown as
+        NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(result, document, checked)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "source-current",
+      complex: "source-current", divergence: "source-current" });
+    expect(await checkSavedRegionResultSources({ ...result,
+      summary: { ...result.summary, divergenceUnit: "m/s" } }, document, checked))
+      .toEqual({ kind: "combined", vector: "changed", scalar: "changed",
+        complex: "changed", divergence: "changed" });
     expect(() => validateCombinedRegionGraphGroup(group.map(item => item.origin),
       group.map((item, index) => index === 4 ? item.rows.map((row, column) =>
         column === 8 ? { ...row, y: 42 } : row) : item.rows))).toThrow();

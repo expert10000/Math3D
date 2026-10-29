@@ -8,6 +8,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   sampleVectorField3DSparseSlice, sampleVectorField3DSparseProbe,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   createVectorField3DPointResult, reverifyVectorField3DPointResult,
+  createCombinedVectorField3DRegionResultWithDivergence,
   verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
   type AnalysisResultEnvelope,
@@ -1194,6 +1195,27 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
+  const publishCombinedRegion = async (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection, vectorSamples: readonly OverlaySampleDigest[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onSaveRegionResult) throw new TypeError("Project result saving is unavailable.");
+      const derived = await verifiedDivergenceRegionProfile(document, region);
+      const result = createCombinedVectorField3DRegionResultWithDivergence(document,
+        region, { ...inspection.summary,
+          divergence: { count: derived.count, gaps: derived.gaps,
+            mean: derived.mean, min: derived.min, max: derived.max },
+          divergenceUnit: derived.unit }, vectorSamples, scalarSampleSha256,
+        realSampleSha256, imaginarySampleSha256, derived.samples);
+      onSaveRegionResult(document, result);
+      setRunStatus("Published vector, scalar, complex and derived divergence region statistics to Project.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause; }
+    finally { setLineBusy(false); }
+  };
   const addSeed = () => {
     try {
       const position = seedDraft.map(Number) as [number, number, number];
@@ -1760,7 +1782,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         and phase φ = 1.3x + 0.8y + 0.65z + 0.25 sin(y). Numerically, on z = 0,
         |f| = exp(−Q/18), but Q alone does not determine the phase.
         Field Explorer aligns and verifies the sources; it does not calculate one from the other.</p>
-      <p>A selected rectangle can send five aligned column means to Graphs. The fifth,
+      <p>A selected rectangle can send five aligned column means to Graphs and publish
+        five compact statistics to the Project. The fifth,
         divergence, measures local spreading of the vector field in 1/s; it is derived
         from verified neighboring vector samples, not from Q or Complex wave. Empty
         source coverage stays a gap, and Project reopen checks the pinned sources again.</p>
@@ -2629,6 +2652,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
               onSendRegionToGraphs={sendLinkedRegion}
               onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
+              onPublishCombinedRegion={publishCombinedRegion}
               onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical) =>
                 onFocusRegionInGraphs(document, region, physical) : undefined}
               overlayVectorSamples={overlayVectorSamples[layer]}
@@ -2669,6 +2693,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
         onSendRegionToGraphs={sendLinkedRegion}
         onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
+        onPublishCombinedRegion={publishCombinedRegion}
         onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical) =>
           onFocusRegionInGraphs(document, region, physical) : undefined}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}

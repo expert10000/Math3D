@@ -90335,7 +90335,9 @@ case "mobius":
                 [result.resultId]: result.provenance.operation.type ===
                   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
                   { kind: "combined", vector: "source-current", scalar: "source-current",
-                    complex: "source-current" } : "source-current" }));
+                    complex: "source-current",
+                    ...(result.provenance.operation.algorithmVersion === "17x17-v3" ?
+                      { divergence: "source-current" as const } : {}) } : "source-current" }));
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));

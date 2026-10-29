@@ -6,7 +6,8 @@ import { sampleVectorField3DDerivedSlice, scientificCoordinateIndex,
 /** Reduce a verified divergence slice on the same 17 × 17 physical rectangle. */
 export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
   derived: VectorField3DSliceArtifact): Readonly<{ rows: readonly Graph2DPointRow[];
-    unit: string; count: number; gaps: number }> {
+    unit: string; count: number; gaps: number; mean: number | null;
+    min: number | null; max: number | null }> {
   if (derived.channel !== "divergence" || derived.normalAxis !== region.normalAxis ||
       Math.abs(derived.fixedCoordinate - region.fixedCoordinate) > 1e-9 ||
       derived.shape[0] < 2 || derived.shape[1] < 2)
@@ -31,6 +32,7 @@ export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
       (corners[2]! * (1 - a!.t) + corners[3]! * a!.t) * b!.t;
   };
   const rows: Graph2DPointRow[] = [];
+  const allValues: number[] = [];
   let count = 0;
   for (let i = 0; i < 17; i++) {
     const x = region.bounds[0][0] + (region.bounds[0][1] - region.bounds[0][0]) * i / 16;
@@ -38,12 +40,15 @@ export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
     for (let j = 0; j < 17; j++) {
       const y = region.bounds[1][0] + (region.bounds[1][1] - region.bounds[1][0]) * j / 16;
       const value = sample(x, y);
-      if (value !== null) { values.push(value); count++; }
+      if (value !== null) { values.push(value); allValues.push(value); count++; }
     }
     rows.push({ id: `row_${i + 1}`, x,
       y: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null });
   }
-  return { rows, unit: derived.unit, count, gaps: 289 - count };
+  return { rows, unit: derived.unit, count, gaps: 289 - count,
+    mean: count ? allValues.reduce((sum, value) => sum + value, 0) / count : null,
+    min: count ? Math.min(...allValues) : null,
+    max: count ? Math.max(...allValues) : null };
 }
 
 export async function verifiedDivergenceRegionProfile(document: VectorField3DDocument,
