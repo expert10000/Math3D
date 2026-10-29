@@ -1,0 +1,58 @@
+name: Windows Installed Prerelease Trial
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-rc4-trial:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Install test harness
+        run: npm ci
+      - name: Download and verify frozen rc.4 installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path candidate -Force | Out-Null
+          gh release download v1.7.0-rc.4 --repo expert10000/Math3D --pattern 'Math3D.Setup.1.7.0-rc.4.exe' --dir candidate
+          if ($LASTEXITCODE -ne 0) { throw 'rc.4 installer download failed' }
+          $installer = (Resolve-Path -LiteralPath 'candidate/Math3D.Setup.1.7.0-rc.4.exe').Path
+          $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = 'bb447b5f511f30f64481c0d1cebd13ff272d37010ba5e87eddf12f1bad1dfa33'
+          if ($actual -ne $expected) { throw "rc.4 installer hash mismatch: $actual" }
+          $root = Join-Path $env:RUNNER_TEMP 'math3d-rc4-trial'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $install = Join-Path $root 'installed'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', "/D=$install") -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "rc.4 installer exited $($process.ExitCode)" }
+          $exe = Join-Path $install 'Math3D.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installed Math3D.exe missing' }
+          "MATH3D_E2E_INSTALLED_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          [ordered]@{schema='math3d/installed-prerelease-trial/v1'; tag='v1.7.0-rc.4'; sourceCommit='6c8243585c9d69a31d584c3b66fdd567acdab124'; installerSha256=$actual; installedExe=$exe; checkedAtUtc=(Get-Date).ToUniversalTime().ToString('o')} |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'trial.json') -Encoding UTF8
+          "MATH3D_RC4_TRIAL_EVIDENCE=$(Join-Path $root 'trial.json')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Exercise installed QWZ and hydrogen previews
+        shell: pwsh
+        run: |
+          npx playwright test tests/e2e/quantum-installed-prerelease-trial.spec.ts --reporter=list
+          if ($LASTEXITCODE -ne 0) { throw 'Installed rc.4 preview trial failed' }
+      - name: Upload trial evidence and failure trace
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installed-rc4-trial
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/math3d-rc4-trial/trial.json
+            test-results/playwright/quantum-installed-prerelease-trial*/trace.zip
+            test-results/playwright/quantum-installed-prerelease-trial*/test-failed-*.png
