@@ -5,6 +5,59 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
+test("desktop Surface Services sends exact Sage results to Analysis and Workbook", async () => {
+  test.setTimeout(240_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-sage-desktop-"));
+  let app: Awaited<ReturnType<typeof launchRepoElectron>> | undefined;
+  try {
+    app = await launchRepoElectron({
+      args: ["."], cwd: resolve(__dirname, "../.."),
+      env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root },
+    });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Palette", exact: true }).click();
+    await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
+      .fill("Open backend services panel");
+    await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+    const services = page.getByText("Symbolic Mathematics", { exact: true }).locator("..");
+    const analysis = page.getByTestId("sage-analysis-result");
+
+    await services.getByRole("button", { name: "Gradient", exact: true }).click();
+    await expect(services.getByLabel("Expression")).toHaveValue(/x.*y.*z/);
+    await services.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(analysis).toContainText("Symbolic result · Gradient", { timeout: 60_000 });
+    await expect(analysis).toContainText("Exact · SageMath (Local WSL)");
+    await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
+    await analysis.getByRole("button", { name: "Visualize vector field" }).click();
+    await expect(analysis).toContainText("normalized gradient directions");
+
+    await services.getByRole("button", { name: "Hessian", exact: true }).click();
+    await services.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(analysis).toContainText("Symbolic result · Hessian", { timeout: 60_000 });
+    await expect(services).toContainText("[[2, 0, 0], [0, 2, 0], [0, 0, 2]]");
+
+    await services.getByRole("button", { name: "Singularities", exact: true }).click();
+    await services.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(analysis).toContainText("0 singular points", { timeout: 60_000 });
+    await analysis.getByRole("button", { name: "Save to Workbook" }).click();
+    await expect(page.getByRole("button", { name: "Workbook", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("textbox", { name: "Block title" }).last()).toHaveValue("SageMath singularities");
+
+    await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    await services.getByLabel("Operation").selectOption("sage.symbolic.simplify");
+    await services.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
+    await services.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(analysis).toContainText("Simplified expression", { timeout: 60_000 });
+    await analysis.getByRole("button", { name: "Create geometry" }).click();
+    await expect(analysis).toContainText("Created an implicit surface from the exact scalar expression.");
+  } finally {
+    await app?.close();
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))
+      throw new Error("Unsafe Sage desktop test cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("desktop Sage backend selector sends shared operations to the Docker service", async () => {
   test.setTimeout(120_000);
   const requests: unknown[] = [];
