@@ -6,7 +6,7 @@ on:
 jobs:
   build-candidates:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     outputs:
       theory_lab_sha: ${{ steps.lab_ref.outputs.sha }}
     env:
@@ -38,16 +38,51 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-electron-cache-
 
+      - name: Resolve native binary cache
+        id: native-cache-key
+        shell: pwsh
+        run: |
+          $cacheRoot = Join-Path $PWD '.cache/vcpkg-binaries'
+          New-Item -ItemType Directory -Path $cacheRoot -Force | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "key=windows-2022-$env:ImageVersion-vcpkg-52fd90f2b7798d9fe6fef18fc1787db44574d704" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore native dependency binaries
+        id: native-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/vcpkg-binaries
+          key: ${{ steps.native-cache-key.outputs.key }}
+
+      - name: Install full release worker dependencies
+        shell: pwsh
+        run: |
+          ./scripts/setup-cgal-python-worker.ps1 -Python (Get-Command python).Source -VcpkgCommit 52fd90f2b7798d9fe6fef18fc1787db44574d704 -FrozenRequirements
+          $workerPython = Join-Path $PWD '.venv-worker/Scripts/python.exe'
+          & $workerPython -m pip install pyinstaller mkdocs -r python/worker/requirements.freeze.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned worker dependencies failed' }
+          "MATH3D_PYTHON=$workerPython" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $PWD '.venv-worker/Scripts') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          (Join-Path $PWD '.deps/vcpkg/installed/x64-windows/bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Save native dependency cache
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/vcpkg-binaries
+          key: ${{ steps.native-cache-key.outputs.key }}
+
       - name: Build full stable Math3D installer
         id: math_build
         shell: pwsh
+        env:
+          MATH3D_REQUIRE_PYGALMESH: '1'
+          MATH3D_REQUIRE_CGAL: '1'
         run: |
           npm ci
           if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
-          npm --prefix renderer install
+          npm --prefix renderer ci
           if ($LASTEXITCODE -ne 0) { throw 'Math3D renderer install failed' }
-          python -m pip install pyinstaller numpy scipy sympy vtk
-          if ($LASTEXITCODE -ne 0) { throw 'Math3D worker dependencies failed' }
           npm run build:python-worker
           if ($LASTEXITCODE -ne 0) { throw 'Math3D worker build failed' }
           npm run build:core
@@ -57,6 +92,12 @@ jobs:
           $env:CI = 'false'
           & .\node_modules\.bin\electron-builder.cmd --win nsis --config electron-builder.config.cjs --publish never
           if ($LASTEXITCODE -ne 0) { throw 'Stable Math3D NSIS build failed' }
+
+      - name: Verify packaged worker protocol
+        shell: pwsh
+        run: |
+          node scripts/smoke-python-worker.mjs --exe release/win-unpacked/resources/python-worker/worker.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged worker protocol failed' }
 
       - name: Check out Theory Lab producer
         id: lab_checkout
