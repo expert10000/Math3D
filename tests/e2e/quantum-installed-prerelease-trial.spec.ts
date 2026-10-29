@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve, sep } from "node:path";
 import { definedEnvironment } from "./helpers/electronLauncher";
 
-test("installed prerelease opens pinned QWZ and 2p scenes with usable field framing", async () => {
+test("installed prerelease opens pinned QWZ and 2p scenes with usable field framing", async ({}, testInfo) => {
   test.skip(process.platform !== "win32" || !process.env.MATH3D_E2E_INSTALLED_EXE,
     "Requires an installed Windows Math3D executable");
   test.setTimeout(180_000);
@@ -27,6 +27,8 @@ test("installed prerelease opens pinned QWZ and 2p scenes with usable field fram
     args: [`--user-data-dir=${env.MATH3D_E2E_USER_DATA_DIR}`], env: definedEnvironment(env) });
   try {
     const page = await app.firstWindow();
+    await page.screenshot({ path: testInfo.outputPath("installed-startup.png") });
+    console.log("Installed startup text:", (await page.locator("body").innerText()).slice(0, 1600));
     const openExamples = async () => {
       await page.getByRole("button", { name: "Palette", exact: true }).click();
       await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")

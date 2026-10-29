@@ -54,5 +54,5 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/math3d-rc4-trial/trial.json
-            test-results/playwright/quantum-installed-prerelease-trial*/trace.zip
-            test-results/playwright/quantum-installed-prerelease-trial*/test-failed-*.png
+            test-results/playwright/**/trace.zip
+            test-results/playwright/**/*.png
