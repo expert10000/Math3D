@@ -6,16 +6,19 @@ import { sampleVectorField3DDerivedSlice, scientificCoordinateIndex,
 export type DivergenceSourceBridge = Partial<Pick<NonNullable<typeof window.scientificScenes>,
   "openGraphDatasetReference" | "previewVectorSamples" | "previewVectorVolume" |
   "closeGraphDataset">>;
+export type CombinedDerivedChannel = "divergence" | "curl-magnitude";
+type Digest = Readonly<{ name: string; sampleSha256: string }>;
 
-/** Reduce a verified divergence slice on the same 17 × 17 physical rectangle. */
-export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
-  derived: VectorField3DSliceArtifact): Readonly<{ rows: readonly Graph2DPointRow[];
+/** Reduce a verified derived slice on the same 17 × 17 physical rectangle. */
+export function derivedRegionProfile(region: VectorField3DOverlayRegion,
+  derived: VectorField3DSliceArtifact,
+  channel: CombinedDerivedChannel): Readonly<{ rows: readonly Graph2DPointRow[];
     unit: string; count: number; gaps: number; mean: number | null;
     min: number | null; max: number | null }> {
-  if (derived.channel !== "divergence" || derived.normalAxis !== region.normalAxis ||
+  if (derived.channel !== channel || derived.normalAxis !== region.normalAxis ||
       Math.abs(derived.fixedCoordinate - region.fixedCoordinate) > 1e-9 ||
       derived.shape[0] < 2 || derived.shape[1] < 2)
-    throw new TypeError("Divergence must use the verified source slice and physical plane.");
+    throw new TypeError("Derived region must use the verified source slice and physical plane.");
   const sample = (x: number, y: number): number | null => {
     const positions = [x, y].map((value, axis) => {
       const coords = derived.coordinates[axis]!;
@@ -55,21 +58,29 @@ export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
     max: count ? Math.max(...allValues) : null };
 }
 
-export async function verifiedDivergenceRegionProfile(document: VectorField3DDocument,
+export const divergenceRegionProfile = (region: VectorField3DOverlayRegion,
+  derived: VectorField3DSliceArtifact) => derivedRegionProfile(region, derived, "divergence");
+export const curlMagnitudeRegionProfile = (region: VectorField3DOverlayRegion,
+  derived: VectorField3DSliceArtifact) => derivedRegionProfile(region, derived, "curl-magnitude");
+export type CombinedDerivedProfile = ReturnType<typeof derivedRegionProfile>;
+
+async function verifiedDerivedRegionProfiles(document: VectorField3DDocument,
   region: VectorField3DOverlayRegion,
+  channels: readonly CombinedDerivedChannel[],
   bridge: DivergenceSourceBridge | undefined = typeof window === "undefined" ? undefined :
-    window.scientificScenes): Promise<ReturnType<typeof divergenceRegionProfile> &
-    Readonly<{ samples: readonly Readonly<{ name: string; sampleSha256: string }>[] }>> {
+    window.scientificScenes): Promise<Readonly<{
+      profiles: readonly CombinedDerivedProfile[]; samples: readonly Digest[] }>> {
   if (document.source.field.kind === "expressions") return {
-    ...divergenceRegionProfile(region, sampleVectorField3DDerivedSlice(document,
-      region.normalAxis, region.fixedCoordinate, "divergence")), samples: [] };
+    profiles: channels.map(channel => derivedRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, region.normalAxis,
+        region.fixedCoordinate, channel), channel)), samples: [] };
   if (!bridge?.openGraphDatasetReference || !bridge.previewVectorSamples ||
       !bridge.previewVectorVolume || !bridge.closeGraphDataset)
     throw new TypeError("Verified scientific source services are unavailable.");
   const refs = document.source.field.references;
   const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
     sceneFingerprint: refs[0].sceneFingerprint });
-  if (!opened.ok) throw new TypeError(`Divergence source ${opened.status}: ${opened.error}`);
+  if (!opened.ok) throw new TypeError(`Derived region source ${opened.status}: ${opened.error}`);
   const fingerprint = opened.source.fingerprint;
   try {
     const manifestJson = opened.source.manifestJson;
@@ -87,11 +98,34 @@ export async function verifiedDivergenceRegionProfile(document: VectorField3DDoc
           normalAxis: region.normalAxis,
           fixedIndex: scientificCoordinateIndex({ ...refs[0].axes[region.normalAxis]!,
             count: refs[0].shape[region.normalAxis]! }, region.fixedCoordinate) } }) } : null;
-    const derived = sampleVectorField3DDerivedSlice(document, region.normalAxis,
-      region.fixedCoordinate, "divergence", scientific ?? sparse!);
     const samples = scientific ? scientific.volumes.map(part => ({ name: part.component,
       sampleSha256: part.sampleSha256 })) : sparse!.samples.components.map(part => ({
         name: part.name, sampleSha256: part.sampleSha256 }));
-    return { ...divergenceRegionProfile(region, derived), samples };
+    return { profiles: channels.map(channel => derivedRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, region.normalAxis,
+        region.fixedCoordinate, channel, scientific ?? sparse!), channel)), samples };
   } finally { await bridge.closeGraphDataset(fingerprint); }
+}
+
+export async function verifiedDerivedRegionProfile(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, channel: CombinedDerivedChannel,
+  bridge?: DivergenceSourceBridge): Promise<CombinedDerivedProfile & Readonly<{
+    samples: readonly Digest[] }>> {
+  const verified = await verifiedDerivedRegionProfiles(document, region, [channel], bridge);
+  return { ...verified.profiles[0]!, samples: verified.samples };
+}
+
+export const verifiedDivergenceRegionProfile = (document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, bridge?: DivergenceSourceBridge) =>
+  verifiedDerivedRegionProfile(document, region, "divergence", bridge);
+
+export async function verifiedCombinedDerivedRegionProfiles(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion,
+  bridge?: DivergenceSourceBridge): Promise<Readonly<{
+    divergence: CombinedDerivedProfile; curlMagnitude: CombinedDerivedProfile;
+    samples: readonly Digest[] }>> {
+  const verified = await verifiedDerivedRegionProfiles(document, region,
+    ["divergence", "curl-magnitude"], bridge);
+  return { divergence: verified.profiles[0]!, curlMagnitude: verified.profiles[1]!,
+    samples: verified.samples };
 }

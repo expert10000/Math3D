@@ -112,7 +112,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     if (typeof sourceStatus === "object") savedStatus =
       `Saved Project region: vector ${sourceStatus.vector}, scalar ${
         sourceStatus.scalar}, complex ${sourceStatus.complex}${sourceStatus.divergence ?
-          `, divergence ${sourceStatus.divergence}` : ""}. Changed layers are withheld.`;
+          `, divergence ${sourceStatus.divergence}` : ""}${sourceStatus.curlMagnitude ?
+          `, curl magnitude ${sourceStatus.curlMagnitude}` : ""}. Changed layers are withheld.`;
     else if (sourceStatus === "checking") savedStatus = "Checking saved region sources…";
     else if (sourceStatus !== "source-current") savedStatus =
       `Saved Project region withheld: ${sourceStatus} source.`;
@@ -155,13 +156,14 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
       data-testid="scientific-combined-region-graph-focus">
       <h5>Shared Graphs selection across {linkedRegionFocus.combined.length} verified profiles</h5>
       {combined ? <ul>{linkedRegionFocus.combined.map(item => {
-        const rows = item.series === "divergence" ? item.values.map((value, index) => ({
+        const derived = item.series === "divergence" || item.series === "curl-magnitude";
+        const rows = derived ? item.values.map((value, index) => ({
           id: `checked_${index}`, x: 0, y: value })) : combined.profiles[item.series].slice(
           linkedRegionFocus.columns[0], linkedRegionFocus.columns[1] + 1);
         const gaps = rows.filter(row => row.y === null).length;
         return <li key={item.series} data-series={item.series}>{item.series}: {
           gaps === item.gaps ? `${rows.length - gaps}/${rows.length} columns available ` +
-            `(${gaps} gaps), ${item.unit}${item.series === "divergence" ?
+            `(${gaps} gaps), ${item.unit}${derived ?
               " (checked saved profile)" : ""}` :
             "withheld: recomputed gaps differ from the checked Graphs profile"}{
           gaps === item.gaps && rows.length === 1 && rows[0]!.y !== null ?
@@ -241,7 +243,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
             complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256)
             .catch(cause => setPublishError(cause instanceof Error ? cause.message :
               String(cause))); }}>
-          {regionBusy ? "Verifying divergence…" : "Publish all fields and divergence to Project"}
+          {regionBusy ? "Verifying derived fields…" : "Publish all fields, divergence and curl to Project"}
         </button>}
       {onSaveResult && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="scientific-region-publish" onClick={() => {
@@ -256,7 +258,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
             vectorSamples, scalarVolume.sampleSha256,
             complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256)}>
-          {regionBusy ? "Verifying region…" : "Send five aligned profiles to Graphs (including divergence)"}
+          {regionBusy ? "Verifying region…" : "Send six aligned profiles to Graphs (including divergence and curl)"}
         </button>}
       {onSendToGraphs && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="send-linked-region-to-graphs" disabled={regionBusy}

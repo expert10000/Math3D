@@ -90336,8 +90336,11 @@ case "mobius":
                   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
                   { kind: "combined", vector: "source-current", scalar: "source-current",
                     complex: "source-current",
-                    ...(result.provenance.operation.algorithmVersion === "17x17-v3" ?
-                      { divergence: "source-current" as const } : {}) } : "source-current" }));
+                    ...(["17x17-v3", "17x17-v4"].includes(
+                      result.provenance.operation.algorithmVersion) ?
+                      { divergence: "source-current" as const } : {}),
+                    ...(result.provenance.operation.algorithmVersion === "17x17-v4" ?
+                      { curlMagnitude: "source-current" as const } : {}) } : "source-current" }));
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));

@@ -577,7 +577,7 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
 });
 
 test("SCI-02 scalar heatmap and complex contours reopen with independent source checks", async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(480_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-contour-overlay-"));
   const complex = join(root, "complex.sscene");
   await cp(resolve("examples/scientific-scenes/complex-wave-volume.sscene"), complex,
@@ -633,9 +633,9 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("phase");
     await region.getByTestId("scientific-region-publish").click();
     await expect(region.getByTestId("scientific-region-saved-status"))
-      .toContainText("vector source-current, scalar source-current, complex source-current, divergence source-current");
+      .toContainText("vector source-current, scalar source-current, complex source-current, divergence source-current, curl magnitude source-current");
     await region.getByTestId("send-linked-region-to-graphs").click();
-    await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase and divergence profiles",
+    await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude profiles",
       { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
     await region.getByRole("button", { name: "Select Graphs column" }).click();
@@ -650,7 +650,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText(/columns (7–7|8–8)/, { timeout: 60_000 });
     await expect(page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]"))
-      .toHaveCount(5);
+      .toHaveCount(6);
     await inspector.getByTestId("graph2d-open-region-point").click();
     await expect(explorer.getByTestId("scientific-region-graph-focus-marker"))
       .toBeVisible({ timeout: 60_000 });
@@ -662,7 +662,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("columns available", { timeout: 60_000 });
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
-      .toBeGreaterThan(4);
+      .toBeGreaterThan(5);
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -681,10 +681,13 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       operation: { type: string } } }) => item.provenance.operation.type ===
       "vector3d.linked-region-combined");
     expect(combinedResult.provenance.operation.parameters.region.bounds).toHaveLength(2);
-    expect(combinedResult.provenance.operation.algorithmVersion).toBe("17x17-v3");
+    expect(combinedResult.provenance.operation.algorithmVersion).toBe("17x17-v4");
     expect(combinedResult.summary.divergenceUnit).toBe("1/s");
     expect(combinedResult.summary.divergence.count).toBe(289);
     expect(combinedResult.summary.divergence.gaps).toBe(0);
+    expect(combinedResult.summary.curlMagnitudeUnit).toBe("1/s");
+    expect(combinedResult.summary.curlMagnitude.count).toBe(289);
+    expect(combinedResult.summary.curlMagnitude.gaps).toBe(0);
     expect(combinedResult.provenance.operation.parameters.divergenceSamples).toHaveLength(3);
     expect(combinedResult.provenance.operation.parameters.scalarReference.resourceSha256)
       .toMatch(/^[a-f0-9]{64}$/);
@@ -694,10 +697,11 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     const linkedSeries = stored.workspace.entries.flatMap((entry: { checkpoint: {
       source?: { objects?: { linkedOrigin?: { kind: string; series: string } }[] } } }) =>
       entry.checkpoint.source?.objects?.filter(object => object.linkedOrigin?.kind ===
-        "vector-scalar-complex-divergence-linked-region/v3").map(object =>
+        "vector-scalar-complex-curl-linked-region/v4").map(object =>
           object.linkedOrigin?.series) ?? []);
     expect(linkedSeries).toEqual([
-      "vector", "scalar", "complex-magnitude", "complex-phase", "divergence"]);
+      "vector", "scalar", "complex-magnitude", "complex-phase", "divergence",
+      "curl-magnitude"]);
     const savedGraph = stored.workspace.entries.find((entry: { checkpoint: { format: string } }) =>
       entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
     expect(savedGraph?.selection.linkedRegion.physical.kind).toBe("interval");
@@ -735,10 +739,11 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("complex-phase", { timeout: 60_000 });
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
-      .toBeGreaterThan(4);
+      .toBeGreaterThan(5);
     for (const label of [/Select Vector speed region mean/, /Select .*Potential.* region mean/,
       /Select .*Wave amplitude.* magnitude region mean/,
-      /Select .*Wave amplitude.* phase region mean/, /Select Vector divergence region mean/]) {
+      /Select .*Wave amplitude.* phase region mean/, /Select Vector divergence region mean/,
+      /Select Vector curl magnitude region mean/]) {
       await page.getByRole("button", { name: label }).click();
       const selection = graphInspector.getByTestId("graph2d-combined-region-selection");
       await expect(selection).toContainText("complex-phase", { timeout: 60_000 });
@@ -748,7 +753,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       await expect(selection).toContainText("columns 9–9");
       await expect(page.getByTestId("graph2d-linked-region-highlight")
         .locator("circle[data-graph2d-linked-region-series]"))
-        .toHaveCount(5);
+        .toHaveCount(6);
     }
     await graphInspector.getByRole("spinbutton", { name: "Linked region interval from" })
       .fill("-0.5");
@@ -758,7 +763,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("8/8 columns available");
     await expect(page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]"))
-      .toHaveCount(40);
+      .toHaveCount(48);
     await graphInspector.getByTestId("graph2d-open-region-interval").click();
     await expect(reopened.getByTestId("scientific-region-graph-focus-marker"))
       .toBeVisible({ timeout: 60_000 });
@@ -768,6 +773,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await expect(sharedFocus).toContainText("complex-magnitude");
     await expect(sharedFocus).toContainText("complex-phase");
     await expect(sharedFocus).toContainText("divergence");
+    await expect(sharedFocus).toContainText("curl-magnitude");
     const imaginaryFile = join(complex, "imaginary.f64");
     const changed = Buffer.from(await readFile(imaginaryFile));
     changed[0] ^= 1;
@@ -803,6 +809,8 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("count");
     await expect(outputs.getByTestId("project-combined-divergence"))
       .toContainText("count");
+    await expect(outputs.getByTestId("project-combined-curlMagnitude"))
+      .toContainText("count");
     await expect(outputs.getByTestId("project-combined-complexMagnitude"))
       .toContainText("values withheld (changed)");
     await expect(outputs.getByTestId("project-combined-complexPhase"))
@@ -811,7 +819,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await page.getByTestId("workspace-nav-graphs").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();
     await expect(page.getByTestId("graph2d-plot").locator("path[data-graph2d-path][d^='M']"))
-      .toHaveCount(3, { timeout: 60_000 });
+      .toHaveCount(4, { timeout: 60_000 });
     await page.getByRole("button", { name: "Select Vector speed region mean" }).click();
     await expect(page.getByRole("complementary", { name: "Graph inspector" })
       .getByTestId("graph2d-shared-region-withheld"))
@@ -825,8 +833,8 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
   }
 });
 
-test("SCI-02 Burgers five-profile selection withholds a changed source after Project reopen", async () => {
-  test.setTimeout(240_000);
+test("SCI-02 Burgers six-profile selection withholds a changed source after Project reopen", async () => {
+  test.setTimeout(360_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-four-region-"));
   const burgers = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
@@ -865,9 +873,10 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
       .toContainText("magnitude 289/289", { timeout: 60_000 });
     await region.getByTestId("scientific-region-publish").click();
     await expect(region.getByTestId("scientific-region-saved-status"))
-      .toContainText("divergence source-current", { timeout: 60_000 });
+      .toContainText("divergence source-current, curl magnitude source-current",
+        { timeout: 60_000 });
     await region.getByTestId("send-linked-region-to-graphs").click();
-    await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase and divergence profiles",
+    await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude profiles",
       { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
     await region.getByRole("button", { name: "Select Graphs strip" }).click();
@@ -885,8 +894,9 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
     const published = stored.workspace.results.find((item: { provenance: {
       operation: { type: string } } }) => item.provenance.operation.type ===
       "vector3d.linked-region-combined");
-    expect(published.provenance.operation.algorithmVersion).toBe("17x17-v3");
+    expect(published.provenance.operation.algorithmVersion).toBe("17x17-v4");
     expect(published.summary.divergenceUnit).toBe("1/s");
+    expect(published.summary.curlMagnitudeUnit).toBe("1/s");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
@@ -899,9 +909,11 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
       .toContainText("complex-phase");
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("divergence");
+    await expect(inspector.getByTestId("graph2d-combined-region-selection"))
+      .toContainText("curl-magnitude");
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
-      .toBeGreaterThan(4);
+      .toBeGreaterThan(5);
     const tile = join(burgers, "vx.f64");
     const changed = Buffer.from(await readFile(tile));
     changed[0] ^= 1;
@@ -912,7 +924,7 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
     await page.getByTestId("workspace-nav-graphs").click();
     if (await explorer.isVisible()) {
       await expect(explorer.getByTestId("scientific-region-saved-status"))
-        .toContainText("divergence changed", { timeout: 60_000 });
+        .toContainText("divergence changed, curl magnitude changed", { timeout: 60_000 });
       await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     }
     if (await projects.isVisible()) await page.getByTestId("projects-toggle").click();
@@ -921,6 +933,8 @@ test("SCI-02 Burgers five-profile selection withholds a changed source after Pro
       .toContainText("vector", { timeout: 60_000 });
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
       .toContainText("divergence");
+    await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
+      .toContainText("curl-magnitude");
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
       .toContainText(/changed|integrity|checksum/i);
     await expect(page.getByTestId("graph2d-linked-region-highlight")).toHaveCount(0);

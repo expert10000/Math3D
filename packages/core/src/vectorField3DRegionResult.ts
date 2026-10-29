@@ -19,6 +19,9 @@ export type CombinedRegionSummary = Readonly<{
 export type CombinedDerivedRegionSummary = CombinedRegionSummary & Readonly<{
   divergence: CombinedRegionStatistics; divergenceUnit: string;
 }>;
+export type CombinedCurlRegionSummary = CombinedDerivedRegionSummary & Readonly<{
+  curlMagnitude: CombinedRegionStatistics; curlMagnitudeUnit: string;
+}>;
 export type VectorField3DRegionStatistics = Readonly<{ mean: number; min: number; max: number }>;
 export type VectorField3DRegionSummary = Readonly<{
   sampleCount: number; vectorCount: number; scalarCount: number; alignedCount: number;
@@ -171,6 +174,39 @@ export function createCombinedVectorField3DRegionResultWithDivergence(
     provenance: { source, operation: { type: VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
       algorithm: "independent-physical-region", algorithmVersion: "17x17-v3",
       parameters },
+      numericContext: { precision: { binaryBits: 53 } },
+      engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
+    summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });
+}
+
+/** V4 adds curl magnitude using the same verified vector stencil as divergence. */
+export function createCombinedVectorField3DRegionResultWithCurl(
+  document: VectorField3DDocument, region: VectorField3DOverlayRegion,
+  summary: CombinedCurlRegionSummary,
+  vectorSamples: readonly VectorField3DRegionSampleDigest[],
+  scalarSampleSha256: string, realSampleSha256: string,
+  imaginarySampleSha256: string,
+  derivedSamples: readonly VectorField3DRegionSampleDigest[]): AnalysisResultEnvelope {
+  const { curlMagnitude, curlMagnitudeUnit, ...divergenceSummary } = summary;
+  const base = createCombinedVectorField3DRegionResultWithDivergence(document, region,
+    divergenceSummary, vectorSamples, scalarSampleSha256, realSampleSha256,
+    imaginarySampleSha256, derivedSamples);
+  if (!validCombinedStatistics(curlMagnitude) ||
+      curlMagnitudeUnit !== `1/${document.source.timeUnit}` ||
+      new Set(document.source.axes.map(axis => axis.unit)).size !== 1)
+    throw new TypeError("Curl magnitude requires matching coordinate units and valid statistics.");
+  const parameters: Record<string, CanonicalJsonValue> = {
+    ...base.provenance.operation.parameters,
+    curlMagnitudeMethod: "bounded-finite-difference",
+  };
+  const compactSummary: Record<string, CanonicalJsonValue> = {
+    ...base.summary, curlMagnitude, curlMagnitudeUnit };
+  const source = viewerSourceFromDocument(document);
+  const resultId = `vector3d-combined-region:${structuralHash({ source, parameters,
+    compactSummary }).slice(7)}`;
+  return createAnalysisResultEnvelope({ resultId, status: "numerical",
+    provenance: { source, operation: { type: VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
+      algorithm: "independent-physical-region", algorithmVersion: "17x17-v4", parameters },
       numericContext: { precision: { binaryBits: 53 } },
       engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
     summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });

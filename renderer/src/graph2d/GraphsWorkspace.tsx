@@ -87,7 +87,8 @@ import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorFi
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "../vectorfield3d/reverifyLinkedOverlayRegionGraphPair";
-import { checkCombinedRegionGraphSeries, isCombinedRegionKind, isCombinedRegionOrigin,
+import { checkCombinedRegionGraphSeries, createCombinedRegionVerificationSession,
+  isCombinedRegionKind, isCombinedRegionOrigin,
   seriesForCombinedRegion,
   validateCombinedRegionGraphGroup, type CombinedRegionGraphGroup } from
   "../vectorfield3d/linkedCombinedRegionGraphs";
@@ -1230,10 +1231,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           throw new TypeError("Saved combined region plots are incomplete.");
         validateCombinedRegionGraphGroup(origins as Graph2DLinkedCombinedRegionOrigin[],
           rows as NonNullable<typeof rows[number]>[]);
+        const session = createCombinedRegionVerificationSession();
         for (let index = 0; index < group.length; index++) {
           if (!active) break;
           const origin = origins[index]!;
-          const status = await checkCombinedRegionGraphSeries(origin);
+          const status = await checkCombinedRegionGraphSeries(origin, undefined, session);
           if (active) setLinkedPairVerification(previous => previous.document === document ?
             { ...previous, states: { ...previous.states,
               [linkedVerificationKey(origin)]: status === "current" ?
@@ -1610,8 +1612,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         throw new TypeError("Saved combined region point tables are unavailable.");
       validateCombinedRegionGraphGroup(origins, rows);
       const focus = linkedCombinedRegionGraphFocus(origins, rows, physical);
+      const session = createCombinedRegionVerificationSession();
       const statuses = await Promise.all(origins.map(origin =>
-        checkCombinedRegionGraphSeries(origin)));
+        checkCombinedRegionGraphSeries(origin, undefined, session)));
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Saved region source checks: ${statuses.map((status, index) =>
           `${seriesForCombinedRegion(kind)[index]} ${status}`).join(", ")}. Repair or relink the changed source.`);
@@ -1648,8 +1651,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
     try {
       if (combinedRegionGroup) {
+        const session = createCombinedRegionVerificationSession();
         const checks = await Promise.all(combinedRegionGroup.origins.map(origin =>
-          checkCombinedRegionGraphSeries(origin)));
+          checkCombinedRegionGraphSeries(origin, undefined, session)));
         if (checks.some(status => status !== "current"))
           throw new TypeError(`Region source checks: ${checks.map((status, index) =>
             `${seriesForCombinedRegion(combinedRegionGroup.origins[0]!.kind)[index]} ${status}`).join(", ")}.`);
@@ -2284,10 +2288,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             "Authored expression field"}</dd>
           <dt>Verified samples</dt><dd>{selectedObject.linkedOrigin.vectorSamples.map(part =>
             <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}
-            {selectedObject.linkedOrigin.kind ===
-              "vector-scalar-complex-divergence-linked-region/v3" &&
+            {(selectedObject.linkedOrigin.kind ===
+              "vector-scalar-complex-divergence-linked-region/v3" ||
+              selectedObject.linkedOrigin.kind ===
+                "vector-scalar-complex-curl-linked-region/v4") &&
               selectedObject.linkedOrigin.derivedSamples?.map(part =>
-                <div key={`divergence-${part.name}`}>Divergence stencil {part.name}: {
+                <div key={`derived-${part.name}`}>Derived vector stencil {part.name}: {
                   <code>{part.sampleSha256}</code>}</div>)}
             {(selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
               selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1" ||
@@ -2741,7 +2747,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             const drafts = pair.map((series, index) => ({ label: series.label,
               table: pointTableStore.publish(series.rows), mode: "line" as const,
               domain: series.domain, linkedOrigin: series.origin,
-              style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa", "#34d399"][index]!,
+              style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa", "#34d399",
+                "#f97316"][index]!,
                 lineWidth: 2, lineStyle: "solid" as const, visible: true } }));
             if (pair.length >= 4) {
               onAuthoringCommit({ type: "create-point-series-group", drafts });

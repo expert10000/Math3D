@@ -171,8 +171,10 @@ export type Graph2DLinkedRegionOrigin =
     mode: "magnitude" | "phase";
     realSampleSha256: string; imaginarySampleSha256: string }>);
 export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
-  kind: "vector-scalar-complex-linked-region/v2" | "vector-scalar-complex-divergence-linked-region/v3";
-  pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase" | "divergence";
+  kind: "vector-scalar-complex-linked-region/v2" | "vector-scalar-complex-divergence-linked-region/v3" |
+    "vector-scalar-complex-curl-linked-region/v4";
+  pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase" |
+    "divergence" | "curl-magnitude";
   vectorDocumentJson: string; region: VectorField3DOverlayRegion;
   xName: string; xUnit: string; yUnit: string;
   vectorSourceHash: string;
@@ -499,15 +501,19 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
 };
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && (value.kind === "vector-scalar-complex-linked-region/v2" ||
-      value.kind === "vector-scalar-complex-divergence-linked-region/v3")) {
-    const derived = value.kind === "vector-scalar-complex-divergence-linked-region/v3";
+      value.kind === "vector-scalar-complex-divergence-linked-region/v3" ||
+      value.kind === "vector-scalar-complex-curl-linked-region/v4")) {
+    const derived = value.kind !== "vector-scalar-complex-linked-region/v2";
+    const curl = value.kind === "vector-scalar-complex-curl-linked-region/v4";
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
       "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
       "scalarReference", "realReference", "imaginaryReference",
       "scalarSampleSha256", "realSampleSha256", "imaginarySampleSha256", "rowsSha256",
       ...(derived ? ["derivedSamples"] : [])]) ||
       typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
-      !(derived ? ["vector", "scalar", "complex-magnitude", "complex-phase", "divergence"] :
+      !(curl ? ["vector", "scalar", "complex-magnitude", "complex-phase", "divergence",
+        "curl-magnitude"] : derived ?
+        ["vector", "scalar", "complex-magnitude", "complex-phase", "divergence"] :
         ["vector", "scalar", "complex-magnitude", "complex-phase"]).includes(String(value.series)) ||
       typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
       !isGraph2DFieldReference(value.scalarReference) ||

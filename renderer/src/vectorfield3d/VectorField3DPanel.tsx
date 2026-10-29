@@ -8,7 +8,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   sampleVectorField3DSparseSlice, sampleVectorField3DSparseProbe,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   createVectorField3DPointResult, reverifyVectorField3DPointResult,
-  createCombinedVectorField3DRegionResultWithDivergence,
+  createCombinedVectorField3DRegionResultWithCurl,
   verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
   type AnalysisResultEnvelope,
@@ -67,9 +67,10 @@ import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphsWithDivergence, checkCombinedRegionGraphSeries,
+import { linkedCombinedRegionGraphsWithCurl, checkCombinedRegionGraphSeries,
+  createCombinedRegionVerificationSession,
   type CombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
-import { verifiedDivergenceRegionProfile } from "./derivedCombinedRegionProfile";
+import { verifiedCombinedDerivedRegionProfiles } from "./derivedCombinedRegionProfile";
 import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
@@ -1183,15 +1184,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setLineBusy(true); setError("");
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
-      const derived = await verifiedDivergenceRegionProfile(document, region);
-      const group = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
-        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256, derived);
+      const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+      const group = linkedCombinedRegionGraphsWithCurl(document, region, inspection,
+        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
+        { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude);
+      const session = createCombinedRegionVerificationSession();
       const statuses = await Promise.all(group.map(series =>
-        checkCombinedRegionGraphSeries(series.origin)));
+        checkCombinedRegionGraphSeries(series.origin, undefined, session)));
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Combined region source checks: ${statuses.join(", ")}.`);
       onAddLinkedOverlayLine(group);
-      setRunStatus("Sent vector speed, scalar Q, complex magnitude, phase and divergence profiles to Graphs.");
+      setRunStatus("Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude profiles to Graphs.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
@@ -1203,15 +1206,20 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setLineBusy(true); setError("");
     try {
       if (!onSaveRegionResult) throw new TypeError("Project result saving is unavailable.");
-      const derived = await verifiedDivergenceRegionProfile(document, region);
-      const result = createCombinedVectorField3DRegionResultWithDivergence(document,
+      const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+      const result = createCombinedVectorField3DRegionResultWithCurl(document,
         region, { ...inspection.summary,
-          divergence: { count: derived.count, gaps: derived.gaps,
-            mean: derived.mean, min: derived.min, max: derived.max },
-          divergenceUnit: derived.unit }, vectorSamples, scalarSampleSha256,
-        realSampleSha256, imaginarySampleSha256, derived.samples);
+          divergence: { count: derived.divergence.count, gaps: derived.divergence.gaps,
+            mean: derived.divergence.mean, min: derived.divergence.min,
+            max: derived.divergence.max },
+          divergenceUnit: derived.divergence.unit,
+          curlMagnitude: { count: derived.curlMagnitude.count,
+            gaps: derived.curlMagnitude.gaps, mean: derived.curlMagnitude.mean,
+            min: derived.curlMagnitude.min, max: derived.curlMagnitude.max },
+          curlMagnitudeUnit: derived.curlMagnitude.unit }, vectorSamples,
+        scalarSampleSha256, realSampleSha256, imaginarySampleSha256, derived.samples);
       onSaveRegionResult(document, result);
-      setRunStatus("Published vector, scalar, complex and derived divergence region statistics to Project.");
+      setRunStatus("Published vector, scalar, complex, divergence and curl magnitude region statistics to Project.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause));
       throw cause; }
     finally { setLineBusy(false); }
@@ -1782,11 +1790,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         and phase φ = 1.3x + 0.8y + 0.65z + 0.25 sin(y). Numerically, on z = 0,
         |f| = exp(−Q/18), but Q alone does not determine the phase.
         Field Explorer aligns and verifies the sources; it does not calculate one from the other.</p>
-      <p>A selected rectangle can send five aligned column means to Graphs and publish
-        five compact statistics to the Project. The fifth,
-        divergence, measures local spreading of the vector field in 1/s; it is derived
-        from verified neighboring vector samples, not from Q or Complex wave. Empty
-        source coverage stays a gap, and Project reopen checks the pinned sources again.</p>
+      <p>A selected rectangle can send six aligned column means to Graphs and publish
+        six compact statistics to the Project. Divergence measures local spreading;
+        curl magnitude measures local rotation. Both use 1/s and the same verified
+        neighboring vector samples, independently of Q and Complex wave. Empty
+        source coverage stays a gap, and Project reopen recalculates both derived values.</p>
     </details>
     {seedProgress && <label role="status">Trajectory seeds {seedProgress.completed}/{seedProgress.total}
       <progress aria-label="Trajectory seed progress" value={seedProgress.completed}

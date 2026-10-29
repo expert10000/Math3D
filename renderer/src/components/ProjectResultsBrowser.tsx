@@ -27,10 +27,12 @@ const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) =
         ? { tone: "unavailable", label: "Verification failed" }
         : typeof status === "object" ?
           { tone: [status.vector, status.scalar, status.complex,
-              ...(status.divergence === undefined ? [] : [status.divergence])].every(value =>
+              ...(status.divergence === undefined ? [] : [status.divergence]),
+              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
               value === "source-current") ? "current" : "unavailable",
             label: [status.vector, status.scalar, status.complex,
-              ...(status.divergence === undefined ? [] : [status.divergence])].every(value =>
+              ...(status.divergence === undefined ? [] : [status.divergence]),
+              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
               value === "source-current") ? "All fields verified" : "Per-field status" } :
           { tone: "unavailable", label: "Checking sources" };
 const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
@@ -134,8 +136,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <div data-testid="project-combined-region-result">
               <p>Physical rectangle: <code>{readable(result.provenance.operation.parameters.region)}</code></p>
               {(["vector", "scalar", "complexMagnitude", "complexPhase",
-                ...(result.provenance.operation.algorithmVersion === "17x17-v3" ?
-                  ["divergence" as const] : [])] as const).map(key => {
+                ...(["17x17-v3", "17x17-v4"].includes(
+                  result.provenance.operation.algorithmVersion) ? ["divergence" as const] : []),
+                ...(result.provenance.operation.algorithmVersion === "17x17-v4" ?
+                  ["curlMagnitude" as const] : [])] as const).map(key => {
                 const state = regionResultStatuses[result.resultId];
                 const layer = key === "complexMagnitude" || key === "complexPhase" ?
                   "complex" : key;
@@ -144,9 +148,11 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                 const unit = key === "vector" ? result.summary.vectorUnit :
                   key === "scalar" ? result.summary.scalarUnit :
                     key === "complexPhase" ? "rad" : key === "divergence" ?
-                      result.summary.divergenceUnit : result.summary.complexUnit;
+                      result.summary.divergenceUnit : key === "curlMagnitude" ?
+                        result.summary.curlMagnitudeUnit : result.summary.complexUnit;
                 return <p key={key} data-testid={`project-combined-${key}`}>
-                  {key} ({String(unit)}): {source === "source-current" ?
+                  {key === "curlMagnitude" ? "curl magnitude" : key} ({String(unit)}): {
+                    source === "source-current" ?
                     <code>{readable(result.summary[key])}</code> :
                     <>values withheld ({source})</>}
                 </p>;

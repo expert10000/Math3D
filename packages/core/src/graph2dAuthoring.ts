@@ -604,8 +604,8 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
   } else if (action.type === "create-point-series-pair" ||
       action.type === "create-point-series-group") {
     if (action.type === "create-point-series-group" &&
-        ![4, 5].includes(action.drafts.length))
-      throw new TypeError("The combined region needs four or five point series.");
+        ![4, 5, 6].includes(action.drafts.length))
+      throw new TypeError("The combined region needs four, five or six point series.");
     if (objects.length > GRAPH2D_MAX_OBJECTS - action.drafts.length)
       throw new TypeError("Function limit reached.");
     for (const draft of action.drafts) {

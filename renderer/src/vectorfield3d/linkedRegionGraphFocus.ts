@@ -18,7 +18,7 @@ export type LinkedRegionGraphFocus = Readonly<{
   overlayUnit: string;
   vectorGaps: number;
   overlayGaps: number;
-  combined?: readonly Readonly<{ series: CombinedRegionSeries | "divergence";
+  combined?: readonly Readonly<{ series: CombinedRegionSeries | "divergence" | "curl-magnitude";
     unit: string; gaps: number; values: readonly (number | null)[] }>[];
 }>;
 
@@ -78,7 +78,8 @@ export function linkedCombinedRegionGraphFocus(
   validateCombinedRegionGraphGroup(origins, rows);
   const focus = linkedRegionGraphFocus(origins[0]!, origins[1]!, rows[0]!, rows[1]!, selection);
   return { ...focus, combined: seriesForCombinedRegion(origins[0]!.kind).map((series, index) => ({
-    series: series as CombinedRegionSeries | "divergence", unit: origins[index]!.yUnit,
+    series: series as CombinedRegionSeries | "divergence" | "curl-magnitude",
+    unit: origins[index]!.yUnit,
     gaps: rows[index]!.slice(focus.columns[0], focus.columns[1] + 1)
       .filter(row => row.y === null).length,
     values: rows[index]!.slice(focus.columns[0], focus.columns[1] + 1)

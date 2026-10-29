@@ -8,27 +8,41 @@ import { canonicalJsonStringify, graph2DPointDomain,
 import type { CombinedRegionInspection, CombinedRegionSeries } from
   "./combinedFieldInspection";
 import type { LinkedOverlayGraphSeries } from "./linkedOverlayGraphPair";
-import { verifiedDivergenceRegionProfile, type DivergenceSourceBridge } from
+import { verifiedCombinedDerivedRegionProfiles, verifiedDerivedRegionProfile,
+  type DivergenceSourceBridge } from
   "./derivedCombinedRegionProfile";
 
 export type CombinedRegionGraphSeries = LinkedOverlayGraphSeries<Graph2DLinkedCombinedRegionOrigin>;
 export type CombinedRegionGraphGroup = readonly [CombinedRegionGraphSeries,
   CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries] |
   readonly [CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries,
-    CombinedRegionGraphSeries, CombinedRegionGraphSeries];
+    CombinedRegionGraphSeries, CombinedRegionGraphSeries] |
+  readonly [CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries,
+    CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries];
 type Digest = Readonly<{ name: string; sampleSha256: string }>;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
   "checkGraphDatasetReference"> & DivergenceSourceBridge;
+type SourceCheck = Awaited<ReturnType<Bridge["checkGraphDatasetReference"]>>;
+type DerivedPair = Awaited<ReturnType<typeof verifiedCombinedDerivedRegionProfiles>>;
+export type CombinedRegionVerificationSession = Readonly<{
+  sources: Map<string, Promise<SourceCheck>>;
+  derived: Map<string, Promise<DerivedPair>>;
+}>;
+export const createCombinedRegionVerificationSession = ():
+  CombinedRegionVerificationSession => ({ sources: new Map(), derived: new Map() });
 export type CombinedGraphSourceStatus = "current" | "missing" | "changed" | "error";
 export const combinedRegionSeries: readonly CombinedRegionSeries[] = ["vector", "scalar",
   "complex-magnitude", "complex-phase"];
 export const combinedDivergenceRegionSeries = [...combinedRegionSeries, "divergence"] as const;
+export const combinedCurlRegionSeries = [...combinedDivergenceRegionSeries, "curl-magnitude"] as const;
 export const isCombinedRegionKind = (kind: string): kind is Graph2DLinkedCombinedRegionOrigin["kind"] =>
   kind === "vector-scalar-complex-linked-region/v2" ||
-  kind === "vector-scalar-complex-divergence-linked-region/v3";
+  kind === "vector-scalar-complex-divergence-linked-region/v3" ||
+  kind === "vector-scalar-complex-curl-linked-region/v4";
 export const isCombinedRegionOrigin = (origin: Graph2DLinkedOverlayOrigin | undefined):
   origin is Graph2DLinkedCombinedRegionOrigin => !!origin && isCombinedRegionKind(origin.kind);
 export const seriesForCombinedRegion = (kind: string): readonly string[] =>
+  kind === "vector-scalar-complex-curl-linked-region/v4" ? combinedCurlRegionSeries :
   kind === "vector-scalar-complex-divergence-linked-region/v3" ?
     combinedDivergenceRegionSeries : combinedRegionSeries;
 
@@ -105,17 +119,47 @@ export function linkedCombinedRegionGraphsWithDivergence(document: VectorField3D
   return [...four, fifth] as unknown as CombinedRegionGraphGroup;
 }
 
+/** V4 adds curl magnitude from the same verified vector stencil. */
+export function linkedCombinedRegionGraphsWithCurl(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, inspection: CombinedRegionInspection,
+  vectorSamples: readonly Digest[], scalarSampleSha256: string,
+  realSampleSha256: string, imaginarySampleSha256: string,
+  divergence: Readonly<{ rows: readonly Graph2DPointRow[]; unit: string;
+    samples: readonly Digest[] }>,
+  curlMagnitude: Readonly<{ rows: readonly Graph2DPointRow[]; unit: string }>):
+  CombinedRegionGraphGroup {
+  const prior = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
+    vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256, divergence);
+  if (curlMagnitude.unit !== "1/" + document.source.timeUnit ||
+      curlMagnitude.rows.length !== 17 ||
+      new Set(document.source.axes.map(axis => axis.unit)).size !== 1 ||
+      curlMagnitude.rows.some((row, index) => row.x !== prior[0].rows[index]?.x ||
+        row.y !== null && !Number.isFinite(row.y)))
+    throw new TypeError("Curl magnitude does not align with the verified physical rectangle.");
+  const pairId = structuralHash({ v: 4, prior: prior[0].origin.pairId,
+    curlRows: curlMagnitude.rows });
+  const five = prior.map(item => ({ ...item, origin: {
+    ...item.origin, kind: "vector-scalar-complex-curl-linked-region/v4" as const,
+    pairId } }));
+  const sixth: CombinedRegionGraphSeries = { label: "Vector curl magnitude region mean",
+    rows: curlMagnitude.rows, domain: graph2DPointDomain(curlMagnitude.rows),
+    origin: { ...five[0]!.origin, series: "curl-magnitude", yUnit: curlMagnitude.unit,
+      rowsSha256: structuralHash(curlMagnitude.rows) } };
+  return [...five, sixth] as unknown as CombinedRegionGraphGroup;
+}
+
 /** Check a single plot's pinned source. Other plots can remain visible on failure. */
 export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombinedRegionOrigin,
   bridge: Bridge | undefined = typeof window === "undefined" ? undefined :
-    window.scientificScenes): Promise<CombinedGraphSourceStatus> {
+    window.scientificScenes,
+  session?: CombinedRegionVerificationSession): Promise<CombinedGraphSourceStatus> {
   if (!validGraph2DLinkedOverlayOrigin(origin) ||
       !isCombinedRegionKind(origin.kind) ||
       !bridge?.checkGraphDatasetReference) return "error";
   const document = parseVectorField3DDocument(origin.vectorDocumentJson);
   if (document.identity.structuralHash !== origin.vectorSourceHash) return "changed";
   const references: readonly Graph2DFieldReference[] = origin.series === "vector" ||
-    origin.series === "divergence" ?
+    origin.series === "divergence" || origin.series === "curl-magnitude" ?
     document.source.field.kind === "scientific-bundle" ?
       document.source.field.references : [] :
     origin.series === "scalar" ? [origin.scalarReference] :
@@ -128,17 +172,34 @@ export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombin
   for (const refs of groups.values()) {
     const first = refs[0]!;
     try {
-      const checked = await bridge.checkGraphDatasetReference({ locator: first.locator,
-        sceneFingerprint: first.sceneFingerprint, verifyResources: true });
+      const key = `${first.locator.kind}:${first.locator.value}:${first.sceneFingerprint}`;
+      let pending = session?.sources.get(key);
+      if (!pending) {
+        pending = bridge.checkGraphDatasetReference({ locator: first.locator,
+          sceneFingerprint: first.sceneFingerprint, verifyResources: true });
+        session?.sources.set(key, pending);
+      }
+      const checked = await pending;
       if (!checked.ok) return checked.status === "missing" ? "missing" : "changed";
       if (refs.some(ref => inspectGraph2DFieldReference(ref,
         checked.source.manifestJson) !== "current")) return "changed";
     } catch { return "error"; }
   }
-  if (origin.kind === "vector-scalar-complex-divergence-linked-region/v3" &&
-      origin.series === "divergence") {
+  if ((origin.kind === "vector-scalar-complex-divergence-linked-region/v3" ||
+      origin.kind === "vector-scalar-complex-curl-linked-region/v4") &&
+      (origin.series === "divergence" || origin.series === "curl-magnitude")) {
     try {
-      const fresh = await verifiedDivergenceRegionProfile(document, origin.region, bridge);
+      const pairKey = `${origin.vectorSourceHash}:${structuralHash(origin.region)}`;
+      let pair = origin.kind === "vector-scalar-complex-curl-linked-region/v4" ?
+        session?.derived.get(pairKey) : undefined;
+      if (origin.kind === "vector-scalar-complex-curl-linked-region/v4" && !pair) {
+        pair = verifiedCombinedDerivedRegionProfiles(document, origin.region, bridge);
+        session?.derived.set(pairKey, pair);
+      }
+      const combined = pair ? await pair : null;
+      const fresh = combined ? { ...(origin.series === "divergence" ?
+        combined.divergence : combined.curlMagnitude), samples: combined.samples } :
+        await verifiedDerivedRegionProfile(document, origin.region, origin.series, bridge);
       if (fresh.unit !== origin.yUnit || structuralHash(fresh.rows) !== origin.rowsSha256 ||
           canonicalJsonStringify(fresh.samples) !==
             canonicalJsonStringify(origin.derivedSamples)) return "changed";

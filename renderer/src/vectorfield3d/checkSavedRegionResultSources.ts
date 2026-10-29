@@ -1,5 +1,6 @@
 import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   createCombinedVectorField3DRegionResultWithDivergence,
+  createCombinedVectorField3DRegionResultWithCurl,
   inspectGraph2DFieldReference,
   isGraph2DFieldReference, matchesScientificSourceGeneration,
   reverifyVectorField3DRegionResult,
@@ -7,16 +8,19 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   type AnalysisResultEnvelope, type Graph2DFieldReference,
   type CombinedRegionSummary, type CombinedDerivedRegionSummary,
+  type CombinedCurlRegionSummary,
   type VectorField3DDocument,
   type VectorField3DRegionSummary,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
-import { verifiedDivergenceRegionProfile, type DivergenceSourceBridge } from
+import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
+  type DivergenceSourceBridge } from
   "./derivedCombinedRegionProfile";
 
 export type SingleRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
 export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
   vector: SingleRegionSourceStatus; scalar: SingleRegionSourceStatus;
-  complex: SingleRegionSourceStatus; divergence?: SingleRegionSourceStatus }>;
+  complex: SingleRegionSourceStatus; divergence?: SingleRegionSourceStatus;
+  curlMagnitude?: SingleRegionSourceStatus }>;
 export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
   "checkGraphDatasetReference"> & DivergenceSourceBridge;
@@ -87,10 +91,12 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
   document: VectorField3DDocument, bridge: Bridge | undefined):
   Promise<CombinedRegionSourceStatus> {
   const version = result.provenance.operation.algorithmVersion;
-  const derived = version === "17x17-v3";
+  const curl = version === "17x17-v4";
+  const derived = version === "17x17-v3" || curl;
   const all = (status: SingleRegionSourceStatus): CombinedRegionSourceStatus =>
     ({ kind: "combined", vector: status, scalar: status, complex: status,
-      ...(derived ? { divergence: status } : {}) });
+      ...(derived ? { divergence: status } : {}),
+      ...(curl ? { curlMagnitude: status } : {}) });
   if (version !== "17x17-v2" && !derived) return all("changed");
   if (!matchesScientificSourceGeneration(result.provenance.source,
       viewerSourceFromDocument(document)) || !bridge?.checkGraphDatasetReference)
@@ -110,6 +116,7 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
       !Array.isArray(parameters.vectorSamples) ||
       parameters.vectorSamples.some(item => !item || typeof item !== "object" ||
         typeof (item as { sampleSha256?: unknown }).sampleSha256 !== "string") ||
+      curl && parameters.curlMagnitudeMethod !== "bounded-finite-difference" ||
       derived && (parameters.divergenceMethod !== "bounded-finite-difference" ||
         !Array.isArray(parameters.divergenceSamples) ||
         parameters.divergenceSamples.length !==
@@ -121,7 +128,11 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
     return all("changed");
   try {
     const vectorSamples = parameters.vectorSamples as unknown as VectorField3DRegionSampleDigest[];
-    const fresh = derived ? createCombinedVectorField3DRegionResultWithDivergence(
+    const fresh = curl ? createCombinedVectorField3DRegionResultWithCurl(
+      document, region, result.summary as unknown as CombinedCurlRegionSummary,
+      vectorSamples, hashes[0] as string, hashes[1] as string, hashes[2] as string,
+      parameters.divergenceSamples as unknown as VectorField3DRegionSampleDigest[]) :
+      derived ? createCombinedVectorField3DRegionResultWithDivergence(
       document, region, result.summary as unknown as CombinedDerivedRegionSummary,
       vectorSamples, hashes[0] as string, hashes[1] as string, hashes[2] as string,
       parameters.divergenceSamples as unknown as VectorField3DRegionSampleDigest[]) :
@@ -165,9 +176,13 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
     check([realRef, imaginaryRef]) : Promise.resolve("changed" as const);
   const [vectorStatus, scalarStatus, complexStatus] = await Promise.all([vector, scalar, complex]);
   let divergenceStatus: SingleRegionSourceStatus = vectorStatus;
+  let curlStatus: SingleRegionSourceStatus = vectorStatus;
   if (derived && vectorStatus === "source-current") {
     try {
-      const fresh = await verifiedDivergenceRegionProfile(document, region, bridge);
+      const both = curl ? await verifiedCombinedDerivedRegionProfiles(document, region, bridge) :
+        null;
+      const fresh = both ? { ...both.divergence, samples: both.samples } :
+        await verifiedDivergenceRegionProfile(document, region, bridge);
       const saved = result.summary as unknown as CombinedDerivedRegionSummary;
       divergenceStatus = fresh.unit === saved.divergenceUnit &&
         canonicalJsonStringify({ count: fresh.count, gaps: fresh.gaps,
@@ -176,8 +191,20 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
         canonicalJsonStringify(fresh.samples) ===
           canonicalJsonStringify(parameters.divergenceSamples) ?
           "source-current" : "changed";
-    } catch { divergenceStatus = "error"; }
+      if (both) {
+        const savedCurl = result.summary as unknown as CombinedCurlRegionSummary;
+        curlStatus = both.curlMagnitude.unit === savedCurl.curlMagnitudeUnit &&
+          canonicalJsonStringify({ count: both.curlMagnitude.count,
+            gaps: both.curlMagnitude.gaps, mean: both.curlMagnitude.mean,
+            min: both.curlMagnitude.min, max: both.curlMagnitude.max }) ===
+            canonicalJsonStringify(savedCurl.curlMagnitude) &&
+          canonicalJsonStringify(both.samples) ===
+            canonicalJsonStringify(parameters.divergenceSamples) ?
+            "source-current" : "changed";
+      }
+    } catch { divergenceStatus = "error"; curlStatus = "error"; }
   }
   return { kind: "combined", vector: vectorStatus, scalar: scalarStatus,
-    complex: complexStatus, ...(derived ? { divergence: divergenceStatus } : {}) };
+    complex: complexStatus, ...(derived ? { divergence: divergenceStatus } : {}),
+    ...(curl ? { curlMagnitude: curlStatus } : {}) };
 }
