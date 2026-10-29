@@ -30,18 +30,23 @@ export type Graph2DPlotSeries = Readonly<{
   style: Graph2DDisplay["objects"][number];
   continuation?: Graph2DSamplingArtifact;
 }>;
+export type Graph2DLinkedRegionHighlight = Readonly<{
+  xBounds: readonly [number, number];
+  points: readonly Readonly<{ x: number; y: number; series: string; color: string }>[];
+}>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[]; regression?: Graph2DRegression | null;
   constructions?: Graph2DConstructionArtifact | null;
   probeMarkers?: ReturnType<typeof projectGraph2DProbeMarkers>;
   selectedProbe?: Graph2DProbe | null; hoverProbe?: Graph2DProbe | null;
   selectedPhaseSeed?: { objectId: string; index: number } | null;
+  linkedRegionHighlight?: Graph2DLinkedRegionHighlight | null;
   overlays?: readonly Graph2DLineOverlay[]; intervals?: Graph2DIntervalAnalysis | null;
   focusedIntervalId?: string | null;
   area?: Graph2DIntegralAnalysis | null; intersections?: Graph2DIntersectionAnalysis | null;
   derivativeCurve?: Graph2DDerivativeCurve | null;
   unresolvedIntervals?: readonly Graph2DUnresolvedInterval[] };
 
-export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, overlays = [], intervals, focusedIntervalId, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
+export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, regression, constructions, selectedProbe, hoverProbe, selectedPhaseSeed, linkedRegionHighlight, overlays = [], intervals, focusedIntervalId, area, intersections, derivativeCurve, unresolvedIntervals = [], probeMarkers = [] }: Props) {
   if (graph2DHasLogScale(display.viewport)) { overlays = []; area = null; intervals = null; }
   const clipId = useId();
   const grid = projectGraph2DGrid(display.viewport, size, display.axes.gridOptions);
@@ -382,6 +387,27 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
             cx={point.x} cy={point.y} r={5} />;
         })}
       </g>}
+      {linkedRegionHighlight && !graph2DHasLogScale(display.viewport) &&
+        <g data-testid="graph2d-linked-region-highlight" clipPath={`url(#${clipId})`}
+          aria-hidden="true" pointerEvents="none">
+          {(() => {
+            const low = graph2DWorldToScreen(display.viewport, size,
+              { x: linkedRegionHighlight.xBounds[0], y: 0 }).x;
+            const high = graph2DWorldToScreen(display.viewport, size,
+              { x: linkedRegionHighlight.xBounds[1], y: 0 }).x;
+            return Number.isFinite(low) && Number.isFinite(high) ?
+              <rect data-testid="graph2d-linked-region-band" x={Math.min(low, high)} y={0}
+                width={Math.max(1, Math.abs(high - low))} height={size.height}
+                fill="#facc15" fillOpacity={0.1} stroke="#facc15" strokeWidth={1} /> : null;
+          })()}
+          {linkedRegionHighlight.points.map((point, index) => {
+            const screen = graph2DWorldToScreen(display.viewport, size, point);
+            return Number.isFinite(screen.x) && Number.isFinite(screen.y) ?
+              <circle key={`${point.series}-${index}`} data-graph2d-linked-region-series={point.series}
+                cx={screen.x} cy={screen.y} r={5} fill={point.color}
+                stroke="#ffffff" strokeWidth={1.5} /> : null;
+          })}
+        </g>}
       {marker(hoverProbe, "hover")}
       <g className="graph2d-saved-probes" data-testid="graph2d-saved-markers" pointerEvents="none">
         {probeMarkers.map(({ probe, point, text, label }) => <g key={probe.id} data-probe-id={probe.id}>

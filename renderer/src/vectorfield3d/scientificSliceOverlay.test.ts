@@ -21,7 +21,8 @@ import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedRegionGraphFocus } from "./linkedRegionGraphFocus";
+import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus } from
+  "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
   sampleVerifiedScalarPoint, sampleVerifiedScalarRegion,
@@ -515,6 +516,14 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(group.map(item => item.origin.yUnit)).toEqual(["m/s", "V", "1", "rad"]);
     validateCombinedRegionGraphGroup(group.map(item => item.origin),
       group.map(item => item.rows));
+    const sharedPoint = linkedCombinedRegionGraphFocus(group.map(item => item.origin),
+      group.map(item => item.rows), { kind: "point", x: 0 });
+    expect(sharedPoint.columns).toEqual([8, 8]);
+    expect(sharedPoint.combined?.map(item => item.unit)).toEqual(["m/s", "V", "1", "rad"]);
+    expect(sharedPoint.combined?.map(item => item.gaps)).toEqual([0, 0, 0, 0]);
+    const sharedInterval = linkedCombinedRegionGraphFocus(group.map(item => item.origin),
+      group.map(item => item.rows), { kind: "interval", min: -0.5, max: 0.5 });
+    expect(sharedInterval.columns).toEqual([4, 12]);
     const store = new Graph2DPointTableStore();
     const drafts = group.map((item, index) => ({ label: item.label,
       table: store.publish(item.rows), mode: "line" as const, domain: item.domain,
@@ -564,6 +573,10 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       group.map((item, index) => index === 1 ?
         item.rows.map((row, rowIndex) => rowIndex === 8 ? { ...row, y: 999 } : row) :
         item.rows))).toThrow(/incomplete or misaligned/);
+    expect(() => linkedCombinedRegionGraphFocus(group.map(item => item.origin),
+      group.map((item, index) => index === 2 ?
+        item.rows.map((row, rowIndex) => rowIndex === 8 ? { ...row, y: 999 } : row) :
+        item.rows), { kind: "point", x: 0 })).toThrow(/incomplete or misaligned/);
     const wider = { ...region, bounds: [[-6, 6], [-1, 1]] as const };
     const wideDocument = reviseVectorField3DWorkspace(document,
       { ...document.workspace!, overlayRegion: wider });

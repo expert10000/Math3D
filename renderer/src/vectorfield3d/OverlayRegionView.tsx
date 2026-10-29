@@ -137,6 +137,22 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         </>}
       </> : " Source values are withheld until the vector and overlay verify."}
     </p>}
+    {selected && linkedRegionFocus?.combined && <div
+      data-testid="scientific-combined-region-graph-focus">
+      <h5>Shared Graphs selection across four verified fields</h5>
+      {combined ? <ul>{linkedRegionFocus.combined.map(item => {
+        const rows = combined.profiles[item.series].slice(
+          linkedRegionFocus.columns[0], linkedRegionFocus.columns[1] + 1);
+        const gaps = rows.filter(row => row.y === null).length;
+        return <li key={item.series} data-series={item.series}>{item.series}: {
+          gaps === item.gaps ? `${rows.length - gaps}/${rows.length} columns available ` +
+            `(${gaps} gaps), ${item.unit}` :
+            "withheld: recomputed gaps differ from the checked Graphs profile"}{
+          gaps === item.gaps && rows.length === 1 && rows[0]!.y !== null ?
+            `; value ${format(rows[0]!.y!)} ${item.unit}` : ""}.</li>;
+      })}</ul> : <p role="alert">Four-field selection values withheld until the vector,
+        scalar, and both complex components verify. {combinedError}</p>}
+    </div>}
     <button type="button" aria-pressed={selecting} onClick={onStartSelection}>
       {selecting ? "Click two corners on the slice" : "Select rectangular region"}</button>
     {selected && <>

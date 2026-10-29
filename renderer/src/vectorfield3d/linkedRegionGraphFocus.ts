@@ -1,6 +1,9 @@
 import { parseVectorField3DDocument, structuralHash,
   type Graph2DLinkedCombinedRegionOrigin, type Graph2DLinkedRegionOrigin,
   type Graph2DPointRow, type VectorField3DOverlayRegion } from "@math3d/core";
+import { combinedRegionSeries, validateCombinedRegionGraphGroup } from
+  "./linkedCombinedRegionGraphs";
+import type { CombinedRegionSeries } from "./combinedFieldInspection";
 
 export type LinkedRegionGraphFocus = Readonly<{
   pairId: string;
@@ -15,6 +18,7 @@ export type LinkedRegionGraphFocus = Readonly<{
   overlayUnit: string;
   vectorGaps: number;
   overlayGaps: number;
+  combined?: readonly Readonly<{ series: CombinedRegionSeries; unit: string; gaps: number }>[];
 }>;
 
 type Selection = Readonly<{ kind: "point"; x: number }> |
@@ -64,4 +68,16 @@ export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin |
     xUnit: vector.xUnit, vectorUnit: vector.yUnit, overlayUnit: overlay.yUnit,
     vectorGaps: vectorRows.slice(first, last + 1).filter(row => row.y === null).length,
     overlayGaps: overlayRows.slice(first, last + 1).filter(row => row.y === null).length };
+}
+
+/** A four-field selection uses one checked physical lattice and keeps each gap count separate. */
+export function linkedCombinedRegionGraphFocus(
+  origins: readonly Graph2DLinkedCombinedRegionOrigin[],
+  rows: readonly (readonly Graph2DPointRow[])[], selection: Selection): LinkedRegionGraphFocus {
+  validateCombinedRegionGraphGroup(origins, rows);
+  const focus = linkedRegionGraphFocus(origins[0]!, origins[1]!, rows[0]!, rows[1]!, selection);
+  return { ...focus, combined: combinedRegionSeries.map((series, index) => ({
+    series, unit: origins[index]!.yUnit,
+    gaps: rows[index]!.slice(focus.columns[0], focus.columns[1] + 1)
+      .filter(row => row.y === null).length })) };
 }

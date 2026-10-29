@@ -25,7 +25,7 @@ import {
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DSelection, type Graph2DViewport,
-  type Graph2DPointSeriesDraft, type Graph2DPointSeriesObject,
+  type Graph2DPointRow, type Graph2DPointSeriesDraft, type Graph2DPointSeriesObject,
   type Graph2DLinkedLineOrigin, type Graph2DLinkedRegionOrigin,
   type Graph2DLinkedCombinedRegionOrigin,
   type Graph2DScientificDatasetPreview,
@@ -90,7 +90,8 @@ import { reverifyLinkedOverlayRegionGraphPair } from "../vectorfield3d/reverifyL
 import { checkCombinedRegionGraphSeries, combinedRegionSeries,
   validateCombinedRegionGraphGroup, type CombinedRegionGraphGroup } from
   "../vectorfield3d/linkedCombinedRegionGraphs";
-import { linkedRegionGraphFocus, type LinkedRegionGraphFocus } from
+import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus,
+  type LinkedRegionGraphFocus } from
   "../vectorfield3d/linkedRegionGraphFocus";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
@@ -376,6 +377,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     pairId: string; index: number; probeX: number | undefined } | null>(null);
   const [linkedRegionInterval, setLinkedRegionInterval] = useState<{
     pairId: string; min: string; max: string } | null>(null);
+  const [linkedRegionSelectionMode, setLinkedRegionSelectionMode] = useState<{
+    pairId: string; kind: "point" | "interval" } | null>(null);
   const [linkedRegionOpenBusy, setLinkedRegionOpenBusy] = useState(false);
   const [linkedRegionOpenError, setLinkedRegionOpenError] = useState("");
   const [linkedRegionFocus, setLinkedRegionFocus] = useState<{
@@ -1407,7 +1410,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         if (seed) { onAuthoringCommit(graph2DPhaseSeedAction(document, phaseSeedPlacement, null, seed));
           setPhaseSeedPlacement(null); setToolHint(""); }
         else setToolHint("Tap inside the selected phase portrait domain to place an initial point.");
-      } else onSelectionCommit?.(pick(point.x, point.y, document.selection));
+      } else {
+        const selection = pick(point.x, point.y, document.selection);
+        const pickedRegion = document.source.objects.find(item => item.id === selection.objectId);
+        if (pickedRegion?.kind === "point-series" && pickedRegion.linkedOrigin &&
+            (pickedRegion.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" ||
+              pickedRegion.linkedOrigin.kind === "vector-scalar-linked-region/v1" ||
+              pickedRegion.linkedOrigin.kind === "vector-complex-linked-region/v1")) {
+          setLinkedRegionSelectionMode({ pairId: pickedRegion.linkedOrigin.pairId, kind: "point" });
+          setLinkedRegionColumn(null);
+        }
+        onSelectionCommit?.(selection);
+      }
     }
     setPreview(null);
   };
@@ -1497,32 +1511,73 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     graphProbeX !== undefined && Math.abs(row.x - graphProbeX) <
       Math.abs(regionVectorRows[best]!.x - graphProbeX) ? index : best, 0) ?? 0;
   const activeRegionColumn = selectedRegionOrigin && linkedRegionColumn?.pairId === selectedRegionOrigin.pairId &&
-    linkedRegionColumn.probeX === graphProbeX ? linkedRegionColumn.index : nearestRegionColumn;
+    (linkedRegionColumn.probeX === graphProbeX || graphProbeX === undefined) ?
+    linkedRegionColumn.index : nearestRegionColumn;
   const regionIntervalDraft = selectedRegionOrigin && linkedRegionInterval?.pairId === selectedRegionOrigin.pairId ?
     linkedRegionInterval : { pairId: selectedRegionOrigin?.pairId ?? "",
       min: String(selectedRegionOrigin?.region.bounds[0][0] ?? ""),
       max: String(selectedRegionOrigin?.region.bounds[0][1] ?? "") };
+  const combinedRegionGroup = (() => {
+    if (selectedRegionOrigin?.kind !== "vector-scalar-complex-linked-region/v2" ||
+        linkedPairVerification.document !== document) return null;
+    const members = combinedRegionSeries.map(series => regionPair.find(item =>
+      item.linkedOrigin?.kind === "vector-scalar-complex-linked-region/v2" &&
+      item.linkedOrigin.series === series));
+    if (members.some(item => !item?.linkedOrigin || linkedPairVerification.states[
+      linkedVerificationKey(item.linkedOrigin)] !== linkedVerified(item.linkedOrigin))) return null;
+    try {
+      const origins = members.map(item => item!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
+      const rows = members.map(item => pointTableStore.resolve(item!.table));
+      validateCombinedRegionGraphGroup(origins, rows);
+      return { members: members as Graph2DPointSeriesObject[], origins,
+        rows: rows as Graph2DPointRow[][] };
+    } catch { return null; }
+  })();
+  const sharedRegionSelection = selectedRegionOrigin?.kind ===
+    "vector-scalar-complex-linked-region/v2" && combinedRegionGroup ? (() => {
+      const interval = linkedRegionSelectionMode?.pairId === selectedRegionOrigin.pairId &&
+        linkedRegionSelectionMode.kind === "interval";
+      try { return linkedCombinedRegionGraphFocus(combinedRegionGroup.origins,
+        combinedRegionGroup.rows, interval ? { kind: "interval",
+          min: regionIntervalDraft.min.trim() ? Number(regionIntervalDraft.min) : NaN,
+          max: regionIntervalDraft.max.trim() ? Number(regionIntervalDraft.max) : NaN } :
+          { kind: "point", x: combinedRegionGroup.rows[0]![activeRegionColumn]!.x }); }
+      catch { return null; }
+    })() : null;
+  const sharedRegionHighlight = sharedRegionSelection && combinedRegionGroup ? {
+    xBounds: sharedRegionSelection.xBounds,
+    points: combinedRegionGroup.rows.flatMap((rows, seriesIndex) =>
+      rows.slice(sharedRegionSelection.columns[0], sharedRegionSelection.columns[1] + 1)
+        .filter((row): row is Graph2DPointRow & { y: number } => row.y !== null)
+        .map(row => ({ x: row.x, y: row.y,
+          series: combinedRegionSeries[seriesIndex]!,
+          color: document.display.objects.find(style =>
+            style.objectId === combinedRegionGroup.members[seriesIndex]!.id)?.color ?? "#ffffff" })))
+  } : null;
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
-        !regionOverlay?.linkedOrigin || !regionVectorRows || !regionOverlayRows || linkedRegionOpenBusy)
+        !regionOverlay?.linkedOrigin || !regionVectorRows || !regionOverlayRows || linkedRegionOpenBusy ||
+        selectedRegionOrigin.kind === "vector-scalar-complex-linked-region/v2" && !combinedRegionGroup)
       return;
     const vectorOrigin = regionVector.linkedOrigin as Graph2DLinkedRegionOrigin |
       Graph2DLinkedCombinedRegionOrigin;
     const overlayOrigin = regionOverlay.linkedOrigin as Graph2DLinkedRegionOrigin |
       Graph2DLinkedCombinedRegionOrigin;
     let focus: LinkedRegionGraphFocus;
-    try { focus = linkedRegionGraphFocus(vectorOrigin, overlayOrigin,
-      regionVectorRows, regionOverlayRows, selection); }
+    try { focus = combinedRegionGroup ? linkedCombinedRegionGraphFocus(
+      combinedRegionGroup.origins, combinedRegionGroup.rows, selection) :
+      linkedRegionGraphFocus(vectorOrigin, overlayOrigin,
+        regionVectorRows, regionOverlayRows, selection); }
     catch (cause) { setLinkedRegionOpenError(cause instanceof Error ? cause.message : String(cause)); return; }
     setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
     try {
-      if (vectorOrigin.kind === "vector-scalar-complex-linked-region/v2" &&
-          overlayOrigin.kind === vectorOrigin.kind) {
-        const checks = await Promise.all([checkCombinedRegionGraphSeries(vectorOrigin),
-          checkCombinedRegionGraphSeries(overlayOrigin)]);
+      if (combinedRegionGroup) {
+        const checks = await Promise.all(combinedRegionGroup.origins.map(origin =>
+          checkCombinedRegionGraphSeries(origin)));
         if (checks.some(status => status !== "current"))
-          throw new TypeError(`Region source checks: ${checks.join(", ")}.`);
+          throw new TypeError(`Region source checks: ${checks.map((status, index) =>
+            `${combinedRegionSeries[index]} ${status}`).join(", ")}.`);
       } else await reverifyLinkedOverlayRegionGraphPair(
         vectorOrigin as Graph2DLinkedRegionOrigin,
         overlayOrigin as Graph2DLinkedRegionOrigin);
@@ -2168,11 +2223,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             data-testid="graph2d-linked-region-selection">
             <p>The 17 physical columns run along {selectedRegionOrigin.xName}
               {" "}({selectedRegionOrigin.xUnit}). Graph gaps remain gaps in the source strip.</p>
-            {regionRowsCurrent && regionVectorRows && regionOverlayRows ? <>
+            {regionRowsCurrent && regionVectorRows && regionOverlayRows &&
+              (selectedRegionOrigin.kind !== "vector-scalar-complex-linked-region/v2" ||
+                combinedRegionGroup) ? <>
               <label>Region column <select aria-label="Linked region column"
-                value={activeRegionColumn} onChange={event => setLinkedRegionColumn({
-                  pairId: selectedRegionOrigin.pairId, index: Number(event.target.value),
-                  probeX: graphProbeX })}>
+                value={activeRegionColumn} onChange={event => {
+                  setLinkedRegionColumn({ pairId: selectedRegionOrigin.pairId,
+                    index: Number(event.target.value), probeX: graphProbeX });
+                  setLinkedRegionSelectionMode({ pairId: selectedRegionOrigin.pairId,
+                    kind: "point" });
+                }}>
                 {regionVectorRows.map((row, index) => <option key={row.id} value={index}>
                   {index + 1}: {row.x.toPrecision(6)} {selectedRegionOrigin.xUnit}
                   {row.y === null ? " · vector gap" : ""}
@@ -2185,28 +2245,61 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 {" "}overlay {regionOverlayRows[activeRegionColumn]?.y === null ? "gap" :
                   `${regionOverlayRows[activeRegionColumn]?.y} ${regionOverlay?.linkedOrigin?.yUnit}`}.
               </p>
+              {combinedRegionGroup && sharedRegionSelection && <div
+                data-testid="graph2d-combined-region-selection" role="status">
+                <p>Shared physical columns {sharedRegionSelection.columns[0] + 1}–{
+                  sharedRegionSelection.columns[1] + 1}: {
+                  sharedRegionSelection.xBounds[0].toPrecision(6)} to {
+                  sharedRegionSelection.xBounds[1].toPrecision(6)} {sharedRegionSelection.xUnit}.
+                  Gaps remain gaps on each curve.</p>
+                <ul>{sharedRegionSelection.combined?.map((item, index) => {
+                  const rows = combinedRegionGroup.rows[index]!.slice(
+                    sharedRegionSelection.columns[0], sharedRegionSelection.columns[1] + 1);
+                  const value = rows.length === 1 && rows[0]!.y !== null ?
+                    `; value ${rows[0]!.y!.toPrecision(6)} ${item.unit}` : "";
+                  return <li key={item.series} data-series={item.series}>{item.series}: {
+                    rows.length - item.gaps}/{rows.length} columns available ({item.gaps} gaps),
+                    {" "}{item.unit}{value}.</li>;
+                })}</ul>
+              </div>}
               <button type="button" data-testid="graph2d-open-region-point"
-                disabled={linkedRegionOpenBusy} onClick={() => void openLinkedRegionInExplorer({
-                  kind: "point", x: regionVectorRows[activeRegionColumn]!.x })}>
+                disabled={linkedRegionOpenBusy} onClick={() => {
+                  setLinkedRegionSelectionMode({ pairId: selectedRegionOrigin.pairId, kind: "point" });
+                  void openLinkedRegionInExplorer({ kind: "point",
+                    x: regionVectorRows[activeRegionColumn]!.x });
+                }}>
                 {linkedRegionOpenBusy ? "Verifying sources…" : "Open selected column in Field Explorer"}</button>
               <div>
                 <label>Interval from ({selectedRegionOrigin.xUnit}) <input type="number" step="any"
                   aria-label="Linked region interval from" value={regionIntervalDraft.min}
-                  onChange={event => setLinkedRegionInterval({ ...regionIntervalDraft,
-                    min: event.target.value })} /></label>
+                  onChange={event => { setLinkedRegionInterval({ ...regionIntervalDraft,
+                    min: event.target.value }); setLinkedRegionSelectionMode({
+                      pairId: selectedRegionOrigin.pairId, kind: "interval" }); }} /></label>
                 <label>to ({selectedRegionOrigin.xUnit}) <input type="number" step="any"
                   aria-label="Linked region interval to" value={regionIntervalDraft.max}
-                  onChange={event => setLinkedRegionInterval({ ...regionIntervalDraft,
-                    max: event.target.value })} /></label>
+                  onChange={event => { setLinkedRegionInterval({ ...regionIntervalDraft,
+                    max: event.target.value }); setLinkedRegionSelectionMode({
+                      pairId: selectedRegionOrigin.pairId, kind: "interval" }); }} /></label>
                 <button type="button" data-testid="graph2d-open-region-interval"
-                  disabled={linkedRegionOpenBusy} onClick={() => void openLinkedRegionInExplorer({
-                    kind: "interval", min: regionIntervalDraft.min.trim() ?
-                      Number(regionIntervalDraft.min) : NaN,
-                    max: regionIntervalDraft.max.trim() ?
-                      Number(regionIntervalDraft.max) : NaN })}>
+                  disabled={linkedRegionOpenBusy} onClick={() => {
+                    setLinkedRegionSelectionMode({ pairId: selectedRegionOrigin.pairId,
+                      kind: "interval" });
+                    void openLinkedRegionInExplorer({ kind: "interval",
+                      min: regionIntervalDraft.min.trim() ? Number(regionIntervalDraft.min) : NaN,
+                      max: regionIntervalDraft.max.trim() ? Number(regionIntervalDraft.max) : NaN });
+                  }}>
                   {linkedRegionOpenBusy ? "Verifying sources…" : "Open interval in Field Explorer"}</button>
               </div>
-            </> : <p role="status">Linked region values are withheld until both sources and point tables verify.</p>}
+            </> : <p role="status" data-testid="graph2d-shared-region-withheld">{
+              selectedRegionOrigin.kind === "vector-scalar-complex-linked-region/v2" ?
+                `Shared selection withheld until all four sources and point tables verify. ${
+                  combinedRegionSeries.map(series => {
+                    const item = regionPair.find(candidate => candidate.linkedOrigin?.series === series);
+                    return `${series}: ${item?.linkedOrigin ?
+                      linkedPairVerification.states[linkedVerificationKey(item.linkedOrigin)] ??
+                        "checking" : "missing"}`;
+                  }).join(" · ")}.` :
+                "Linked region values are withheld until both sources and point tables verify."}</p>}
             {linkedRegionOpenError && <p role="alert" data-testid="graph2d-linked-region-open-error">
               {linkedRegionOpenError}</p>}
           </dd></>}
@@ -2901,6 +2994,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
+          linkedRegionHighlight={sharedRegionHighlight}
           constructions={parameterPreviewActive ? null : shownConstructions}
           probeMarkers={probeMarkers}
           regression={!parameterPreviewActive && document.display.objects.find(s => s.objectId === currentRegression?.objectId)?.visible ? currentRegression : null}
