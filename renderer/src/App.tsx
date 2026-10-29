@@ -317,7 +317,6 @@ import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel";
 import { ScientificServicesPanel } from "./features/scientificServices/ScientificServicesPanel";
 import { SageSymbolicAnalysisCard } from "./features/sageLab/SageSymbolicAnalysisCard";
-import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
@@ -86231,7 +86230,6 @@ case "mobius":
                       </div>
                     ) : null}
                   </div>
-                  <ComputeEngineManagerPanel embedded />
                   <OctaveLabPanel />
                   <ScientificServicesPanel context="surface" sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
                     onResult={(record) => {
@@ -110993,7 +110991,7 @@ case "mobius":
           </div>
         </div>
       )}
-      {computeCenterOpen && <ComputeCenterPanel onClose={() => setComputeCenterOpen(false)} onManageEngines={() => { setComputeCenterOpen(false); setPreferencesOpen(true); }} />}
+      {computeCenterOpen && <ComputeCenterPanel onClose={() => setComputeCenterOpen(false)} />}
       {preferencesOpen && (
         <div
           style={{
@@ -111134,7 +111132,9 @@ case "mobius":
                 </div>
               </section>
               <TheoryLabInstallationPanel />
-              <ComputeEngineManagerPanel />
+              <button type="button" onClick={() => { setPreferencesOpen(false); setComputeCenterOpen(true); }}>
+                Open Compute → Runtimes for Local WSL and Docker diagnostics
+              </button>
             </div>
           </div>
         </div>
