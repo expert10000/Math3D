@@ -748,19 +748,22 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
     const linked = value.linkedRegion;
     if (!record(linked) || !exact(linked, ["pairId", "physical"]) ||
         typeof linked.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(linked.pairId) ||
-        !record(linked.physical) ||
-        !(linked.physical.kind === "point" ? exact(linked.physical, ["kind", "x"]) &&
-          finite(linked.physical.x) : linked.physical.kind === "interval" &&
-          exact(linked.physical, ["kind", "min", "max"]) && finite(linked.physical.min) &&
-          finite(linked.physical.max) && linked.physical.min <= linked.physical.max) ||
-        !source.objects.some(object => object.kind === "point-series" &&
-          object.id === value.objectId && object.linkedOrigin?.pairId === linked.pairId &&
-          "region" in object.linkedOrigin &&
-          (linked.physical.kind === "point" ?
-            linked.physical.x >= object.linkedOrigin.region.bounds[0][0] - 1e-9 &&
-            linked.physical.x <= object.linkedOrigin.region.bounds[0][1] + 1e-9 :
-            linked.physical.min >= object.linkedOrigin.region.bounds[0][0] - 1e-9 &&
-            linked.physical.max <= object.linkedOrigin.region.bounds[0][1] + 1e-9))) return false;
+        !record(linked.physical)) return false;
+    const physical = linked.physical;
+    if (!(physical.kind === "point" ? exact(physical, ["kind", "x"]) &&
+          finite(physical.x) : physical.kind === "interval" &&
+          exact(physical, ["kind", "min", "max"]) && finite(physical.min) &&
+          finite(physical.max) && physical.min <= physical.max)) return false;
+    const selection = physical as Graph2DLinkedRegionSelection["physical"];
+    if (!source.objects.some(object => {
+      if (object.kind !== "point-series" || object.id !== value.objectId ||
+          !object.linkedOrigin || object.linkedOrigin.pairId !== linked.pairId ||
+          !("region" in object.linkedOrigin)) return false;
+      const [min, max] = object.linkedOrigin.region.bounds[0];
+      return selection.kind === "point" ?
+        selection.x >= min - 1e-9 && selection.x <= max + 1e-9 :
+        selection.min >= min - 1e-9 && selection.max <= max + 1e-9;
+    })) return false;
   }
   if (value.probe === null) return true;
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||

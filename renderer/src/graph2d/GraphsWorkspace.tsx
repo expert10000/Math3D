@@ -1537,9 +1537,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     try {
       const origins = members.map(item => item!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
       const rows = members.map(item => pointTableStore.resolve(item!.table));
+      if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+        return null;
       validateCombinedRegionGraphGroup(origins, rows);
       return { members: members as Graph2DPointSeriesObject[], origins,
-        rows: rows as Graph2DPointRow[][] };
+        rows };
     } catch { return null; }
   })();
   const sharedRegionSelection = selectedRegionOrigin?.kind ===
@@ -1601,6 +1603,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             canonicalJsonStringify([explorer.workspace.complexOverlay.real,
               explorer.workspace.complexOverlay.imaginary])) continue;
       const rows = members.map(object => pointTableStore.resolve(object!.table));
+      if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+        throw new TypeError("Saved combined region point tables are unavailable.");
       validateCombinedRegionGraphGroup(origins, rows);
       const focus = linkedCombinedRegionGraphFocus(origins, rows, physical);
       const statuses = await Promise.all(origins.map(origin =>
