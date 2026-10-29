@@ -463,8 +463,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const visibleRegionSlice = regionLayer && (multiView ? linkedSlices[regionLayer] :
     workspace.selectedLayer === regionLayer ? slice : null);
   const normalAxis = ({ xy: 2, xz: 1, yz: 0 } as const)[workspace.selectedLayer as "xy" | "xz" | "yz"];
-  const sliceOptions = normalAxis === undefined ? [] :
-    vectorField3DSliceCoordinates(document, normalAxis);
+  const sliceControlAxis = normalAxis ?? (multiView ? 2 : undefined);
+  const sliceOptions = sliceControlAxis === undefined ? [] :
+    vectorField3DSliceCoordinates(document, sliceControlAxis);
   const selectLayer = (selectedLayer: VectorField3DLayer) => {
     setDocument(current => reviseVectorField3DWorkspace(current,
       { ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)), selectedLayer }));
@@ -1819,12 +1820,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       </li>)}</ul> : <p>{libraryEntries.length ? "No datasets match your search." :
         "Open a scientific scene or save a field in the Project to add it here."}</p>}
     </section>
-    <nav aria-label="Field layers" className="vector-field3d-layers">
-      {([ ["arrows", "3D arrows"], ["trajectories", "Trajectories"],
-        ["xy", "XY slice"], ["xz", "XZ slice"], ["yz", "YZ slice"] ] as const).map(([layer, label]) =>
-        <button type="button" key={layer} disabled={busy} aria-pressed={workspace.selectedLayer === layer}
-          onClick={() => selectLayer(layer)}>{label}</button>)}
-    </nav>
     <fieldset className="vector-field3d-form" disabled={busy || overlayReading}>
     {document.source.field.kind === "expressions" ?
       <div role="group" aria-label="Vector components" className="vector-field3d-controls">
@@ -2090,6 +2085,56 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     <h4>Inspector</h4>
     <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
+    <nav aria-label="Field layers" className="vector-field3d-layers">
+      {([ ["arrows", "3D arrows"], ["trajectories", "Trajectories"],
+        ["xy", "XY slice"], ["xz", "XZ slice"], ["yz", "YZ slice"] ] as const).map(([layer, label]) =>
+        <button type="button" key={layer} disabled={busy} aria-pressed={workspace.selectedLayer === layer}
+          onClick={() => selectLayer(layer)}>{label}</button>)}
+    </nav>
+    {sliceControlAxis !== undefined && <section aria-label="Slice controls"
+      className="scientific-explorer-slice-workflow">
+      <h5>{normalAxis === undefined ? "XY" : workspace.selectedLayer.toUpperCase()} slice</h5>
+      <label>Fixed {document.source.axes[sliceControlAxis].label} ({document.source.axes[sliceControlAxis].unit})
+        {document.source.field.kind === "scientific-bundle" ?
+          <select aria-label="Slice physical coordinate" value={workspace.sliceCoordinates[sliceControlAxis]}
+            disabled={busy} onChange={event => setSliceCoordinate(sliceControlAxis, Number(event.target.value))}>
+            {sliceOptions.map(coordinate => <option key={coordinate} value={coordinate}>
+              {coordinate} {document.source.axes[sliceControlAxis].unit}</option>)}
+          </select> : <input type="number" step="any" aria-label="Slice physical coordinate"
+            min={document.source.axes[sliceControlAxis].min} max={document.source.axes[sliceControlAxis].max}
+            value={workspace.sliceCoordinates[sliceControlAxis]} disabled={busy}
+            onChange={event => { try { setSliceCoordinate(sliceControlAxis, Number(event.target.value)); }
+              catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }} />}
+      </label>
+      <button type="button" disabled={busy || lineBusy} onClick={() => void (multiView ?
+        previewLinkedViews() : previewSlice())}>{multiView ? "Preview all views" : "Preview slice"}</button>
+      {complexOverlay && <label>Complex display <select aria-label="Complex overlay mode"
+        value={complexOverlay.mode} onChange={event => setDocument(current =>
+          reviseVectorField3DWorkspace(current, {
+            ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
+            complexOverlay: { ...complexOverlay,
+              mode: event.target.value as VectorField3DComplexOverlay["mode"] },
+            scalarOverlay: event.target.value !== "phase-contours" && scalarOverlay?.visible ?
+              { ...scalarOverlay, visible: false } : scalarOverlay }))}>
+        <option value="magnitude">Magnitude heatmap</option><option value="phase">Phase heatmap</option>
+        <option value="phase-contours">Phase contours</option>
+      </select></label>}
+      {workspace.probe && (slice || Object.keys(linkedSlices).length > 0) &&
+        <button type="button" onClick={() => dialogRef.current?.querySelector(
+          '.scientific-field-explorer-viewer .vector-field3d-line-profile')?.scrollIntoView(
+            { behavior: "smooth", block: "nearest" })}>Show line profile through point</button>}
+    </section>}
+    <section aria-label="Linked probe controls" className="scientific-explorer-linked-probe-actions">
+      <h5>Linked probe</h5>
+      <label><input type="checkbox" aria-label="Link slice planes to probe"
+        checked={workspace.viewsLinked} disabled={busy || lineBusy}
+        onChange={event => setViewsLinked(event.target.checked)} /> Link slice planes to probe</label>
+      {!workspace.probe ? <button type="button" disabled={busy || lineBusy}
+        onClick={() => void selectProbe(workspace.sliceCoordinates)}>Place probe at selected coordinates</button> :
+        <button type="button" onClick={() => dialogRef.current?.querySelector(
+          '[aria-label="Linked field probe"]')?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          Edit probe coordinates</button>}
+    </section>
     <section aria-label="Cross-layer physical probe"
       className="vector-field3d-probe scientific-explorer-linked-inspector"
       data-testid="scientific-explorer-cross-layer-probe">
@@ -2156,13 +2201,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     </section>
     <section aria-label="Linked field probe" className="vector-field3d-probe">
       <h5>Linked physical-point probe</h5>
-      <label><input type="checkbox" aria-label="Link slice planes to probe"
-        checked={workspace.viewsLinked} disabled={busy || lineBusy}
-        onChange={event => setViewsLinked(event.target.checked)} /> Link slice planes to probe</label>
       <p>{workspace.viewsLinked ? "A selected point moves all three slice planes to its physical coordinates." :
         "Slice planes keep independent fixed coordinates; selecting a point still updates the probe."}</p>
-      {!workspace.probe ? <button type="button" disabled={busy || lineBusy}
-        onClick={() => void selectProbe(workspace.sliceCoordinates)}>Place probe at selected coordinates</button> : <>
+      {workspace.probe && <>
         <div className="vector-field3d-probe-coordinates">
           {([0, 1, 2] as const).map(axis => <label key={axis}>
             Probe {document.source.axes[axis].label} ({document.source.axes[axis].unit})
@@ -2388,8 +2429,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         </li>)}</ul>
       </details>}
     </section>
-    {normalAxis !== undefined && <section aria-label="Slice controls">
-      <h5>{workspace.selectedLayer.toUpperCase()} slice</h5>
+    {normalAxis !== undefined && <section aria-label="Slice appearance and verification">
+      <h5>Slice appearance and verification</h5>
       <section aria-label="Scalar overlay" data-testid="scientific-scalar-overlay-controls">
         <h6>Scalar heatmap + vector arrows</h6>
         <label>Scalar source <select aria-label="Scalar overlay source"
@@ -2432,17 +2473,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             value={field.source.reference.id}>{field.metadata.title}</option>)}
         </select></label>
         {complexOverlay && <>
-          <label>Complex display <select aria-label="Complex overlay mode"
-            value={complexOverlay.mode} onChange={event => setDocument(current =>
-              reviseVectorField3DWorkspace(current, {
-                ...(current.workspace ?? defaultVectorField3DWorkspace(current.source)),
-                complexOverlay: { ...complexOverlay,
-                  mode: event.target.value as VectorField3DComplexOverlay["mode"] },
-                scalarOverlay: event.target.value !== "phase-contours" && scalarOverlay?.visible ?
-                  { ...scalarOverlay, visible: false } : scalarOverlay }))}>
-            <option value="magnitude">Magnitude heatmap</option><option value="phase">Phase heatmap</option>
-            <option value="phase-contours">Phase contours</option>
-          </select></label>
           <label><input type="checkbox" aria-label="Show complex overlay"
             checked={complexOverlay.visible} disabled={busy}
             onChange={event => setDocument(current => reviseVectorField3DWorkspace(current,
@@ -2481,24 +2511,6 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <option value="grad-speed-z">Gradient |F| z</option>
         <option value="laplacian-speed">Laplacian |F|</option>
       </select></label>
-      <label>Fixed {document.source.axes[normalAxis].label} ({document.source.axes[normalAxis].unit})
-        {document.source.field.kind === "scientific-bundle" ?
-          <select aria-label="Slice physical coordinate" value={workspace.sliceCoordinates[normalAxis]}
-            disabled={busy} onChange={event => setSliceCoordinate(normalAxis, Number(event.target.value))}>
-            {sliceOptions.map(coordinate => <option key={coordinate} value={coordinate}>
-              {coordinate} {document.source.axes[normalAxis].unit}</option>)}
-          </select> : <input type="number" step="any" aria-label="Slice physical coordinate"
-            min={document.source.axes[normalAxis].min} max={document.source.axes[normalAxis].max}
-            value={workspace.sliceCoordinates[normalAxis]} disabled={busy}
-            onChange={event => { try { setSliceCoordinate(normalAxis, Number(event.target.value)); }
-              catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } }} />}
-      </label>
-      <button type="button" disabled={busy || lineBusy} onClick={() => void (multiView ?
-        previewLinkedViews() : previewSlice())}>{multiView ? "Preview all views" : "Preview slice"}</button>
-      {workspace.probe && (slice || Object.keys(linkedSlices).length > 0) &&
-        <button type="button" onClick={() => dialogRef.current?.querySelector(
-          '.scientific-field-explorer-viewer .vector-field3d-line-profile')?.scrollIntoView(
-            { behavior: "smooth", block: "nearest" })}>Show line profile through point</button>}
       <p>Each preview checks the displayed bytes from all three source components. The map uses at most 1,024 samples.</p>
       {slice && <p role="status">{slice.shape.join(" × ")} samples; {slice.rejected} invalid;
         {" "}{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit}.
