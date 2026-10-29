@@ -909,3 +909,19 @@ source commits, run IDs, and both signoff JSON files are recorded in the
 This is a passing **release candidate**, not the final release. The exact
 final 1.7.0 installer files must be built, hashed, and tested through both
 fresh-VM gates before publication. No rc.2 hash certifies different binaries.
+
+### Source-synced release candidate (1.7.0-rc.3, passed 2026-10-28)
+
+rc.3 was built from the then-current Math3D `main` commit
+`df19cf1f174317b992149f68d6d65148f6df7d55`, including the SCI-02 and
+Sage changes that landed before it. [Run 40692720586](https://github.com/expert10000/Math3D/actions/runs/40692720586)
+passed the same three-VM build, clean-install, and published-v1.6.0 upgrade
+gate on exact archived installer bytes. The upgrade retained the saved Graph
+Project and setting; the installed two-app `.qscene` handoff reopened the
+exact verified Lab run. The [release evidence](stable-two-app-signoff.md#170-rc3-source-synced-candidate-2026-10-28)
+records the pinned commits, hashes, and both signoff JSON files.
+
+SCI-02 work continued on `main` after rc.3 was built. That newer work is not
+inside rc.3. Freeze a release source commit before building the final 1.7.0
+installers, then run both fresh-VM gates on those **exact final files** before
+publication. rc.3 remains candidate evidence for its pinned snapshot only.

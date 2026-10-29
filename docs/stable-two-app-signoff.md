@@ -194,3 +194,42 @@ directory intact. Per-machine, changed-directory, and other-version upgrades
 are outside this acceptance result. The final 1.7.0 installers must be built,
 hashed, and run through **both fresh-VM gates using those exact final files**
 before publication; the rc.2 hash cannot certify them.
+
+## 1.7.0-rc.3 source-synced candidate (2026-10-28)
+
+**Passed as a candidate; not published.** rc.2 was built before the SCI-02 and
+Sage changes merged into Math3D `main`. rc.3 was cut from the then-current
+`main` commit `df19cf1f174317b992149f68d6d65148f6df7d55`, with root,
+desktop, and renderer version metadata aligned. [Run 40692720586](https://github.com/expert10000/Math3D/actions/runs/40692720586)
+passed its build VM, a fresh clean-install VM, and a separate fresh v1.6.0
+upgrade VM using the exact archived rc.3 installer files.
+
+| Exact candidate file | Version and source | SHA-256 |
+| --- | --- | --- |
+| `Math3D Setup 1.7.0-rc.3.exe` | Stable product identity; Math3D `1.7.0-rc.3`; commit `df19cf1f174317b992149f68d6d65148f6df7d55` | `589664bbe8504ae49e40d9b78f1241fe75a1c815047e43391fc88ea5c0724487` |
+| `Quantum-Hamiltonian-Lab-Setup-0.1.0.exe` | Theory Lab `0.1.0`; commit `3c883fa4a69da2ee9f59b1425ac181094a25c276` | `d6690ab6ae8be70b7fae33451d8d437390ed8d0d3cf3377cd27b0f039316604e` |
+
+The manifest SHA-256 is
+`5d58646b1e3642715bca472edb85fccbc9ab7d6c2efd83cf047b1206e43cf318`.
+The files and both signoff JSON records are retained at
+`C:\Users\janko\OneDrive\Dokumenty\Math3D-release-candidates\1.7.0-rc.3\run-40692720586`.
+The downloaded installer hashes match the manifest; both signoff records say
+`status: passed` with no failure.
+
+The upgrade VM used the published v1.6.0 installer SHA-256
+`5a785909352816e80995f203b1bb28263ed4f9423abf76664c5eec4813c36341`.
+Its UI saved the `Upgrade Graph from v1.6.0` Project and disabled
+command-preview overlays. After the in-place rc.3 upgrade, both were retained
+and the migration marker was `registered-v1.6.0-overlay`. Installed Theory Lab
+saved run `run-b7f53594862440d9a3d36e32ad6cfc18` and exported a `.qscene`
+for result SHA-256
+`cf6b3a4d97dafbc6581f6019b705e4d6b86b815b27a7d405a65c1346261089df`.
+Installed Math3D opened that exact hash-verified run. The clean-install VM
+independently passed its installed UI round trip.
+
+Further SCI-02 commits landed on `main` **after** this candidate was built;
+rc.3 certifies its pinned source snapshot, not those later commits. A release
+must be frozen at a chosen source commit before its final installers are built.
+The exact final 1.7.0 installer files still require their own clean-install
+and upgrade gates before publication. The migration scope remains the
+registered, per-user v1.6.0 installation at the same destination.
