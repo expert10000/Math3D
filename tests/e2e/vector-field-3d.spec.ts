@@ -46,6 +46,53 @@ test("SCI-02 opens a docked field explorer with bounded narrow-window layout", a
   } finally { await closeSurfaceApp(app); }
 });
 
+test("SCI-02 keeps slice preview and probe controls in the contextual Inspector", async () => {
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const inspector = explorer.getByLabel("Field status and actions");
+    const controls = explorer.getByLabel("Field controls");
+    const viewer = explorer.getByLabel("3D field viewer");
+    await explorer.getByRole("region", { name: "Built-in scientific scenes" })
+      .getByRole("button", { name: /Swirling flow/ }).click();
+    await expect(explorer.getByTestId("vector-field3d-source-verification"))
+      .toContainText("verified source samples", { timeout: 60_000 });
+    const xy = inspector.getByRole("button", { name: "XY slice", exact: true });
+    const xz = inspector.getByRole("button", { name: "XZ slice", exact: true });
+    await expect(xy).toBeEnabled({ timeout: 60_000 });
+    await xy.focus();
+    await page.keyboard.press("Tab");
+    await expect(xz).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(xz).toHaveAttribute("aria-pressed", "true");
+    const coordinate = inspector.getByLabel("Slice physical coordinate");
+    await coordinate.selectOption({ index: 2 });
+    const preview = inspector.getByRole("button", { name: "Preview slice" });
+    await preview.focus();
+    await page.keyboard.press("Enter");
+    await expect(viewer.getByRole("figure", { name: "XZ field slice" }))
+      .toBeVisible({ timeout: 60_000 });
+    await expect(inspector.getByLabel("Link slice planes to probe")).toBeVisible();
+    await page.setViewportSize({ width: 760, height: 700 });
+    const [right, middle, left, action] = await Promise.all([
+      inspector.boundingBox(), viewer.boundingBox(), controls.boundingBox(), preview.boundingBox()]);
+    expect(right && middle && left && action).toBeTruthy();
+    expect(right!.y).toBeLessThan(middle!.y);
+    expect(middle!.y).toBeLessThan(left!.y);
+    expect(action!.y).toBeGreaterThanOrEqual(right!.y);
+    expect(action!.y + action!.height).toBeLessThanOrEqual(right!.y + right!.height + 2);
+    const width = await explorer.evaluate(element => ({ width: element.clientWidth,
+      scroll: element.scrollWidth }));
+    expect(width.scroll).toBeLessThanOrEqual(width.width + 2);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("SCI-02 opens built-in vector, scalar and complex scenes without a folder picker", async () => {
   const app = await launchSurfaceApp();
   try {
@@ -626,6 +673,13 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await page.locator(".graph2d-toolbar-menu > summary").click();
     await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const reopenedInspector = reopened.getByLabel("Field status and actions");
+    await expect(reopenedInspector.getByRole("button", { name: "XY slice", exact: true }))
+      .toHaveAttribute("aria-pressed", "true");
+    await expect(reopenedInspector.getByRole("combobox", { name: "Complex overlay mode" }))
+      .toHaveValue("phase-contours");
+    await expect(reopenedInspector.getByLabel("Slice physical coordinate"))
+      .toHaveValue(String(saved.sliceCoordinates[2]));
     await expect(reopened.getByTestId("scientific-slice-overlay-provenance"))
       .toContainText("Potential", { timeout: 60_000 });
     await expect(reopened.getByTestId("scientific-slice-contour-provenance"))
