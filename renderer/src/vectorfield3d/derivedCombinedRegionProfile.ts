@@ -3,6 +3,10 @@ import { sampleVectorField3DDerivedSlice, scientificCoordinateIndex,
   type VectorField3DDocument, type VectorField3DOverlayRegion,
   type VectorField3DSliceArtifact } from "@math3d/core";
 
+export type DivergenceSourceBridge = Partial<Pick<NonNullable<typeof window.scientificScenes>,
+  "openGraphDatasetReference" | "previewVectorSamples" | "previewVectorVolume" |
+  "closeGraphDataset">>;
+
 /** Reduce a verified divergence slice on the same 17 × 17 physical rectangle. */
 export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
   derived: VectorField3DSliceArtifact): Readonly<{ rows: readonly Graph2DPointRow[];
@@ -52,12 +56,13 @@ export function divergenceRegionProfile(region: VectorField3DOverlayRegion,
 }
 
 export async function verifiedDivergenceRegionProfile(document: VectorField3DDocument,
-  region: VectorField3DOverlayRegion): Promise<ReturnType<typeof divergenceRegionProfile> &
+  region: VectorField3DOverlayRegion,
+  bridge: DivergenceSourceBridge | undefined = typeof window === "undefined" ? undefined :
+    window.scientificScenes): Promise<ReturnType<typeof divergenceRegionProfile> &
     Readonly<{ samples: readonly Readonly<{ name: string; sampleSha256: string }>[] }>> {
   if (document.source.field.kind === "expressions") return {
     ...divergenceRegionProfile(region, sampleVectorField3DDerivedSlice(document,
       region.normalAxis, region.fixedCoordinate, "divergence")), samples: [] };
-  const bridge = window.scientificScenes;
   if (!bridge?.openGraphDatasetReference || !bridge.previewVectorSamples ||
       !bridge.previewVectorVolume || !bridge.closeGraphDataset)
     throw new TypeError("Verified scientific source services are unavailable.");

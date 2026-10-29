@@ -10,13 +10,16 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   type VectorField3DDocument,
   type VectorField3DRegionSummary,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
+import { verifiedDivergenceRegionProfile, type DivergenceSourceBridge } from
+  "./derivedCombinedRegionProfile";
 
 export type SingleRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
 export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
   vector: SingleRegionSourceStatus; scalar: SingleRegionSourceStatus;
   complex: SingleRegionSourceStatus; divergence?: SingleRegionSourceStatus }>;
 export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus;
-type Bridge = Pick<NonNullable<typeof window.scientificScenes>, "checkGraphDatasetReference">;
+type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
+  "checkGraphDatasetReference"> & DivergenceSourceBridge;
 
 /** Read-only Project reopen check, including every pinned source resource. */
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
@@ -161,6 +164,20 @@ async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvel
       document.workspace.complexOverlay.imaginary] : []) ?
     check([realRef, imaginaryRef]) : Promise.resolve("changed" as const);
   const [vectorStatus, scalarStatus, complexStatus] = await Promise.all([vector, scalar, complex]);
+  let divergenceStatus: SingleRegionSourceStatus = vectorStatus;
+  if (derived && vectorStatus === "source-current") {
+    try {
+      const fresh = await verifiedDivergenceRegionProfile(document, region, bridge);
+      const saved = result.summary as unknown as CombinedDerivedRegionSummary;
+      divergenceStatus = fresh.unit === saved.divergenceUnit &&
+        canonicalJsonStringify({ count: fresh.count, gaps: fresh.gaps,
+          mean: fresh.mean, min: fresh.min, max: fresh.max }) ===
+          canonicalJsonStringify(saved.divergence) &&
+        canonicalJsonStringify(fresh.samples) ===
+          canonicalJsonStringify(parameters.divergenceSamples) ?
+          "source-current" : "changed";
+    } catch { divergenceStatus = "error"; }
+  }
   return { kind: "combined", vector: vectorStatus, scalar: scalarStatus,
-    complex: complexStatus, ...(derived ? { divergence: vectorStatus } : {}) };
+    complex: complexStatus, ...(derived ? { divergence: divergenceStatus } : {}) };
 }

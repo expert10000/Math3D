@@ -691,6 +691,23 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(await checkSavedRegionResultSources(result, document, checked)).toEqual({
       kind: "combined", vector: "source-current", scalar: "source-current",
       complex: "source-current", divergence: "source-current" });
+    const wrongDivergence = createCombinedVectorField3DRegionResultWithDivergence(
+      document, region, { ...inspection.summary,
+        divergence: { count: 289, gaps: 0, mean: 1, min: 1, max: 1 },
+        divergenceUnit: derived.unit }, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256, []);
+    expect(await checkSavedRegionResultSources(wrongDivergence, document, checked))
+      .toEqual({ kind: "combined", vector: "source-current",
+        scalar: "source-current", complex: "source-current", divergence: "changed" });
+    const wrongRows = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...derived,
+        rows: derived.rows.map(row => ({ ...row, y: 1 })), samples: [] });
+    validateCombinedRegionGraphGroup(wrongRows.map(item => item.origin),
+      wrongRows.map(item => item.rows));
+    expect(await Promise.all(wrongRows.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, checked)))).toEqual([
+      "current", "current", "current", "current", "changed"]);
     expect(await checkSavedRegionResultSources({ ...result,
       summary: { ...result.summary, divergenceUnit: "m/s" } }, document, checked))
       .toEqual({ kind: "combined", vector: "changed", scalar: "changed",

@@ -87,7 +87,7 @@ import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorFi
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "../vectorfield3d/reverifyLinkedOverlayRegionGraphPair";
-import { checkCombinedRegionGraphSeries, isCombinedRegionKind,
+import { checkCombinedRegionGraphSeries, isCombinedRegionKind, isCombinedRegionOrigin,
   seriesForCombinedRegion,
   validateCombinedRegionGraphGroup, type CombinedRegionGraphGroup } from
   "../vectorfield3d/linkedCombinedRegionGraphs";
@@ -1585,7 +1585,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       throw new TypeError("Save a combined vector, scalar and complex rectangle first.");
     const groups = new Map<string, Graph2DPointSeriesObject[]>();
     for (const object of document.source.objects) if (object.kind === "point-series" &&
-        isCombinedRegionKind(object.linkedOrigin?.kind ?? "")) {
+        isCombinedRegionOrigin(object.linkedOrigin)) {
       const id = object.linkedOrigin.pairId;
       groups.set(id, [...(groups.get(id) ?? []), object]);
     }
@@ -2258,11 +2258,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
               {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd></>}
           <dt>Units</dt><dd>{selectedObject.linkedOrigin.xUnit} → {selectedObject.linkedOrigin.yUnit}</dd>
-          {isCombinedRegionKind(selectedObject.linkedOrigin.kind) &&
+          {isCombinedRegionOrigin(selectedObject.linkedOrigin) &&
             selectedLinkedReady && <><dt>Coverage gaps</dt><dd>{
               pointTableStore.resolve(selectedObject.table)?.filter(row => row.y === null).length ?? 17
             } of 17 physical columns.</dd></>}
-          {isCombinedRegionKind(selectedObject.linkedOrigin.kind) ?
+          {isCombinedRegionOrigin(selectedObject.linkedOrigin) ?
             <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
               {" "}{selectedObject.linkedOrigin.scalarReference.datasetId}</dd>
               <dt>Complex source</dt><dd>{selectedObject.linkedOrigin.realReference.sceneId} /
@@ -2291,7 +2291,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   <code>{part.sampleSha256}</code>}</div>)}
             {(selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
               selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1" ||
-              isCombinedRegionKind(selectedObject.linkedOrigin.kind)) && <>
+              isCombinedRegionOrigin(selectedObject.linkedOrigin)) && <>
               <div>Real: <code>{selectedObject.linkedOrigin.realSampleSha256}</code></div>
               <div>Imaginary: <code>{selectedObject.linkedOrigin.imaginarySampleSha256}</code></div></>}
             <div>{selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
