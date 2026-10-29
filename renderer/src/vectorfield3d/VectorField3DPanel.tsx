@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { createVectorField3DDocument, defaultVectorField3DWorkspace,
+import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField3DWorkspace,
   parseVectorField3DDocument, reviseVectorField3DDocument, reviseVectorField3DWorkspace,
   createScientificDatasetLink,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
@@ -746,9 +746,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         setOverlayReadGeneration(value => value + 1);
       if (epoch === previewEpoch.current) { setBusy(false); setBusyAction(null); } }
   };
+  const focusRequestsSlice = (candidate: VectorField3DDocument | null | undefined) =>
+    !!candidate?.workspace && linkedRegionFocus?.documentId === candidate.identity.id &&
+    linkedRegionFocus.sourceHash === candidate.identity.structuralHash &&
+    !!candidate.workspace.overlayRegion &&
+    canonicalJsonStringify(candidate.workspace.overlayRegion) ===
+      canonicalJsonStringify(linkedRegionFocus.region);
   // A scientific field opens with a checked first preview; no button press is required.
   useEffect(() => {
     if (initialDocument?.source.field.kind === "scientific-bundle" &&
+        !focusRequestsSlice(initialDocument) &&
         !(hasVisibleSliceOverlay(initialDocument.workspace) &&
           (initialDocument.workspace.layout === "split" || initialDocument.workspace.layout === "quad" ||
             ["xy", "xz", "yz"].includes(initialDocument.workspace.selectedLayer))))
@@ -976,14 +983,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setBusy(false); }
   };
   useEffect(() => {
-    if (!initialDocument?.workspace || !hasVisibleSliceOverlay(initialDocument.workspace)) return;
+    if (!initialDocument?.workspace ||
+        !hasVisibleSliceOverlay(initialDocument.workspace) &&
+        !focusRequestsSlice(initialDocument)) return;
     if (initialDocument.workspace.layout === "split" || initialDocument.workspace.layout === "quad")
       void previewLinkedViews(initialDocument);
     else if (["xy", "xz", "yz"].includes(initialDocument.workspace.selectedLayer))
       void previewSlice();
   }, []);
   useEffect(() => {
-    if (!reopenPreview || !hasVisibleSliceOverlay(workspace)) return;
+    if (!reopenPreview || !hasVisibleSliceOverlay(workspace) &&
+        !focusRequestsSlice(document)) return;
     if (workspace.layout === "split" || workspace.layout === "quad") void previewLinkedViews();
     else if (["xy", "xz", "yz"].includes(workspace.selectedLayer)) void previewSlice();
   }, [reopenPreview]);

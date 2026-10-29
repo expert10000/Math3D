@@ -970,7 +970,7 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
 });
 
 test("SCI-06 vector-only rectangle publishes and withholds a changed source", async () => {
-  test.setTimeout(480_000);
+  test.setTimeout(600_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector-derived-region-"));
   const burgers = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
@@ -1008,6 +1008,35 @@ test("SCI-06 vector-only rectangle publishes and withholds a changed source", as
     await expect(explorer).toContainText("Sent 17 aligned vector speed, divergence and curl magnitude column means",
       { timeout: 90_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    const graphInspector = page.getByRole("complementary", { name: "Graph inspector" });
+    for (const label of ["Vector speed region mean", "Vector divergence region mean",
+      "Vector curl magnitude region mean"]) {
+      await page.getByRole("button", { name: `Select ${label}` }).click();
+      await expect(graphInspector.getByTestId("graph2d-vector-region-columns"))
+        .toContainText("1/s", { timeout: 90_000 });
+    }
+    await graphInspector.getByRole("combobox", { name: "Vector region column" })
+      .selectOption("8");
+    await graphInspector.getByTestId("graph2d-open-vector-region-point").click();
+    await expect(explorer.getByRole("figure", { name: "XY field slice" }))
+      .toBeVisible({ timeout: 90_000 });
+    await expect(explorer.getByTestId("scientific-vector-region-graph-focus"))
+      .toContainText("columns 9–9", { timeout: 90_000 });
+    await expect(explorer.getByTestId("scientific-vector-region-graph-focus"))
+      .toContainText("curl-magnitude: 1/1 columns available", { timeout: 90_000 });
+    await expect(explorer.getByTestId("scientific-region-graph-focus-marker"))
+      .toBeVisible();
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await page.getByRole("button", { name: "Select Vector divergence region mean" }).click();
+    await graphInspector.getByRole("spinbutton", { name: "Vector region interval from" })
+      .fill(String(Number(await graphInspector.getByRole("spinbutton",
+        { name: "Vector region interval from" }).inputValue()) + 0.001));
+    await graphInspector.getByTestId("graph2d-open-vector-region-interval").click();
+    await expect(explorer.getByTestId("scientific-vector-region-graph-focus"))
+      .toContainText("divergence:", { timeout: 90_000 });
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -1046,6 +1075,8 @@ test("SCI-06 vector-only rectangle publishes and withholds a changed source", as
     await expect(page.getByRole("complementary", { name: "Graph inspector" })
       .getByLabel("Source and sampling details"))
       .toContainText(/integrity|checksum|changed/i, { timeout: 90_000 });
+    await expect(graphInspector.getByTestId("graph2d-vector-region-withheld"))
+      .toContainText(/changed|integrity|checksum/i, { timeout: 90_000 });
     await expect(page.getByTestId("graph2d-plot")
       .locator("path[data-graph2d-path][d^='M']")).toHaveCount(0);
   } finally {

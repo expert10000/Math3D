@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import type { VectorField3DDocument, VectorField3DOverlayRegion,
-  VectorField3DSliceArtifact } from "@math3d/core";
+import { canonicalJsonStringify, type VectorField3DDocument, type VectorField3DOverlayRegion,
+  type VectorField3DSliceArtifact } from "@math3d/core";
 import { verifiedCombinedDerivedRegionProfiles, verifiedVectorRegionProfile } from
   "./derivedCombinedRegionProfile";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
+import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
+import { vectorDerivedRegionSeries } from "./linkedVectorDerivedRegionGraphs";
 
 type Profiles = Readonly<{
   speed: Awaited<ReturnType<typeof verifiedVectorRegionProfile>>;
@@ -15,7 +17,7 @@ type Check = Readonly<{ document: VectorField3DDocument;
 
 export function VectorDerivedRegionView({ document, slice, region, onChange,
   onStartSelection, selecting, busy, onPublish, onSendToGraphs,
-  savedStatus }: {
+  savedStatus, linkedRegionFocus }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   onChange: (region: VectorField3DOverlayRegion | null) => void;
@@ -23,6 +25,7 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   onPublish?: (region: VectorField3DOverlayRegion) => Promise<void>;
   onSendToGraphs?: (region: VectorField3DOverlayRegion) => Promise<void>;
   savedStatus?: SavedRegionSourceStatus;
+  linkedRegionFocus?: LinkedRegionGraphFocus | null;
 }) {
   const [check, setCheck] = useState<Check | null>(null);
   const [revision, setRevision] = useState(0);
@@ -49,6 +52,22 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
     return () => { active = false; clearTimeout(start); };
   }, [document, region, selected, revision]);
   const current = check?.document === document && check.region === region ? check : null;
+  const focused = selected && linkedRegionFocus?.combined?.length === 3 ?
+    linkedRegionFocus : null;
+  const freshFocus = focused && current?.state === "current" && current.profiles ?
+    [current.profiles.speed, current.profiles.derived.divergence,
+      current.profiles.derived.curlMagnitude] : null;
+  const focusRowsCurrent = !!focused && !!freshFocus &&
+    vectorDerivedRegionSeries.every((series, index) => {
+      const saved = focused.combined?.[index];
+      const fresh = freshFocus[index];
+      if (!saved || !fresh || saved.series !== series || saved.unit !== fresh.unit)
+        return false;
+      const rows = fresh.rows.slice(focused.columns[0], focused.columns[1] + 1);
+      return canonicalJsonStringify(saved.values) ===
+        canonicalJsonStringify(rows.map(row => row.y)) &&
+        saved.gaps === rows.filter(row => row.y === null).length;
+    });
   const stats = (value: { count: number; gaps: number; mean: number | null;
     min: number | null; max: number | null }, unit: string) =>
     `${value.count}/289 samples (${value.gaps} gaps); ${value.mean === null ?
@@ -68,6 +87,19 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
       {selecting ? "Click two corners on the slice" : "Select vector rectangle"}</button>
     {selected && region && <>
       <button type="button" onClick={() => onChange(null)}>Remove region</button>
+      {focused && <div data-testid="scientific-vector-region-graph-focus"
+        role={focusRowsCurrent ? "status" : "alert"}>
+        <p>Graphs selection: columns {focused.columns[0] + 1}–{
+          focused.columns[1] + 1}, {focused.xBounds[0].toPrecision(6)} to {
+          focused.xBounds[1].toPrecision(6)} {focused.xUnit}.</p>
+        {focusRowsCurrent ? <ul>{focused.combined?.map(item => <li key={item.series}
+          data-series={item.series}>{item.series}: {item.values.length - item.gaps}/{
+            item.values.length} columns available ({item.gaps} gaps), {item.unit}{
+            item.values.length === 1 ? `; ${item.values[0] === null ? "gap" :
+              `value ${item.values[0]} ${item.unit}`}` : ""}.</li>)}</ul> :
+          <p>Selected values withheld until all three source profiles reverify and
+            match the saved Graphs rows.</p>}
+      </div>}
       <p>Physical rectangle: {axes[0]!.label} {region.bounds[0][0]} to {
         region.bounds[0][1]} {axes[0]!.unit}; {axes[1]!.label} {
         region.bounds[1][0]} to {region.bounds[1][1]} {axes[1]!.unit}; {

@@ -26,7 +26,8 @@ import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus } from
+import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus,
+  linkedVectorDerivedRegionGraphFocus } from
   "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
@@ -872,6 +873,21 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         "vector", "divergence", "curl-magnitude"]);
       validateVectorDerivedRegionGraphGroup(group.map(item => item.origin),
         group.map(item => item.rows));
+      const columnFocus = linkedVectorDerivedRegionGraphFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        { kind: "point", x: group[1].rows[8]!.x });
+      expect(columnFocus.columns).toEqual([8, 8]);
+      expect(columnFocus.combined?.map(item => item.unit)).toEqual([
+        "m/s", "1/s", "1/s"]);
+      const intervalFocus = linkedVectorDerivedRegionGraphFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        { kind: "interval", min: group[2].rows[4]!.x,
+          max: group[2].rows[7]!.x });
+      expect(intervalFocus.columns).toEqual([4, 7]);
+      expect(intervalFocus.xBounds[0]).toBeLessThan(group[0].rows[4]!.x);
+      expect(() => linkedVectorDerivedRegionGraphFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        { kind: "interval", min: 1, max: -1 })).toThrow();
       expect(await Promise.all(group.map(item =>
         checkVectorDerivedRegionGraphSeries(item.origin)))).toEqual([
         "current", "current", "current"]);
@@ -884,6 +900,10 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       expect(() => validateVectorDerivedRegionGraphGroup(group.map(item => item.origin),
         group.map((item, index) => index === 2 ? item.rows.map((row, column) =>
           column === 8 ? { ...row, y: 42 } : row) : item.rows))).toThrow();
+      expect(() => linkedVectorDerivedRegionGraphFocus(group.map(item => item.origin),
+        group.map((item, index) => index === 1 ? item.rows.map((row, column) =>
+          column === 8 ? { ...row, y: 42 } : row) : item.rows),
+        { kind: "point", x: group[0].rows[8]!.x })).toThrow();
       const store = new Graph2DPointTableStore();
       const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("vector-derived"),
         { type: "create-point-series-group", drafts: group.map((item, index) => ({

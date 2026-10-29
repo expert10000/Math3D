@@ -78,6 +78,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
       onChange={onChange} onStartSelection={onStartSelection} selecting={selecting}
       busy={regionBusy} onPublish={onPublishVectorDerived}
       onSendToGraphs={onSendVectorDerivedToGraphs}
+      linkedRegionFocus={linkedRegionFocus}
       savedStatus={saved ? resultStatuses[saved.resultId] ?? "checking" : undefined} />;
   }
   const selected = region?.normalAxis === slice.normalAxis &&
