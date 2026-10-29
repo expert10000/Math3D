@@ -969,6 +969,94 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
   }
 });
 
+test("SCI-06 vector-only rectangle publishes and withholds a changed source", async () => {
+  test.setTimeout(480_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-derived-region-"));
+  const burgers = join(root, "burgers.sscene");
+  await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
+    { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, burgers);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await explorer.getByRole("button", { name: "XY slice", exact: true }).click();
+    await explorer.getByLabel("Slice physical coordinate").selectOption({ index: 0 });
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    const figure = explorer.getByRole("figure", { name: "XY field slice" });
+    const region = figure.getByTestId("vector-derived-region");
+    await region.getByRole("button", { name: "Select vector rectangle" }).click();
+    await figure.locator('[data-probe-cell="12-12"]').click();
+    await figure.locator('[data-probe-cell="20-20"]').click();
+    await expect(region.getByTestId("vector-derived-region-summary"))
+      .toContainText("Curl magnitude: 289/289 samples (0 gaps)", { timeout: 90_000 });
+    await expect(region.getByTestId("vector-derived-region-summary"))
+      .toContainText("Divergence: 289/289 samples (0 gaps)");
+    await region.getByRole("button", { name: "Publish vector region to Project" }).click();
+    await expect(explorer).toContainText("Published vector speed, divergence and curl magnitude region statistics",
+      { timeout: 90_000 });
+    await region.getByRole("button", { name: "Send three vector profiles to Graphs" }).click();
+    await expect(explorer).toContainText("Sent 17 aligned vector speed, divergence and curl magnitude column means",
+      { timeout: 90_000 });
+    await explorer.getByRole("button", { name: "Save document" }).click();
+    await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-save").click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")))
+      .not.toBeNull();
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const result = stored.workspace.results.find((item: { provenance: { operation: {
+      type: string } } }) => item.provenance.operation.type === "vector3d.derived-region");
+    expect(result.summary.vectorUnit).toBe("m/s");
+    expect(result.summary.divergenceUnit).toBe("1/s");
+    expect(result.summary.curlMagnitudeUnit).toBe("1/s");
+    expect(result.provenance.operation.parameters.vectorSamples).toHaveLength(3);
+    expect(result.provenance.operation.parameters.derivedSamples).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain('"values"');
+    const tile = join(burgers, "vx.f64");
+    const changed = Buffer.from(await readFile(tile));
+    changed[0] ^= 1;
+    await writeFile(tile, changed);
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    for (const field of ["vector", "divergence", "curlMagnitude"])
+      await expect(outputs.getByTestId(`project-vector-derived-${field}`))
+        .toContainText("values withheld (changed)", { timeout: 90_000 });
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    if (await explorer.isVisible())
+      await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    if (await projects.isVisible())
+      await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await page.getByRole("button", { name: "Select Vector speed region mean" }).click();
+    await expect(page.getByRole("complementary", { name: "Graph inspector" })
+      .getByLabel("Source and sampling details"))
+      .toContainText(/integrity|checksum|changed/i, { timeout: 90_000 });
+    await expect(page.getByTestId("graph2d-plot")
+      .locator("path[data-graph2d-path][d^='M']")).toHaveCount(0);
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) ||
+        !root.includes("m3d-vector-derived-region-"))
+      throw new Error("Unsafe vector-derived fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", async () => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();

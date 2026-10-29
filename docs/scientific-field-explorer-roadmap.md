@@ -1132,6 +1132,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02/06 live derived rectangle readout.** Field Explorer now shows divergence and curl magnitude directly in the selected combined rectangle before publication. One newly verified bounded vector stencil supplies both 17 × 17 statistics, each with its mean, range, `1/s` unit, sample count and coverage gaps. The readout offers an explicit recheck; a failed vector verification withholds both derived values while independently verified scalar and complex values stay visible. This transient inspection adds no field arrays to the Project.
 
+**SCI-06 vector-only derived rectangles.** A vector slice can select a physical rectangle without scalar or complex overlays. Field Explorer verifies a bounded vector slice for speed and a bounded neighboring-plane stencil for divergence and curl magnitude, then reports three 17 × 17 statistics with separate units and gaps. Publish region keeps only those statistics, physical bounds, source references and verified transfer hashes in a new compact Project result; reopening checks the pinned source and recalculates each statistic, withholding changed values. Send to Graphs makes three aligned 17-column means with independent row hashes and source checks. The existing four-, five- and six-profile combined formats retain their original readers.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

@@ -7,6 +7,7 @@ import { viewerSourceFromDocument } from "./viewerProvenance";
 
 export const VECTOR_FIELD3D_REGION_RESULT_TYPE = "vector3d.linked-region" as const;
 export const VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE = "vector3d.linked-region-combined" as const;
+export const VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE = "vector3d.derived-region" as const;
 export type CombinedRegionStatistics = Readonly<{
   count: number; gaps: number; mean: number | null; min: number | null;
   max: number | null }>;
@@ -21,6 +22,11 @@ export type CombinedDerivedRegionSummary = CombinedRegionSummary & Readonly<{
 }>;
 export type CombinedCurlRegionSummary = CombinedDerivedRegionSummary & Readonly<{
   curlMagnitude: CombinedRegionStatistics; curlMagnitudeUnit: string;
+}>;
+export type VectorDerivedRegionSummary = Readonly<{
+  sampleCount: 289; vector: CombinedRegionStatistics;
+  divergence: CombinedRegionStatistics; curlMagnitude: CombinedRegionStatistics;
+  vectorUnit: string; divergenceUnit: string; curlMagnitudeUnit: string;
 }>;
 export type VectorField3DRegionStatistics = Readonly<{ mean: number; min: number; max: number }>;
 export type VectorField3DRegionSummary = Readonly<{
@@ -92,13 +98,56 @@ export function createVectorField3DRegionResult(document: VectorField3DDocument,
 
 export function vectorField3DRegionResultRelation(result: AnalysisResultEnvelope): DocumentRelation {
   if (result.provenance.operation.type !== VECTOR_FIELD3D_REGION_RESULT_TYPE &&
-      result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE)
+      result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE &&
+      result.provenance.operation.type !== VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE)
     throw new TypeError("Expected a linked region result.");
   return createDocumentRelation({ kind: "analysis-of", sources: [result.provenance.source],
     sourceOrder: "ordered", target: { type: "result", resultId: result.resultId,
       resultType: result.provenance.operation.type },
     operation: result.provenance.operation.type,
     parameters: result.provenance.operation.parameters });
+}
+
+/** A vector-only region keeps three compact statistics and two verified transfers. */
+export function createVectorDerivedRegionResult(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, summary: VectorDerivedRegionSummary,
+  vectorSamples: readonly VectorField3DRegionSampleDigest[],
+  derivedSamples: readonly VectorField3DRegionSampleDigest[]): AnalysisResultEnvelope {
+  if (!region.visible || region.vectorChannel !== "speed" ||
+      canonicalJsonStringify(document.workspace?.overlayRegion) !== canonicalJsonStringify(region) ||
+      summary.sampleCount !== 289 ||
+      ![summary.vector, summary.divergence, summary.curlMagnitude].every(validCombinedStatistics) ||
+      summary.vector.count === 0 ||
+      summary.vectorUnit !== (document.source.field.kind === "scientific-bundle" ?
+        document.source.field.componentUnits[0] : document.source.field.components[0].unit) ||
+      summary.divergenceUnit !== `1/${document.source.timeUnit}` ||
+      summary.curlMagnitudeUnit !== `1/${document.source.timeUnit}` ||
+      new Set(document.source.axes.map(axis => axis.unit)).size !== 1 ||
+      new Set(document.source.field.kind === "scientific-bundle" ?
+        document.source.field.componentUnits :
+        document.source.field.components.map(component => component.unit)).size !== 1 ||
+      [vectorSamples, derivedSamples].some(samples => samples.length !==
+        (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+        samples.some(item => !item.name || !/^[a-f0-9]{64}$/.test(item.sampleSha256))))
+    throw new TypeError("Vector-only region requires verified speed, divergence and curl statistics.");
+  const parameters: Record<string, CanonicalJsonValue> = {
+    region: region as unknown as CanonicalJsonValue,
+    vectorReferences: document.source.field.kind === "scientific-bundle" ?
+      document.source.field.references as unknown as CanonicalJsonValue : [],
+    vectorSamples: vectorSamples as unknown as CanonicalJsonValue,
+    derivedSamples: derivedSamples as unknown as CanonicalJsonValue,
+    method: "bounded-finite-difference",
+  };
+  const source = viewerSourceFromDocument(document);
+  const compactSummary = summary as unknown as Record<string, CanonicalJsonValue>;
+  const resultId = `vector3d-derived-region:${structuralHash({ source, parameters,
+    compactSummary }).slice(7)}`;
+  return createAnalysisResultEnvelope({ resultId, status: "numerical",
+    provenance: { source, operation: { type: VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
+      algorithm: "vector-derived-physical-region", algorithmVersion: "17x17-v1",
+      parameters }, numericContext: { precision: { binaryBits: 53 } },
+      engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
+    summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });
 }
 
 /** The combined result stores compact statistics and pinned references, never sample arrays. */

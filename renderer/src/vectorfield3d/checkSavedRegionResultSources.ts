@@ -1,18 +1,22 @@
 import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   createCombinedVectorField3DRegionResultWithDivergence,
   createCombinedVectorField3DRegionResultWithCurl,
+  createVectorDerivedRegionResult,
   inspectGraph2DFieldReference,
   isGraph2DFieldReference, matchesScientificSourceGeneration,
   reverifyVectorField3DRegionResult,
   viewerSourceFromDocument, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
   type AnalysisResultEnvelope, type Graph2DFieldReference,
   type CombinedRegionSummary, type CombinedDerivedRegionSummary,
   type CombinedCurlRegionSummary,
+  type VectorDerivedRegionSummary,
   type VectorField3DDocument,
   type VectorField3DRegionSummary,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
 import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
+  verifiedVectorRegionProfile,
   type DivergenceSourceBridge } from
   "./derivedCombinedRegionProfile";
 
@@ -21,7 +25,11 @@ export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
   vector: SingleRegionSourceStatus; scalar: SingleRegionSourceStatus;
   complex: SingleRegionSourceStatus; divergence?: SingleRegionSourceStatus;
   curlMagnitude?: SingleRegionSourceStatus }>;
-export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus;
+export type VectorDerivedRegionSourceStatus = Readonly<{ kind: "vector-derived";
+  vector: SingleRegionSourceStatus; divergence: SingleRegionSourceStatus;
+  curlMagnitude: SingleRegionSourceStatus }>;
+export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus |
+  VectorDerivedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
   "checkGraphDatasetReference"> & DivergenceSourceBridge;
 
@@ -30,6 +38,8 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
   document: VectorField3DDocument, bridge: Bridge | undefined): Promise<SavedRegionSourceStatus> {
   if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE)
     return checkSavedCombinedRegionResultSources(result, document, bridge);
+  if (result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE)
+    return checkSavedVectorDerivedRegionResultSources(result, document, bridge);
   if (result.provenance.operation.type !== VECTOR_FIELD3D_REGION_RESULT_TYPE ||
       !matchesScientificSourceGeneration(result.provenance.source, viewerSourceFromDocument(document)) ||
       !bridge?.checkGraphDatasetReference) return "error";
@@ -85,6 +95,78 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
     } catch { return "error"; }
   }
   return "source-current";
+}
+
+async function checkSavedVectorDerivedRegionResultSources(result: AnalysisResultEnvelope,
+  document: VectorField3DDocument, bridge: Bridge | undefined):
+  Promise<VectorDerivedRegionSourceStatus> {
+  const all = (status: SingleRegionSourceStatus): VectorDerivedRegionSourceStatus =>
+    ({ kind: "vector-derived", vector: status, divergence: status,
+      curlMagnitude: status });
+  const parameters = result.provenance.operation.parameters;
+  const region = document.workspace?.overlayRegion;
+  const refs = document.source.field.kind === "scientific-bundle" ?
+    document.source.field.references : [];
+  const validSamples = (value: unknown) => Array.isArray(value) &&
+    value.length === refs.length && value.every(item => item && typeof item === "object" &&
+      typeof item.name === "string" && /^[a-f0-9]{64}$/.test(String(item.sampleSha256)));
+  if (result.provenance.operation.algorithmVersion !== "17x17-v1" || !region ||
+      !matchesScientificSourceGeneration(result.provenance.source,
+        viewerSourceFromDocument(document)) ||
+      canonicalJsonStringify(parameters.region) !== canonicalJsonStringify(region) ||
+      canonicalJsonStringify(parameters.vectorReferences) !== canonicalJsonStringify(refs) ||
+      parameters.method !== "bounded-finite-difference" ||
+      !validSamples(parameters.vectorSamples) || !validSamples(parameters.derivedSamples))
+    return all("changed");
+  try {
+    const fresh = createVectorDerivedRegionResult(document, region,
+      result.summary as unknown as VectorDerivedRegionSummary,
+      parameters.vectorSamples as VectorField3DRegionSampleDigest[],
+      parameters.derivedSamples as VectorField3DRegionSampleDigest[]);
+    if (fresh.resultId !== result.resultId ||
+        canonicalJsonStringify(fresh.provenance.operation) !==
+          canonicalJsonStringify(result.provenance.operation) ||
+        canonicalJsonStringify(fresh.summary) !== canonicalJsonStringify(result.summary))
+      return all("changed");
+  } catch { return all("changed"); }
+  if (refs.length) {
+    if (!bridge?.checkGraphDatasetReference) return all("error");
+    const first = refs[0]!;
+    try {
+      const checked = await bridge.checkGraphDatasetReference({ locator: first.locator,
+        sceneFingerprint: first.sceneFingerprint, verifyResources: true });
+      if (!checked.ok) return all(checked.status);
+      if (refs.some(ref => inspectGraph2DFieldReference(ref,
+        checked.source.manifestJson) !== "current")) return all("changed");
+    } catch { return all("error"); }
+  }
+  const summary = result.summary as unknown as VectorDerivedRegionSummary;
+  const matches = (value: { count: number; gaps: number; mean: number | null;
+    min: number | null; max: number | null }, saved: typeof summary.vector) =>
+    canonicalJsonStringify({ count: value.count, gaps: value.gaps, mean: value.mean,
+      min: value.min, max: value.max }) === canonicalJsonStringify(saved);
+  let vector: SingleRegionSourceStatus = "source-current";
+  let divergence: SingleRegionSourceStatus = "source-current";
+  let curlMagnitude: SingleRegionSourceStatus = "source-current";
+  try {
+    const speed = await verifiedVectorRegionProfile(document, region, bridge);
+    vector = speed.unit === summary.vectorUnit &&
+      matches(speed.statistics, summary.vector) &&
+      canonicalJsonStringify(speed.samples) ===
+        canonicalJsonStringify(parameters.vectorSamples) ? "source-current" : "changed";
+  } catch { vector = "error"; }
+  try {
+    const derived = await verifiedCombinedDerivedRegionProfiles(document, region, bridge);
+    divergence = derived.divergence.unit === summary.divergenceUnit &&
+      matches(derived.divergence, summary.divergence) &&
+      canonicalJsonStringify(derived.samples) ===
+        canonicalJsonStringify(parameters.derivedSamples) ? "source-current" : "changed";
+    curlMagnitude = derived.curlMagnitude.unit === summary.curlMagnitudeUnit &&
+      matches(derived.curlMagnitude, summary.curlMagnitude) &&
+      canonicalJsonStringify(derived.samples) ===
+        canonicalJsonStringify(parameters.derivedSamples) ? "source-current" : "changed";
+  } catch { divergence = "error"; curlMagnitude = "error"; }
+  return { kind: "vector-derived", vector, divergence, curlMagnitude };
 }
 
 async function checkSavedCombinedRegionResultSources(result: AnalysisResultEnvelope,

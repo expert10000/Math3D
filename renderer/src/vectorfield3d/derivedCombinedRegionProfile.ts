@@ -1,7 +1,10 @@
-import { sampleVectorField3DDerivedSlice, scientificCoordinateIndex,
+import { sampleVectorField3DDerivedSlice, sampleVectorField3DSlice,
+  sampleVectorField3DSparseSlice, scientificCoordinateIndex,
   type Graph2DPointRow,
   type VectorField3DDocument, type VectorField3DOverlayRegion,
   type VectorField3DSliceArtifact } from "@math3d/core";
+import { sampleSliceOverlayVectorPlane } from "./scientificSliceOverlay";
+import { sampleVerifiedVectorRegion } from "./combinedFieldInspection";
 
 export type DivergenceSourceBridge = Partial<Pick<NonNullable<typeof window.scientificScenes>,
   "openGraphDatasetReference" | "previewVectorSamples" | "previewVectorVolume" |
@@ -128,4 +131,53 @@ export async function verifiedCombinedDerivedRegionProfiles(document: VectorFiel
     ["divergence", "curl-magnitude"], bridge);
   return { divergence: verified.profiles[0]!, curlMagnitude: verified.profiles[1]!,
     samples: verified.samples };
+}
+
+/** Independently verify the speed plane used by a vector-only rectangle. */
+export async function verifiedVectorRegionProfile(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion,
+  bridge: DivergenceSourceBridge | undefined = typeof window === "undefined" ? undefined :
+    window.scientificScenes) {
+  const speedRegion = { ...region, vectorChannel: "speed" as const };
+  if (document.source.field.kind === "expressions") {
+    const slice = sampleVectorField3DSlice(document, region.normalAxis, region.fixedCoordinate);
+    return { ...sampleVerifiedVectorRegion(document, slice, speedRegion,
+      sampleSliceOverlayVectorPlane(document, slice)), samples: [] as Digest[] };
+  }
+  if (!bridge?.openGraphDatasetReference || !bridge.previewVectorSamples ||
+      !bridge.previewVectorVolume || !bridge.closeGraphDataset)
+    throw new TypeError("Verified scientific source services are unavailable.");
+  const refs = document.source.field.references;
+  const opened = await bridge.openGraphDatasetReference({ locator: refs[0].locator,
+    sceneFingerprint: refs[0].sceneFingerprint });
+  if (!opened.ok) throw new TypeError(`Vector region source ${opened.status}: ${opened.error}`);
+  const fingerprint = opened.source.fingerprint;
+  try {
+    const manifestJson = opened.source.manifestJson;
+    const schema = JSON.parse(manifestJson).schema as string;
+    const components = refs.map(ref => ref.component) as [string, string, string];
+    if (schema === "scientific-scene/v1") {
+      const volumes = await bridge.previewVectorVolume({ fingerprint,
+        datasetId: refs[0].datasetId, components });
+      const scientific = { manifestJson, fingerprint, volumes };
+      const slice = sampleVectorField3DSlice(document, region.normalAxis,
+        region.fixedCoordinate, scientific);
+      return { ...sampleVerifiedVectorRegion(document, slice, speedRegion,
+        sampleSliceOverlayVectorPlane(document, slice, scientific)),
+        samples: volumes.map(part => ({ name: part.component,
+          sampleSha256: part.sampleSha256 })) };
+    }
+    const samples = await bridge.previewVectorSamples({ fingerprint,
+      datasetId: refs[0].datasetId, components, selection: { kind: "slice",
+        normalAxis: region.normalAxis,
+        fixedIndex: scientificCoordinateIndex({ ...refs[0].axes[region.normalAxis]!,
+          count: refs[0].shape[region.normalAxis]! }, region.fixedCoordinate) } });
+    const scientific = { manifestJson, fingerprint, samples };
+    const slice = sampleVectorField3DSparseSlice(document, region.normalAxis,
+      region.fixedCoordinate, scientific);
+    return { ...sampleVerifiedVectorRegion(document, slice, speedRegion,
+      sampleSliceOverlayVectorPlane(document, slice, scientific)),
+      samples: samples.components.map(part => ({ name: part.name,
+        sampleSha256: part.sampleSha256 })) };
+  } finally { await bridge.closeGraphDataset(fingerprint); }
 }

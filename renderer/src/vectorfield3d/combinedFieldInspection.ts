@@ -141,7 +141,8 @@ export function sampleVerifiedComplexRegion(region: VectorField3DOverlayRegion,
 /** Vector-only summary, so changed scalar or complex sources cannot hide valid vector values. */
 export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   slice: VectorField3DSliceArtifact, region: VectorField3DOverlayRegion,
-  plane: VectorSliceOverlayPlane): Readonly<{ statistics: FieldStatistics; unit: string }> {
+  plane: VectorSliceOverlayPlane): Readonly<{ statistics: FieldStatistics; unit: string;
+    rows: readonly Graph2DPointRow[] }> {
   if (region.normalAxis !== slice.normalAxis ||
       Math.abs(region.fixedCoordinate - slice.fixedCoordinate) > 1e-9 ||
       plane.sourceStructuralHash !== document.identity.structuralHash ||
@@ -152,8 +153,9 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   if (index === null && plane.units.some(unit => unit !== plane.units[0]))
     throw new TypeError("Vector component units differ; speed cannot be combined.");
   const values: number[] = [];
+  const columns: number[][] = Array.from({ length: 17 }, () => []);
   const [nx, ny] = slice.shape;
-  for (const point of regionPoints(region)) {
+  for (const [sampleIndex, point] of regionPoints(region).entries()) {
     const local = slice.planeAxes.map(axis => point[axis]);
     const positions = local.map((value, axis) => {
       const coordinates = slice.coordinates[axis]!;
@@ -178,11 +180,18 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
     });
     const value = index === null ? sampled.every(item => item !== null) ?
       Math.hypot(...sampled as number[]) : null : sampled[index];
-    if (value !== null && value !== undefined && Number.isFinite(value)) values.push(value);
+    if (value !== null && value !== undefined && Number.isFinite(value)) {
+      values.push(value);
+      columns[Math.floor(sampleIndex / 17)]!.push(value);
+    }
   }
   if (plane.components.some(values => values.length !== nx * ny))
     throw new TypeError("Verified vector plane has an unexpected sample count.");
-  return { statistics: statistics(values), unit: plane.units[index ?? 0]! };
+  return { statistics: statistics(values), unit: plane.units[index ?? 0]!,
+    rows: columns.map((column, i) => ({ id: `row_${i + 1}`,
+      x: region.bounds[0][0] + (region.bounds[0][1] - region.bounds[0][0]) * i / 16,
+      y: column.length ? column.reduce((sum, value) => sum + value, 0) /
+        column.length : null })) };
 }
 
 export type CombinedRegionSeries = "vector" | "scalar" | "complex-magnitude" | "complex-phase";

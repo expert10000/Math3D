@@ -14,6 +14,7 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   createCombinedVectorField3DRegionResult,
   createCombinedVectorField3DRegionResultWithDivergence,
   createCombinedVectorField3DRegionResultWithCurl,
+  createVectorDerivedRegionResult,
   validGraph2DLinkedOverlayOrigin,
   vectorField3DRegionResultRelation, createMixedWorkspaceDocument,
   createMath3DProject, parseMath3DProject, serializeMath3DProject,
@@ -37,8 +38,11 @@ import { checkCombinedRegionGraphSeries, linkedCombinedRegionGraphs,
   linkedCombinedRegionGraphsWithCurl,
   createCombinedRegionVerificationSession,
   validateCombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
-import { curlMagnitudeRegionProfile, divergenceRegionProfile } from
+import { curlMagnitudeRegionProfile, divergenceRegionProfile,
+  verifiedCombinedDerivedRegionProfiles, verifiedVectorRegionProfile } from
   "./derivedCombinedRegionProfile";
+import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
+  validateVectorDerivedRegionGraphGroup } from "./linkedVectorDerivedRegionGraphs";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
@@ -834,6 +838,82 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       .toEqual([result]);
     expect(serializeMath3DProject(project)).not.toContain('"values"');
   }, 15_000);
+
+  it("publishes and plots a vector-only physical rectangle on all three planes", async () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const region = { normalAxis, fixedCoordinate: 0,
+        bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+        visible: true };
+      const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+        selectedLayer: ({ 2: "xy", 1: "xz", 0: "yz" } as const)[normalAxis],
+        overlayRegion: region, scalarOverlay: null, complexOverlay: null });
+      const speed = await verifiedVectorRegionProfile(document, region);
+      const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+      expect(speed.statistics.count).toBe(289);
+      expect(speed.rows).toHaveLength(17);
+      expect(derived.divergence.unit).toBe("1/s");
+      expect(derived.curlMagnitude.unit).toBe("1/s");
+      const compact = (profile: typeof derived.divergence) => ({
+        count: profile.count, gaps: profile.gaps, mean: profile.mean,
+        min: profile.min, max: profile.max });
+      const summary = { sampleCount: 289 as const, vector: speed.statistics,
+        divergence: compact(derived.divergence),
+        curlMagnitude: compact(derived.curlMagnitude), vectorUnit: speed.unit,
+        divergenceUnit: derived.divergence.unit,
+        curlMagnitudeUnit: derived.curlMagnitude.unit };
+      const result = createVectorDerivedRegionResult(document, region, summary,
+        speed.samples, derived.samples);
+      expect(result.summary).toEqual(summary);
+      expect(await checkSavedRegionResultSources(result, document, undefined)).toEqual({
+        kind: "vector-derived", vector: "source-current",
+        divergence: "source-current", curlMagnitude: "source-current" });
+      const group = linkedVectorDerivedRegionGraphs(document, region, speed, derived);
+      expect(group.map(item => item.origin.series)).toEqual([
+        "vector", "divergence", "curl-magnitude"]);
+      validateVectorDerivedRegionGraphGroup(group.map(item => item.origin),
+        group.map(item => item.rows));
+      expect(await Promise.all(group.map(item =>
+        checkVectorDerivedRegionGraphSeries(item.origin)))).toEqual([
+        "current", "current", "current"]);
+      const wrongCurl = createVectorDerivedRegionResult(document, region,
+        { ...summary, curlMagnitude: { count: 289, gaps: 0,
+          mean: 3, min: 3, max: 3 } }, speed.samples, derived.samples);
+      expect(await checkSavedRegionResultSources(wrongCurl, document, undefined)).toEqual({
+        kind: "vector-derived", vector: "source-current",
+        divergence: "source-current", curlMagnitude: "changed" });
+      expect(() => validateVectorDerivedRegionGraphGroup(group.map(item => item.origin),
+        group.map((item, index) => index === 2 ? item.rows.map((row, column) =>
+          column === 8 ? { ...row, y: 42 } : row) : item.rows))).toThrow();
+      const store = new Graph2DPointTableStore();
+      const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("vector-derived"),
+        { type: "create-point-series-group", drafts: group.map((item, index) => ({
+          label: item.label, table: store.publish(item.rows), mode: "line" as const,
+          domain: item.domain, linkedOrigin: item.origin,
+          style: { color: ["#fde047", "#38bdf8", "#fb7185"][index]!,
+            lineWidth: 2, lineStyle: "solid" as const, visible: true } })) });
+      expect(graph.source.objects).toHaveLength(3);
+      const project = createMath3DProject(createMixedWorkspaceDocument({
+        entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
+          replay: null }], activeDocumentIds: [document.identity.id],
+        constructions: [], results: [result],
+        relations: [vectorField3DRegionResultRelation(result)], artifacts: [],
+        committedSelection: null }), { stableKey: `vector-derived-${normalAxis}` });
+      expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
+        .toEqual([result]);
+      expect(serializeMath3DProject(project)).not.toContain('"values"');
+      if (normalAxis === 2) {
+        const wide = { ...region, bounds: [[-6, 6], [-1, 1]] as const };
+        const wideDocument = reviseVectorField3DWorkspace(document,
+          { ...document.workspace!, overlayRegion: wide });
+        const wideSpeed = await verifiedVectorRegionProfile(wideDocument, wide);
+        const wideDerived = await verifiedCombinedDerivedRegionProfiles(wideDocument, wide);
+        expect(wideSpeed.statistics.gaps).toBeGreaterThan(0);
+        expect(wideSpeed.rows[0]!.y).toBeNull();
+        expect(wideDerived.divergence.gaps).toBeGreaterThan(0);
+        expect(wideDerived.curlMagnitude.rows[0]!.y).toBeNull();
+      }
+    }
+  }, 20_000);
 
   it("sends aligned region column means to Graphs and reverifies both saved series", async () => {
     for (const normalAxis of [2, 1, 0] as const) {

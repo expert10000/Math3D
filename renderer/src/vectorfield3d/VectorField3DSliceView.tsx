@@ -36,6 +36,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
   onSendCombinedRegionToGraphs, onPublishCombinedRegion, onFocusRegionInGraphs,
+  onSendVectorDerivedToGraphs, onPublishVectorDerivedRegion,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
@@ -86,6 +87,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => Promise<void>;
+  onSendVectorDerivedToGraphs?: (region: VectorField3DOverlayRegion) => Promise<void>;
+  onPublishVectorDerivedRegion?: (region: VectorField3DOverlayRegion) => Promise<void>;
   onFocusRegionInGraphs?: (region: VectorField3DOverlayRegion,
     physical: Graph2DLinkedRegionSelection["physical"]) => Promise<void>;
   regionBusy?: boolean;
@@ -243,8 +246,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             String(cause))).finally(() => setGraphSelectionBusy(false));
           return;
         }
-        if (regionSelecting && onOverlayRegionChange &&
-            (document.workspace?.scalarOverlay?.visible || document.workspace?.complexOverlay?.visible)) {
+        if (regionSelecting && onOverlayRegionChange) {
           const transform = event.currentTarget.getScreenCTM();
           const local = transform ? new DOMPoint(event.clientX, event.clientY)
             .matrixTransform(transform.inverse()) : null;
@@ -257,7 +259,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           if (bounds.some(([low, high]) => high - low < 1e-10)) return;
           onOverlayRegionChange({ normalAxis: slice.normalAxis,
             fixedCoordinate: slice.fixedCoordinate, bounds,
-            vectorChannel: overlayRegion?.vectorChannel ?? "speed", visible: true });
+            vectorChannel: document.workspace?.scalarOverlay?.visible ||
+              document.workspace?.complexOverlay?.visible ?
+              overlayRegion?.vectorChannel ?? "speed" : "speed", visible: true });
           setRegionFirstCorner(null); setRegionSelecting(false);
           return;
         }
@@ -290,8 +294,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
             if (!onProbeSelect || seedPlacementActive || graphSelectionMode ||
-                (regionSelecting && (document.workspace?.scalarOverlay?.visible ||
-                  document.workspace?.complexOverlay?.visible))) return;
+                regionSelecting) return;
             const point = [0, 0, 0] as [number, number, number];
             point[slice.normalAxis] = slice.fixedCoordinate;
             point[first] = slice.coordinates[0][x]!;
@@ -479,6 +482,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       onSendToGraphs={onSendRegionToGraphs}
       onSendCombinedToGraphs={onSendCombinedRegionToGraphs} regionBusy={regionBusy}
       onPublishCombined={onPublishCombinedRegion}
+      onSendVectorDerivedToGraphs={onSendVectorDerivedToGraphs}
+      onPublishVectorDerived={onPublishVectorDerivedRegion}
       graphSelectionMode={graphSelectionMode} graphSelectionFirstX={graphSelectionFirstX}
       graphSelectionBusy={graphSelectionBusy} graphSelectionError={graphSelectionError}
       onGraphSelectionMode={onFocusRegionInGraphs ? mode => {

@@ -185,8 +185,19 @@ export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
   imaginarySampleSha256: string; rowsSha256: string;
   derivedSamples?: readonly Readonly<{ name: string; sampleSha256: string }>[];
 }>;
+export type Graph2DLinkedVectorRegionOrigin = Readonly<{
+  kind: "vector-derived-linked-region/v1";
+  pairId: string; series: "vector" | "divergence" | "curl-magnitude";
+  vectorDocumentJson: string; region: VectorField3DOverlayRegion;
+  xName: string; xUnit: string; yUnit: string;
+  vectorSourceHash: string; vectorSamples: readonly Readonly<{
+    name: string; sampleSha256: string }>[];
+  derivedSamples: readonly Readonly<{ name: string; sampleSha256: string }>[];
+  rowsSha256: string;
+}>;
 export type Graph2DLinkedOverlayOrigin = Graph2DLinkedLineOrigin |
-  Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin;
+  Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin |
+  Graph2DLinkedVectorRegionOrigin;
 export type Graph2DPointSeriesObject = Readonly<{
   id: string;
   kind: "point-series";
@@ -500,6 +511,41 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
   catch { return false; }
 };
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
+  if (record(value) && value.kind === "vector-derived-linked-region/v1") {
+    if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
+      "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
+      "derivedSamples", "rowsSha256"]) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.pairId)) ||
+      !["vector", "divergence", "curl-magnitude"].includes(String(value.series)) ||
+      typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
+      !record(value.region) || !exact(value.region, ["normalAxis", "fixedCoordinate",
+        "bounds", "vectorChannel", "visible"]) ||
+      ![0, 1, 2].includes(value.region.normalAxis as number) ||
+      !finite(value.region.fixedCoordinate) || value.region.vectorChannel !== "speed" ||
+      value.region.visible !== true || !Array.isArray(value.region.bounds) ||
+      value.region.bounds.length !== 2 || !value.region.bounds.every((bounds: unknown) =>
+        Array.isArray(bounds) && bounds.length === 2 && bounds.every(finite) &&
+        bounds[1] > bounds[0]) ||
+      !bounded(value.xName, 160) || !bounded(value.xUnit, 80) ||
+      !bounded(value.yUnit, 80) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.vectorSourceHash)) ||
+      !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256)) ||
+      !Array.isArray(value.vectorSamples) || !Array.isArray(value.derivedSamples) ||
+      ![value.vectorSamples, value.derivedSamples].every(samples =>
+        Array.isArray(samples) && [0, 3].includes(samples.length) &&
+        samples.every((part: unknown) => record(part) &&
+          exact(part, ["name", "sampleSha256"]) && bounded(part.name, 64) &&
+          /^[a-f0-9]{64}$/.test(String(part.sampleSha256))))) return false;
+    try {
+      const document = parseVectorField3DDocument(value.vectorDocumentJson);
+      return document.identity.structuralHash === value.vectorSourceHash &&
+        canonicalJsonStringify(document.workspace?.overlayRegion) ===
+          canonicalJsonStringify(value.region) &&
+        (document.source.field.kind === "scientific-bundle" ?
+          value.vectorSamples.length === 3 && value.derivedSamples.length === 3 :
+          value.vectorSamples.length === 0 && value.derivedSamples.length === 0);
+    } catch { return false; }
+  }
   if (record(value) && (value.kind === "vector-scalar-complex-linked-region/v2" ||
       value.kind === "vector-scalar-complex-divergence-linked-region/v3" ||
       value.kind === "vector-scalar-complex-curl-linked-region/v4")) {

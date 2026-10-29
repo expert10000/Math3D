@@ -13,12 +13,15 @@ import type { Graph2DLinkedRegionSelection } from "@math3d/core";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 import { sampleCombinedRegion, type CombinedRegionInspection } from
   "./combinedFieldInspection";
+import { VectorDerivedRegionView } from "./VectorDerivedRegionView";
+import { VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE } from "@math3d/core";
 
 export function OverlayRegionView({ document, slice, region, vectorPlane, scalarVolume,
   complexVolumes, vectorSamples, status, vectorStatus = "", scalarStatus = "", complexStatus = "",
   onChange, onStartSelection, selecting,
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
   onSendCombinedToGraphs, onPublishCombined,
+  onSendVectorDerivedToGraphs, onPublishVectorDerived,
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
   graphSelectionFirstX = null, graphSelectionBusy = false, graphSelectionError = "",
   onGraphSelectionMode }: {
@@ -47,6 +50,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => Promise<void>;
+  onSendVectorDerivedToGraphs?: (region: VectorField3DOverlayRegion) => Promise<void>;
+  onPublishVectorDerived?: (region: VectorField3DOverlayRegion) => Promise<void>;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
@@ -63,7 +68,18 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         "phase" : document.workspace.complexOverlay.mode) as "phase" | "magnitude" } : null;
   const secondaryComplex = scalar && document.workspace?.complexOverlay?.visible ?
     document.workspace.complexOverlay : null;
-  if (!scalar && !complex) return null;
+  if (!scalar && !complex) {
+    const saved = [...savedResults].reverse().find(result =>
+      result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE &&
+      result.provenance.source.documentId === document.identity.id && region &&
+      canonicalJsonStringify(result.provenance.operation.parameters.region) ===
+        canonicalJsonStringify(region));
+    return <VectorDerivedRegionView document={document} slice={slice} region={region}
+      onChange={onChange} onStartSelection={onStartSelection} selecting={selecting}
+      busy={regionBusy} onPublish={onPublishVectorDerived}
+      onSendToGraphs={onSendVectorDerivedToGraphs}
+      savedStatus={saved ? resultStatuses[saved.resultId] ?? "checking" : undefined} />;
+  }
   const selected = region?.normalAxis === slice.normalAxis &&
     Math.abs(region.fixedCoordinate - slice.fixedCoordinate) < 1e-9;
   let summary: ReturnType<typeof sampleOverlayRegion> | null = null;
@@ -109,7 +125,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   let savedStatus = "";
   if (saved) {
     const sourceStatus = resultStatuses[saved.resultId] ?? "checking";
-    if (typeof sourceStatus === "object") savedStatus =
+    if (typeof sourceStatus === "object" && sourceStatus.kind === "combined") savedStatus =
       `Saved Project region: vector ${sourceStatus.vector}, scalar ${
         sourceStatus.scalar}, complex ${sourceStatus.complex}${sourceStatus.divergence ?
           `, divergence ${sourceStatus.divergence}` : ""}${sourceStatus.curlMagnitude ?
