@@ -1,7 +1,7 @@
 import { parseVectorField3DDocument, structuralHash,
   type Graph2DLinkedCombinedRegionOrigin, type Graph2DLinkedRegionOrigin,
   type Graph2DPointRow, type VectorField3DOverlayRegion } from "@math3d/core";
-import { combinedRegionSeries, validateCombinedRegionGraphGroup } from
+import { seriesForCombinedRegion, validateCombinedRegionGraphGroup } from
   "./linkedCombinedRegionGraphs";
 import type { CombinedRegionSeries } from "./combinedFieldInspection";
 
@@ -18,7 +18,8 @@ export type LinkedRegionGraphFocus = Readonly<{
   overlayUnit: string;
   vectorGaps: number;
   overlayGaps: number;
-  combined?: readonly Readonly<{ series: CombinedRegionSeries; unit: string; gaps: number }>[];
+  combined?: readonly Readonly<{ series: CombinedRegionSeries | "divergence";
+    unit: string; gaps: number; values: readonly (number | null)[] }>[];
 }>;
 
 type Selection = Readonly<{ kind: "point"; x: number }> |
@@ -70,14 +71,16 @@ export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin |
     overlayGaps: overlayRows.slice(first, last + 1).filter(row => row.y === null).length };
 }
 
-/** A four-field selection uses one checked physical lattice and keeps each gap count separate. */
+/** Combined selections use one checked physical lattice and keep each gap count separate. */
 export function linkedCombinedRegionGraphFocus(
   origins: readonly Graph2DLinkedCombinedRegionOrigin[],
   rows: readonly (readonly Graph2DPointRow[])[], selection: Selection): LinkedRegionGraphFocus {
   validateCombinedRegionGraphGroup(origins, rows);
   const focus = linkedRegionGraphFocus(origins[0]!, origins[1]!, rows[0]!, rows[1]!, selection);
-  return { ...focus, combined: combinedRegionSeries.map((series, index) => ({
-    series, unit: origins[index]!.yUnit,
+  return { ...focus, combined: seriesForCombinedRegion(origins[0]!.kind).map((series, index) => ({
+    series: series as CombinedRegionSeries | "divergence", unit: origins[index]!.yUnit,
     gaps: rows[index]!.slice(focus.columns[0], focus.columns[1] + 1)
-      .filter(row => row.y === null).length })) };
+      .filter(row => row.y === null).length,
+    values: rows[index]!.slice(focus.columns[0], focus.columns[1] + 1)
+      .map(row => row.y) })) };
 }

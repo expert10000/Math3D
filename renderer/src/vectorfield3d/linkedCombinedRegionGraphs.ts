@@ -10,12 +10,21 @@ import type { LinkedOverlayGraphSeries } from "./linkedOverlayGraphPair";
 
 export type CombinedRegionGraphSeries = LinkedOverlayGraphSeries<Graph2DLinkedCombinedRegionOrigin>;
 export type CombinedRegionGraphGroup = readonly [CombinedRegionGraphSeries,
-  CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries];
+  CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries] |
+  readonly [CombinedRegionGraphSeries, CombinedRegionGraphSeries, CombinedRegionGraphSeries,
+    CombinedRegionGraphSeries, CombinedRegionGraphSeries];
 type Digest = Readonly<{ name: string; sampleSha256: string }>;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>, "checkGraphDatasetReference">;
 export type CombinedGraphSourceStatus = "current" | "missing" | "changed" | "error";
 export const combinedRegionSeries: readonly CombinedRegionSeries[] = ["vector", "scalar",
   "complex-magnitude", "complex-phase"];
+export const combinedDivergenceRegionSeries = [...combinedRegionSeries, "divergence"] as const;
+export const isCombinedRegionKind = (kind: string): kind is Graph2DLinkedCombinedRegionOrigin["kind"] =>
+  kind === "vector-scalar-complex-linked-region/v2" ||
+  kind === "vector-scalar-complex-divergence-linked-region/v3";
+export const seriesForCombinedRegion = (kind: string): readonly string[] =>
+  kind === "vector-scalar-complex-divergence-linked-region/v3" ?
+    combinedDivergenceRegionSeries : combinedRegionSeries;
 
 /** Four plots share physical columns, while each field retains its own gaps and unit. */
 export function linkedCombinedRegionGraphs(document: VectorField3DDocument,
@@ -63,16 +72,44 @@ export function linkedCombinedRegionGraphs(document: VectorField3DDocument,
   }) as unknown as CombinedRegionGraphGroup;
 }
 
+/** A new saved format keeps the original four-plot Project format readable. */
+export function linkedCombinedRegionGraphsWithDivergence(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, inspection: CombinedRegionInspection,
+  vectorSamples: readonly Digest[], scalarSampleSha256: string,
+  realSampleSha256: string, imaginarySampleSha256: string,
+  derived: Readonly<{ rows: readonly Graph2DPointRow[]; unit: string;
+    samples: readonly Digest[] }>): CombinedRegionGraphGroup {
+  const original = linkedCombinedRegionGraphs(document, region, inspection, vectorSamples,
+    scalarSampleSha256, realSampleSha256, imaginarySampleSha256);
+  if (derived.rows.length !== 17 || !derived.unit ||
+      derived.samples.length !== (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+      derived.samples.some(item => !/^[a-f0-9]{64}$/.test(item.sampleSha256)) ||
+      derived.rows.some((row, index) => row.x !== original[0].rows[index]?.x ||
+        row.y !== null && !Number.isFinite(row.y)))
+    throw new TypeError("Divergence does not align with the verified physical rectangle.");
+  const pairId = structuralHash({ v: 3, prior: original[0].origin.pairId,
+    derivedSamples: derived.samples, derivedRows: derived.rows });
+  const four = original.map(item => ({ ...item, origin: {
+    ...item.origin, kind: "vector-scalar-complex-divergence-linked-region/v3" as const,
+    pairId, derivedSamples: derived.samples } }));
+  const fifth: CombinedRegionGraphSeries = { label: "Vector divergence region mean",
+    rows: derived.rows, domain: graph2DPointDomain(derived.rows),
+    origin: { ...four[0]!.origin, series: "divergence", yUnit: derived.unit,
+      rowsSha256: structuralHash(derived.rows) } };
+  return [...four, fifth] as CombinedRegionGraphGroup;
+}
+
 /** Check a single plot's pinned source. Other plots can remain visible on failure. */
 export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombinedRegionOrigin,
   bridge: Bridge | undefined = typeof window === "undefined" ? undefined :
     window.scientificScenes): Promise<CombinedGraphSourceStatus> {
   if (!validGraph2DLinkedOverlayOrigin(origin) ||
-      origin.kind !== "vector-scalar-complex-linked-region/v2" ||
+      !isCombinedRegionKind(origin.kind) ||
       !bridge?.checkGraphDatasetReference) return "error";
   const document = parseVectorField3DDocument(origin.vectorDocumentJson);
   if (document.identity.structuralHash !== origin.vectorSourceHash) return "changed";
-  const references: readonly Graph2DFieldReference[] = origin.series === "vector" ?
+  const references: readonly Graph2DFieldReference[] = origin.series === "vector" ||
+    origin.series === "divergence" ?
     document.source.field.kind === "scientific-bundle" ?
       document.source.field.references : [] :
     origin.series === "scalar" ? [origin.scalarReference] :
@@ -98,10 +135,11 @@ export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombin
 /** Protect group membership and saved rows without requiring all fields to verify. */
 export function validateCombinedRegionGraphGroup(origins: readonly Graph2DLinkedCombinedRegionOrigin[],
   rows: readonly (readonly Graph2DPointRow[])[]): void {
-  if (origins.length !== 4 || rows.length !== 4 ||
-      combinedRegionSeries.some((series, index) => origins[index]?.series !== series) ||
+  const expected = seriesForCombinedRegion(origins[0]?.kind ?? "");
+  if (origins.length !== expected.length || rows.length !== expected.length ||
+      expected.some((series, index) => origins[index]?.series !== series) ||
       origins.some(origin => !validGraph2DLinkedOverlayOrigin(origin) ||
-        origin.kind !== "vector-scalar-complex-linked-region/v2" ||
+        !isCombinedRegionKind(origin.kind) || origin.kind !== origins[0]!.kind ||
         origin.pairId !== origins[0]!.pairId ||
         canonicalJsonStringify({ ...origin, series: "", yUnit: "", rowsSha256: "" }) !==
           canonicalJsonStringify({ ...origins[0]!, series: "", yUnit: "", rowsSha256: "" })) ||

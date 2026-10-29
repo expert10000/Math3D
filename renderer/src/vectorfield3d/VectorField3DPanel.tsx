@@ -66,8 +66,9 @@ import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphs, checkCombinedRegionGraphSeries,
+import { linkedCombinedRegionGraphsWithDivergence, checkCombinedRegionGraphSeries,
   type CombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
+import { verifiedDivergenceRegionProfile } from "./derivedCombinedRegionProfile";
 import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
@@ -1181,14 +1182,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setLineBusy(true); setError("");
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
-      const group = linkedCombinedRegionGraphs(document, region, inspection,
-        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256);
+      const derived = await verifiedDivergenceRegionProfile(document, region);
+      const group = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
+        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256, derived);
       const statuses = await Promise.all(group.map(series =>
         checkCombinedRegionGraphSeries(series.origin)));
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Combined region source checks: ${statuses.join(", ")}.`);
       onAddLinkedOverlayLine(group);
-      setRunStatus("Sent vector speed, scalar Q, complex magnitude and phase profiles to Graphs.");
+      setRunStatus("Sent vector speed, scalar Q, complex magnitude, phase and divergence profiles to Graphs.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
@@ -1758,6 +1760,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         and phase φ = 1.3x + 0.8y + 0.65z + 0.25 sin(y). Numerically, on z = 0,
         |f| = exp(−Q/18), but Q alone does not determine the phase.
         Field Explorer aligns and verifies the sources; it does not calculate one from the other.</p>
+      <p>A selected rectangle can send five aligned column means to Graphs. The fifth,
+        divergence, measures local spreading of the vector field in 1/s; it is derived
+        from verified neighboring vector samples, not from Q or Complex wave. Empty
+        source coverage stays a gap, and Project reopen checks the pinned sources again.</p>
     </details>
     {seedProgress && <label role="status">Trajectory seeds {seedProgress.completed}/{seedProgress.total}
       <progress aria-label="Trajectory seed progress" value={seedProgress.completed}

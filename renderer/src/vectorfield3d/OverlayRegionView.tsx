@@ -147,29 +147,31 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     </p>}
     {selected && linkedRegionFocus?.combined && <div
       data-testid="scientific-combined-region-graph-focus">
-      <h5>Shared Graphs selection across four verified fields</h5>
+      <h5>Shared Graphs selection across {linkedRegionFocus.combined.length} verified profiles</h5>
       {combined ? <ul>{linkedRegionFocus.combined.map(item => {
-        const rows = combined.profiles[item.series].slice(
+        const rows = item.series === "divergence" ? item.values.map((value, index) => ({
+          id: `checked_${index}`, x: 0, y: value })) : combined.profiles[item.series].slice(
           linkedRegionFocus.columns[0], linkedRegionFocus.columns[1] + 1);
         const gaps = rows.filter(row => row.y === null).length;
         return <li key={item.series} data-series={item.series}>{item.series}: {
           gaps === item.gaps ? `${rows.length - gaps}/${rows.length} columns available ` +
-            `(${gaps} gaps), ${item.unit}` :
+            `(${gaps} gaps), ${item.unit}${item.series === "divergence" ?
+              " (checked saved profile)" : ""}` :
             "withheld: recomputed gaps differ from the checked Graphs profile"}{
           gaps === item.gaps && rows.length === 1 && rows[0]!.y !== null ?
             `; value ${format(rows[0]!.y!)} ${item.unit}` : ""}.</li>;
-      })}</ul> : <p role="alert">Four-field selection values withheld until the vector,
+      })}</ul> : <p role="alert">Shared selection values withheld until the vector,
         scalar, and both complex components verify. {combinedError}</p>}
     </div>}
     {selected && secondaryComplex && onGraphSelectionMode && <div
       data-testid="scientific-region-to-graphs-selection">
-      <p>Choose a physical column or strip inside this rectangle to focus the four saved Graphs profiles.</p>
+      <p>Choose a physical column or strip inside this rectangle to focus the saved Graphs profiles.</p>
       <button type="button" aria-pressed={graphSelectionMode === "point"}
         disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("point")}>Select Graphs column</button>
       <button type="button" aria-pressed={graphSelectionMode === "interval"}
         disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("interval")}>Select Graphs strip</button>
       {graphSelectionMode && <button type="button" onClick={() => onGraphSelectionMode(null)}>Cancel selection</button>}
-      {graphSelectionMode && <p role="status">{graphSelectionBusy ? "Verifying four sources…" :
+      {graphSelectionMode && <p role="status">{graphSelectionBusy ? "Verifying linked sources…" :
         graphSelectionMode === "point" ? "Click once inside the rectangle." :
           graphSelectionFirstX === null ? "Click the first strip edge inside the rectangle." :
             `First strip edge: ${format(graphSelectionFirstX)} ${units[0]}. Click the second edge.`}</p>}
@@ -248,7 +250,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
             vectorSamples, scalarVolume.sampleSha256,
             complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256)}>
-          {regionBusy ? "Verifying region…" : "Send four aligned profiles to Graphs"}
+          {regionBusy ? "Verifying region…" : "Send five aligned profiles to Graphs (including divergence)"}
         </button>}
       {onSendToGraphs && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="send-linked-region-to-graphs" disabled={regionBusy}

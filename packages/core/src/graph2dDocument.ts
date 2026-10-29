@@ -171,8 +171,8 @@ export type Graph2DLinkedRegionOrigin =
     mode: "magnitude" | "phase";
     realSampleSha256: string; imaginarySampleSha256: string }>);
 export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
-  kind: "vector-scalar-complex-linked-region/v2";
-  pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase";
+  kind: "vector-scalar-complex-linked-region/v2" | "vector-scalar-complex-divergence-linked-region/v3";
+  pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase" | "divergence";
   vectorDocumentJson: string; region: VectorField3DOverlayRegion;
   xName: string; xUnit: string; yUnit: string;
   vectorSourceHash: string;
@@ -181,6 +181,7 @@ export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
   realReference: Graph2DFieldReference; imaginaryReference: Graph2DFieldReference;
   scalarSampleSha256: string; realSampleSha256: string;
   imaginarySampleSha256: string; rowsSha256: string;
+  derivedSamples?: readonly Readonly<{ name: string; sampleSha256: string }>[];
 }>;
 export type Graph2DLinkedOverlayOrigin = Graph2DLinkedLineOrigin |
   Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin;
@@ -497,13 +498,17 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
   catch { return false; }
 };
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
-  if (record(value) && value.kind === "vector-scalar-complex-linked-region/v2") {
+  if (record(value) && (value.kind === "vector-scalar-complex-linked-region/v2" ||
+      value.kind === "vector-scalar-complex-divergence-linked-region/v3")) {
+    const derived = value.kind === "vector-scalar-complex-divergence-linked-region/v3";
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
       "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
       "scalarReference", "realReference", "imaginaryReference",
-      "scalarSampleSha256", "realSampleSha256", "imaginarySampleSha256", "rowsSha256"]) ||
+      "scalarSampleSha256", "realSampleSha256", "imaginarySampleSha256", "rowsSha256",
+      ...(derived ? ["derivedSamples"] : [])]) ||
       typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
-      !["vector", "scalar", "complex-magnitude", "complex-phase"].includes(String(value.series)) ||
+      !(derived ? ["vector", "scalar", "complex-magnitude", "complex-phase", "divergence"] :
+        ["vector", "scalar", "complex-magnitude", "complex-phase"]).includes(String(value.series)) ||
       typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
       !isGraph2DFieldReference(value.scalarReference) ||
       value.scalarReference.semanticType !== "scalar-field" ||
@@ -530,6 +535,11 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
       !value.vectorSamples.every((part: unknown) => record(part) &&
         exact(part, ["name", "sampleSha256"]) && bounded(part.name, 64) &&
         /^[a-f0-9]{64}$/.test(String(part.sampleSha256))) ||
+      derived && (!Array.isArray(value.derivedSamples) ||
+        ![0, 3].includes(value.derivedSamples.length) ||
+        !value.derivedSamples.every((part: unknown) => record(part) &&
+          exact(part, ["name", "sampleSha256"]) && bounded(part.name, 64) &&
+          /^[a-f0-9]{64}$/.test(String(part.sampleSha256)))) ||
       ![value.scalarSampleSha256, value.realSampleSha256,
         value.imaginarySampleSha256].every(hash => /^[a-f0-9]{64}$/.test(String(hash))) ||
       !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256))) return false;
@@ -543,8 +553,10 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
           canonicalJsonStringify(value.realReference) &&
         canonicalJsonStringify(document.workspace?.complexOverlay?.imaginary) ===
           canonicalJsonStringify(value.imaginaryReference) &&
-        (document.source.field.kind === "expressions" ? value.vectorSamples.length === 0 :
-          value.vectorSamples.length === 3);
+        (document.source.field.kind === "expressions" ? value.vectorSamples.length === 0 &&
+          (!derived || (value.derivedSamples as unknown[]).length === 0) :
+          value.vectorSamples.length === 3 &&
+          (!derived || (value.derivedSamples as unknown[]).length === 3));
     } catch { return false; }
   }
   if (record(value) && ["vector-scalar-linked-region/v1", "vector-complex-linked-region/v1"]
