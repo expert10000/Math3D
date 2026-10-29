@@ -765,17 +765,17 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
           finite(physical.max) && physical.min <= physical.max)) return false;
     const selection = physical as Graph2DLinkedRegionSelection["physical"];
     if (!source.objects.some(object => {
-          if (object.kind !== "point-series" || object.id !== value.objectId ||
-              !object.linkedOrigin || object.linkedOrigin.pairId !== linked.pairId ||
-              !("region" in object.linkedOrigin)) return false;
-          const axis = object.linkedOrigin.kind ===
-            "vector-scalar-complex-linked-region/v2" ?
-              object.linkedOrigin.profileAxis ?? 0 : 0;
-          const [min, max] = object.linkedOrigin.region.bounds[axis];
-          return selection.kind === "point" ?
-            selection.x >= min - 1e-9 && selection.x <= max + 1e-9 :
-            selection.min >= min - 1e-9 && selection.max <= max + 1e-9;
-        })) return false;
+      if (object.kind !== "point-series" || object.id !== value.objectId ||
+          !object.linkedOrigin || object.linkedOrigin.pairId !== linked.pairId ||
+          !("region" in object.linkedOrigin)) return false;
+      const axis = object.linkedOrigin.kind ===
+        "vector-scalar-complex-linked-region/v2" ?
+          object.linkedOrigin.profileAxis ?? 0 : 0;
+      const [min, max] = object.linkedOrigin.region.bounds[axis];
+      return selection.kind === "point" ?
+        selection.x >= min - 1e-9 && selection.x <= max + 1e-9 :
+        selection.min >= min - 1e-9 && selection.max <= max + 1e-9;
+    })) return false;
   }
   if (value.probe === null) return true;
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
