@@ -3,6 +3,17 @@ import type { Graph2DScientificVolume, VectorField3DDocument,
 import { sampleVerifiedComplexRegion, sampleVerifiedScalarRegion,
   sampleVerifiedVectorRegion, type FieldStatistics } from "./combinedFieldInspection";
 import type { VectorSliceOverlayPlane } from "./scientificSliceOverlay";
+import { useEffect, useState } from "react";
+import { verifiedCombinedDerivedRegionProfiles } from "./derivedCombinedRegionProfile";
+
+type DerivedCheck = Readonly<{
+  key: string;
+  document: VectorField3DDocument;
+  region: VectorField3DOverlayRegion;
+  state: "checking" | "current" | "withheld";
+  profiles?: Awaited<ReturnType<typeof verifiedCombinedDerivedRegionProfiles>>;
+  error?: string;
+}>;
 
 const formatStatistics = (values: FieldStatistics, unit: string) =>
   `${values.count}/289 samples (${values.gaps} gaps); ${values.mean === null ?
@@ -20,7 +31,40 @@ export function CombinedOverlayRegionReadout({ document, region, slice = null,
 }) {
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
   const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
+  const selectionKey = JSON.stringify([document.identity.structuralHash,
+    document.source.field, document.source.axes, document.source.timeUnit,
+    region.normalAxis, region.fixedCoordinate, region.bounds]);
+  const [revision, setRevision] = useState(0);
+  const [derivedCheck, setDerivedCheck] = useState<DerivedCheck | null>(null);
+  useEffect(() => {
+    if (!scalar || !complex || !region.visible) return;
+    let active = true;
+    const start = setTimeout(() => {
+      if (!active) return;
+      setDerivedCheck({ key: selectionKey, document, region, state: "checking" });
+      void verifiedCombinedDerivedRegionProfiles(document, region).then(profiles => {
+        if (active) setDerivedCheck({ key: selectionKey, document, region,
+          state: "current", profiles });
+      }).catch(cause => {
+        if (active) setDerivedCheck({ key: selectionKey, document, region,
+          state: "withheld",
+          error: cause instanceof Error ? cause.message : String(cause) });
+      });
+    }, 0);
+    return () => { active = false; clearTimeout(start); };
+  }, [document, region, selectionKey, revision, scalar, complex]);
   if (!scalar || !complex || !region.visible) return null;
+  const currentDerived = derivedCheck?.key === selectionKey &&
+    derivedCheck.document === document && derivedCheck.region === region ?
+    derivedCheck : null;
+  const derivedText = (channel: "divergence" | "curlMagnitude") =>
+    currentDerived?.state === "current" && currentDerived.profiles ?
+      `${formatStatistics(currentDerived.profiles[channel],
+        currentDerived.profiles[channel].unit)}. Verified vector samples ${
+        currentDerived.profiles.samples.map(sample => `${sample.name}: ${
+          sample.sampleSha256}`).join(" · ") || "authored expression"}.` :
+      currentDerived?.state === "withheld" ?
+        `withheld: ${currentDerived.error}` : "Verifying bounded vector stencil…";
   let vectorText = "", scalarText = "", complexText = "";
   try { vectorText = slice && vectorPlane ? (() => {
     const result = sampleVerifiedVectorRegion(document, slice,
@@ -45,13 +89,22 @@ export function CombinedOverlayRegionReadout({ document, region, slice = null,
   })() : complexStatus || "Verifying complex components…"; }
   catch (cause) { complexText = `withheld: ${cause instanceof Error ? cause.message : String(cause)}`; }
   return <div role={[vectorText, scalarText, complexText].some(value =>
-    /withheld|missing|changed/i.test(value)) ? "alert" : "status"}
+    /withheld|missing|changed/i.test(value)) || currentDerived?.state === "withheld" ?
+    "alert" : "status"}
     data-testid="scientific-combined-region-summary">
     <h5>All visible fields on the same 17 × 17 physical grid</h5>
     <p data-testid="scientific-combined-vector-region">Vector speed: {
       vectorText}</p>
     <p data-testid="scientific-combined-scalar-region">{scalar.title}: {scalarText}</p>
     <p data-testid="scientific-combined-complex-region">{complex.title}: {complexText}</p>
+    <p data-testid="scientific-combined-divergence-region">Divergence: {
+      derivedText("divergence")}</p>
+    <p data-testid="scientific-combined-curl-region">Curl magnitude: {
+      derivedText("curlMagnitude")}</p>
+    <button type="button" onClick={() => {
+      setDerivedCheck(null); setRevision(value => value + 1);
+    }}
+      disabled={currentDerived?.state === "checking"}>Recheck derived fields</button>
     <p>Each count has its own coverage gaps. A changed source withholds only its field's
       values; the saved rectangle and source references remain in the Project.</p>
   </div>;

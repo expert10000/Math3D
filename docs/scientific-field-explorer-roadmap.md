@@ -1130,6 +1130,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02/06 curl-magnitude combined region.** The same verified bounded vector stencil now produces both divergence and curl magnitude on the selected 17 × 17 physical rectangle. Publish region stores six compact statistics with a separate `1/s` curl-magnitude count, gaps, mean and range; Graphs receives six aligned 17-column profiles with a separate curl row hash and unit. On Project reopen, both derived statistics and both derived Graphs rows are recalculated from a newly verified transfer and compared with the saved values and sample hashes. A numerical mismatch withholds only the affected derived field, while current scalar and complex values remain available. Versioned four- and five-profile Projects still reopen through their original readers.
 
+**SCI-02/06 live derived rectangle readout.** Field Explorer now shows divergence and curl magnitude directly in the selected combined rectangle before publication. One newly verified bounded vector stencil supplies both 17 × 17 statistics, each with its mean, range, `1/s` unit, sample count and coverage gaps. The readout offers an explicit recheck; a failed vector verification withholds both derived values while independently verified scalar and complex values stay visible. This transient inspection adds no field arrays to the Project.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

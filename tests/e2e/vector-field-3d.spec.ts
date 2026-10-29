@@ -631,6 +631,10 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("Potential");
     await expect(combined.getByTestId("scientific-combined-complex-region"))
       .toContainText("phase");
+    await expect(combined.getByTestId("scientific-combined-divergence-region"))
+      .toContainText(/289\/289 samples \(0 gaps\).*1\/s/, { timeout: 60_000 });
+    await expect(combined.getByTestId("scientific-combined-curl-region"))
+      .toContainText(/289\/289 samples \(0 gaps\).*1\/s/);
     await region.getByTestId("scientific-region-publish").click();
     await expect(region.getByTestId("scientific-region-saved-status"))
       .toContainText("vector source-current, scalar source-current, complex source-current, divergence source-current, curl magnitude source-current");
@@ -834,7 +838,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
 });
 
 test("SCI-02 Burgers six-profile selection withholds a changed source after Project reopen", async () => {
-  test.setTimeout(360_000);
+  test.setTimeout(480_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-four-region-"));
   const burgers = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
@@ -871,6 +875,10 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     await figure.locator('[data-probe-cell="20-20"]').click();
     await expect(figure.getByTestId("scientific-combined-region-summary"))
       .toContainText("magnitude 289/289", { timeout: 60_000 });
+    await expect(figure.getByTestId("scientific-combined-divergence-region"))
+      .toContainText(/289\/289 samples \(0 gaps\).*1\/s/, { timeout: 60_000 });
+    await expect(figure.getByTestId("scientific-combined-curl-region"))
+      .toContainText(/289\/289 samples \(0 gaps\).*1\/s/);
     await region.getByTestId("scientific-region-publish").click();
     await expect(region.getByTestId("scientific-region-saved-status"))
       .toContainText("divergence source-current, curl magnitude source-current",
@@ -900,7 +908,14 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
-    if (await explorer.isVisible()) await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    if (await explorer.isVisible()) {
+      await expect(explorer.getByTestId("scientific-combined-divergence-region"))
+        .toContainText("1/s", { timeout: 90_000 });
+      await expect(explorer.getByTestId("scientific-combined-curl-region"))
+        .toContainText("1/s");
+      await explorer.getByRole("button", { name: "Back to Graphs" })
+        .click({ timeout: 60_000 });
+    }
     if (await projects.isVisible()) await page.getByTestId("projects-toggle").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
@@ -925,6 +940,14 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     if (await explorer.isVisible()) {
       await expect(explorer.getByTestId("scientific-region-saved-status"))
         .toContainText("divergence changed, curl magnitude changed", { timeout: 60_000 });
+      await expect(explorer.getByTestId("scientific-combined-divergence-region"))
+        .toContainText("withheld", { timeout: 60_000 });
+      await expect(explorer.getByTestId("scientific-combined-curl-region"))
+        .toContainText("withheld");
+      await expect(explorer.getByTestId("scientific-combined-scalar-region"))
+        .toContainText("289/289 samples");
+      await expect(explorer.getByTestId("scientific-combined-complex-region"))
+        .toContainText("magnitude 289/289 samples");
       await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     }
     if (await projects.isVisible()) await page.getByTestId("projects-toggle").click();
