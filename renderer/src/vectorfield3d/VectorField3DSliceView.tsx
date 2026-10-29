@@ -80,9 +80,9 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     inspection: CombinedRegionInspection,
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
-    imaginarySampleSha256: string) => void;
+    imaginarySampleSha256: string, profileAxis?: 0 | 1) => void;
   onFocusRegionInGraphs?: (region: VectorField3DOverlayRegion,
-    physical: Graph2DLinkedRegionSelection["physical"]) => Promise<void>;
+    physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1) => Promise<void>;
   regionBusy?: boolean;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
@@ -94,6 +94,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const [regionSelecting, setRegionSelecting] = useState(false);
   const [regionFirstCorner, setRegionFirstCorner] = useState<readonly [number, number, number] | null>(null);
   const [graphSelectionMode, setGraphSelectionMode] = useState<"point" | "interval" | null>(null);
+  const [graphSelectionAxis, setGraphSelectionAxis] = useState<0 | 1>(0);
   const [graphSelectionFirstX, setGraphSelectionFirstX] = useState<number | null>(null);
   const [graphSelectionBusy, setGraphSelectionBusy] = useState(false);
   const [graphSelectionError, setGraphSelectionError] = useState("");
@@ -163,14 +164,21 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     canonicalJsonStringify(linkedRegionFocus.region) === canonicalJsonStringify(overlayRegion) &&
     linkedRegionFocus.region.normalAxis === slice.normalAxis &&
     Math.abs(linkedRegionFocus.region.fixedCoordinate - slice.fixedCoordinate) < 1e-9;
+  const focusAxis = graphFocusMatches ? linkedRegionFocus.profileAxis : 0;
   const focusLow = graphFocusMatches ? Math.max(linkedRegionFocus.xBounds[0],
-    slice.coordinates[0][0]!) : 0;
+    slice.coordinates[focusAxis][0]!) : 0;
   const focusHigh = graphFocusMatches ? Math.min(linkedRegionFocus.xBounds[1],
-    slice.coordinates[0].at(-1)!) : 0;
-  const focusX0 = focusLow < focusHigh ? crosshairCoordinate(slice.coordinates[0],
+    slice.coordinates[focusAxis].at(-1)!) : 0;
+  const focusX0 = focusAxis === 0 && focusLow < focusHigh ? crosshairCoordinate(slice.coordinates[0],
     focusLow, left, cellWidth) : null;
-  const focusX1 = focusLow < focusHigh ? crosshairCoordinate(slice.coordinates[0],
+  const focusX1 = focusAxis === 0 && focusLow < focusHigh ? crosshairCoordinate(slice.coordinates[0],
     focusHigh, left, cellWidth) : null;
+  const focusY0FromBottom = focusAxis === 1 && focusLow < focusHigh ?
+    crosshairCoordinate(slice.coordinates[1], focusLow, 0, cellHeight) : null;
+  const focusY1FromBottom = focusAxis === 1 && focusLow < focusHigh ?
+    crosshairCoordinate(slice.coordinates[1], focusHigh, 0, cellHeight) : null;
+  const focusY0 = focusY0FromBottom === null ? null : top + height - focusY0FromBottom;
+  const focusY1 = focusY1FromBottom === null ? null : top + height - focusY1FromBottom;
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
@@ -223,16 +231,19 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           }
           const physicalX = Math.max(overlayRegion.bounds[0][0],
             Math.min(overlayRegion.bounds[0][1], x));
+          const physicalY = Math.max(overlayRegion.bounds[1][0],
+            Math.min(overlayRegion.bounds[1][1], y));
+          const coordinate = graphSelectionAxis === 0 ? physicalX : physicalY;
           setGraphSelectionError("");
           if (graphSelectionMode === "interval" && graphSelectionFirstX === null) {
-            setGraphSelectionFirstX(physicalX); return;
+            setGraphSelectionFirstX(coordinate); return;
           }
           const physical = graphSelectionMode === "point" ?
-            { kind: "point" as const, x: physicalX } : { kind: "interval" as const,
-              min: Math.min(graphSelectionFirstX!, physicalX),
-              max: Math.max(graphSelectionFirstX!, physicalX) };
+            { kind: "point" as const, x: coordinate } : { kind: "interval" as const,
+              min: Math.min(graphSelectionFirstX!, coordinate),
+              max: Math.max(graphSelectionFirstX!, coordinate) };
           setGraphSelectionBusy(true);
-          void onFocusRegionInGraphs(overlayRegion, physical).then(() => {
+          void onFocusRegionInGraphs(overlayRegion, physical, graphSelectionAxis).then(() => {
             setGraphSelectionMode(null); setGraphSelectionFirstX(null);
           }).catch(cause => setGraphSelectionError(cause instanceof Error ? cause.message :
             String(cause))).finally(() => setGraphSelectionBusy(false));
@@ -345,6 +356,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           y={Math.min(regionMarkers[0][1], regionMarkers[1][1])}
           width={Math.abs(focusX1 - focusX0)}
           height={Math.abs(regionMarkers[1][1] - regionMarkers[0][1])}
+          fill="#facc15" fillOpacity="0.28" stroke="#facc15" strokeWidth="2" />}
+      {scalarOverlay && overlayVectorPlane && regionMarkers?.[0] && regionMarkers?.[1] &&
+        focusY0 !== null && focusY1 !== null && <rect
+          data-testid="scientific-region-graph-focus-row-marker" pointerEvents="none"
+          x={Math.min(regionMarkers[0][0], regionMarkers[1][0])}
+          y={Math.min(focusY0, focusY1)}
+          width={Math.abs(regionMarkers[1][0] - regionMarkers[0][0])}
+          height={Math.abs(focusY1 - focusY0)}
           fill="#facc15" fillOpacity="0.28" stroke="#facc15" strokeWidth="2" />}
       {pendingRegionMarker && regionSelecting && <circle
         data-testid="scientific-overlay-region-first-corner" pointerEvents="none"
@@ -474,9 +493,11 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       onSendToGraphs={onSendRegionToGraphs}
       onSendCombinedToGraphs={onSendCombinedRegionToGraphs} regionBusy={regionBusy}
       graphSelectionMode={graphSelectionMode} graphSelectionFirstX={graphSelectionFirstX}
+      graphSelectionAxis={graphSelectionAxis}
       graphSelectionBusy={graphSelectionBusy} graphSelectionError={graphSelectionError}
-      onGraphSelectionMode={onFocusRegionInGraphs ? mode => {
+      onGraphSelectionMode={onFocusRegionInGraphs ? (mode, axis = 0) => {
         setRegionSelecting(false); setRegionFirstCorner(null);
+        setGraphSelectionAxis(axis);
         setGraphSelectionMode(mode); setGraphSelectionFirstX(null); setGraphSelectionError("");
       } : undefined}
       status={overlayStatus} onChange={onOverlayRegionChange}

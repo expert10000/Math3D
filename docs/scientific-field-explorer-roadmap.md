@@ -1126,6 +1126,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02 Explorer-to-Graphs region selection.** On a combined slice, a user can choose a column with one click or a strip with two clicks inside the saved physical rectangle. Explorer matches that rectangle to its four saved Graphs profiles, checks all four point tables and pinned sources, and focuses the corresponding shared physical columns in Graphs. The selected physical point or interval is saved as Graphs selection metadata, so Project reopen restores the focus only after the sources reverify. Each profile keeps its own units and gaps; a changed Burgers tile withholds the shared highlight.
 
+**SCI-02 combined row profiles.** The same verified 17 × 17 rectangle now also publishes four 17-row means along the second physical slice axis, with distinct Graphs source-linked series for vector speed, scalar value, complex magnitude and complex phase. Each saved series records its axis, physical coordinates, units, explicit gaps, source references, verified sample hashes and point-table hash. Selecting a row or horizontal strip in Explorer focuses the matching four Graphs profiles; selecting a physical row or interval in Graphs highlights the same strip in Explorer. The existing column records remain readable. Project reopen reverifies the pinned sources before restoring a shared row focus, and a changed Burgers source tile withholds it.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

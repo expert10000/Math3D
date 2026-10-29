@@ -21,7 +21,8 @@ export const combinedRegionSeries: readonly CombinedRegionSeries[] = ["vector", 
 export function linkedCombinedRegionGraphs(document: VectorField3DDocument,
   region: VectorField3DOverlayRegion, inspection: CombinedRegionInspection,
   vectorSamples: readonly Digest[], scalarSampleSha256: string,
-  realSampleSha256: string, imaginarySampleSha256: string): CombinedRegionGraphGroup {
+  realSampleSha256: string, imaginarySampleSha256: string,
+  profileAxis: 0 | 1 = 0): CombinedRegionGraphGroup {
   const scalar = document.workspace?.scalarOverlay;
   const complex = document.workspace?.complexOverlay;
   if (!scalar?.visible || !complex?.visible || !region.visible ||
@@ -31,15 +32,18 @@ export function linkedCombinedRegionGraphs(document: VectorField3DDocument,
       [...vectorSamples.map(item => item.sampleSha256), scalarSampleSha256,
         realSampleSha256, imaginarySampleSha256].some(hash => !/^[a-f0-9]{64}$/.test(hash)))
     throw new TypeError("All three verified sources are needed for the combined Graphs profile.");
-  const firstAxis = [0, 1, 2].filter(axis => axis !== region.normalAxis)[0]!;
-  const pairId = structuralHash({ algorithm: "independent-column-mean-17x17/v2",
+  const varyingAxis = [0, 1, 2].filter(axis => axis !== region.normalAxis)[profileAxis]!;
+  const pairId = structuralHash({ algorithm: profileAxis === 1 ?
+    "independent-row-mean-17x17/v2" : "independent-column-mean-17x17/v2",
+    ...(profileAxis === 1 ? { profileAxis } : {}),
     vector: document.source.field, scalar: scalar.reference,
     complex: [complex.real, complex.imaginary], region, vectorSamples,
     scalarSampleSha256, realSampleSha256, imaginarySampleSha256 });
   const common = { kind: "vector-scalar-complex-linked-region/v2" as const,
     pairId, vectorDocumentJson: serializeVectorField3DDocument(document), region,
-    xName: document.source.axes[firstAxis]!.label,
-    xUnit: document.source.axes[firstAxis]!.unit,
+    ...(profileAxis === 1 ? { profileAxis: 1 as const } : {}),
+    xName: document.source.axes[varyingAxis]!.label,
+    xUnit: document.source.axes[varyingAxis]!.unit,
     vectorSourceHash: document.identity.structuralHash, vectorSamples,
     scalarReference: scalar.reference, realReference: complex.real,
     imaginaryReference: complex.imaginary, scalarSampleSha256,
@@ -48,15 +52,17 @@ export function linkedCombinedRegionGraphs(document: VectorField3DDocument,
     scalar: inspection.summary.scalarUnit, "complex-magnitude": inspection.summary.complexUnit,
     "complex-phase": "rad" };
   const labels: Record<CombinedRegionSeries, string> = {
-    vector: "Vector speed region mean", scalar: `${scalar.title} region mean`,
-    "complex-magnitude": `${complex.title} magnitude region mean`,
-    "complex-phase": `${complex.title} phase region mean` };
+    vector: `Vector speed region ${profileAxis === 1 ? "row " : ""}mean`,
+    scalar: `${scalar.title} region ${profileAxis === 1 ? "row " : ""}mean`,
+    "complex-magnitude": `${complex.title} magnitude region ${profileAxis === 1 ? "row " : ""}mean`,
+    "complex-phase": `${complex.title} phase region ${profileAxis === 1 ? "row " : ""}mean` };
   return combinedRegionSeries.map(series => {
-    const rows = inspection.profiles[series];
+    const selectedProfiles = profileAxis === 1 ? inspection.rowProfiles : inspection.profiles;
+    const rows = selectedProfiles[series];
     if (rows.length !== 17 || rows.some((row, index) =>
-      !Number.isFinite(row.x) || row.x !== inspection.profiles.vector[index]?.x ||
+      !Number.isFinite(row.x) || row.x !== selectedProfiles.vector[index]?.x ||
       row.y !== null && !Number.isFinite(row.y)))
-      throw new TypeError("Combined region profile columns are misaligned.");
+      throw new TypeError("Combined region profile positions are misaligned.");
     return { label: labels[series], rows, domain: graph2DPointDomain(rows),
       origin: { ...common, series, yUnit: units[series],
         rowsSha256: structuralHash(rows) } };

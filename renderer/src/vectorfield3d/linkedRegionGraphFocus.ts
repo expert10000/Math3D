@@ -11,6 +11,7 @@ export type LinkedRegionGraphFocus = Readonly<{
   sourceHash: string;
   recipeHash: string;
   region: VectorField3DOverlayRegion;
+  profileAxis: 0 | 1;
   columns: readonly [number, number];
   xBounds: readonly [number, number];
   xUnit: string;
@@ -24,13 +25,15 @@ export type LinkedRegionGraphFocus = Readonly<{
 type Selection = Readonly<{ kind: "point"; x: number }> |
   Readonly<{ kind: "interval"; min: number; max: number }>;
 
-/** Snap a Graphs selection to the exact saved 17-column physical lattice. */
+/** Snap a Graphs selection to the exact saved 17-position physical lattice. */
 export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin |
   Graph2DLinkedCombinedRegionOrigin,
   overlay: Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin,
   vectorRows: readonly Graph2DPointRow[],
   overlayRows: readonly Graph2DPointRow[], selection: Selection): LinkedRegionGraphFocus {
-  const [min, max] = vector.region.bounds[0];
+  const profileAxis = vector.kind === "vector-scalar-complex-linked-region/v2" ?
+    vector.profileAxis ?? 0 : 0;
+  const [min, max] = vector.region.bounds[profileAxis];
   if (vector.series !== "vector" || vector.pairId !== overlay.pairId ||
       vector.kind !== overlay.kind || vectorRows.length !== 17 || overlayRows.length !== 17 ||
       structuralHash(vectorRows) !== vector.rowsSha256 ||
@@ -64,7 +67,7 @@ export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin |
     recipeHash: structuralHash({ scalarOverlay: document.workspace?.scalarOverlay ?? null,
       complexOverlay: document.workspace?.complexOverlay ?? null,
       sliceChannel: document.workspace?.sliceChannel ?? "component" }),
-    region: vector.region, columns: [first, last], xBounds,
+    region: vector.region, profileAxis, columns: [first, last], xBounds,
     xUnit: vector.xUnit, vectorUnit: vector.yUnit, overlayUnit: overlay.yUnit,
     vectorGaps: vectorRows.slice(first, last + 1).filter(row => row.y === null).length,
     overlayGaps: overlayRows.slice(first, last + 1).filter(row => row.y === null).length };

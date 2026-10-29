@@ -124,7 +124,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     LinkedOverlayGraphSeries] | CombinedRegionGraphGroup) => void;
   onFocusRegionInGraphs?: (document: VectorField3DDocument,
     region: VectorField3DOverlayRegion,
-    physical: Graph2DLinkedRegionSelection["physical"]) => Promise<void>;
+    physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1) => Promise<void>;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
@@ -1176,19 +1176,21 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const sendCombinedRegion = async (region: VectorField3DOverlayRegion,
     inspection: CombinedRegionInspection, vectorSamples: readonly OverlaySampleDigest[],
     scalarSampleSha256: string, realSampleSha256: string,
-    imaginarySampleSha256: string) => {
+    imaginarySampleSha256: string, profileAxis: 0 | 1 = 0) => {
     if (lineBusy || busy) return;
     setLineBusy(true); setError("");
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
       const group = linkedCombinedRegionGraphs(document, region, inspection,
-        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256);
+        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
+        profileAxis);
       const statuses = await Promise.all(group.map(series =>
         checkCombinedRegionGraphSeries(series.origin)));
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Combined region source checks: ${statuses.join(", ")}.`);
       onAddLinkedOverlayLine(group);
-      setRunStatus("Sent vector speed, scalar Q, complex magnitude and phase profiles to Graphs.");
+      setRunStatus(`Sent vector speed, scalar Q, complex magnitude and phase ${
+        profileAxis === 1 ? "row " : ""}profiles to Graphs.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }
   };
@@ -2623,8 +2625,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
               onSendRegionToGraphs={sendLinkedRegion}
               onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
-              onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical) =>
-                onFocusRegionInGraphs(document, region, physical) : undefined}
+              onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical, axis) =>
+                onFocusRegionInGraphs(document, region, physical, axis) : undefined}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2663,8 +2665,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
         onSendRegionToGraphs={sendLinkedRegion}
         onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
-        onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical) =>
-          onFocusRegionInGraphs(document, region, physical) : undefined}
+        onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical, axis) =>
+          onFocusRegionInGraphs(document, region, physical, axis) : undefined}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

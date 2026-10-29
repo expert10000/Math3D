@@ -495,6 +495,9 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     // Linear interpolation of the 17-point source grid lifts the quadratic mean.
     expect(inspection.profiles.scalar[8]!.y).toBeCloseTo(7 / 17, 8);
     expect(inspection.profiles["complex-phase"][8]!.y).toBeCloseTo(0, 3);
+    expect(inspection.rowProfiles.vector).toHaveLength(17);
+    expect(inspection.rowProfiles.scalar[8]!.y).toBeCloseTo(7 / 17, 8);
+    expect(inspection.rowProfiles["complex-phase"][8]!.y).toBeCloseTo(0, 3);
     const result = createCombinedVectorField3DRegionResult(document, region,
       inspection.summary, [], scalarVolume.sampleSha256,
       complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256);
@@ -516,6 +519,25 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(group.map(item => item.origin.yUnit)).toEqual(["m/s", "V", "1", "rad"]);
     validateCombinedRegionGraphGroup(group.map(item => item.origin),
       group.map(item => item.rows));
+    const rowGroup = linkedCombinedRegionGraphs(document, region, inspection, [],
+      scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, 1);
+    expect(rowGroup[0].origin.profileAxis).toBe(1);
+    expect(group[0].origin.profileAxis).toBeUndefined();
+    expect(rowGroup[0].origin.pairId).not.toBe(group[0].origin.pairId);
+    expect(rowGroup.map(item => item.origin.xName)).toEqual(["y", "y", "y", "y"]);
+    expect(rowGroup.map(item => item.origin.xUnit)).toEqual(["m", "m", "m", "m"]);
+    expect(rowGroup.map(item => item.origin.yUnit)).toEqual(["m/s", "V", "1", "rad"]);
+    expect(rowGroup.map(item => item.rows)).toEqual([
+      inspection.rowProfiles.vector, inspection.rowProfiles.scalar,
+      inspection.rowProfiles["complex-magnitude"], inspection.rowProfiles["complex-phase"]]);
+    validateCombinedRegionGraphGroup(rowGroup.map(item => item.origin),
+      rowGroup.map(item => item.rows));
+    const rowFocus = linkedCombinedRegionGraphFocus(rowGroup.map(item => item.origin),
+      rowGroup.map(item => item.rows), { kind: "interval", min: -0.5, max: 0.5 });
+    expect(rowFocus.profileAxis).toBe(1);
+    expect(rowFocus.columns).toEqual([4, 12]);
+    expect(rowFocus.combined?.map(item => item.gaps)).toEqual([0, 0, 0, 0]);
     const sharedPoint = linkedCombinedRegionGraphFocus(group.map(item => item.origin),
       group.map(item => item.rows), { kind: "point", x: 0 });
     expect(sharedPoint.columns).toEqual([8, 8]);
@@ -539,6 +561,19 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(reopened.source.objects).toHaveLength(4);
     expect(reopened.selection.linkedRegion?.physical).toEqual({
       kind: "interval", min: -0.5, max: 0.5 });
+    const rowDrafts = rowGroup.map((item, index) => ({ ...drafts[index]!,
+      label: item.label, table: store.publish(item.rows), domain: item.domain,
+      linkedOrigin: item.origin }));
+    const rowGraph = applyGraph2DAuthoring(createEmptyGraph2DDocument("combined-row-graph"),
+      { type: "create-point-series-group", drafts: rowDrafts });
+    const reopenedRows = parseGraph2DDocument(serializeGraph2DDocument(
+      createGraph2DDocument({ ...rowGraph, stableKey: "combined-row-graph",
+        selection: { objectId: rowGraph.source.objects[0]!.id, probe: null,
+          linkedRegion: { pairId: rowGroup[0].origin.pairId,
+            physical: { kind: "interval", min: -0.5, max: 0.5 } } } })));
+    expect(reopenedRows.source.objects).toHaveLength(4);
+    expect(reopenedRows.selection.linkedRegion?.physical).toEqual({
+      kind: "interval", min: -0.5, max: 0.5 });
     expect(() => parseGraph2DDocument(serializeGraph2DDocument({ ...reopened,
       selection: { ...reopened.selection, linkedRegion: {
         pairId: "sha256:" + "0".repeat(64),
@@ -558,6 +593,9 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(await Promise.all(group.map(item =>
       checkCombinedRegionGraphSeries(item.origin, bridge)))).toEqual([
       "current", "current", "current", "current"]);
+    expect(await Promise.all(rowGroup.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, bridge)))).toEqual([
+      "current", "current", "current", "current"]);
     const changedScalar = { checkGraphDatasetReference: async ({ locator }: {
       locator: { value: string } }) => locator.value === "quadraticVolume" ?
         { ok: false as const, status: "changed" as const,
@@ -568,6 +606,9 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       kind: "combined", vector: "source-current", scalar: "changed",
       complex: "source-current" });
     expect(await Promise.all(group.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, changedScalar)))).toEqual([
+      "current", "changed", "current", "current"]);
+    expect(await Promise.all(rowGroup.map(item =>
       checkCombinedRegionGraphSeries(item.origin, changedScalar)))).toEqual([
       "current", "changed", "current", "current"]);
     const changedWave = { checkGraphDatasetReference: async ({ locator }: {
@@ -590,6 +631,10 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       group.map((item, index) => index === 2 ?
         item.rows.map((row, rowIndex) => rowIndex === 8 ? { ...row, y: 999 } : row) :
         item.rows), { kind: "point", x: 0 })).toThrow(/incomplete or misaligned/);
+    expect(() => linkedCombinedRegionGraphFocus(rowGroup.map(item => item.origin),
+      rowGroup.map((item, index) => index === 2 ?
+        item.rows.map((row, rowIndex) => rowIndex === 8 ? { ...row, y: 999 } : row) :
+        item.rows), { kind: "point", x: 0 })).toThrow(/incomplete or misaligned/);
     const wider = { ...region, bounds: [[-6, 6], [-1, 1]] as const };
     const wideDocument = reviseVectorField3DWorkspace(document,
       { ...document.workspace!, overlayRegion: wider });
@@ -605,6 +650,42 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(withGaps.profiles.scalar[0]!.y).toBeNull();
     expect(withGaps.profiles["complex-magnitude"][0]!.y).toBeNull();
     expect(withGaps.profiles.vector[8]!.y).not.toBeNull();
+    const asymmetric = { ...region, bounds: [[-1, 1], [-0.25, 0.75]] as const };
+    const asymmetricDocument = reviseVectorField3DWorkspace(document,
+      { ...document.workspace!, overlayRegion: asymmetric });
+    const asymmetricSlice = sampleVectorField3DSlice(asymmetricDocument, 2, 0);
+    const asymmetricInspection = sampleCombinedRegion(asymmetricDocument, asymmetricSlice,
+      asymmetric, sampleSliceOverlayVectorPlane(asymmetricDocument, asymmetricSlice),
+      scalarReference, scalarVolume, complexReal.reference, complexImaginary.reference,
+      [complexReal.volume, complexImaginary.volume]);
+    expect(asymmetricInspection.profiles.vector.map(row => row.x)[0]).toBe(-1);
+    expect(asymmetricInspection.rowProfiles.vector.map(row => row.x)[0]).toBe(-0.25);
+    expect(asymmetricInspection.rowProfiles.vector.map(row => row.x)[16]).toBe(0.75);
+    const asymmetricRows = linkedCombinedRegionGraphs(asymmetricDocument, asymmetric,
+      asymmetricInspection, [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, 1);
+    expect(linkedCombinedRegionGraphFocus(asymmetricRows.map(item => item.origin),
+      asymmetricRows.map(item => item.rows), { kind: "point", x: 0.5 }).profileAxis).toBe(1);
+    expect(() => linkedCombinedRegionGraphFocus(asymmetricRows.map(item => item.origin),
+      asymmetricRows.map(item => item.rows), { kind: "point", x: -0.5 })).toThrow();
+    for (const normalAxis of [1, 0] as const) {
+      const otherRegion = { ...region, normalAxis };
+      const otherDocument = reviseVectorField3DWorkspace(document,
+        { ...document.workspace!, selectedLayer: normalAxis === 1 ? "xz" : "yz",
+          overlayRegion: otherRegion });
+      const otherSlice = sampleVectorField3DSlice(otherDocument, normalAxis, 0);
+      const otherInspection = sampleCombinedRegion(otherDocument, otherSlice, otherRegion,
+        sampleSliceOverlayVectorPlane(otherDocument, otherSlice), scalarReference, scalarVolume,
+        complexReal.reference, complexImaginary.reference,
+        [complexReal.volume, complexImaginary.volume]);
+      const otherRows = linkedCombinedRegionGraphs(otherDocument, otherRegion, otherInspection,
+        [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+        complexImaginary.volume.sampleSha256, 1);
+      expect(otherRows.map(item => item.origin.xName)).toEqual(["z", "z", "z", "z"]);
+      expect(otherRows.map(item => item.rows.length)).toEqual([17, 17, 17, 17]);
+      validateCombinedRegionGraphGroup(otherRows.map(item => item.origin),
+        otherRows.map(item => item.rows));
+    }
   });
 
   it("sends aligned region column means to Graphs and reverifies both saved series", async () => {

@@ -189,9 +189,10 @@ export type CombinedRegionSeries = "vector" | "scalar" | "complex-magnitude" | "
 export type CombinedRegionInspection = Readonly<{
   summary: CombinedRegionSummary;
   profiles: Readonly<Record<CombinedRegionSeries, readonly Graph2DPointRow[]>>;
+  rowProfiles: Readonly<Record<CombinedRegionSeries, readonly Graph2DPointRow[]>>;
 }>;
 
-/** Four independent column means on one physical 17×17 lattice. */
+/** Four independent means along both axes of one physical 17×17 lattice. */
 export function sampleCombinedRegion(document: VectorField3DDocument,
   slice: VectorField3DSliceArtifact, region: VectorField3DOverlayRegion,
   plane: VectorSliceOverlayPlane, scalarReference: Graph2DFieldReference,
@@ -207,9 +208,10 @@ export function sampleCombinedRegion(document: VectorField3DDocument,
     imaginaryReference, complexVolumes, document.source.axes);
   const series: CombinedRegionSeries[] = ["vector", "scalar", "complex-magnitude",
     "complex-phase"];
-  const columns = Array.from({ length: 17 }, () =>
+  const emptyBins = () => Array.from({ length: 17 }, () =>
     ({ vector: [] as number[], scalar: [] as number[],
       "complex-magnitude": [] as number[], "complex-phase": [] as number[] }));
+  const columns = emptyBins(), rows = emptyBins();
   const ny = slice.shape[1];
   const speedAt = (point: LinkedFieldPoint): number | null => {
     const local = slice.planeAxes.map(axis => point[axis]);
@@ -243,30 +245,42 @@ export function sampleCombinedRegion(document: VectorField3DDocument,
     point[slice.planeAxes[1]!] = region.bounds[1][0] +
       (region.bounds[1][1] - region.bounds[1][0]) * j / 16;
     const speed = speedAt(point);
-    if (speed !== null && Number.isFinite(speed)) columns[i]!.vector.push(speed);
+    if (speed !== null && Number.isFinite(speed)) {
+      columns[i]!.vector.push(speed); rows[j]!.vector.push(speed);
+    }
     const q = sampleVerifiedScalarPoint(scalarReference, scalarVolume,
       document.source.axes, point, units).value;
-    if (q !== null) columns[i]!.scalar.push(q);
+    if (q !== null) { columns[i]!.scalar.push(q); rows[j]!.scalar.push(q); }
     const wave = sampleVerifiedComplexPoint(realReference, imaginaryReference,
       complexVolumes, document.source.axes, point, units);
-    if (wave.magnitude !== null) columns[i]!["complex-magnitude"].push(wave.magnitude);
-    if (wave.phase !== null) columns[i]!["complex-phase"].push(wave.phase);
+    if (wave.magnitude !== null) {
+      columns[i]!["complex-magnitude"].push(wave.magnitude);
+      rows[j]!["complex-magnitude"].push(wave.magnitude);
+    }
+    if (wave.phase !== null) {
+      columns[i]!["complex-phase"].push(wave.phase);
+      rows[j]!["complex-phase"].push(wave.phase);
+    }
   }
-  const profiles = Object.fromEntries(series.map(key => [key,
-    columns.map((column, index) => ({ id: `row_${index + 1}`,
-      x: region.bounds[0][0] + (region.bounds[0][1] - region.bounds[0][0]) * index / 16,
-      y: key === "complex-phase" ? phaseStatistics(column[key]).mean :
-        statistics(column[key]).mean }))])) as Record<CombinedRegionSeries, Graph2DPointRow[]>;
-  // A wrapped phase jump has no unambiguous line segment across the branch cut.
-  for (let index = 1; index < 17; index++) {
-    const previous = profiles["complex-phase"][index - 1]!.y;
-    const current = profiles["complex-phase"][index]!.y;
-    if (previous !== null && current !== null && Math.abs(current - previous) > Math.PI)
-      profiles["complex-phase"][index] = { ...profiles["complex-phase"][index]!, y: null };
-  }
+  const profile = (bins: ReturnType<typeof emptyBins>, axis: 0 | 1) => {
+    const result = Object.fromEntries(series.map(key => [key,
+      bins.map((bin, index) => ({ id: `row_${index + 1}`,
+        x: region.bounds[axis][0] + (region.bounds[axis][1] - region.bounds[axis][0]) * index / 16,
+        y: key === "complex-phase" ? phaseStatistics(bin[key]).mean :
+          statistics(bin[key]).mean }))])) as Record<CombinedRegionSeries, Graph2DPointRow[]>;
+    // A wrapped phase jump has no unambiguous line segment across the branch cut.
+    for (let index = 1; index < 17; index++) {
+      const previous = result["complex-phase"][index - 1]!.y;
+      const current = result["complex-phase"][index]!.y;
+      if (previous !== null && current !== null && Math.abs(current - previous) > Math.PI)
+        result["complex-phase"][index] = { ...result["complex-phase"][index]!, y: null };
+    }
+    return result;
+  };
+  const profiles = profile(columns, 0), rowProfiles = profile(rows, 1);
   return { summary: { sampleCount: 289, vector: vector.statistics,
     scalar, complexMagnitude: complex.magnitude, complexPhase: complex.phase,
     vectorUnit: vector.unit,
     scalarUnit: document.workspace!.scalarOverlay!.unit,
-    complexUnit: document.workspace!.complexOverlay!.unit }, profiles };
+    complexUnit: document.workspace!.complexOverlay!.unit }, profiles, rowProfiles };
 }

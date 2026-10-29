@@ -20,7 +20,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
   onSendCombinedToGraphs,
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
-  graphSelectionFirstX = null, graphSelectionBusy = false, graphSelectionError = "",
+  graphSelectionAxis = 0, graphSelectionFirstX = null,
+  graphSelectionBusy = false, graphSelectionError = "",
   onGraphSelectionMode }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
@@ -41,14 +42,16 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     inspection: CombinedRegionInspection,
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
-    imaginarySampleSha256: string) => void;
+    imaginarySampleSha256: string, profileAxis?: 0 | 1) => void;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
+  graphSelectionAxis?: 0 | 1;
   graphSelectionFirstX?: number | null;
   graphSelectionBusy?: boolean;
   graphSelectionError?: string;
-  onGraphSelectionMode?: (mode: Graph2DLinkedRegionSelection["physical"]["kind"] | null) => void;
+  onGraphSelectionMode?: (mode: Graph2DLinkedRegionSelection["physical"]["kind"] | null,
+    profileAxis?: 0 | 1) => void;
 }) {
   const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
@@ -97,7 +100,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     { name: "imaginary", sampleSha256: complexVolumes[1].sampleSha256 }] :
     scalar && scalarVolume ? [{ name: scalar.reference.component,
       sampleSha256: scalarVolume.sampleSha256 }] : [];
-  const focusedRows = summary && linkedRegionFocus ? summary.profileRows.slice(
+  const focusedRows = summary && linkedRegionFocus?.profileAxis === 0 ? summary.profileRows.slice(
     linkedRegionFocus.columns[0], linkedRegionFocus.columns[1] + 1) : null;
   const focusedVectorCount = focusedRows?.filter(row => row.vector !== null).length ?? 0;
   const focusedOverlayCount = focusedRows?.filter(row => row.scalar !== null).length ?? 0;
@@ -124,7 +127,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   return <section aria-label="Linked heatmap and vector region" data-testid="scientific-overlay-region">
     <h4>{secondaryComplex ? "Linked vector + scalar + complex region" :
       `Linked ${complex ? "complex" : "scalar"} + vector region`}</h4>
-    {selected && linkedRegionFocus && <p data-testid="scientific-region-graph-focus"
+    {selected && linkedRegionFocus && linkedRegionFocus.profileAxis === 0 &&
+      <p data-testid="scientific-region-graph-focus"
       role={summary ? "status" : status.includes("withheld") ? "alert" : "status"}>
       Graphs selection: columns {linkedRegionFocus.columns[0] + 1}–{linkedRegionFocus.columns[1] + 1},
       {" "}{format(linkedRegionFocus.xBounds[0])} to
@@ -148,8 +152,13 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     {selected && linkedRegionFocus?.combined && <div
       data-testid="scientific-combined-region-graph-focus">
       <h5>Shared Graphs selection across four verified fields</h5>
+      <p>Selected {linkedRegionFocus.profileAxis === 1 ? "rows" : "columns"} {
+        linkedRegionFocus.columns[0] + 1}–{linkedRegionFocus.columns[1] + 1}: {
+        format(linkedRegionFocus.xBounds[0])} to {format(linkedRegionFocus.xBounds[1])} {
+        linkedRegionFocus.xUnit}.</p>
       {combined ? <ul>{linkedRegionFocus.combined.map(item => {
-        const rows = combined.profiles[item.series].slice(
+        const rows = (linkedRegionFocus.profileAxis === 1 ? combined.rowProfiles :
+          combined.profiles)[item.series].slice(
           linkedRegionFocus.columns[0], linkedRegionFocus.columns[1] + 1);
         const gaps = rows.filter(row => row.y === null).length;
         return <li key={item.series} data-series={item.series}>{item.series}: {
@@ -163,16 +172,20 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     </div>}
     {selected && secondaryComplex && onGraphSelectionMode && <div
       data-testid="scientific-region-to-graphs-selection">
-      <p>Choose a physical column or strip inside this rectangle to focus the four saved Graphs profiles.</p>
-      <button type="button" aria-pressed={graphSelectionMode === "point"}
-        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("point")}>Select Graphs column</button>
-      <button type="button" aria-pressed={graphSelectionMode === "interval"}
-        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("interval")}>Select Graphs strip</button>
+      <p>Choose a physical column, row or strip inside this rectangle to focus its saved Graphs profiles.</p>
+      <button type="button" aria-pressed={graphSelectionMode === "point" && graphSelectionAxis === 0}
+        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("point", 0)}>Select Graphs column</button>
+      <button type="button" aria-pressed={graphSelectionMode === "interval" && graphSelectionAxis === 0}
+        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("interval", 0)}>Select Graphs strip</button>
+      <button type="button" aria-pressed={graphSelectionMode === "point" && graphSelectionAxis === 1}
+        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("point", 1)}>Select Graphs row</button>
+      <button type="button" aria-pressed={graphSelectionMode === "interval" && graphSelectionAxis === 1}
+        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("interval", 1)}>Select Graphs row strip</button>
       {graphSelectionMode && <button type="button" onClick={() => onGraphSelectionMode(null)}>Cancel selection</button>}
       {graphSelectionMode && <p role="status">{graphSelectionBusy ? "Verifying four sources…" :
         graphSelectionMode === "point" ? "Click once inside the rectangle." :
           graphSelectionFirstX === null ? "Click the first strip edge inside the rectangle." :
-            `First strip edge: ${format(graphSelectionFirstX)} ${units[0]}. Click the second edge.`}</p>}
+            `First strip edge: ${format(graphSelectionFirstX)} ${units[graphSelectionAxis]}. Click the second edge.`}</p>}
       {graphSelectionError && <p role="alert" data-testid="scientific-region-to-graphs-error">{
         graphSelectionError}</p>}
     </div>}
@@ -244,12 +257,20 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           } catch (cause) { setPublishError(cause instanceof Error ? cause.message : String(cause)); }
         }}>Publish region result to Project</button>}
       {onSendCombinedToGraphs && secondaryComplex && combined && scalarVolume &&
-        complexVolumes && <button type="button" data-testid="send-linked-region-to-graphs"
-          disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
-            vectorSamples, scalarVolume.sampleSha256,
-            complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256)}>
-          {regionBusy ? "Verifying region…" : "Send four aligned profiles to Graphs"}
-        </button>}
+        complexVolumes && <>
+          <button type="button" data-testid="send-linked-region-to-graphs"
+            disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
+              vectorSamples, scalarVolume.sampleSha256,
+              complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256, 0)}>
+            {regionBusy ? "Verifying region…" : "Send four column profiles to Graphs"}
+          </button>
+          <button type="button" data-testid="send-linked-region-rows-to-graphs"
+            disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
+              vectorSamples, scalarVolume.sampleSha256,
+              complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256, 1)}>
+            {regionBusy ? "Verifying region…" : "Send four row profiles to Graphs"}
+          </button>
+        </>}
       {onSendToGraphs && !secondaryComplex && summary?.alignedCount && <button type="button"
         data-testid="send-linked-region-to-graphs" disabled={regionBusy}
         onClick={() => onSendToGraphs(region, summary!, vectorSamples, overlaySamples)}>

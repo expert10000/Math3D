@@ -1483,6 +1483,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       linkedVerified(selectedObject.linkedOrigin);
   const selectedRegionOrigin = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin &&
     "region" in selectedObject.linkedOrigin ? selectedObject.linkedOrigin : null;
+  const regionProfileAxis = selectedRegionOrigin?.kind ===
+    "vector-scalar-complex-linked-region/v2" ? selectedRegionOrigin.profileAxis ?? 0 : 0;
+  const regionPositionName = regionProfileAxis === 1 ? "row" : "column";
   const regionPair = selectedRegionOrigin ? document.source.objects.filter((item): item is Graph2DPointSeriesObject =>
     item.kind === "point-series" && item.linkedOrigin?.pairId === selectedRegionOrigin.pairId) : [];
   const regionVector = regionPair.find(item => item.linkedOrigin?.series === "vector");
@@ -1523,9 +1526,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const regionIntervalDraft = selectedRegionOrigin && linkedRegionInterval?.pairId === selectedRegionOrigin.pairId ?
     linkedRegionInterval : { pairId: selectedRegionOrigin?.pairId ?? "",
       min: String(savedRegionPhysical?.kind === "interval" ? savedRegionPhysical.min :
-        selectedRegionOrigin?.region.bounds[0][0] ?? ""),
+        selectedRegionOrigin?.region.bounds[regionProfileAxis][0] ?? ""),
       max: String(savedRegionPhysical?.kind === "interval" ? savedRegionPhysical.max :
-        selectedRegionOrigin?.region.bounds[0][1] ?? "") };
+        selectedRegionOrigin?.region.bounds[regionProfileAxis][1] ?? "") };
   const combinedRegionGroup = (() => {
     if (selectedRegionOrigin?.kind !== "vector-scalar-complex-linked-region/v2" ||
         linkedPairVerification.document !== document) return null;
@@ -1573,7 +1576,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   } : null;
   const focusExplorerRegionInGraphs = async (explorer: VectorField3DDocument,
     region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
-    physical: Graph2DLinkedRegionSelection["physical"]) => {
+    physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1) => {
     if (!onSelectionCommit || !region || !explorer.workspace?.scalarOverlay?.visible ||
         !explorer.workspace.complexOverlay?.visible ||
         canonicalJsonStringify(explorer.workspace.overlayRegion) !==
@@ -1591,7 +1594,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (members.some(object => !object?.linkedOrigin)) continue;
       const origins = members.map(object => object!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
       const vectorOrigin = origins[0]!;
-      if (vectorOrigin.vectorSourceHash !== explorer.identity.structuralHash ||
+      if ((vectorOrigin.profileAxis ?? 0) !== profileAxis ||
+          vectorOrigin.vectorSourceHash !== explorer.identity.structuralHash ||
           parseVectorField3DDocument(vectorOrigin.vectorDocumentJson).identity.id !==
             explorer.identity.id ||
           canonicalJsonStringify(vectorOrigin.region) !== canonicalJsonStringify(region) ||
@@ -1617,7 +1621,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setLinkedRegionInterval(null);
       setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
       setVectorField3DOpen(false);
-      setToolHint(`Focused ${focus.columns[0] + 1}–${focus.columns[1] + 1} of 17 verified physical columns in Graphs.`);
+      setToolHint(`Focused ${focus.columns[0] + 1}–${focus.columns[1] + 1} of 17 verified physical ${
+        profileAxis === 1 ? "rows" : "columns"} in Graphs.`);
       return;
     }
     throw new TypeError("Send this rectangle's four aligned profiles to Graphs first.");
@@ -2243,7 +2248,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {" "}<code>{selectedObject.linkedOrigin.pairId}</code></dd>
           {"region" in selectedObject.linkedOrigin ?
             <><dt>Physical region profile</dt><dd>Mean along {selectedObject.linkedOrigin.xName}
-              {" "}over 17 aligned samples per column; bounds
+              {" "}over 17 aligned samples per {regionPositionName}; bounds
               {" "}{selectedObject.linkedOrigin.region.bounds.map(bounds =>
                 `[${bounds[0]}, ${bounds[1]}]`).join(" × ")}; fixed coordinate
               {" "}{selectedObject.linkedOrigin.region.fixedCoordinate}.</dd></> :
@@ -2254,7 +2259,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" &&
             selectedLinkedReady && <><dt>Coverage gaps</dt><dd>{
               pointTableStore.resolve(selectedObject.table)?.filter(row => row.y === null).length ?? 17
-            } of 17 physical columns.</dd></>}
+            } of 17 physical {regionPositionName}s.</dd></>}
           {selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" ?
             <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
               {" "}{selectedObject.linkedOrigin.scalarReference.datasetId}</dd>
@@ -2295,12 +2300,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 "Verifying saved source…" : "Verifying saved source…"}</dd>
           {selectedRegionOrigin && <><dt>Field Explorer selection</dt><dd
             data-testid="graph2d-linked-region-selection">
-            <p>The 17 physical columns run along {selectedRegionOrigin.xName}
+            <p>The 17 physical {regionPositionName}s run along {selectedRegionOrigin.xName}
               {" "}({selectedRegionOrigin.xUnit}). Graph gaps remain gaps in the source strip.</p>
             {regionRowsCurrent && regionVectorRows && regionOverlayRows &&
               (selectedRegionOrigin.kind !== "vector-scalar-complex-linked-region/v2" ||
                 combinedRegionGroup) ? <>
-              <label>Region column <select aria-label="Linked region column"
+              <label>Region {regionPositionName} <select aria-label={`Linked region ${regionPositionName}`}
                 value={activeRegionColumn} onChange={event => {
                   setLinkedRegionColumn({ pairId: selectedRegionOrigin.pairId,
                     index: Number(event.target.value), probeX: graphProbeX });
@@ -2321,7 +2326,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               </p>
               {combinedRegionGroup && sharedRegionSelection && <div
                 data-testid="graph2d-combined-region-selection" role="status">
-                <p>Shared physical columns {sharedRegionSelection.columns[0] + 1}–{
+                <p>Shared physical {regionPositionName}s {sharedRegionSelection.columns[0] + 1}–{
                   sharedRegionSelection.columns[1] + 1}: {
                   sharedRegionSelection.xBounds[0].toPrecision(6)} to {
                   sharedRegionSelection.xBounds[1].toPrecision(6)} {sharedRegionSelection.xUnit}.
@@ -2332,7 +2337,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   const value = rows.length === 1 && rows[0]!.y !== null ?
                     `; value ${rows[0]!.y!.toPrecision(6)} ${item.unit}` : "";
                   return <li key={item.series} data-series={item.series}>{item.series}: {
-                    rows.length - item.gaps}/{rows.length} columns available ({item.gaps} gaps),
+                    rows.length - item.gaps}/{rows.length} {regionPositionName}s available ({item.gaps} gaps),
                     {" "}{item.unit}{value}.</li>;
                 })}</ul>
               </div>}
@@ -2342,7 +2347,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   void openLinkedRegionInExplorer({ kind: "point",
                     x: regionVectorRows[activeRegionColumn]!.x });
                 }}>
-                {linkedRegionOpenBusy ? "Verifying sources…" : "Open selected column in Field Explorer"}</button>
+                {linkedRegionOpenBusy ? "Verifying sources…" :
+                  `Open selected ${regionPositionName} in Field Explorer`}</button>
               <div>
                 <label>Interval from ({selectedRegionOrigin.xUnit}) <input type="number" step="any"
                   aria-label="Linked region interval from" value={regionIntervalDraft.min}

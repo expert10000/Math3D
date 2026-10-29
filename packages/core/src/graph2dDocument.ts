@@ -173,6 +173,8 @@ export type Graph2DLinkedRegionOrigin =
 export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
   kind: "vector-scalar-complex-linked-region/v2";
   pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase";
+  /** Omitted in saved column profiles; 1 selects the second physical slice axis. */
+  profileAxis?: 1;
   vectorDocumentJson: string; region: VectorField3DOverlayRegion;
   xName: string; xUnit: string; yUnit: string;
   vectorSourceHash: string;
@@ -499,10 +501,12 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && value.kind === "vector-scalar-complex-linked-region/v2") {
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
+      ...(value.profileAxis === undefined ? [] : ["profileAxis"]),
       "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
       "scalarReference", "realReference", "imaginaryReference",
       "scalarSampleSha256", "realSampleSha256", "imaginarySampleSha256", "rowsSha256"]) ||
       typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
+      (value.profileAxis !== undefined && value.profileAxis !== 1) ||
       !["vector", "scalar", "complex-magnitude", "complex-phase"].includes(String(value.series)) ||
       typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
       !isGraph2DFieldReference(value.scalarReference) ||
@@ -535,8 +539,12 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
       !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256))) return false;
     try {
       const document = parseVectorField3DDocument(value.vectorDocumentJson);
+      const profileAxis = value.profileAxis === 1 ? 1 : 0;
+      const sourceAxis = [0, 1, 2].filter(axis => axis !== value.region.normalAxis)[profileAxis]!;
       return canonicalJsonStringify(document.workspace?.overlayRegion) ===
           canonicalJsonStringify(value.region) &&
+        document.source.axes[sourceAxis]!.label === value.xName &&
+        document.source.axes[sourceAxis]!.unit === value.xUnit &&
         canonicalJsonStringify(document.workspace?.scalarOverlay?.reference) ===
           canonicalJsonStringify(value.scalarReference) &&
         canonicalJsonStringify(document.workspace?.complexOverlay?.real) ===
@@ -753,14 +761,18 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
           finite(linked.physical.x) : linked.physical.kind === "interval" &&
           exact(linked.physical, ["kind", "min", "max"]) && finite(linked.physical.min) &&
           finite(linked.physical.max) && linked.physical.min <= linked.physical.max) ||
-        !source.objects.some(object => object.kind === "point-series" &&
-          object.id === value.objectId && object.linkedOrigin?.pairId === linked.pairId &&
-          "region" in object.linkedOrigin &&
-          (linked.physical.kind === "point" ?
-            linked.physical.x >= object.linkedOrigin.region.bounds[0][0] - 1e-9 &&
-            linked.physical.x <= object.linkedOrigin.region.bounds[0][1] + 1e-9 :
-            linked.physical.min >= object.linkedOrigin.region.bounds[0][0] - 1e-9 &&
-            linked.physical.max <= object.linkedOrigin.region.bounds[0][1] + 1e-9))) return false;
+        !source.objects.some(object => {
+          if (object.kind !== "point-series" || object.id !== value.objectId ||
+              object.linkedOrigin?.pairId !== linked.pairId ||
+              !("region" in object.linkedOrigin)) return false;
+          const axis = object.linkedOrigin.kind ===
+            "vector-scalar-complex-linked-region/v2" ?
+              object.linkedOrigin.profileAxis ?? 0 : 0;
+          const [min, max] = object.linkedOrigin.region.bounds[axis];
+          return linked.physical.kind === "point" ?
+            linked.physical.x >= min - 1e-9 && linked.physical.x <= max + 1e-9 :
+            linked.physical.min >= min - 1e-9 && linked.physical.max <= max + 1e-9;
+        })) return false;
   }
   if (value.probe === null) return true;
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
