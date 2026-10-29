@@ -539,11 +539,12 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
       !/^sha256:[a-f0-9]{64}$/.test(String(value.rowsSha256))) return false;
     try {
       const document = parseVectorField3DDocument(value.vectorDocumentJson);
+      const region = document.workspace?.overlayRegion;
+      if (!region || canonicalJsonStringify(region) !== canonicalJsonStringify(value.region))
+        return false;
       const profileAxis = value.profileAxis === 1 ? 1 : 0;
-      const sourceAxis = [0, 1, 2].filter(axis => axis !== value.region.normalAxis)[profileAxis]!;
-      return canonicalJsonStringify(document.workspace?.overlayRegion) ===
-          canonicalJsonStringify(value.region) &&
-        document.source.axes[sourceAxis]!.label === value.xName &&
+      const sourceAxis = [0, 1, 2].filter(axis => axis !== region.normalAxis)[profileAxis]!;
+      return document.source.axes[sourceAxis]!.label === value.xName &&
         document.source.axes[sourceAxis]!.unit === value.xUnit &&
         canonicalJsonStringify(document.workspace?.scalarOverlay?.reference) ===
           canonicalJsonStringify(value.scalarReference) &&
@@ -756,22 +757,24 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
     const linked = value.linkedRegion;
     if (!record(linked) || !exact(linked, ["pairId", "physical"]) ||
         typeof linked.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(linked.pairId) ||
-        !record(linked.physical) ||
-        !(linked.physical.kind === "point" ? exact(linked.physical, ["kind", "x"]) &&
-          finite(linked.physical.x) : linked.physical.kind === "interval" &&
-          exact(linked.physical, ["kind", "min", "max"]) && finite(linked.physical.min) &&
-          finite(linked.physical.max) && linked.physical.min <= linked.physical.max) ||
-        !source.objects.some(object => {
+        !record(linked.physical)) return false;
+    const physical = linked.physical;
+    if (!(physical.kind === "point" ? exact(physical, ["kind", "x"]) &&
+          finite(physical.x) : physical.kind === "interval" &&
+          exact(physical, ["kind", "min", "max"]) && finite(physical.min) &&
+          finite(physical.max) && physical.min <= physical.max)) return false;
+    const selection = physical as Graph2DLinkedRegionSelection["physical"];
+    if (!source.objects.some(object => {
           if (object.kind !== "point-series" || object.id !== value.objectId ||
-              object.linkedOrigin?.pairId !== linked.pairId ||
+              !object.linkedOrigin || object.linkedOrigin.pairId !== linked.pairId ||
               !("region" in object.linkedOrigin)) return false;
           const axis = object.linkedOrigin.kind ===
             "vector-scalar-complex-linked-region/v2" ?
               object.linkedOrigin.profileAxis ?? 0 : 0;
           const [min, max] = object.linkedOrigin.region.bounds[axis];
-          return linked.physical.kind === "point" ?
-            linked.physical.x >= min - 1e-9 && linked.physical.x <= max + 1e-9 :
-            linked.physical.min >= min - 1e-9 && linked.physical.max <= max + 1e-9;
+          return selection.kind === "point" ?
+            selection.x >= min - 1e-9 && selection.x <= max + 1e-9 :
+            selection.min >= min - 1e-9 && selection.max <= max + 1e-9;
         })) return false;
   }
   if (value.probe === null) return true;
