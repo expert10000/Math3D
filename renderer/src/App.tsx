@@ -314,7 +314,8 @@ import { VolumeViewer, type VolumeCameraState } from "./components/VolumeViewer"
 import { VolumeInspectorPanel } from "./components/VolumeInspectorPanel";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
-import SageSymbolicPanel, { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel";
+import { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel";
+import { ScientificServicesPanel } from "./features/scientificServices/ScientificServicesPanel";
 import { SageSymbolicAnalysisCard } from "./features/sageLab/SageSymbolicAnalysisCard";
 import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
@@ -44618,6 +44619,7 @@ const App: React.FC = () => {
   const surfacePreviewFocusPrevLeftTabRef = useRef<SurfacesLeftTab>("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   const [symbolicAnalysisRecord, setSymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
+  const [geometrySymbolicAnalysisRecord, setGeometrySymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [symbolicActionStatus, setSymbolicActionStatus] = useState<string | null>(null);
   const [symbolicGradientOverlaySource, setSymbolicGradientOverlaySource] = useState<string | null>(null);
   const [symbolicGradientOverlayLines, setSymbolicGradientOverlayLines] = useState<OverlayPolylineGroup["lines"]>([]);
@@ -86231,7 +86233,7 @@ case "mobius":
                   </div>
                   <ComputeEngineManagerPanel embedded />
                   <OctaveLabPanel />
-                  <SageSymbolicPanel compact sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
+                  <ScientificServicesPanel context="surface" sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
                     onResult={(record) => {
                       setSymbolicAnalysisRecord(record);
                       setSymbolicActionStatus(null);
@@ -102375,6 +102377,11 @@ case "mobius":
                     )}
                     {geometryProceduralPanelTab === "debug" && (
                       <div style={{ display: "grid", gap: 8 }}>
+                      <ScientificServicesPanel context="geometry" onResult={(record) => {
+                        setGeometrySymbolicAnalysisRecord(record);
+                        setGeometryRightPanelTab("analysis");
+                        setShowRightPanel(true);
+                      }} />
                       <div
                         data-testid="geometry-scene-script-validation-preset"
                         style={{
@@ -106561,6 +106568,8 @@ case "mobius":
                             />
                           </div>
                     ) : geometryRightPanelTab === "analysis" ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                      {geometrySymbolicAnalysisRecord && <SageSymbolicAnalysisCard record={geometrySymbolicAnalysisRecord} stale={false} />}
                       <GeometryAnalysisInspectorPanel
                         result={geometryActiveAnalysisInspectorRecord}
                         savedResults={geometrySavedAnalysisResults}
@@ -106580,6 +106589,7 @@ case "mobius":
                         onPromoteOverlay={handlePromoteGeometryAnalysisInspectorOverlay}
                         onExport={handleSaveSelectedGeometryQuickAnalysisResult}
                       />
+                      </div>
                     ) : geometryRightPanelTab === "diagnostics" ? (
                       <div data-testid="geometry-diagnostics-inspector" style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "8px 10px", background: "#fff", display: "grid", gap: 8, fontSize: 11 }}>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Diagnostics</div>

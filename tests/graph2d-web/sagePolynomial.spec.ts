@@ -1,5 +1,39 @@
 import { expect, test } from "@playwright/test";
 
+test("Surface and Geometry Services share the same Sage operation and Analysis destination", async ({ page }) => {
+  const requests: Array<{ operation: string; params: { expression?: string } }> = [];
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    const request = route.request().postDataJSON() as { operation: string; params: { expression?: string } };
+    requests.push(request);
+    await route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", operation: request.operation, success: true,
+        result: { text: "1" }, latex: "1", warnings: [] }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Palette", exact: true }).click();
+  await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...").fill("Open backend services panel");
+  await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+  const surface = page.getByTestId("scientific-services-surface");
+  await surface.getByLabel("Services preset").selectOption("Basic");
+  await surface.getByLabel("SageMath backend").selectOption("docker");
+  await surface.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByTestId("sage-analysis-result")).toContainText("Simplified expression");
+
+  await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
+  await page.getByTestId("geometry-professional-panel-services").click({ force: true });
+  const geometry = page.getByTestId("scientific-services-geometry");
+  await expect(geometry).toBeVisible();
+  await geometry.getByLabel("Services preset").selectOption("Basic");
+  await geometry.getByLabel("SageMath backend").selectOption("docker");
+  await geometry.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(page.getByTestId("sage-analysis-result")).toContainText("Simplified expression");
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toMatchObject({ operation: "sage.symbolic.simplify", params: { expression: "sin(x)^2 + cos(x)^2" } });
+  expect(requests[1]).toMatchObject(requests[0]);
+});
+
 test("Surface Services runs exact calculus and Analysis exposes its result actions", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Palette", exact: true }).click();
@@ -25,6 +59,7 @@ test("Surface Services runs exact calculus and Analysis exposes its result actio
   await expect(page.getByRole("button", { name: "Workbook", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("textbox", { name: "Block title" }).last()).toHaveValue("SageMath singularities");
   await page.getByRole("button", { name: "Inspector", exact: true }).click();
+  await page.getByRole("button", { name: "services", exact: true }).click();
   await panel.getByLabel("Operation").selectOption("sage.symbolic.simplify");
   await panel.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
   await panel.getByRole("button", { name: "Run", exact: true }).click();

@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { checkSageHealth, isLocalSageOperation, runSageOperation } from "../../integrations/sage/sageClient";
 import {
-  SAGE_SYMBOLIC_OPERATIONS,
   type SageHealthResponse,
   type SageSymbolicOperation,
   type SageRunResponse,
 } from "../../integrations/sage/sageSchemas";
+import { SCIENTIFIC_OPERATION_CATALOG, type ScientificOperationEntry } from "../scientificServices/operationCatalog";
 
 export type SymbolicResultRecord = {
   response: SageRunResponse;
@@ -16,23 +16,6 @@ export type SymbolicResultRecord = {
 };
 
 const DEFAULT_EXPRESSION = "sin(x)^2 + cos(x)^2";
-
-const OPERATION_LABELS: Record<SageSymbolicOperation, string> = {
-  "sage.symbolic.simplify": "Simplify",
-  "sage.symbolic.factor": "Factor",
-  "sage.symbolic.expand": "Expand",
-  "sage.symbolic.solve": "Solve",
-  "sage.symbolic.gradient": "Gradient",
-  "sage.symbolic.hessian": "Hessian",
-  "sage.symbolic.singularities": "Singularities",
-  "sage.matrix.eigen_exact": "Exact eigen",
-  "sage.matrix.charpoly": "Characteristic polynomial",
-  "sage.polynomial.roots_exact": "Exact algebraic roots",
-  "sage.polynomial.factor": "Exact polynomial factor",
-  "sage.groebner.compute": "Groebner basis",
-  "sage.numberTheory.gcd": "GCD",
-  "sage.numberTheory.modInverse": "Mod inverse",
-};
 
 const panelStyle: React.CSSProperties = {
   border: "1px solid #dbe2ea",
@@ -63,10 +46,11 @@ const resultText = (response: SageRunResponse | null): string => {
 const SageSymbolicPanel: React.FC<{
   compact?: boolean;
   sourceExpression?: string;
+  operations?: readonly ScientificOperationEntry[];
   onResult?: (record: SymbolicResultRecord) => void;
-}> = ({ compact = false, sourceExpression, onResult }) => {
+}> = ({ compact = false, sourceExpression, operations = SCIENTIFIC_OPERATION_CATALOG, onResult }) => {
   const [backend, setBackend] = useState<"local" | "docker">("local");
-  const [operation, setOperation] = useState<SageSymbolicOperation>("sage.symbolic.simplify");
+  const [operation, setOperation] = useState<SageSymbolicOperation>(operations[0]?.id ?? "sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
   const [coefficientsText, setCoefficientsText] = useState("-1, 0, 1");
   const [variablesText, setVariablesText] = useState("x");
@@ -185,16 +169,16 @@ const SageSymbolicPanel: React.FC<{
 
         <strong>Symbolic operations</strong>
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Surface math shortcuts">
-          {(["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.solve", "sage.symbolic.factor", "sage.symbolic.singularities"] as const).map((item) => (
-            <button key={item} type="button" disabled={busy !== "none"} aria-pressed={operation === item}
+          {operations.filter((entry) => (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.solve", "sage.symbolic.factor", "sage.symbolic.singularities"] as SageSymbolicOperation[]).includes(entry.id)).map((entry) => (
+            <button key={entry.id} type="button" disabled={busy !== "none"} aria-pressed={operation === entry.id}
               onClick={() => {
-                setOperation(item);
+                setOperation(entry.id);
                 if (sourceExpression) {
                   setExpression(sourceExpression); setVariablesText("x,y,z");
                 }
                 setResponse(null); setError(null);
               }}>
-              {OPERATION_LABELS[item]}
+              {entry.label}
             </button>
           ))}
         </div>
@@ -209,10 +193,10 @@ const SageSymbolicPanel: React.FC<{
             setHealth(null);
             setResponse(null);
           }} style={fieldStyle}>
-            {SAGE_SYMBOLIC_OPERATIONS.map((item) => (
-              <option key={item} value={item}>
-                {item === "sage.polynomial.roots_exact" && backend === "docker"
-                  ? "Polynomial roots (rational, Docker)" : OPERATION_LABELS[item]}
+            {operations.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.id === "sage.polynomial.roots_exact" && backend === "docker"
+                  ? "Polynomial roots (rational, Docker)" : entry.label}
               </option>
             ))}
           </select>
