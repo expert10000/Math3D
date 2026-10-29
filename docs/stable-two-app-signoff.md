@@ -44,7 +44,7 @@ installing Math3D's test dependencies, is:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stable-two-app-signoff.ps1 `
   -TheoryLabRepo 'C:\path\to\theory-lab' `
-  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.3.exe' `
+  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.4.exe' `
   -TheoryLabInstaller 'C:\path\to\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe' `
   -CandidateManifest 'C:\path\to\candidate-manifest.json' `
   -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-two-app-signoff')
@@ -233,3 +233,42 @@ must be frozen at a chosen source commit before its final installers are built.
 The exact final 1.7.0 installer files still require their own clean-install
 and upgrade gates before publication. The migration scope remains the
 registered, per-user v1.6.0 installation at the same destination.
+
+## Published Windows prerelease v1.7.0-rc.4 (2026-10-29)
+
+[v1.7.0-rc.4](https://github.com/expert10000/Math3D/releases/tag/v1.7.0-rc.4)
+is published as a **GitHub prerelease**, while v1.6.0 remains the latest stable
+release. Its annotated tag resolves to the frozen Math3D source commit
+`6c8243585c9d69a31d584c3b66fdd567acdab124`, based on `main` at
+`e9d5c01d30b1541654f8b42b5a49d6a31ac49863`. Later changes to `main`
+are outside this prerelease.
+
+[Run 40852755016](https://github.com/expert10000/Math3D/actions/runs/40852755016)
+passed the full Windows candidate build, clean installation, and published
+v1.6.0 upgrade on separate VMs. Unlike rc.3, this build required the release
+CGAL and pygalmesh worker dependencies and passed the packaged-worker protocol
+check. The prerelease uploads the **same tested installer bytes**, manifest,
+and both signoff JSON records. GitHub's asset digest matches the local and CI
+SHA-256 values below (GitHub displays spaces in the Math3D asset name as dots).
+
+| Exact candidate file | Source | SHA-256 |
+| --- | --- | --- |
+| `Math3D Setup 1.7.0-rc.4.exe` | Math3D `6c8243585c9d69a31d584c3b66fdd567acdab124` | `bb447b5f511f30f64481c0d1cebd13ff272d37010ba5e87eddf12f1bad1dfa33` |
+| `Quantum-Hamiltonian-Lab-Setup-0.1.0.exe` | Theory Lab `3c883fa4a69da2ee9f59b1425ac181094a25c276` | `f0b1c1bed345e99e093e19055a762be149595d107e18c797e52e2ebe55f105a4` |
+| `candidate-manifest.json` | CI run `40852755016` | `2ecdb91b4e3235be8e83c8ab81d2a11fdbcaf5efe76c1d8132c864600c2b85d5` |
+
+The exact files and evidence are also archived locally at
+`C:\Users\janko\OneDrive\Dokumenty\Math3D-release-candidates\1.7.0-rc.4\run-40852755016`.
+Both JSON records report `status: passed` with no failure. On the upgrade VM,
+v1.6.0 saved the `Upgrade Graph from v1.6.0` Project and disabled
+command-preview overlays; rc.4 retained both. The migration marker was
+`registered-v1.6.0-overlay`. The installed Lab saved run
+`run-2f9c09e56b9b460aa87a8a7f53eea98c`; installed Math3D reopened its
+`.qscene` source with result SHA-256
+`076b783bceb0119e0cb0c9619808c1b779fea9e44e18c4ef22a289f73d4dd0fd`.
+The clean-install VM independently passed an installed Lab → `.qscene` →
+Math3D round trip.
+
+The accepted migration scope remains registered **per-user v1.6.0 at the same
+destination**. This is a Windows prerelease, not a stable 1.7.0 publication;
+Linux and mobile packages are not part of this exact-file signoff.

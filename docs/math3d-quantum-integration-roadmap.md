@@ -925,3 +925,17 @@ SCI-02 work continued on `main` after rc.3 was built. That newer work is not
 inside rc.3. Freeze a release source commit before building the final 1.7.0
 installers, then run both fresh-VM gates on those **exact final files** before
 publication. rc.3 remains candidate evidence for its pinned snapshot only.
+
+### Windows prerelease v1.7.0-rc.4 (published 2026-10-29)
+
+The [v1.7.0-rc.4 prerelease](https://github.com/expert10000/Math3D/releases/tag/v1.7.0-rc.4)
+is tagged at frozen Math3D commit `6c8243585c9d69a31d584c3b66fdd567acdab124`.
+[Run 40852755016](https://github.com/expert10000/Math3D/actions/runs/40852755016)
+built the full CGAL/pygalmesh worker and passed the packaged-worker check,
+then passed clean-install and published-v1.6.0 upgrade gates on the exact
+archived installers. Both installed-app `.qscene` handoffs succeeded; the
+upgrade retained the old Project and setting. The prerelease asset SHA-256
+values match the CI manifest and are recorded in the
+[release evidence](stable-two-app-signoff.md#published-windows-prerelease-v170-rc4-2026-10-29).
+v1.6.0 remains the latest stable release. Later `main` commits and non-Windows
+packages are outside this prerelease's tested source and installer scope.
