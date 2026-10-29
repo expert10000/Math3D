@@ -33,6 +33,7 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   type VectorField3DComplexOverlay, type VectorField3DWorkspace,
   type VectorField3DLinkedLineProfile,
   type VectorField3DOverlayRegion,
+  type Graph2DLinkedRegionSelection,
   type Graph2DScientificVolume,
   inspectGraph2DFieldReference, verifyGraph2DScientificVolume,
   type VectorField3DVerifiedTile } from "@math3d/core";
@@ -105,7 +106,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
-  onAddLinkedOverlayLine, linkedRegionFocus = null,
+  onAddLinkedOverlayLine, onFocusRegionInGraphs, linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
@@ -121,6 +122,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
   onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries,
     LinkedOverlayGraphSeries] | CombinedRegionGraphGroup) => void;
+  onFocusRegionInGraphs?: (document: VectorField3DDocument,
+    region: VectorField3DOverlayRegion,
+    physical: Graph2DLinkedRegionSelection["physical"]) => Promise<void>;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
@@ -2619,6 +2623,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
               onSendRegionToGraphs={sendLinkedRegion}
               onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
+              onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical) =>
+                onFocusRegionInGraphs(document, region, physical) : undefined}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2657,6 +2663,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
         onSendRegionToGraphs={sendLinkedRegion}
         onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
+        onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical) =>
+          onFocusRegionInGraphs(document, region, physical) : undefined}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

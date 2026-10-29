@@ -299,7 +299,13 @@ export type Graph2DDisplay = Readonly<{
   sampling: Readonly<{ maxSamples: number; maxDepth: number; tolerancePx: number }>;
 }>;
 export type Graph2DProbe = Readonly<{ objectId: string; x: number; y: number; parameter?: number; rowId?: string }>;
-export type Graph2DSelection = Readonly<{ objectId: string | null; probe: Graph2DProbe | null }>;
+export type Graph2DLinkedRegionSelection = Readonly<{
+  pairId: string;
+  physical: Readonly<{ kind: "point"; x: number }> |
+    Readonly<{ kind: "interval"; min: number; max: number }>;
+}>;
+export type Graph2DSelection = Readonly<{ objectId: string | null; probe: Graph2DProbe | null;
+  linkedRegion?: Graph2DLinkedRegionSelection }>;
 export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
@@ -734,9 +740,28 @@ const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDi
   return true;
 };
 const validSelection = (value: unknown, source: Graph2DSource): value is Graph2DSelection => {
-  if (!record(value) || !exact(value, ["objectId", "probe"])) return false;
+  if (!record(value) || !exact(value, ["objectId", "probe",
+    ...(value.linkedRegion === undefined ? [] : ["linkedRegion"])])) return false;
   const ids = new Set(source.objects.map((entry) => entry.id));
   if (value.objectId !== null && (typeof value.objectId !== "string" || !ids.has(value.objectId))) return false;
+  if (value.linkedRegion !== undefined) {
+    const linked = value.linkedRegion;
+    if (!record(linked) || !exact(linked, ["pairId", "physical"]) ||
+        typeof linked.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(linked.pairId) ||
+        !record(linked.physical) ||
+        !(linked.physical.kind === "point" ? exact(linked.physical, ["kind", "x"]) &&
+          finite(linked.physical.x) : linked.physical.kind === "interval" &&
+          exact(linked.physical, ["kind", "min", "max"]) && finite(linked.physical.min) &&
+          finite(linked.physical.max) && linked.physical.min <= linked.physical.max) ||
+        !source.objects.some(object => object.kind === "point-series" &&
+          object.id === value.objectId && object.linkedOrigin?.pairId === linked.pairId &&
+          "region" in object.linkedOrigin &&
+          (linked.physical.kind === "point" ?
+            linked.physical.x >= object.linkedOrigin.region.bounds[0][0] - 1e-9 &&
+            linked.physical.x <= object.linkedOrigin.region.bounds[0][1] + 1e-9 :
+            linked.physical.min >= object.linkedOrigin.region.bounds[0][0] - 1e-9 &&
+            linked.physical.max <= object.linkedOrigin.region.bounds[0][1] + 1e-9))) return false;
+  }
   if (value.probe === null) return true;
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
     !["objectId", "x", "y"].every((key) => Object.prototype.hasOwnProperty.call(value.probe, key))) return false;

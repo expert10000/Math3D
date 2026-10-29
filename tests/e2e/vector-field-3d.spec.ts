@@ -510,8 +510,10 @@ test("SCI-02 Burgers overlay reopens with source links and rejects a changed vec
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
-    await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const reopenExplorer = page.getByRole("button", { name: "Scientific Field Explorer" });
+    if (!await reopenExplorer.isVisible())
+      await page.locator(".graph2d-toolbar-menu > summary").click();
+    await reopenExplorer.click();
     const changedComplex = page.getByRole("region", { name: "Scientific Field Explorer" });
     await expect(changedComplex.getByRole("region", { name: "Dataset library" })
       .getByRole("button", { name: "Open Wave amplitude from dataset library" }))
@@ -636,7 +638,31 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude and phase profiles",
       { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
-    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await region.getByRole("button", { name: "Select Graphs column" }).click();
+    await figure.locator('[data-probe-cell="0-0"]').click();
+    await expect(region.getByTestId("scientific-region-to-graphs-error"))
+      .toContainText("inside the saved physical rectangle");
+    await figure.locator('[data-probe-cell="10-10"]').click();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    const inspector = page.getByRole("complementary", { name: "Graph inspector" });
+    await expect(inspector.getByTestId("graph2d-combined-region-selection"))
+      .toContainText("columns 8–8", { timeout: 60_000 });
+    await expect(page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]"))
+      .toHaveCount(4);
+    await inspector.getByTestId("graph2d-open-region-point").click();
+    await expect(explorer.getByTestId("scientific-region-graph-focus-marker"))
+      .toBeVisible({ timeout: 60_000 });
+    const reopenedFigure = explorer.getByRole("figure", { name: "XY field slice" });
+    await reopenedFigure.getByRole("button", { name: "Select Graphs strip" }).click();
+    await reopenedFigure.locator('[data-probe-cell="9-10"]').click();
+    await reopenedFigure.locator('[data-probe-cell="12-10"]').click();
+    await expect(inspector.getByTestId("graph2d-combined-region-selection"))
+      .toContainText("columns available", { timeout: 60_000 });
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]").count())
+      .toBeGreaterThan(4);
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -667,12 +693,19 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
           object.linkedOrigin?.series) ?? []);
     expect(linkedSeries).toEqual([
       "vector", "scalar", "complex-magnitude", "complex-phase"]);
+    const savedGraph = stored.workspace.entries.find((entry: { checkpoint: { format: string } }) =>
+      entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
+    expect(savedGraph?.selection.linkedRegion.physical.kind).toBe("interval");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
-    await page.locator(".graph2d-toolbar-menu > summary").click();
-    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     const reopened = page.getByRole("region", { name: "Scientific Field Explorer" });
+    if (!await reopened.isVisible()) {
+      const reopenCombinedExplorer = page.getByRole("button", { name: "Scientific Field Explorer" });
+      if (!await reopenCombinedExplorer.isVisible())
+        await page.locator(".graph2d-toolbar-menu > summary").click();
+      await reopenCombinedExplorer.click();
+    }
     const reopenedInspector = reopened.getByLabel("Field status and actions");
     await expect(reopenedInspector.getByRole("button", { name: "XY slice", exact: true }))
       .toHaveAttribute("aria-pressed", "true");
@@ -693,6 +726,11 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-dock-reset-recommended").click();
     const graphInspector = page.getByRole("complementary", { name: "Graph inspector" });
+    await expect(graphInspector.getByTestId("graph2d-combined-region-selection"))
+      .toContainText("complex-phase", { timeout: 60_000 });
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]").count())
+      .toBeGreaterThan(4);
     for (const label of [/Select Vector speed region mean/, /Select .*Potential.* region mean/,
       /Select .*Wave amplitude.* magnitude region mean/,
       /Select .*Wave amplitude.* phase region mean/]) {
@@ -817,7 +855,12 @@ test("SCI-02 Burgers four-profile selection withholds a changed source after Pro
     await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude and phase profiles",
       { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
-    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await region.getByRole("button", { name: "Select Graphs strip" }).click();
+    await figure.locator('[data-probe-cell="14-16"]').click();
+    await figure.locator('[data-probe-cell="18-16"]').click();
+    const inspector = page.getByRole("complementary", { name: "Graph inspector" });
+    await expect(inspector.getByTestId("graph2d-combined-region-selection"))
+      .toContainText("columns available", { timeout: 60_000 });
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -827,15 +870,16 @@ test("SCI-02 Burgers four-profile selection withholds a changed source after Pro
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
+    if (await explorer.isVisible()) await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     if (await projects.isVisible()) await page.getByTestId("projects-toggle").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();
-    await page.getByRole("button", { name: /Select .*Wave amplitude.* phase region mean/ }).click();
-    const inspector = page.getByRole("complementary", { name: "Graph inspector" });
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("m/s", { timeout: 60_000 });
-    await expect(page.getByTestId("graph2d-linked-region-highlight")
-      .locator("circle[data-graph2d-linked-region-series]"))
-      .toHaveCount(4);
+    await expect(inspector.getByTestId("graph2d-combined-region-selection"))
+      .toContainText("complex-phase");
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]").count())
+      .toBeGreaterThan(4);
     const tile = join(burgers, "vx.f64");
     const changed = Buffer.from(await readFile(tile));
     changed[0] ^= 1;
@@ -844,9 +888,9 @@ test("SCI-02 Burgers four-profile selection withholds a changed source after Pro
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
+    if (await explorer.isVisible()) await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     if (await projects.isVisible()) await page.getByTestId("projects-toggle").click();
     await page.getByTestId("workspace-dock-reset-recommended").click();
-    await page.getByRole("button", { name: /Select .*Wave amplitude.* phase region mean/ }).click();
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
       .toContainText("vector", { timeout: 60_000 });
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))

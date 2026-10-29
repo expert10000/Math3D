@@ -532,8 +532,21 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("combined-graph"),
       { type: "create-point-series-group", drafts });
     const reopened = parseGraph2DDocument(serializeGraph2DDocument(
-      createGraph2DDocument({ ...graph, stableKey: "combined-graph" })));
+      createGraph2DDocument({ ...graph, stableKey: "combined-graph",
+        selection: { objectId: graph.source.objects[0]!.id, probe: null,
+          linkedRegion: { pairId: group[0].origin.pairId,
+            physical: { kind: "interval", min: -0.5, max: 0.5 } } } })));
     expect(reopened.source.objects).toHaveLength(4);
+    expect(reopened.selection.linkedRegion?.physical).toEqual({
+      kind: "interval", min: -0.5, max: 0.5 });
+    expect(() => parseGraph2DDocument(serializeGraph2DDocument({ ...reopened,
+      selection: { ...reopened.selection, linkedRegion: {
+        pairId: "sha256:" + "0".repeat(64),
+        physical: { kind: "point", x: 0 } } } }))).toThrow();
+    expect(() => parseGraph2DDocument(serializeGraph2DDocument({ ...reopened,
+      selection: { ...reopened.selection, linkedRegion: {
+        pairId: group[0].origin.pairId,
+        physical: { kind: "interval", min: -999, max: 0 } } } }))).toThrow();
     const bridge = { checkGraphDatasetReference: async ({ locator }: {
       locator: { value: string } }) => ({ ok: true as const,
       source: { manifestJson: locator.value === "quadraticVolume" ?

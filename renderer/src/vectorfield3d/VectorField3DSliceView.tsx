@@ -3,7 +3,8 @@ import { canonicalJsonStringify, structuralHash } from "@math3d/core";
 import type { VectorField3DDocument, VectorField3DSliceArtifact,
   VectorField3DClipBounds, VectorField3DLinkedLineProfile,
   VectorField3DOverlayRegion,
-  Graph2DScientificVolume, AnalysisResultEnvelope } from "@math3d/core";
+  Graph2DScientificVolume, Graph2DLinkedRegionSelection,
+  AnalysisResultEnvelope } from "@math3d/core";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
 import type { ScalarSliceOverlay, SliceOverlayArrow,
@@ -34,7 +35,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onSendLinkedLineToGraphs, linkedLineBusy = false,
   overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
-  onSendCombinedRegionToGraphs,
+  onSendCombinedRegionToGraphs, onFocusRegionInGraphs,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   probe?: readonly [number, number, number] | null;
@@ -80,6 +81,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => void;
+  onFocusRegionInGraphs?: (region: VectorField3DOverlayRegion,
+    physical: Graph2DLinkedRegionSelection["physical"]) => Promise<void>;
   regionBusy?: boolean;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
@@ -90,9 +93,15 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const [profileDirection, setProfileDirection] = useState<0 | 1>(0);
   const [regionSelecting, setRegionSelecting] = useState(false);
   const [regionFirstCorner, setRegionFirstCorner] = useState<readonly [number, number, number] | null>(null);
+  const [graphSelectionMode, setGraphSelectionMode] = useState<"point" | "interval" | null>(null);
+  const [graphSelectionFirstX, setGraphSelectionFirstX] = useState<number | null>(null);
+  const [graphSelectionBusy, setGraphSelectionBusy] = useState(false);
+  const [graphSelectionError, setGraphSelectionError] = useState("");
   useEffect(() => { setRegionSelecting(false); setRegionFirstCorner(null); },
     [slice.normalAxis, slice.fixedCoordinate, document.identity.structuralHash,
       document.workspace?.scalarOverlay?.visible, document.workspace?.complexOverlay?.visible]);
+  useEffect(() => { setGraphSelectionMode(null); setGraphSelectionFirstX(null);
+    setGraphSelectionError(""); }, [overlayRegion, slice.normalAxis, slice.fixedCoordinate]);
   const arrowMarkerId = useId().replace(/:/g, "");
   const [first, second] = slice.planeAxes;
   const { left, top, width, height } = slicePlot;
@@ -194,6 +203,41 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     <svg viewBox={`${640 * center[0] - 320 / zoom} ${560 * center[1] - 280 / zoom} ${640 / zoom} ${560 / zoom}`}
       role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}
       onClick={event => {
+        if (graphSelectionMode && overlayRegion && onFocusRegionInGraphs) {
+          const transform = event.currentTarget.getScreenCTM();
+          const local = transform ? new DOMPoint(event.clientX, event.clientY)
+            .matrixTransform(transform.inverse()) : null;
+          if (!local || local.x < left || local.x > left + width ||
+              local.y < top || local.y > top + height) {
+            setGraphSelectionError("Click inside the saved physical rectangle."); return;
+          }
+          const x = slice.coordinates[0][0]! + (local.x - left) / width *
+            (slice.coordinates[0].at(-1)! - slice.coordinates[0][0]!);
+          const y = slice.coordinates[1][0]! + (top + height - local.y) / height *
+            (slice.coordinates[1].at(-1)! - slice.coordinates[1][0]!);
+          if (x < overlayRegion.bounds[0][0] - 1e-9 ||
+              x > overlayRegion.bounds[0][1] + 1e-9 ||
+              y < overlayRegion.bounds[1][0] - 1e-9 ||
+              y > overlayRegion.bounds[1][1] + 1e-9) {
+            setGraphSelectionError("Click inside the saved physical rectangle."); return;
+          }
+          const physicalX = Math.max(overlayRegion.bounds[0][0],
+            Math.min(overlayRegion.bounds[0][1], x));
+          setGraphSelectionError("");
+          if (graphSelectionMode === "interval" && graphSelectionFirstX === null) {
+            setGraphSelectionFirstX(physicalX); return;
+          }
+          const physical = graphSelectionMode === "point" ?
+            { kind: "point" as const, x: physicalX } : { kind: "interval" as const,
+              min: Math.min(graphSelectionFirstX!, physicalX),
+              max: Math.max(graphSelectionFirstX!, physicalX) };
+          setGraphSelectionBusy(true);
+          void onFocusRegionInGraphs(overlayRegion, physical).then(() => {
+            setGraphSelectionMode(null); setGraphSelectionFirstX(null);
+          }).catch(cause => setGraphSelectionError(cause instanceof Error ? cause.message :
+            String(cause))).finally(() => setGraphSelectionBusy(false));
+          return;
+        }
         if (regionSelecting && onOverlayRegionChange &&
             (document.workspace?.scalarOverlay?.visible || document.workspace?.complexOverlay?.visible)) {
           const transform = event.currentTarget.getScreenCTM();
@@ -240,7 +284,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             color(value, slice.min, slice.max)}
           opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
-            if (!onProbeSelect || seedPlacementActive ||
+            if (!onProbeSelect || seedPlacementActive || graphSelectionMode ||
                 (regionSelecting && (document.workspace?.scalarOverlay?.visible ||
                   document.workspace?.complexOverlay?.visible))) return;
             const point = [0, 0, 0] as [number, number, number];
@@ -429,9 +473,16 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       onSaveResult={onSaveRegionResult}
       onSendToGraphs={onSendRegionToGraphs}
       onSendCombinedToGraphs={onSendCombinedRegionToGraphs} regionBusy={regionBusy}
+      graphSelectionMode={graphSelectionMode} graphSelectionFirstX={graphSelectionFirstX}
+      graphSelectionBusy={graphSelectionBusy} graphSelectionError={graphSelectionError}
+      onGraphSelectionMode={onFocusRegionInGraphs ? mode => {
+        setRegionSelecting(false); setRegionFirstCorner(null);
+        setGraphSelectionMode(mode); setGraphSelectionFirstX(null); setGraphSelectionError("");
+      } : undefined}
       status={overlayStatus} onChange={onOverlayRegionChange}
       vectorStatus={vectorStatus} scalarStatus={scalarStatus} complexStatus={complexStatus}
       selecting={regionSelecting} onStartSelection={() => {
+        setGraphSelectionMode(null); setGraphSelectionFirstX(null);
         setRegionSelecting(!regionSelecting); setRegionFirstCorner(null);
       }} />}
   </figure>;

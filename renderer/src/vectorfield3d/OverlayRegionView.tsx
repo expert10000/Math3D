@@ -9,6 +9,7 @@ import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { sampleOverlayRegion, type OverlayRegionSummary,
   type VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
+import type { Graph2DLinkedRegionSelection } from "@math3d/core";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 import { sampleCombinedRegion, type CombinedRegionInspection } from
   "./combinedFieldInspection";
@@ -18,7 +19,9 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   onChange, onStartSelection, selecting,
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
   onSendCombinedToGraphs,
-  regionBusy = false, linkedRegionFocus = null }: {
+  regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
+  graphSelectionFirstX = null, graphSelectionBusy = false, graphSelectionError = "",
+  onGraphSelectionMode }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   vectorPlane: VectorSliceOverlayPlane | null;
@@ -41,6 +44,11 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     imaginarySampleSha256: string) => void;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
+  graphSelectionMode?: "point" | "interval" | null;
+  graphSelectionFirstX?: number | null;
+  graphSelectionBusy?: boolean;
+  graphSelectionError?: string;
+  onGraphSelectionMode?: (mode: Graph2DLinkedRegionSelection["physical"]["kind"] | null) => void;
 }) {
   const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
@@ -152,6 +160,21 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
             `; value ${format(rows[0]!.y!)} ${item.unit}` : ""}.</li>;
       })}</ul> : <p role="alert">Four-field selection values withheld until the vector,
         scalar, and both complex components verify. {combinedError}</p>}
+    </div>}
+    {selected && secondaryComplex && onGraphSelectionMode && <div
+      data-testid="scientific-region-to-graphs-selection">
+      <p>Choose a physical column or strip inside this rectangle to focus the four saved Graphs profiles.</p>
+      <button type="button" aria-pressed={graphSelectionMode === "point"}
+        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("point")}>Select Graphs column</button>
+      <button type="button" aria-pressed={graphSelectionMode === "interval"}
+        disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("interval")}>Select Graphs strip</button>
+      {graphSelectionMode && <button type="button" onClick={() => onGraphSelectionMode(null)}>Cancel selection</button>}
+      {graphSelectionMode && <p role="status">{graphSelectionBusy ? "Verifying four sources…" :
+        graphSelectionMode === "point" ? "Click once inside the rectangle." :
+          graphSelectionFirstX === null ? "Click the first strip edge inside the rectangle." :
+            `First strip edge: ${format(graphSelectionFirstX)} ${units[0]}. Click the second edge.`}</p>}
+      {graphSelectionError && <p role="alert" data-testid="scientific-region-to-graphs-error">{
+        graphSelectionError}</p>}
     </div>}
     <button type="button" aria-pressed={selecting} onClick={onStartSelection}>
       {selecting ? "Click two corners on the slice" : "Select rectangular region"}</button>
