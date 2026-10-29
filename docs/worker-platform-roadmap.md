@@ -357,11 +357,14 @@ thread settings, and container inputs; carry license notices in release output.
 
 ### Sage
 
-Sage is container-first and optional. It is not bundled in the normal Electron
-installer and is never selected for import, rendering, picking, normals, or
-routine mesh work. Use a warm, bounded pool behind the private gateway for
-symbolic algebra and exact calculations. A legal/distribution review and
-resource quotas are prerequisites to enabling it for any hosted deployment.
+Sage is optional and is not bundled in the normal Electron installer. The
+current desktop and same-machine web path uses a bounded local WSL worker for
+the supported symbolic and polynomial operations; the Docker service remains
+an explicit alternative. A private, authenticated container gateway with a
+warm, bounded pool is the hosted target, not a claim about the current local
+implementation. Sage is never selected for import, rendering, picking,
+normals, or routine mesh work. A legal/distribution review and resource quotas
+are prerequisites to enabling it for any hosted deployment.
 
 ## Delivery plan
 
@@ -467,6 +470,47 @@ restartable, and validated across local and server routes.
 
 Acceptance: symbolic operations are reproducible from recorded inputs and
 provenance; Sage absence is a typed capability state, not an application fault.
+
+The bounded WSL worker and optional Docker service are local delivery slices.
+They do not complete the hosted gateway or the shared `ExecutionService`
+migration. The current Surface symbolic panel still routes through its Sage
+client compatibility facade; the UI rollout below should replace that
+feature-side routing with the common operation registry and broker.
+
+### Scientific Services UI rollout — implementation sequence
+
+Retain `Scene | Object | View | Analysis | Services | Theory` across modules.
+`Services` chooses and runs scientific operations; `Inspector → Analysis`
+displays exact or numerical results, diagnostics, provenance, and actions.
+The center Viewer displays derived overlays or geometry. Configure runtimes
+once in `Compute → Runtimes`; keep a per-run backend choice or capability badge
+in Services without duplicating installation settings. Sage coding belongs in
+Workbook or an optional docked console.
+
+| Priority | UI change | Scope | Current state / acceptance |
+| --- | --- | --- | --- |
+| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Planned. A module declares available operations, inputs, capability requirements, result types, and limits; the shared panel filters and invokes them through `ExecutionService`. No module-specific Sage URL, process, or duplicate queue. |
+| P0 | Move Docker/WSL configuration and diagnostics into `Compute → Runtimes` | Global | Planned. Show availability, version, environment, probe result, limits, and actionable errors for each backend; changing the global profile does not execute an operation. Services shows the selected backend and a link to these diagnostics. |
+| P0 | Add SageMath engine with WSL backend | Services | Partly shipped. The bounded local WSL worker and explicit Docker choice support a restricted symbolic/polynomial set. Complete the registry/broker adapter, capability reporting, and cross-module operation selection before marking this row done. |
+| P1 | Add operation-specific result cards and artifact actions | Inspector | Partly shipped for Surface/Implicit. Generalize exact expression, vector, matrix, solution set, and error cards; show source revision, backend, warnings, and stale state. Actions must use typed result/artifact contracts. |
+| P1 | Visualize a result as an overlay or save it as an object | Viewer | Partly shipped for Surface gradients and scalar implicit geometry. Add explicit preview/commit actions, source-linked provenance, stale invalidation, and appropriate geometry or overlay adapters per result type. |
+| P2 | Add a Sage Console bottom dock | Advanced users | Planned. Make session state, execution limits, cancellation, and output provenance visible; do not turn the public worker contract into arbitrary code execution. |
+| P2 | Add persistent Sage code cells | Workbook | Planned. Reuse Workbook blocks, saved inputs/outputs, dependencies, and source freshness. Gate code execution behind an explicit trusted local or private runtime policy; do not silently send cells to a hosted backend. |
+| P3 | Add a dedicated CAS/Algebra workspace | Global module | Planned after the shared Services and Inspector flow proves reusable. It composes the same operations and results rather than creating a second backend architecture. |
+
+Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
+**Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
+operation catalog and remember the user's view; they do not create separate
+workers, routes, result schemas, or runtime installations. The forthcoming
+Number Theory module should register its Sage operations through the same
+contract used by Surface, Geometry, and Graph.
+
+Delivery gates: first prove one shared Services operation in two modules with
+the same request/result envelope and cancellation; then move runtime setup and
+diagnostics into Compute; then prove result-card, overlay/object, and Workbook
+round trips across desktop and web. Keep Docker and WSL selectable where both
+capabilities exist, and report unavailable backends without silently changing
+the requested exactness.
 
 ### Phase 6 — remote federation and operational release gate
 
