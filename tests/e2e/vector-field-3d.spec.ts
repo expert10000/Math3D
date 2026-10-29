@@ -1028,7 +1028,25 @@ test("SCI-06 vector-only rectangle publishes and withholds a changed source", as
       .toContainText("curl-magnitude: 1/1 columns available", { timeout: 90_000 });
     await expect(explorer.getByTestId("scientific-region-graph-focus-marker"))
       .toBeVisible();
-    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    const returnRegion = figure.getByTestId("vector-derived-region");
+    await returnRegion.getByRole("button", { name: "Select Graphs vector column" }).click();
+    await figure.locator('[data-probe-cell="16-16"]').click();
+    await expect(graphInspector.getByTestId("graph2d-vector-region-columns"))
+      .toContainText("1/s", { timeout: 90_000 });
+    await expect(page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]"))
+      .toHaveCount(3, { timeout: 90_000 });
+    await graphInspector.getByTestId("graph2d-open-vector-region-point").click();
+    await expect(explorer.getByTestId("scientific-vector-region-graph-focus"))
+      .toContainText("columns", { timeout: 90_000 });
+    await returnRegion.getByRole("button", { name: "Select Graphs vector strip" }).click();
+    await figure.locator('[data-probe-cell="14-16"]').click();
+    await figure.locator('[data-probe-cell="18-16"]').click();
+    await expect(graphInspector.getByTestId("graph2d-vector-region-columns"))
+      .toContainText("Physical columns", { timeout: 90_000 });
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]").count())
+      .toBeGreaterThan(3);
     await page.getByRole("button", { name: "Select Vector divergence region mean" }).click();
     await graphInspector.getByRole("spinbutton", { name: "Vector region interval from" })
       .fill(String(Number(await graphInspector.getByRole("spinbutton",

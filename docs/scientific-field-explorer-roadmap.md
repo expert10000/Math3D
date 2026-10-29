@@ -1136,6 +1136,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02/06 vector-only return selection.** Selecting a speed, divergence or curl-magnitude Graphs profile column or physical interval now rechecks all three saved rows and pinned vector source before opening its rectangle in Field Explorer. The selection snaps to the shared 17-column lattice, highlights the physical strip, and reports each profile's unit, available columns and gaps. Explorer recomputes the bounded slice and stencil before showing selected values; changed source bytes or rows withhold the selection. Existing combined-region links retain their own selection path.
 
+**SCI-02/06 vector-only Explorer-to-Graphs selection.** On a verified vector-only rectangle, a user can now click a physical column or two strip edges to focus all three saved Graphs profiles. Graphs rechecks the speed, divergence and curl-magnitude row hashes and recomputes each from the pinned vector source before committing the snapped selection. The plot and inspector retain separate `m/s` and `1/s` units and coverage gaps; a missing or changed source or row withholds the selection.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

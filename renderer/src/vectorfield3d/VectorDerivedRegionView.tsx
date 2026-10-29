@@ -17,7 +17,9 @@ type Check = Readonly<{ document: VectorField3DDocument;
 
 export function VectorDerivedRegionView({ document, slice, region, onChange,
   onStartSelection, selecting, busy, onPublish, onSendToGraphs,
-  savedStatus, linkedRegionFocus }: {
+  savedStatus, linkedRegionFocus, graphSelectionMode = null,
+  graphSelectionFirstX = null, graphSelectionBusy = false,
+  graphSelectionError = "", onGraphSelectionMode }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   onChange: (region: VectorField3DOverlayRegion | null) => void;
@@ -26,6 +28,11 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   onSendToGraphs?: (region: VectorField3DOverlayRegion) => Promise<void>;
   savedStatus?: SavedRegionSourceStatus;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
+  graphSelectionMode?: "point" | "interval" | null;
+  graphSelectionFirstX?: number | null;
+  graphSelectionBusy?: boolean;
+  graphSelectionError?: string;
+  onGraphSelectionMode?: (mode: "point" | "interval" | null) => void;
 }) {
   const [check, setCheck] = useState<Check | null>(null);
   const [revision, setRevision] = useState(0);
@@ -105,6 +112,27 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
         region.bounds[1][0]} to {region.bounds[1][1]} {axes[1]!.unit}; {
         document.source.axes[region.normalAxis]!.label} = {
         region.fixedCoordinate} {document.source.axes[region.normalAxis]!.unit}.</p>
+      {onGraphSelectionMode && <div data-testid="scientific-vector-region-to-graphs">
+        <p>Choose a physical column or strip inside this rectangle to focus the
+          saved vector speed, divergence and curl magnitude profiles in Graphs.</p>
+        <button type="button" aria-pressed={graphSelectionMode === "point"}
+          disabled={graphSelectionBusy || current?.state !== "current"}
+          onClick={() => onGraphSelectionMode("point")}>Select Graphs vector column</button>
+        <button type="button" aria-pressed={graphSelectionMode === "interval"}
+          disabled={graphSelectionBusy || current?.state !== "current"}
+          onClick={() => onGraphSelectionMode("interval")}>Select Graphs vector strip</button>
+        {graphSelectionMode && <button type="button"
+          onClick={() => onGraphSelectionMode(null)}>Cancel Graphs selection</button>}
+        {graphSelectionMode && <p role="status">{graphSelectionBusy ?
+          "Verifying all three saved source profiles…" :
+          graphSelectionMode === "point" ?
+            "Click once inside the rectangle." : graphSelectionFirstX === null ?
+              "Click the first strip edge inside the rectangle." :
+              `First strip edge: ${graphSelectionFirstX.toPrecision(6)} ${axes[0]!.unit}. Click the second edge.`}</p>}
+        {graphSelectionError && <p role="alert"
+          data-testid="scientific-vector-region-to-graphs-error">{
+            graphSelectionError}</p>}
+      </div>}
       {current?.state === "current" && current.profiles ? <div role="status"
         data-testid="vector-derived-region-summary">
         <p>Vector speed: {stats(current.profiles.speed.statistics,
