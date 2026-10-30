@@ -6,6 +6,10 @@
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowImportingTsExtensions": true,
+    "paths": {
+      "@math3d/kernel": ["../../packages/kernel/src/index.ts"],
+      "@math3d/kernel/*": ["../../packages/kernel/src/*"]
+    },
     "strict": true,
     "strictNullChecks": true,
     "noImplicitAny": false,

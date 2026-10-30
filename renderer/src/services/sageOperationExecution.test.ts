@@ -51,6 +51,21 @@ describe("Sage scientific execution contract", () => {
     expect(getComputeJobs().find((job) => job.jobId === handle.jobId)?.failure).toContain("unsupported polynomial");
   });
 
+  it("reports a Docker symbolic-solve rejection with its diagnostic", async () => {
+    const operation = "sage.symbolic.solve";
+    const handle = runSageJob({ operation, backend: "docker", params: paramsFor(operation, "docker") }, {
+      run: async (input) => ({ engine: "sagemath", operation: input.operation, success: false,
+        latex: "", result: {}, warnings: [], error: "no finite solution set" }),
+    });
+    const { response, broker } = await handle.promise;
+    expect(response.error).toBe("no finite solution set");
+    expect(broker).toMatchObject({ ok: false, code: "scientific-failure" });
+    expect(getComputeJobs().find((job) => job.jobId === handle.jobId)).toMatchObject({
+      operationType: "symbolic.solve", status: "failed", backendId: "sage-docker",
+    });
+    expect(getComputeJobs().find((job) => job.jobId === handle.jobId)?.failure).toContain("no finite solution set");
+  });
+
   for (const operation of operations) {
     it(`cancels ${operation} through the broker and local worker`, async () => {
       let started!: () => void;

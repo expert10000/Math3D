@@ -215,6 +215,28 @@ test("Chrome Sage panel explicitly routes shared operations to Docker when selec
   await panel.getByRole("button", { name: "Run", exact: true }).click();
   await expect(page.getByTestId("sage-analysis-result")).toContainText("2*x ; 2*y ; 2*z");
   expect(requests.at(-1)).toMatchObject({ operation: "sage.symbolic.gradient", params: { variables: ["x", "y", "z"] } });
+  const symbolicCases = [
+    { operation: "sage.symbolic.expand", label: "Expanded expression", job: "Symbolic expansion" },
+    { operation: "sage.symbolic.factor", label: "Factored expression", job: "Symbolic factorization" },
+    { operation: "sage.symbolic.solve", label: "Solutions", job: "Symbolic solve" },
+    { operation: "sage.symbolic.singularities", label: "Singularities", job: "Symbolic singularities" },
+  ] as const;
+  for (const item of symbolicCases) {
+    await panel.getByLabel("Operation").selectOption(item.operation);
+    await panel.getByLabel("Expression").fill("x^2+y^2+z^2-1");
+    await panel.getByLabel("Variables").fill("x,y,z");
+    await panel.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(page.getByTestId("sage-analysis-result")).toContainText(item.label);
+    expect(requests.at(-1)).toMatchObject({ operation: item.operation, backend: "docker",
+      params: { expression: "x^2+y^2+z^2-1", variables: ["x", "y", "z"] } });
+  }
+  await page.getByTestId("top-compute-center-button").click();
+  const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
+  for (const item of symbolicCases) {
+    await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("complete");
+    await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("sage-docker");
+  }
+  await page.getByTestId("compute-center").getByRole("button", { name: "Close", exact: true }).click();
   await panel.getByLabel("Operation").selectOption("sage.matrix.charpoly");
   await expect(panel.getByLabel("SageMath backend")).toHaveValue("docker");
   await expect(panel.getByLabel("SageMath backend").locator('option[value="local"]')).toBeDisabled();

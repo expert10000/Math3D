@@ -286,3 +286,46 @@ test("desktop Sage algebraic roots handles valid input, rejection, and cancellat
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("desktop Local WSL routes remaining symbolic operations into Compute jobs", async () => {
+  test.setTimeout(180_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-sage-desktop-"));
+  const app = await launchRepoElectron({
+    args: ["."], cwd: resolve(__dirname, "../.."),
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Palette", exact: true }).click();
+    await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
+      .fill("Open backend services panel");
+    await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+    const panel = page.getByText("Symbolic Mathematics", { exact: true }).locator("..");
+    const cases = [
+      { operation: "sage.symbolic.expand", expression: "(x+1)^2", variables: "x", label: "Expanded expression", job: "Symbolic expansion" },
+      { operation: "sage.symbolic.factor", expression: "x^2-1", variables: "x", label: "Factored expression", job: "Symbolic factorization" },
+      { operation: "sage.symbolic.solve", expression: "x^2-1", variables: "x", label: "Solutions", job: "Symbolic solve" },
+      { operation: "sage.symbolic.singularities", expression: "x^2+y^2+z^2-1", variables: "x,y,z", label: "Singularities", job: "Symbolic singularities" },
+    ] as const;
+    for (const item of cases) {
+      await panel.getByLabel("Operation").selectOption(item.operation);
+      await panel.getByLabel("Expression").fill(item.expression);
+      await panel.getByLabel("Variables").fill(item.variables);
+      await panel.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(panel).toContainText("Success: yes", { timeout: 60_000 });
+      await expect(page.getByTestId("sage-analysis-result")).toContainText(item.label);
+    }
+    await expect(page.getByTestId("sage-analysis-result")).toContainText("0 singular points");
+    await page.getByTestId("top-compute-center-button").click();
+    const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
+    for (const item of cases) {
+      await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("complete");
+      await expect(jobs.getByText(item.job).first().locator("../..")).toContainText("sage-local-wsl");
+    }
+  } finally {
+    await app.close();
+    if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))
+      throw new Error("Unsafe Sage desktop test cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});

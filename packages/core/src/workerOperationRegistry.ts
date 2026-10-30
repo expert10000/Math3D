@@ -27,6 +27,8 @@ export type Math3DWorkerOperationId =
   | "symbolic.simplify"
   | "symbolic.solve"
   | "symbolic.factor"
+  | "symbolic.expand"
+  | "symbolic.singularities"
   | "symbolic.gradient"
   | "symbolic.hessian"
   | "polynomial.factor"
@@ -217,7 +219,7 @@ const definitions = [
     title: "Symbolic solve",
     canonicalOwner: "sage",
     method: "exact",
-    environments: ["server"],
+    environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
   },
   {
@@ -225,7 +227,23 @@ const definitions = [
     title: "Symbolic factorization",
     canonicalOwner: "sage",
     method: "exact",
-    environments: ["desktop", "server"],
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "symbolic.expand",
+    title: "Symbolic expansion",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "symbolic.singularities",
+    title: "Symbolic singularities",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
   },
   {
