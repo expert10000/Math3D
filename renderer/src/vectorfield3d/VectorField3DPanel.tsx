@@ -117,6 +117,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
+  onPublishDirectCombinedSubrectangle,
   linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
@@ -146,6 +147,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onPublishCombinedSubrectangle?: (document: VectorField3DDocument,
     region: VectorField3DOverlayRegion,
     focus: LinkedRegionGraphFocus) => Promise<void>;
+  onPublishDirectCombinedSubrectangle?: (document: VectorField3DDocument,
+    region: VectorField3DOverlayRegion, bounds: VectorField3DOverlayRegion["bounds"],
+    inspection: CombinedRegionInspection, vectorSamples: readonly OverlaySampleDigest[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => Promise<void>;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
@@ -2755,6 +2761,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
                 onPublishVectorSubrectangle(document, region, focus) : undefined}
               onPublishCombinedSubrectangle={onPublishCombinedSubrectangle ? (region, focus) =>
                 onPublishCombinedSubrectangle(document, region, focus) : undefined}
+              onPublishDirectCombinedSubrectangle={onPublishDirectCombinedSubrectangle ?
+                (region, bounds, inspection, samples, scalarHash, realHash, imaginaryHash) =>
+                  onPublishDirectCombinedSubrectangle(document, region, bounds, inspection,
+                    samples, scalarHash, realHash, imaginaryHash) : undefined}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2804,6 +2814,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           onPublishVectorSubrectangle(document, region, focus) : undefined}
         onPublishCombinedSubrectangle={onPublishCombinedSubrectangle ? (region, focus) =>
           onPublishCombinedSubrectangle(document, region, focus) : undefined}
+        onPublishDirectCombinedSubrectangle={onPublishDirectCombinedSubrectangle ?
+          (region, bounds, inspection, samples, scalarHash, realHash, imaginaryHash) =>
+            onPublishDirectCombinedSubrectangle(document, region, bounds, inspection,
+              samples, scalarHash, realHash, imaginaryHash) : undefined}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

@@ -1152,6 +1152,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02 published combined subrectangle.** The six-field vector, scalar and complex intersection can publish compact selected-cell statistics for speed, scalar value, complex magnitude and phase, divergence and curl magnitude. The Project saves snapped physical bounds, separate units and coverage gaps, pinned source references and transfer digests, and twelve Graphs profile hashes without field arrays. Reopen checks each source and its two saved profile rows, recomputes selected-cell values, and withholds only affected fields while independently verified fields remain readable. Existing combined rectangles and vector-only subrectangles retain their readers.
 
+**SCI-02 direct combined subrectangle publication.** After selecting a combined rectangle, Field Explorer offers **Select subrectangle on slice** and, after two corners, **Publish subrectangle to Project**. The action creates any missing six-column and six-row Graphs profile groups, verifies the twelve saved rows and their sources, then publishes the same compact result and focuses its physical intersection. Users can still send profiles or focus Graphs explicitly. Project reopen retains the same per-field numerical and source checks.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

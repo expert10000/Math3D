@@ -900,6 +900,68 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
   }
 });
 
+test("SCI-02 publishes a combined subrectangle directly from Explorer", async () => {
+  test.setTimeout(360_000);
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    const examples = explorer.getByRole("region", { name: "Built-in scientific scenes" });
+    await examples.getByRole("button", { name: /Swirling flow/ }).click();
+    await explorer.getByRole("button", { name: "XY slice", exact: true }).click();
+    await examples.getByRole("button", { name: /Quadratic potential/ }).click();
+    await explorer.getByRole("button", {
+      name: "Show this scalar as overlay on vector slices" }).click();
+    await examples.getByRole("button", { name: /Complex wave/ }).click();
+    await explorer.getByRole("button", {
+      name: "Show this complex field as overlay on vector slices" }).click();
+    const figure = explorer.getByRole("figure", { name: "XY field slice" });
+    const region = figure.getByTestId("scientific-overlay-region");
+    await region.getByRole("button", { name: "Select rectangular region" }).click();
+    await figure.locator('[data-probe-cell="8-8"]').click();
+    await figure.locator('[data-probe-cell="13-13"]').click();
+    await expect(figure.getByTestId("scientific-combined-region-summary"))
+      .toContainText("289/289 samples", { timeout: 60_000 });
+    await region.getByRole("button", { name: "Select subrectangle on slice" }).click();
+    await figure.locator('[data-probe-cell="9-9"]').click();
+    await figure.locator('[data-probe-cell="12-12"]').click();
+    await expect(figure.getByTestId("scientific-subrectangle-preview"))
+      .toContainText("Proposed physical bounds");
+    await figure.getByTestId("scientific-publish-direct-combined-subrectangle").click();
+    await expect(figure.getByTestId("scientific-combined-intersection-summary"))
+      .toBeVisible({ timeout: 120_000 });
+    await expect(figure.getByTestId("scientific-combined-subrectangle-saved-status"))
+      .toContainText("curl magnitude source-current", { timeout: 120_000 });
+    await page.getByTestId("projects-toggle").click();
+    await page.getByTestId("project-explorer-panel")
+      .getByTestId("project-save").click();
+    await expect.poll(() => page.evaluate(() =>
+      localStorage.getItem("math3d.project.v1"))).not.toBeNull();
+    const raw = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
+    const project = JSON.parse(raw!);
+    const result = project.workspace.results.find((item: { provenance: {
+      operation: { type: string } } }) => item.provenance.operation.type ===
+      "vector3d.combined-subrectangle");
+    expect(result.summary.sampleCount).toBeGreaterThan(0);
+    expect(result.provenance.operation.parameters.profiles.columnRowsSha256)
+      .toHaveLength(6);
+    expect(result.provenance.operation.parameters.profiles.rowRowsSha256)
+      .toHaveLength(6);
+    expect(JSON.stringify(result)).not.toContain('"cells"');
+    const profiles = project.workspace.entries.flatMap((entry: { checkpoint: {
+      source?: { objects?: { linkedOrigin?: { kind: string } }[] } } }) =>
+      entry.checkpoint.source?.objects ?? []).filter((item: {
+      linkedOrigin?: { kind: string } }) => item.linkedOrigin?.kind ===
+      "vector-scalar-complex-curl-linked-region/v4" || item.linkedOrigin?.kind ===
+      "vector-scalar-complex-curl-row-linked-region/v5");
+    expect(profiles).toHaveLength(12);
+  } finally { await closeSurfaceApp(app); }
+});
+
 test("SCI-02 Burgers six-profile selection withholds a changed source after Project reopen", async () => {
   test.setTimeout(720_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-four-region-"));

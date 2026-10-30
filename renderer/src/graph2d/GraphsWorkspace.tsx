@@ -55,6 +55,7 @@ import {
   createVectorField3DDocument, parseVectorField3DDocument,
   defaultVectorField3DWorkspace, reviseVectorField3DWorkspace,
   type VectorField3DDocument, type VectorField3DSource,
+  type VectorField3DOverlayRegion,
   createVectorField2DDocument, reviseVectorField2DDocument, type VectorField2DDocument,
   createScientificFieldDocument, reviseScientificFieldDocument,
   scientificFieldGraphResultState, scientificFieldResultBinding, type ScientificFieldDocument,
@@ -108,6 +109,9 @@ import { verifiedVectorSubrectangleResult } from
   "../vectorfield3d/vectorDerivedSubrectangleResult";
 import { inspectCombinedSubrectangle } from
   "../vectorfield3d/combinedSubrectangleResult";
+import { prepareCombinedSubrectanglePublication } from
+  "../vectorfield3d/prepareCombinedSubrectanglePublication";
+import type { CombinedRegionInspection } from "../vectorfield3d/combinedFieldInspection";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
@@ -2249,6 +2253,36 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     onSaveVectorField3DRegionResult(field, checked.result);
     setToolHint("Published six verified subrectangle statistics to Project.");
   };
+  const publishDirectCombinedSubrectangle = async (field: VectorField3DDocument,
+    region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
+    bounds: VectorField3DOverlayRegion["bounds"],
+    inspection: CombinedRegionInspection,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => {
+    if (!region || !onAuthoringCommit || !onSelectionCommit ||
+        !onSaveVectorField3DRegionResult || !window.scientificScenes)
+      throw new TypeError("Graph authoring and Project saving are required.");
+    const prepared = await prepareCombinedSubrectanglePublication(field, document,
+      region, bounds, inspection, vectorSamples, scalarSampleSha256,
+      realSampleSha256, imaginarySampleSha256, window.scientificScenes);
+    for (const action of prepared.actions) onAuthoringCommit(action);
+    const intersection = prepared.focus.intersection!;
+    onSelectionCommit({ objectId: prepared.selectionObjectId, probe: null,
+      linkedRegion: { pairId: intersection.columnPairId,
+        physical: { kind: "interval", min: intersection.bounds[0][0],
+          max: intersection.bounds[0][1] } },
+      linkedRegionIntersection: { kind: "combined-region-intersection/v1",
+        columnPairId: intersection.columnPairId,
+        rowPairId: intersection.rowPairId, bounds: intersection.bounds } });
+    setLinkedRegionSelectionMode({ pairId: intersection.columnPairId,
+      kind: "interval" });
+    setVectorField3DDocument(field);
+    setLinkedRegionFocus(previous => ({ focus: prepared.focus,
+      token: previous?.token ?? 0 }));
+    onSaveVectorField3DRegionResult(field, prepared.result);
+    setToolHint("Published six verified subrectangle statistics and twelve Graphs profiles.");
+  };
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
@@ -3590,6 +3624,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onFocusSubrectangleInGraphs={focusExplorerSubrectangleInGraphs}
           onPublishVectorSubrectangle={publishVectorSubrectangle}
           onPublishCombinedSubrectangle={publishCombinedSubrectangle}
+          onPublishDirectCombinedSubrectangle={publishDirectCombinedSubrectangle}
           savedPointResults={savedVectorField3DPointResults}
           onSavePointResult={onSaveVectorField3DPointResult}
           savedRegionResults={savedVectorField3DRegionResults}

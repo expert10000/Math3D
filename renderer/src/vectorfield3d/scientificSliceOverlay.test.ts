@@ -48,8 +48,11 @@ import { curlMagnitudeRegionProfile, divergenceRegionProfile,
 import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
   validateVectorDerivedRegionGraphGroup } from "./linkedVectorDerivedRegionGraphs";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
+import { OverlayRegionView } from "./OverlayRegionView";
 import { pointTableStore } from "../graph2d/pointTableStore";
 import { inspectCombinedSubrectangle } from "./combinedSubrectangleResult";
+import { prepareCombinedSubrectanglePublication } from
+  "./prepareCombinedSubrectanglePublication";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -1043,6 +1046,16 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         { type: "create-point-series-group", drafts: makeDrafts(rowGroup) }),
       stableKey: "six-subrectangle-both" });
     const bounds = [[-.5625, .5625], [-.3125, .3125]] as const;
+    const directControl = renderToStaticMarkup(createElement(OverlayRegionView, {
+      document, slice, region, vectorPlane: sampleSliceOverlayVectorPlane(document, slice),
+      scalarVolume, complexVolumes: [complexReal.volume, complexImaginary.volume],
+      vectorSamples: [], status: "current", onChange: () => {},
+      onStartSelection: () => {}, selecting: false,
+      subrectangleSelecting: true, subrectangleProposal: bounds,
+      onGraphSelectionMode: () => {}, onSubrectangleToggle: () => {},
+      onSubrectangleConfirm: () => {},
+      onPublishDirectCombinedSubrectangle: async () => {} }));
+    expect(directControl).toContain("Publish subrectangle to Project");
     const ids = { columnPairId: group[0].origin.pairId,
       rowPairId: rowGroup[0].origin.pairId };
     const bridge = { checkGraphDatasetReference: async ({ locator }: {
@@ -1058,6 +1071,35 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
           complexReal.volume : complexImaginary.volume,
       closeGraphDataset: async () => true } as unknown as
         NonNullable<typeof window.scientificScenes>;
+    const direct = await prepareCombinedSubrectanglePublication(document,
+      createEmptyGraph2DDocument("direct-six-subrectangle"), region, bounds,
+      inspection, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256,
+      bridge);
+    expect(direct.actions).toHaveLength(2);
+    expect(direct.result.summary.sampleCount).toBe(45);
+    const oneAxis = createGraph2DDocument({
+      ...applyGraph2DAuthoring(createEmptyGraph2DDocument("direct-one-axis"),
+        direct.actions[0]!), stableKey: "direct-one-axis" });
+    expect((await prepareCombinedSubrectanglePublication(document, oneAxis,
+      region, bounds, inspection, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256,
+      bridge)).actions).toHaveLength(1);
+    let directGraph = createEmptyGraph2DDocument("direct-six-subrectangle");
+    for (const [index, action] of direct.actions.entries())
+      directGraph = createGraph2DDocument({
+        ...applyGraph2DAuthoring(directGraph, action),
+        stableKey: ["direct-six-subrectangle", index] });
+    expect(directGraph.source.objects).toHaveLength(12);
+    expect((await prepareCombinedSubrectanglePublication(document, directGraph,
+      region, bounds, inspection, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256,
+      bridge)).actions).toHaveLength(0);
+    expect(await checkSavedRegionResultSources(direct.result, document,
+      bridge, [directGraph])).toMatchObject({ kind: "combined",
+      vector: "source-current", scalar: "source-current",
+      complexMagnitude: "source-current", complexPhase: "source-current",
+      divergence: "source-current", curlMagnitude: "source-current" });
     const published = await inspectCombinedSubrectangle(document, [both], region,
       bounds, ids, bridge);
     expect(published.result?.summary.sampleCount).toBe(45);

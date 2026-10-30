@@ -23,6 +23,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   onSendCombinedToGraphs, onPublishCombined,
   onSendVectorDerivedToGraphs, onPublishVectorDerived,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
+  onPublishDirectCombinedSubrectangle,
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
   graphSelectionAxis = 0, graphSelectionFirstX = null,
   graphSelectionBusy = false, graphSelectionError = "",
@@ -61,6 +62,12 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     focus: LinkedRegionGraphFocus) => Promise<void>;
   onPublishCombinedSubrectangle?: (region: VectorField3DOverlayRegion,
     focus: LinkedRegionGraphFocus) => Promise<void>;
+  onPublishDirectCombinedSubrectangle?: (region: VectorField3DOverlayRegion,
+    bounds: VectorField3DOverlayRegion["bounds"],
+    inspection: CombinedRegionInspection,
+    vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => void;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
@@ -243,7 +250,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
       {onSubrectangleToggle && <button type="button"
         data-testid="scientific-select-graphs-subrectangle"
         aria-pressed={subrectangleSelecting} disabled={subrectangleBusy}
-        onClick={onSubrectangleToggle}>Select Graphs subrectangle on slice</button>}
+        onClick={onSubrectangleToggle}>Select subrectangle on slice</button>}
       {subrectangleSelecting && <div data-testid="scientific-subrectangle-preview" role="status">
         {subrectangleProposal ? <>
           <p>Proposed physical bounds: {labels[0]} {format(subrectangleProposal[0][0])} to{
@@ -253,6 +260,16 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
           <button type="button" data-testid="scientific-confirm-graphs-subrectangle"
             disabled={subrectangleBusy} onClick={onSubrectangleConfirm}>{subrectangleBusy ?
               "Verifying twelve profiles…" : "Focus twelve verified Graphs profiles"}</button>
+          {selected && secondaryComplex && combined && scalarVolume &&
+            complexVolumes && region && onPublishDirectCombinedSubrectangle &&
+            <button type="button"
+              data-testid="scientific-publish-direct-combined-subrectangle"
+              disabled={subrectangleBusy}
+              onClick={() => onPublishDirectCombinedSubrectangle(region,
+                subrectangleProposal, combined, vectorSamples,
+                scalarVolume.sampleSha256, complexVolumes[0].sampleSha256,
+                complexVolumes[1].sampleSha256)}>{subrectangleBusy ?
+                "Verifying and publishing…" : "Publish subrectangle to Project"}</button>}
         </> : <p>{subrectangleFirst ? "Click the opposite corner inside the saved rectangle." :
           "Click the first corner inside the saved rectangle."}</p>}
         <button type="button" disabled={subrectangleBusy} onClick={onSubrectangleToggle}>Cancel subrectangle</button>
