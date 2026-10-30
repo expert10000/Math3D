@@ -31,7 +31,11 @@ test("Surface and Geometry Services share the same Sage operation and Analysis d
   await expect(page.getByTestId("sage-analysis-result")).toContainText("Simplified expression");
   expect(requests).toHaveLength(2);
   expect(requests[0]).toMatchObject({ operation: "sage.symbolic.simplify", params: { expression: "sin(x)^2 + cos(x)^2" } });
-  expect(requests[1]).toMatchObject(requests[0]);
+  expect(requests[1]).toMatchObject({ operation: requests[0].operation, backend: "docker", params: requests[0].params });
+  expect((requests[1] as { jobId?: string }).jobId).not.toBe((requests[0] as { jobId?: string }).jobId);
+  await page.getByTestId("top-compute-center-button").click();
+  await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("Symbolic simplification");
+  await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("complete");
 });
 
 test("Surface Services runs exact calculus and Analysis exposes its result actions", async ({ page }) => {
@@ -94,6 +98,9 @@ test("local Chrome Sage panel factors and finds roots with rejection and cancell
   await panel.getByRole("button", { name: "Run", exact: true }).click();
   await panel.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(panel).toContainText("Sage symbolic job cancelled.", { timeout: 30_000 });
+  await page.getByTestId("top-compute-center-button").click();
+  await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("cancelled");
+  await page.getByTestId("compute-center").getByRole("button", { name: "Close", exact: true }).click();
   await panel.getByLabel("Operation").selectOption("sage.polynomial.factor");
   const coefficients = panel.getByLabel("Integer coefficients (constant first)");
   await coefficients.fill("1, wrong, 1");

@@ -205,7 +205,7 @@ const definitions = [
     title: "Symbolic simplification",
     canonicalOwner: "sage",
     method: "exact",
-    environments: ["server"],
+    environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
   },
   {

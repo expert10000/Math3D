@@ -16,6 +16,7 @@ const labelFor = (job: ComputeJobRecord) => ({
   "curve.analyze": "Curve analysis",
   "volume.contour": "Volume isosurface",
   "mesh.analyze.differential": "Mesh curvature field",
+  "symbolic.simplify": "Symbolic simplification",
 } as Record<string, string>)[job.operationType] ?? job.operationType;
 const statusColor = (ok: boolean | null) => ok === null ? "#64748b" : ok ? "#16803e" : "#a2530b";
 const formatBytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;
@@ -96,7 +97,7 @@ export default function ComputeCenterPanel({ onClose }: { onClose: () => void })
       </div><div style={{ color: "#64748b", fontSize: 11, marginTop: 10 }}>Broker routes discovered from active scientific job adapters</div>
       {brokerBackends.length ? <div data-testid="compute-center-broker-backends" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>{brokerBackends.map((backend) => <span key={backend.backendId} title={backend.operations.map((operation) => operation.operationType).join(", ")} style={{ background: "white", border: "1px solid #dbe4f0", borderRadius: 6, padding: "4px 7px", fontSize: 11 }}>{backend.availability === "available" ? "✓" : "○"} {backend.backendId} · {backend.transport}</span>)}</div> : <div style={{ color: "#64748b", fontSize: 11 }}>No broker adapters active yet.</div>}
       <button type="button" style={{ ...button, marginTop: 10 }} onClick={() => setActiveTab("runtimes")}>Open Runtimes</button></section>
-      <section style={card} aria-label="Broker jobs"><h3 style={{ margin: "0 0 4px", fontSize: 14 }}>Jobs</h3><div style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>Scientific broker history in this app session: Curve, Volume, and Mesh differential jobs.</div>
+      <section style={card} aria-label="Broker jobs"><h3 style={{ margin: "0 0 4px", fontSize: 14 }}>Jobs</h3><div style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>Scientific broker history in this app session: Curve, Volume, Mesh differential, and Sage Simplify jobs.</div>
         {jobs.length === 0 ? <div data-testid="compute-center-empty-jobs" style={{ color: "#64748b", fontSize: 12 }}>No broker jobs have run in this session.</div> : <div style={{ display: "grid", gap: 6 }}>{jobs.map((job) => <div key={job.jobId} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) auto auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, background: "white", padding: "8px 10px", fontSize: 12 }}><div><strong>{labelFor(job)}</strong><div title={job.jobId} style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.backendId ?? job.phase ?? job.jobId}</div></div><span style={{ textTransform: "capitalize", color: job.status === "failed" ? "#b42318" : job.status === "complete" ? "#16803e" : "#1d4ed8" }}>{job.status}</span><span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>{job.failure && <div style={{ gridColumn: "1 / -1", color: "#b42318", fontSize: 11 }}>{job.failure}</div>}</div>)}</div>}
       </section>
       <section style={card} aria-label="Resources"><h3 style={{ margin: "0 0 10px", fontSize: 14 }}>Resources</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, fontSize: 12 }}>

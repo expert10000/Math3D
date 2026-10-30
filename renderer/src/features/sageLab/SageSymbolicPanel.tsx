@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { isLocalSageOperation, runSageOperation } from "../../integrations/sage/sageClient";
+import { runSageSimplifyJob, type SageSimplifyHandle } from "../../services/sageSimplifyExecution";
 import {
   type SageSymbolicOperation,
   type SageRunResponse,
@@ -58,6 +59,7 @@ const SageSymbolicPanel: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const simplifyHandle = useRef<SageSimplifyHandle | null>(null);
   const localPolynomial = operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
   const localCapable = isLocalSageOperation(operation);
   const localSage = backend === "local" && localCapable;
@@ -98,12 +100,13 @@ const SageSymbolicPanel: React.FC<{
           variables: ["x"],
         };
       }
-      const result = await runSageOperation({
-        operation,
-        jobId,
-        params,
-        backend,
-      });
+      const result = operation === "sage.symbolic.simplify"
+        ? await (async () => {
+          const handle = runSageSimplifyJob({ operation, jobId, params, backend });
+          simplifyHandle.current = handle;
+          return (await handle.promise).response;
+        })()
+        : await runSageOperation({ operation, jobId, params, backend });
       setResponse(result);
       if (result.success) onResult?.({ response: result, expression, variables: variables.length ? variables : ["x"], backend,
         sourceSurfaceExpression: sourceExpression === expression ? sourceExpression : undefined });
@@ -111,6 +114,7 @@ const SageSymbolicPanel: React.FC<{
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run SageMath operation.");
     } finally {
+      simplifyHandle.current = null;
       setActiveJobId(null);
       setBusy("none");
     }
@@ -119,6 +123,10 @@ const SageSymbolicPanel: React.FC<{
   const onCancel = async () => {
     if (!activeJobId) return;
     try {
+      if (simplifyHandle.current) {
+        if (!simplifyHandle.current.cancel()) setError("The Sage job has already finished.");
+        return;
+      }
       const response = await window.sageService?.cancel(activeJobId);
       if (!response?.ok) setError("The Sage job has already finished.");
     } catch (err) {
