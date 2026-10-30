@@ -1972,6 +1972,68 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     }
     throw new TypeError("Send this rectangle's aligned profiles to Graphs first.");
   };
+  const focusExplorerSubrectangleInGraphs = async (explorer: VectorField3DDocument,
+    region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
+    bounds: readonly [readonly [number, number], readonly [number, number]]) => {
+    if (!onSelectionCommit || !region?.visible || !explorer.workspace?.scalarOverlay?.visible ||
+        !explorer.workspace.complexOverlay?.visible ||
+        canonicalJsonStringify(explorer.workspace.overlayRegion) !== canonicalJsonStringify(region))
+      throw new TypeError("Save a visible combined vector, scalar and complex rectangle first.");
+    const findGroup = (kind: Graph2DLinkedCombinedRegionOrigin["kind"]) => {
+      const grouped = new Map<string, Graph2DPointSeriesObject[]>();
+      for (const object of document.source.objects) if (object.kind === "point-series" &&
+          object.linkedOrigin?.kind === kind) {
+        const origin = object.linkedOrigin as Graph2DLinkedCombinedRegionOrigin;
+        if (origin.vectorSourceHash !== explorer.identity.structuralHash ||
+            parseVectorField3DDocument(origin.vectorDocumentJson).identity.id !== explorer.identity.id ||
+            canonicalJsonStringify(origin.region) !== canonicalJsonStringify(region) ||
+            canonicalJsonStringify(origin.scalarReference) !==
+              canonicalJsonStringify(explorer.workspace!.scalarOverlay!.reference) ||
+            canonicalJsonStringify([origin.realReference, origin.imaginaryReference]) !==
+              canonicalJsonStringify([explorer.workspace!.complexOverlay!.real,
+                explorer.workspace!.complexOverlay!.imaginary])) continue;
+        grouped.set(origin.pairId, [...(grouped.get(origin.pairId) ?? []), object]);
+      }
+      for (const group of grouped.values()) {
+        const members = seriesForCombinedRegion(kind).map(series =>
+          group.find(object => object.linkedOrigin?.series === series));
+        if (members.some(member => !member?.linkedOrigin)) continue;
+        const origins = members.map(member =>
+          member!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
+        const rows = members.map(member => pointTableStore.resolve(member!.table));
+        if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+          throw new TypeError("Saved combined region point tables are unavailable.");
+        validateCombinedRegionGraphGroup(origins, rows);
+        return { members: members as Graph2DPointSeriesObject[], origins, rows };
+      }
+      return null;
+    };
+    const column = findGroup("vector-scalar-complex-curl-linked-region/v4");
+    const row = findGroup("vector-scalar-complex-curl-row-linked-region/v5");
+    if (!column || !row)
+      throw new TypeError("Send all six column and six row profiles from this rectangle to Graphs first.");
+    const focus = linkedCombinedRegionIntersectionFocus(column.origins, column.rows,
+      row.origins, row.rows, bounds.map(([min, max]) => ({ kind: "interval" as const,
+        min, max })) as [{ kind: "interval"; min: number; max: number },
+          { kind: "interval"; min: number; max: number }]);
+    const session = createCombinedRegionVerificationSession();
+    const statuses = await Promise.all([...column.origins, ...row.origins].map(origin =>
+      checkCombinedRegionGraphSeries(origin, undefined, session)));
+    if (statuses.some(status => status !== "current"))
+      throw new TypeError(`Subrectangle source checks: ${statuses.join(", ")}. Repair or relink the changed source.`);
+    const intersection = focus.intersection!;
+    onSelectionCommit({ objectId: column.members[0]!.id, probe: null,
+      linkedRegion: { pairId: intersection.columnPairId,
+        physical: { kind: "interval", min: bounds[0][0], max: bounds[0][1] } },
+      linkedRegionIntersection: { kind: "combined-region-intersection/v1",
+        columnPairId: intersection.columnPairId, rowPairId: intersection.rowPairId,
+        bounds: intersection.bounds } });
+    setLinkedRegionSelectionMode({ pairId: intersection.columnPairId, kind: "interval" });
+    setLinkedRegionColumn(null); setLinkedRegionInterval(null);
+    setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+    setVectorField3DOpen(false);
+    setToolHint("Focused the verified physical subrectangle across twelve Graphs profiles.");
+  };
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
@@ -3232,6 +3294,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
           linkedRegionFocus={linkedRegionFocus?.focus ?? null}
           onFocusRegionInGraphs={focusExplorerRegionInGraphs}
+          onFocusSubrectangleInGraphs={focusExplorerSubrectangleInGraphs}
           savedPointResults={savedVectorField3DPointResults}
           onSavePointResult={onSaveVectorField3DPointResult}
           savedRegionResults={savedVectorField3DRegionResults}

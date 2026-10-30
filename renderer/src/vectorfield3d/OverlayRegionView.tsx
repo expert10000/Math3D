@@ -25,7 +25,9 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
   graphSelectionAxis = 0, graphSelectionFirstX = null,
   graphSelectionBusy = false, graphSelectionError = "",
-  onGraphSelectionMode }: {
+  onGraphSelectionMode, subrectangleSelecting = false, subrectangleFirst = null,
+  subrectangleProposal = null, subrectangleBusy = false, subrectangleError = "",
+  onSubrectangleToggle, onSubrectangleConfirm }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   vectorPlane: VectorSliceOverlayPlane | null;
@@ -62,6 +64,13 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   graphSelectionError?: string;
   onGraphSelectionMode?: (mode: Graph2DLinkedRegionSelection["physical"]["kind"] | null,
     profileAxis?: 0 | 1) => void;
+  subrectangleSelecting?: boolean;
+  subrectangleFirst?: readonly [number, number, number] | null;
+  subrectangleProposal?: VectorField3DOverlayRegion["bounds"] | null;
+  subrectangleBusy?: boolean;
+  subrectangleError?: string;
+  onSubrectangleToggle?: () => void;
+  onSubrectangleConfirm?: () => void;
 }) {
   const [publishError, setPublishError] = useState("");
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
@@ -215,6 +224,25 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("point", 1)}>Select Graphs row</button>
       <button type="button" aria-pressed={graphSelectionMode === "interval" && graphSelectionAxis === 1}
         disabled={graphSelectionBusy} onClick={() => onGraphSelectionMode("interval", 1)}>Select Graphs row strip</button>
+      {onSubrectangleToggle && <button type="button"
+        data-testid="scientific-select-graphs-subrectangle"
+        aria-pressed={subrectangleSelecting} disabled={subrectangleBusy}
+        onClick={onSubrectangleToggle}>Select Graphs subrectangle on slice</button>}
+      {subrectangleSelecting && <div data-testid="scientific-subrectangle-preview" role="status">
+        {subrectangleProposal ? <>
+          <p>Proposed physical bounds: {labels[0]} {format(subrectangleProposal[0][0])} to{
+            " "}{format(subrectangleProposal[0][1])} {units[0]}; {labels[1]}{
+            " "}{format(subrectangleProposal[1][0])} to {format(subrectangleProposal[1][1])}{
+            " "}{units[1]}.</p>
+          <button type="button" data-testid="scientific-confirm-graphs-subrectangle"
+            disabled={subrectangleBusy} onClick={onSubrectangleConfirm}>{subrectangleBusy ?
+              "Verifying twelve profiles…" : "Focus twelve verified Graphs profiles"}</button>
+        </> : <p>{subrectangleFirst ? "Click the opposite corner inside the saved rectangle." :
+          "Click the first corner inside the saved rectangle."}</p>}
+        <button type="button" disabled={subrectangleBusy} onClick={onSubrectangleToggle}>Cancel subrectangle</button>
+      </div>}
+      {subrectangleError && <p role="alert" data-testid="scientific-subrectangle-error">{
+        subrectangleError}</p>}
       {graphSelectionMode && <button type="button" onClick={() => onGraphSelectionMode(null)}>Cancel selection</button>}
       {graphSelectionMode && <p role="status">{graphSelectionBusy ? "Verifying linked sources…" :
         graphSelectionMode === "point" ? "Click once inside the rectangle." :

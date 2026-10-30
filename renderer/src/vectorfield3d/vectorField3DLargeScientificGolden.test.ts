@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { slicePlot, sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition } from "./sliceSeedPlacement";
+import { slicePlot, sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition,
+  sliceSubrectangleBounds } from "./sliceSeedPlacement";
 import { curlMagnitudeRegionProfile, divergenceRegionProfile } from
   "./derivedCombinedRegionProfile";
 import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
@@ -195,6 +196,31 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
       expect(sliceSeedPointAtSvgPosition(slice, x, slicePlot.top + slicePlot.height + 1))
         .toBeNull();
       expect(slice.sourceHash).toBeDefined();
+    }
+  });
+  it("previews two physical subrectangle corners in XY, XZ and YZ orientation", () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const fixed = coordinate(positions[14]!);
+      const slice = sampleVectorField3DSlice(document, normalAxis, fixed, scientific);
+      const region = { normalAxis, fixedCoordinate: fixed, visible: true,
+        vectorChannel: "speed" as const, bounds: [
+          [slice.coordinates[0][5]!, slice.coordinates[0][25]!],
+          [slice.coordinates[1][5]!, slice.coordinates[1][25]!]
+        ] as [[number, number], [number, number]] };
+      const click = (i: number, j: number) => sliceSeedPointAtSvgPosition(slice,
+        slicePlot.left + (i + .5) * slicePlot.width / slice.shape[0],
+        slicePlot.top + (slice.shape[1] - j - .5) *
+          slicePlot.height / slice.shape[1])!;
+      const bounds = sliceSubrectangleBounds(slice, region, click(20, 8), click(9, 19));
+      expect(bounds).not.toBeNull();
+      expect(bounds![0]).toEqual([slice.coordinates[0][9], slice.coordinates[0][20]]);
+      expect(bounds![1]).toEqual([slice.coordinates[1][8], slice.coordinates[1][19]]);
+      expect(sliceSubrectangleBounds(slice, region, click(2, 8), click(9, 19)))
+        .toBeNull();
+      expect(sliceSubrectangleBounds(slice, region, click(9, 8), click(9, 19)))
+        .toBeNull();
+      expect(sliceSubrectangleBounds(slice, region, click(9, 8),
+        [0, 0, fixed + 1])).toBeNull();
     }
   });
   it("uses source-grid probe stencils for all point calculus outputs and rejects changed samples", () => {
