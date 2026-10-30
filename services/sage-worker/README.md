@@ -20,6 +20,17 @@ Service URL:
 
 - `http://127.0.0.1:8767`
 
+Run the opt-in browser qualification against the real service:
+
+```powershell
+npm run test:sage:live-docker
+```
+
+The test runs Simplify, both matrix operations, Gröbner basis, GCD, and modular
+inverse in Surface Services, then runs Gröbner basis in Geometry Services. It
+checks exact results, a non-invertible modular-inverse diagnostic, and the
+corresponding successful and failed Compute jobs. It does not mock `/run`.
+
 ## API
 
 - `GET /health`

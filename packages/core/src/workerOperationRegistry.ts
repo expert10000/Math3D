@@ -32,7 +32,12 @@ export type Math3DWorkerOperationId =
   | "symbolic.gradient"
   | "symbolic.hessian"
   | "polynomial.factor"
-  | "polynomial.roots.exact";
+  | "polynomial.roots.exact"
+  | "matrix.eigen.exact"
+  | "matrix.charpoly"
+  | "algebra.groebner"
+  | "number-theory.gcd"
+  | "number-theory.mod-inverse";
 
 export type WorkerOperationOwner =
   | "math3d-js"
@@ -273,6 +278,46 @@ const definitions = [
   {
     id: "polynomial.roots.exact",
     title: "Exact polynomial roots",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "matrix.eigen.exact",
+    title: "Exact matrix eigenvalues",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "matrix.charpoly",
+    title: "Matrix characteristic polynomial",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "algebra.groebner",
+    title: "Gröbner basis",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "number-theory.gcd",
+    title: "Greatest common divisor",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "number-theory.mod-inverse",
+    title: "Modular inverse",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],

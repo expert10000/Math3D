@@ -3,8 +3,16 @@ import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry
 import { runSageJob, SAGE_JOB_OPERATIONS, type BrokeredSageOperation } from "./sageOperationExecution";
 
 const operations = Object.keys(SAGE_JOB_OPERATIONS) as BrokeredSageOperation[];
+const dockerOnlyOperations = new Set<BrokeredSageOperation>([
+  "sage.matrix.eigen_exact", "sage.matrix.charpoly", "sage.groebner.compute",
+  "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
+]);
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
-  operation.startsWith("sage.polynomial.")
+  operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
+    : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
+    : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }
+    : operation === "sage.numberTheory.modInverse" ? { a: "3", modulus: "11" }
+    : operation.startsWith("sage.polynomial.")
     ? backend === "local"
       ? { coefficients: ["-2", "0", "1"] }
       : { polynomial: "(-2)*x^0 + (0)*x^1 + (1)*x^2", variables: ["x"] }
@@ -12,7 +20,7 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
 
 describe("Sage scientific execution contract", () => {
   for (const operation of operations) {
-    for (const backend of ["local", "docker"] as const) {
+    for (const backend of (dockerOnlyOperations.has(operation) ? ["docker"] : ["local", "docker"]) as ("local" | "docker")[]) {
       it(`routes ${operation} on ${backend} with its exact payload and reports completion`, async () => {
         const params = paramsFor(operation, backend);
         const calls: unknown[] = [];
@@ -67,6 +75,7 @@ describe("Sage scientific execution contract", () => {
   });
 
   for (const operation of operations) {
+    if (dockerOnlyOperations.has(operation)) continue;
     it(`cancels ${operation} through the broker and local worker`, async () => {
       let started!: () => void;
       const running = new Promise<void>((resolve) => { started = resolve; });
@@ -85,4 +94,25 @@ describe("Sage scientific execution contract", () => {
       expect(getComputeJobs().find((job) => job.jobId === handle.jobId)?.status).toBe("cancelled");
     });
   }
+
+  it("rejects a matrix operation on Local WSL before submitting a job", () => {
+    expect(() => runSageJob({
+      operation: "sage.matrix.charpoly", backend: "local",
+      params: paramsFor("sage.matrix.charpoly", "local"),
+    })).toThrow("Invalid Sage characteristic polynomial parameters.");
+  });
+
+  it("records a live-shaped Docker modular-inverse rejection and its diagnostic", async () => {
+    const operation = "sage.numberTheory.modInverse";
+    const handle = runSageJob({ operation, backend: "docker", params: { a: "2", modulus: "4" } }, {
+      run: async (input) => ({ engine: "sagemath", operation: input.operation, success: false,
+        latex: "", result: {}, warnings: [], error: "Inverse does not exist." }),
+    });
+    const { response, broker } = await handle.promise;
+    expect(response.error).toBe("Inverse does not exist.");
+    expect(broker).toMatchObject({ ok: false, code: "scientific-failure" });
+    expect(getComputeJobs().find((job) => job.jobId === handle.jobId)).toMatchObject({
+      operationType: "number-theory.mod-inverse", status: "failed", backendId: "sage-docker",
+    });
+  });
 });

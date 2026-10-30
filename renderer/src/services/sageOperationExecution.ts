@@ -26,6 +26,11 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.symbolic.factor": { type: "symbolic.factor", label: "symbolic factorization", cancelled: "Sage symbolic job cancelled." },
   "sage.symbolic.solve": { type: "symbolic.solve", label: "symbolic solve", cancelled: "Sage symbolic job cancelled." },
   "sage.symbolic.singularities": { type: "symbolic.singularities", label: "singularity analysis", cancelled: "Sage symbolic job cancelled." },
+  "sage.matrix.eigen_exact": { type: "matrix.eigen.exact", label: "exact eigenvalues", cancelled: "Sage matrix job cancelled." },
+  "sage.matrix.charpoly": { type: "matrix.charpoly", label: "characteristic polynomial", cancelled: "Sage matrix job cancelled." },
+  "sage.groebner.compute": { type: "algebra.groebner", label: "Gröbner basis", cancelled: "Sage Gröbner job cancelled." },
+  "sage.numberTheory.gcd": { type: "number-theory.gcd", label: "greatest common divisor", cancelled: "Sage number theory job cancelled." },
+  "sage.numberTheory.modInverse": { type: "number-theory.mod-inverse", label: "modular inverse", cancelled: "Sage number theory job cancelled." },
 } as const;
 export type BrokeredSageOperation = keyof typeof SAGE_JOB_OPERATIONS;
 export const isBrokeredSageOperation = (operation: string): operation is BrokeredSageOperation =>
@@ -49,9 +54,30 @@ export function runSageJob(
   const definition = SAGE_JOB_OPERATIONS[request.operation];
   const params = request.params;
   const polynomial = request.operation === "sage.polynomial.factor" || request.operation === "sage.polynomial.roots_exact";
+  const matrix = params.matrix;
+  const variables = params.variables;
   const stringVariables = Array.isArray(params.variables) &&
     params.variables.every((item) => typeof item === "string");
-  const validParams = polynomial
+  const validParams = request.operation.startsWith("sage.matrix.")
+    ? request.backend === "docker" && Array.isArray(matrix) &&
+      matrix.length > 0 && matrix.length <= 8 &&
+      matrix.every((row) => Array.isArray(row) && row.length === matrix.length &&
+        row.every((item) => (typeof item === "string" && item.trim().length > 0) ||
+          (typeof item === "number" && Number.isFinite(item))))
+    : request.operation === "sage.groebner.compute"
+      ? request.backend === "docker" && Array.isArray(params.polynomials) &&
+        params.polynomials.length > 0 && params.polynomials.length <= 12 &&
+        params.polynomials.every((item) => typeof item === "string" && item.trim().length > 0) &&
+        stringVariables && Array.isArray(variables) && variables.length > 0 && variables.length <= 8
+    : request.operation === "sage.numberTheory.gcd"
+      ? request.backend === "docker" && Array.isArray(params.values) && params.values.length >= 2 &&
+        params.values.every((item) => typeof item === "string" && /^-?[0-9]{1,128}$/.test(item))
+    : request.operation === "sage.numberTheory.modInverse"
+      ? request.backend === "docker" &&
+        typeof params.a === "string" && /^-?[0-9]{1,128}$/.test(params.a) &&
+        typeof params.modulus === "string" && /^[0-9]{1,128}$/.test(params.modulus) &&
+        BigInt(params.modulus) > 1n
+    : polynomial
     ? request.backend === "local"
       ? Array.isArray(params.coefficients) && params.coefficients.every((item) => typeof item === "string")
       : typeof params.polynomial === "string" && stringVariables

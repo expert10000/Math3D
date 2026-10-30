@@ -10,6 +10,11 @@ const labelFor = (operation: string) => ({
   "sage.symbolic.factor": "Factored expression",
   "sage.symbolic.simplify": "Simplified expression",
   "sage.symbolic.expand": "Expanded expression",
+  "sage.matrix.eigen_exact": "Exact eigenvalues",
+  "sage.matrix.charpoly": "Characteristic polynomial",
+  "sage.groebner.compute": "Gröbner basis",
+  "sage.numberTheory.gcd": "Greatest common divisor",
+  "sage.numberTheory.modInverse": "Modular inverse",
 }[operation] ?? "Symbolic result");
 
 export const SageSymbolicAnalysisCard: React.FC<{
@@ -31,7 +36,7 @@ export const SageSymbolicAnalysisCard: React.FC<{
       <strong style={{ fontSize: 14 }}>Symbolic result · {labelFor(response.operation)}</strong>
       <span style={{ color: "#17603c" }}>Exact · SageMath ({backend === "local" ? "Local WSL" : "Docker"})</span>
     </div>
-    <div style={{ color: "#526477", overflowWrap: "anywhere" }}>Expression = <code>{expression}</code></div>
+    <div style={{ color: "#526477", overflowWrap: "anywhere" }}>Input = <code>{expression}</code></div>
     {stale && <div role="status" style={{ color: "#9a3412" }}>The surface equation changed after this run. Run the operation again before using the result.</div>}
     {math ? <div style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: math }} /> : <code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{text}</code>}
     {Array.isArray(response.result.components) && <div>Components: <code>{response.result.components.map(String).join(" ; ")}</code></div>}

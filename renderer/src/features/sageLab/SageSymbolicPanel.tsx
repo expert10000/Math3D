@@ -54,6 +54,12 @@ const SageSymbolicPanel: React.FC<{
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
   const [coefficientsText, setCoefficientsText] = useState("-1, 0, 1");
   const [variablesText, setVariablesText] = useState("x");
+  const [matrixText, setMatrixText] = useState("[[1, 2], [3, 4]]");
+  const [polynomialsText, setPolynomialsText] = useState("x^2 + y^2 - 1\nx - y");
+  const [groebnerVariablesText, setGroebnerVariablesText] = useState("x,y");
+  const [gcdValuesText, setGcdValuesText] = useState("84, 30");
+  const [inverseValueText, setInverseValueText] = useState("3");
+  const [modulusText, setModulusText] = useState("11");
   const [response, setResponse] = useState<SageRunResponse | null>(null);
   const [busy, setBusy] = useState<"none" | "run">("none");
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +67,10 @@ const SageSymbolicPanel: React.FC<{
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const activeHandle = useRef<SageOperationHandle | null>(null);
   const localPolynomial = operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
+  const matrixOperation = operation === "sage.matrix.eigen_exact" || operation === "sage.matrix.charpoly";
+  const groebnerOperation = operation === "sage.groebner.compute";
+  const gcdOperation = operation === "sage.numberTheory.gcd";
+  const inverseOperation = operation === "sage.numberTheory.modInverse";
   const localCapable = isLocalSageOperation(operation);
   const localSage = backend === "local" && localCapable;
 
@@ -79,6 +89,7 @@ const SageSymbolicPanel: React.FC<{
         expression,
         variables: variables.length ? variables : ["x"],
       };
+      let inputSummary = expression;
       if (localSage) {
         if (!window.sageService?.run) {
           throw new Error("Local Sage operations require SageMath in WSL Ubuntu and the MATH3D desktop app or web proxy.");
@@ -99,6 +110,45 @@ const SageSymbolicPanel: React.FC<{
           polynomial: coefficients.map((coefficient, index) => `(${coefficient})*x^${index}`).join(" + "),
           variables: ["x"],
         };
+        inputSummary = coefficientsText;
+      } else if (matrixOperation) {
+        let matrix: unknown;
+        try { matrix = JSON.parse(matrixText); } catch { throw new Error("Enter a square matrix as JSON, for example [[1,2],[3,4]]."); }
+        if (!Array.isArray(matrix) || matrix.length < 1 || matrix.length > 8 ||
+            !matrix.every((row) => Array.isArray(row) && row.length === matrix.length &&
+              row.every((cell) => (typeof cell === "string" && cell.trim().length > 0) ||
+                (typeof cell === "number" && Number.isFinite(cell))))) {
+          throw new Error("Matrix must be a square JSON array of 1–8 rows with finite number or nonempty expression cells.");
+        }
+        params = { matrix, variable: "lambda" };
+        inputSummary = matrixText;
+      } else if (groebnerOperation) {
+        const polynomials = polynomialsText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        const names = groebnerVariablesText.split(",").map((name) => name.trim()).filter(Boolean);
+        if (polynomials.length < 1 || polynomials.length > 12 ||
+            polynomials.some((item) => item.length > 1200) ||
+            names.length < 1 || names.length > 8 ||
+            names.some((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) ||
+            new Set(names).size !== names.length) {
+          throw new Error("Enter 1–12 polynomials, one per line, and 1–8 distinct variable names.");
+        }
+        params = { polynomials, variables: names };
+        inputSummary = polynomials.join("; ");
+      } else if (gcdOperation) {
+        const values = gcdValuesText.split(",").map((value) => value.trim());
+        if (values.length < 2 || values.length > 32 || values.some((value) => !/^-?[0-9]{1,128}$/.test(value))) {
+          throw new Error("Enter 2–32 decimal integers, separated by commas.");
+        }
+        params = { values };
+        inputSummary = values.join(", ");
+      } else if (inverseOperation) {
+        if (!/^-?[0-9]{1,128}$/.test(inverseValueText.trim()) ||
+            !/^[0-9]{1,128}$/.test(modulusText.trim()) ||
+            BigInt(modulusText.trim()) <= 1n) {
+          throw new Error("Enter an integer and a modulus greater than 1.");
+        }
+        params = { a: inverseValueText.trim(), modulus: modulusText.trim() };
+        inputSummary = `${inverseValueText.trim()} mod ${modulusText.trim()}`;
       }
       const result = isBrokeredSageOperation(operation)
         ? await (async () => {
@@ -108,8 +158,10 @@ const SageSymbolicPanel: React.FC<{
         })()
         : await runSageOperation({ operation, jobId, params, backend });
       setResponse(result);
-      if (result.success) onResult?.({ response: result, expression, variables: variables.length ? variables : ["x"], backend,
-        sourceSurfaceExpression: sourceExpression === expression ? sourceExpression : undefined });
+      if (result.success) onResult?.({ response: result, expression: inputSummary,
+        variables: groebnerOperation ? (params.variables as string[]) : variables.length ? variables : ["x"], backend,
+        sourceSurfaceExpression: !matrixOperation && !groebnerOperation && !gcdOperation && !inverseOperation &&
+          sourceExpression === expression ? sourceExpression : undefined });
       if (!result.success && result.error) setError(result.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run SageMath operation.");
@@ -191,7 +243,33 @@ const SageSymbolicPanel: React.FC<{
 
           {!localCapable && <span>This operation currently requires the Docker SageMath service. Symbolic and polynomial operations can use either backend.</span>}
 
-        {localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
+        {matrixOperation ? <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontWeight: 600 }}>Square matrix (JSON, up to 8 × 8)</span>
+          <textarea value={matrixText} disabled={busy !== "none"} onChange={(event) => setMatrixText(event.target.value)}
+            rows={3} style={{ ...fieldStyle, resize: "vertical" }} />
+        </label> : groebnerOperation ? <>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Polynomials (one per line)</span>
+            <textarea value={polynomialsText} disabled={busy !== "none"} onChange={(event) => setPolynomialsText(event.target.value)}
+              rows={3} style={{ ...fieldStyle, resize: "vertical" }} />
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Polynomial variables</span>
+            <input value={groebnerVariablesText} disabled={busy !== "none"} onChange={(event) => setGroebnerVariablesText(event.target.value)} style={fieldStyle} />
+          </label>
+        </> : gcdOperation ? <label style={{ display: "grid", gap: 4 }}>
+          <span style={{ fontWeight: 600 }}>Integers (comma separated)</span>
+          <input value={gcdValuesText} disabled={busy !== "none"} onChange={(event) => setGcdValuesText(event.target.value)} style={fieldStyle} />
+        </label> : inverseOperation ? <>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Integer</span>
+            <input value={inverseValueText} disabled={busy !== "none"} onChange={(event) => setInverseValueText(event.target.value)} style={fieldStyle} />
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            <span style={{ fontWeight: 600 }}>Modulus (greater than 1)</span>
+            <input value={modulusText} disabled={busy !== "none"} onChange={(event) => setModulusText(event.target.value)} style={fieldStyle} />
+          </label>
+        </> : localPolynomial ? <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Integer coefficients (constant first)</span>
           <input value={coefficientsText} disabled={busy !== "none"} onChange={(event) => setCoefficientsText(event.target.value)} style={fieldStyle} placeholder="-1, 0, 1" />
           <span>Example: -1, 0, 1 means x² − 1. Local WSL receives only coefficients and supplies algebraic root certificates. Docker receives a polynomial built from those coefficients and currently returns roots over the rationals.</span>
