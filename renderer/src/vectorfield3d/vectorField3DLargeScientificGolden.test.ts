@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { slicePlot, sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition } from "./sliceSeedPlacement";
+import { curlMagnitudeRegionProfile, divergenceRegionProfile } from
+  "./derivedCombinedRegionProfile";
 import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
   createVectorField3DDocument, integrateVectorField3DScientificTrajectories,
   integrateVectorField3DVerifiedTileTrajectories, VectorField3DNeededTile,
@@ -401,6 +403,38 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
       values: source.components[0]!.values.map((value, index) => index === 0 ? value + 1 : value) },
       source.components[1]!, source.components[2]!] };
     expect(() => sampleVectorField3DDerivedSlice(document, 2, z, "curl-z",
+      { manifestJson, fingerprint, samples: changed })).toThrow(/checksum/);
+  }, 30_000);
+
+  it("reduces verified 80³ divergence and curl into analytic physical rows", () => {
+    const fixedIndex = positions[16]!, z = coordinate(fixedIndex);
+    const samples = sparseTransfer("source-stencil-slice", fixedIndex);
+    const verified = { manifestJson, fingerprint, samples };
+    const region = { normalAxis: 2 as const, fixedCoordinate: z,
+      bounds: [[-1, 1], [-1, 1]] as const,
+      vectorChannel: "speed" as const, visible: true };
+    const divergence = divergenceRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, 2, z, "divergence", verified));
+    const curl = curlMagnitudeRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, 2, z, "curl-magnitude", verified));
+    expect(divergence.rowProfiles).toHaveLength(17);
+    expect(curl.rowProfiles).toHaveLength(17);
+    expect(divergence.gaps).toBe(0);
+    expect(curl.gaps).toBe(0);
+    for (let j = 0; j < 17; j++) {
+      const y = -1 + j / 8;
+      const expectedCurl = Array.from({ length: 17 }, (_, i) =>
+        oracle([-1 + i / 8, y, z]).curl[2]!).reduce((sum, value) =>
+        sum + value, 0) / 17;
+      close(divergence.rowProfiles[j]!.x, y, 1e-12);
+      close(divergence.rowProfiles[j]!.y, oracle([0, y, z]).divergence, 0.001);
+      close(curl.rowProfiles[j]!.y, expectedCurl, 0.01);
+    }
+    const changed = { ...samples, components: [{ ...samples.components[0]!,
+      values: samples.components[0]!.values.map((value, index) =>
+        index === 0 ? value + 1 : value) }, samples.components[1]!,
+      samples.components[2]!] };
+    expect(() => sampleVectorField3DDerivedSlice(document, 2, z, "divergence",
       { manifestJson, fingerprint, samples: changed })).toThrow(/checksum/);
   }, 30_000);
 

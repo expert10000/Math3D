@@ -37,6 +37,7 @@ import { sampleCombinedRegion } from "./combinedFieldInspection";
 import { checkCombinedRegionGraphSeries, linkedCombinedRegionGraphs,
   linkedCombinedRegionGraphsWithDivergence,
   linkedCombinedRegionGraphsWithCurl,
+  linkedCombinedRegionGraphsWithCurlRows,
   createCombinedRegionVerificationSession,
   validateCombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
 import { curlMagnitudeRegionProfile, divergenceRegionProfile,
@@ -835,6 +836,8 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(curlMagnitude.gaps).toBe(0);
     expect(curlMagnitude.rows.every(row => row.y !== null &&
       Math.abs(row.y - 2) < 1e-10)).toBe(true);
+    expect(curlMagnitude.rowProfiles.every(row => row.y !== null &&
+      Math.abs(row.y - 2) < 1e-10)).toBe(true);
     const outside = curlMagnitudeRegionProfile({ ...region,
       bounds: [[-6, 6], [-1, 1]] as const },
       sampleVectorField3DDerivedSlice(document, 2, 0, "curl-magnitude"));
@@ -857,6 +860,25 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(group.map(item => item.origin.series)).toEqual([
       "vector", "scalar", "complex-magnitude", "complex-phase", "divergence",
       "curl-magnitude"]);
+    const rowGroup = linkedCombinedRegionGraphsWithCurlRows(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...divergence, samples: [] }, curlMagnitude);
+    expect(rowGroup.map(item => item.origin.kind)).toEqual(Array(6)
+      .fill("vector-scalar-complex-curl-row-linked-region/v5"));
+    expect(rowGroup.map(item => item.origin.profileAxis)).toEqual(Array(6).fill(1));
+    expect(rowGroup.map(item => item.origin.series)).toEqual([
+      "vector", "scalar", "complex-magnitude", "complex-phase", "divergence",
+      "curl-magnitude"]);
+    expect(rowGroup[4]!.rows.every(row => row.y !== null && Math.abs(row.y!) < 1e-10))
+      .toBe(true);
+    expect(rowGroup[5]!.rows.every(row => row.y !== null && Math.abs(row.y! - 2) < 1e-10))
+      .toBe(true);
+    expect(rowGroup.map(item => validGraph2DLinkedOverlayOrigin(item.origin)))
+      .toEqual(Array(6).fill(true));
+    validateCombinedRegionGraphGroup(rowGroup.map(item => item.origin),
+      rowGroup.map(item => item.rows));
+    expect(linkedCombinedRegionGraphFocus(rowGroup.map(item => item.origin),
+      rowGroup.map(item => item.rows), { kind: "point", x: 0 }).profileAxis).toBe(1);
     expect(group.map(item => validGraph2DLinkedOverlayOrigin(item.origin)))
       .toEqual([true, true, true, true, true, true]);
     validateCombinedRegionGraphGroup(group.map(item => item.origin),
@@ -871,6 +893,17 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
           lineStyle: "solid" as const, visible: true } })) });
     expect(parseGraph2DDocument(serializeGraph2DDocument(
       createGraph2DDocument({ ...graph, stableKey: "curl-region" })))
+      .source.objects).toHaveLength(6);
+    const rowStore = new Graph2DPointTableStore();
+    const rowGraph = applyGraph2DAuthoring(createEmptyGraph2DDocument("curl-row-region"),
+      { type: "create-point-series-group", drafts: rowGroup.map((item, index) => ({
+        label: item.label, table: rowStore.publish(item.rows), mode: "line" as const,
+        domain: item.domain, linkedOrigin: item.origin,
+        style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa",
+          "#34d399", "#f97316"][index]!, lineWidth: 2,
+          lineStyle: "solid" as const, visible: true } })) });
+    expect(parseGraph2DDocument(serializeGraph2DDocument(
+      createGraph2DDocument({ ...rowGraph, stableKey: "curl-row-region" })))
       .source.objects).toHaveLength(6);
     expect(linkedCombinedRegionGraphFocus(group.map(item => item.origin),
       group.map(item => item.rows), { kind: "point", x: 0 }).combined
@@ -893,6 +926,18 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       checkCombinedRegionGraphSeries(item.origin, checked, session)))).toEqual([
       "current", "current", "current", "current", "current", "current"]);
     expect(sourceChecks).toBe(2);
+    const rowSession = createCombinedRegionVerificationSession();
+    expect(await Promise.all(rowGroup.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, checked, rowSession))))
+      .toEqual(Array(6).fill("current"));
+    const wrongRowGroup = linkedCombinedRegionGraphsWithCurlRows(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...divergence, samples: [] },
+      { ...curlMagnitude, rowProfiles: curlMagnitude.rowProfiles.map(row =>
+        ({ ...row, y: 3 })) });
+    expect(await Promise.all(wrongRowGroup.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, checked))))
+      .toEqual(["current", "current", "current", "current", "current", "changed"]);
     const wrongCurl = createCombinedVectorField3DRegionResultWithCurl(document, region,
       { ...summary, curlMagnitude: { count: 289, gaps: 0,
         mean: 3, min: 3, max: 3 } }, [], scalarVolume.sampleSha256,

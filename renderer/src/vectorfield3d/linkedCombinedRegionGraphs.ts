@@ -38,11 +38,13 @@ export const combinedCurlRegionSeries = [...combinedDivergenceRegionSeries, "cur
 export const isCombinedRegionKind = (kind: string): kind is Graph2DLinkedCombinedRegionOrigin["kind"] =>
   kind === "vector-scalar-complex-linked-region/v2" ||
   kind === "vector-scalar-complex-divergence-linked-region/v3" ||
-  kind === "vector-scalar-complex-curl-linked-region/v4";
+  kind === "vector-scalar-complex-curl-linked-region/v4" ||
+  kind === "vector-scalar-complex-curl-row-linked-region/v5";
 export const isCombinedRegionOrigin = (origin: Graph2DLinkedOverlayOrigin | undefined):
   origin is Graph2DLinkedCombinedRegionOrigin => !!origin && isCombinedRegionKind(origin.kind);
 export const seriesForCombinedRegion = (kind: string): readonly string[] =>
-  kind === "vector-scalar-complex-curl-linked-region/v4" ? combinedCurlRegionSeries :
+  kind === "vector-scalar-complex-curl-linked-region/v4" ||
+  kind === "vector-scalar-complex-curl-row-linked-region/v5" ? combinedCurlRegionSeries :
   kind === "vector-scalar-complex-divergence-linked-region/v3" ?
     combinedDivergenceRegionSeries : combinedRegionSeries;
 
@@ -154,6 +156,44 @@ export function linkedCombinedRegionGraphsWithCurl(document: VectorField3DDocume
   return [...five, sixth] as unknown as CombinedRegionGraphGroup;
 }
 
+/** Six row means use the same verified 17 × 17 stencil as the column profiles. */
+export function linkedCombinedRegionGraphsWithCurlRows(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion, inspection: CombinedRegionInspection,
+  vectorSamples: readonly Digest[], scalarSampleSha256: string,
+  realSampleSha256: string, imaginarySampleSha256: string,
+  divergence: Readonly<{ rowProfiles: readonly Graph2DPointRow[]; unit: string;
+    samples: readonly Digest[] }>,
+  curlMagnitude: Readonly<{ rowProfiles: readonly Graph2DPointRow[]; unit: string }>):
+  CombinedRegionGraphGroup {
+  const original = linkedCombinedRegionGraphs(document, region, inspection, vectorSamples,
+    scalarSampleSha256, realSampleSha256, imaginarySampleSha256, 1);
+  if (new Set(document.source.axes.map(axis => axis.unit)).size !== 1 ||
+      divergence.unit !== `1/${document.source.timeUnit}` ||
+      curlMagnitude.unit !== `1/${document.source.timeUnit}` ||
+      divergence.samples.length !== (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+      divergence.samples.some(item => !/^[a-f0-9]{64}$/.test(item.sampleSha256)) ||
+      [divergence.rowProfiles, curlMagnitude.rowProfiles].some(rows =>
+        rows.length !== 17 || rows.some((row, index) =>
+          row.x !== original[0].rows[index]?.x ||
+          row.y !== null && !Number.isFinite(row.y))))
+    throw new TypeError("Derived rows do not align with the verified physical rectangle.");
+  const pairId = structuralHash({ v: 5, prior: original[0].origin.pairId,
+    derivedSamples: divergence.samples, divergenceRows: divergence.rowProfiles,
+    curlRows: curlMagnitude.rowProfiles });
+  const four = original.map(item => ({ ...item, origin: { ...item.origin,
+    kind: "vector-scalar-complex-curl-row-linked-region/v5" as const,
+    pairId, derivedSamples: divergence.samples } }));
+  const extra = ([{ series: "divergence" as const,
+    label: "Vector divergence region row mean", rows: divergence.rowProfiles,
+    unit: divergence.unit }, { series: "curl-magnitude" as const,
+    label: "Vector curl magnitude region row mean", rows: curlMagnitude.rowProfiles,
+    unit: curlMagnitude.unit }]).map(item => ({ label: item.label,
+      rows: item.rows, domain: graph2DPointDomain(item.rows),
+      origin: { ...four[0]!.origin, series: item.series, yUnit: item.unit,
+        rowsSha256: structuralHash(item.rows) } }));
+  return [...four, ...extra] as unknown as CombinedRegionGraphGroup;
+}
+
 /** Check a single plot's pinned source. Other plots can remain visible on failure. */
 export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombinedRegionOrigin,
   bridge: Bridge | undefined = typeof window === "undefined" ? undefined :
@@ -192,13 +232,16 @@ export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombin
     } catch { return "error"; }
   }
   if ((origin.kind === "vector-scalar-complex-divergence-linked-region/v3" ||
-      origin.kind === "vector-scalar-complex-curl-linked-region/v4") &&
+      origin.kind === "vector-scalar-complex-curl-linked-region/v4" ||
+      origin.kind === "vector-scalar-complex-curl-row-linked-region/v5") &&
       (origin.series === "divergence" || origin.series === "curl-magnitude")) {
     try {
       const pairKey = `${origin.vectorSourceHash}:${structuralHash(origin.region)}`;
-      let pair = origin.kind === "vector-scalar-complex-curl-linked-region/v4" ?
+      let pair = origin.kind === "vector-scalar-complex-curl-linked-region/v4" ||
+        origin.kind === "vector-scalar-complex-curl-row-linked-region/v5" ?
         session?.derived.get(pairKey) : undefined;
-      if (origin.kind === "vector-scalar-complex-curl-linked-region/v4" && !pair) {
+      if ((origin.kind === "vector-scalar-complex-curl-linked-region/v4" ||
+        origin.kind === "vector-scalar-complex-curl-row-linked-region/v5") && !pair) {
         pair = verifiedCombinedDerivedRegionProfiles(document, origin.region, bridge);
         session?.derived.set(pairKey, pair);
       }
@@ -206,7 +249,9 @@ export async function checkCombinedRegionGraphSeries(origin: Graph2DLinkedCombin
       const fresh = combined ? { ...(origin.series === "divergence" ?
         combined.divergence : combined.curlMagnitude), samples: combined.samples } :
         await verifiedDerivedRegionProfile(document, origin.region, origin.series, bridge);
-      if (fresh.unit !== origin.yUnit || structuralHash(fresh.rows) !== origin.rowsSha256 ||
+      const rows = origin.kind === "vector-scalar-complex-curl-row-linked-region/v5" ?
+        fresh.rowProfiles : fresh.rows;
+      if (fresh.unit !== origin.yUnit || structuralHash(rows) !== origin.rowsSha256 ||
           canonicalJsonStringify(fresh.samples) !==
             canonicalJsonStringify(origin.derivedSamples)) return "changed";
     } catch { return "error"; }
