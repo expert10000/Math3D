@@ -24,6 +24,13 @@ export type LinkedRegionGraphFocus = Readonly<{
   overlayGaps: number;
   combined?: readonly Readonly<{ series: CombinedRegionSeries | "divergence" | "curl-magnitude";
     unit: string; gaps: number; values: readonly (number | null)[] }>[];
+  intersection?: Readonly<{
+    columnPairId: string; rowPairId: string;
+    bounds: readonly [readonly [number, number], readonly [number, number]];
+    columns: readonly [number, number]; rows: readonly [number, number];
+    columnProfiles: NonNullable<LinkedRegionGraphFocus["combined"]>;
+    rowProfiles: NonNullable<LinkedRegionGraphFocus["combined"]>;
+  }>;
 }>;
 
 type Selection = Readonly<{ kind: "point"; x: number }> |
@@ -129,4 +136,32 @@ export function linkedCombinedRegionGraphFocus(
       .filter(row => row.y === null).length,
     values: rows[index]!.slice(focus.columns[0], focus.columns[1] + 1)
       .map(row => row.y) })) };
+}
+
+/** Join the two six-series groups only when their saved physical recipe agrees. */
+export function linkedCombinedRegionIntersectionFocus(
+  columnOrigins: readonly Graph2DLinkedCombinedRegionOrigin[],
+  columnRows: readonly (readonly Graph2DPointRow[])[],
+  rowOrigins: readonly Graph2DLinkedCombinedRegionOrigin[],
+  rowRows: readonly (readonly Graph2DPointRow[])[],
+  selections: readonly [Selection, Selection], activeAxis: 0 | 1 = 0):
+  LinkedRegionGraphFocus {
+  if (columnOrigins[0]?.kind !== "vector-scalar-complex-curl-linked-region/v4" ||
+      rowOrigins[0]?.kind !== "vector-scalar-complex-curl-row-linked-region/v5")
+    throw new TypeError("Six verified column and row profiles are required.");
+  const column = linkedCombinedRegionGraphFocus(columnOrigins, columnRows, selections[0]);
+  const row = linkedCombinedRegionGraphFocus(rowOrigins, rowRows, selections[1]);
+  if (column.documentId !== row.documentId || column.sourceHash !== row.sourceHash ||
+      column.recipeHash !== row.recipeHash ||
+      JSON.stringify(column.region) !== JSON.stringify(row.region) ||
+      column.profileAxis !== 0 || row.profileAxis !== 1 ||
+      column.combined?.length !== 6 || row.combined?.length !== 6 ||
+      column.combined.some((item, index) => item.series !== row.combined![index]!.series ||
+        item.unit !== row.combined![index]!.unit))
+    throw new TypeError("Saved column and row profiles describe different sources or fields.");
+  return { ...(activeAxis === 1 ? row : column), intersection: {
+    columnPairId: column.pairId,
+    rowPairId: row.pairId, bounds: [column.xBounds, row.xBounds],
+    columns: column.columns, rows: row.columns,
+    columnProfiles: column.combined, rowProfiles: row.combined } };
 }

@@ -430,6 +430,16 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
       close(divergence.rowProfiles[j]!.y, oracle([0, y, z]).divergence, 0.001);
       close(curl.rowProfiles[j]!.y, expectedCurl, 0.01);
     }
+    const chosen = Array.from({ length: 9 }, (_, offset) => offset + 4)
+      .flatMap(i => Array.from({ length: 5 }, (_, offset) => [i, offset + 6] as const));
+    const mean = (values: readonly number[]) => values.reduce((sum, value) =>
+      sum + value, 0) / values.length;
+    close(mean(chosen.map(([i, j]) => divergence.cells[i * 17 + j]!)),
+      mean(chosen.map(([i, j]) => oracle([-1 + i / 8, -1 + j / 8, z]).divergence)),
+      0.001);
+    close(mean(chosen.map(([i, j]) => curl.cells[i * 17 + j]!)),
+      mean(chosen.map(([i, j]) => oracle([-1 + i / 8, -1 + j / 8, z]).curl[2]!)),
+      0.01);
     const changed = { ...samples, components: [{ ...samples.components[0]!,
       values: samples.components[0]!.values.map((value, index) =>
         index === 0 ? value + 1 : value) }, samples.components[1]!,

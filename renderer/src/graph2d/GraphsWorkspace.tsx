@@ -98,7 +98,8 @@ import { checkVectorDerivedRegionGraphSeries, isVectorDerivedRegionOrigin,
   type VectorDerivedRegionGraphGroup,
   type VectorDerivedRegionVerificationSession } from
   "../vectorfield3d/linkedVectorDerivedRegionGraphs";
-import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus,
+import { linkedCombinedRegionGraphFocus, linkedCombinedRegionIntersectionFocus,
+  linkedRegionGraphFocus,
   linkedVectorDerivedRegionGraphFocus,
   type LinkedRegionGraphFocus } from
   "../vectorfield3d/linkedRegionGraphFocus";
@@ -392,6 +393,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const [linkedRegionOpenError, setLinkedRegionOpenError] = useState("");
   const [linkedRegionFocus, setLinkedRegionFocus] = useState<{
     focus: LinkedRegionGraphFocus; token: number } | null>(null);
+  const keepIntersectionForSelection = (next: Graph2DSelection): Graph2DSelection => {
+    const saved = document.selection.linkedRegionIntersection;
+    const selected = document.source.objects.find(object => object.kind === "point-series" &&
+      object.id === next.objectId);
+    if (!saved || selected?.kind !== "point-series" ||
+        !selected.linkedOrigin || ![saved.columnPairId, saved.rowPairId]
+          .includes(selected.linkedOrigin.pairId)) return next;
+    const axis = selected.linkedOrigin.pairId === saved.rowPairId ? 1 : 0;
+    const [min, max] = saved.bounds[axis];
+    return { objectId: selected.id, probe: null,
+      linkedRegion: { pairId: selected.linkedOrigin.pairId,
+        physical: { kind: "interval", min, max } },
+      linkedRegionIntersection: saved };
+  };
   const linkedVerificationQueue = useRef<Promise<void>>(Promise.resolve());
   const [scientificPresetOpen, setScientificPresetOpen] = useState(false);
   const [scientificPresetKind, setScientificPresetKind] = useState<"all" | "scalar" | "vector" | "complex" | "explorer">("all");
@@ -1464,7 +1479,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           setLinkedRegionSelectionMode({ pairId: pickedRegion.linkedOrigin.pairId, kind: "point" });
           setLinkedRegionColumn(null);
         }
-        onSelectionCommit?.(selection);
+        onSelectionCommit?.(keepIntersectionForSelection(selection));
       }
     }
     setPreview(null);
@@ -1505,7 +1520,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (visible.length) {
         const current = visible.findIndex((object) => object.id === document.selection.objectId);
         const next = current < 0 ? 0 : (current + (key === "]" ? 1 : visible.length - 1)) % visible.length;
-        onSelectionCommit?.(selectionForGraph2DObject(document, series, visible[next]!.id, document.selection.probe?.x));
+        onSelectionCommit?.(keepIntersectionForSelection(selectionForGraph2DObject(
+          document, series, visible[next]!.id, document.selection.probe?.x)));
       }
       return;
     }
@@ -1595,6 +1611,41 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         rows };
     } catch { return null; }
   })();
+  const matchingSixRegionGroup = (kind: "vector-scalar-complex-curl-linked-region/v4" |
+    "vector-scalar-complex-curl-row-linked-region/v5") => {
+    if (!selectedRegionOrigin || !isCombinedRegionKind(selectedRegionOrigin.kind) ||
+        linkedPairVerification.document !== document) return null;
+    const vectors = document.source.objects.filter((item): item is Graph2DPointSeriesObject =>
+      item.kind === "point-series" && item.linkedOrigin?.kind === kind &&
+      item.linkedOrigin.series === "vector" &&
+      item.linkedOrigin.vectorSourceHash === selectedRegionOrigin.vectorSourceHash &&
+      canonicalJsonStringify(item.linkedOrigin.region) ===
+        canonicalJsonStringify(selectedRegionOrigin.region));
+    const savedPairId = kind === "vector-scalar-complex-curl-linked-region/v4" ?
+      document.selection.linkedRegionIntersection?.columnPairId :
+      document.selection.linkedRegionIntersection?.rowPairId;
+    for (const vector of vectors.reverse().sort((left, right) =>
+      Number(right.linkedOrigin?.pairId === savedPairId) -
+      Number(left.linkedOrigin?.pairId === savedPairId))) {
+      const members = seriesForCombinedRegion(kind).map(series =>
+        document.source.objects.find((item): item is Graph2DPointSeriesObject =>
+          item.kind === "point-series" && item.linkedOrigin?.kind === kind &&
+          item.linkedOrigin.pairId === vector.linkedOrigin?.pairId &&
+          item.linkedOrigin.series === series));
+      if (members.some(item => !item?.linkedOrigin || linkedPairVerification.states[
+        linkedVerificationKey(item.linkedOrigin)] !== linkedVerified(item.linkedOrigin))) continue;
+      try {
+        const origins = members.map(item => item!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
+        const rows = members.map(item => pointTableStore.resolve(item!.table));
+        if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null)) continue;
+        validateCombinedRegionGraphGroup(origins, rows);
+        return { members: members as Graph2DPointSeriesObject[], origins, rows };
+      } catch { /* Another saved revision may still be current. */ }
+    }
+    return null;
+  };
+  const columnSixGroup = matchingSixRegionGroup("vector-scalar-complex-curl-linked-region/v4");
+  const rowSixGroup = matchingSixRegionGroup("vector-scalar-complex-curl-row-linked-region/v5");
   const selectedVectorRegionOrigin = selectedObject?.kind === "point-series" &&
     isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
     selectedObject.linkedOrigin : null;
@@ -1672,7 +1723,86 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         combinedRegionGroup.rows, physical); }
       catch { return null; }
     })() : null;
-  const sharedRegionHighlight = sharedRegionSelection && combinedRegionGroup ? {
+  const savedIntersection = document.selection.linkedRegionIntersection;
+  const sharedIntersection = savedIntersection && columnSixGroup && rowSixGroup &&
+    savedIntersection.columnPairId === columnSixGroup.origins[0]!.pairId &&
+    savedIntersection.rowPairId === rowSixGroup.origins[0]!.pairId ? (() => {
+      try { return linkedCombinedRegionIntersectionFocus(columnSixGroup.origins,
+        columnSixGroup.rows, rowSixGroup.origins, rowSixGroup.rows,
+        savedIntersection.bounds.map(([min, max]) => ({ kind: "interval" as const,
+          min, max })) as [{ kind: "interval"; min: number; max: number },
+            { kind: "interval"; min: number; max: number }],
+        selectedRegionOrigin?.kind === "vector-scalar-complex-curl-row-linked-region/v5" ?
+          1 : 0); }
+      catch { return null; }
+    })() : null;
+  const joinWithPriorAxis = (currentAxis: 0 | 1,
+    current: Graph2DLinkedRegionSelection["physical"]): LinkedRegionGraphFocus | null => {
+    if (!columnSixGroup || !rowSixGroup) return null;
+    const otherPairId = currentAxis === 0 ? rowSixGroup.origins[0]!.pairId :
+      columnSixGroup.origins[0]!.pairId;
+    const prior = document.selection.linkedRegion?.pairId === otherPairId ?
+      document.selection.linkedRegion.physical :
+      savedIntersection?.columnPairId === columnSixGroup.origins[0]!.pairId &&
+      savedIntersection.rowPairId === rowSixGroup.origins[0]!.pairId ? (() => {
+        const [min, max] = savedIntersection.bounds[currentAxis === 0 ? 1 : 0];
+        return { kind: "interval" as const, min, max };
+      })() : null;
+    if (!prior) return null;
+    return linkedCombinedRegionIntersectionFocus(columnSixGroup.origins,
+      columnSixGroup.rows, rowSixGroup.origins, rowSixGroup.rows,
+      currentAxis === 0 ? [current, prior] : [prior, current], currentAxis);
+  };
+  const selectCombinedIntersection = async (bounds: readonly [readonly [number, number],
+    readonly [number, number]]) => {
+    if (!columnSixGroup || !rowSixGroup || !onSelectionCommit || linkedRegionOpenBusy)
+      throw new TypeError("Six verified row and column profiles are required.");
+    const focus = linkedCombinedRegionIntersectionFocus(columnSixGroup.origins,
+      columnSixGroup.rows, rowSixGroup.origins, rowSixGroup.rows,
+      bounds.map(([min, max]) => ({ kind: "interval" as const, min, max })) as [
+        { kind: "interval"; min: number; max: number },
+        { kind: "interval"; min: number; max: number }],
+      selectedRegionOrigin?.kind === "vector-scalar-complex-curl-row-linked-region/v5" ?
+        1 : 0);
+    setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
+    try {
+      const session = createCombinedRegionVerificationSession();
+      const statuses = await Promise.all([...columnSixGroup.origins,
+        ...rowSixGroup.origins].map(origin => checkCombinedRegionGraphSeries(
+          origin, undefined, session)));
+      if (statuses.some(status => status !== "current"))
+        throw new TypeError(`Subrectangle source checks: ${statuses.join(", ")}.`);
+      const intersection = focus.intersection!;
+      const activeAxis = selectedRegionOrigin?.kind ===
+        "vector-scalar-complex-curl-row-linked-region/v5" ? 1 : 0;
+      onSelectionCommit({ objectId: (activeAxis === 1 ? rowSixGroup :
+        columnSixGroup).members[0]!.id, probe: null,
+        linkedRegion: { pairId: activeAxis === 1 ? intersection.rowPairId :
+          intersection.columnPairId,
+          physical: { kind: "interval", min: bounds[activeAxis][0],
+            max: bounds[activeAxis][1] } },
+        linkedRegionIntersection: { kind: "combined-region-intersection/v1",
+          columnPairId: intersection.columnPairId,
+          rowPairId: intersection.rowPairId, bounds: intersection.bounds } });
+      setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+      setToolHint("Linked the verified row and column strips as one physical subrectangle.");
+    } catch (cause) {
+      setLinkedRegionOpenError(cause instanceof Error ? cause.message : String(cause));
+    } finally { setLinkedRegionOpenBusy(false); }
+  };
+  const sharedRegionHighlight = sharedIntersection && columnSixGroup && rowSixGroup ? {
+    xBounds: sharedIntersection.intersection!.bounds[0],
+    bands: sharedIntersection.intersection!.bounds,
+    points: ([{ group: columnSixGroup, indices: sharedIntersection.intersection!.columns,
+      axis: "column" }, { group: rowSixGroup, indices: sharedIntersection.intersection!.rows,
+      axis: "row" }] as const).flatMap(({ group, indices, axis }) =>
+      group.rows.flatMap((rows, seriesIndex) => rows.slice(indices[0], indices[1] + 1)
+        .filter((row): row is Graph2DPointRow & { y: number } => row.y !== null)
+        .map(row => ({ x: row.x, y: row.y,
+          series: `${axis}:${seriesForCombinedRegion(group.origins[0]!.kind)[seriesIndex]!}`,
+          color: document.display.objects.find(style =>
+            style.objectId === group.members[seriesIndex]!.id)?.color ?? "#ffffff" }))))
+  } : sharedRegionSelection && combinedRegionGroup ? {
     xBounds: sharedRegionSelection.xBounds,
     points: combinedRegionGroup.rows.flatMap((rows, seriesIndex) =>
       rows.slice(sharedRegionSelection.columns[0], sharedRegionSelection.columns[1] + 1)
@@ -1784,14 +1914,57 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Saved region source checks: ${statuses.map((status, index) =>
           `${seriesForCombinedRegion(kind)[index]} ${status}`).join(", ")}. Repair or relink the changed source.`);
+      let activeFocus = focus;
+      if (kind === "vector-scalar-complex-curl-linked-region/v4" ||
+          kind === "vector-scalar-complex-curl-row-linked-region/v5") {
+        const priorLink = document.selection.linkedRegion;
+        const saved = document.selection.linkedRegionIntersection;
+        const otherPairId = priorLink?.pairId !== pairId ? priorLink?.pairId :
+          saved ? profileAxis === 0 ? saved.rowPairId : saved.columnPairId : undefined;
+        const otherGroup = otherPairId ? groups.get(otherPairId) : undefined;
+        const otherKind = profileAxis === 0 ?
+          "vector-scalar-complex-curl-row-linked-region/v5" :
+          "vector-scalar-complex-curl-linked-region/v4";
+        if (otherGroup?.[0]?.linkedOrigin?.kind === otherKind) {
+          const otherMembers = seriesForCombinedRegion(otherKind).map(series =>
+            otherGroup.find(item => item.linkedOrigin?.series === series));
+          if (otherMembers.every(item => !!item?.linkedOrigin)) {
+            const otherOrigins = otherMembers.map(item =>
+              item!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
+            const otherRows = otherMembers.map(item => pointTableStore.resolve(item!.table));
+            if (otherRows.every((table): table is readonly Graph2DPointRow[] => table !== null)) {
+              validateCombinedRegionGraphGroup(otherOrigins, otherRows);
+              const prior = priorLink && priorLink.pairId === otherPairId ? priorLink.physical :
+                saved ? (() => { const [min, max] = saved.bounds[profileAxis === 0 ? 1 : 0];
+                  return { kind: "interval" as const, min, max }; })() : null;
+              if (prior) {
+                const otherChecks = await Promise.all(otherOrigins.map(origin =>
+                  checkCombinedRegionGraphSeries(origin, undefined, session)));
+                if (otherChecks.some(status => status !== "current"))
+                  throw new TypeError(`Subrectangle source checks: ${otherChecks.join(", ")}.`);
+                activeFocus = profileAxis === 0 ? linkedCombinedRegionIntersectionFocus(
+                  origins, rows, otherOrigins, otherRows, [physical, prior], 0) :
+                  linkedCombinedRegionIntersectionFocus(otherOrigins, otherRows,
+                    origins, rows, [prior, physical], 1);
+              }
+            }
+          }
+        }
+      }
       const snapped: Graph2DLinkedRegionSelection["physical"] = physical.kind === "point" ?
         { kind: "point", x: rows[0]![focus.columns[0]]!.x } : physical;
       onSelectionCommit({ objectId: members[0]!.id, probe: null,
-        linkedRegion: { pairId, physical: snapped } });
+        linkedRegion: { pairId, physical: snapped },
+        ...(activeFocus.intersection ? { linkedRegionIntersection: {
+          kind: "combined-region-intersection/v1" as const,
+          columnPairId: activeFocus.intersection.columnPairId,
+          rowPairId: activeFocus.intersection.rowPairId,
+          bounds: activeFocus.intersection.bounds } } : {}) });
       setLinkedRegionSelectionMode({ pairId, kind: snapped.kind });
       setLinkedRegionColumn(null);
       setLinkedRegionInterval(null);
-      setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+      setLinkedRegionFocus(previous => ({ focus: activeFocus,
+        token: (previous?.token ?? 0) + 1 }));
       setVectorField3DOpen(false);
       setToolHint(`Focused ${focus.columns[0] + 1}–${focus.columns[1] + 1} of 17 verified physical ${
         profileAxis === 1 ? "rows" : "columns"} in Graphs.`);
@@ -1827,6 +2000,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       } else await reverifyLinkedOverlayRegionGraphPair(
         vectorOrigin as Graph2DLinkedRegionOrigin,
         overlayOrigin as Graph2DLinkedRegionOrigin);
+      const joined = combinedRegionGroup && selectedRegionOrigin &&
+        (selectedRegionOrigin.kind === "vector-scalar-complex-curl-linked-region/v4" ||
+          selectedRegionOrigin.kind === "vector-scalar-complex-curl-row-linked-region/v5") ?
+        joinWithPriorAxis(selectedRegionOrigin.profileAxis ?? 0, selection) : null;
+      if (joined && columnSixGroup && rowSixGroup) {
+        const session = createCombinedRegionVerificationSession();
+        const checks = await Promise.all([...columnSixGroup.origins,
+          ...rowSixGroup.origins].map(origin => checkCombinedRegionGraphSeries(
+            origin, undefined, session)));
+        if (checks.some(status => status !== "current"))
+          throw new TypeError(`Subrectangle source checks: ${checks.join(", ")}.`);
+      }
+      const activeFocus = joined ?? focus;
       const originDocument = parseVectorField3DDocument(vectorOrigin.vectorDocumentJson);
       const source = [vectorField3DDocument, savedVectorField3D].find(candidate => candidate &&
         candidate.identity.id === focus.documentId &&
@@ -1846,12 +2032,18 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         const physical: Graph2DLinkedRegionSelection["physical"] = selection.kind === "point" ?
           { kind: "point", x: combinedRegionGroup.rows[0]![focus.columns[0]]!.x } : selection;
         onSelectionCommit({ objectId: selectedObject.id, probe: null,
-          linkedRegion: { pairId: vectorOrigin.pairId, physical } });
+          linkedRegion: { pairId: vectorOrigin.pairId, physical },
+          ...(joined?.intersection ? { linkedRegionIntersection: {
+            kind: "combined-region-intersection/v1" as const,
+            columnPairId: joined.intersection.columnPairId,
+            rowPairId: joined.intersection.rowPairId,
+            bounds: joined.intersection.bounds } } : {}) });
       }
       setVectorField3DDocument(reviseVectorField3DWorkspace(source,
         { ...workspace, selectedLayer: layer, sliceCoordinates }));
       setExplorerFieldLayer(null);
-      setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+      setLinkedRegionFocus(previous => ({ focus: activeFocus,
+        token: (previous?.token ?? 0) + 1 }));
       setVectorField3DOpen(true);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -2075,7 +2267,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     placement={placement} editRequest={editRequest}
     palette={leftPalette} onPaletteChange={changeLeftPalette}
     onBrowsePhasePortraits={opener => { galleryOpener.current = opener; setGalleryStartCategory("Differential equations"); setGalleryError(null); setGalleryOpen(true); }}
-    onSelect={(objectId) => onSelectionCommit?.(parameterPreviewActive || !sampling.ready ? { objectId, probe: null } : selectionForGraph2DObject(document, series, objectId, document.selection.probe?.x))} />;
+    onSelect={(objectId) => onSelectionCommit?.(keepIntersectionForSelection(
+      parameterPreviewActive || !sampling.ready ? { objectId, probe: null } :
+        selectionForGraph2DObject(document, series, objectId,
+          document.selection.probe?.x)))} />;
   const savedProbes = <Graph2DProbesPanel document={document} onAction={action => {
     if (!onProbesCommit) throw new Error("Probe storage unavailable.");
     onProbesCommit(editGraph2DProbes(document, action));
@@ -2613,6 +2808,42 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             data-testid="graph2d-linked-region-selection">
             <p>The 17 physical {regionPositionName}s run along {selectedRegionOrigin.xName}
               {" "}({selectedRegionOrigin.xUnit}). Graph gaps remain gaps in the source strip.</p>
+            {isCombinedRegionKind(selectedRegionOrigin.kind) && columnSixGroup && rowSixGroup &&
+              <form data-testid="graph2d-combined-intersection-controls"
+                onSubmit={event => {
+                  event.preventDefault();
+                  const values = new FormData(event.currentTarget);
+                  const coordinate = (name: string) => {
+                    const value = values.get(name);
+                    return typeof value === "string" && value.trim() ? Number(value) : NaN;
+                  };
+                  const bounds = [[coordinate("axis0-min"), coordinate("axis0-max")],
+                    [coordinate("axis1-min"), coordinate("axis1-max")]] as const;
+                  void selectCombinedIntersection(bounds);
+                }}>
+                <p>Link a column strip and row strip as one physical subrectangle.</p>
+                {([0, 1] as const).map(axis => {
+                  const sourceAxis = parseVectorField3DDocument(
+                    selectedRegionOrigin.vectorDocumentJson).source.axes[
+                    [0, 1, 2].filter(value => value !==
+                      selectedRegionOrigin.region.normalAxis)[axis]!]!;
+                  return <div key={axis}>
+                    <label>{sourceAxis.label} from ({sourceAxis.unit}) <input type="number"
+                      step="any" required name={`axis${axis}-min`}
+                      aria-label={`Subrectangle axis ${axis + 1} from`}
+                      defaultValue={savedIntersection?.bounds[axis][0] ??
+                        selectedRegionOrigin.region.bounds[axis][0]} /></label>
+                    <label>to ({sourceAxis.unit}) <input type="number" step="any" required
+                      name={`axis${axis}-max`}
+                      aria-label={`Subrectangle axis ${axis + 1} to`}
+                      defaultValue={savedIntersection?.bounds[axis][1] ??
+                        selectedRegionOrigin.region.bounds[axis][1]} /></label>
+                  </div>;
+                })}
+                <button type="submit" disabled={linkedRegionOpenBusy}>
+                  {linkedRegionOpenBusy ? "Verifying twelve profiles…" :
+                    "Link physical subrectangle"}</button>
+              </form>}
             {regionRowsCurrent && regionVectorRows && regionOverlayRows &&
               (!isCombinedRegionKind(selectedRegionOrigin.kind) ||
                 combinedRegionGroup) ? <>
@@ -2652,6 +2883,37 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                     {" "}{item.unit}{value}.</li>;
                 })}</ul>
               </div>}
+              {document.selection.linkedRegionIntersection &&
+                (sharedIntersection ? <div data-testid="graph2d-combined-intersection"
+                  role="status">
+                  <p>Linked physical subrectangle: columns {
+                    sharedIntersection.intersection!.columns[0] + 1}–{
+                    sharedIntersection.intersection!.columns[1] + 1}, rows {
+                    sharedIntersection.intersection!.rows[0] + 1}–{
+                    sharedIntersection.intersection!.rows[1] + 1}. Bounds {
+                    sharedIntersection.intersection!.bounds.map((bounds, axis) =>
+                      `${bounds[0].toPrecision(6)}–${bounds[1].toPrecision(6)} ${
+                        selectedRegionOrigin.region.bounds[axis] ?
+                          parseVectorField3DDocument(selectedRegionOrigin.vectorDocumentJson)
+                            .source.axes[[0, 1, 2].filter(value => value !==
+                              selectedRegionOrigin.region.normalAxis)[axis]!]!.unit : ""}`).join(" × ")}.</p>
+                  <ul>{(["column", "row"] as const).flatMap(axis =>
+                    (axis === "column" ? sharedIntersection.intersection!.columnProfiles :
+                      sharedIntersection.intersection!.rowProfiles).map(item =>
+                      <li key={`${axis}-${item.series}`} data-series={`${axis}:${item.series}`}>
+                        {axis} {item.series}: {item.values.length - item.gaps}/{
+                          item.values.length} positions available ({item.gaps} gaps), {
+                          item.unit}.</li>))}</ul>
+                  <button type="button" data-testid="graph2d-open-intersection"
+                    disabled={linkedRegionOpenBusy} onClick={() => {
+                      const axis = selectedRegionOrigin.kind ===
+                        "vector-scalar-complex-curl-row-linked-region/v5" ? 1 : 0;
+                      const [min, max] = sharedIntersection.intersection!.bounds[axis];
+                      void openLinkedRegionInExplorer({ kind: "interval", min, max });
+                    }}>Open subrectangle in Field Explorer</button>
+                </div> : <p role="status" data-testid="graph2d-intersection-withheld">
+                  Subrectangle withheld until all twelve saved profiles and sources verify.
+                </p>)}
               <button type="button" data-testid="graph2d-open-region-point"
                 disabled={linkedRegionOpenBusy} onClick={() => {
                   setLinkedRegionSelectionMode({ pairId: selectedRegionOrigin.pairId, kind: "point" });
@@ -2691,6 +2953,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                         "checking" : "missing"}`;
                   }).join(" · ")}.` :
                 "Linked region values are withheld until both sources and point tables verify."}</p>}
+            {document.selection.linkedRegionIntersection && !sharedIntersection &&
+              !combinedRegionGroup && <p role="alert"
+                data-testid="graph2d-intersection-withheld">
+                Subrectangle withheld until all twelve saved profiles, point tables,
+                and pinned sources verify.</p>}
             {linkedRegionOpenError && <p role="alert" data-testid="graph2d-linked-region-open-error">
               {linkedRegionOpenError}</p>}
           </dd></>}
