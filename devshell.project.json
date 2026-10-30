@@ -25,7 +25,12 @@
         "browserUrl": "http://127.0.0.1:5173",
         "readyUrls": ["http://127.0.0.1:8787/api/worker/diagnostics"],
         "readyTimeoutSeconds": 120,
-        "outputDirectory": "apps/web/dist"
+        "outputDirectory": "apps/web/dist",
+        "artifacts": [
+          { "id": "desktop-build", "name": "Desktop build", "path": "dist", "kind": "folder" },
+          { "id": "renderer-build", "name": "Renderer build", "path": "renderer/dist", "kind": "folder" },
+          { "id": "web-build", "name": "Web build", "path": "apps/web/dist", "kind": "folder" }
+        ]
       }
     ],
     "tasks": {
