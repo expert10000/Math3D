@@ -131,8 +131,12 @@ try {
     if (uninstall.error) throw uninstall.error;
     adb("install", apk);
   });
-  check("Workspace opens with an offline Catenoid", () => {
+  check("Empty Workspace opens a bundled offline Catenoid", () => {
     adb("shell", "am", "start", "-n", `${packageName}/com.math3d.mobile.MainActivity`);
+    expectText("Workspace is ready");
+    tap("Explore examples");
+    expectText("Examples");
+    tapVisibleInspectorControl("Catenoid", "Examples", "mobile-example-catenoid");
     expectText("Catenoid");
     expectText("Swipe up for tools");
   });
