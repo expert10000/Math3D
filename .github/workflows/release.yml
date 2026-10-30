@@ -20,13 +20,14 @@ concurrency:
 
 jobs:
   mobile-release-gate:
-    # RC tags are published only after the exact archived installers pass the
-    # separate clean-install and v1.6 upgrade gates.
+    # The 1.7.0 desktop release does not publish a new Android artifact.
+    # Keep Android build/emulator regression coverage; physical-device signoff
+    # remains required for a separately distributed Android build.
     if: ${{ !contains(github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name, '-') }}
     uses: ./.github/workflows/mobile-android.yml
     with:
       release_ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-      require_device_signoff: true
+      require_device_signoff: false
     secrets: inherit
 
   windows-release:

@@ -44,7 +44,7 @@ installing Math3D's test dependencies, is:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stable-two-app-signoff.ps1 `
   -TheoryLabRepo 'C:\path\to\theory-lab' `
-  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0-rc.4.exe' `
+  -Math3DInstaller 'C:\path\to\Math3D Setup 1.7.0.exe' `
   -TheoryLabInstaller 'C:\path\to\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe' `
   -CandidateManifest 'C:\path\to\candidate-manifest.json' `
   -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-two-app-signoff')
@@ -297,6 +297,12 @@ manifest and signoff JSON. A failed or skipped gate leaves the stable tag
 unpublished. The Lab producer is pinned to
 `3c883fa4a69da2ee9f59b1425ac181094a25c276` in that workflow; changing it
 requires an explicit recipe update before the final source freeze.
+
+The 1.7.0 release publishes desktop and web assets, not an Android APK or
+AAB. The Android build and emulator smoke remain a regression prerequisite
+for the shared source. The older Samsung signoff applies to mobile source at
+`15f945fcd07cc64b2fd3de511904e6c428521d39`; later mobile changes need a
+new physical-device signoff before a new Android artifact is distributed.
 
 For final 1.7.0: finish fixes, set the source package version to `1.7.0`,
 freeze and tag that exact commit, then let the tag workflow build and test
