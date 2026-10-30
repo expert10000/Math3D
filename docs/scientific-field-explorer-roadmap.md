@@ -1150,6 +1150,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02/06 published vector-only subrectangle.** Publish subrectangle saves compact speed, divergence and curl-magnitude selected-cell statistics: mean, range, count, gaps, units, snapped physical bounds, six profile row hashes and verified vector transfer digests. No field arrays enter the Project. Project reopen checks the pinned vector source and all six Graphs rows, recomputes the bounded selected-cell statistics, and withholds the result when its saved identity or numbers differ. Earlier full-rectangle and single-axis results remain readable.
 
+**SCI-02 published combined subrectangle.** The six-field vector, scalar and complex intersection can publish compact selected-cell statistics for speed, scalar value, complex magnitude and phase, divergence and curl magnitude. The Project saves snapped physical bounds, separate units and coverage gaps, pinned source references and transfer digests, and twelve Graphs profile hashes without field arrays. Reopen checks each source and its two saved profile rows, recomputes selected-cell values, and withholds only affected fields while independently verified fields remain readable. Existing combined rectangles and vector-only subrectangles retain their readers.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

@@ -38,6 +38,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
   onSendCombinedRegionToGraphs, onPublishCombinedRegion, onFocusRegionInGraphs,
   onFocusSubrectangleInGraphs, onPublishVectorSubrectangle,
+  onPublishCombinedSubrectangle,
   onSendVectorDerivedToGraphs, onPublishVectorDerivedRegion,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
@@ -96,6 +97,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onFocusSubrectangleInGraphs?: (region: VectorField3DOverlayRegion,
     bounds: VectorField3DOverlayRegion["bounds"]) => Promise<void>;
   onPublishVectorSubrectangle?: (region: VectorField3DOverlayRegion,
+    focus: LinkedRegionGraphFocus) => Promise<void>;
+  onPublishCombinedSubrectangle?: (region: VectorField3DOverlayRegion,
     focus: LinkedRegionGraphFocus) => Promise<void>;
   regionBusy?: boolean;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
@@ -575,6 +578,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       onSendVectorDerivedToGraphs={onSendVectorDerivedToGraphs}
       onPublishVectorDerived={onPublishVectorDerivedRegion}
       onPublishVectorSubrectangle={onPublishVectorSubrectangle}
+      onPublishCombinedSubrectangle={onPublishCombinedSubrectangle}
       graphSelectionMode={graphSelectionMode} graphSelectionFirstX={graphSelectionFirstX}
       graphSelectionAxis={graphSelectionAxis}
       graphSelectionBusy={graphSelectionBusy} graphSelectionError={graphSelectionError}

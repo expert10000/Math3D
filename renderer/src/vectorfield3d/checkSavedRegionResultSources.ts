@@ -2,6 +2,7 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   createCombinedVectorField3DRegionResultWithDivergence,
   createCombinedVectorField3DRegionResultWithCurl,
   createVectorDerivedRegionResult,
+  createCombinedSubrectangleResult,
   inspectGraph2DFieldReference,
   isGraph2DFieldReference, matchesScientificSourceGeneration,
   reverifyVectorField3DRegionResult,
@@ -9,9 +10,11 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DFieldReference,
   type CombinedRegionSummary, type CombinedDerivedRegionSummary,
   type CombinedCurlRegionSummary,
+  type CombinedSubrectangleSummary, type CombinedSubrectangleProfileHashes,
   type VectorDerivedRegionSummary,
   type VectorField3DDocument,
   type VectorField3DRegionSummary,
@@ -22,24 +25,29 @@ import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
   "./derivedCombinedRegionProfile";
 import { VectorSubrectangleSourceError, verifiedVectorSubrectangleResult } from
   "./vectorDerivedSubrectangleResult";
+import { inspectCombinedSubrectangle } from "./combinedSubrectangleResult";
 
 export type SingleRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
 export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
   vector: SingleRegionSourceStatus; scalar: SingleRegionSourceStatus;
   complex: SingleRegionSourceStatus; divergence?: SingleRegionSourceStatus;
-  curlMagnitude?: SingleRegionSourceStatus }>;
+  curlMagnitude?: SingleRegionSourceStatus;
+  complexMagnitude?: SingleRegionSourceStatus;
+  complexPhase?: SingleRegionSourceStatus }>;
 export type VectorDerivedRegionSourceStatus = Readonly<{ kind: "vector-derived";
   vector: SingleRegionSourceStatus; divergence: SingleRegionSourceStatus;
   curlMagnitude: SingleRegionSourceStatus }>;
 export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus |
   VectorDerivedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
-  "checkGraphDatasetReference"> & DivergenceSourceBridge;
+  "checkGraphDatasetReference" | "previewGraphVolume"> & DivergenceSourceBridge;
 
 /** Read-only Project reopen check, including every pinned source resource. */
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
   document: VectorField3DDocument, bridge: Bridge | undefined,
   graphs: readonly Graph2DDocument[] = []): Promise<SavedRegionSourceStatus> {
+  if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE)
+    return checkSavedCombinedSubrectangleResultSources(result, document, bridge, graphs);
   if (result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE)
     return checkSavedVectorSubrectangleResultSources(result, document, bridge, graphs);
   if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE)
@@ -101,6 +109,42 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
     } catch { return "error"; }
   }
   return "source-current";
+}
+
+async function checkSavedCombinedSubrectangleResultSources(result: AnalysisResultEnvelope,
+  document: VectorField3DDocument, bridge: Bridge | undefined,
+  graphs: readonly Graph2DDocument[]): Promise<CombinedRegionSourceStatus> {
+  const all = (status: SingleRegionSourceStatus): CombinedRegionSourceStatus => ({
+    kind: "combined", vector: status, scalar: status, complex: status,
+    complexMagnitude: status, complexPhase: status,
+    divergence: status, curlMagnitude: status });
+  const parameters = result.provenance.operation.parameters;
+  const region = document.workspace?.overlayRegion;
+  const profiles = parameters.profiles as CombinedSubrectangleProfileHashes | undefined;
+  if (!bridge || !region || !profiles ||
+      result.provenance.operation.algorithmVersion !== "17x17-v1" ||
+      !matchesScientificSourceGeneration(result.provenance.source,
+        viewerSourceFromDocument(document)) ||
+      canonicalJsonStringify(parameters.region) !== canonicalJsonStringify(region))
+    return all("changed");
+  const bounds = parameters.bounds as unknown as readonly [readonly [number, number],
+    readonly [number, number]];
+  try {
+    const fresh = createCombinedSubrectangleResult(document, region, bounds,
+      result.summary as unknown as CombinedSubrectangleSummary, profiles,
+      parameters.vectorSamples as VectorField3DRegionSampleDigest[],
+      parameters.derivedSamples as VectorField3DRegionSampleDigest[],
+      parameters.scalarSampleSha256 as string,
+      parameters.realSampleSha256 as string,
+      parameters.imaginarySampleSha256 as string);
+    if (fresh.resultId !== result.resultId ||
+        canonicalJsonStringify(fresh.provenance.operation) !==
+          canonicalJsonStringify(result.provenance.operation) ||
+        canonicalJsonStringify(fresh.summary) !== canonicalJsonStringify(result.summary))
+      return all("changed");
+    return (await inspectCombinedSubrectangle(document, graphs, region, bounds,
+      profiles, bridge, result)).status;
+  } catch { return all("changed"); }
 }
 
 async function checkSavedVectorSubrectangleResultSources(result: AnalysisResultEnvelope,

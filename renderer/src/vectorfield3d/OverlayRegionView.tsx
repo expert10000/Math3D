@@ -22,7 +22,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
   onSendCombinedToGraphs, onPublishCombined,
   onSendVectorDerivedToGraphs, onPublishVectorDerived,
-  onPublishVectorSubrectangle,
+  onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
   graphSelectionAxis = 0, graphSelectionFirstX = null,
   graphSelectionBusy = false, graphSelectionError = "",
@@ -58,6 +58,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     profileAxis?: 0 | 1) => Promise<void>;
   onPublishVectorDerived?: (region: VectorField3DOverlayRegion) => Promise<void>;
   onPublishVectorSubrectangle?: (region: VectorField3DOverlayRegion,
+    focus: LinkedRegionGraphFocus) => Promise<void>;
+  onPublishCombinedSubrectangle?: (region: VectorField3DOverlayRegion,
     focus: LinkedRegionGraphFocus) => Promise<void>;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
@@ -285,6 +287,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
       {region.visible && secondaryComplex && <CombinedOverlayRegionReadout
         document={document} region={region} slice={slice} vectorPlane={vectorPlane}
         linkedRegionFocus={linkedRegionFocus}
+        onPublishSubrectangle={onPublishCombinedSubrectangle}
+        savedResults={savedResults} resultStatuses={resultStatuses}
         scalarVolume={scalarVolume} complexVolumes={complexVolumes}
         vectorStatus={vectorStatus} scalarStatus={scalarStatus}
         complexStatus={complexStatus} />}

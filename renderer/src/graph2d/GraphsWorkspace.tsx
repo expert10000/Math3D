@@ -106,6 +106,8 @@ import { linkedCombinedRegionGraphFocus, linkedCombinedRegionIntersectionFocus,
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { verifiedVectorSubrectangleResult } from
   "../vectorfield3d/vectorDerivedSubrectangleResult";
+import { inspectCombinedSubrectangle } from
+  "../vectorfield3d/combinedSubrectangleResult";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
@@ -2231,6 +2233,22 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     onSaveVectorField3DRegionResult(field, result);
     setToolHint("Published verified vector subrectangle statistics to Project.");
   };
+  const publishCombinedSubrectangle = async (field: VectorField3DDocument,
+    region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
+    focus: LinkedRegionGraphFocus) => {
+    if (!onSaveVectorField3DRegionResult || !region || !focus.intersection ||
+        focus.sourceHash !== field.identity.structuralHash ||
+        canonicalJsonStringify(field.workspace?.overlayRegion) !==
+          canonicalJsonStringify(region))
+      throw new TypeError("Open a verified combined subrectangle before publishing.");
+    const { columnPairId, rowPairId, bounds } = focus.intersection;
+    const checked = await inspectCombinedSubrectangle(field, [document], region,
+      bounds, { columnPairId, rowPairId }, window.scientificScenes);
+    if (!checked.result)
+      throw new TypeError("Combined subrectangle statistics are unavailable.");
+    onSaveVectorField3DRegionResult(field, checked.result);
+    setToolHint("Published six verified subrectangle statistics to Project.");
+  };
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
@@ -3571,6 +3589,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onFocusRegionInGraphs={focusExplorerRegionInGraphs}
           onFocusSubrectangleInGraphs={focusExplorerSubrectangleInGraphs}
           onPublishVectorSubrectangle={publishVectorSubrectangle}
+          onPublishCombinedSubrectangle={publishCombinedSubrectangle}
           savedPointResults={savedVectorField3DPointResults}
           onSavePointResult={onSaveVectorField3DPointResult}
           savedRegionResults={savedVectorField3DRegionResults}

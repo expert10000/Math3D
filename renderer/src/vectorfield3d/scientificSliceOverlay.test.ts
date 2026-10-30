@@ -40,6 +40,7 @@ import { checkCombinedRegionGraphSeries, linkedCombinedRegionGraphs,
   linkedCombinedRegionGraphsWithCurl,
   linkedCombinedRegionGraphsWithCurlRows,
   createCombinedRegionVerificationSession,
+  isCombinedRegionOrigin,
   validateCombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
 import { curlMagnitudeRegionProfile, divergenceRegionProfile,
   verifiedCombinedDerivedRegionProfiles, verifiedVectorRegionProfile } from
@@ -47,6 +48,8 @@ import { curlMagnitudeRegionProfile, divergenceRegionProfile,
 import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
   validateVectorDerivedRegionGraphGroup } from "./linkedVectorDerivedRegionGraphs";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
+import { pointTableStore } from "../graph2d/pointTableStore";
+import { inspectCombinedSubrectangle } from "./combinedSubrectangleResult";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -1001,6 +1004,109 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       .toEqual([result]);
     expect(serializeMath3DProject(project)).not.toContain('"values"');
   }, 15_000);
+
+  it("publishes and partially reverifies a six-field subrectangle", async () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", overlayRegion: region,
+      scalarOverlay: { reference: scalarReference, title: "Quadratic potential",
+        unit: "V", opacity: 0.8, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours" } });
+    const slice = sampleVectorField3DSlice(document, 2, 0);
+    const inspection = sampleCombinedRegion(document, slice, region,
+      sampleSliceOverlayVectorPlane(document, slice), scalarReference, scalarVolume,
+      complexReal.reference, complexImaginary.reference,
+      [complexReal.volume, complexImaginary.volume]);
+    const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+    const group = linkedCombinedRegionGraphsWithCurl(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256,
+      { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude);
+    const rowGroup = linkedCombinedRegionGraphsWithCurlRows(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256,
+      { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude);
+    const makeDrafts = (items: typeof group) => items.map((item, index) => ({
+      label: item.label, table: pointTableStore.publish(item.rows),
+      mode: "line" as const, domain: item.domain, linkedOrigin: item.origin,
+      style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa",
+        "#34d399", "#f97316"][index]!, lineWidth: 2,
+        lineStyle: "solid" as const, visible: true } }));
+    const graph = createGraph2DDocument({
+      ...applyGraph2DAuthoring(createEmptyGraph2DDocument("six-subrectangle"),
+        { type: "create-point-series-group", drafts: makeDrafts(group) }),
+      stableKey: "six-subrectangle-columns" });
+    const both = createGraph2DDocument({
+      ...applyGraph2DAuthoring(graph,
+        { type: "create-point-series-group", drafts: makeDrafts(rowGroup) }),
+      stableKey: "six-subrectangle-both" });
+    const bounds = [[-.5625, .5625], [-.3125, .3125]] as const;
+    const ids = { columnPairId: group[0].origin.pairId,
+      rowPairId: rowGroup[0].origin.pairId };
+    const bridge = { checkGraphDatasetReference: async ({ locator }: {
+        locator: { value: string } }) => ({ ok: true as const,
+        source: { manifestJson: locator.value === "quadraticVolume" ?
+          scalarManifest : complexManifest } }),
+      openGraphDatasetReference: async ({ locator, sceneFingerprint }: {
+        locator: { value: string }; sceneFingerprint: string }) => ({ ok: true as const,
+        source: { manifestJson: locator.value === "quadraticVolume" ?
+          scalarManifest : complexManifest, fingerprint: sceneFingerprint } }),
+      previewGraphVolume: async ({ component }: { component: string }) =>
+        component === "scalar" ? scalarVolume : component === "real" ?
+          complexReal.volume : complexImaginary.volume,
+      closeGraphDataset: async () => true } as unknown as
+        NonNullable<typeof window.scientificScenes>;
+    const published = await inspectCombinedSubrectangle(document, [both], region,
+      bounds, ids, bridge);
+    expect(published.result?.summary.sampleCount).toBe(45);
+    expect(published.result?.provenance.operation.parameters.profiles)
+      .toMatchObject({ columnPairId: ids.columnPairId, rowPairId: ids.rowPairId });
+    expect(published.result?.provenance.operation.parameters.profiles.columnRowsSha256)
+      .toHaveLength(6);
+    expect(published.result?.provenance.operation.parameters.profiles.rowRowsSha256)
+      .toHaveLength(6);
+    expect(JSON.stringify(published.result)).not.toContain('"cells"');
+    const project = createMath3DProject(createMixedWorkspaceDocument({
+      entries: [{ module: "vector3d", checkpoint: document,
+        expected: document.identity, replay: null },
+        { module: "graph2d", checkpoint: both, expected: both.identity,
+          replay: null }], activeDocumentIds: [document.identity.id],
+      constructions: [], results: [published.result!], relations: [
+        vectorField3DRegionResultRelation(published.result!)], artifacts: [],
+      committedSelection: null }), { stableKey: "combined-subrectangle" });
+    expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
+      .toEqual([published.result]);
+    expect(await checkSavedRegionResultSources(published.result!, document,
+      bridge, [both])).toMatchObject({ kind: "combined", vector: "source-current",
+      scalar: "source-current", complexMagnitude: "source-current",
+      complexPhase: "source-current", divergence: "source-current",
+      curlMagnitude: "source-current" });
+    const changedScalar = { ...bridge, checkGraphDatasetReference: async ({ locator }: {
+        locator: { value: string } }) => locator.value === "quadraticVolume" ?
+        { ok: false as const, status: "changed" as const, error: "changed" } :
+        { ok: true as const, source: { manifestJson: complexManifest } } } as unknown as
+      NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(published.result!, document,
+      changedScalar, [both])).toMatchObject({ kind: "combined",
+      vector: "source-current", scalar: "changed",
+      complexMagnitude: "source-current", complexPhase: "source-current",
+      divergence: "source-current", curlMagnitude: "source-current" });
+    const changedRow = { ...both, source: { ...both.source,
+      objects: both.source.objects.map(object => object.kind === "point-series" &&
+        isCombinedRegionOrigin(object.linkedOrigin) &&
+        object.linkedOrigin.series === "scalar" &&
+        object.linkedOrigin.kind ===
+          "vector-scalar-complex-curl-row-linked-region/v5" ?
+          { ...object, linkedOrigin: { ...object.linkedOrigin,
+            rowsSha256: `sha256:${"0".repeat(64)}` } } : object) } } as typeof both;
+    expect(await checkSavedRegionResultSources(published.result!, document,
+      bridge, [changedRow])).toMatchObject({ kind: "combined",
+      vector: "source-current", scalar: "changed",
+      complexMagnitude: "source-current", complexPhase: "source-current",
+      divergence: "source-current", curlMagnitude: "source-current" });
+  }, 30_000);
 
   it("publishes and plots a vector-only physical rectangle on all three planes", async () => {
     for (const normalAxis of [2, 1, 0] as const) {

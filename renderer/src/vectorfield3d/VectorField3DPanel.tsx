@@ -116,7 +116,7 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
 export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
-  onPublishVectorSubrectangle,
+  onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
   linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
@@ -141,6 +141,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     region: VectorField3DOverlayRegion,
     bounds: VectorField3DOverlayRegion["bounds"]) => Promise<void>;
   onPublishVectorSubrectangle?: (document: VectorField3DDocument,
+    region: VectorField3DOverlayRegion,
+    focus: LinkedRegionGraphFocus) => Promise<void>;
+  onPublishCombinedSubrectangle?: (document: VectorField3DDocument,
     region: VectorField3DOverlayRegion,
     focus: LinkedRegionGraphFocus) => Promise<void>;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
@@ -2750,6 +2753,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
                 onFocusSubrectangleInGraphs(document, region, bounds) : undefined}
               onPublishVectorSubrectangle={onPublishVectorSubrectangle ? (region, focus) =>
                 onPublishVectorSubrectangle(document, region, focus) : undefined}
+              onPublishCombinedSubrectangle={onPublishCombinedSubrectangle ? (region, focus) =>
+                onPublishCombinedSubrectangle(document, region, focus) : undefined}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2797,6 +2802,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           onFocusSubrectangleInGraphs(document, region, bounds) : undefined}
         onPublishVectorSubrectangle={onPublishVectorSubrectangle ? (region, focus) =>
           onPublishVectorSubrectangle(document, region, focus) : undefined}
+        onPublishCombinedSubrectangle={onPublishCombinedSubrectangle ? (region, focus) =>
+          onPublishCombinedSubrectangle(document, region, focus) : undefined}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}

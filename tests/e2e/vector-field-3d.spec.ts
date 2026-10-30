@@ -953,7 +953,8 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     await expect(explorer).toContainText("Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude row profiles",
       { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Save document" }).click();
-    await region.getByRole("button", { name: "Select Graphs row strip" }).click();
+    await region.getByRole("button", { name: "Select Graphs row strip" })
+      .click({ force: true });
     await figure.locator('[data-probe-cell="16-14"]').click();
     await figure.locator('[data-probe-cell="16-18"]').click();
     const inspector = page.getByRole("complementary", { name: "Graph inspector" });
@@ -972,6 +973,13 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     await subFigure.getByTestId("scientific-confirm-graphs-subrectangle").click();
     await expect(inspector.getByTestId("graph2d-combined-intersection"))
       .toContainText("row curl-magnitude", { timeout: 60_000 });
+    await inspector.getByTestId("graph2d-open-intersection").click();
+    await expect(explorer.getByTestId("scientific-combined-intersection-summary"))
+      .toBeVisible({ timeout: 60_000 });
+    await explorer.getByTestId("scientific-publish-combined-subrectangle").click();
+    await expect(explorer.getByTestId("scientific-combined-subrectangle-saved-status"))
+      .toContainText("curl magnitude source-current", { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -986,6 +994,15 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     const published = stored.workspace.results.find((item: { provenance: {
       operation: { type: string } } }) => item.provenance.operation.type ===
       "vector3d.linked-region-combined");
+    const subrectangleResult = stored.workspace.results.find((item: { provenance: {
+      operation: { type: string } } }) => item.provenance.operation.type ===
+      "vector3d.combined-subrectangle");
+    expect(subrectangleResult.summary.sampleCount).toBeGreaterThan(0);
+    expect(subrectangleResult.provenance.operation.parameters.profiles.columnRowsSha256)
+      .toHaveLength(6);
+    expect(subrectangleResult.provenance.operation.parameters.profiles.rowRowsSha256)
+      .toHaveLength(6);
+    expect(JSON.stringify(subrectangleResult)).not.toContain('"cells"');
     const savedRows = stored.workspace.entries.flatMap((entry: { checkpoint: {
       source?: { objects?: { linkedOrigin?: { kind: string; series: string;
         profileAxis?: number; vectorSamples?: unknown[]; derivedSamples?: unknown[];

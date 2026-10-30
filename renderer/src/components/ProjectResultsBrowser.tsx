@@ -3,6 +3,7 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE, type KernelWorkspaceModule,
   VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
@@ -42,7 +43,8 @@ const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) =
 const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
-  operation === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE;
+  operation === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE ||
+  operation === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE;
 
 export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {} }) => {
   const [query, setQuery] = useState("");
@@ -138,19 +140,34 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <div><dt>Engine</dt><dd>{result.provenance.engine.name} {result.provenance.engine.version}</dd></div>
             <div><dt>Run time</dt><dd>{result.provenance.elapsedMs.toLocaleString()} ms</dd></div></dl>
           <h5>Summary</h5>
-          {result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
+          {(result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+            result.provenance.operation.type ===
+              VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE) ?
             <div data-testid="project-combined-region-result">
               <p>Physical rectangle: <code>{readable(result.provenance.operation.parameters.region)}</code></p>
+              {result.provenance.operation.type ===
+                VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE &&
+                <p>Selected subrectangle bounds: <code>{readable(
+                  result.provenance.operation.parameters.bounds)}</code>; {
+                  String(result.summary.sampleCount)} lattice positions.</p>}
               {(["vector", "scalar", "complexMagnitude", "complexPhase",
                 ...(["17x17-v3", "17x17-v4"].includes(
-                  result.provenance.operation.algorithmVersion) ? ["divergence" as const] : []),
-                ...(result.provenance.operation.algorithmVersion === "17x17-v4" ?
+                  result.provenance.operation.algorithmVersion) ||
+                  result.provenance.operation.type ===
+                    VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE ?
+                  ["divergence" as const] : []),
+                ...(result.provenance.operation.algorithmVersion === "17x17-v4" ||
+                   result.provenance.operation.type ===
+                     VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE ?
                   ["curlMagnitude" as const] : [])] as const).map(key => {
                 const state = regionResultStatuses[result.resultId];
                 const layer = key === "complexMagnitude" || key === "complexPhase" ?
                   "complex" : key;
                 const source = typeof state === "object" && state.kind === "combined" ?
-                  state[layer] ?? "checking" :
+                  (result.provenance.operation.type ===
+                    VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE &&
+                    (key === "complexMagnitude" || key === "complexPhase") ?
+                      state[key] ?? state.complex : state[layer]) ?? "checking" :
                   state ?? "checking";
                 const unit = key === "vector" ? result.summary.vectorUnit :
                   key === "scalar" ? result.summary.scalarUnit :
