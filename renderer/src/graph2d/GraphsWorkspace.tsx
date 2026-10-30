@@ -2087,6 +2087,75 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const focusExplorerSubrectangleInGraphs = async (explorer: VectorField3DDocument,
     region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
     bounds: readonly [readonly [number, number], readonly [number, number]]) => {
+    if (!explorer.workspace?.scalarOverlay?.visible &&
+        !explorer.workspace?.complexOverlay?.visible) {
+      if (!onSelectionCommit || !region?.visible || !explorer.workspace ||
+          canonicalJsonStringify(explorer.workspace.overlayRegion) !==
+            canonicalJsonStringify(region))
+        throw new TypeError("Select a saved vector-only physical rectangle first.");
+      const findGroup = (profileAxis: 0 | 1) => {
+        const groups = new Map<string, Graph2DPointSeriesObject[]>();
+        for (const object of document.source.objects) if (object.kind === "point-series" &&
+            isVectorDerivedRegionOrigin(object.linkedOrigin)) {
+          const origin = object.linkedOrigin;
+          if ((origin.profileAxis ?? 0) !== profileAxis ||
+              origin.vectorSourceHash !== explorer.identity.structuralHash ||
+              parseVectorField3DDocument(origin.vectorDocumentJson).identity.id !==
+                explorer.identity.id ||
+              canonicalJsonStringify(origin.region) !== canonicalJsonStringify(region))
+            continue;
+          groups.set(origin.pairId, [...(groups.get(origin.pairId) ?? []), object]);
+        }
+        const savedId = profileAxis === 0 ?
+          document.selection.linkedRegionIntersection?.columnPairId :
+          document.selection.linkedRegionIntersection?.rowPairId;
+        const candidates = [...groups.entries()].reverse().sort(([left], [right]) =>
+          Number(right === savedId) - Number(left === savedId));
+        for (const [, group] of candidates) {
+          const members = vectorDerivedRegionSeries.map(series => group.find(object =>
+            object.linkedOrigin?.series === series));
+          if (members.some(member => !member?.linkedOrigin)) continue;
+          const origins = members.map(member =>
+            member!.linkedOrigin as Graph2DLinkedVectorRegionOrigin);
+          const rows = members.map(member => pointTableStore.resolve(member!.table));
+          if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+            continue;
+          try {
+            validateVectorDerivedRegionGraphGroup(origins, rows);
+            return { members: members as Graph2DPointSeriesObject[], origins, rows };
+          } catch { /* A different saved revision may still be current. */ }
+        }
+        return null;
+      };
+      const column = findGroup(0), row = findGroup(1);
+      if (!column || !row)
+        throw new TypeError("Send this vector rectangle's three column and three row profiles to Graphs first.");
+      const focus = linkedVectorDerivedRegionIntersectionFocus(
+        column.origins, column.rows, row.origins, row.rows,
+        bounds.map(([min, max]) => ({ kind: "interval" as const, min, max })) as [
+          { kind: "interval"; min: number; max: number },
+          { kind: "interval"; min: number; max: number }]);
+      const session: VectorDerivedRegionVerificationSession = {};
+      const checks: string[] = [];
+      for (const origin of [...column.origins, ...row.origins])
+        checks.push(await checkVectorDerivedRegionGraphSeries(origin, undefined, session));
+      if (checks.some(check => check !== "current"))
+        throw new TypeError(`Vector subrectangle source checks: ${checks.join(", ")}.`);
+      const intersection = focus.intersection!;
+      onSelectionCommit({ objectId: column.members[0]!.id, probe: null,
+        linkedRegion: { pairId: intersection.columnPairId,
+          physical: { kind: "interval", min: intersection.bounds[0][0],
+            max: intersection.bounds[0][1] } },
+        linkedRegionIntersection: { kind: "vector-region-intersection/v1",
+          columnPairId: intersection.columnPairId,
+          rowPairId: intersection.rowPairId, bounds: intersection.bounds } });
+      setLinkedRegionSelectionMode({ pairId: intersection.columnPairId, kind: "interval" });
+      setLinkedRegionColumn(null); setLinkedRegionInterval(null);
+      setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+      setVectorField3DOpen(false);
+      setToolHint("Focused the verified vector subrectangle across six Graphs profiles.");
+      return;
+    }
     if (!onSelectionCommit || !region?.visible || !explorer.workspace?.scalarOverlay?.visible ||
         !explorer.workspace.complexOverlay?.visible ||
         canonicalJsonStringify(explorer.workspace.overlayRegion) !== canonicalJsonStringify(region))

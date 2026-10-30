@@ -1308,6 +1308,25 @@ test("SCI-02 vector-only rows and subrectangle reverify a changed source", async
       .toContainText("curl-magnitude", { timeout: 60_000 });
     await expect(region.getByTestId("scientific-vector-intersection-summary"))
       .toContainText("1/s");
+    await figure.getByTestId("scientific-select-vector-subrectangle").click();
+    await figure.locator('[data-probe-cell="0-0"]').click();
+    await expect(region.getByTestId("scientific-vector-subrectangle-error"))
+      .toContainText("inside the saved physical rectangle");
+    await figure.locator('[data-probe-cell="9-9"]').click();
+    await figure.locator('[data-probe-cell="12-12"]').click();
+    await expect(region.getByTestId("scientific-vector-subrectangle-preview"))
+      .toContainText("Proposed physical bounds");
+    await expect(region.getByTestId("scientific-vector-subrectangle-cells"))
+      .toContainText("Selected profile cells:");
+    await expect(figure.getByTestId("scientific-subrectangle-proposal-marker"))
+      .toBeVisible();
+    await region.getByTestId("scientific-confirm-vector-subrectangle").click();
+    await expect(inspector.getByTestId("graph2d-vector-intersection"))
+      .toContainText("Linked vector subrectangle", { timeout: 60_000 });
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]")
+      .evaluateAll(nodes => new Set(nodes.map(node =>
+        node.getAttribute("data-graph2d-linked-region-series"))).size)).toBe(6);
     await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -1315,6 +1334,11 @@ test("SCI-02 vector-only rows and subrectangle reverify a changed source", async
       .not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(JSON.stringify(stored)).not.toContain("columnProfiles");
+    const savedIntersection = stored.workspace.entries.find((entry: {
+      checkpoint: { format: string } }) => entry.checkpoint.format ===
+      "math3d.graph2d-document")?.checkpoint.selection.linkedRegionIntersection;
+    expect(savedIntersection.kind).toBe("vector-region-intersection/v1");
+    expect(savedIntersection.bounds).toHaveLength(2);
     const tile = join(scene, "east.f64");
     const changed = Buffer.from(await readFile(tile));
     changed[0] ^= 1;

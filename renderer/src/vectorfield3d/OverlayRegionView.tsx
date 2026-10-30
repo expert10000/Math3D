@@ -98,6 +98,13 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
       graphSelectionBusy={graphSelectionBusy}
       graphSelectionError={graphSelectionError}
       onGraphSelectionMode={onGraphSelectionMode}
+      subrectangleSelecting={subrectangleSelecting}
+      subrectangleFirst={subrectangleFirst}
+      subrectangleProposal={subrectangleProposal}
+      subrectangleBusy={subrectangleBusy}
+      subrectangleError={subrectangleError}
+      onSubrectangleToggle={onSubrectangleToggle}
+      onSubrectangleConfirm={onSubrectangleConfirm}
       savedStatus={saved ? resultStatuses[saved.resultId] ?? "checking" : undefined} />;
   }
   const selected = region?.normalAxis === slice.normalAxis &&

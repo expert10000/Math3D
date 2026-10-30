@@ -19,7 +19,11 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   onStartSelection, selecting, busy, onPublish, onSendToGraphs,
   savedStatus, linkedRegionFocus, graphSelectionMode = null,
   graphSelectionFirstX = null, graphSelectionBusy = false,
-  graphSelectionAxis = 0, graphSelectionError = "", onGraphSelectionMode }: {
+  graphSelectionAxis = 0, graphSelectionError = "", onGraphSelectionMode,
+  subrectangleSelecting = false, subrectangleFirst = null,
+  subrectangleProposal = null, subrectangleBusy = false,
+  subrectangleError = "", onSubrectangleToggle,
+  onSubrectangleConfirm }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   onChange: (region: VectorField3DOverlayRegion | null) => void;
@@ -36,6 +40,13 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   graphSelectionError?: string;
   onGraphSelectionMode?: (mode: "point" | "interval" | null,
     axis?: 0 | 1) => void;
+  subrectangleSelecting?: boolean;
+  subrectangleFirst?: readonly [number, number, number] | null;
+  subrectangleProposal?: VectorField3DOverlayRegion["bounds"] | null;
+  subrectangleBusy?: boolean;
+  subrectangleError?: string;
+  onSubrectangleToggle?: () => void;
+  onSubrectangleConfirm?: () => void;
 }) {
   const [check, setCheck] = useState<Check | null>(null);
   const [revision, setRevision] = useState(0);
@@ -123,6 +134,15 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
       cause.message : String(cause)));
   };
   const axes = slice.planeAxes.map(axis => document.source.axes[axis]!);
+  const proposedCells = subrectangleProposal && region ? (() => {
+    const indices = ([0, 1] as const).map(axis => Array.from({ length: 17 }, (_, index) =>
+      region.bounds[axis][0] + (region.bounds[axis][1] - region.bounds[axis][0]) *
+        index / 16).flatMap((value, index) =>
+      value >= subrectangleProposal[axis][0] - 1e-12 &&
+      value <= subrectangleProposal[axis][1] + 1e-12 ? [index] : []));
+    return { columns: indices[0]!, rows: indices[1]!,
+      count: indices[0]!.length * indices[1]!.length };
+  })() : null;
   return <section aria-label="Vector-derived physical region"
     data-testid="vector-derived-region">
     <h4>Vector speed, divergence and curl magnitude region</h4>
@@ -178,6 +198,37 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
         <button type="button" aria-pressed={graphSelectionMode === "interval" &&
           graphSelectionAxis === 1} disabled={graphSelectionBusy || current?.state !== "current"}
           onClick={() => onGraphSelectionMode("interval", 1)}>Select Graphs vector row strip</button>
+        {onSubrectangleToggle && <button type="button"
+          data-testid="scientific-select-vector-subrectangle"
+          aria-pressed={subrectangleSelecting}
+          disabled={subrectangleBusy || current?.state !== "current"}
+          onClick={onSubrectangleToggle}>Select Graphs vector subrectangle on slice</button>}
+        {subrectangleSelecting && <div role="status"
+          data-testid="scientific-vector-subrectangle-preview">
+          {subrectangleProposal ? <>
+            <p>Proposed physical bounds: {axes[0]!.label} {
+              subrectangleProposal[0][0].toPrecision(6)} to {
+              subrectangleProposal[0][1].toPrecision(6)} {axes[0]!.unit}; {
+              axes[1]!.label} {subrectangleProposal[1][0].toPrecision(6)} to {
+              subrectangleProposal[1][1].toPrecision(6)} {axes[1]!.unit}.</p>
+            <p data-testid="scientific-vector-subrectangle-cells">{proposedCells?.count ?
+              `Selected profile cells: columns ${proposedCells.columns[0]! + 1}–${
+                proposedCells.columns.at(-1)! + 1}, rows ${proposedCells.rows[0]! + 1}–${
+                proposedCells.rows.at(-1)! + 1}; ${proposedCells.count} cells.` :
+              "No saved profile cells in these bounds; choose a wider area."}</p>
+            <button type="button" data-testid="scientific-confirm-vector-subrectangle"
+              disabled={subrectangleBusy || !proposedCells?.count ||
+                current?.state !== "current"}
+              onClick={onSubrectangleConfirm}>{subrectangleBusy ?
+                "Verifying six profiles…" : "Focus six verified Graphs profiles"}</button>
+          </> : <p>{subrectangleFirst ?
+            "Click the opposite corner inside the saved rectangle." :
+            "Click the first corner inside the saved rectangle."}</p>}
+          <button type="button" disabled={subrectangleBusy}
+            onClick={onSubrectangleToggle}>Cancel subrectangle</button>
+        </div>}
+        {subrectangleError && <p role="alert"
+          data-testid="scientific-vector-subrectangle-error">{subrectangleError}</p>}
         {graphSelectionMode && <button type="button"
           onClick={() => onGraphSelectionMode(null)}>Cancel Graphs selection</button>}
         {graphSelectionMode && <p role="status">{graphSelectionBusy ?
