@@ -8,6 +8,8 @@ import { viewerSourceFromDocument } from "./viewerProvenance";
 export const VECTOR_FIELD3D_REGION_RESULT_TYPE = "vector3d.linked-region" as const;
 export const VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE = "vector3d.linked-region-combined" as const;
 export const VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE = "vector3d.derived-region" as const;
+export const VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE =
+  "vector3d.derived-subrectangle" as const;
 export type CombinedRegionStatistics = Readonly<{
   count: number; gaps: number; mean: number | null; min: number | null;
   max: number | null }>;
@@ -27,6 +29,16 @@ export type VectorDerivedRegionSummary = Readonly<{
   sampleCount: 289; vector: CombinedRegionStatistics;
   divergence: CombinedRegionStatistics; curlMagnitude: CombinedRegionStatistics;
   vectorUnit: string; divergenceUnit: string; curlMagnitudeUnit: string;
+}>;
+export type VectorDerivedSubrectangleSummary = Readonly<{
+  sampleCount: number; vector: CombinedRegionStatistics;
+  divergence: CombinedRegionStatistics; curlMagnitude: CombinedRegionStatistics;
+  vectorUnit: string; divergenceUnit: string; curlMagnitudeUnit: string;
+}>;
+export type VectorDerivedSubrectangleProfileHashes = Readonly<{
+  columnPairId: string; rowPairId: string;
+  columnRowsSha256: readonly [string, string, string];
+  rowRowsSha256: readonly [string, string, string];
 }>;
 export type VectorField3DRegionStatistics = Readonly<{ mean: number; min: number; max: number }>;
 export type VectorField3DRegionSummary = Readonly<{
@@ -99,7 +111,8 @@ export function createVectorField3DRegionResult(document: VectorField3DDocument,
 export function vectorField3DRegionResultRelation(result: AnalysisResultEnvelope): DocumentRelation {
   if (result.provenance.operation.type !== VECTOR_FIELD3D_REGION_RESULT_TYPE &&
       result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE &&
-      result.provenance.operation.type !== VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE)
+      result.provenance.operation.type !== VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE &&
+      result.provenance.operation.type !== VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE)
     throw new TypeError("Expected a linked region result.");
   return createDocumentRelation({ kind: "analysis-of", sources: [result.provenance.source],
     sourceOrder: "ordered", target: { type: "result", resultId: result.resultId,
@@ -145,6 +158,95 @@ export function createVectorDerivedRegionResult(document: VectorField3DDocument,
   return createAnalysisResultEnvelope({ resultId, status: "numerical",
     provenance: { source, operation: { type: VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
       algorithm: "vector-derived-physical-region", algorithmVersion: "17x17-v1",
+      parameters }, numericContext: { precision: { binaryBits: 53 } },
+      engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
+    summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });
+}
+
+/** Recover the selected 17×17 cells from the two snapped physical intervals. */
+export function vectorDerivedSubrectangleSelection(region: VectorField3DOverlayRegion,
+  bounds: readonly [readonly [number, number], readonly [number, number]]) {
+  const selected = ([0, 1] as const).map(axis => {
+    const [min, max] = region.bounds[axis], [low, high] = bounds[axis];
+    const tolerance = Math.max(1, Math.abs(max - min)) * 1e-9;
+    if (![min, max, low, high].every(Number.isFinite) || max <= min ||
+        low < min - tolerance || high > max + tolerance || high < low)
+      throw new RangeError("Subrectangle intervals must lie inside the physical rectangle.");
+    const positions = Array.from({ length: 17 }, (_, index) =>
+      min + (max - min) * index / 16);
+    const first = positions.findIndex(value => value >= low - tolerance);
+    const last = positions.reduce((found, value, index) =>
+      value <= high + tolerance ? index : found, -1);
+    if (first < 0 || last < first ||
+        Math.abs(low - (first === 0 ? min :
+          (positions[first - 1]! + positions[first]!) / 2)) > tolerance ||
+        Math.abs(high - (last === 16 ? max :
+          (positions[last]! + positions[last + 1]!) / 2)) > tolerance)
+      throw new RangeError("Subrectangle intervals must match saved profile cells.");
+    return [first, last] as const;
+  });
+  return { columns: selected[0]!, rows: selected[1]!,
+    sampleCount: (selected[0]![1] - selected[0]![0] + 1) *
+      (selected[1]![1] - selected[1]![0] + 1) };
+}
+
+/** Publish compact selected-cell statistics; source arrays remain external. */
+export function createVectorDerivedSubrectangleResult(document: VectorField3DDocument,
+  region: VectorField3DOverlayRegion,
+  bounds: readonly [readonly [number, number], readonly [number, number]],
+  summary: VectorDerivedSubrectangleSummary,
+  profiles: VectorDerivedSubrectangleProfileHashes,
+  vectorSamples: readonly VectorField3DRegionSampleDigest[],
+  derivedSamples: readonly VectorField3DRegionSampleDigest[]): AnalysisResultEnvelope {
+  const selection = vectorDerivedSubrectangleSelection(region, bounds);
+  const validStatistic = (value: CombinedRegionStatistics) =>
+    Number.isInteger(value.count) && value.count >= 0 &&
+    value.count <= selection.sampleCount &&
+    value.gaps === selection.sampleCount - value.count &&
+    (value.count === 0 ? value.mean === null && value.min === null &&
+      value.max === null : value.mean !== null && value.min !== null &&
+      value.max !== null && [value.mean, value.min, value.max].every(Number.isFinite) &&
+      value.min <= value.mean && value.mean <= value.max);
+  const hash = (value: string) => /^sha256:[a-f0-9]{64}$/.test(value);
+  if (!region.visible || region.vectorChannel !== "speed" ||
+      canonicalJsonStringify(document.workspace?.overlayRegion) !== canonicalJsonStringify(region) ||
+      document.workspace?.scalarOverlay?.visible || document.workspace?.complexOverlay?.visible ||
+      summary.sampleCount !== selection.sampleCount ||
+      ![summary.vector, summary.divergence, summary.curlMagnitude].every(validStatistic) ||
+      summary.vectorUnit !== (document.source.field.kind === "scientific-bundle" ?
+        document.source.field.componentUnits[0] : document.source.field.components[0].unit) ||
+      summary.divergenceUnit !== `1/${document.source.timeUnit}` ||
+      summary.curlMagnitudeUnit !== `1/${document.source.timeUnit}` ||
+      new Set(document.source.axes.map(axis => axis.unit)).size !== 1 ||
+      new Set(document.source.field.kind === "scientific-bundle" ?
+        document.source.field.componentUnits :
+        document.source.field.components.map(component => component.unit)).size !== 1 ||
+      !hash(profiles.columnPairId) || !hash(profiles.rowPairId) ||
+      profiles.columnPairId === profiles.rowPairId ||
+      profiles.columnRowsSha256.length !== 3 || profiles.rowRowsSha256.length !== 3 ||
+      [...profiles.columnRowsSha256, ...profiles.rowRowsSha256].some(value => !hash(value)) ||
+      [vectorSamples, derivedSamples].some(samples => samples.length !==
+        (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
+        samples.some(item => !item.name || !/^[a-f0-9]{64}$/.test(item.sampleSha256))))
+    throw new TypeError("A vector subrectangle needs verified statistics and six profile hashes.");
+  const parameters: Record<string, CanonicalJsonValue> = {
+    region: region as unknown as CanonicalJsonValue,
+    bounds: bounds as unknown as CanonicalJsonValue,
+    profiles: profiles as unknown as CanonicalJsonValue,
+    vectorReferences: document.source.field.kind === "scientific-bundle" ?
+      document.source.field.references as unknown as CanonicalJsonValue : [],
+    vectorSamples: vectorSamples as unknown as CanonicalJsonValue,
+    derivedSamples: derivedSamples as unknown as CanonicalJsonValue,
+    method: "bounded-finite-difference",
+  };
+  const source = viewerSourceFromDocument(document);
+  const compactSummary = summary as unknown as Record<string, CanonicalJsonValue>;
+  const resultId = `vector3d-derived-subrectangle:${structuralHash({ source,
+    parameters, compactSummary }).slice(7)}`;
+  return createAnalysisResultEnvelope({ resultId, status: "numerical",
+    provenance: { source, operation: {
+      type: VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
+      algorithm: "vector-derived-selected-cells", algorithmVersion: "17x17-v1",
       parameters }, numericContext: { precision: { binaryBits: 53 } },
       engine: { name: "Math3D Field Explorer", version: "1" }, elapsedMs: 0 },
     summary: compactSummary, warnings: [], diagnostics: [], artifacts: [] });

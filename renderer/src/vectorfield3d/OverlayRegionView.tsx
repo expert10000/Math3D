@@ -22,6 +22,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   savedResults = [], resultStatuses = {}, onSaveResult, onSendToGraphs,
   onSendCombinedToGraphs, onPublishCombined,
   onSendVectorDerivedToGraphs, onPublishVectorDerived,
+  onPublishVectorSubrectangle,
   regionBusy = false, linkedRegionFocus = null, graphSelectionMode = null,
   graphSelectionAxis = 0, graphSelectionFirstX = null,
   graphSelectionBusy = false, graphSelectionError = "",
@@ -56,6 +57,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
   onSendVectorDerivedToGraphs?: (region: VectorField3DOverlayRegion,
     profileAxis?: 0 | 1) => Promise<void>;
   onPublishVectorDerived?: (region: VectorField3DOverlayRegion) => Promise<void>;
+  onPublishVectorSubrectangle?: (region: VectorField3DOverlayRegion,
+    focus: LinkedRegionGraphFocus) => Promise<void>;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
@@ -90,7 +93,9 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     return <VectorDerivedRegionView document={document} slice={slice} region={region}
       onChange={onChange} onStartSelection={onStartSelection} selecting={selecting}
       busy={regionBusy} onPublish={onPublishVectorDerived}
+      onPublishSubrectangle={onPublishVectorSubrectangle}
       onSendToGraphs={onSendVectorDerivedToGraphs}
+      savedResults={savedResults} resultStatuses={resultStatuses}
       linkedRegionFocus={linkedRegionFocus}
       graphSelectionMode={graphSelectionMode}
       graphSelectionFirstX={graphSelectionFirstX}

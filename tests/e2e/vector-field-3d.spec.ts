@@ -1222,7 +1222,7 @@ test("SCI-06 vector-only rectangle publishes and withholds a changed source", as
 });
 
 test("SCI-02 vector-only rows and subrectangle reverify a changed source", async () => {
-  test.setTimeout(360_000);
+  test.setTimeout(480_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector-row-region-"));
   const scene = join(root, "vortex.sscene");
   await cp(resolve("examples/scientific-scenes/vortex-volume.sscene"), scene,
@@ -1327,6 +1327,12 @@ test("SCI-02 vector-only rows and subrectangle reverify a changed source", async
       .locator("circle[data-graph2d-linked-region-series]")
       .evaluateAll(nodes => new Set(nodes.map(node =>
         node.getAttribute("data-graph2d-linked-region-series"))).size)).toBe(6);
+    await inspector.getByTestId("graph2d-open-vector-intersection").click();
+    await expect(region.getByTestId("scientific-vector-intersection-summary"))
+      .toBeVisible({ timeout: 60_000 });
+    await region.getByTestId("scientific-publish-vector-subrectangle").click();
+    await expect(region.getByTestId("scientific-vector-subrectangle-saved-status"))
+      .toContainText("statistics reverified", { timeout: 60_000 });
     await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
@@ -1334,6 +1340,15 @@ test("SCI-02 vector-only rows and subrectangle reverify a changed source", async
       .not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(JSON.stringify(stored)).not.toContain("columnProfiles");
+    const savedSubrectangle = stored.workspace.results.find((result: {
+      provenance: { operation: { type: string } } }) =>
+      result.provenance.operation.type === "vector3d.derived-subrectangle");
+    expect(savedSubrectangle.summary.sampleCount).toBeGreaterThan(0);
+    expect(savedSubrectangle.provenance.operation.parameters.profiles.columnRowsSha256)
+      .toHaveLength(3);
+    expect(savedSubrectangle.provenance.operation.parameters.profiles.rowRowsSha256)
+      .toHaveLength(3);
+    expect(JSON.stringify(savedSubrectangle)).not.toContain('"cells"');
     const savedIntersection = stored.workspace.entries.find((entry: {
       checkpoint: { format: string } }) => entry.checkpoint.format ===
       "math3d.graph2d-document")?.checkpoint.selection.linkedRegionIntersection;
@@ -1344,6 +1359,20 @@ test("SCI-02 vector-only rows and subrectangle reverify a changed source", async
     changed[0] ^= 1;
     await writeFile(tile, changed);
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible()) {
+      await expect(projects.getByTestId("project-gallery-layout-toggle"))
+        .toHaveAttribute("title", "Project details", { timeout: 60_000 });
+      await projects.getByTestId("project-gallery-layout-toggle")
+        .click({ force: true, noWaitAfter: true });
+    }
+    await expect(projects.getByTestId("project-dashboard"))
+      .toBeVisible({ timeout: 60_000 });
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${savedSubrectangle.resultId}`).click();
+    for (const field of ["vector", "divergence", "curlMagnitude"])
+      await expect(outputs.getByTestId(`project-vector-derived-${field}`))
+        .toContainText("values withheld (changed)", { timeout: 90_000 });
     await page.keyboard.press("Escape");
     await page.getByTestId("workspace-nav-graphs").click();
     if (await explorer.isVisible())

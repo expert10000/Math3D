@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { canonicalJsonStringify, type VectorField3DDocument, type VectorField3DOverlayRegion,
-  type VectorField3DSliceArtifact } from "@math3d/core";
+import { canonicalJsonStringify, VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
+  type AnalysisResultEnvelope, type VectorField3DDocument,
+  type VectorField3DOverlayRegion, type VectorField3DSliceArtifact } from "@math3d/core";
 import { verifiedCombinedDerivedRegionProfiles, verifiedVectorRegionProfile } from
   "./derivedCombinedRegionProfile";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { vectorDerivedRegionSeries } from "./linkedVectorDerivedRegionGraphs";
+import { summarizeVectorDerivedSubrectangle } from "./vectorDerivedSubrectangle";
 
 type Profiles = Readonly<{
   speed: Awaited<ReturnType<typeof verifiedVectorRegionProfile>>;
@@ -16,7 +18,8 @@ type Check = Readonly<{ document: VectorField3DDocument;
   profiles?: Profiles; error?: string }>;
 
 export function VectorDerivedRegionView({ document, slice, region, onChange,
-  onStartSelection, selecting, busy, onPublish, onSendToGraphs,
+  onStartSelection, selecting, busy, onPublish, onPublishSubrectangle,
+  onSendToGraphs, savedResults = [], resultStatuses = {},
   savedStatus, linkedRegionFocus, graphSelectionMode = null,
   graphSelectionFirstX = null, graphSelectionBusy = false,
   graphSelectionAxis = 0, graphSelectionError = "", onGraphSelectionMode,
@@ -29,8 +32,12 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   onChange: (region: VectorField3DOverlayRegion | null) => void;
   onStartSelection: () => void; selecting: boolean; busy: boolean;
   onPublish?: (region: VectorField3DOverlayRegion) => Promise<void>;
+  onPublishSubrectangle?: (region: VectorField3DOverlayRegion,
+    focus: LinkedRegionGraphFocus) => Promise<void>;
   onSendToGraphs?: (region: VectorField3DOverlayRegion,
     profileAxis?: 0 | 1) => Promise<void>;
+  savedResults?: readonly AnalysisResultEnvelope[];
+  resultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   savedStatus?: SavedRegionSourceStatus;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
@@ -51,6 +58,7 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   const [check, setCheck] = useState<Check | null>(null);
   const [revision, setRevision] = useState(0);
   const [actionError, setActionError] = useState("");
+  const [subrectanglePublishing, setSubrectanglePublishing] = useState(false);
   const selected = !!region && region.visible && region.normalAxis === slice.normalAxis &&
     Math.abs(region.fixedCoordinate - slice.fixedCoordinate) < 1e-9;
   useEffect(() => {
@@ -99,28 +107,27 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   const focusRowsCurrent = !!focused &&
     checkedProfiles(focused.combined, focused.profileAxis, focused.columns) &&
     (!intersection || intersectionCurrent);
-  const subrectangle = intersectionCurrent && intersection && current?.profiles ? (() => {
-    const [i0, i1] = intersection.columns, [j0, j1] = intersection.rows;
-    const count = (i1 - i0 + 1) * (j1 - j0 + 1);
-    const fields = [
-      ["vector", current.profiles.speed.cells, current.profiles.speed.unit],
-      ["divergence", current.profiles.derived.divergence.cells,
-        current.profiles.derived.divergence.unit],
-      ["curl-magnitude", current.profiles.derived.curlMagnitude.cells,
-        current.profiles.derived.curlMagnitude.unit] ] as const;
-    if (fields.some(([, cells]) => cells.length !== 289)) return null;
-    return { count, fields: fields.map(([name, cells, unit]) => {
-      const values: number[] = [];
-      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-        const value = cells[i * 17 + j];
-        if (value !== null && value !== undefined && Number.isFinite(value))
-          values.push(value);
-      }
-      return { name, unit, available: values.length, gaps: count - values.length,
-        mean: values.length ? values.reduce((sum, value) => sum + value, 0) /
-          values.length : null };
-    }) };
-  })() : null;
+  const subrectangle = intersectionCurrent && intersection && current?.profiles && region ?
+    summarizeVectorDerivedSubrectangle(region, intersection.bounds,
+      current.profiles.speed, current.profiles.derived) : null;
+  const savedSubrectangle = intersection && region ? [...savedResults].reverse().find(result =>
+    result.provenance.operation.type ===
+      VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE &&
+    canonicalJsonStringify(result.provenance.operation.parameters.region) ===
+      canonicalJsonStringify(region) &&
+    canonicalJsonStringify(result.provenance.operation.parameters.bounds) ===
+      canonicalJsonStringify(intersection.bounds) &&
+    (result.provenance.operation.parameters.profiles as
+      { columnPairId?: string; rowPairId?: string } | undefined)?.columnPairId ===
+      intersection.columnPairId &&
+    (result.provenance.operation.parameters.profiles as
+      { rowPairId?: string } | undefined)?.rowPairId === intersection.rowPairId) : null;
+  const savedSubrectangleStatus = savedSubrectangle ?
+    resultStatuses[savedSubrectangle.resultId] : undefined;
+  const savedSubrectangleCurrent = typeof savedSubrectangleStatus === "object" &&
+    savedSubrectangleStatus.kind === "vector-derived" &&
+    [savedSubrectangleStatus.vector, savedSubrectangleStatus.divergence,
+      savedSubrectangleStatus.curlMagnitude].every(status => status === "source-current");
   const stats = (value: { count: number; gaps: number; mean: number | null;
     min: number | null; max: number | null }, unit: string) =>
     `${value.count}/289 samples (${value.gaps} gaps); ${value.mean === null ?
@@ -168,11 +175,31 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
         <h5>Verified vector subrectangle</h5>
         <p>Columns {intersection.columns[0] + 1}–{intersection.columns[1] + 1},
           rows {intersection.rows[0] + 1}–{intersection.rows[1] + 1};
-          {" "}{subrectangle.count} lattice positions.</p>
-        <ul>{subrectangle.fields.map(field => <li key={field.name}
-          data-series={field.name}>{field.name}: {field.available}/{subrectangle.count}
-          {" "}available ({field.gaps} gaps), {field.unit}; mean {
-            field.mean === null ? "no finite value" : field.mean.toPrecision(6)}.</li>)}</ul>
+          {" "}{subrectangle.sampleCount} lattice positions.</p>
+        <ul>{(["vector", "divergence", "curlMagnitude"] as const).map(key => {
+          const field = subrectangle[key];
+          const unit = key === "vector" ? subrectangle.vectorUnit : key ===
+            "divergence" ? subrectangle.divergenceUnit : subrectangle.curlMagnitudeUnit;
+          return <li key={key} data-series={key === "curlMagnitude" ?
+            "curl-magnitude" : key}>{key === "curlMagnitude" ? "curl-magnitude" : key}:
+            {" "}{field.count}/{subrectangle.sampleCount} available ({field.gaps} gaps),
+            {" "}{unit}; {field.mean === null ? "no finite value" :
+              `mean ${field.mean.toPrecision(6)}, range ${field.min!.toPrecision(6)}–${
+                field.max!.toPrecision(6)} ${unit}`}.</li>;
+        })}</ul>
+        {onPublishSubrectangle && focused && <button type="button"
+          data-testid="scientific-publish-vector-subrectangle"
+          disabled={busy || subrectanglePublishing} onClick={() => {
+            setActionError(""); setSubrectanglePublishing(true);
+            void onPublishSubrectangle(region, focused).catch(cause =>
+              setActionError(cause instanceof Error ? cause.message : String(cause)))
+              .finally(() => setSubrectanglePublishing(false));
+          }}>{subrectanglePublishing ? "Verifying subrectangle…" :
+            "Publish subrectangle to Project"}</button>}
+        {savedSubrectangle && <p data-testid="scientific-vector-subrectangle-saved-status"
+          role={savedSubrectangleCurrent ? "status" : "alert"}>Saved Project subrectangle: {
+            savedSubrectangleCurrent ? "statistics reverified" :
+              "values withheld until source, profiles and statistics reverify"}.</p>}
       </div> : <p role="alert" data-testid="scientific-vector-intersection-withheld">
         Subrectangle values withheld until all six saved profiles and the bounded
         vector source reverify.</p>)}

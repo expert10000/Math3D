@@ -104,6 +104,8 @@ import { linkedCombinedRegionGraphFocus, linkedCombinedRegionIntersectionFocus,
   type LinkedRegionGraphFocus } from
   "../vectorfield3d/linkedRegionGraphFocus";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
+import { verifiedVectorSubrectangleResult } from
+  "../vectorfield3d/vectorDerivedSubrectangleResult";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
 import { Graph2DAuthoringPanel, type Graph2DLeftPalette } from "./Graph2DAuthoringPanel";
@@ -2215,6 +2217,20 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setVectorField3DOpen(false);
     setToolHint("Focused the verified physical subrectangle across twelve Graphs profiles.");
   };
+  const publishVectorSubrectangle = async (field: VectorField3DDocument,
+    region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
+    focus: LinkedRegionGraphFocus) => {
+    if (!onSaveVectorField3DRegionResult || !region || !focus.intersection ||
+        focus.sourceHash !== field.identity.structuralHash ||
+        canonicalJsonStringify(field.workspace?.overlayRegion) !==
+          canonicalJsonStringify(region))
+      throw new TypeError("Open a verified vector subrectangle before publishing.");
+    const { columnPairId, rowPairId, bounds } = focus.intersection;
+    const result = await verifiedVectorSubrectangleResult(field, [document], region,
+      bounds, { columnPairId, rowPairId });
+    onSaveVectorField3DRegionResult(field, result);
+    setToolHint("Published verified vector subrectangle statistics to Project.");
+  };
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
@@ -3554,6 +3570,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           linkedRegionFocus={linkedRegionFocus?.focus ?? null}
           onFocusRegionInGraphs={focusExplorerRegionInGraphs}
           onFocusSubrectangleInGraphs={focusExplorerSubrectangleInGraphs}
+          onPublishVectorSubrectangle={publishVectorSubrectangle}
           savedPointResults={savedVectorField3DPointResults}
           onSavePointResult={onSaveVectorField3DPointResult}
           savedRegionResults={savedVectorField3DRegionResults}

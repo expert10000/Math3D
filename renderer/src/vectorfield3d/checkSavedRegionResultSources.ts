@@ -8,7 +8,8 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   viewerSourceFromDocument, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
-  type AnalysisResultEnvelope, type Graph2DFieldReference,
+  VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
+  type AnalysisResultEnvelope, type Graph2DDocument, type Graph2DFieldReference,
   type CombinedRegionSummary, type CombinedDerivedRegionSummary,
   type CombinedCurlRegionSummary,
   type VectorDerivedRegionSummary,
@@ -19,6 +20,8 @@ import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
   verifiedVectorRegionProfile,
   type DivergenceSourceBridge } from
   "./derivedCombinedRegionProfile";
+import { VectorSubrectangleSourceError, verifiedVectorSubrectangleResult } from
+  "./vectorDerivedSubrectangleResult";
 
 export type SingleRegionSourceStatus = "checking" | "source-current" | "missing" | "changed" | "error";
 export type CombinedRegionSourceStatus = Readonly<{ kind: "combined";
@@ -35,7 +38,10 @@ type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
 
 /** Read-only Project reopen check, including every pinned source resource. */
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
-  document: VectorField3DDocument, bridge: Bridge | undefined): Promise<SavedRegionSourceStatus> {
+  document: VectorField3DDocument, bridge: Bridge | undefined,
+  graphs: readonly Graph2DDocument[] = []): Promise<SavedRegionSourceStatus> {
+  if (result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE)
+    return checkSavedVectorSubrectangleResultSources(result, document, bridge, graphs);
   if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE)
     return checkSavedCombinedRegionResultSources(result, document, bridge);
   if (result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE)
@@ -95,6 +101,38 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
     } catch { return "error"; }
   }
   return "source-current";
+}
+
+async function checkSavedVectorSubrectangleResultSources(result: AnalysisResultEnvelope,
+  document: VectorField3DDocument, bridge: Bridge | undefined,
+  graphs: readonly Graph2DDocument[]): Promise<VectorDerivedRegionSourceStatus> {
+  const all = (status: SingleRegionSourceStatus): VectorDerivedRegionSourceStatus =>
+    ({ kind: "vector-derived", vector: status, divergence: status,
+      curlMagnitude: status });
+  const parameters = result.provenance.operation.parameters;
+  const region = document.workspace?.overlayRegion;
+  const profiles = parameters.profiles as { columnPairId?: string;
+    rowPairId?: string } | undefined;
+  if (result.provenance.operation.algorithmVersion !== "17x17-v1" || !region ||
+      !bridge || !matchesScientificSourceGeneration(result.provenance.source,
+        viewerSourceFromDocument(document)) ||
+      canonicalJsonStringify(parameters.region) !== canonicalJsonStringify(region) ||
+      !Array.isArray(parameters.bounds) || parameters.bounds.length !== 2 ||
+      typeof profiles?.columnPairId !== "string" ||
+      typeof profiles.rowPairId !== "string") return all("changed");
+  try {
+    const fresh = await verifiedVectorSubrectangleResult(document, graphs, region,
+      parameters.bounds as unknown as readonly [readonly [number, number],
+        readonly [number, number]],
+      { columnPairId: profiles.columnPairId, rowPairId: profiles.rowPairId }, bridge);
+    return fresh.resultId === result.resultId &&
+      canonicalJsonStringify(fresh.provenance.operation) ===
+        canonicalJsonStringify(result.provenance.operation) &&
+      canonicalJsonStringify(fresh.summary) === canonicalJsonStringify(result.summary) ?
+      all("source-current") : all("changed");
+  } catch (cause) {
+    return all(cause instanceof VectorSubrectangleSourceError ? cause.status : "changed");
+  }
 }
 
 async function checkSavedVectorDerivedRegionResultSources(result: AnalysisResultEnvelope,

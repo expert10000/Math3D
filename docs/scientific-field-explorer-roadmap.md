@@ -1148,6 +1148,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02/06 vector-only Explorer subrectangle placement.** On an XY, XZ or YZ vector-only slice, two clicks inside the saved physical rectangle propose a column and row interval. Explorer previews the physical bounds, selected 17 × 17 profile cells and map marker. Confirmation checks all six saved Graphs rows and the pinned vector source, then saves the two snapped intervals and focuses both strips in Graphs. Project reopen restores the intersection only after those checks pass; changed source data withholds it.
 
+**SCI-02/06 published vector-only subrectangle.** Publish subrectangle saves compact speed, divergence and curl-magnitude selected-cell statistics: mean, range, count, gaps, units, snapped physical bounds, six profile row hashes and verified vector transfer digests. No field arrays enter the Project. Project reopen checks the pinned vector source and all six Graphs rows, recomputes the bounded selected-cell statistics, and withholds the result when its saved identity or numbers differ. Earlier full-rectangle and single-axis results remain readable.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---
