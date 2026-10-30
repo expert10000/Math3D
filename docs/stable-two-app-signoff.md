@@ -309,3 +309,13 @@ freeze and tag that exact commit, then let the tag workflow build and test
 **new final binaries**. The rc.4 pass certifies only its pinned commit and
 installer hashes. A workflow dispatch against a different tag does not reuse
 rc.4 evidence.
+
+## 1.7.1 source preparation
+
+The 1.7.1 source candidate adds the verified twelve-profile scientific
+subrectangle workflow and subsequent Sage execution-service routing. Its
+version metadata and release notes are prepared separately from the existing
+`v1.7.0` tag. Wait for the 1.7.0 release workflow before tagging 1.7.1.
+The 1.7.1 workflow must build and check its own exact Windows and Linux assets,
+including clean-install and published-1.6.0 upgrade evidence. Earlier
+candidate hashes and signoffs do not certify the 1.7.1 installers.
