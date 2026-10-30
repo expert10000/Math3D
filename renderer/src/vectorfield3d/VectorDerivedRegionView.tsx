@@ -67,18 +67,49 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   const freshFocus = focused && current?.state === "current" && current.profiles ?
     [current.profiles.speed, current.profiles.derived.divergence,
       current.profiles.derived.curlMagnitude] : null;
-  const focusRowsCurrent = !!focused && !!freshFocus &&
+  const checkedProfiles = (savedProfiles: NonNullable<LinkedRegionGraphFocus["combined"]> |
+    undefined, profileAxis: 0 | 1, columns: readonly [number, number]) =>
+    !!freshFocus && !!savedProfiles &&
     vectorDerivedRegionSeries.every((series, index) => {
-      const saved = focused.combined?.[index];
+      const saved = savedProfiles[index];
       const fresh = freshFocus[index];
       if (!saved || !fresh || saved.series !== series || saved.unit !== fresh.unit)
         return false;
-      const rows = (focused.profileAxis === 1 ? fresh.rowProfiles : fresh.rows)
-        .slice(focused.columns[0], focused.columns[1] + 1);
+      const rows = (profileAxis === 1 ? fresh.rowProfiles : fresh.rows)
+        .slice(columns[0], columns[1] + 1);
       return canonicalJsonStringify(saved.values) ===
         canonicalJsonStringify(rows.map(row => row.y)) &&
         saved.gaps === rows.filter(row => row.y === null).length;
     });
+  const intersection = focused?.intersection;
+  const intersectionCurrent = !!intersection &&
+    checkedProfiles(intersection.columnProfiles, 0, intersection.columns) &&
+    checkedProfiles(intersection.rowProfiles, 1, intersection.rows);
+  const focusRowsCurrent = !!focused &&
+    checkedProfiles(focused.combined, focused.profileAxis, focused.columns) &&
+    (!intersection || intersectionCurrent);
+  const subrectangle = intersectionCurrent && intersection && current?.profiles ? (() => {
+    const [i0, i1] = intersection.columns, [j0, j1] = intersection.rows;
+    const count = (i1 - i0 + 1) * (j1 - j0 + 1);
+    const fields = [
+      ["vector", current.profiles.speed.cells, current.profiles.speed.unit],
+      ["divergence", current.profiles.derived.divergence.cells,
+        current.profiles.derived.divergence.unit],
+      ["curl-magnitude", current.profiles.derived.curlMagnitude.cells,
+        current.profiles.derived.curlMagnitude.unit] ] as const;
+    if (fields.some(([, cells]) => cells.length !== 289)) return null;
+    return { count, fields: fields.map(([name, cells, unit]) => {
+      const values: number[] = [];
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const value = cells[i * 17 + j];
+        if (value !== null && value !== undefined && Number.isFinite(value))
+          values.push(value);
+      }
+      return { name, unit, available: values.length, gaps: count - values.length,
+        mean: values.length ? values.reduce((sum, value) => sum + value, 0) /
+          values.length : null };
+    }) };
+  })() : null;
   const stats = (value: { count: number; gaps: number; mean: number | null;
     min: number | null; max: number | null }, unit: string) =>
     `${value.count}/289 samples (${value.gaps} gaps); ${value.mean === null ?
@@ -112,6 +143,19 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
           <p>Selected values withheld until all three source profiles reverify and
             match the saved Graphs rows.</p>}
       </div>}
+      {intersection && (subrectangle ? <div role="status"
+        data-testid="scientific-vector-intersection-summary">
+        <h5>Verified vector subrectangle</h5>
+        <p>Columns {intersection.columns[0] + 1}–{intersection.columns[1] + 1},
+          rows {intersection.rows[0] + 1}–{intersection.rows[1] + 1};
+          {" "}{subrectangle.count} lattice positions.</p>
+        <ul>{subrectangle.fields.map(field => <li key={field.name}
+          data-series={field.name}>{field.name}: {field.available}/{subrectangle.count}
+          {" "}available ({field.gaps} gaps), {field.unit}; mean {
+            field.mean === null ? "no finite value" : field.mean.toPrecision(6)}.</li>)}</ul>
+      </div> : <p role="alert" data-testid="scientific-vector-intersection-withheld">
+        Subrectangle values withheld until all six saved profiles and the bounded
+        vector source reverify.</p>)}
       <p>Physical rectangle: {axes[0]!.label} {region.bounds[0][0]} to {
         region.bounds[0][1]} {axes[0]!.unit}; {axes[1]!.label} {
         region.bounds[1][0]} to {region.bounds[1][1]} {axes[1]!.unit}; {

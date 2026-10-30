@@ -142,7 +142,8 @@ export function sampleVerifiedComplexRegion(region: VectorField3DOverlayRegion,
 export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   slice: VectorField3DSliceArtifact, region: VectorField3DOverlayRegion,
   plane: VectorSliceOverlayPlane): Readonly<{ statistics: FieldStatistics; unit: string;
-    rows: readonly Graph2DPointRow[]; rowProfiles: readonly Graph2DPointRow[] }> {
+    rows: readonly Graph2DPointRow[]; rowProfiles: readonly Graph2DPointRow[];
+    cells: readonly (number | null)[] }> {
   if (region.normalAxis !== slice.normalAxis ||
       Math.abs(region.fixedCoordinate - slice.fixedCoordinate) > 1e-9 ||
       plane.sourceStructuralHash !== document.identity.structuralHash ||
@@ -153,6 +154,7 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   if (index === null && plane.units.some(unit => unit !== plane.units[0]))
     throw new TypeError("Vector component units differ; speed cannot be combined.");
   const values: number[] = [];
+  const cells: (number | null)[] = [];
   const columns: number[][] = Array.from({ length: 17 }, () => []);
   const rowBins: number[][] = Array.from({ length: 17 }, () => []);
   const [nx, ny] = slice.shape;
@@ -169,7 +171,9 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
         Math.max(0, Math.min(1, (value - coordinates[lo]!) /
           (coordinates[hi]! - coordinates[lo]!))) };
     });
-    if (positions.some(position => position === null)) continue;
+    if (positions.some(position => position === null)) {
+      cells.push(null); continue;
+    }
     const [a, b] = positions as NonNullable<typeof positions[number]>[];
     const sampled = plane.components.map(values => {
       const at = (i: number, j: number) => values[i * ny + j];
@@ -181,6 +185,8 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
     });
     const value = index === null ? sampled.every(item => item !== null) ?
       Math.hypot(...sampled as number[]) : null : sampled[index];
+    cells.push(value !== null && value !== undefined && Number.isFinite(value) ?
+      value : null);
     if (value !== null && value !== undefined && Number.isFinite(value)) {
       values.push(value);
       columns[Math.floor(sampleIndex / 17)]!.push(value);
@@ -189,7 +195,7 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   }
   if (plane.components.some(values => values.length !== nx * ny))
     throw new TypeError("Verified vector plane has an unexpected sample count.");
-  return { statistics: statistics(values), unit: plane.units[index ?? 0]!,
+  return { statistics: statistics(values), unit: plane.units[index ?? 0]!, cells,
     rows: columns.map((column, i) => ({ id: `row_${i + 1}`,
       x: region.bounds[0][0] + (region.bounds[0][1] - region.bounds[0][0]) * i / 16,
       y: column.length ? column.reduce((sum, value) => sum + value, 0) /

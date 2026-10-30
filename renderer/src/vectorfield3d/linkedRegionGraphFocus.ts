@@ -166,3 +166,37 @@ export function linkedCombinedRegionIntersectionFocus(
     columns: column.columns, rows: row.columns,
     columnProfiles: column.combined, rowProfiles: row.combined } };
 }
+
+/** Join the two checked vector-only groups on one physical rectangle. */
+export function linkedVectorDerivedRegionIntersectionFocus(
+  columnOrigins: readonly Graph2DLinkedVectorRegionOrigin[],
+  columnRows: readonly (readonly Graph2DPointRow[])[],
+  rowOrigins: readonly Graph2DLinkedVectorRegionOrigin[],
+  rowRows: readonly (readonly Graph2DPointRow[])[],
+  selections: readonly [Selection, Selection], activeAxis: 0 | 1 = 0):
+  LinkedRegionGraphFocus {
+  if (columnOrigins[0]?.profileAxis !== undefined ||
+      rowOrigins[0]?.profileAxis !== 1)
+    throw new TypeError("Three verified vector column and row profiles are required.");
+  const column = linkedVectorDerivedRegionGraphFocus(columnOrigins,
+    columnRows, selections[0]);
+  const row = linkedVectorDerivedRegionGraphFocus(rowOrigins,
+    rowRows, selections[1]);
+  if (column.documentId !== row.documentId || column.sourceHash !== row.sourceHash ||
+      column.recipeHash !== row.recipeHash ||
+      JSON.stringify(column.region) !== JSON.stringify(row.region) ||
+      JSON.stringify(columnOrigins[0]!.vectorSamples) !==
+        JSON.stringify(rowOrigins[0]!.vectorSamples) ||
+      JSON.stringify(columnOrigins[0]!.derivedSamples) !==
+        JSON.stringify(rowOrigins[0]!.derivedSamples) ||
+      column.profileAxis !== 0 || row.profileAxis !== 1 ||
+      column.combined?.length !== 3 || row.combined?.length !== 3 ||
+      column.combined.some((item, index) => item.series !== row.combined![index]!.series ||
+        item.unit !== row.combined![index]!.unit))
+    throw new TypeError("Saved vector column and row profiles describe different sources.");
+  return { ...(activeAxis === 1 ? row : column), intersection: {
+    columnPairId: column.pairId, rowPairId: row.pairId,
+    bounds: [column.xBounds, row.xBounds],
+    columns: column.columns, rows: row.columns,
+    columnProfiles: column.combined, rowProfiles: row.combined } };
+}

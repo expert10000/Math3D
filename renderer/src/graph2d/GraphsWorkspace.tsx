@@ -100,7 +100,7 @@ import { checkVectorDerivedRegionGraphSeries, isVectorDerivedRegionOrigin,
   "../vectorfield3d/linkedVectorDerivedRegionGraphs";
 import { linkedCombinedRegionGraphFocus, linkedCombinedRegionIntersectionFocus,
   linkedRegionGraphFocus,
-  linkedVectorDerivedRegionGraphFocus,
+  linkedVectorDerivedRegionGraphFocus, linkedVectorDerivedRegionIntersectionFocus,
   type LinkedRegionGraphFocus } from
   "../vectorfield3d/linkedRegionGraphFocus";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
@@ -1673,6 +1673,45 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       return { members: vectorRegionMembers as Graph2DPointSeriesObject[], origins, rows };
     } catch { return null; }
   })();
+  const matchingVectorRegionGroup = (profileAxis: 0 | 1) => {
+    if (!selectedVectorRegionOrigin || linkedPairVerification.document !== document)
+      return null;
+    const candidates = document.source.objects.filter((object):
+      object is Graph2DPointSeriesObject => object.kind === "point-series" &&
+      isVectorDerivedRegionOrigin(object.linkedOrigin) &&
+      object.linkedOrigin.series === "vector" &&
+      (object.linkedOrigin?.profileAxis ?? 0) === profileAxis &&
+      object.linkedOrigin.vectorSourceHash === selectedVectorRegionOrigin.vectorSourceHash &&
+      canonicalJsonStringify(object.linkedOrigin.region) ===
+        canonicalJsonStringify(selectedVectorRegionOrigin.region));
+    const savedId = profileAxis === 0 ?
+      document.selection.linkedRegionIntersection?.columnPairId :
+      document.selection.linkedRegionIntersection?.rowPairId;
+    for (const candidate of candidates.reverse().sort((left, right) =>
+      Number(right.linkedOrigin?.pairId === savedId) -
+      Number(left.linkedOrigin?.pairId === savedId))) {
+      const members = vectorDerivedRegionSeries.map(series =>
+        document.source.objects.find((object): object is Graph2DPointSeriesObject =>
+          object.kind === "point-series" &&
+          object.linkedOrigin?.pairId === candidate.linkedOrigin?.pairId &&
+          object.linkedOrigin?.series === series));
+      if (members.some(member => !member?.linkedOrigin ||
+          linkedPairVerification.states[linkedVerificationKey(member.linkedOrigin)] !==
+            linkedVerified(member.linkedOrigin))) continue;
+      try {
+        const origins = members.map(member =>
+          member!.linkedOrigin as Graph2DLinkedVectorRegionOrigin);
+        const rows = members.map(member => pointTableStore.resolve(member!.table));
+        if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+          continue;
+        validateVectorDerivedRegionGraphGroup(origins, rows);
+        return { members: members as Graph2DPointSeriesObject[], origins, rows };
+      } catch { /* Another saved revision may still be current. */ }
+    }
+    return null;
+  };
+  const columnVectorGroup = matchingVectorRegionGroup(0);
+  const rowVectorGroup = matchingVectorRegionGroup(1);
   const vectorRegionRows = vectorRegionGroup?.rows[0];
   const savedVectorPhysical = selectedVectorRegionOrigin &&
     document.selection.linkedRegion?.pairId === selectedVectorRegionOrigin.pairId ?
@@ -1729,6 +1768,19 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       catch { return null; }
     })() : null;
   const savedIntersection = document.selection.linkedRegionIntersection;
+  const sharedVectorIntersection = savedIntersection?.kind ===
+    "vector-region-intersection/v1" && columnVectorGroup && rowVectorGroup &&
+    savedIntersection.columnPairId === columnVectorGroup.origins[0]!.pairId &&
+    savedIntersection.rowPairId === rowVectorGroup.origins[0]!.pairId ? (() => {
+      try { return linkedVectorDerivedRegionIntersectionFocus(
+        columnVectorGroup.origins, columnVectorGroup.rows,
+        rowVectorGroup.origins, rowVectorGroup.rows,
+        savedIntersection.bounds.map(([min, max]) => ({ kind: "interval" as const,
+          min, max })) as [{ kind: "interval"; min: number; max: number },
+            { kind: "interval"; min: number; max: number }],
+        selectedVectorRegionOrigin?.profileAxis ?? 0); }
+      catch { return null; }
+    })() : null;
   const sharedIntersection = savedIntersection && columnSixGroup && rowSixGroup &&
     savedIntersection.columnPairId === columnSixGroup.origins[0]!.pairId &&
     savedIntersection.rowPairId === rowSixGroup.origins[0]!.pairId ? (() => {
@@ -1795,7 +1847,60 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setLinkedRegionOpenError(cause instanceof Error ? cause.message : String(cause));
     } finally { setLinkedRegionOpenBusy(false); }
   };
-  const sharedRegionHighlight = sharedIntersection && columnSixGroup && rowSixGroup ? {
+  const selectVectorIntersection = async (bounds: readonly [readonly [number, number],
+    readonly [number, number]]) => {
+    if (!columnVectorGroup || !rowVectorGroup || !onSelectionCommit ||
+        linkedRegionOpenBusy)
+      throw new TypeError("Three verified vector row and column profiles are required.");
+    const activeAxis = selectedVectorRegionOrigin?.profileAxis ?? 0;
+    setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
+    try {
+      const focus = linkedVectorDerivedRegionIntersectionFocus(
+        columnVectorGroup.origins, columnVectorGroup.rows,
+        rowVectorGroup.origins, rowVectorGroup.rows,
+        bounds.map(([min, max]) => ({ kind: "interval" as const,
+          min, max })) as [{ kind: "interval"; min: number; max: number },
+            { kind: "interval"; min: number; max: number }], activeAxis);
+      const session: VectorDerivedRegionVerificationSession = {};
+      const statuses: string[] = [];
+      for (const origin of [...columnVectorGroup.origins, ...rowVectorGroup.origins])
+        statuses.push(await checkVectorDerivedRegionGraphSeries(origin,
+          undefined, session));
+      if (statuses.some(status => status !== "current"))
+        throw new TypeError(`Vector subrectangle source checks: ${statuses.join(", ")}.`);
+      const intersection = focus.intersection!;
+      onSelectionCommit({ objectId: (activeAxis === 1 ? rowVectorGroup :
+        columnVectorGroup).members[0]!.id, probe: null,
+        linkedRegion: { pairId: activeAxis === 1 ? intersection.rowPairId :
+          intersection.columnPairId,
+          physical: { kind: "interval", min: intersection.bounds[activeAxis][0],
+            max: intersection.bounds[activeAxis][1] } },
+        linkedRegionIntersection: { kind: "vector-region-intersection/v1",
+          columnPairId: intersection.columnPairId,
+          rowPairId: intersection.rowPairId, bounds: intersection.bounds } });
+      setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+      setToolHint("Linked six verified vector profiles as one physical subrectangle.");
+    } catch (cause) { setLinkedRegionOpenError(cause instanceof Error ?
+      cause.message : String(cause)); }
+    finally { setLinkedRegionOpenBusy(false); }
+  };
+  const sharedRegionHighlight = sharedVectorIntersection && columnVectorGroup &&
+    rowVectorGroup ? {
+    xBounds: sharedVectorIntersection.intersection!.bounds[0],
+    bands: sharedVectorIntersection.intersection!.bounds,
+    points: ([{ group: columnVectorGroup,
+      indices: sharedVectorIntersection.intersection!.columns, axis: "column" },
+    { group: rowVectorGroup, indices: sharedVectorIntersection.intersection!.rows,
+      axis: "row" }] as const).flatMap(({ group, indices, axis }) =>
+      group.rows.flatMap((rows, seriesIndex) =>
+        rows.slice(indices[0], indices[1] + 1)
+          .filter((row): row is Graph2DPointRow & { y: number } => row.y !== null)
+          .map(row => ({ x: row.x, y: row.y,
+            series: `${axis}:${vectorDerivedRegionSeries[seriesIndex]!}`,
+            color: document.display.objects.find(style =>
+              style.objectId === group.members[seriesIndex]!.id)?.color ??
+              "#ffffff" }))))
+  } : sharedIntersection && columnSixGroup && rowSixGroup ? {
     xBounds: sharedIntersection.intersection!.bounds[0],
     bands: sharedIntersection.intersection!.bounds,
     points: ([{ group: columnSixGroup, indices: sharedIntersection.intersection!.columns,
@@ -1807,7 +1912,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           series: `${axis}:${seriesForCombinedRegion(group.origins[0]!.kind)[seriesIndex]!}`,
           color: document.display.objects.find(style =>
             style.objectId === group.members[seriesIndex]!.id)?.color ?? "#ffffff" }))))
-  } : sharedRegionSelection && combinedRegionGroup ? {
+  } : savedIntersection?.kind === "vector-region-intersection/v1" ? null :
+  sharedRegionSelection && combinedRegionGroup ? {
     xBounds: sharedRegionSelection.xBounds,
     points: combinedRegionGroup.rows.flatMap((rows, seriesIndex) =>
       rows.slice(sharedRegionSelection.columns[0], sharedRegionSelection.columns[1] + 1)
@@ -2120,27 +2226,36 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         { ...previous, states: { ...previous.states, [vectorOrigin.pairId]: message } } : previous);
     } finally { setLinkedRegionOpenBusy(false); }
   };
-  const openVectorRegionInExplorer = async (selection: Graph2DLinkedRegionSelection["physical"]) => {
+  const openVectorRegionInExplorer = async (selection: Graph2DLinkedRegionSelection["physical"],
+    openIntersection = false) => {
     if (!vectorRegionGroup || !selectedVectorRegionOrigin || linkedRegionOpenBusy) return;
+    const intersection = openIntersection ? sharedVectorIntersection : null;
     let focus: LinkedRegionGraphFocus;
-    try { focus = linkedVectorDerivedRegionGraphFocus(vectorRegionGroup.origins,
-      vectorRegionGroup.rows, selection); }
+    try {
+      if (openIntersection && !intersection)
+        throw new TypeError("Vector subrectangle withheld until all six profiles verify.");
+      focus = intersection ?? linkedVectorDerivedRegionGraphFocus(vectorRegionGroup.origins,
+        vectorRegionGroup.rows, selection);
+    }
     catch (cause) { setLinkedRegionOpenError(cause instanceof Error ? cause.message :
       String(cause)); return; }
     setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
     try {
       const session: VectorDerivedRegionVerificationSession = {};
       const checks: string[] = [];
-      for (const origin of vectorRegionGroup.origins)
+      const checkedOrigins = intersection && columnVectorGroup && rowVectorGroup ?
+        [...columnVectorGroup.origins, ...rowVectorGroup.origins] :
+        vectorRegionGroup.origins;
+      for (const origin of checkedOrigins)
         checks.push(await checkVectorDerivedRegionGraphSeries(origin, undefined, session));
       setLinkedPairVerification(previous => previous.document === document ?
         { ...previous, states: { ...previous.states,
-          ...Object.fromEntries(vectorRegionGroup.origins.map((origin, index) => [
+          ...Object.fromEntries(checkedOrigins.map((origin, index) => [
             linkedVerificationKey(origin), checks[index] === "current" ?
               "Verified source." : `${checks[index]} source; values withheld.`])) } } : previous);
       if (checks.some(check => check !== "current"))
         throw new TypeError(`Vector region source checks: ${checks.map((check, index) =>
-          `${vectorDerivedRegionSeries[index]} ${check}`).join(", ")}.`);
+          `${vectorDerivedRegionSeries[index % 3]} ${check}`).join(", ")}.`);
       const originDocument = parseVectorField3DDocument(
         selectedVectorRegionOrigin.vectorDocumentJson);
       const source = [vectorField3DDocument, savedVectorField3D].find(candidate =>
@@ -2161,7 +2276,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       const snapped: Graph2DLinkedRegionSelection["physical"] = selection.kind === "point" ?
         { kind: "point", x: vectorRegionGroup.rows[0]![focus.columns[0]]!.x } : selection;
       onSelectionCommit?.({ objectId: selectedObject?.id ?? vectorRegionGroup.members[0]!.id,
-        probe: null, linkedRegion: { pairId: focus.pairId, physical: snapped } });
+        probe: null, linkedRegion: { pairId: focus.pairId, physical: snapped },
+        ...(intersection?.intersection ? { linkedRegionIntersection: {
+          kind: "vector-region-intersection/v1" as const,
+          columnPairId: intersection.intersection.columnPairId,
+          rowPairId: intersection.intersection.rowPairId,
+          bounds: intersection.intersection.bounds } } : {}) });
       setVectorField3DDocument(reviseVectorField3DWorkspace(source,
         { ...workspace, selectedLayer: layer, sliceCoordinates }));
       setExplorerFieldLayer(null);
@@ -2804,6 +2924,67 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <p>The 17 physical {selectedVectorRegionOrigin.profileAxis === 1 ? "rows" : "columns"} run along {selectedVectorRegionOrigin.xName}
               {" "}({selectedVectorRegionOrigin.xUnit}). Each derived curve keeps its own
               {" "}unit and coverage gaps.</p>
+            {columnVectorGroup && rowVectorGroup && <form
+              data-testid="graph2d-vector-intersection-controls"
+              onSubmit={event => {
+                event.preventDefault();
+                const values = new FormData(event.currentTarget);
+                const coordinate = (name: string) => {
+                  const value = values.get(name);
+                  return typeof value === "string" && value.trim() ? Number(value) : NaN;
+                };
+                void selectVectorIntersection([
+                  [coordinate("vector-axis0-min"), coordinate("vector-axis0-max")],
+                  [coordinate("vector-axis1-min"), coordinate("vector-axis1-max")]]);
+              }}>
+              <p>Link a vector column strip and row strip as one physical subrectangle.</p>
+              {([0, 1] as const).map(axis => {
+                const sourceAxis = parseVectorField3DDocument(
+                  selectedVectorRegionOrigin.vectorDocumentJson).source.axes[
+                  [0, 1, 2].filter(value => value !==
+                    selectedVectorRegionOrigin.region.normalAxis)[axis]!]!;
+                const bounds = savedIntersection?.kind ===
+                  "vector-region-intersection/v1" ? savedIntersection.bounds[axis] :
+                  selectedVectorRegionOrigin.region.bounds[axis];
+                return <div key={axis}>
+                  <label>{sourceAxis.label} from ({sourceAxis.unit}) <input type="number"
+                    step="any" required name={`vector-axis${axis}-min`}
+                    aria-label={`Vector subrectangle axis ${axis + 1} from`}
+                    defaultValue={bounds[0]} /></label>
+                  <label>to ({sourceAxis.unit}) <input type="number" step="any" required
+                    name={`vector-axis${axis}-max`}
+                    aria-label={`Vector subrectangle axis ${axis + 1} to`}
+                    defaultValue={bounds[1]} /></label>
+                </div>;
+              })}
+              <button type="submit" disabled={linkedRegionOpenBusy}>{
+                linkedRegionOpenBusy ? "Verifying six profiles…" :
+                "Link vector subrectangle"}</button>
+            </form>}
+            {savedIntersection?.kind === "vector-region-intersection/v1" &&
+              (sharedVectorIntersection ? <div role="status"
+                data-testid="graph2d-vector-intersection">
+                <p>Linked vector subrectangle: columns {
+                  sharedVectorIntersection.intersection!.columns[0] + 1}–{
+                  sharedVectorIntersection.intersection!.columns[1] + 1}, rows {
+                  sharedVectorIntersection.intersection!.rows[0] + 1}–{
+                  sharedVectorIntersection.intersection!.rows[1] + 1}.</p>
+                <ul>{(["column", "row"] as const).flatMap(axis =>
+                  (axis === "column" ? sharedVectorIntersection.intersection!.columnProfiles :
+                    sharedVectorIntersection.intersection!.rowProfiles).map(item =>
+                    <li key={`${axis}-${item.series}`} data-series={`${axis}:${item.series}`}>
+                      {axis} {item.series}: {item.values.length - item.gaps}/{
+                        item.values.length} positions available ({item.gaps} gaps), {
+                        item.unit}.</li>))}</ul>
+                <button type="button" data-testid="graph2d-open-vector-intersection"
+                  disabled={linkedRegionOpenBusy} onClick={() => {
+                    const axis = selectedVectorRegionOrigin.profileAxis ?? 0;
+                    const [min, max] = sharedVectorIntersection.intersection!.bounds[axis];
+                    void openVectorRegionInExplorer({ kind: "interval", min, max }, true);
+                  }}>Open vector subrectangle in Field Explorer</button>
+              </div> : <p role="alert" data-testid="graph2d-vector-intersection-withheld">
+                Subrectangle withheld until all six saved profile rows and the vector
+                source verify.</p>)}
             {vectorRegionGroup && vectorRegionRows && vectorRegionSelection ? <>
               <label>Region {selectedVectorRegionOrigin.profileAxis === 1 ? "row" : "column"} <select aria-label={`Vector region ${
                 selectedVectorRegionOrigin.profileAxis === 1 ? "row" : "column"}`}

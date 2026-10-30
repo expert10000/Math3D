@@ -1221,7 +1221,7 @@ test("SCI-06 vector-only rectangle publishes and withholds a changed source", as
   }
 });
 
-test("SCI-02 vector-only row profiles link both ways and withhold a changed source", async () => {
+test("SCI-02 vector-only rows and subrectangle reverify a changed source", async () => {
   test.setTimeout(360_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-vector-row-region-"));
   const scene = join(root, "vortex.sscene");
@@ -1253,6 +1253,9 @@ test("SCI-02 vector-only row profiles link both ways and withhold a changed sour
     await region.getByRole("button", { name: "Send three vector row profiles to Graphs" }).click();
     await expect(explorer).toContainText("Sent 17 aligned vector speed, divergence and curl magnitude row means",
       { timeout: 60_000 });
+    await region.getByRole("button", { name: "Send three vector profiles to Graphs" }).click();
+    await expect(explorer).toContainText("Sent 17 aligned vector speed, divergence and curl magnitude column means",
+      { timeout: 60_000 });
     await explorer.getByRole("button", { name: "Back to Graphs" })
       .click({ noWaitAfter: true });
     await page.getByTestId("workspace-dock-reset-recommended").click();
@@ -1279,12 +1282,39 @@ test("SCI-02 vector-only row profiles link both ways and withhold a changed sour
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
       .toBeGreaterThan(3);
+    await page.getByRole("button", { name: "Select Vector speed region mean" }).click();
+    const intersectionForm = inspector.getByTestId("graph2d-vector-intersection-controls");
+    await expect(intersectionForm).toBeVisible({ timeout: 60_000 });
+    for (const axis of [1, 2]) {
+      const from = intersectionForm.getByLabel(`Vector subrectangle axis ${axis} from`);
+      const to = intersectionForm.getByLabel(`Vector subrectangle axis ${axis} to`);
+      const lower = Number(await from.inputValue()), upper = Number(await to.inputValue());
+      await from.fill(String(lower + (upper - lower) * 0.25));
+      await to.fill(String(lower + (upper - lower) * 0.75));
+    }
+    await intersectionForm.getByRole("button", { name: "Link vector subrectangle" }).click();
+    await expect(inspector.getByTestId("graph2d-vector-intersection"))
+      .toContainText("Linked vector subrectangle", { timeout: 60_000 });
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("rect").count()).toBe(2);
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]")
+      .evaluateAll(nodes => new Set(nodes.map(node =>
+        node.getAttribute("data-graph2d-linked-region-series"))).size)).toBe(6);
+    await inspector.getByTestId("graph2d-open-vector-intersection").click();
+    await expect(figure.getByTestId("scientific-region-graph-focus-intersection"))
+      .toBeVisible({ timeout: 60_000 });
+    await expect(region.getByTestId("scientific-vector-intersection-summary"))
+      .toContainText("curl-magnitude", { timeout: 60_000 });
+    await expect(region.getByTestId("scientific-vector-intersection-summary"))
+      .toContainText("1/s");
     await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")))
       .not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(JSON.stringify(stored)).not.toContain("columnProfiles");
     const tile = join(scene, "east.f64");
     const changed = Buffer.from(await readFile(tile));
     changed[0] ^= 1;
@@ -1297,9 +1327,12 @@ test("SCI-02 vector-only row profiles link both ways and withhold a changed sour
     if (await projects.isVisible())
       await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
     await page.getByTestId("workspace-dock-reset-recommended").click();
-    await page.getByRole("button", { name: "Select Vector speed region row mean" }).click();
+    await page.getByRole("button", { name: "Select Vector speed region mean" }).click();
+    await expect(inspector.getByTestId("graph2d-vector-intersection-withheld"))
+      .toContainText("Subrectangle withheld", { timeout: 60_000 });
     await expect(inspector.getByTestId("graph2d-vector-region-withheld"))
-      .toContainText(/changed|integrity|checksum/i, { timeout: 60_000 });
+      .toContainText(/changed|integrity|checksum/i);
+    await expect(page.getByTestId("graph2d-linked-region-highlight")).toHaveCount(0);
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) ||

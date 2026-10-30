@@ -28,7 +28,7 @@ import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
 import { linkedCombinedRegionGraphFocus, linkedCombinedRegionIntersectionFocus,
   linkedRegionGraphFocus,
-  linkedVectorDerivedRegionGraphFocus } from
+  linkedVectorDerivedRegionGraphFocus, linkedVectorDerivedRegionIntersectionFocus } from
   "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
@@ -1116,6 +1116,41 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         stableKey: `vector-derived-both-axes-${normalAxis}` });
       expect(parseGraph2DDocument(serializeGraph2DDocument(savedGraph))
         .source.objects).toHaveLength(6);
+      const joined = linkedVectorDerivedRegionIntersectionFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        rowGroup.map(item => item.origin), rowGroup.map(item => item.rows),
+        [{ kind: "interval", min: group[0].rows[4]!.x,
+          max: group[0].rows[7]!.x },
+        { kind: "interval", min: rowGroup[0].rows[9]!.x,
+          max: rowGroup[0].rows[11]!.x }]);
+      expect(joined.intersection?.columns).toEqual([4, 7]);
+      expect(joined.intersection?.rows).toEqual([9, 11]);
+      expect(joined.intersection?.columnProfiles.map(item => item.unit))
+        .toEqual(["m/s", "1/s", "1/s"]);
+      expect(joined.intersection?.rowProfiles.map(item => item.unit))
+        .toEqual(["m/s", "1/s", "1/s"]);
+      const savedIntersection = joined.intersection!;
+      const selectedGraph = createGraph2DDocument({ source: bothAxes.source,
+        display: bothAxes.display, stableKey: `vector-intersection-${normalAxis}`,
+        selection: { objectId: bothAxes.source.objects[0]!.id, probe: null,
+          linkedRegion: { pairId: savedIntersection.columnPairId,
+            physical: { kind: "interval", min: savedIntersection.bounds[0][0],
+              max: savedIntersection.bounds[0][1] } },
+          linkedRegionIntersection: { kind: "vector-region-intersection/v1",
+            columnPairId: savedIntersection.columnPairId,
+            rowPairId: savedIntersection.rowPairId,
+            bounds: savedIntersection.bounds } } });
+      expect(parseGraph2DDocument(serializeGraph2DDocument(selectedGraph))
+        .selection.linkedRegionIntersection?.bounds)
+        .toEqual(savedIntersection.bounds);
+      expect(serializeGraph2DDocument(selectedGraph).includes('"columnProfiles"'))
+        .toBe(false);
+      expect(() => linkedVectorDerivedRegionIntersectionFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        rowGroup.map(item => item.origin), rowGroup.map((item, index) =>
+          index === 1 ? item.rows.map((row, position) => position === 9 ?
+            { ...row, y: 42 } : row) : item.rows),
+        [{ kind: "point", x: 0 }, { kind: "point", x: 0 }])).toThrow();
       const project = createMath3DProject(createMixedWorkspaceDocument({
         entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
           replay: null }], activeDocumentIds: [document.identity.id],

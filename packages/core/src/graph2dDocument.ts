@@ -323,7 +323,7 @@ export type Graph2DLinkedRegionSelection = Readonly<{
     Readonly<{ kind: "interval"; min: number; max: number }>;
 }>;
 export type Graph2DLinkedRegionIntersection = Readonly<{
-  kind: "combined-region-intersection/v1";
+  kind: "combined-region-intersection/v1" | "vector-region-intersection/v1";
   columnPairId: string; rowPairId: string;
   /** Physical intervals on the first and second axes of the saved slice. */
   bounds: readonly [readonly [number, number], readonly [number, number]];
@@ -867,7 +867,8 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
   if (value.linkedRegionIntersection !== undefined) {
     const linked = value.linkedRegionIntersection;
     if (!record(linked) || !exact(linked, ["kind", "columnPairId", "rowPairId", "bounds"]) ||
-        linked.kind !== "combined-region-intersection/v1" ||
+        !["combined-region-intersection/v1", "vector-region-intersection/v1"]
+          .includes(String(linked.kind)) ||
         ![linked.columnPairId, linked.rowPairId].every(id =>
           typeof id === "string" && /^sha256:[a-f0-9]{64}$/.test(id)) ||
         linked.columnPairId === linked.rowPairId ||
@@ -875,18 +876,25 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
         !linked.bounds.every((bounds: unknown) => Array.isArray(bounds) &&
           bounds.length === 2 && bounds.every(finite) && bounds[0] <= bounds[1])) return false;
     const intersection = linked as Graph2DLinkedRegionIntersection;
+    const vectorOnly = intersection.kind === "vector-region-intersection/v1";
     const columns = source.objects.find((object): object is Graph2DPointSeriesObject =>
       object.kind === "point-series" &&
-      object.linkedOrigin?.kind === "vector-scalar-complex-curl-linked-region/v4" &&
+      object.linkedOrigin?.kind === (vectorOnly ? "vector-derived-linked-region/v1" :
+        "vector-scalar-complex-curl-linked-region/v4") &&
+      (!vectorOnly || object.linkedOrigin.profileAxis === undefined) &&
       object.linkedOrigin.pairId === intersection.columnPairId &&
       object.linkedOrigin.series === "vector");
     const rows = source.objects.find((object): object is Graph2DPointSeriesObject =>
       object.kind === "point-series" &&
-      object.linkedOrigin?.kind === "vector-scalar-complex-curl-row-linked-region/v5" &&
+      object.linkedOrigin?.kind === (vectorOnly ? "vector-derived-linked-region/v1" :
+        "vector-scalar-complex-curl-row-linked-region/v5") &&
+      (!vectorOnly || object.linkedOrigin.profileAxis === 1) &&
       object.linkedOrigin.pairId === intersection.rowPairId &&
       object.linkedOrigin.series === "vector");
-    const columnOrigin = columns?.linkedOrigin as Graph2DLinkedCombinedRegionOrigin | undefined;
-    const rowOrigin = rows?.linkedOrigin as Graph2DLinkedCombinedRegionOrigin | undefined;
+    const columnOrigin = columns?.linkedOrigin as Graph2DLinkedCombinedRegionOrigin |
+      Graph2DLinkedVectorRegionOrigin | undefined;
+    const rowOrigin = rows?.linkedOrigin as Graph2DLinkedCombinedRegionOrigin |
+      Graph2DLinkedVectorRegionOrigin | undefined;
     const selectedMember = source.objects.find(object => object.kind === "point-series" &&
       object.id === value.objectId && object.linkedOrigin &&
       [intersection.columnPairId, intersection.rowPairId].includes(
@@ -899,10 +907,25 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
         columnOrigin.vectorSourceHash !== rowOrigin.vectorSourceHash ||
         canonicalJsonStringify(columnOrigin.region) !==
           canonicalJsonStringify(rowOrigin.region) ||
-        canonicalJsonStringify([columnOrigin.scalarReference,
-          columnOrigin.realReference, columnOrigin.imaginaryReference]) !==
-          canonicalJsonStringify([rowOrigin.scalarReference,
-            rowOrigin.realReference, rowOrigin.imaginaryReference]) ||
+        (vectorOnly ?
+          canonicalJsonStringify([columnOrigin.vectorSamples,
+            (columnOrigin as Graph2DLinkedVectorRegionOrigin).derivedSamples]) !==
+          canonicalJsonStringify([rowOrigin.vectorSamples,
+            (rowOrigin as Graph2DLinkedVectorRegionOrigin).derivedSamples]) :
+          canonicalJsonStringify([
+            (columnOrigin as Graph2DLinkedCombinedRegionOrigin).scalarReference,
+            (columnOrigin as Graph2DLinkedCombinedRegionOrigin).realReference,
+            (columnOrigin as Graph2DLinkedCombinedRegionOrigin).imaginaryReference]) !==
+          canonicalJsonStringify([
+            (rowOrigin as Graph2DLinkedCombinedRegionOrigin).scalarReference,
+            (rowOrigin as Graph2DLinkedCombinedRegionOrigin).realReference,
+            (rowOrigin as Graph2DLinkedCombinedRegionOrigin).imaginaryReference])) ||
+        vectorOnly && [intersection.columnPairId, intersection.rowPairId].some(id =>
+          ["vector", "divergence", "curl-magnitude"].some(series =>
+            !source.objects.some(object => object.kind === "point-series" &&
+              object.linkedOrigin?.kind === "vector-derived-linked-region/v1" &&
+              object.linkedOrigin.pairId === id &&
+              object.linkedOrigin.series === series))) ||
         intersection.bounds.some((bounds: readonly [number, number], axis: number) =>
           bounds[0] < columnOrigin.region.bounds[axis]![0] - 1e-9 ||
           bounds[1] > columnOrigin.region.bounds[axis]![1] + 1e-9)) return false;
