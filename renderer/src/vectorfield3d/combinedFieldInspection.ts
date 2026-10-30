@@ -199,6 +199,8 @@ export type CombinedRegionInspection = Readonly<{
   summary: CombinedRegionSummary;
   profiles: Readonly<Record<CombinedRegionSeries, readonly Graph2DPointRow[]>>;
   rowProfiles: Readonly<Record<CombinedRegionSeries, readonly Graph2DPointRow[]>>;
+  /** Transient verified values, first physical axis outermost. Never saved in a Project. */
+  cells: Readonly<Record<CombinedRegionSeries, readonly (number | null)[]>>;
 }>;
 
 /** Four independent means along both axes of one physical 17×17 lattice. */
@@ -221,6 +223,8 @@ export function sampleCombinedRegion(document: VectorField3DDocument,
     ({ vector: [] as number[], scalar: [] as number[],
       "complex-magnitude": [] as number[], "complex-phase": [] as number[] }));
   const columns = emptyBins(), rows = emptyBins();
+  const cells: Record<CombinedRegionSeries, (number | null)[]> = {
+    vector: [], scalar: [], "complex-magnitude": [], "complex-phase": [] };
   const ny = slice.shape[1];
   const speedAt = (point: LinkedFieldPoint): number | null => {
     const local = slice.planeAxes.map(axis => point[axis]);
@@ -254,14 +258,18 @@ export function sampleCombinedRegion(document: VectorField3DDocument,
     point[slice.planeAxes[1]!] = region.bounds[1][0] +
       (region.bounds[1][1] - region.bounds[1][0]) * j / 16;
     const speed = speedAt(point);
+    cells.vector.push(speed !== null && Number.isFinite(speed) ? speed : null);
     if (speed !== null && Number.isFinite(speed)) {
       columns[i]!.vector.push(speed); rows[j]!.vector.push(speed);
     }
     const q = sampleVerifiedScalarPoint(scalarReference, scalarVolume,
       document.source.axes, point, units).value;
+    cells.scalar.push(q);
     if (q !== null) { columns[i]!.scalar.push(q); rows[j]!.scalar.push(q); }
     const wave = sampleVerifiedComplexPoint(realReference, imaginaryReference,
       complexVolumes, document.source.axes, point, units);
+    cells["complex-magnitude"].push(wave.magnitude);
+    cells["complex-phase"].push(wave.phase);
     if (wave.magnitude !== null) {
       columns[i]!["complex-magnitude"].push(wave.magnitude);
       rows[j]!["complex-magnitude"].push(wave.magnitude);
@@ -287,7 +295,7 @@ export function sampleCombinedRegion(document: VectorField3DDocument,
     return result;
   };
   const profiles = profile(columns, 0), rowProfiles = profile(rows, 1);
-  return { summary: { sampleCount: 289, vector: vector.statistics,
+  return { cells, summary: { sampleCount: 289, vector: vector.statistics,
     scalar, complexMagnitude: complex.magnitude, complexPhase: complex.phase,
     vectorUnit: vector.unit,
     scalarUnit: document.workspace!.scalarOverlay!.unit,

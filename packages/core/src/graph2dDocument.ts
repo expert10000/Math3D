@@ -320,8 +320,15 @@ export type Graph2DLinkedRegionSelection = Readonly<{
   physical: Readonly<{ kind: "point"; x: number }> |
     Readonly<{ kind: "interval"; min: number; max: number }>;
 }>;
+export type Graph2DLinkedRegionIntersection = Readonly<{
+  kind: "combined-region-intersection/v1";
+  columnPairId: string; rowPairId: string;
+  /** Physical intervals on the first and second axes of the saved slice. */
+  bounds: readonly [readonly [number, number], readonly [number, number]];
+}>;
 export type Graph2DSelection = Readonly<{ objectId: string | null; probe: Graph2DProbe | null;
-  linkedRegion?: Graph2DLinkedRegionSelection }>;
+  linkedRegion?: Graph2DLinkedRegionSelection;
+  linkedRegionIntersection?: Graph2DLinkedRegionIntersection }>;
 export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
@@ -818,7 +825,8 @@ const validDisplay = (value: unknown, source: Graph2DSource): value is Graph2DDi
 };
 const validSelection = (value: unknown, source: Graph2DSource): value is Graph2DSelection => {
   if (!record(value) || !exact(value, ["objectId", "probe",
-    ...(value.linkedRegion === undefined ? [] : ["linkedRegion"])])) return false;
+    ...(value.linkedRegion === undefined ? [] : ["linkedRegion"]),
+    ...(value.linkedRegionIntersection === undefined ? [] : ["linkedRegionIntersection"])])) return false;
   const ids = new Set(source.objects.map((entry) => entry.id));
   if (value.objectId !== null && (typeof value.objectId !== "string" || !ids.has(value.objectId))) return false;
   if (value.linkedRegion !== undefined) {
@@ -845,6 +853,49 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
         selection.x >= min - 1e-9 && selection.x <= max + 1e-9 :
         selection.min >= min - 1e-9 && selection.max <= max + 1e-9;
     })) return false;
+  }
+  if (value.linkedRegionIntersection !== undefined) {
+    const linked = value.linkedRegionIntersection;
+    if (!record(linked) || !exact(linked, ["kind", "columnPairId", "rowPairId", "bounds"]) ||
+        linked.kind !== "combined-region-intersection/v1" ||
+        ![linked.columnPairId, linked.rowPairId].every(id =>
+          typeof id === "string" && /^sha256:[a-f0-9]{64}$/.test(id)) ||
+        linked.columnPairId === linked.rowPairId ||
+        !Array.isArray(linked.bounds) || linked.bounds.length !== 2 ||
+        !linked.bounds.every((bounds: unknown) => Array.isArray(bounds) &&
+          bounds.length === 2 && bounds.every(finite) && bounds[0] <= bounds[1])) return false;
+    const intersection = linked as Graph2DLinkedRegionIntersection;
+    const columns = source.objects.find((object): object is Graph2DPointSeriesObject =>
+      object.kind === "point-series" &&
+      object.linkedOrigin?.kind === "vector-scalar-complex-curl-linked-region/v4" &&
+      object.linkedOrigin.pairId === intersection.columnPairId &&
+      object.linkedOrigin.series === "vector");
+    const rows = source.objects.find((object): object is Graph2DPointSeriesObject =>
+      object.kind === "point-series" &&
+      object.linkedOrigin?.kind === "vector-scalar-complex-curl-row-linked-region/v5" &&
+      object.linkedOrigin.pairId === intersection.rowPairId &&
+      object.linkedOrigin.series === "vector");
+    const columnOrigin = columns?.linkedOrigin as Graph2DLinkedCombinedRegionOrigin | undefined;
+    const rowOrigin = rows?.linkedOrigin as Graph2DLinkedCombinedRegionOrigin | undefined;
+    const selectedMember = source.objects.find(object => object.kind === "point-series" &&
+      object.id === value.objectId && object.linkedOrigin &&
+      [intersection.columnPairId, intersection.rowPairId].includes(
+        object.linkedOrigin.pairId));
+    if (!columns || !rows || !columnOrigin || !rowOrigin || !selectedMember ||
+        !value.linkedRegion || ![intersection.columnPairId, intersection.rowPairId]
+          .includes((value.linkedRegion as Graph2DLinkedRegionSelection).pairId) ||
+        (selectedMember as Graph2DPointSeriesObject).linkedOrigin?.pairId !==
+          (value.linkedRegion as Graph2DLinkedRegionSelection).pairId ||
+        columnOrigin.vectorSourceHash !== rowOrigin.vectorSourceHash ||
+        canonicalJsonStringify(columnOrigin.region) !==
+          canonicalJsonStringify(rowOrigin.region) ||
+        canonicalJsonStringify([columnOrigin.scalarReference,
+          columnOrigin.realReference, columnOrigin.imaginaryReference]) !==
+          canonicalJsonStringify([rowOrigin.scalarReference,
+            rowOrigin.realReference, rowOrigin.imaginaryReference]) ||
+        intersection.bounds.some((bounds: readonly [number, number], axis: number) =>
+          bounds[0] < columnOrigin.region.bounds[axis]![0] - 1e-9 ||
+          bounds[1] > columnOrigin.region.bounds[axis]![1] + 1e-9)) return false;
   }
   if (value.probe === null) return true;
   if (!record(value.probe) || ![3, 4].includes(Object.keys(value.probe).length) ||
