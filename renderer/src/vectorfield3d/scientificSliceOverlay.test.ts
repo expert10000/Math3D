@@ -26,7 +26,8 @@ import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus,
+import { linkedCombinedRegionGraphFocus, linkedCombinedRegionIntersectionFocus,
+  linkedRegionGraphFocus,
   linkedVectorDerivedRegionGraphFocus } from
   "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
@@ -838,6 +839,11 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       Math.abs(row.y - 2) < 1e-10)).toBe(true);
     expect(curlMagnitude.rowProfiles.every(row => row.y !== null &&
       Math.abs(row.y - 2) < 1e-10)).toBe(true);
+    expect(inspection.cells.vector).toHaveLength(289);
+    expect(divergence.cells).toHaveLength(289);
+    expect(curlMagnitude.cells).toHaveLength(289);
+    expect(divergence.cells[8 * 17 + 8]).toBeCloseTo(0, 10);
+    expect(curlMagnitude.cells[8 * 17 + 8]).toBeCloseTo(2, 10);
     const outside = curlMagnitudeRegionProfile({ ...region,
       bounds: [[-6, 6], [-1, 1]] as const },
       sampleVectorField3DDerivedSlice(document, 2, 0, "curl-magnitude"));
@@ -877,6 +883,19 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       .toEqual(Array(6).fill(true));
     validateCombinedRegionGraphGroup(rowGroup.map(item => item.origin),
       rowGroup.map(item => item.rows));
+    const intersection = linkedCombinedRegionIntersectionFocus(group.map(item => item.origin),
+      group.map(item => item.rows), rowGroup.map(item => item.origin),
+      rowGroup.map(item => item.rows), [
+        { kind: "interval", min: -.5, max: .5 },
+        { kind: "interval", min: -.25, max: .25 } ]);
+    expect(intersection.intersection).toMatchObject({ columns: [4, 12], rows: [6, 10] });
+    expect(intersection.intersection?.columnProfiles).toHaveLength(6);
+    expect(intersection.intersection?.rowProfiles).toHaveLength(6);
+    expect(linkedCombinedRegionIntersectionFocus(group.map(item => item.origin),
+      group.map(item => item.rows), rowGroup.map(item => item.origin),
+      rowGroup.map(item => item.rows), [
+        { kind: "interval", min: -.5, max: .5 },
+        { kind: "interval", min: -.25, max: .25 } ], 1).profileAxis).toBe(1);
     expect(linkedCombinedRegionGraphFocus(rowGroup.map(item => item.origin),
       rowGroup.map(item => item.rows), { kind: "point", x: 0 }).profileAxis).toBe(1);
     expect(group.map(item => validGraph2DLinkedOverlayOrigin(item.origin)))
@@ -905,6 +924,23 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
     expect(parseGraph2DDocument(serializeGraph2DDocument(
       createGraph2DDocument({ ...rowGraph, stableKey: "curl-row-region" })))
       .source.objects).toHaveLength(6);
+    const bothGraph = applyGraph2DAuthoring(graph,
+      { type: "create-point-series-group", drafts: rowGroup.map((item, index) => ({
+        label: item.label, table: store.publish(item.rows), mode: "line" as const,
+        domain: item.domain, linkedOrigin: item.origin,
+        style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa",
+          "#34d399", "#f97316"][index]!, lineWidth: 2,
+          lineStyle: "solid" as const, visible: true } })) });
+    const selection = { objectId: bothGraph.source.objects[6]!.id, probe: null,
+      linkedRegion: { pairId: rowGroup[0]!.origin.pairId,
+        physical: { kind: "interval" as const, min: -.25, max: .25 } },
+      linkedRegionIntersection: { kind: "combined-region-intersection/v1" as const,
+        columnPairId: group[0]!.origin.pairId,
+        rowPairId: rowGroup[0]!.origin.pairId,
+        bounds: intersection.intersection!.bounds } };
+    expect(parseGraph2DDocument(serializeGraph2DDocument(createGraph2DDocument({
+      ...bothGraph, selection, stableKey: "curl-intersection" }))).selection)
+      .toEqual(selection);
     expect(linkedCombinedRegionGraphFocus(group.map(item => item.origin),
       group.map(item => item.rows), { kind: "point", x: 0 }).combined
       ?.map(item => item.series)).toContain("curl-magnitude");

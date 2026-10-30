@@ -187,6 +187,13 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     crosshairCoordinate(slice.coordinates[1], focusHigh, 0, cellHeight) : null;
   const focusY0 = focusY0FromBottom === null ? null : top + height - focusY0FromBottom;
   const focusY1 = focusY1FromBottom === null ? null : top + height - focusY1FromBottom;
+  const intersection = graphFocusMatches ? linkedRegionFocus.intersection : null;
+  const intersectionX = intersection?.bounds[0].map(value =>
+    crosshairCoordinate(slice.coordinates[0], value, left, cellWidth)) ?? null;
+  const intersectionY = intersection?.bounds[1].map(value => {
+    const fromBottom = crosshairCoordinate(slice.coordinates[1], value, 0, cellHeight);
+    return fromBottom === null ? null : top + height - fromBottom;
+  }) ?? null;
   return <figure className="vector-field3d-slice" aria-label={`${firstAxis.label.toUpperCase()}${secondAxis.label.toUpperCase()} field slice`}>
     <figcaption>{firstAxis.label.toUpperCase()}{secondAxis.label.toUpperCase()} plane ·
       {" "}{normalAxis.label} = {slice.fixedCoordinate} {slice.fixedUnit} · {slice.shape.join(" × ")} bounded samples</figcaption>
@@ -373,6 +380,14 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           width={Math.abs(regionMarkers[1][0] - regionMarkers[0][0])}
           height={Math.abs(focusY1 - focusY0)}
           fill="#facc15" fillOpacity="0.28" stroke="#facc15" strokeWidth="2" />}
+      {intersectionX?.every(value => value !== null) &&
+        intersectionY?.every(value => value !== null) && <rect
+          data-testid="scientific-region-graph-focus-intersection" pointerEvents="none"
+          x={Math.min(intersectionX[0]!, intersectionX[1]!)}
+          y={Math.min(intersectionY[0]!, intersectionY[1]!)}
+          width={Math.abs(intersectionX[1]! - intersectionX[0]!)}
+          height={Math.abs(intersectionY[1]! - intersectionY[0]!)}
+          fill="#a78bfa" fillOpacity="0.32" stroke="#e9d5ff" strokeWidth="2" />}
       {pendingRegionMarker && regionSelecting && <circle
         data-testid="scientific-overlay-region-first-corner" pointerEvents="none"
         cx={pendingRegionMarker[0]} cy={pendingRegionMarker[1]} r="7"

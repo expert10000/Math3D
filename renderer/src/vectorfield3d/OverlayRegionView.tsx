@@ -242,6 +242,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
         {" "}{slice.fixedUnit}.</p>
       {region.visible && secondaryComplex && <CombinedOverlayRegionReadout
         document={document} region={region} slice={slice} vectorPlane={vectorPlane}
+        linkedRegionFocus={linkedRegionFocus}
         scalarVolume={scalarVolume} complexVolumes={complexVolumes}
         vectorStatus={vectorStatus} scalarStatus={scalarStatus}
         complexStatus={complexStatus} />}

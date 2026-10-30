@@ -32,6 +32,7 @@ export type Graph2DPlotSeries = Readonly<{
 }>;
 export type Graph2DLinkedRegionHighlight = Readonly<{
   xBounds: readonly [number, number];
+  bands?: readonly (readonly [number, number])[];
   points: readonly Readonly<{ x: number; y: number; series: string; color: string }>[];
 }>;
 type Props = { display: Graph2DDisplay; size: Graph2DScreenSize; series: readonly Graph2DPlotSeries[]; regression?: Graph2DRegression | null;
@@ -390,16 +391,15 @@ export const Graph2DPlot = memo(function Graph2DPlot({ display, size, series, re
       {linkedRegionHighlight && !graph2DHasLogScale(display.viewport) &&
         <g data-testid="graph2d-linked-region-highlight" clipPath={`url(#${clipId})`}
           aria-hidden="true" pointerEvents="none">
-          {(() => {
-            const low = graph2DWorldToScreen(display.viewport, size,
-              { x: linkedRegionHighlight.xBounds[0], y: 0 }).x;
-            const high = graph2DWorldToScreen(display.viewport, size,
-              { x: linkedRegionHighlight.xBounds[1], y: 0 }).x;
+          {(linkedRegionHighlight.bands ?? [linkedRegionHighlight.xBounds]).map((bounds, index) => {
+            const low = graph2DWorldToScreen(display.viewport, size, { x: bounds[0], y: 0 }).x;
+            const high = graph2DWorldToScreen(display.viewport, size, { x: bounds[1], y: 0 }).x;
             return Number.isFinite(low) && Number.isFinite(high) ?
-              <rect data-testid="graph2d-linked-region-band" x={Math.min(low, high)} y={0}
+              <rect key={index} data-testid="graph2d-linked-region-band" x={Math.min(low, high)} y={0}
                 width={Math.max(1, Math.abs(high - low))} height={size.height}
-                fill="#facc15" fillOpacity={0.1} stroke="#facc15" strokeWidth={1} /> : null;
-          })()}
+                fill={index ? "#38bdf8" : "#facc15"} fillOpacity={0.1}
+                stroke={index ? "#38bdf8" : "#facc15"} strokeWidth={1} /> : null;
+          })}
           {linkedRegionHighlight.points.map((point, index) => {
             const screen = graph2DWorldToScreen(display.viewport, size, point);
             return Number.isFinite(screen.x) && Number.isFinite(screen.y) ?

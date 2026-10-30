@@ -1,7 +1,9 @@
 import type { Graph2DScientificVolume, VectorField3DDocument,
   VectorField3DOverlayRegion, VectorField3DSliceArtifact } from "@math3d/core";
 import { sampleVerifiedComplexRegion, sampleVerifiedScalarRegion,
-  sampleVerifiedVectorRegion, type FieldStatistics } from "./combinedFieldInspection";
+  sampleVerifiedVectorRegion, sampleCombinedRegion, type FieldStatistics } from
+  "./combinedFieldInspection";
+import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import type { VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { useEffect, useState } from "react";
 import { verifiedCombinedDerivedRegionProfiles } from "./derivedCombinedRegionProfile";
@@ -22,12 +24,13 @@ const formatStatistics = (values: FieldStatistics, unit: string) =>
 
 export function CombinedOverlayRegionReadout({ document, region, slice = null,
   vectorPlane = null, scalarVolume, complexVolumes, vectorStatus = "",
-  scalarStatus = "", complexStatus = "" }: {
+  scalarStatus = "", complexStatus = "", linkedRegionFocus = null }: {
   document: VectorField3DDocument; region: VectorField3DOverlayRegion;
   slice?: VectorField3DSliceArtifact | null; vectorPlane?: VectorSliceOverlayPlane | null;
   scalarVolume: Graph2DScientificVolume | null;
   complexVolumes: readonly [Graph2DScientificVolume, Graph2DScientificVolume] | null;
   vectorStatus?: string; scalarStatus?: string; complexStatus?: string;
+  linkedRegionFocus?: LinkedRegionGraphFocus | null;
 }) {
   const scalar = document.workspace?.scalarOverlay?.visible ? document.workspace.scalarOverlay : null;
   const complex = document.workspace?.complexOverlay?.visible ? document.workspace.complexOverlay : null;
@@ -88,6 +91,39 @@ export function CombinedOverlayRegionReadout({ document, region, slice = null,
         complexVolumes[0].sampleSha256}; imaginary ${complexVolumes[1].sampleSha256}.`;
   })() : complexStatus || "Verifying complex components…"; }
   catch (cause) { complexText = `withheld: ${cause instanceof Error ? cause.message : String(cause)}`; }
+  const intersection = linkedRegionFocus?.intersection;
+  const subrectangle = intersection && currentDerived?.state === "current" &&
+    currentDerived.profiles && slice && vectorPlane && scalarVolume && complexVolumes ? (() => {
+      try {
+        const raw = sampleCombinedRegion(document, slice, region, vectorPlane,
+          scalar.reference, scalarVolume, complex.real, complex.imaginary, complexVolumes);
+        const [i0, i1] = intersection.columns, [j0, j1] = intersection.rows;
+        const count = (i1 - i0 + 1) * (j1 - j0 + 1);
+        const fields = [
+          ["vector", raw.cells.vector, raw.summary.vectorUnit],
+          ["scalar", raw.cells.scalar, raw.summary.scalarUnit],
+          ["complex-magnitude", raw.cells["complex-magnitude"], raw.summary.complexUnit],
+          ["complex-phase", raw.cells["complex-phase"], "rad"],
+          ["divergence", currentDerived.profiles.divergence.cells,
+            currentDerived.profiles.divergence.unit],
+          ["curl-magnitude", currentDerived.profiles.curlMagnitude.cells,
+            currentDerived.profiles.curlMagnitude.unit] ] as const;
+        return { count, fields: fields.map(([name, cells, unit]) => {
+          const values: number[] = [];
+          for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+            const value = cells[i * 17 + j];
+            if (value !== null && value !== undefined && Number.isFinite(value))
+              values.push(value);
+          }
+          const mean = !values.length ? null : name === "complex-phase" ?
+            Math.atan2(values.reduce((sum, value) => sum + Math.sin(value), 0),
+              values.reduce((sum, value) => sum + Math.cos(value), 0)) :
+            values.reduce((sum, value) => sum + value, 0) / values.length;
+          return { name, unit, available: values.length, gaps: count - values.length,
+            mean };
+        }) };
+      } catch { return null; }
+    })() : null;
   return <div role={[vectorText, scalarText, complexText].some(value =>
     /withheld|missing|changed/i.test(value)) || currentDerived?.state === "withheld" ?
     "alert" : "status"}
@@ -101,6 +137,19 @@ export function CombinedOverlayRegionReadout({ document, region, slice = null,
       derivedText("divergence")}</p>
     <p data-testid="scientific-combined-curl-region">Curl magnitude: {
       derivedText("curlMagnitude")}</p>
+    {intersection && (subrectangle ? <div role="status"
+      data-testid="scientific-combined-intersection-summary">
+      <h5>Verified physical subrectangle</h5>
+      <p>Columns {intersection.columns[0] + 1}–{intersection.columns[1] + 1},
+        rows {intersection.rows[0] + 1}–{intersection.rows[1] + 1};
+        {" "}{subrectangle.count} lattice positions.</p>
+      <ul>{subrectangle.fields.map(field => <li key={field.name}
+        data-series={field.name}>{field.name}: {field.available}/{subrectangle.count}
+        {" "}available ({field.gaps} gaps), {field.unit}; mean {
+          field.mean === null ? "no finite value" : field.mean.toPrecision(6)}.</li>)}</ul>
+    </div> : <p role="alert" data-testid="scientific-combined-intersection-withheld">
+      Subrectangle values withheld until the vector, scalar, both complex components,
+      and derived stencil verify.</p>)}
     <button type="button" onClick={() => {
       setDerivedCheck(null); setRevision(value => value + 1);
     }}

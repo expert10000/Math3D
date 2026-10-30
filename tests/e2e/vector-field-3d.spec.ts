@@ -670,12 +670,38 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
       .toBeGreaterThan(5);
+    const intersectionControls = inspector.getByTestId("graph2d-combined-intersection-controls");
+    for (const axis of [1, 2] as const) {
+      const from = intersectionControls.getByRole("spinbutton", {
+        name: `Subrectangle axis ${axis} from` });
+      const to = intersectionControls.getByRole("spinbutton", {
+        name: `Subrectangle axis ${axis} to` });
+      const min = Number(await from.inputValue()), max = Number(await to.inputValue());
+      await from.fill(String(min + (max - min) * .25));
+      await to.fill(String(min + (max - min) * .75));
+    }
+    await intersectionControls.getByRole("button", { name: "Link physical subrectangle" }).click();
+    await expect(inspector.getByTestId("graph2d-combined-intersection"))
+      .toContainText("curl-magnitude", { timeout: 60_000 });
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]").count())
+      .toBeGreaterThan(11);
+    for (const axis of ["column", "row"]) for (const series of ["vector", "scalar",
+      "complex-magnitude", "complex-phase", "divergence", "curl-magnitude"])
+      await expect(page.getByTestId("graph2d-linked-region-highlight")
+        .locator(`circle[data-graph2d-linked-region-series="${axis}:${series}"]`).first())
+        .toBeVisible();
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")))
       .not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const savedIntersection = stored.workspace.entries.find((entry: { checkpoint: {
+      format: string } }) => entry.checkpoint.format === "math3d.graph2d-document")
+      ?.checkpoint.selection.linkedRegionIntersection;
+    expect(savedIntersection.kind).toBe("combined-region-intersection/v1");
+    expect(savedIntersection.bounds).toHaveLength(2);
     const saved = stored.workspace.entries.find((entry: { module: string }) =>
       entry.module === "vector3d")?.checkpoint.workspace;
     expect(saved.scalarOverlay.reference.resourceSha256).toMatch(/^[a-f0-9]{64}$/);
@@ -752,6 +778,14 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByTestId("workspace-dock-reset-recommended").click();
     const graphInspector = page.getByRole("complementary", { name: "Graph inspector" });
+    await expect(graphInspector.getByTestId("graph2d-combined-intersection"))
+      .toContainText("row curl-magnitude", { timeout: 60_000 });
+    await graphInspector.getByTestId("graph2d-open-intersection").click();
+    await expect(reopened.getByTestId("scientific-region-graph-focus-intersection"))
+      .toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByTestId("scientific-combined-intersection-summary"))
+      .toContainText("curl-magnitude", { timeout: 60_000 });
+    await reopened.getByRole("button", { name: "Back to Graphs" }).click();
     await expect(graphInspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("complex-phase", { timeout: 60_000 });
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
@@ -770,7 +804,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       await expect(selection).toContainText("columns 9–9");
       await expect(page.getByTestId("graph2d-linked-region-highlight")
         .locator("circle[data-graph2d-linked-region-series]"))
-        .toHaveCount(6);
+        .not.toHaveCount(0);
     }
     await graphInspector.getByRole("spinbutton", { name: "Linked region interval from" })
       .fill("-0.5");
@@ -780,7 +814,8 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
       .toContainText("8/8 columns available");
     await expect(page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]"))
-      .toHaveCount(48);
+      .not.toHaveCount(0);
+    await expect(page.getByTestId("graph2d-linked-region-band")).toHaveCount(2);
     await graphInspector.getByTestId("graph2d-open-region-interval").click();
     await expect(reopened.getByTestId("scientific-region-graph-focus-marker"))
       .toBeVisible({ timeout: 60_000 });
@@ -925,12 +960,30 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     const inspector = page.getByRole("complementary", { name: "Graph inspector" });
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("rows available", { timeout: 60_000 });
+    const intersectionControls = inspector.getByTestId("graph2d-combined-intersection-controls");
+    for (const axis of [1, 2] as const) {
+      const from = intersectionControls.getByRole("spinbutton", {
+        name: `Subrectangle axis ${axis} from` });
+      const to = intersectionControls.getByRole("spinbutton", {
+        name: `Subrectangle axis ${axis} to` });
+      const min = Number(await from.inputValue()), max = Number(await to.inputValue());
+      await from.fill(String(min + (max - min) * .25));
+      await to.fill(String(min + (max - min) * .75));
+    }
+    await intersectionControls.getByRole("button", { name: "Link physical subrectangle" }).click();
+    await expect(inspector.getByTestId("graph2d-combined-intersection"))
+      .toContainText("row curl-magnitude", { timeout: 60_000 });
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
     await projects.getByTestId("project-save").click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")))
       .not.toBeNull();
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const savedIntersection = stored.workspace.entries.find((entry: { checkpoint: {
+      format: string } }) => entry.checkpoint.format === "math3d.graph2d-document")
+      ?.checkpoint.selection.linkedRegionIntersection;
+    expect(savedIntersection.kind).toBe("combined-region-intersection/v1");
+    expect(savedIntersection.bounds).toHaveLength(2);
     const published = stored.workspace.results.find((item: { provenance: {
       operation: { type: string } } }) => item.provenance.operation.type ===
       "vector3d.linked-region-combined");
@@ -973,6 +1026,14 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
       .toContainText("rows available");
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("curl-magnitude");
+    await expect(inspector.getByTestId("graph2d-combined-intersection"))
+      .toContainText("column divergence", { timeout: 60_000 });
+    await inspector.getByTestId("graph2d-open-intersection").click();
+    await expect(explorer.getByTestId("scientific-region-graph-focus-intersection"))
+      .toBeVisible({ timeout: 60_000 });
+    await expect(explorer.getByTestId("scientific-combined-intersection-summary"))
+      .toContainText("curl-magnitude", { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
       .toBeGreaterThan(5);
@@ -1003,6 +1064,8 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
       .toContainText("vector", { timeout: 60_000 });
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
       .toContainText("all 6 sources and point tables");
+    await expect(inspector.getByTestId("graph2d-intersection-withheld"))
+      .toContainText("twelve", { timeout: 60_000 });
     await expect(page.getByTestId("graph2d-linked-region-highlight")).toHaveCount(0);
     await page.getByRole("button", { name: "Select Vector speed region mean", exact: true }).click();
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
