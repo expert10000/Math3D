@@ -68,7 +68,7 @@ import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphs, linkedCombinedRegionGraphsWithCurl,
+import { linkedCombinedRegionGraphsWithCurl, linkedCombinedRegionGraphsWithCurlRows,
   checkCombinedRegionGraphSeries,
   createCombinedRegionVerificationSession,
   type CombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
@@ -1201,15 +1201,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setLineBusy(true); setError("");
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
+      const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
       const group = profileAxis === 1 ?
-        linkedCombinedRegionGraphs(document, region, inspection, vectorSamples,
-          scalarSampleSha256, realSampleSha256, imaginarySampleSha256, 1) :
-        await (async () => {
-          const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
-          return linkedCombinedRegionGraphsWithCurl(document, region, inspection,
-            vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
-            { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude);
-        })();
+        linkedCombinedRegionGraphsWithCurlRows(document, region, inspection,
+          vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
+          { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude) :
+        linkedCombinedRegionGraphsWithCurl(document, region, inspection,
+          vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
+          { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude);
       const session = createCombinedRegionVerificationSession();
       const statuses = await Promise.all(group.map(series =>
         checkCombinedRegionGraphSeries(series.origin, undefined, session)));
@@ -1217,7 +1216,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         throw new TypeError(`Combined region source checks: ${statuses.join(", ")}.`);
       onAddLinkedOverlayLine(group);
       setRunStatus(profileAxis === 1 ?
-        "Sent vector speed, scalar Q, complex magnitude and phase row profiles to Graphs." :
+        "Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude row profiles to Graphs." :
         "Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude profiles to Graphs.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLineBusy(false); }

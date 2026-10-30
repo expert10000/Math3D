@@ -16,6 +16,7 @@ type Digest = Readonly<{ name: string; sampleSha256: string }>;
 export function derivedRegionProfile(region: VectorField3DOverlayRegion,
   derived: VectorField3DSliceArtifact,
   channel: CombinedDerivedChannel): Readonly<{ rows: readonly Graph2DPointRow[];
+    rowProfiles: readonly Graph2DPointRow[];
     unit: string; count: number; gaps: number; mean: number | null;
     min: number | null; max: number | null }> {
   if (derived.channel !== channel || derived.normalAxis !== region.normalAxis ||
@@ -42,6 +43,7 @@ export function derivedRegionProfile(region: VectorField3DOverlayRegion,
       (corners[2]! * (1 - a!.t) + corners[3]! * a!.t) * b!.t;
   };
   const rows: Graph2DPointRow[] = [];
+  const rowBins: number[][] = Array.from({ length: 17 }, () => []);
   const allValues: number[] = [];
   let count = 0;
   for (let i = 0; i < 17; i++) {
@@ -50,12 +52,17 @@ export function derivedRegionProfile(region: VectorField3DOverlayRegion,
     for (let j = 0; j < 17; j++) {
       const y = region.bounds[1][0] + (region.bounds[1][1] - region.bounds[1][0]) * j / 16;
       const value = sample(x, y);
-      if (value !== null) { values.push(value); allValues.push(value); count++; }
+      if (value !== null) {
+        values.push(value); rowBins[j]!.push(value); allValues.push(value); count++;
+      }
     }
     rows.push({ id: `row_${i + 1}`, x,
       y: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null });
   }
-  return { rows, unit: derived.unit, count, gaps: 289 - count,
+  const rowProfiles = rowBins.map((values, j) => ({ id: `row_${j + 1}`,
+    x: region.bounds[1][0] + (region.bounds[1][1] - region.bounds[1][0]) * j / 16,
+    y: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null }));
+  return { rows, rowProfiles, unit: derived.unit, count, gaps: 289 - count,
     mean: count ? allValues.reduce((sum, value) => sum + value, 0) / count : null,
     min: count ? Math.min(...allValues) : null,
     max: count ? Math.max(...allValues) : null };

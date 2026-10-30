@@ -303,7 +303,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
             disabled={regionBusy} onClick={() => onSendCombinedToGraphs(region, combined!,
               vectorSamples, scalarVolume.sampleSha256,
               complexVolumes[0].sampleSha256, complexVolumes[1].sampleSha256, 1)}>
-            {regionBusy ? "Verifying region…" : "Send four row profiles to Graphs"}
+            {regionBusy ? "Verifying region…" : "Send six row profiles to Graphs"}
           </button>
         </>}
       {onSendToGraphs && !secondaryComplex && summary?.alignedCount && <button type="button"

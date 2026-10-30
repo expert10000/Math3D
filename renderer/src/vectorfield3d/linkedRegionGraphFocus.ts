@@ -64,7 +64,8 @@ export function linkedRegionGraphFocus(vector: Graph2DLinkedRegionOrigin |
   overlay: Graph2DLinkedRegionOrigin | Graph2DLinkedCombinedRegionOrigin,
   vectorRows: readonly Graph2DPointRow[],
   overlayRows: readonly Graph2DPointRow[], selection: Selection): LinkedRegionGraphFocus {
-  const profileAxis = vector.kind === "vector-scalar-complex-linked-region/v2" ?
+  const profileAxis = vector.kind === "vector-scalar-complex-linked-region/v2" ||
+    vector.kind === "vector-scalar-complex-curl-row-linked-region/v5" ?
     vector.profileAxis ?? 0 : 0;
   if (vector.series !== "vector" || vector.pairId !== overlay.pairId ||
       vector.kind !== overlay.kind || vectorRows.length !== 17 || overlayRows.length !== 17 ||

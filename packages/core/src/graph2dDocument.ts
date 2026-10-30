@@ -172,7 +172,7 @@ export type Graph2DLinkedRegionOrigin =
     realSampleSha256: string; imaginarySampleSha256: string }>);
 export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
   kind: "vector-scalar-complex-linked-region/v2" | "vector-scalar-complex-divergence-linked-region/v3" |
-    "vector-scalar-complex-curl-linked-region/v4";
+    "vector-scalar-complex-curl-linked-region/v4" | "vector-scalar-complex-curl-row-linked-region/v5";
   pairId: string; series: "vector" | "scalar" | "complex-magnitude" | "complex-phase" |
     "divergence" | "curl-magnitude";
   /** Omitted in saved column profiles; 1 selects the second physical slice axis. */
@@ -550,9 +550,12 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
   }
   if (record(value) && (value.kind === "vector-scalar-complex-linked-region/v2" ||
       value.kind === "vector-scalar-complex-divergence-linked-region/v3" ||
-      value.kind === "vector-scalar-complex-curl-linked-region/v4")) {
+      value.kind === "vector-scalar-complex-curl-linked-region/v4" ||
+      value.kind === "vector-scalar-complex-curl-row-linked-region/v5")) {
     const derived = value.kind !== "vector-scalar-complex-linked-region/v2";
-    const curl = value.kind === "vector-scalar-complex-curl-linked-region/v4";
+    const curl = value.kind === "vector-scalar-complex-curl-linked-region/v4" ||
+      value.kind === "vector-scalar-complex-curl-row-linked-region/v5";
+    const derivedRows = value.kind === "vector-scalar-complex-curl-row-linked-region/v5";
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
       ...(value.profileAxis === undefined ? [] : ["profileAxis"]),
       "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
@@ -561,7 +564,7 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
       ...(derived ? ["derivedSamples"] : [])]) ||
       typeof value.pairId !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value.pairId) ||
       (value.profileAxis !== undefined && value.profileAxis !== 1) ||
-      (derived && value.profileAxis !== undefined) ||
+      (derivedRows ? value.profileAxis !== 1 : derived && value.profileAxis !== undefined) ||
       !(curl ? ["vector", "scalar", "complex-magnitude", "complex-phase", "divergence",
         "curl-magnitude"] : derived ?
         ["vector", "scalar", "complex-magnitude", "complex-phase", "divergence"] :
@@ -834,7 +837,8 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
           !object.linkedOrigin || object.linkedOrigin.pairId !== linked.pairId ||
           !("region" in object.linkedOrigin)) return false;
       const axis = object.linkedOrigin.kind ===
-        "vector-scalar-complex-linked-region/v2" ?
+        "vector-scalar-complex-linked-region/v2" || object.linkedOrigin.kind ===
+        "vector-scalar-complex-curl-row-linked-region/v5" ?
           object.linkedOrigin.profileAxis ?? 0 : 0;
       const [min, max] = object.linkedOrigin.region.bounds[axis];
       return selection.kind === "point" ?

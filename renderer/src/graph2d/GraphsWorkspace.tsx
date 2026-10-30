@@ -1530,7 +1530,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     !isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
     selectedObject.linkedOrigin : null;
   const regionProfileAxis = selectedRegionOrigin?.kind ===
-    "vector-scalar-complex-linked-region/v2" ? selectedRegionOrigin.profileAxis ?? 0 : 0;
+    "vector-scalar-complex-linked-region/v2" || selectedRegionOrigin?.kind ===
+    "vector-scalar-complex-curl-row-linked-region/v5" ?
+      selectedRegionOrigin.profileAxis ?? 0 : 0;
   const regionPositionName = regionProfileAxis === 1 ? "row" : "column";
   const regionPair = selectedRegionOrigin ? document.source.objects.filter((item): item is Graph2DPointSeriesObject =>
     item.kind === "point-series" && item.linkedOrigin?.pairId === selectedRegionOrigin.pairId) : [];
@@ -2511,7 +2513,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               selectedObject.linkedOrigin.kind ===
               "vector-scalar-complex-divergence-linked-region/v3" ||
               selectedObject.linkedOrigin.kind ===
-                "vector-scalar-complex-curl-linked-region/v4") &&
+                "vector-scalar-complex-curl-linked-region/v4" ||
+              selectedObject.linkedOrigin.kind ===
+                "vector-scalar-complex-curl-row-linked-region/v5") &&
               selectedObject.linkedOrigin.derivedSamples?.map(part =>
                 <div key={`derived-${part.name}`}>Derived vector stencil {part.name}: {
                   <code>{part.sampleSha256}</code>}</div>)}
