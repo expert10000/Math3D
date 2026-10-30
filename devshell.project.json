@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/expert10000/devshell-launcher/main/schemas/devshell.project.v1.schema.json",
+  "version": 1,
+  "project": {
+    "id": "math3d-source",
+    "name": "Math3D Source",
+    "root": ".",
+    "pinned": true,
+    "requiredTools": ["git", "node", "npm", "pwsh"],
+    "repositories": [
+      {
+        "id": "math3d",
+        "name": "Math3D",
+        "path": ".",
+        "url": "https://github.com/expert10000/Math3D.git",
+        "requiredTools": ["node", "npm"],
+        "dependencyFolders": ["renderer", "apps/web"],
+        "pythonModules": ["numpy", "scipy", "sympy", "vtk"],
+        "pythonOptionalModules": ["CGAL", "pygalmesh"],
+        "pythonPackages": ["numpy", "scipy", "sympy", "vtk"],
+        "buildTask": "Build desktop",
+        "runTask": "Run desktop",
+        "browserBuildTask": "Build web",
+        "browserRunTask": "Run web",
+        "browserUrl": "http://127.0.0.1:5173",
+        "readyUrls": ["http://127.0.0.1:8787/api/worker/diagnostics"],
+        "readyTimeoutSeconds": 120,
+        "outputDirectory": "apps/web/dist"
+      }
+    ],
+    "tasks": {
+      "Build desktop": {
+        "group": "Build",
+        "shell": "pwsh",
+        "cwd": ".",
+        "steps": [{ "run": "npm run build:core" }]
+      },
+      "Run desktop": {
+        "group": "Start",
+        "shell": "pwsh",
+        "cwd": ".",
+        "steps": [{ "run": "npm run dev:desktop" }],
+        "runInNewTab": true
+      },
+      "Build web": {
+        "group": "Build",
+        "shell": "pwsh",
+        "cwd": ".",
+        "steps": [{ "run": "npm run build:web" }]
+      },
+      "Run web": {
+        "group": "Start",
+        "shell": "pwsh",
+        "cwd": ".",
+        "steps": [{ "run": "npm run dev:web" }],
+        "runInNewTab": true
+      },
+      "Check Python worker": {
+        "group": "Validate",
+        "shell": "pwsh",
+        "cwd": ".",
+        "steps": [{ "run": "& .\\.venv\\Scripts\\python.exe -c \"import numpy, scipy, sympy, vtk; print('Math3D Python worker modules ready')\"" }]
+      }
+    },
+    "quickTasks": ["Build desktop", "Run desktop", "Build web", "Run web", "Check Python worker"]
+  }
+}
