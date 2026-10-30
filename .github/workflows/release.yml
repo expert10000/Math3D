@@ -549,7 +549,7 @@ jobs:
           & .\.venv\Scripts\python.exe -m pip install -r workers/quantum-python/requirements-packaging.txt
           if ($LASTEXITCODE -ne 0) { throw 'Theory Lab frozen worker dependencies failed' }
           $env:CI = 'false'
-          npm run package:win:installer
+          npm run package:win:installer -- --publish never
           if ($LASTEXITCODE -ne 0) { throw 'Theory Lab NSIS build failed' }
       - name: Upload exact Lab installer
         uses: actions/upload-artifact@v7
