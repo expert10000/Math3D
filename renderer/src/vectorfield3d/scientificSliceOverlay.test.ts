@@ -53,6 +53,8 @@ import { pointTableStore } from "../graph2d/pointTableStore";
 import { inspectCombinedSubrectangle } from "./combinedSubrectangleResult";
 import { prepareCombinedSubrectanglePublication } from
   "./prepareCombinedSubrectanglePublication";
+import { prepareVectorSubrectanglePublication } from
+  "./prepareVectorSubrectanglePublication";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -1278,6 +1280,24 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       expect(joined.intersection?.rowProfiles.map(item => item.unit))
         .toEqual(["m/s", "1/s", "1/s"]);
       const savedIntersection = joined.intersection!;
+      if (normalAxis === 2) {
+        const direct = await prepareVectorSubrectanglePublication(document,
+          createEmptyGraph2DDocument("direct-vector-subrectangle"), region,
+          savedIntersection.bounds, {} as NonNullable<typeof window.scientificScenes>);
+        expect(direct.actions).toHaveLength(2);
+        expect(direct.result.provenance.operation.type)
+          .toBe("vector3d.derived-subrectangle");
+        let directGraph = createEmptyGraph2DDocument("direct-vector-subrectangle");
+        for (const [index, action] of direct.actions.entries())
+          directGraph = createGraph2DDocument({
+            ...applyGraph2DAuthoring(directGraph, action),
+            stableKey: ["direct-vector-subrectangle", index] });
+        expect(directGraph.source.objects).toHaveLength(6);
+        expect(await checkSavedRegionResultSources(direct.result, document,
+          {} as NonNullable<typeof window.scientificScenes>, [directGraph]))
+          .toEqual({ kind: "vector-derived", vector: "source-current",
+            divergence: "source-current", curlMagnitude: "source-current" });
+      }
       const selectedGraph = createGraph2DDocument({ source: bothAxes.source,
         display: bothAxes.display, stableKey: `vector-intersection-${normalAxis}`,
         selection: { objectId: bothAxes.source.objects[0]!.id, probe: null,
@@ -1321,7 +1341,7 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         expect(wideDerived.curlMagnitude.rows[0]!.y).toBeNull();
       }
     }
-  }, 20_000);
+  }, 60_000);
 
   it("sends aligned region column means to Graphs and reverifies both saved series", async () => {
     for (const normalAxis of [2, 1, 0] as const) {

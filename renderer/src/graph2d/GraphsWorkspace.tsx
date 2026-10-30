@@ -111,6 +111,8 @@ import { inspectCombinedSubrectangle } from
   "../vectorfield3d/combinedSubrectangleResult";
 import { prepareCombinedSubrectanglePublication } from
   "../vectorfield3d/prepareCombinedSubrectanglePublication";
+import { prepareVectorSubrectanglePublication } from
+  "../vectorfield3d/prepareVectorSubrectanglePublication";
 import type { CombinedRegionInspection } from "../vectorfield3d/combinedFieldInspection";
 import type { LinkedOverlayGraphSeries } from "../vectorfield3d/linkedOverlayGraphPair";
 import { VectorField2DPanel } from "./VectorField2DPanel";
@@ -2283,6 +2285,31 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     onSaveVectorField3DRegionResult(field, prepared.result);
     setToolHint("Published six verified subrectangle statistics and twelve Graphs profiles.");
   };
+  const publishDirectVectorSubrectangle = async (field: VectorField3DDocument,
+    region: VectorField3DOverlayRegion,
+    bounds: VectorField3DOverlayRegion["bounds"]) => {
+    if (!onAuthoringCommit || !onSelectionCommit ||
+        !onSaveVectorField3DRegionResult || !window.scientificScenes)
+      throw new TypeError("Graph authoring and Project saving are required.");
+    const prepared = await prepareVectorSubrectanglePublication(field, document,
+      region, bounds, window.scientificScenes);
+    for (const action of prepared.actions) onAuthoringCommit(action);
+    const intersection = prepared.focus.intersection!;
+    onSelectionCommit({ objectId: prepared.selectionObjectId, probe: null,
+      linkedRegion: { pairId: intersection.columnPairId,
+        physical: { kind: "interval", min: intersection.bounds[0][0],
+          max: intersection.bounds[0][1] } },
+      linkedRegionIntersection: { kind: "vector-region-intersection/v1",
+        columnPairId: intersection.columnPairId,
+        rowPairId: intersection.rowPairId, bounds: intersection.bounds } });
+    setLinkedRegionSelectionMode({ pairId: intersection.columnPairId,
+      kind: "interval" });
+    setVectorField3DDocument(field);
+    setLinkedRegionFocus(previous => ({ focus: prepared.focus,
+      token: previous?.token ?? 0 }));
+    onSaveVectorField3DRegionResult(field, prepared.result);
+    setToolHint("Published three verified vector statistics and six Graphs profiles.");
+  };
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
@@ -3625,6 +3652,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           onPublishVectorSubrectangle={publishVectorSubrectangle}
           onPublishCombinedSubrectangle={publishCombinedSubrectangle}
           onPublishDirectCombinedSubrectangle={publishDirectCombinedSubrectangle}
+          onPublishDirectVectorSubrectangle={publishDirectVectorSubrectangle}
           savedPointResults={savedVectorField3DPointResults}
           onSavePointResult={onSaveVectorField3DPointResult}
           savedRegionResults={savedVectorField3DRegionResults}

@@ -1154,6 +1154,8 @@ The Scientific Field Explorer initiative can be considered mature when:
 
 **SCI-02 direct combined subrectangle publication.** After selecting a combined rectangle, Field Explorer offers **Select subrectangle on slice** and, after two corners, **Publish subrectangle to Project**. The action creates any missing six-column and six-row Graphs profile groups, verifies the twelve saved rows and their sources, then publishes the same compact result and focuses its physical intersection. Users can still send profiles or focus Graphs explicitly. Project reopen retains the same per-field numerical and source checks.
 
+**SCI-02/06 Inspector rectangle workflow.** The slice Inspector keeps rectangle and subrectangle selection and publication actions visible beside the map, including selected physical bounds and verification errors. A scalar-only slice explains how to add Complex wave before six-field publication. Vector-only publication now uses the same direct two-corner workflow: it creates any missing speed, divergence and curl-magnitude column and row profiles, verifies all six, then publishes the existing compact vector subrectangle result without field arrays. The established manual Graphs actions and saved-result readers remain available.
+
 **Do not start with SCI-11/SCI-17** (huge importer/backend and volume-rendering expansion). First stabilize dataset contracts and demonstrate cross-module coherence.
 
 ---

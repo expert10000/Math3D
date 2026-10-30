@@ -19,6 +19,7 @@ type Check = Readonly<{ document: VectorField3DDocument;
 
 export function VectorDerivedRegionView({ document, slice, region, onChange,
   onStartSelection, selecting, busy, onPublish, onPublishSubrectangle,
+  onPublishDirectSubrectangle,
   onSendToGraphs, savedResults = [], resultStatuses = {},
   savedStatus, linkedRegionFocus, graphSelectionMode = null,
   graphSelectionFirstX = null, graphSelectionBusy = false,
@@ -34,6 +35,7 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   onPublish?: (region: VectorField3DOverlayRegion) => Promise<void>;
   onPublishSubrectangle?: (region: VectorField3DOverlayRegion,
     focus: LinkedRegionGraphFocus) => Promise<void>;
+  onPublishDirectSubrectangle?: () => void;
   onSendToGraphs?: (region: VectorField3DOverlayRegion,
     profileAxis?: 0 | 1) => Promise<void>;
   savedResults?: readonly AnalysisResultEnvelope[];
@@ -229,7 +231,7 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
           data-testid="scientific-select-vector-subrectangle"
           aria-pressed={subrectangleSelecting}
           disabled={subrectangleBusy || current?.state !== "current"}
-          onClick={onSubrectangleToggle}>Select Graphs vector subrectangle on slice</button>}
+          onClick={onSubrectangleToggle}>Select vector subrectangle on slice</button>}
         {subrectangleSelecting && <div role="status"
           data-testid="scientific-vector-subrectangle-preview">
           {subrectangleProposal ? <>
@@ -248,6 +250,14 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
                 current?.state !== "current"}
               onClick={onSubrectangleConfirm}>{subrectangleBusy ?
                 "Verifying six profiles…" : "Focus six verified Graphs profiles"}</button>
+            {region && onPublishDirectSubrectangle &&
+              <button type="button"
+                data-testid="scientific-publish-direct-vector-subrectangle"
+                disabled={subrectangleBusy || !proposedCells?.count ||
+                  current?.state !== "current"}
+                onClick={onPublishDirectSubrectangle}>{subrectangleBusy ?
+                  "Verifying and publishing…" :
+                  "Publish vector subrectangle to Project"}</button>}
           </> : <p>{subrectangleFirst ?
             "Click the opposite corner inside the saved rectangle." :
             "Click the first corner inside the saved rectangle."}</p>}

@@ -484,6 +484,13 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
 .scientific-field-explorer-inspector [aria-label="Slice appearance and verification"] select,
 .scientific-field-explorer-inspector [aria-label="Slice appearance and verification"] input { width: 100%; box-sizing: border-box; }
 .scientific-explorer-slice-workflow { margin-bottom: 10px; }
+.scientific-explorer-region-actions { position: sticky; top: 0; z-index: 2;
+  display: grid; gap: 6px; padding: 8px; margin-bottom: 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-strong); box-shadow: 0 2px 8px rgba(0, 0, 0, .12); }
+.scientific-explorer-region-actions h5,
+.scientific-explorer-region-actions p { margin: 0; }
+.scientific-explorer-region-actions button { width: 100%; }
 .scientific-explorer-linked-probe-actions { display: grid; gap: 6px; padding: 8px;
   margin-bottom: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .scientific-explorer-linked-probe-actions h5 { margin: 0; }

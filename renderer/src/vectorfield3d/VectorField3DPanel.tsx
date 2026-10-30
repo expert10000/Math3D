@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField3DWorkspace,
   parseVectorField3DDocument, reviseVectorField3DDocument, reviseVectorField3DWorkspace,
@@ -44,7 +44,8 @@ import { VectorField3DArrowView } from "./VectorField3DArrowView";
 import { seedPlaneNormalAxis, type SeedPlane3D } from "./fieldSeedPlacement3D";
 import { captureSeedEdit, restoreSeedEdit, seedGroupStyle,
   type SeedEditSnapshot } from "./seedGroupManagement";
-import { VectorField3DSliceView } from "./VectorField3DSliceView";
+import { VectorField3DSliceView, type SliceInspectorAction,
+  type SliceInspectorState } from "./VectorField3DSliceView";
 import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
 import { previewVerifiedVectorField3D } from "./previewVerifiedVectorField3D";
 import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
@@ -118,6 +119,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
   onPublishDirectCombinedSubrectangle,
+  onPublishDirectVectorSubrectangle,
   linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
@@ -152,6 +154,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     inspection: CombinedRegionInspection, vectorSamples: readonly OverlaySampleDigest[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => Promise<void>;
+  onPublishDirectVectorSubrectangle?: (document: VectorField3DDocument,
+    region: VectorField3DOverlayRegion,
+    bounds: VectorField3DOverlayRegion["bounds"]) => Promise<void>;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   savedPointResults?: readonly AnalysisResultEnvelope[];
   onSavePointResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
@@ -207,6 +212,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   const [artifact, setArtifact] = useState<VectorField3DArrowArtifact | null>(() =>
     document.source.field.kind === "expressions" ? sampleVectorField3DArrows(document) : null);
   const [slice, setSlice] = useState<VectorField3DSliceArtifact | null>(null);
+  const [sliceInspectorAction, setSliceInspectorAction] =
+    useState<SliceInspectorAction | null>(null);
+  const [sliceInspectorStates, setSliceInspectorStates] =
+    useState<Partial<Record<0 | 1 | 2, SliceInspectorState>>>({});
+  const onSliceInspectorStateChange = useCallback((axis: 0 | 1 | 2,
+    state: SliceInspectorState) => setSliceInspectorStates(current =>
+    ({ ...current, [axis]: state })), []);
   const [linkedSlices, setLinkedSlices] = useState<Partial<Record<"xy" | "xz" | "yz",
     VectorField3DSliceArtifact>>>({});
   const [overlayVectorArrows, setOverlayVectorArrows] = useState<Partial<Record<SeedSliceLayer,
@@ -495,6 +507,20 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     workspace.selectedLayer === regionLayer ? slice : null);
   const normalAxis = ({ xy: 2, xz: 1, yz: 0 } as const)[workspace.selectedLayer as "xy" | "xz" | "yz"];
   const sliceControlAxis = normalAxis ?? (multiView ? 2 : undefined);
+  const inspectorSlice = sliceControlAxis === undefined ? null : multiView ?
+    linkedSlices[({ 0: "yz", 1: "xz", 2: "xy" } as const)[sliceControlAxis]] ?? null :
+    slice?.normalAxis === sliceControlAxis ? slice : null;
+  const inspectorRegion = inspectorSlice && workspace.overlayRegion?.visible &&
+    workspace.overlayRegion.normalAxis === inspectorSlice.normalAxis &&
+    Math.abs(workspace.overlayRegion.fixedCoordinate -
+      inspectorSlice.fixedCoordinate) < 1e-9 ? workspace.overlayRegion : null;
+  const inspectorSubrectangle = sliceControlAxis === undefined ? undefined :
+    sliceInspectorStates[sliceControlAxis];
+  const requestSliceInspectorAction = (kind: SliceInspectorAction["kind"]) => {
+    if (sliceControlAxis === undefined) return;
+    setSliceInspectorAction(previous => ({ token: (previous?.token ?? 0) + 1,
+      normalAxis: sliceControlAxis, kind }));
+  };
   const sliceOptions = sliceControlAxis === undefined ? [] :
     vectorField3DSliceCoordinates(document, sliceControlAxis);
   const selectLayer = (selectedLayer: VectorField3DLayer) => {
@@ -2216,6 +2242,60 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     <h4>Inspector</h4>
     <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
+    {sliceControlAxis !== undefined && <section aria-label="Rectangle actions"
+      className="scientific-explorer-region-actions"
+      data-testid="scientific-inspector-region-actions">
+      <h5>Rectangle actions</h5>
+      {scalarOverlay?.visible && !complexOverlay?.visible &&
+        <p role="status" data-testid="scientific-inspector-missing-complex">
+          For six-field publication, add Complex wave: open it in the Dataset library,
+          then choose “Show this complex field as overlay on vector slices”.
+          {onOpenLibraryExample && <button type="button"
+            disabled={busy || libraryBusy}
+            onClick={() => onOpenLibraryExample("complexWaveVolume")}>
+            Open Complex wave</button>}</p>}
+      {complexOverlay?.visible && !scalarOverlay?.visible &&
+        <p role="status">Add Quadratic potential as a scalar overlay for six-field
+          publication.</p>}
+      {!inspectorSlice ? <>
+          <p>Preview this slice to select a physical rectangle.</p>
+          <button type="button" data-testid="scientific-inspector-preview-slice"
+            disabled={busy || lineBusy} onClick={() => void (multiView ?
+              previewLinkedViews() : previewSlice())}>{multiView ?
+              "Preview all views" : "Preview slice"}</button>
+        </> :
+        !inspectorRegion ? <>
+          <p>Select two corners on the slice to create a physical rectangle.</p>
+          <button type="button" data-testid="scientific-inspector-select-region"
+            disabled={busy || lineBusy}
+            onClick={() => requestSliceInspectorAction("select-region")}>
+            Select rectangle on slice</button>
+        </> : <>
+          {!scalarOverlay?.visible && !complexOverlay?.visible &&
+            <p>Vector-only publication saves speed, divergence and curl magnitude.</p>}
+          <button type="button" data-testid="scientific-inspector-select-subrectangle"
+            disabled={busy || lineBusy || inspectorSubrectangle?.busy ||
+              Boolean(scalarOverlay?.visible) !== Boolean(complexOverlay?.visible)}
+            onClick={() => requestSliceInspectorAction("select-subrectangle")}>
+            Select subrectangle on slice</button>
+          {inspectorSubrectangle?.selecting && !inspectorSubrectangle.proposal &&
+            <p role="status">Click two corners inside the rectangle on the slice.</p>}
+          {inspectorSubrectangle?.proposal && <p role="status"
+            data-testid="scientific-inspector-subrectangle-bounds">
+            Selected bounds: {inspectorSubrectangle.proposal[0].join(" to ")}{" "}
+            {document.source.axes[inspectorSlice.planeAxes[0]].unit}; {inspectorSubrectangle.proposal[1].join(" to ")}{" "}
+            {document.source.axes[inspectorSlice.planeAxes[1]].unit}.</p>}
+          <button type="button" data-testid="scientific-inspector-publish-subrectangle"
+            disabled={!inspectorSubrectangle?.proposal || inspectorSubrectangle.busy ||
+              busy || lineBusy || Boolean(scalarOverlay?.visible) !==
+                Boolean(complexOverlay?.visible)}
+            onClick={() => requestSliceInspectorAction("publish-subrectangle")}>
+            {inspectorSubrectangle?.busy ? "Verifying and publishing…" :
+              "Publish subrectangle to Project"}</button>
+          {inspectorSubrectangle?.error && <p role="alert">{
+            inspectorSubrectangle.error}</p>}
+        </>}
+    </section>}
     <nav aria-label="Field layers" className="vector-field3d-layers">
       {([ ["arrows", "3D arrows"], ["trajectories", "Trajectories"],
         ["xy", "XY slice"], ["xz", "XZ slice"], ["yz", "YZ slice"] ] as const).map(([layer, label]) =>
@@ -2765,6 +2845,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
                 (region, bounds, inspection, samples, scalarHash, realHash, imaginaryHash) =>
                   onPublishDirectCombinedSubrectangle(document, region, bounds, inspection,
                     samples, scalarHash, realHash, imaginaryHash) : undefined}
+              onPublishDirectVectorSubrectangle={onPublishDirectVectorSubrectangle ?
+                (region, bounds) => onPublishDirectVectorSubrectangle(document, region,
+                  bounds) : undefined}
+              inspectorAction={sliceInspectorAction}
+              onInspectorStateChange={onSliceInspectorStateChange}
               overlayVectorSamples={overlayVectorSamples[layer]}
               overlayStatus={overlayForSlice(linkedSlices[layer]!, layer).status}
               seedPlacementActive={seedPlacementLayer === layer}
@@ -2818,6 +2903,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           (region, bounds, inspection, samples, scalarHash, realHash, imaginaryHash) =>
             onPublishDirectCombinedSubrectangle(document, region, bounds, inspection,
               samples, scalarHash, realHash, imaginaryHash) : undefined}
+        onPublishDirectVectorSubrectangle={onPublishDirectVectorSubrectangle ?
+          (region, bounds) => onPublishDirectVectorSubrectangle(document, region,
+            bounds) : undefined}
+        inspectorAction={sliceInspectorAction}
+        onInspectorStateChange={onSliceInspectorStateChange}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}
         overlayStatus={overlayForSlice(slice, workspace.selectedLayer as SeedSliceLayer).status}
         seedPlacementActive={seedPlacementLayer === workspace.selectedLayer}
