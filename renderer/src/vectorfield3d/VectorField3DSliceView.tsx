@@ -415,7 +415,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           width={Math.abs(focusX1 - focusX0)}
           height={Math.abs(regionMarkers[1][1] - regionMarkers[0][1])}
           fill="#facc15" fillOpacity="0.28" stroke="#facc15" strokeWidth="2" />}
-      {scalarOverlay && overlayVectorPlane && regionMarkers?.[0] && regionMarkers?.[1] &&
+      {graphFocusMatches && regionMarkers?.[0] && regionMarkers?.[1] &&
         focusY0 !== null && focusY1 !== null && <rect
           data-testid="scientific-region-graph-focus-row-marker" pointerEvents="none"
           x={Math.min(regionMarkers[0][0], regionMarkers[1][0])}

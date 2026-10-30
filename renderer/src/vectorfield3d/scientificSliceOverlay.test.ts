@@ -1014,6 +1014,7 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
       expect(speed.statistics.count).toBe(289);
       expect(speed.rows).toHaveLength(17);
+      expect(speed.rowProfiles).toHaveLength(17);
       expect(derived.divergence.unit).toBe("1/s");
       expect(derived.curlMagnitude.unit).toBe("1/s");
       const compact = (profile: typeof derived.divergence) => ({
@@ -1053,6 +1054,36 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       expect(await Promise.all(group.map(item =>
         checkVectorDerivedRegionGraphSeries(item.origin)))).toEqual([
         "current", "current", "current"]);
+      expect(group.every(item => item.origin.profileAxis === undefined)).toBe(true);
+      const rowGroup = linkedVectorDerivedRegionGraphs(document, region, speed, derived, 1);
+      expect(rowGroup.map(item => item.origin.profileAxis)).toEqual([1, 1, 1]);
+      expect(rowGroup[0].rows).toEqual(speed.rowProfiles);
+      expect(rowGroup[1].rows).toEqual(derived.divergence.rowProfiles);
+      expect(rowGroup[2].rows).toEqual(derived.curlMagnitude.rowProfiles);
+      expect(rowGroup[0].origin.pairId).not.toBe(group[0].origin.pairId);
+      expect(rowGroup.every(item => validGraph2DLinkedOverlayOrigin(item.origin))).toBe(true);
+      validateVectorDerivedRegionGraphGroup(rowGroup.map(item => item.origin),
+        rowGroup.map(item => item.rows));
+      const rowFocus = linkedVectorDerivedRegionGraphFocus(
+        rowGroup.map(item => item.origin), rowGroup.map(item => item.rows),
+        { kind: "interval", min: rowGroup[0].rows[3]!.x,
+          max: rowGroup[0].rows[6]!.x });
+      expect(rowFocus.profileAxis).toBe(1);
+      expect(rowFocus.columns).toEqual([3, 6]);
+      expect(rowFocus.combined?.map(item => item.unit)).toEqual([
+        "m/s", "1/s", "1/s"]);
+      expect(linkedVectorDerivedRegionGraphFocus(rowGroup.map(item => item.origin),
+        rowGroup.map(item => item.rows),
+        { kind: "point", x: rowGroup[0].rows[8]!.x }).columns).toEqual([8, 8]);
+      expect(await Promise.all(rowGroup.map(item =>
+        checkVectorDerivedRegionGraphSeries(item.origin)))).toEqual([
+        "current", "current", "current"]);
+      expect(await checkVectorDerivedRegionGraphSeries({ ...rowGroup[1].origin,
+        rowsSha256: `sha256:${"0".repeat(64)}` })).toBe("changed");
+      expect(() => validateVectorDerivedRegionGraphGroup(
+        rowGroup.map(item => item.origin), rowGroup.map((item, index) =>
+          index === 2 ? item.rows.map((row, position) => position === 6 ?
+            { ...row, y: 42 } : row) : item.rows))).toThrow();
       const wrongCurl = createVectorDerivedRegionResult(document, region,
         { ...summary, curlMagnitude: { count: 289, gaps: 0,
           mean: 3, min: 3, max: 3 } }, speed.samples, derived.samples);
@@ -1074,6 +1105,17 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
           style: { color: ["#fde047", "#38bdf8", "#fb7185"][index]!,
             lineWidth: 2, lineStyle: "solid" as const, visible: true } })) });
       expect(graph.source.objects).toHaveLength(3);
+      const bothAxes = applyGraph2DAuthoring(graph,
+        { type: "create-point-series-group", drafts: rowGroup.map((item, index) => ({
+          label: item.label, table: store.publish(item.rows), mode: "line" as const,
+          domain: item.domain, linkedOrigin: item.origin,
+          style: { color: ["#fde047", "#38bdf8", "#fb7185"][index]!,
+            lineWidth: 2, lineStyle: "solid" as const, visible: true } })) });
+      const savedGraph = createGraph2DDocument({ source: bothAxes.source,
+        display: bothAxes.display, selection: bothAxes.selection,
+        stableKey: `vector-derived-both-axes-${normalAxis}` });
+      expect(parseGraph2DDocument(serializeGraph2DDocument(savedGraph))
+        .source.objects).toHaveLength(6);
       const project = createMath3DProject(createMixedWorkspaceDocument({
         entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
           replay: null }], activeDocumentIds: [document.identity.id],
@@ -1091,6 +1133,7 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         const wideDerived = await verifiedCombinedDerivedRegionProfiles(wideDocument, wide);
         expect(wideSpeed.statistics.gaps).toBeGreaterThan(0);
         expect(wideSpeed.rows[0]!.y).toBeNull();
+        expect(wideSpeed.rowProfiles[8]!.y).not.toBeNull();
         expect(wideDerived.divergence.gaps).toBeGreaterThan(0);
         expect(wideDerived.curlMagnitude.rows[0]!.y).toBeNull();
       }

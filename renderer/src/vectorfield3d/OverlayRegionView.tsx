@@ -53,7 +53,8 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
     vectorSamples: readonly Readonly<{ name: string; sampleSha256: string }>[],
     scalarSampleSha256: string, realSampleSha256: string,
     imaginarySampleSha256: string) => Promise<void>;
-  onSendVectorDerivedToGraphs?: (region: VectorField3DOverlayRegion) => Promise<void>;
+  onSendVectorDerivedToGraphs?: (region: VectorField3DOverlayRegion,
+    profileAxis?: 0 | 1) => Promise<void>;
   onPublishVectorDerived?: (region: VectorField3DOverlayRegion) => Promise<void>;
   regionBusy?: boolean;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
@@ -93,6 +94,7 @@ export function OverlayRegionView({ document, slice, region, vectorPlane, scalar
       linkedRegionFocus={linkedRegionFocus}
       graphSelectionMode={graphSelectionMode}
       graphSelectionFirstX={graphSelectionFirstX}
+      graphSelectionAxis={graphSelectionAxis}
       graphSelectionBusy={graphSelectionBusy}
       graphSelectionError={graphSelectionError}
       onGraphSelectionMode={onGraphSelectionMode}

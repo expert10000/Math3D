@@ -1549,7 +1549,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     "vector-scalar-complex-linked-region/v2" || selectedRegionOrigin?.kind ===
     "vector-scalar-complex-curl-row-linked-region/v5" ?
       selectedRegionOrigin.profileAxis ?? 0 : 0;
-  const regionPositionName = regionProfileAxis === 1 ? "row" : "column";
+  const regionPositionName = (selectedObject?.kind === "point-series" &&
+    isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
+      selectedObject.linkedOrigin.profileAxis ?? 0 : regionProfileAxis) === 1 ?
+    "row" : "column";
   const regionPair = selectedRegionOrigin ? document.source.objects.filter((item): item is Graph2DPointSeriesObject =>
     item.kind === "point-series" && item.linkedOrigin?.pairId === selectedRegionOrigin.pairId) : [];
   const regionVector = regionPair.find(item => item.linkedOrigin?.series === "vector");
@@ -1688,9 +1691,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     linkedRegionInterval?.pairId === selectedVectorRegionOrigin.pairId ?
     linkedRegionInterval : { pairId: selectedVectorRegionOrigin?.pairId ?? "",
       min: String(savedVectorPhysical?.kind === "interval" ?
-        savedVectorPhysical.min : selectedVectorRegionOrigin?.region.bounds[0][0] ?? ""),
+        savedVectorPhysical.min : selectedVectorRegionOrigin?.region.bounds[
+          selectedVectorRegionOrigin.profileAxis ?? 0][0] ?? ""),
       max: String(savedVectorPhysical?.kind === "interval" ?
-        savedVectorPhysical.max : selectedVectorRegionOrigin?.region.bounds[0][1] ?? "") };
+        savedVectorPhysical.max : selectedVectorRegionOrigin?.region.bounds[
+          selectedVectorRegionOrigin.profileAxis ?? 0][1] ?? "") };
   const vectorRegionSelection = vectorRegionGroup && selectedVectorRegionOrigin ? (() => {
     const mode = linkedRegionSelectionMode?.pairId === selectedVectorRegionOrigin.pairId ?
       linkedRegionSelectionMode.kind : null;
@@ -1831,8 +1836,6 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       throw new TypeError("Select a saved physical rectangle first.");
     if (!explorer.workspace.scalarOverlay?.visible &&
         !explorer.workspace.complexOverlay?.visible) {
-      if (profileAxis !== 0)
-        throw new TypeError("Vector-only region profiles are available along columns.");
       const groups = new Map<string, Graph2DPointSeriesObject[]>();
       for (const object of document.source.objects) if (object.kind === "point-series" &&
           isVectorDerivedRegionOrigin(object.linkedOrigin)) {
@@ -1846,7 +1849,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         const origins = members.map(member =>
           member!.linkedOrigin as Graph2DLinkedVectorRegionOrigin);
         const vectorOrigin = origins[0]!;
-        if (vectorOrigin.vectorSourceHash !== explorer.identity.structuralHash ||
+        if ((vectorOrigin.profileAxis ?? 0) !== profileAxis ||
+            vectorOrigin.vectorSourceHash !== explorer.identity.structuralHash ||
             parseVectorField3DDocument(vectorOrigin.vectorDocumentJson).identity.id !==
               explorer.identity.id ||
             canonicalJsonStringify(vectorOrigin.region) !== canonicalJsonStringify(region))
@@ -1872,10 +1876,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         setLinkedRegionColumn(null); setLinkedRegionInterval(null);
         setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
         setVectorField3DOpen(false);
-        setToolHint(`Focused ${focus.columns[0] + 1}–${focus.columns[1] + 1} of 17 verified vector columns in Graphs.`);
+        setToolHint(`Focused ${focus.columns[0] + 1}–${focus.columns[1] + 1} of 17 verified vector ${
+          profileAxis === 1 ? "rows" : "columns"} in Graphs.`);
         return;
       }
-      throw new TypeError("Send this vector rectangle's three aligned profiles to Graphs first.");
+      throw new TypeError(`Send this vector rectangle's three aligned ${
+        profileAxis === 1 ? "row" : "column"} profiles to Graphs first.`);
     }
     if (!explorer.workspace.scalarOverlay?.visible ||
         !explorer.workspace.complexOverlay?.visible)
@@ -2795,11 +2801,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 "Verifying saved source…" : "Verifying saved source…"}</dd>
           {selectedVectorRegionOrigin && <><dt>Field Explorer selection</dt><dd
             data-testid="graph2d-vector-region-selection">
-            <p>The 17 physical columns run along {selectedVectorRegionOrigin.xName}
+            <p>The 17 physical {selectedVectorRegionOrigin.profileAxis === 1 ? "rows" : "columns"} run along {selectedVectorRegionOrigin.xName}
               {" "}({selectedVectorRegionOrigin.xUnit}). Each derived curve keeps its own
               {" "}unit and coverage gaps.</p>
             {vectorRegionGroup && vectorRegionRows && vectorRegionSelection ? <>
-              <label>Region column <select aria-label="Vector region column"
+              <label>Region {selectedVectorRegionOrigin.profileAxis === 1 ? "row" : "column"} <select aria-label={`Vector region ${
+                selectedVectorRegionOrigin.profileAxis === 1 ? "row" : "column"}`}
                 value={vectorActiveColumn} onChange={event => {
                   setLinkedRegionColumn({ pairId: selectedVectorRegionOrigin.pairId,
                     index: Number(event.target.value), probeX: graphProbeX });
@@ -2813,14 +2820,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 </option>)}
               </select></label>
               <div role="status" data-testid="graph2d-vector-region-columns">
-                <p>Physical columns {vectorRegionSelection.columns[0] + 1}–{
+                <p>Physical {selectedVectorRegionOrigin.profileAxis === 1 ? "rows" : "columns"} {vectorRegionSelection.columns[0] + 1}–{
                   vectorRegionSelection.columns[1] + 1}: {
                   vectorRegionSelection.xBounds[0].toPrecision(6)} to {
                   vectorRegionSelection.xBounds[1].toPrecision(6)} {
                   vectorRegionSelection.xUnit}.</p>
                 <ul>{vectorRegionSelection.combined?.map(item => <li key={item.series}
                   data-series={item.series}>{item.series}: {item.values.length - item.gaps}/{
-                    item.values.length} columns available ({item.gaps} gaps), {item.unit}{
+                    item.values.length} {selectedVectorRegionOrigin.profileAxis === 1 ? "rows" : "columns"} available ({item.gaps} gaps), {item.unit}{
                     item.values.length === 1 ? `; ${item.values[0] === null ? "gap" :
                       `value ${item.values[0]} ${item.unit}`}` : ""}.</li>)}</ul>
               </div>
@@ -2831,7 +2838,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   void openVectorRegionInExplorer({ kind: "point",
                     x: vectorRegionRows[vectorActiveColumn]!.x });
                 }}>{linkedRegionOpenBusy ? "Verifying sources…" :
-                  "Open selected vector column in Field Explorer"}</button>
+                  `Open selected vector ${selectedVectorRegionOrigin.profileAxis === 1 ?
+                    "row" : "column"} in Field Explorer`}</button>
               <div><label>Interval from ({selectedVectorRegionOrigin.xUnit})
                 {" "}<input type="number" step="any" aria-label="Vector region interval from"
                   value={vectorIntervalDraft.min} onChange={event => {
@@ -2854,7 +2862,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                       min: vectorIntervalDraft.min.trim() ? Number(vectorIntervalDraft.min) : NaN,
                       max: vectorIntervalDraft.max.trim() ? Number(vectorIntervalDraft.max) : NaN });
                   }}>{linkedRegionOpenBusy ? "Verifying sources…" :
-                    "Open vector interval in Field Explorer"}</button></div>
+                    `Open vector ${selectedVectorRegionOrigin.profileAxis === 1 ?
+                      "row strip" : "interval"} in Field Explorer`}</button></div>
             </> : <p role="alert" data-testid="graph2d-vector-region-withheld">
               Vector selection withheld until all three sources and point tables verify. {
                 vectorDerivedRegionSeries.map((series, index) => {

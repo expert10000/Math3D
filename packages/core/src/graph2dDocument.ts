@@ -190,6 +190,8 @@ export type Graph2DLinkedCombinedRegionOrigin = Readonly<{
 export type Graph2DLinkedVectorRegionOrigin = Readonly<{
   kind: "vector-derived-linked-region/v1";
   pairId: string; series: "vector" | "divergence" | "curl-magnitude";
+  /** Omitted for existing column profiles; 1 selects the second physical slice axis. */
+  profileAxis?: 1;
   vectorDocumentJson: string; region: VectorField3DOverlayRegion;
   xName: string; xUnit: string; yUnit: string;
   vectorSourceHash: string; vectorSamples: readonly Readonly<{
@@ -522,10 +524,12 @@ export const validGraph2DDerivedFieldOrigin = (value: unknown): value is Graph2D
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && value.kind === "vector-derived-linked-region/v1") {
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
+      ...(value.profileAxis === undefined ? [] : ["profileAxis"]),
       "xName", "xUnit", "yUnit", "vectorSourceHash", "vectorSamples",
       "derivedSamples", "rowsSha256"]) ||
       !/^sha256:[a-f0-9]{64}$/.test(String(value.pairId)) ||
       !["vector", "divergence", "curl-magnitude"].includes(String(value.series)) ||
+      (value.profileAxis !== undefined && value.profileAxis !== 1) ||
       typeof value.vectorDocumentJson !== "string" || value.vectorDocumentJson.length > 256 * 1024 ||
       !record(value.region) || !exact(value.region, ["normalAxis", "fixedCoordinate",
         "bounds", "vectorChannel", "visible"]) ||
@@ -547,7 +551,12 @@ export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2
           /^[a-f0-9]{64}$/.test(String(part.sampleSha256))))) return false;
     try {
       const document = parseVectorField3DDocument(value.vectorDocumentJson);
+      const profileAxis = value.profileAxis === 1 ? 1 : 0;
+      const sourceAxis = [0, 1, 2].filter(axis =>
+        axis !== (value.region as { normalAxis: number }).normalAxis)[profileAxis]!;
       return document.identity.structuralHash === value.vectorSourceHash &&
+        document.source.axes[sourceAxis]!.label === value.xName &&
+        document.source.axes[sourceAxis]!.unit === value.xUnit &&
         canonicalJsonStringify(document.workspace?.overlayRegion) ===
           canonicalJsonStringify(value.region) &&
         (document.source.field.kind === "scientific-bundle" ?
@@ -846,7 +855,8 @@ const validSelection = (value: unknown, source: Graph2DSource): value is Graph2D
           !("region" in object.linkedOrigin)) return false;
       const axis = object.linkedOrigin.kind ===
         "vector-scalar-complex-linked-region/v2" || object.linkedOrigin.kind ===
-        "vector-scalar-complex-curl-row-linked-region/v5" ?
+        "vector-scalar-complex-curl-row-linked-region/v5" || object.linkedOrigin.kind ===
+        "vector-derived-linked-region/v1" ?
           object.linkedOrigin.profileAxis ?? 0 : 0;
       const [min, max] = object.linkedOrigin.region.bounds[axis];
       return selection.kind === "point" ?

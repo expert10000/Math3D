@@ -142,7 +142,7 @@ export function sampleVerifiedComplexRegion(region: VectorField3DOverlayRegion,
 export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
   slice: VectorField3DSliceArtifact, region: VectorField3DOverlayRegion,
   plane: VectorSliceOverlayPlane): Readonly<{ statistics: FieldStatistics; unit: string;
-    rows: readonly Graph2DPointRow[] }> {
+    rows: readonly Graph2DPointRow[]; rowProfiles: readonly Graph2DPointRow[] }> {
   if (region.normalAxis !== slice.normalAxis ||
       Math.abs(region.fixedCoordinate - slice.fixedCoordinate) > 1e-9 ||
       plane.sourceStructuralHash !== document.identity.structuralHash ||
@@ -154,6 +154,7 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
     throw new TypeError("Vector component units differ; speed cannot be combined.");
   const values: number[] = [];
   const columns: number[][] = Array.from({ length: 17 }, () => []);
+  const rowBins: number[][] = Array.from({ length: 17 }, () => []);
   const [nx, ny] = slice.shape;
   for (const [sampleIndex, point] of regionPoints(region).entries()) {
     const local = slice.planeAxes.map(axis => point[axis]);
@@ -183,6 +184,7 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
     if (value !== null && value !== undefined && Number.isFinite(value)) {
       values.push(value);
       columns[Math.floor(sampleIndex / 17)]!.push(value);
+      rowBins[sampleIndex % 17]!.push(value);
     }
   }
   if (plane.components.some(values => values.length !== nx * ny))
@@ -191,7 +193,11 @@ export function sampleVerifiedVectorRegion(document: VectorField3DDocument,
     rows: columns.map((column, i) => ({ id: `row_${i + 1}`,
       x: region.bounds[0][0] + (region.bounds[0][1] - region.bounds[0][0]) * i / 16,
       y: column.length ? column.reduce((sum, value) => sum + value, 0) /
-        column.length : null })) };
+        column.length : null })),
+    rowProfiles: rowBins.map((row, j) => ({ id: `row_${j + 1}`,
+      x: region.bounds[1][0] + (region.bounds[1][1] - region.bounds[1][0]) * j / 16,
+      y: row.length ? row.reduce((sum, value) => sum + value, 0) /
+        row.length : null })) };
 }
 
 export type CombinedRegionSeries = "vector" | "scalar" | "complex-magnitude" | "complex-phase";

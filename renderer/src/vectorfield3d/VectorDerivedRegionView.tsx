@@ -19,20 +19,23 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
   onStartSelection, selecting, busy, onPublish, onSendToGraphs,
   savedStatus, linkedRegionFocus, graphSelectionMode = null,
   graphSelectionFirstX = null, graphSelectionBusy = false,
-  graphSelectionError = "", onGraphSelectionMode }: {
+  graphSelectionAxis = 0, graphSelectionError = "", onGraphSelectionMode }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
   region: VectorField3DOverlayRegion | null;
   onChange: (region: VectorField3DOverlayRegion | null) => void;
   onStartSelection: () => void; selecting: boolean; busy: boolean;
   onPublish?: (region: VectorField3DOverlayRegion) => Promise<void>;
-  onSendToGraphs?: (region: VectorField3DOverlayRegion) => Promise<void>;
+  onSendToGraphs?: (region: VectorField3DOverlayRegion,
+    profileAxis?: 0 | 1) => Promise<void>;
   savedStatus?: SavedRegionSourceStatus;
   linkedRegionFocus?: LinkedRegionGraphFocus | null;
   graphSelectionMode?: "point" | "interval" | null;
   graphSelectionFirstX?: number | null;
+  graphSelectionAxis?: 0 | 1;
   graphSelectionBusy?: boolean;
   graphSelectionError?: string;
-  onGraphSelectionMode?: (mode: "point" | "interval" | null) => void;
+  onGraphSelectionMode?: (mode: "point" | "interval" | null,
+    axis?: 0 | 1) => void;
 }) {
   const [check, setCheck] = useState<Check | null>(null);
   const [revision, setRevision] = useState(0);
@@ -70,7 +73,8 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
       const fresh = freshFocus[index];
       if (!saved || !fresh || saved.series !== series || saved.unit !== fresh.unit)
         return false;
-      const rows = fresh.rows.slice(focused.columns[0], focused.columns[1] + 1);
+      const rows = (focused.profileAxis === 1 ? fresh.rowProfiles : fresh.rows)
+        .slice(focused.columns[0], focused.columns[1] + 1);
       return canonicalJsonStringify(saved.values) ===
         canonicalJsonStringify(rows.map(row => row.y)) &&
         saved.gaps === rows.filter(row => row.y === null).length;
@@ -80,10 +84,11 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
     `${value.count}/289 samples (${value.gaps} gaps); ${value.mean === null ?
       `no finite values ${unit}` : `mean ${value.mean.toPrecision(5)}, min ${
         value.min!.toPrecision(5)}, max ${value.max!.toPrecision(5)} ${unit}`}`;
-  const run = (action: (region: VectorField3DOverlayRegion) => Promise<void>) => {
+  const run = (action: (region: VectorField3DOverlayRegion,
+    profileAxis?: 0 | 1) => Promise<void>, profileAxis: 0 | 1 = 0) => {
     if (!region) return;
     setActionError("");
-    void action(region).catch(cause => setActionError(cause instanceof Error ?
+    void action(region, profileAxis).catch(cause => setActionError(cause instanceof Error ?
       cause.message : String(cause)));
   };
   const axes = slice.planeAxes.map(axis => document.source.axes[axis]!);
@@ -96,12 +101,12 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
       <button type="button" onClick={() => onChange(null)}>Remove region</button>
       {focused && <div data-testid="scientific-vector-region-graph-focus"
         role={focusRowsCurrent ? "status" : "alert"}>
-        <p>Graphs selection: columns {focused.columns[0] + 1}–{
+        <p>Graphs selection: {focused.profileAxis === 1 ? "rows" : "columns"} {focused.columns[0] + 1}–{
           focused.columns[1] + 1}, {focused.xBounds[0].toPrecision(6)} to {
           focused.xBounds[1].toPrecision(6)} {focused.xUnit}.</p>
         {focusRowsCurrent ? <ul>{focused.combined?.map(item => <li key={item.series}
           data-series={item.series}>{item.series}: {item.values.length - item.gaps}/{
-            item.values.length} columns available ({item.gaps} gaps), {item.unit}{
+            item.values.length} {focused.profileAxis === 1 ? "rows" : "columns"} available ({item.gaps} gaps), {item.unit}{
             item.values.length === 1 ? `; ${item.values[0] === null ? "gap" :
               `value ${item.values[0]} ${item.unit}`}` : ""}.</li>)}</ul> :
           <p>Selected values withheld until all three source profiles reverify and
@@ -113,14 +118,22 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
         document.source.axes[region.normalAxis]!.label} = {
         region.fixedCoordinate} {document.source.axes[region.normalAxis]!.unit}.</p>
       {onGraphSelectionMode && <div data-testid="scientific-vector-region-to-graphs">
-        <p>Choose a physical column or strip inside this rectangle to focus the
+        <p>Choose a physical column, row or strip inside this rectangle to focus the
           saved vector speed, divergence and curl magnitude profiles in Graphs.</p>
-        <button type="button" aria-pressed={graphSelectionMode === "point"}
+        <button type="button" aria-pressed={graphSelectionMode === "point" &&
+          graphSelectionAxis === 0}
           disabled={graphSelectionBusy || current?.state !== "current"}
-          onClick={() => onGraphSelectionMode("point")}>Select Graphs vector column</button>
-        <button type="button" aria-pressed={graphSelectionMode === "interval"}
+          onClick={() => onGraphSelectionMode("point", 0)}>Select Graphs vector column</button>
+        <button type="button" aria-pressed={graphSelectionMode === "interval" &&
+          graphSelectionAxis === 0}
           disabled={graphSelectionBusy || current?.state !== "current"}
-          onClick={() => onGraphSelectionMode("interval")}>Select Graphs vector strip</button>
+          onClick={() => onGraphSelectionMode("interval", 0)}>Select Graphs vector strip</button>
+        <button type="button" aria-pressed={graphSelectionMode === "point" &&
+          graphSelectionAxis === 1} disabled={graphSelectionBusy || current?.state !== "current"}
+          onClick={() => onGraphSelectionMode("point", 1)}>Select Graphs vector row</button>
+        <button type="button" aria-pressed={graphSelectionMode === "interval" &&
+          graphSelectionAxis === 1} disabled={graphSelectionBusy || current?.state !== "current"}
+          onClick={() => onGraphSelectionMode("interval", 1)}>Select Graphs vector row strip</button>
         {graphSelectionMode && <button type="button"
           onClick={() => onGraphSelectionMode(null)}>Cancel Graphs selection</button>}
         {graphSelectionMode && <p role="status">{graphSelectionBusy ?
@@ -128,7 +141,7 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
           graphSelectionMode === "point" ?
             "Click once inside the rectangle." : graphSelectionFirstX === null ?
               "Click the first strip edge inside the rectangle." :
-              `First strip edge: ${graphSelectionFirstX.toPrecision(6)} ${axes[0]!.unit}. Click the second edge.`}</p>}
+              `First strip edge: ${graphSelectionFirstX.toPrecision(6)} ${axes[graphSelectionAxis]!.unit}. Click the second edge.`}</p>}
         {graphSelectionError && <p role="alert"
           data-testid="scientific-vector-region-to-graphs-error">{
             graphSelectionError}</p>}
@@ -156,6 +169,8 @@ export function VectorDerivedRegionView({ document, slice, region, onChange,
         onClick={() => run(onPublish)}>Publish vector region to Project</button>}
       {onSendToGraphs && <button type="button" disabled={busy || current?.state !== "current"}
         onClick={() => run(onSendToGraphs)}>Send three vector profiles to Graphs</button>}
+      {onSendToGraphs && <button type="button" disabled={busy || current?.state !== "current"}
+        onClick={() => run(onSendToGraphs, 1)}>Send three vector row profiles to Graphs</button>}
       {actionError && <p role="alert">{actionError}</p>}
       {savedStatus && <p role="status" data-testid="vector-derived-region-saved-status">
         {typeof savedStatus === "object" && savedStatus.kind === "vector-derived" ?

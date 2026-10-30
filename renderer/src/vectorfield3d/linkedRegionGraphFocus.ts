@@ -101,15 +101,16 @@ export function linkedVectorDerivedRegionGraphFocus(
   LinkedRegionGraphFocus {
   validateVectorDerivedRegionGraphGroup(origins, rows);
   const vector = origins[0]!;
+  const profileAxis = vector.profileAxis ?? 0;
   const { columns, xBounds } = snapRegionColumns(rows[0]!,
-    vector.region.bounds[0], selection);
+    vector.region.bounds[profileAxis], selection);
   const document = parseVectorField3DDocument(vector.vectorDocumentJson);
   return { pairId: vector.pairId, documentId: document.identity.id,
     sourceHash: document.identity.structuralHash,
     recipeHash: structuralHash({ scalarOverlay: document.workspace?.scalarOverlay ?? null,
       complexOverlay: document.workspace?.complexOverlay ?? null,
       sliceChannel: document.workspace?.sliceChannel ?? "component" }),
-    region: vector.region, profileAxis: 0, columns, xBounds, xUnit: vector.xUnit,
+    region: vector.region, profileAxis, columns, xBounds, xUnit: vector.xUnit,
     vectorUnit: vector.yUnit, overlayUnit: origins[1]!.yUnit,
     vectorGaps: rows[0]!.slice(columns[0], columns[1] + 1)
       .filter(row => row.y === null).length,

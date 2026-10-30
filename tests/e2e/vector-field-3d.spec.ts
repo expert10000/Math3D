@@ -1221,6 +1221,94 @@ test("SCI-06 vector-only rectangle publishes and withholds a changed source", as
   }
 });
 
+test("SCI-02 vector-only row profiles link both ways and withhold a changed source", async () => {
+  test.setTimeout(360_000);
+  const root = await mkdtemp(join(tmpdir(), "m3d-vector-row-region-"));
+  const scene = join(root, "vortex.sscene");
+  await cp(resolve("examples/scientific-scenes/vortex-volume.sscene"), scene,
+    { recursive: true });
+  const app = await launchSurfaceApp();
+  try {
+    const page = app.page;
+    await resetSurfaceAppState(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByTestId("workspace-nav-graphs").click();
+    await app.app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, scene);
+    await page.locator(".graph2d-toolbar-menu > summary").click();
+    await page.getByRole("button", { name: "Import scientific dataset" }).click();
+    await page.getByRole("dialog", { name: "Import verified scientific dataset" })
+      .getByRole("button", { name: "Open in Field Explorer" }).click();
+    const explorer = page.getByRole("region", { name: "Scientific Field Explorer" });
+    await explorer.getByRole("button", { name: "XY slice", exact: true }).click();
+    await explorer.getByRole("button", { name: "Preview slice" }).click();
+    const figure = explorer.getByRole("figure", { name: "XY field slice" });
+    const region = figure.getByTestId("vector-derived-region");
+    await region.getByRole("button", { name: "Select vector rectangle" }).click();
+    await figure.locator('[data-probe-cell="7-7"]').click();
+    await figure.locator('[data-probe-cell="13-13"]').click();
+    await expect(region.getByTestId("vector-derived-region-summary"))
+      .toContainText("Divergence:", { timeout: 60_000 });
+    await region.getByRole("button", { name: "Send three vector row profiles to Graphs" }).click();
+    await expect(explorer).toContainText("Sent 17 aligned vector speed, divergence and curl magnitude row means",
+      { timeout: 60_000 });
+    await explorer.getByRole("button", { name: "Back to Graphs" })
+      .click({ noWaitAfter: true });
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    const inspector = page.getByRole("complementary", { name: "Graph inspector" });
+    await page.getByRole("button", { name: "Select Vector speed region row mean" }).click();
+    await expect(inspector.getByTestId("graph2d-vector-region-selection"))
+      .toContainText("17 physical rows", { timeout: 60_000 });
+    await inspector.getByRole("combobox", { name: "Vector region row" })
+      .selectOption("8");
+    await inspector.getByTestId("graph2d-open-vector-region-point").click();
+    await expect(explorer.getByTestId("scientific-vector-region-graph-focus"))
+      .toContainText("rows 9–9", { timeout: 60_000 });
+    await expect(figure.getByTestId("scientific-region-graph-focus-row-marker"))
+      .toBeVisible();
+    await region.getByRole("button", { name: "Select Graphs vector row strip" }).click();
+    await figure.locator('[data-probe-cell="10-8"]').click();
+    await figure.locator('[data-probe-cell="10-12"]').click();
+    await expect(inspector.getByTestId("graph2d-vector-region-columns"))
+      .toContainText("Physical rows", { timeout: 60_000 });
+    await expect(inspector.getByTestId("graph2d-vector-region-columns"))
+      .toContainText("m/s");
+    await expect(inspector.getByTestId("graph2d-vector-region-columns"))
+      .toContainText("1/s");
+    await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
+      .locator("circle[data-graph2d-linked-region-series]").count())
+      .toBeGreaterThan(3);
+    await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-save").click();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("math3d.project.v1")))
+      .not.toBeNull();
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const tile = join(scene, "east.f64");
+    const changed = Buffer.from(await readFile(tile));
+    changed[0] ^= 1;
+    await writeFile(tile, changed);
+    await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
+    if (await explorer.isVisible())
+      await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    if (await projects.isVisible())
+      await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
+    await page.getByTestId("workspace-dock-reset-recommended").click();
+    await page.getByRole("button", { name: "Select Vector speed region row mean" }).click();
+    await expect(inspector.getByTestId("graph2d-vector-region-withheld"))
+      .toContainText(/changed|integrity|checksum/i, { timeout: 60_000 });
+  } finally {
+    await closeSurfaceApp(app);
+    if (!root.startsWith(resolve(tmpdir()) + sep) ||
+        !root.includes("m3d-vector-row-region-"))
+      throw new Error("Unsafe vector row fixture cleanup path");
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("SCI-02 complex heatmaps align with vector slices, probe and rectangle", async () => {
   test.setTimeout(180_000);
   const app = await launchSurfaceApp();

@@ -1279,13 +1279,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       throw cause; }
     finally { setLineBusy(false); }
   };
-  const sendVectorDerivedRegion = async (region: VectorField3DOverlayRegion) => {
+  const sendVectorDerivedRegion = async (region: VectorField3DOverlayRegion,
+    profileAxis: 0 | 1 = 0) => {
     if (lineBusy || busy) return;
     setLineBusy(true); setError("");
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
       const { speed, derived } = await verifiedVectorDerivedRegion(region);
-      const group = linkedVectorDerivedRegionGraphs(document, region, speed, derived);
+      const group = linkedVectorDerivedRegionGraphs(document, region, speed, derived,
+        profileAxis);
       const session: VectorDerivedRegionVerificationSession = {};
       for (const series of group) {
         const status = await checkVectorDerivedRegionGraphSeries(series.origin,
@@ -1293,7 +1295,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         if (status !== "current") throw new TypeError(`Vector-derived ${series.origin.series} source ${status}.`);
       }
       onAddLinkedOverlayLine(group);
-      setRunStatus("Sent 17 aligned vector speed, divergence and curl magnitude column means to Graphs.");
+      setRunStatus(`Sent 17 aligned vector speed, divergence and curl magnitude ${
+        profileAxis === 1 ? "row" : "column"} means to Graphs.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause));
       throw cause; }
     finally { setLineBusy(false); }

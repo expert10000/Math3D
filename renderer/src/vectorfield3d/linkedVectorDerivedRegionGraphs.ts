@@ -22,7 +22,8 @@ export const isVectorDerivedRegionOrigin = (origin: { kind: string } | undefined
   origin?.kind === "vector-derived-linked-region/v1";
 
 export function linkedVectorDerivedRegionGraphs(document: VectorField3DDocument,
-  region: VectorField3DOverlayRegion, speed: Speed, derived: Derived):
+  region: VectorField3DOverlayRegion, speed: Speed, derived: Derived,
+  profileAxis: 0 | 1 = 0):
   VectorDerivedRegionGraphGroup {
   if (!region.visible || region.vectorChannel !== "speed" ||
       canonicalJsonStringify(document.workspace?.overlayRegion) !== canonicalJsonStringify(region) ||
@@ -35,22 +36,27 @@ export function linkedVectorDerivedRegionGraphs(document: VectorField3DDocument,
         (document.source.field.kind === "scientific-bundle" ? 3 : 0) ||
         samples.some(item => !/^[a-f0-9]{64}$/.test(item.sampleSha256))))
     throw new TypeError("A vector-only region needs three verified aligned profiles.");
-  const rows = [speed.rows, derived.divergence.rows, derived.curlMagnitude.rows];
+  const rows = profileAxis === 1 ? [speed.rowProfiles,
+    derived.divergence.rowProfiles, derived.curlMagnitude.rowProfiles] :
+    [speed.rows, derived.divergence.rows, derived.curlMagnitude.rows];
   if (rows.some(series => series.length !== 17 || series.some((row, index) =>
       row.x !== rows[0]![index]?.x || row.y !== null && !Number.isFinite(row.y))))
-    throw new TypeError("Vector-derived region columns are misaligned.");
-  const firstAxis = ([0, 1, 2] as const).filter(axis => axis !== region.normalAxis)[0]!;
-  const pairId = structuralHash({ algorithm: "vector-derived-column-mean-17x17/v1",
+    throw new TypeError("Vector-derived region profiles are misaligned.");
+  const firstAxis = ([0, 1, 2] as const).filter(axis => axis !== region.normalAxis)[profileAxis]!;
+  const pairId = structuralHash({ algorithm: profileAxis === 1 ?
+    "vector-derived-row-mean-17x17/v1" : "vector-derived-column-mean-17x17/v1",
     source: document.identity.structuralHash, region, vectorSamples: speed.samples,
     derivedSamples: derived.samples, rows });
   const common = { kind: "vector-derived-linked-region/v1" as const, pairId,
+    ...(profileAxis === 1 ? { profileAxis: 1 as const } : {}),
     vectorDocumentJson: serializeVectorField3DDocument(document), region,
     xName: document.source.axes[firstAxis].label,
     xUnit: document.source.axes[firstAxis].unit,
     vectorSourceHash: document.identity.structuralHash,
     vectorSamples: speed.samples, derivedSamples: derived.samples };
   const labels = ["Vector speed region mean", "Vector divergence region mean",
-    "Vector curl magnitude region mean"];
+    "Vector curl magnitude region mean"].map(label => profileAxis === 1 ?
+      label.replace("region mean", "region row mean") : label);
   const units = [speed.unit, derived.divergence.unit, derived.curlMagnitude.unit];
   return vectorDerivedRegionSeries.map((series, index) => ({ label: labels[index]!,
     rows: rows[index]!, domain: graph2DPointDomain(rows[index]!),
@@ -90,7 +96,7 @@ export async function checkVectorDerivedRegionGraphSeries(
   const document = parseVectorField3DDocument(origin.vectorDocumentJson);
   if (document.identity.structuralHash !== origin.vectorSourceHash) return "changed";
   const firstAxis = ([0, 1, 2] as const).filter(axis =>
-    axis !== origin.region.normalAxis)[0]!;
+    axis !== origin.region.normalAxis)[origin.profileAxis ?? 0]!;
   if (origin.xName !== document.source.axes[firstAxis].label ||
       origin.xUnit !== document.source.axes[firstAxis].unit) return "changed";
   if (!session.source) session.source = (async () => {
@@ -111,14 +117,16 @@ export async function checkVectorDerivedRegionGraphSeries(
     if (origin.series === "vector") {
       session.speed ??= verifiedVectorRegionProfile(document, origin.region, bridge);
       const fresh = await session.speed;
-      return fresh.unit === origin.yUnit && structuralHash(fresh.rows) === origin.rowsSha256 &&
+      return fresh.unit === origin.yUnit && structuralHash(origin.profileAxis === 1 ?
+        fresh.rowProfiles : fresh.rows) === origin.rowsSha256 &&
         canonicalJsonStringify(fresh.samples) === canonicalJsonStringify(origin.vectorSamples) ?
         "current" : "changed";
     }
     session.derived ??= verifiedCombinedDerivedRegionProfiles(document, origin.region, bridge);
     const pair = await session.derived;
     const fresh = origin.series === "divergence" ? pair.divergence : pair.curlMagnitude;
-    return fresh.unit === origin.yUnit && structuralHash(fresh.rows) === origin.rowsSha256 &&
+    return fresh.unit === origin.yUnit && structuralHash(origin.profileAxis === 1 ?
+      fresh.rowProfiles : fresh.rows) === origin.rowsSha256 &&
       canonicalJsonStringify(pair.samples) === canonicalJsonStringify(origin.derivedSamples) ?
       "current" : "changed";
   } catch { return "error"; }
