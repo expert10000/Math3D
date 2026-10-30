@@ -171,6 +171,9 @@ const pythonLicense = (pkg) => {
   if (has("Apache Software License")) return "Apache-2.0";
   if (/^BSD 3-Clause License/.test(raw)) return "BSD-3-Clause";
   if (/^The MIT License/.test(raw)) return "MIT";
+  // setuptools 79.0.1's published LICENSE is MIT, though the Linux wheel
+  // metadata used by the frozen worker omits a machine-readable license.
+  if (pkg.name.toLowerCase() === "setuptools" && pkg.version === "79.0.1") return "MIT";
   return null;
 };
 const pythonRefs = new Map();
@@ -284,6 +287,8 @@ const classify = (name) => {
   }
   if (name === "resources/app.asar" || name.startsWith("resources/app.asar.unpacked/") || name.startsWith("resources/quantum-scenes/") || name.startsWith("resources/scientific-scenes/") || name.startsWith("resources/scientific-publisher/") || name.startsWith("resources/LICENSE") || name.startsWith("resources/gallery-images/") || ["resources/THIRD_PARTY_NOTICES.md", "resources/SOURCE_OFFER.md"].includes(name)) return appRef;
   if (name === "resources/electron.asar") return electronRef;
+  // electron-builder writes these Linux package metadata files into resources.
+  if (target === "linux" && ["resources/apparmor-profile", "resources/package-type"].includes(name)) return appRef;
   // electron-builder places its Windows elevation helper beside the app archive.
   if (name === "resources/app-update.yml" || name === "resources/elevate.exe") return appRef;
   if (/^(?:Math3D(?: Dev)?\.exe|math3d(?:-dev)?)$/i.test(name)) return appRef;

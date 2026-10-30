@@ -18,9 +18,9 @@ const write = (name, body) => {
   fs.mkdirSync(path.dirname(filename), { recursive: true });
   fs.writeFileSync(filename, body);
 };
-const run = () => spawnSync(process.execPath, [
+const run = (target = "windows") => spawnSync(process.execPath, [
   path.join(root, "scripts/generate-release-sbom.mjs"),
-  "--target", "windows", "--app-dir", app, "--out", out,
+  "--target", target, "--app-dir", app, "--out", out,
   "--python-inventory", python,
 ], { cwd: root, encoding: "utf8" });
 
@@ -36,9 +36,10 @@ try {
   for (const name of ["dxcompiler.dll", "dxil.dll", "resources.pak", "resources/elevate.exe"]) {
     write(name, `${name} fixture`);
   }
-  fs.writeFileSync(python, JSON.stringify({ pythonVersion: "3.11.0", packages: [{
-    name: "fixture-lib", version: "1.0.0", licenseExpression: "MIT", dependencies: [],
-  }] }));
+  fs.writeFileSync(python, JSON.stringify({ pythonVersion: "3.11.0", packages: [
+    { name: "fixture-lib", version: "1.0.0", licenseExpression: "MIT", dependencies: [] },
+    { name: "setuptools", version: "79.0.1", dependencies: [] },
+  ] }));
   const first = run();
   assert.equal(first.status, 0, first.stderr);
   const bom = JSON.parse(fs.readFileSync(path.join(out, `Math3D-${version}-windows.cdx.json`)));
@@ -55,6 +56,8 @@ try {
   const gmp = bom.components.find((item) => item["bom-ref"] === "file:resources/python-worker/_internal/CGAL/gmp.dll");
   assert.match(gmp.properties.find((item) => item.name === "math3d:owner").value, /^native:gmp:/);
   assert(bom.components.some((item) => item.purl === "pkg:pypi/fixture-lib@1.0.0"));
+  assert.deepEqual(bom.components.find((item) => item.purl === "pkg:pypi/setuptools@79.0.1").licenses,
+    [{ expression: "MIT" }]);
   for (const name of ["scientific_scene_publisher.py", "examples/sincos-grid.json"]) {
     const item = bom.components.find(component => component["bom-ref"] ===
       `file:resources/scientific-publisher/${name}`);
@@ -66,6 +69,18 @@ try {
     assert.equal(item.properties.find(property => property.name === "math3d:owner").value,
       name === "resources/elevate.exe" ? "application:math3d" : `runtime:electron:${JSON.parse(fs.readFileSync(path.join(root, "node_modules/electron/package.json"))).version}`);
   }
+
+  write("resources/apparmor-profile", "Linux package profile");
+  write("resources/package-type", "deb");
+  const linux = run("linux");
+  assert.equal(linux.status, 0, linux.stderr);
+  const linuxBom = JSON.parse(fs.readFileSync(path.join(out, `Math3D-${version}-linux.cdx.json`)));
+  for (const name of ["resources/apparmor-profile", "resources/package-type"]) {
+    const item = linuxBom.components.find(component => component["bom-ref"] === `file:${name}`);
+    assert.equal(item.properties.find(property => property.name === "math3d:owner").value, "application:math3d");
+  }
+  fs.rmSync(path.join(app, "resources/apparmor-profile"));
+  fs.rmSync(path.join(app, "resources/package-type"));
 
   write("resources/unknown.exe", "unexpected binary");
   const unknown = run();
