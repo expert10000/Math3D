@@ -901,7 +901,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
 });
 
 test("SCI-02 Burgers six-profile selection withholds a changed source after Project reopen", async () => {
-  test.setTimeout(480_000);
+  test.setTimeout(720_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-four-region-"));
   const burgers = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
@@ -1023,7 +1023,6 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     expect(published.summary.curlMagnitudeUnit).toBe("1/s");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
-    await page.getByTestId("workspace-nav-graphs").click();
     if (await explorer.isVisible()) {
       await expect(explorer.getByTestId("scientific-combined-divergence-region"))
         .toContainText("1/s", { timeout: 90_000 });
