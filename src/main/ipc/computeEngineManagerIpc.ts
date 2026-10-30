@@ -177,26 +177,29 @@ const readHealth = async (engine: EngineDefinition): Promise<{ healthy: boolean;
 };
 
 const buildEngineStatus = async (engine: EngineDefinition, docker: DockerState): Promise<EngineStatus> => {
+  // A service may be reachable even when Electron cannot find the Docker CLI.
+  // Its health is independent of whether this process can manage its container.
+  const health = await readHealth(engine);
   if (!docker.dockerAvailable || !docker.composeAvailable) {
     return {
       id: engine.id,
       label: engine.label,
       installed: false,
-      running: false,
-      healthy: false,
-      statusText: "Docker unavailable",
+      running: health.healthy,
+      healthy: health.healthy,
+      statusText: health.healthy ? "available" : "Docker CLI unavailable",
       containerName: engine.containerName,
       healthUrl: engine.healthUrl,
-      lastError: docker.error,
+      version: health.version,
+      lastError: health.healthy ? docker.error : health.error || docker.error,
     };
   }
   const container = await inspectContainer(engine);
-  const health = container.running ? await readHealth(engine) : { healthy: false, error: undefined };
   return {
     id: engine.id,
     label: engine.label,
     installed: container.installed,
-    running: container.running,
+    running: container.running || health.healthy,
     healthy: health.healthy,
     statusText: health.healthy ? "available" : container.statusText,
     containerName: engine.containerName,

@@ -51,6 +51,7 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
 
   const api = typeof window !== "undefined" ? window.computeEngines : undefined;
   const dockerReady = !!snapshot?.docker.dockerAvailable && !!snapshot?.docker.composeAvailable;
+  const serviceReachable = snapshot?.engines.some((engine) => engine.healthy) ?? false;
 
   const refresh = useCallback(async () => {
     if (!api?.getStatus) {
@@ -127,8 +128,8 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
 
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <strong>Docker runtime</strong>
-          <span style={{ color: statusColor(dockerReady) }}>{dockerReady ? "available" : "missing"}</span>
+          <strong>Docker CLI / Compose</strong>
+          <span style={{ color: statusColor(dockerReady, serviceReachable) }}>{dockerReady ? "available" : "CLI unavailable"}</span>
         </div>
         {snapshot?.docker.dockerVersion && (
           <div style={{ fontSize: 11, color: "#475467" }}>
@@ -138,11 +139,12 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
         )}
         {!dockerReady && (
           <div style={{ display: "grid", gap: 6 }}>
+            {serviceReachable && <div style={{ fontSize: 11, color: "#9a6700" }}>A scientific service is reachable. Container management is unavailable from this app.</div>}
             <div style={{ fontSize: 11, color: "#b42318" }}>
               {snapshot?.docker.error || "Install Docker Desktop or Podman with Docker-compatible compose support."}
             </div>
             <button type="button" onClick={() => void openDockerGuide()} style={{ ...buttonStyle, justifySelf: "start" }}>
-              Install Docker Desktop
+              Docker Desktop guide
             </button>
           </div>
         )}
@@ -157,14 +159,14 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
               <strong>{engine.label}</strong>
               <span style={{ color: statusColor(engine.healthy, engine.installed) }}>
-                {engine.healthy ? "available" : engine.installed ? engine.statusText : "not installed"}
+                {engine.healthy ? "available" : !dockerReady ? "status unknown" : engine.installed ? engine.statusText : "not installed"}
               </span>
             </div>
             <div style={{ fontSize: 11, color: "#475467", display: "grid", gap: 2 }}>
               <div>Container: {engine.containerName}</div>
               <div>Health: {engine.healthUrl}</div>
               {engine.version && <div>Engine: {engine.version}</div>}
-              {engine.lastError && <div style={{ color: "#9a6700" }}>Health detail: {engine.lastError}</div>}
+              {engine.lastError && <div style={{ color: "#9a6700" }}>{engine.healthy ? "Management detail" : "Health / management detail"}: {engine.lastError}</div>}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               <button
