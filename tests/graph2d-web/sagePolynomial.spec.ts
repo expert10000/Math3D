@@ -38,6 +38,52 @@ test("Surface and Geometry Services share the same Sage operation and Analysis d
   await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("complete");
 });
 
+test("Surface and Geometry route polynomial factor and exact roots through Compute jobs", async ({ page }) => {
+  const requests: Array<{ operation: string; backend: string; jobId: string; params: Record<string, unknown> }> = [];
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    const request = route.request().postDataJSON() as typeof requests[number];
+    requests.push(request);
+    await route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", operation: request.operation, success: true,
+        result: { text: "polynomial-result" }, latex: "1", warnings: [] }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Palette", exact: true }).click();
+  await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...").fill("Open backend services panel");
+  await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
+  for (const context of ["surface", "geometry"] as const) {
+    if (context === "geometry") {
+      await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
+      await page.getByTestId("geometry-professional-panel-services").click({ force: true });
+    }
+    const panel = page.getByTestId(`scientific-services-${context}`);
+    await panel.getByLabel("Services preset").selectOption("All");
+    await panel.getByLabel("SageMath backend").selectOption("docker");
+    for (const operation of ["sage.polynomial.factor", "sage.polynomial.roots_exact"] as const) {
+      await panel.getByLabel("Operation").selectOption(operation);
+      await panel.getByLabel("Integer coefficients (constant first)").fill("-2, 0, 1");
+      await panel.getByRole("button", { name: "Run", exact: true }).click();
+      await expect(panel).toContainText("polynomial-result");
+    }
+  }
+  expect(requests).toHaveLength(4);
+  for (const operation of ["sage.polynomial.factor", "sage.polynomial.roots_exact"] as const) {
+    const matches = requests.filter((request) => request.operation === operation);
+    expect(matches).toHaveLength(2);
+    for (const request of matches) expect(request).toMatchObject({ backend: "docker", params: {
+      polynomial: "(-2)*x^0 + (0)*x^1 + (1)*x^2", variables: ["x"],
+    } });
+    expect(matches[0].jobId).not.toBe(matches[1].jobId);
+  }
+  await page.getByTestId("top-compute-center-button").click();
+  const jobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
+  await expect(jobs).toContainText("Exact polynomial factorization");
+  await expect(jobs).toContainText("Exact polynomial roots");
+  await expect(jobs.getByText("complete", { exact: true })).toHaveCount(4);
+});
+
 test("Surface Services runs exact calculus and Analysis exposes its result actions", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Palette", exact: true }).click();

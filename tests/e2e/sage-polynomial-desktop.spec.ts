@@ -35,6 +35,11 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await services.getByRole("button", { name: "Run", exact: true }).click();
     await expect(analysis).toContainText("Symbolic result · Hessian", { timeout: 60_000 });
     await expect(services).toContainText("[[2, 0, 0], [0, 2, 0], [0, 0, 2]]");
+    await page.getByTestId("top-compute-center-button").click();
+    const calculusJobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
+    await expect(calculusJobs.getByText("Symbolic gradient").locator("../..")).toContainText("complete");
+    await expect(calculusJobs.getByText("Symbolic Hessian").locator("../..")).toContainText("complete");
+    await page.getByTestId("compute-center").getByRole("button", { name: "Close", exact: true }).click();
 
     await services.getByRole("button", { name: "Singularities", exact: true }).click();
     await services.getByRole("button", { name: "Run", exact: true }).click();
@@ -197,6 +202,9 @@ test("desktop Sage polynomial factor handles valid input, rejection, and cancell
     await expect(panel).toContainText("Sage factorization cancelled.", { timeout: 30_000 });
     await expect(panel.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
     await expect(panel).not.toContainText("Exact reconstruction: verified");
+    await page.getByTestId("top-compute-center-button").click();
+    await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })
+      .getByText("Exact polynomial factorization").first().locator("../..")).toContainText("cancelled");
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))
@@ -268,6 +276,9 @@ test("desktop Sage algebraic roots handles valid input, rejection, and cancellat
     await expect(panel).toContainText("Sage root calculation cancelled.", { timeout: 30_000 });
     await expect(panel.getByRole("button", { name: "Run", exact: true })).toBeEnabled();
     await expect(panel).not.toContainText("Exact reconstruction: verified");
+    await page.getByTestId("top-compute-center-button").click();
+    await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })
+      .getByText("Exact polynomial roots").first().locator("../..")).toContainText("cancelled");
   } finally {
     await app.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))

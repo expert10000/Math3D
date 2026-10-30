@@ -26,7 +26,11 @@ export type Math3DWorkerOperationId =
   | "curve.analyze"
   | "symbolic.simplify"
   | "symbolic.solve"
-  | "symbolic.factor";
+  | "symbolic.factor"
+  | "symbolic.gradient"
+  | "symbolic.hessian"
+  | "polynomial.factor"
+  | "polynomial.roots.exact";
 
 export type WorkerOperationOwner =
   | "math3d-js"
@@ -222,6 +226,38 @@ const definitions = [
     canonicalOwner: "sage",
     method: "exact",
     environments: ["desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "symbolic.gradient",
+    title: "Symbolic gradient",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "symbolic.hessian",
+    title: "Symbolic Hessian",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "polynomial.factor",
+    title: "Exact polynomial factorization",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "polynomial.roots.exact",
+    title: "Exact polynomial roots",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
   },
 ] as const satisfies readonly Math3DWorkerOperationDefinition[];
