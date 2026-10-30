@@ -603,8 +603,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     selection = { objectId: document.selection.objectId, probe: null };
   } else if (action.type === "create-point-series-pair" ||
       action.type === "create-point-series-group") {
-    if (action.type === "create-point-series-group" && action.drafts.length !== 4)
-      throw new TypeError("The combined region needs four point series.");
+    if (action.type === "create-point-series-group" &&
+        ![3, 4, 5, 6].includes(action.drafts.length))
+      throw new TypeError("A linked region needs three to six point series.");
     if (objects.length > GRAPH2D_MAX_OBJECTS - action.drafts.length)
       throw new TypeError("Function limit reached.");
     for (const draft of action.drafts) {

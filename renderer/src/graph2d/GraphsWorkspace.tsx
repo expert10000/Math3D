@@ -20,7 +20,7 @@ import {
   GRAPH2D_MAX_OBJECTS,
   graph2DWorldToScreen, panGraph2DViewport, pickGraph2DProbe,
   graph2DPhaseSeedAtScreen, graph2DPhaseSeedAction, graph2DPhaseSeedRemovalAction, previewGraph2DPhaseSeed,
-  isGraph2DCriticalPointCurrent, isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
+  isGraph2DIntegralCurrent, isGraph2DIntervalAnalysisCurrent,
   isGraph2DIntersectionCurrent,
   isGraph2DLocalDifferentialCurrent, queryGraph2DInspector,
   resolveGraph2DViewport, selectionForGraph2DObject, zoomGraph2DViewport,
@@ -28,6 +28,7 @@ import {
   type Graph2DPointRow, type Graph2DPointSeriesDraft, type Graph2DPointSeriesObject,
   type Graph2DLinkedLineOrigin, type Graph2DLinkedRegionOrigin,
   type Graph2DLinkedCombinedRegionOrigin, type Graph2DLinkedRegionSelection,
+  type Graph2DLinkedVectorRegionOrigin,
   type Graph2DScientificDatasetPreview,
   type VectorField3DDerivedLine,
   type Graph2DScientificPlane,
@@ -87,10 +88,18 @@ import { vectorField3DGraphLineMatches } from "../vectorfield3d/reverifyVectorFi
 import { reverifyVectorField3DDerivedLine } from "../vectorfield3d/reverifyVectorField3DDerivedLine";
 import { reverifyLinkedOverlayGraphPair } from "../vectorfield3d/reverifyLinkedOverlayGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "../vectorfield3d/reverifyLinkedOverlayRegionGraphPair";
-import { checkCombinedRegionGraphSeries, combinedRegionSeries,
+import { checkCombinedRegionGraphSeries, createCombinedRegionVerificationSession,
+  isCombinedRegionKind, isCombinedRegionOrigin,
+  seriesForCombinedRegion,
   validateCombinedRegionGraphGroup, type CombinedRegionGraphGroup } from
   "../vectorfield3d/linkedCombinedRegionGraphs";
+import { checkVectorDerivedRegionGraphSeries, isVectorDerivedRegionOrigin,
+  validateVectorDerivedRegionGraphGroup, vectorDerivedRegionSeries,
+  type VectorDerivedRegionGraphGroup,
+  type VectorDerivedRegionVerificationSession } from
+  "../vectorfield3d/linkedVectorDerivedRegionGraphs";
 import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus,
+  linkedVectorDerivedRegionGraphFocus,
   type LinkedRegionGraphFocus } from
   "../vectorfield3d/linkedRegionGraphFocus";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
@@ -123,10 +132,10 @@ import { Graph2DPhaseEquilibriaTable } from "./Graph2DPhaseEquilibriaTable";
 import "./graphsWorkspace.css";
 
 const linkedVerificationKey = (origin: import("@math3d/core").Graph2DLinkedOverlayOrigin) =>
-  origin.kind === "vector-scalar-complex-linked-region/v2" ?
+  isCombinedRegionKind(origin.kind) || isVectorDerivedRegionOrigin(origin) ?
     `${origin.pairId}:${origin.series}` : origin.pairId;
 const linkedVerified = (origin: import("@math3d/core").Graph2DLinkedOverlayOrigin) =>
-  origin.kind === "vector-scalar-complex-linked-region/v2" ?
+  isCombinedRegionKind(origin.kind) || isVectorDerivedRegionOrigin(origin) ?
     "Verified source." : "Verified both sources.";
 
 const GRAPH2D_LEFT_PALETTE_KEY = "math3d.graphs.leftPalette.v1";
@@ -1177,11 +1186,16 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     const linked = document.source.objects.filter((object): object is Graph2DPointSeriesObject =>
       object.kind === "point-series" && !!object.linkedOrigin);
     const legacy = linked.filter(object =>
-      object.linkedOrigin?.kind !== "vector-scalar-complex-linked-region/v2");
+      !isCombinedRegionKind(object.linkedOrigin?.kind ?? "") &&
+      !isVectorDerivedRegionOrigin(object.linkedOrigin));
     const combined = linked.filter(object =>
-      object.linkedOrigin?.kind === "vector-scalar-complex-linked-region/v2");
+      isCombinedRegionKind(object.linkedOrigin?.kind ?? ""));
+    const vectorDerived = linked.filter(object =>
+      isVectorDerivedRegionOrigin(object.linkedOrigin));
     const pairIds = [...new Set(legacy.map(object => object.linkedOrigin!.pairId))];
     const combinedIds = [...new Set(combined.map(object => object.linkedOrigin!.pairId))];
+    const vectorDerivedIds = [...new Set(vectorDerived.map(object =>
+      object.linkedOrigin!.pairId))];
     setLinkedPairVerification({ document,
       states: Object.fromEntries(linked.map(object => [
         linkedVerificationKey(object.linkedOrigin!), "Verifying saved source…"])) });
@@ -1218,7 +1232,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     }
     for (const id of combinedIds) {
       if (!active) break;
-      const group = combinedRegionSeries.map(series => combined.find(object =>
+      const kind = combined.find(object => object.linkedOrigin?.pairId === id)?.linkedOrigin?.kind ?? "";
+      const group = seriesForCombinedRegion(kind).map(series => combined.find(object =>
         object.linkedOrigin?.pairId === id && object.linkedOrigin.series === series));
       const origins = group.map(object => object?.linkedOrigin as
         Graph2DLinkedCombinedRegionOrigin | undefined);
@@ -1228,10 +1243,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           throw new TypeError("Saved combined region plots are incomplete.");
         validateCombinedRegionGraphGroup(origins as Graph2DLinkedCombinedRegionOrigin[],
           rows as NonNullable<typeof rows[number]>[]);
+        const session = createCombinedRegionVerificationSession();
         for (let index = 0; index < group.length; index++) {
           if (!active) break;
           const origin = origins[index]!;
-          const status = await checkCombinedRegionGraphSeries(origin);
+          const status = await checkCombinedRegionGraphSeries(origin, undefined, session);
           if (active) setLinkedPairVerification(previous => previous.document === document ?
             { ...previous, states: { ...previous.states,
               [linkedVerificationKey(origin)]: status === "current" ?
@@ -1245,6 +1261,34 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                 linkedVerificationKey(origin), cause instanceof Error ? cause.message :
                   String(cause)])) } } : previous);
       }
+    }
+    for (const id of vectorDerivedIds) {
+      if (!active) break;
+      const group = vectorDerivedRegionSeries.map(series => vectorDerived.find(object =>
+        object.linkedOrigin?.pairId === id && object.linkedOrigin.series === series));
+      const origins = group.map(object => object?.linkedOrigin as
+        Graph2DLinkedVectorRegionOrigin | undefined);
+      const rows = group.map(object => object ? pointTableStore.resolve(object.table) : null);
+      try {
+        if (origins.some(origin => !origin) || rows.some(table => !table))
+          throw new TypeError("Saved vector-derived region plots are incomplete.");
+        validateVectorDerivedRegionGraphGroup(origins as Graph2DLinkedVectorRegionOrigin[],
+          rows as NonNullable<typeof rows[number]>[]);
+        const session: VectorDerivedRegionVerificationSession = {};
+        for (const origin of origins as Graph2DLinkedVectorRegionOrigin[]) {
+          if (!active) break;
+          const status = await checkVectorDerivedRegionGraphSeries(origin, undefined, session);
+          if (active) setLinkedPairVerification(previous => previous.document === document ?
+            { ...previous, states: { ...previous.states,
+              [linkedVerificationKey(origin)]: status === "current" ?
+                "Verified source." : `${status} source; values withheld.` } } : previous);
+        }
+      } catch (cause) { if (active) setLinkedPairVerification(previous =>
+        previous.document === document ? { ...previous, states: { ...previous.states,
+          ...Object.fromEntries(origins.filter((origin): origin is
+            Graph2DLinkedVectorRegionOrigin => !!origin).map(origin => [
+              linkedVerificationKey(origin), cause instanceof Error ? cause.message :
+                String(cause)])) } } : previous); }
     } };
     linkedVerificationQueue.current = linkedVerificationQueue.current.then(verifyPairs, verifyPairs);
     return () => { active = false; };
@@ -1414,7 +1458,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         const selection = pick(point.x, point.y, document.selection);
         const pickedRegion = document.source.objects.find(item => item.id === selection.objectId);
         if (pickedRegion?.kind === "point-series" && pickedRegion.linkedOrigin &&
-            (pickedRegion.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" ||
+            (isCombinedRegionKind(pickedRegion.linkedOrigin.kind) ||
               pickedRegion.linkedOrigin.kind === "vector-scalar-linked-region/v1" ||
               pickedRegion.linkedOrigin.kind === "vector-complex-linked-region/v1")) {
           setLinkedRegionSelectionMode({ pairId: pickedRegion.linkedOrigin.pairId, kind: "point" });
@@ -1482,15 +1526,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
       linkedVerified(selectedObject.linkedOrigin);
   const selectedRegionOrigin = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin &&
-    "region" in selectedObject.linkedOrigin ? selectedObject.linkedOrigin : null;
+    "region" in selectedObject.linkedOrigin &&
+    !isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
+    selectedObject.linkedOrigin : null;
   const regionProfileAxis = selectedRegionOrigin?.kind ===
     "vector-scalar-complex-linked-region/v2" ? selectedRegionOrigin.profileAxis ?? 0 : 0;
   const regionPositionName = regionProfileAxis === 1 ? "row" : "column";
   const regionPair = selectedRegionOrigin ? document.source.objects.filter((item): item is Graph2DPointSeriesObject =>
     item.kind === "point-series" && item.linkedOrigin?.pairId === selectedRegionOrigin.pairId) : [];
   const regionVector = regionPair.find(item => item.linkedOrigin?.series === "vector");
-  const regionOverlay = selectedRegionOrigin?.kind ===
-    "vector-scalar-complex-linked-region/v2" && selectedRegionOrigin.series !== "vector" ?
+  const regionOverlay = selectedRegionOrigin && isCombinedRegionKind(selectedRegionOrigin.kind) &&
+    selectedRegionOrigin.series !== "vector" ?
     regionPair.find(item => item.linkedOrigin?.series === selectedRegionOrigin.series) :
     regionPair.find(item => item.linkedOrigin?.series === "scalar" ||
       item.linkedOrigin?.series === "complex");
@@ -1530,10 +1576,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       max: String(savedRegionPhysical?.kind === "interval" ? savedRegionPhysical.max :
         selectedRegionOrigin?.region.bounds[regionProfileAxis][1] ?? "") };
   const combinedRegionGroup = (() => {
-    if (selectedRegionOrigin?.kind !== "vector-scalar-complex-linked-region/v2" ||
+    if (!selectedRegionOrigin || !isCombinedRegionKind(selectedRegionOrigin.kind) ||
         linkedPairVerification.document !== document) return null;
-    const members = combinedRegionSeries.map(series => regionPair.find(item =>
-      item.linkedOrigin?.kind === "vector-scalar-complex-linked-region/v2" &&
+    const members = seriesForCombinedRegion(selectedRegionOrigin.kind).map(series => regionPair.find(item =>
+      item.linkedOrigin?.kind === selectedRegionOrigin.kind &&
       item.linkedOrigin.series === series));
     if (members.some(item => !item?.linkedOrigin || linkedPairVerification.states[
       linkedVerificationKey(item.linkedOrigin)] !== linkedVerified(item.linkedOrigin))) return null;
@@ -1547,8 +1593,66 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         rows };
     } catch { return null; }
   })();
-  const sharedRegionSelection = selectedRegionOrigin?.kind ===
-    "vector-scalar-complex-linked-region/v2" && combinedRegionGroup ? (() => {
+  const selectedVectorRegionOrigin = selectedObject?.kind === "point-series" &&
+    isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
+    selectedObject.linkedOrigin : null;
+  const vectorRegionMembers = selectedVectorRegionOrigin ?
+    vectorDerivedRegionSeries.map(series => document.source.objects.find((object):
+      object is Graph2DPointSeriesObject => object.kind === "point-series" &&
+      object.linkedOrigin?.pairId === selectedVectorRegionOrigin.pairId &&
+      object.linkedOrigin.series === series)) : [];
+  const vectorRegionGroup = (() => {
+    if (!selectedVectorRegionOrigin || linkedPairVerification.document !== document ||
+        vectorRegionMembers.length !== 3 || vectorRegionMembers.some(member =>
+          !member?.linkedOrigin || linkedPairVerification.states[
+            linkedVerificationKey(member.linkedOrigin)] !==
+            linkedVerified(member.linkedOrigin))) return null;
+    try {
+      const origins = vectorRegionMembers.map(member =>
+        member!.linkedOrigin as Graph2DLinkedVectorRegionOrigin);
+      const rows = vectorRegionMembers.map(member => pointTableStore.resolve(member!.table));
+      if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+        return null;
+      validateVectorDerivedRegionGraphGroup(origins, rows);
+      return { members: vectorRegionMembers as Graph2DPointSeriesObject[], origins, rows };
+    } catch { return null; }
+  })();
+  const vectorRegionRows = vectorRegionGroup?.rows[0];
+  const savedVectorPhysical = selectedVectorRegionOrigin &&
+    document.selection.linkedRegion?.pairId === selectedVectorRegionOrigin.pairId ?
+    document.selection.linkedRegion.physical : null;
+  const vectorPhysicalX = savedVectorPhysical?.kind === "point" ?
+    savedVectorPhysical.x : savedVectorPhysical?.kind === "interval" ?
+      savedVectorPhysical.min : graphProbeX;
+  const vectorNearestColumn = vectorRegionRows?.reduce((best, row, index) =>
+    vectorPhysicalX !== undefined && Math.abs(row.x - vectorPhysicalX) <
+      Math.abs(vectorRegionRows[best]!.x - vectorPhysicalX) ? index : best, 0) ?? 0;
+  const vectorActiveColumn = selectedVectorRegionOrigin &&
+    linkedRegionColumn?.pairId === selectedVectorRegionOrigin.pairId &&
+    linkedRegionSelectionMode?.kind === "point" ?
+    linkedRegionColumn.index : vectorNearestColumn;
+  const vectorIntervalDraft = selectedVectorRegionOrigin &&
+    linkedRegionInterval?.pairId === selectedVectorRegionOrigin.pairId ?
+    linkedRegionInterval : { pairId: selectedVectorRegionOrigin?.pairId ?? "",
+      min: String(savedVectorPhysical?.kind === "interval" ?
+        savedVectorPhysical.min : selectedVectorRegionOrigin?.region.bounds[0][0] ?? ""),
+      max: String(savedVectorPhysical?.kind === "interval" ?
+        savedVectorPhysical.max : selectedVectorRegionOrigin?.region.bounds[0][1] ?? "") };
+  const vectorRegionSelection = vectorRegionGroup && selectedVectorRegionOrigin ? (() => {
+    const mode = linkedRegionSelectionMode?.pairId === selectedVectorRegionOrigin.pairId ?
+      linkedRegionSelectionMode.kind : null;
+    const physical = mode === "interval" ? { kind: "interval" as const,
+      min: Number(vectorIntervalDraft.min), max: Number(vectorIntervalDraft.max) } :
+      mode === "point" ? { kind: "point" as const,
+        x: vectorRegionRows![vectorActiveColumn]!.x } :
+        savedVectorPhysical ?? { kind: "point" as const,
+          x: vectorRegionRows![vectorActiveColumn]!.x };
+    try { return linkedVectorDerivedRegionGraphFocus(vectorRegionGroup.origins,
+      vectorRegionGroup.rows, physical); }
+    catch { return null; }
+  })() : null;
+  const sharedRegionSelection = selectedRegionOrigin &&
+    isCombinedRegionKind(selectedRegionOrigin.kind) && combinedRegionGroup ? (() => {
       const localMode = linkedRegionSelectionMode?.pairId === selectedRegionOrigin.pairId ?
         linkedRegionSelectionMode.kind : null;
       const localInterval = localMode === "interval" &&
@@ -1572,26 +1676,87 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       rows.slice(sharedRegionSelection.columns[0], sharedRegionSelection.columns[1] + 1)
         .filter((row): row is Graph2DPointRow & { y: number } => row.y !== null)
         .map(row => ({ x: row.x, y: row.y,
-          series: combinedRegionSeries[seriesIndex]!,
+          series: seriesForCombinedRegion(combinedRegionGroup.origins[0]!.kind)[seriesIndex]!,
           color: document.display.objects.find(style =>
             style.objectId === combinedRegionGroup.members[seriesIndex]!.id)?.color ?? "#ffffff" })))
+  } : vectorRegionSelection && vectorRegionGroup ? {
+    xBounds: vectorRegionSelection.xBounds,
+    points: vectorRegionGroup.rows.flatMap((rows, seriesIndex) =>
+      rows.slice(vectorRegionSelection.columns[0], vectorRegionSelection.columns[1] + 1)
+        .filter((row): row is Graph2DPointRow & { y: number } => row.y !== null)
+        .map(row => ({ x: row.x, y: row.y,
+          series: vectorDerivedRegionSeries[seriesIndex]!,
+          color: document.display.objects.find(style =>
+            style.objectId === vectorRegionGroup.members[seriesIndex]!.id)?.color ??
+            "#ffffff" })))
   } : null;
   const focusExplorerRegionInGraphs = async (explorer: VectorField3DDocument,
     region: NonNullable<VectorField3DDocument["workspace"]>["overlayRegion"],
-    physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1) => {
-    if (!onSelectionCommit || !region || !explorer.workspace?.scalarOverlay?.visible ||
-        !explorer.workspace.complexOverlay?.visible ||
+    physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1 = 0) => {
+    if (!onSelectionCommit || !region || !region.visible || !explorer.workspace ||
         canonicalJsonStringify(explorer.workspace.overlayRegion) !==
           canonicalJsonStringify(region))
+      throw new TypeError("Select a saved physical rectangle first.");
+    if (!explorer.workspace.scalarOverlay?.visible &&
+        !explorer.workspace.complexOverlay?.visible) {
+      if (profileAxis !== 0)
+        throw new TypeError("Vector-only region profiles are available along columns.");
+      const groups = new Map<string, Graph2DPointSeriesObject[]>();
+      for (const object of document.source.objects) if (object.kind === "point-series" &&
+          isVectorDerivedRegionOrigin(object.linkedOrigin)) {
+        const id = object.linkedOrigin.pairId;
+        groups.set(id, [...(groups.get(id) ?? []), object]);
+      }
+      for (const [pairId, group] of groups) {
+        const members = vectorDerivedRegionSeries.map(series => group.find(object =>
+          object.linkedOrigin?.series === series));
+        if (members.some(member => !member?.linkedOrigin)) continue;
+        const origins = members.map(member =>
+          member!.linkedOrigin as Graph2DLinkedVectorRegionOrigin);
+        const vectorOrigin = origins[0]!;
+        if (vectorOrigin.vectorSourceHash !== explorer.identity.structuralHash ||
+            parseVectorField3DDocument(vectorOrigin.vectorDocumentJson).identity.id !==
+              explorer.identity.id ||
+            canonicalJsonStringify(vectorOrigin.region) !== canonicalJsonStringify(region))
+          continue;
+        const rows = members.map(member => pointTableStore.resolve(member!.table));
+        if (!rows.every((table): table is readonly Graph2DPointRow[] => table !== null))
+          throw new TypeError("Saved vector region point tables are unavailable.");
+        validateVectorDerivedRegionGraphGroup(origins, rows);
+        const focus = linkedVectorDerivedRegionGraphFocus(origins, rows, physical);
+        const session: VectorDerivedRegionVerificationSession = {};
+        const checks: string[] = [];
+        for (const origin of origins)
+          checks.push(await checkVectorDerivedRegionGraphSeries(origin, undefined, session));
+        if (checks.some(check => check !== "current"))
+          throw new TypeError(`Vector region source checks: ${checks.map((check, index) =>
+            `${vectorDerivedRegionSeries[index]} ${check}`).join(", ")}.`);
+        const snapped: Graph2DLinkedRegionSelection["physical"] =
+          physical.kind === "point" ? { kind: "point", x: rows[0]![focus.columns[0]]!.x } :
+          physical;
+        onSelectionCommit({ objectId: members[0]!.id, probe: null,
+          linkedRegion: { pairId, physical: snapped } });
+        setLinkedRegionSelectionMode({ pairId, kind: snapped.kind });
+        setLinkedRegionColumn(null); setLinkedRegionInterval(null);
+        setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+        setVectorField3DOpen(false);
+        setToolHint(`Focused ${focus.columns[0] + 1}–${focus.columns[1] + 1} of 17 verified vector columns in Graphs.`);
+        return;
+      }
+      throw new TypeError("Send this vector rectangle's three aligned profiles to Graphs first.");
+    }
+    if (!explorer.workspace.scalarOverlay?.visible ||
+        !explorer.workspace.complexOverlay?.visible)
       throw new TypeError("Save a combined vector, scalar and complex rectangle first.");
     const groups = new Map<string, Graph2DPointSeriesObject[]>();
     for (const object of document.source.objects) if (object.kind === "point-series" &&
-        object.linkedOrigin?.kind === "vector-scalar-complex-linked-region/v2") {
+        isCombinedRegionOrigin(object.linkedOrigin)) {
       const id = object.linkedOrigin.pairId;
       groups.set(id, [...(groups.get(id) ?? []), object]);
     }
     for (const [pairId, group] of groups) {
-      const members = combinedRegionSeries.map(series => group.find(object =>
+      const kind = group[0]?.linkedOrigin?.kind ?? "";
+      const members = seriesForCombinedRegion(kind).map(series => group.find(object =>
         object.linkedOrigin?.series === series));
       if (members.some(object => !object?.linkedOrigin)) continue;
       const origins = members.map(object => object!.linkedOrigin as Graph2DLinkedCombinedRegionOrigin);
@@ -1611,11 +1776,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         throw new TypeError("Saved combined region point tables are unavailable.");
       validateCombinedRegionGraphGroup(origins, rows);
       const focus = linkedCombinedRegionGraphFocus(origins, rows, physical);
+      const session = createCombinedRegionVerificationSession();
       const statuses = await Promise.all(origins.map(origin =>
-        checkCombinedRegionGraphSeries(origin)));
+        checkCombinedRegionGraphSeries(origin, undefined, session)));
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Saved region source checks: ${statuses.map((status, index) =>
-          `${combinedRegionSeries[index]} ${status}`).join(", ")}. Repair or relink the changed source.`);
+          `${seriesForCombinedRegion(kind)[index]} ${status}`).join(", ")}. Repair or relink the changed source.`);
       const snapped: Graph2DLinkedRegionSelection["physical"] = physical.kind === "point" ?
         { kind: "point", x: rows[0]![focus.columns[0]]!.x } : physical;
       onSelectionCommit({ objectId: members[0]!.id, probe: null,
@@ -1629,13 +1795,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         profileAxis === 1 ? "rows" : "columns"} in Graphs.`);
       return;
     }
-    throw new TypeError("Send this rectangle's four aligned profiles to Graphs first.");
+    throw new TypeError("Send this rectangle's aligned profiles to Graphs first.");
   };
   const openLinkedRegionInExplorer = async (selection: { kind: "point"; x: number } |
     { kind: "interval"; min: number; max: number }) => {
     if (!selectedLinkedReady || !regionRowsCurrent || !selectedRegionOrigin || !regionVector?.linkedOrigin ||
         !regionOverlay?.linkedOrigin || !regionVectorRows || !regionOverlayRows || linkedRegionOpenBusy ||
-        selectedRegionOrigin.kind === "vector-scalar-complex-linked-region/v2" && !combinedRegionGroup)
+        isCombinedRegionKind(selectedRegionOrigin.kind) && !combinedRegionGroup)
       return;
     const vectorOrigin = regionVector.linkedOrigin as Graph2DLinkedRegionOrigin |
       Graph2DLinkedCombinedRegionOrigin;
@@ -1650,11 +1816,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
     try {
       if (combinedRegionGroup) {
+        const session = createCombinedRegionVerificationSession();
         const checks = await Promise.all(combinedRegionGroup.origins.map(origin =>
-          checkCombinedRegionGraphSeries(origin)));
+          checkCombinedRegionGraphSeries(origin, undefined, session)));
         if (checks.some(status => status !== "current"))
           throw new TypeError(`Region source checks: ${checks.map((status, index) =>
-            `${combinedRegionSeries[index]} ${status}`).join(", ")}.`);
+            `${seriesForCombinedRegion(combinedRegionGroup.origins[0]!.kind)[index]} ${status}`).join(", ")}.`);
       } else await reverifyLinkedOverlayRegionGraphPair(
         vectorOrigin as Graph2DLinkedRegionOrigin,
         overlayOrigin as Graph2DLinkedRegionOrigin);
@@ -1690,6 +1857,57 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       setLinkedPairVerification(previous => previous.document === document ?
         { ...previous, states: { ...previous.states, [vectorOrigin.pairId]: message } } : previous);
     } finally { setLinkedRegionOpenBusy(false); }
+  };
+  const openVectorRegionInExplorer = async (selection: Graph2DLinkedRegionSelection["physical"]) => {
+    if (!vectorRegionGroup || !selectedVectorRegionOrigin || linkedRegionOpenBusy) return;
+    let focus: LinkedRegionGraphFocus;
+    try { focus = linkedVectorDerivedRegionGraphFocus(vectorRegionGroup.origins,
+      vectorRegionGroup.rows, selection); }
+    catch (cause) { setLinkedRegionOpenError(cause instanceof Error ? cause.message :
+      String(cause)); return; }
+    setLinkedRegionOpenBusy(true); setLinkedRegionOpenError("");
+    try {
+      const session: VectorDerivedRegionVerificationSession = {};
+      const checks: string[] = [];
+      for (const origin of vectorRegionGroup.origins)
+        checks.push(await checkVectorDerivedRegionGraphSeries(origin, undefined, session));
+      setLinkedPairVerification(previous => previous.document === document ?
+        { ...previous, states: { ...previous.states,
+          ...Object.fromEntries(vectorRegionGroup.origins.map((origin, index) => [
+            linkedVerificationKey(origin), checks[index] === "current" ?
+              "Verified source." : `${checks[index]} source; values withheld.`])) } } : previous);
+      if (checks.some(check => check !== "current"))
+        throw new TypeError(`Vector region source checks: ${checks.map((check, index) =>
+          `${vectorDerivedRegionSeries[index]} ${check}`).join(", ")}.`);
+      const originDocument = parseVectorField3DDocument(
+        selectedVectorRegionOrigin.vectorDocumentJson);
+      const source = [vectorField3DDocument, savedVectorField3D].find(candidate =>
+        candidate && candidate.identity.id === focus.documentId &&
+        candidate.identity.structuralHash === focus.sourceHash &&
+        candidate.workspace?.overlayRegion &&
+        canonicalJsonStringify(candidate.workspace.overlayRegion) ===
+          canonicalJsonStringify(focus.region) &&
+        structuralHash({ scalarOverlay: candidate.workspace.scalarOverlay ?? null,
+          complexOverlay: candidate.workspace.complexOverlay ?? null,
+          sliceChannel: candidate.workspace.sliceChannel }) === focus.recipeHash) ??
+        originDocument;
+      const workspace = source.workspace ?? defaultVectorField3DWorkspace(source.source);
+      const axis = focus.region.normalAxis;
+      const layer = ({ 0: "yz", 1: "xz", 2: "xy" } as const)[axis];
+      const sliceCoordinates = [...workspace.sliceCoordinates] as [number, number, number];
+      sliceCoordinates[axis] = focus.region.fixedCoordinate;
+      const snapped: Graph2DLinkedRegionSelection["physical"] = selection.kind === "point" ?
+        { kind: "point", x: vectorRegionGroup.rows[0]![focus.columns[0]]!.x } : selection;
+      onSelectionCommit?.({ objectId: selectedObject?.id ?? vectorRegionGroup.members[0]!.id,
+        probe: null, linkedRegion: { pairId: focus.pairId, physical: snapped } });
+      setVectorField3DDocument(reviseVectorField3DWorkspace(source,
+        { ...workspace, selectedLayer: layer, sliceCoordinates }));
+      setExplorerFieldLayer(null);
+      setLinkedRegionFocus(previous => ({ focus, token: (previous?.token ?? 0) + 1 }));
+      setVectorField3DOpen(true);
+    } catch (cause) { setLinkedRegionOpenError(cause instanceof Error ? cause.message :
+      String(cause)); }
+    finally { setLinkedRegionOpenBusy(false); }
   };
   const selectedFieldOrigin = selectedObject?.kind === "point-series" ? selectedObject.origin : undefined;
   const selectedSavedField = savedScientificFields.find(item =>
@@ -2260,11 +2478,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
               {" "}{selectedObject.linkedOrigin.profile.varyingAxis}); probe
               {" "}{selectedObject.linkedOrigin.profile.point.join(", ")}.</dd></>}
           <dt>Units</dt><dd>{selectedObject.linkedOrigin.xUnit} → {selectedObject.linkedOrigin.yUnit}</dd>
-          {selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" &&
+          {(isCombinedRegionOrigin(selectedObject.linkedOrigin) ||
+            isVectorDerivedRegionOrigin(selectedObject.linkedOrigin)) &&
             selectedLinkedReady && <><dt>Coverage gaps</dt><dd>{
               pointTableStore.resolve(selectedObject.table)?.filter(row => row.y === null).length ?? 17
             } of 17 physical {regionPositionName}s.</dd></>}
-          {selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2" ?
+          {isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
+            <><dt>Derived source</dt><dd>Vector speed and bounded divergence/curl stencil.</dd></> :
+           isCombinedRegionOrigin(selectedObject.linkedOrigin) ?
             <><dt>Scalar source</dt><dd>{selectedObject.linkedOrigin.scalarReference.sceneId} /
               {" "}{selectedObject.linkedOrigin.scalarReference.datasetId}</dd>
               <dt>Complex source</dt><dd>{selectedObject.linkedOrigin.realReference.sceneId} /
@@ -2286,14 +2507,23 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             "Authored expression field"}</dd>
           <dt>Verified samples</dt><dd>{selectedObject.linkedOrigin.vectorSamples.map(part =>
             <div key={part.name}>{part.name}: <code>{part.sampleSha256}</code></div>)}
+            {(isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ||
+              selectedObject.linkedOrigin.kind ===
+              "vector-scalar-complex-divergence-linked-region/v3" ||
+              selectedObject.linkedOrigin.kind ===
+                "vector-scalar-complex-curl-linked-region/v4") &&
+              selectedObject.linkedOrigin.derivedSamples?.map(part =>
+                <div key={`derived-${part.name}`}>Derived vector stencil {part.name}: {
+                  <code>{part.sampleSha256}</code>}</div>)}
             {(selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
               selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1" ||
-              selectedObject.linkedOrigin.kind === "vector-scalar-complex-linked-region/v2") && <>
+              isCombinedRegionOrigin(selectedObject.linkedOrigin)) && <>
               <div>Real: <code>{selectedObject.linkedOrigin.realSampleSha256}</code></div>
               <div>Imaginary: <code>{selectedObject.linkedOrigin.imaginarySampleSha256}</code></div></>}
-            <div>{selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
+            {!isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) && <div>{
+              selectedObject.linkedOrigin.kind === "vector-complex-linked-line/v1" ||
               selectedObject.linkedOrigin.kind === "vector-complex-linked-region/v1" ?
-              "Complex pair" : "Scalar"}: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div></dd>
+              "Complex pair" : "Scalar"}: <code>{selectedObject.linkedOrigin.scalarSampleSha256}</code></div>}</dd>
           <dt>Source and row hashes</dt><dd><code>{selectedObject.linkedOrigin.vectorSourceHash}<br />
             {selectedObject.linkedOrigin.rowsSha256}</code></dd>
           <dt>Project source check</dt><dd role={linkedPairVerification.states[
@@ -2302,12 +2532,85 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             {linkedPairVerification.document === document ?
               linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ??
                 "Verifying saved source…" : "Verifying saved source…"}</dd>
+          {selectedVectorRegionOrigin && <><dt>Field Explorer selection</dt><dd
+            data-testid="graph2d-vector-region-selection">
+            <p>The 17 physical columns run along {selectedVectorRegionOrigin.xName}
+              {" "}({selectedVectorRegionOrigin.xUnit}). Each derived curve keeps its own
+              {" "}unit and coverage gaps.</p>
+            {vectorRegionGroup && vectorRegionRows && vectorRegionSelection ? <>
+              <label>Region column <select aria-label="Vector region column"
+                value={vectorActiveColumn} onChange={event => {
+                  setLinkedRegionColumn({ pairId: selectedVectorRegionOrigin.pairId,
+                    index: Number(event.target.value), probeX: graphProbeX });
+                  setLinkedRegionSelectionMode({ pairId: selectedVectorRegionOrigin.pairId,
+                    kind: "point" });
+                }}>
+                {vectorRegionRows.map((row, index) => <option key={row.id} value={index}>
+                  {index + 1}: {row.x.toPrecision(6)} {selectedVectorRegionOrigin.xUnit}
+                  {vectorRegionGroup.rows.map((series, seriesIndex) => series[index]?.y === null ?
+                    ` · ${vectorDerivedRegionSeries[seriesIndex]} gap` : "").join("")}
+                </option>)}
+              </select></label>
+              <div role="status" data-testid="graph2d-vector-region-columns">
+                <p>Physical columns {vectorRegionSelection.columns[0] + 1}–{
+                  vectorRegionSelection.columns[1] + 1}: {
+                  vectorRegionSelection.xBounds[0].toPrecision(6)} to {
+                  vectorRegionSelection.xBounds[1].toPrecision(6)} {
+                  vectorRegionSelection.xUnit}.</p>
+                <ul>{vectorRegionSelection.combined?.map(item => <li key={item.series}
+                  data-series={item.series}>{item.series}: {item.values.length - item.gaps}/{
+                    item.values.length} columns available ({item.gaps} gaps), {item.unit}{
+                    item.values.length === 1 ? `; ${item.values[0] === null ? "gap" :
+                      `value ${item.values[0]} ${item.unit}`}` : ""}.</li>)}</ul>
+              </div>
+              <button type="button" data-testid="graph2d-open-vector-region-point"
+                disabled={linkedRegionOpenBusy} onClick={() => {
+                  setLinkedRegionSelectionMode({ pairId: selectedVectorRegionOrigin.pairId,
+                    kind: "point" });
+                  void openVectorRegionInExplorer({ kind: "point",
+                    x: vectorRegionRows[vectorActiveColumn]!.x });
+                }}>{linkedRegionOpenBusy ? "Verifying sources…" :
+                  "Open selected vector column in Field Explorer"}</button>
+              <div><label>Interval from ({selectedVectorRegionOrigin.xUnit})
+                {" "}<input type="number" step="any" aria-label="Vector region interval from"
+                  value={vectorIntervalDraft.min} onChange={event => {
+                    setLinkedRegionInterval({ ...vectorIntervalDraft, min: event.target.value });
+                    setLinkedRegionSelectionMode({ pairId: selectedVectorRegionOrigin.pairId,
+                      kind: "interval" });
+                  }} /></label>
+                <label>to ({selectedVectorRegionOrigin.xUnit})
+                  {" "}<input type="number" step="any" aria-label="Vector region interval to"
+                    value={vectorIntervalDraft.max} onChange={event => {
+                      setLinkedRegionInterval({ ...vectorIntervalDraft, max: event.target.value });
+                      setLinkedRegionSelectionMode({ pairId: selectedVectorRegionOrigin.pairId,
+                        kind: "interval" });
+                    }} /></label>
+                <button type="button" data-testid="graph2d-open-vector-region-interval"
+                  disabled={linkedRegionOpenBusy} onClick={() => {
+                    setLinkedRegionSelectionMode({ pairId: selectedVectorRegionOrigin.pairId,
+                      kind: "interval" });
+                    void openVectorRegionInExplorer({ kind: "interval",
+                      min: vectorIntervalDraft.min.trim() ? Number(vectorIntervalDraft.min) : NaN,
+                      max: vectorIntervalDraft.max.trim() ? Number(vectorIntervalDraft.max) : NaN });
+                  }}>{linkedRegionOpenBusy ? "Verifying sources…" :
+                    "Open vector interval in Field Explorer"}</button></div>
+            </> : <p role="alert" data-testid="graph2d-vector-region-withheld">
+              Vector selection withheld until all three sources and point tables verify. {
+                vectorDerivedRegionSeries.map((series, index) => {
+                  const origin = vectorRegionMembers[index]?.linkedOrigin;
+                  return `${series}: ${origin ? linkedPairVerification.states[
+                    linkedVerificationKey(origin)] ?? "checking" : "missing"}`;
+                }).join(" · ")}.
+            </p>}
+            {linkedRegionOpenError && <p role="alert"
+              data-testid="graph2d-vector-region-open-error">{linkedRegionOpenError}</p>}
+          </dd></>}
           {selectedRegionOrigin && <><dt>Field Explorer selection</dt><dd
             data-testid="graph2d-linked-region-selection">
             <p>The 17 physical {regionPositionName}s run along {selectedRegionOrigin.xName}
               {" "}({selectedRegionOrigin.xUnit}). Graph gaps remain gaps in the source strip.</p>
             {regionRowsCurrent && regionVectorRows && regionOverlayRows &&
-              (selectedRegionOrigin.kind !== "vector-scalar-complex-linked-region/v2" ||
+              (!isCombinedRegionKind(selectedRegionOrigin.kind) ||
                 combinedRegionGroup) ? <>
               <label>Region {regionPositionName} <select aria-label={`Linked region ${regionPositionName}`}
                 value={activeRegionColumn} onChange={event => {
@@ -2375,9 +2678,9 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
                   {linkedRegionOpenBusy ? "Verifying sources…" : "Open interval in Field Explorer"}</button>
               </div>
             </> : <p role="status" data-testid="graph2d-shared-region-withheld">{
-              selectedRegionOrigin.kind === "vector-scalar-complex-linked-region/v2" ?
-                `Shared selection withheld until all four sources and point tables verify. ${
-                  combinedRegionSeries.map(series => {
+              isCombinedRegionKind(selectedRegionOrigin.kind) ?
+                `Shared selection withheld until all ${seriesForCombinedRegion(selectedRegionOrigin.kind).length} sources and point tables verify. ${
+                  seriesForCombinedRegion(selectedRegionOrigin.kind).map(series => {
                     const item = regionPair.find(candidate => candidate.linkedOrigin?.series === series);
                     return `${series}: ${item?.linkedOrigin ?
                       linkedPairVerification.states[linkedVerificationKey(item.linkedOrigin)] ??
@@ -2729,7 +3032,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             setToolHint(`Added ${line.rows.length} verified ${line.origin.operation} samples to Graphs.`);
           }}
           onAddLinkedOverlayLine={(pair: readonly [LinkedOverlayGraphSeries,
-            LinkedOverlayGraphSeries] | CombinedRegionGraphGroup) => {
+            LinkedOverlayGraphSeries] | CombinedRegionGraphGroup |
+            VectorDerivedRegionGraphGroup) => {
             if (!onAuthoringCommit) throw new Error("Graph authoring is unavailable.");
             if (document.source.objects.length > GRAPH2D_MAX_OBJECTS - pair.length)
               throw new TypeError("Graph object limit reached.");
@@ -2739,11 +3043,12 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             const drafts = pair.map((series, index) => ({ label: series.label,
               table: pointTableStore.publish(series.rows), mode: "line" as const,
               domain: series.domain, linkedOrigin: series.origin,
-              style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa"][index]!,
+              style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa", "#34d399",
+                "#f97316"][index]!,
                 lineWidth: 2, lineStyle: "solid" as const, visible: true } }));
-            if (pair.length === 4) {
+            if (pair.length >= 3) {
               onAuthoringCommit({ type: "create-point-series-group", drafts });
-              setToolHint("Added four aligned region profiles with independent source checks.");
+              setToolHint(`Added ${pair.length} aligned region profiles with independent source checks.`);
             } else {
               onAuthoringCommit({ type: "create-point-series-pair",
                 drafts: drafts as [Graph2DPointSeriesDraft, Graph2DPointSeriesDraft] });

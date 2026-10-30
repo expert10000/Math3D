@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
-import { createVectorField3DDocument, defaultVectorField3DWorkspace,
+import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField3DWorkspace,
   parseVectorField3DDocument, reviseVectorField3DDocument, reviseVectorField3DWorkspace,
   createScientificDatasetLink,
   sampleVectorField3DArrows, sampleVectorField3DScientificArrows, serializeVectorField3DDocument,
@@ -8,6 +8,8 @@ import { createVectorField3DDocument, defaultVectorField3DWorkspace,
   sampleVectorField3DSparseSlice, sampleVectorField3DSparseProbe,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   createVectorField3DPointResult, reverifyVectorField3DPointResult,
+  createCombinedVectorField3DRegionResultWithCurl,
+  createVectorDerivedRegionResult,
   verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
   type AnalysisResultEnvelope,
@@ -66,8 +68,15 @@ import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import type { LinkedRegionGraphFocus } from "./linkedRegionGraphFocus";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphs, checkCombinedRegionGraphSeries,
+import { linkedCombinedRegionGraphs, linkedCombinedRegionGraphsWithCurl,
+  checkCombinedRegionGraphSeries,
+  createCombinedRegionVerificationSession,
   type CombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
+import { verifiedCombinedDerivedRegionProfiles } from "./derivedCombinedRegionProfile";
+import { verifiedVectorRegionProfile } from "./derivedCombinedRegionProfile";
+import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
+  type VectorDerivedRegionGraphGroup,
+  type VectorDerivedRegionVerificationSession } from "./linkedVectorDerivedRegionGraphs";
 import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 
@@ -121,7 +130,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onAddAnalyticLine?: (line: VectorField3DAnalyticLine) => void;
   onAddDerivedLine?: (line: VectorField3DDerivedLine) => void;
   onAddLinkedOverlayLine?: (pair: readonly [LinkedOverlayGraphSeries,
-    LinkedOverlayGraphSeries] | CombinedRegionGraphGroup) => void;
+    LinkedOverlayGraphSeries] | CombinedRegionGraphGroup |
+    VectorDerivedRegionGraphGroup) => void;
   onFocusRegionInGraphs?: (document: VectorField3DDocument,
     region: VectorField3DOverlayRegion,
     physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1) => Promise<void>;
@@ -737,9 +747,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         setOverlayReadGeneration(value => value + 1);
       if (epoch === previewEpoch.current) { setBusy(false); setBusyAction(null); } }
   };
+  const focusRequestsSlice = (candidate: VectorField3DDocument | null | undefined) =>
+    !!candidate?.workspace && linkedRegionFocus?.documentId === candidate.identity.id &&
+    linkedRegionFocus.sourceHash === candidate.identity.structuralHash &&
+    !!candidate.workspace.overlayRegion &&
+    canonicalJsonStringify(candidate.workspace.overlayRegion) ===
+      canonicalJsonStringify(linkedRegionFocus.region);
   // A scientific field opens with a checked first preview; no button press is required.
   useEffect(() => {
     if (initialDocument?.source.field.kind === "scientific-bundle" &&
+        !focusRequestsSlice(initialDocument) &&
         !(hasVisibleSliceOverlay(initialDocument.workspace) &&
           (initialDocument.workspace.layout === "split" || initialDocument.workspace.layout === "quad" ||
             ["xy", "xz", "yz"].includes(initialDocument.workspace.selectedLayer))))
@@ -967,14 +984,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       setBusy(false); }
   };
   useEffect(() => {
-    if (!initialDocument?.workspace || !hasVisibleSliceOverlay(initialDocument.workspace)) return;
+    if (!initialDocument?.workspace ||
+        !hasVisibleSliceOverlay(initialDocument.workspace) &&
+        !focusRequestsSlice(initialDocument)) return;
     if (initialDocument.workspace.layout === "split" || initialDocument.workspace.layout === "quad")
       void previewLinkedViews(initialDocument);
     else if (["xy", "xz", "yz"].includes(initialDocument.workspace.selectedLayer))
       void previewSlice();
   }, []);
   useEffect(() => {
-    if (!reopenPreview || !hasVisibleSliceOverlay(workspace)) return;
+    if (!reopenPreview || !hasVisibleSliceOverlay(workspace) &&
+        !focusRequestsSlice(document)) return;
     if (workspace.layout === "split" || workspace.layout === "quad") void previewLinkedViews();
     else if (["xy", "xz", "yz"].includes(workspace.selectedLayer)) void previewSlice();
   }, [reopenPreview]);
@@ -1181,17 +1201,98 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     setLineBusy(true); setError("");
     try {
       if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
-      const group = linkedCombinedRegionGraphs(document, region, inspection,
-        vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
-        profileAxis);
+      const group = profileAxis === 1 ?
+        linkedCombinedRegionGraphs(document, region, inspection, vectorSamples,
+          scalarSampleSha256, realSampleSha256, imaginarySampleSha256, 1) :
+        await (async () => {
+          const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+          return linkedCombinedRegionGraphsWithCurl(document, region, inspection,
+            vectorSamples, scalarSampleSha256, realSampleSha256, imaginarySampleSha256,
+            { ...derived.divergence, samples: derived.samples }, derived.curlMagnitude);
+        })();
+      const session = createCombinedRegionVerificationSession();
       const statuses = await Promise.all(group.map(series =>
-        checkCombinedRegionGraphSeries(series.origin)));
+        checkCombinedRegionGraphSeries(series.origin, undefined, session)));
       if (statuses.some(status => status !== "current"))
         throw new TypeError(`Combined region source checks: ${statuses.join(", ")}.`);
       onAddLinkedOverlayLine(group);
-      setRunStatus(`Sent vector speed, scalar Q, complex magnitude and phase ${
-        profileAxis === 1 ? "row " : ""}profiles to Graphs.`);
+      setRunStatus(profileAxis === 1 ?
+        "Sent vector speed, scalar Q, complex magnitude and phase row profiles to Graphs." :
+        "Sent vector speed, scalar Q, complex magnitude, phase, divergence and curl magnitude profiles to Graphs.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLineBusy(false); }
+  };
+  const publishCombinedRegion = async (region: VectorField3DOverlayRegion,
+    inspection: CombinedRegionInspection, vectorSamples: readonly OverlaySampleDigest[],
+    scalarSampleSha256: string, realSampleSha256: string,
+    imaginarySampleSha256: string) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onSaveRegionResult) throw new TypeError("Project result saving is unavailable.");
+      const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+      const result = createCombinedVectorField3DRegionResultWithCurl(document,
+        region, { ...inspection.summary,
+          divergence: { count: derived.divergence.count, gaps: derived.divergence.gaps,
+            mean: derived.divergence.mean, min: derived.divergence.min,
+            max: derived.divergence.max },
+          divergenceUnit: derived.divergence.unit,
+          curlMagnitude: { count: derived.curlMagnitude.count,
+            gaps: derived.curlMagnitude.gaps, mean: derived.curlMagnitude.mean,
+            min: derived.curlMagnitude.min, max: derived.curlMagnitude.max },
+          curlMagnitudeUnit: derived.curlMagnitude.unit }, vectorSamples,
+        scalarSampleSha256, realSampleSha256, imaginarySampleSha256, derived.samples);
+      onSaveRegionResult(document, result);
+      setRunStatus("Published vector, scalar, complex, divergence and curl magnitude region statistics to Project.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause; }
+    finally { setLineBusy(false); }
+  };
+  const verifiedVectorDerivedRegion = async (region: VectorField3DOverlayRegion) => {
+    const speed = await verifiedVectorRegionProfile(document, region);
+    const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+    return { speed, derived };
+  };
+  const publishVectorDerivedRegion = async (region: VectorField3DOverlayRegion) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onSaveRegionResult) throw new TypeError("Project result saving is unavailable.");
+      const { speed, derived } = await verifiedVectorDerivedRegion(region);
+      const result = createVectorDerivedRegionResult(document, region, {
+        sampleCount: 289, vector: speed.statistics,
+        divergence: { count: derived.divergence.count,
+          gaps: derived.divergence.gaps, mean: derived.divergence.mean,
+          min: derived.divergence.min, max: derived.divergence.max },
+        curlMagnitude: { count: derived.curlMagnitude.count,
+          gaps: derived.curlMagnitude.gaps, mean: derived.curlMagnitude.mean,
+          min: derived.curlMagnitude.min, max: derived.curlMagnitude.max },
+        vectorUnit: speed.unit, divergenceUnit: derived.divergence.unit,
+        curlMagnitudeUnit: derived.curlMagnitude.unit }, speed.samples,
+        derived.samples);
+      onSaveRegionResult(document, result);
+      setRunStatus("Published vector speed, divergence and curl magnitude region statistics to Project.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause; }
+    finally { setLineBusy(false); }
+  };
+  const sendVectorDerivedRegion = async (region: VectorField3DOverlayRegion) => {
+    if (lineBusy || busy) return;
+    setLineBusy(true); setError("");
+    try {
+      if (!onAddLinkedOverlayLine) throw new TypeError("Graph authoring is unavailable.");
+      const { speed, derived } = await verifiedVectorDerivedRegion(region);
+      const group = linkedVectorDerivedRegionGraphs(document, region, speed, derived);
+      const session: VectorDerivedRegionVerificationSession = {};
+      for (const series of group) {
+        const status = await checkVectorDerivedRegionGraphSeries(series.origin,
+          undefined, session);
+        if (status !== "current") throw new TypeError(`Vector-derived ${series.origin.series} source ${status}.`);
+      }
+      onAddLinkedOverlayLine(group);
+      setRunStatus("Sent 17 aligned vector speed, divergence and curl magnitude column means to Graphs.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause; }
     finally { setLineBusy(false); }
   };
   const addSeed = () => {
@@ -1760,6 +1861,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         and phase φ = 1.3x + 0.8y + 0.65z + 0.25 sin(y). Numerically, on z = 0,
         |f| = exp(−Q/18), but Q alone does not determine the phase.
         Field Explorer aligns and verifies the sources; it does not calculate one from the other.</p>
+      <p>A selected rectangle can send six aligned column means to Graphs and publish
+        six compact statistics to the Project. Divergence measures local spreading;
+        curl magnitude measures local rotation. Both use 1/s and the same verified
+        neighboring vector samples, independently of Q and Complex wave. Empty
+        source coverage stays a gap, and Project reopen recalculates both derived values.</p>
     </details>
     {seedProgress && <label role="status">Trajectory seeds {seedProgress.completed}/{seedProgress.total}
       <progress aria-label="Trajectory seed progress" value={seedProgress.completed}
@@ -2625,6 +2731,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
               onSendRegionToGraphs={sendLinkedRegion}
               onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
+              onPublishCombinedRegion={publishCombinedRegion}
+              onPublishVectorDerivedRegion={publishVectorDerivedRegion}
+              onSendVectorDerivedToGraphs={sendVectorDerivedRegion}
               onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical, axis) =>
                 onFocusRegionInGraphs(document, region, physical, axis) : undefined}
               overlayVectorSamples={overlayVectorSamples[layer]}
@@ -2665,6 +2774,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         onSendLinkedLineToGraphs={sendLinkedLine} linkedLineBusy={lineBusy || busy}
         onSendRegionToGraphs={sendLinkedRegion}
         onSendCombinedRegionToGraphs={sendCombinedRegion} regionBusy={lineBusy || busy}
+        onPublishCombinedRegion={publishCombinedRegion}
+        onPublishVectorDerivedRegion={publishVectorDerivedRegion}
+        onSendVectorDerivedToGraphs={sendVectorDerivedRegion}
         onFocusRegionInGraphs={onFocusRegionInGraphs ? (region, physical, axis) =>
           onFocusRegionInGraphs(document, region, physical, axis) : undefined}
         overlayVectorSamples={overlayVectorSamples[workspace.selectedLayer as SeedSliceLayer]}

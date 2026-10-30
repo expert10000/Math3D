@@ -7,10 +7,15 @@ import { createGraph2DFieldReference, createVectorField3DDocument,
   applyGraph2DAuthoring, createEmptyGraph2DDocument, createGraph2DDocument,
   Graph2DPointTableStore, parseGraph2DDocument, serializeGraph2DDocument,
   parseVectorField3DDocument, reviseVectorField3DWorkspace, sampleVectorField3DSlice,
+  sampleVectorField3DDerivedSlice,
   serializeVectorField3DDocument, sha256Checksum, vectorField3DExpression,
   verifyGraph2DScientificVolume, type Graph2DScientificVolume,
   createVectorField3DRegionResult, reverifyVectorField3DRegionResult,
   createCombinedVectorField3DRegionResult,
+  createCombinedVectorField3DRegionResultWithDivergence,
+  createCombinedVectorField3DRegionResultWithCurl,
+  createVectorDerivedRegionResult,
+  validGraph2DLinkedOverlayOrigin,
   vectorField3DRegionResultRelation, createMixedWorkspaceDocument,
   createMath3DProject, parseMath3DProject, serializeMath3DProject,
   type VectorField3DSliceArtifact, type VectorField3DSource } from "@math3d/core";
@@ -21,7 +26,8 @@ import { linkedOverlayGraphPair } from "./linkedOverlayGraphPair";
 import { reverifyLinkedOverlayGraphPair } from "./reverifyLinkedOverlayGraphPair";
 import { linkedOverlayRegionGraphPair } from "./linkedOverlayRegionGraphPair";
 import { reverifyLinkedOverlayRegionGraphPair } from "./reverifyLinkedOverlayRegionGraphPair";
-import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus } from
+import { linkedCombinedRegionGraphFocus, linkedRegionGraphFocus,
+  linkedVectorDerivedRegionGraphFocus } from
   "./linkedRegionGraphFocus";
 import { checkSavedRegionResultSources } from "./checkSavedRegionResultSources";
 import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
@@ -29,7 +35,15 @@ import { sampleVerifiedComplexPoint, sampleVerifiedComplexRegion,
   sampleVerifiedVectorRegion } from "./combinedFieldInspection";
 import { sampleCombinedRegion } from "./combinedFieldInspection";
 import { checkCombinedRegionGraphSeries, linkedCombinedRegionGraphs,
+  linkedCombinedRegionGraphsWithDivergence,
+  linkedCombinedRegionGraphsWithCurl,
+  createCombinedRegionVerificationSession,
   validateCombinedRegionGraphGroup } from "./linkedCombinedRegionGraphs";
+import { curlMagnitudeRegionProfile, divergenceRegionProfile,
+  verifiedCombinedDerivedRegionProfiles, verifiedVectorRegionProfile } from
+  "./derivedCombinedRegionProfile";
+import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
+  validateVectorDerivedRegionGraphGroup } from "./linkedVectorDerivedRegionGraphs";
 import { CombinedOverlayRegionReadout } from "./CombinedOverlayRegionReadout";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
@@ -687,6 +701,320 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         otherRows.map(item => item.rows));
     }
   });
+
+  it("adds verified divergence as a fifth aligned and source-linked region profile", async () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", overlayRegion: region,
+      scalarOverlay: { reference: scalarReference, title: "Quadratic potential",
+        unit: "V", opacity: 0.8, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours" } });
+    const slice = sampleVectorField3DSlice(document, 2, 0);
+    const inspection = sampleCombinedRegion(document, slice, region,
+      sampleSliceOverlayVectorPlane(document, slice), scalarReference, scalarVolume,
+      complexReal.reference, complexImaginary.reference,
+      [complexReal.volume, complexImaginary.volume]);
+    const derived = divergenceRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, 2, 0, "divergence"));
+    expect(derived.unit).toBe("1/s");
+    expect(derived.count).toBe(289);
+    expect(derived.gaps).toBe(0);
+    expect(derived.rows.every(row => row.y !== null && Math.abs(row.y) < 1e-10)).toBe(true);
+    const result = createCombinedVectorField3DRegionResultWithDivergence(document,
+      region, { ...inspection.summary,
+        divergence: { count: derived.count, gaps: derived.gaps,
+          mean: derived.mean, min: derived.min, max: derived.max },
+        divergenceUnit: derived.unit }, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256, []);
+    expect(result.provenance.operation.algorithmVersion).toBe("17x17-v3");
+    expect(result.summary.divergenceUnit).toBe("1/s");
+    const project = createMath3DProject(createMixedWorkspaceDocument({
+      entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
+        replay: null }], activeDocumentIds: [document.identity.id],
+      constructions: [], results: [result],
+      relations: [vectorField3DRegionResultRelation(result)], artifacts: [],
+      committedSelection: null }), { stableKey: "derived-region-result" });
+    expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
+      .toEqual([result]);
+    expect(serializeMath3DProject(project)).not.toContain('"values"');
+    const group = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...derived, samples: [] });
+    expect(group.map(item => item.origin.series)).toEqual([
+      "vector", "scalar", "complex-magnitude", "complex-phase", "divergence"]);
+    expect(group[4]!.origin.yUnit).toBe("1/s");
+    expect(group.map(item => validGraph2DLinkedOverlayOrigin(item.origin))).toEqual([
+      true, true, true, true, true]);
+    validateCombinedRegionGraphGroup(group.map(item => item.origin),
+      group.map(item => item.rows));
+    const focus = linkedCombinedRegionGraphFocus(group.map(item => item.origin),
+      group.map(item => item.rows), { kind: "point", x: 0 });
+    expect(focus.combined?.map(item => item.series)).toContain("divergence");
+    const store = new Graph2DPointTableStore();
+    const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("derived-region"),
+      { type: "create-point-series-group", drafts: group.map((item, index) => ({
+        label: item.label, table: store.publish(item.rows), mode: "line" as const,
+        domain: item.domain, linkedOrigin: item.origin,
+        style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa", "#34d399"][index]!,
+          lineWidth: 2, lineStyle: "solid" as const, visible: true } })) });
+    const reopened = parseGraph2DDocument(serializeGraph2DDocument(
+      createGraph2DDocument({ ...graph, stableKey: "derived-region" })));
+    expect(reopened.source.objects).toHaveLength(5);
+    const bridge = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => locator.value === "quadraticVolume" ?
+      { ok: false as const, status: "changed" as const, error: "scalar changed" } :
+      { ok: true as const, source: { manifestJson: complexManifest } } } as unknown as
+        NonNullable<typeof window.scientificScenes>;
+    expect(await Promise.all(group.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, bridge)))).toEqual([
+      "current", "changed", "current", "current", "current"]);
+    expect(await checkSavedRegionResultSources(result, document, bridge)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "changed",
+      complex: "source-current", divergence: "source-current" });
+    const checked = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => ({ ok: true as const,
+      source: { manifestJson: locator.value === "quadraticVolume" ?
+        scalarManifest : complexManifest } }) } as unknown as
+        NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(result, document, checked)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "source-current",
+      complex: "source-current", divergence: "source-current" });
+    const wrongDivergence = createCombinedVectorField3DRegionResultWithDivergence(
+      document, region, { ...inspection.summary,
+        divergence: { count: 289, gaps: 0, mean: 1, min: 1, max: 1 },
+        divergenceUnit: derived.unit }, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256, []);
+    expect(await checkSavedRegionResultSources(wrongDivergence, document, checked))
+      .toEqual({ kind: "combined", vector: "source-current",
+        scalar: "source-current", complex: "source-current", divergence: "changed" });
+    const wrongRows = linkedCombinedRegionGraphsWithDivergence(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...derived,
+        rows: derived.rows.map(row => ({ ...row, y: 1 })), samples: [] });
+    validateCombinedRegionGraphGroup(wrongRows.map(item => item.origin),
+      wrongRows.map(item => item.rows));
+    expect(await Promise.all(wrongRows.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, checked)))).toEqual([
+      "current", "current", "current", "current", "changed"]);
+    expect(await checkSavedRegionResultSources({ ...result,
+      summary: { ...result.summary, divergenceUnit: "m/s" } }, document, checked))
+      .toEqual({ kind: "combined", vector: "changed", scalar: "changed",
+        complex: "changed", divergence: "changed" });
+    expect(() => validateCombinedRegionGraphGroup(group.map(item => item.origin),
+      group.map((item, index) => index === 4 ? item.rows.map((row, column) =>
+        column === 8 ? { ...row, y: 42 } : row) : item.rows))).toThrow();
+    const wider = { ...region, bounds: [[-6, 6], [-1, 1]] as const };
+    const gaps = divergenceRegionProfile(wider,
+      sampleVectorField3DDerivedSlice(document, 2, 0, "divergence"));
+    expect(gaps.gaps).toBeGreaterThan(0);
+    expect(gaps.rows[0]!.y).toBeNull();
+  });
+
+  it("saves and reverifies curl magnitude independently in the six-field region", async () => {
+    const region = { normalAxis: 2 as const, fixedCoordinate: 0,
+      bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+      visible: true };
+    const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+      selectedLayer: "xy", overlayRegion: region,
+      scalarOverlay: { reference: scalarReference, title: "Quadratic potential",
+        unit: "V", opacity: 0.8, visible: true },
+      complexOverlay: { ...complexRecipe, mode: "phase-contours" } });
+    const slice = sampleVectorField3DSlice(document, 2, 0);
+    const inspection = sampleCombinedRegion(document, slice, region,
+      sampleSliceOverlayVectorPlane(document, slice), scalarReference, scalarVolume,
+      complexReal.reference, complexImaginary.reference,
+      [complexReal.volume, complexImaginary.volume]);
+    const divergence = divergenceRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, 2, 0, "divergence"));
+    const curlMagnitude = curlMagnitudeRegionProfile(region,
+      sampleVectorField3DDerivedSlice(document, 2, 0, "curl-magnitude"));
+    expect(curlMagnitude.unit).toBe("1/s");
+    expect(curlMagnitude.count).toBe(289);
+    expect(curlMagnitude.gaps).toBe(0);
+    expect(curlMagnitude.rows.every(row => row.y !== null &&
+      Math.abs(row.y - 2) < 1e-10)).toBe(true);
+    const outside = curlMagnitudeRegionProfile({ ...region,
+      bounds: [[-6, 6], [-1, 1]] as const },
+      sampleVectorField3DDerivedSlice(document, 2, 0, "curl-magnitude"));
+    expect(outside.gaps).toBeGreaterThan(0);
+    expect(outside.rows[0]!.y).toBeNull();
+    const summary = { ...inspection.summary,
+      divergence: { count: divergence.count, gaps: divergence.gaps,
+        mean: divergence.mean, min: divergence.min, max: divergence.max },
+      divergenceUnit: divergence.unit,
+      curlMagnitude: { count: curlMagnitude.count, gaps: curlMagnitude.gaps,
+        mean: curlMagnitude.mean, min: curlMagnitude.min, max: curlMagnitude.max },
+      curlMagnitudeUnit: curlMagnitude.unit };
+    const result = createCombinedVectorField3DRegionResultWithCurl(document, region,
+      summary, [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, []);
+    expect(result.provenance.operation.algorithmVersion).toBe("17x17-v4");
+    const group = linkedCombinedRegionGraphsWithCurl(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...divergence, samples: [] }, curlMagnitude);
+    expect(group.map(item => item.origin.series)).toEqual([
+      "vector", "scalar", "complex-magnitude", "complex-phase", "divergence",
+      "curl-magnitude"]);
+    expect(group.map(item => validGraph2DLinkedOverlayOrigin(item.origin)))
+      .toEqual([true, true, true, true, true, true]);
+    validateCombinedRegionGraphGroup(group.map(item => item.origin),
+      group.map(item => item.rows));
+    const store = new Graph2DPointTableStore();
+    const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("curl-region"),
+      { type: "create-point-series-group", drafts: group.map((item, index) => ({
+        label: item.label, table: store.publish(item.rows), mode: "line" as const,
+        domain: item.domain, linkedOrigin: item.origin,
+        style: { color: ["#fde047", "#38bdf8", "#fb7185", "#a78bfa",
+          "#34d399", "#f97316"][index]!, lineWidth: 2,
+          lineStyle: "solid" as const, visible: true } })) });
+    expect(parseGraph2DDocument(serializeGraph2DDocument(
+      createGraph2DDocument({ ...graph, stableKey: "curl-region" })))
+      .source.objects).toHaveLength(6);
+    expect(linkedCombinedRegionGraphFocus(group.map(item => item.origin),
+      group.map(item => item.rows), { kind: "point", x: 0 }).combined
+      ?.map(item => item.series)).toContain("curl-magnitude");
+    let sourceChecks = 0;
+    const checked = { checkGraphDatasetReference: async ({ locator }: {
+      locator: { value: string } }) => {
+      sourceChecks++;
+      return { ok: true as const, source: { manifestJson: locator.value ===
+        "quadraticVolume" ? scalarManifest : complexManifest } };
+    } } as unknown as
+        NonNullable<typeof window.scientificScenes>;
+    expect(await checkSavedRegionResultSources(result, document, checked)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "source-current",
+      complex: "source-current", divergence: "source-current",
+      curlMagnitude: "source-current" });
+    sourceChecks = 0;
+    const session = createCombinedRegionVerificationSession();
+    expect(await Promise.all(group.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, checked, session)))).toEqual([
+      "current", "current", "current", "current", "current", "current"]);
+    expect(sourceChecks).toBe(2);
+    const wrongCurl = createCombinedVectorField3DRegionResultWithCurl(document, region,
+      { ...summary, curlMagnitude: { count: 289, gaps: 0,
+        mean: 3, min: 3, max: 3 } }, [], scalarVolume.sampleSha256,
+      complexReal.volume.sampleSha256, complexImaginary.volume.sampleSha256, []);
+    expect(await checkSavedRegionResultSources(wrongCurl, document, checked)).toEqual({
+      kind: "combined", vector: "source-current", scalar: "source-current",
+      complex: "source-current", divergence: "source-current",
+      curlMagnitude: "changed" });
+    const wrongRows = linkedCombinedRegionGraphsWithCurl(document, region, inspection,
+      [], scalarVolume.sampleSha256, complexReal.volume.sampleSha256,
+      complexImaginary.volume.sampleSha256, { ...divergence, samples: [] },
+      { ...curlMagnitude, rows: curlMagnitude.rows.map(row => ({ ...row, y: 3 })) });
+    validateCombinedRegionGraphGroup(wrongRows.map(item => item.origin),
+      wrongRows.map(item => item.rows));
+    expect(await Promise.all(wrongRows.map(item =>
+      checkCombinedRegionGraphSeries(item.origin, checked)))).toEqual([
+      "current", "current", "current", "current", "current", "changed"]);
+    const project = createMath3DProject(createMixedWorkspaceDocument({
+      entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
+        replay: null }], activeDocumentIds: [document.identity.id],
+      constructions: [], results: [result], relations: [
+        vectorField3DRegionResultRelation(result)], artifacts: [],
+      committedSelection: null }), { stableKey: "curl-region-result" });
+    expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
+      .toEqual([result]);
+    expect(serializeMath3DProject(project)).not.toContain('"values"');
+  }, 15_000);
+
+  it("publishes and plots a vector-only physical rectangle on all three planes", async () => {
+    for (const normalAxis of [2, 1, 0] as const) {
+      const region = { normalAxis, fixedCoordinate: 0,
+        bounds: [[-1, 1], [-1, 1]] as const, vectorChannel: "speed" as const,
+        visible: true };
+      const document = reviseVectorField3DWorkspace(analytic, { ...analytic.workspace!,
+        selectedLayer: ({ 2: "xy", 1: "xz", 0: "yz" } as const)[normalAxis],
+        overlayRegion: region, scalarOverlay: null, complexOverlay: null });
+      const speed = await verifiedVectorRegionProfile(document, region);
+      const derived = await verifiedCombinedDerivedRegionProfiles(document, region);
+      expect(speed.statistics.count).toBe(289);
+      expect(speed.rows).toHaveLength(17);
+      expect(derived.divergence.unit).toBe("1/s");
+      expect(derived.curlMagnitude.unit).toBe("1/s");
+      const compact = (profile: typeof derived.divergence) => ({
+        count: profile.count, gaps: profile.gaps, mean: profile.mean,
+        min: profile.min, max: profile.max });
+      const summary = { sampleCount: 289 as const, vector: speed.statistics,
+        divergence: compact(derived.divergence),
+        curlMagnitude: compact(derived.curlMagnitude), vectorUnit: speed.unit,
+        divergenceUnit: derived.divergence.unit,
+        curlMagnitudeUnit: derived.curlMagnitude.unit };
+      const result = createVectorDerivedRegionResult(document, region, summary,
+        speed.samples, derived.samples);
+      expect(result.summary).toEqual(summary);
+      expect(await checkSavedRegionResultSources(result, document, undefined)).toEqual({
+        kind: "vector-derived", vector: "source-current",
+        divergence: "source-current", curlMagnitude: "source-current" });
+      const group = linkedVectorDerivedRegionGraphs(document, region, speed, derived);
+      expect(group.map(item => item.origin.series)).toEqual([
+        "vector", "divergence", "curl-magnitude"]);
+      validateVectorDerivedRegionGraphGroup(group.map(item => item.origin),
+        group.map(item => item.rows));
+      const columnFocus = linkedVectorDerivedRegionGraphFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        { kind: "point", x: group[1].rows[8]!.x });
+      expect(columnFocus.columns).toEqual([8, 8]);
+      expect(columnFocus.combined?.map(item => item.unit)).toEqual([
+        "m/s", "1/s", "1/s"]);
+      const intervalFocus = linkedVectorDerivedRegionGraphFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        { kind: "interval", min: group[2].rows[4]!.x,
+          max: group[2].rows[7]!.x });
+      expect(intervalFocus.columns).toEqual([4, 7]);
+      expect(intervalFocus.xBounds[0]).toBeLessThan(group[0].rows[4]!.x);
+      expect(() => linkedVectorDerivedRegionGraphFocus(
+        group.map(item => item.origin), group.map(item => item.rows),
+        { kind: "interval", min: 1, max: -1 })).toThrow();
+      expect(await Promise.all(group.map(item =>
+        checkVectorDerivedRegionGraphSeries(item.origin)))).toEqual([
+        "current", "current", "current"]);
+      const wrongCurl = createVectorDerivedRegionResult(document, region,
+        { ...summary, curlMagnitude: { count: 289, gaps: 0,
+          mean: 3, min: 3, max: 3 } }, speed.samples, derived.samples);
+      expect(await checkSavedRegionResultSources(wrongCurl, document, undefined)).toEqual({
+        kind: "vector-derived", vector: "source-current",
+        divergence: "source-current", curlMagnitude: "changed" });
+      expect(() => validateVectorDerivedRegionGraphGroup(group.map(item => item.origin),
+        group.map((item, index) => index === 2 ? item.rows.map((row, column) =>
+          column === 8 ? { ...row, y: 42 } : row) : item.rows))).toThrow();
+      expect(() => linkedVectorDerivedRegionGraphFocus(group.map(item => item.origin),
+        group.map((item, index) => index === 1 ? item.rows.map((row, column) =>
+          column === 8 ? { ...row, y: 42 } : row) : item.rows),
+        { kind: "point", x: group[0].rows[8]!.x })).toThrow();
+      const store = new Graph2DPointTableStore();
+      const graph = applyGraph2DAuthoring(createEmptyGraph2DDocument("vector-derived"),
+        { type: "create-point-series-group", drafts: group.map((item, index) => ({
+          label: item.label, table: store.publish(item.rows), mode: "line" as const,
+          domain: item.domain, linkedOrigin: item.origin,
+          style: { color: ["#fde047", "#38bdf8", "#fb7185"][index]!,
+            lineWidth: 2, lineStyle: "solid" as const, visible: true } })) });
+      expect(graph.source.objects).toHaveLength(3);
+      const project = createMath3DProject(createMixedWorkspaceDocument({
+        entries: [{ module: "vector3d", checkpoint: document, expected: document.identity,
+          replay: null }], activeDocumentIds: [document.identity.id],
+        constructions: [], results: [result],
+        relations: [vectorField3DRegionResultRelation(result)], artifacts: [],
+        committedSelection: null }), { stableKey: `vector-derived-${normalAxis}` });
+      expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
+        .toEqual([result]);
+      expect(serializeMath3DProject(project)).not.toContain('"values"');
+      if (normalAxis === 2) {
+        const wide = { ...region, bounds: [[-6, 6], [-1, 1]] as const };
+        const wideDocument = reviseVectorField3DWorkspace(document,
+          { ...document.workspace!, overlayRegion: wide });
+        const wideSpeed = await verifiedVectorRegionProfile(wideDocument, wide);
+        const wideDerived = await verifiedCombinedDerivedRegionProfiles(wideDocument, wide);
+        expect(wideSpeed.statistics.gaps).toBeGreaterThan(0);
+        expect(wideSpeed.rows[0]!.y).toBeNull();
+        expect(wideDerived.divergence.gaps).toBeGreaterThan(0);
+        expect(wideDerived.curlMagnitude.rows[0]!.y).toBeNull();
+      }
+    }
+  }, 20_000);
 
   it("sends aligned region column means to Graphs and reverifies both saved series", async () => {
     for (const normalAxis of [2, 1, 0] as const) {

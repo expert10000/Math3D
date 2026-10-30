@@ -317,7 +317,6 @@ import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel";
 import { ScientificServicesPanel } from "./features/scientificServices/ScientificServicesPanel";
 import { SageSymbolicAnalysisCard } from "./features/sageLab/SageSymbolicAnalysisCard";
-import ComputeEngineManagerPanel from "./features/computeEngines/ComputeEngineManagerPanel";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
@@ -804,6 +803,7 @@ import {
   vectorField3DPointResultRelation,
   VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
+  VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
   vectorField3DRegionResultRelation,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
@@ -78714,7 +78714,8 @@ case "mobius":
           regionResultCheckEpoch.current++;
           setVectorField3DRegionResults(workspace.results.filter(result =>
             result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
-            result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE));
+            result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+            result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE));
           setVectorField3DRegionStatuses({});
           setScientificSceneLibrary([...(workspace.scientificScenes ?? [])]);
           const field = workspace.entries.find((entry) => entry.module === "vector3d")?.checkpoint;
@@ -79080,10 +79081,12 @@ case "mobius":
       result.provenance.operation.type === VECTOR_FIELD3D_POINT_RESULT_TYPE));
     setVectorField3DRegionResults(workspace.results.filter(result =>
       result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
-      result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE));
+      result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+      result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE));
     const regionResults = workspace.results.filter(result =>
       result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
-      result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE);
+      result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+      result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE);
     const checkEpoch = ++regionResultCheckEpoch.current;
     setVectorField3DRegionStatuses(Object.fromEntries(regionResults.map(result =>
       [result.resultId, "checking" as const])));
@@ -86231,7 +86234,6 @@ case "mobius":
                       </div>
                     ) : null}
                   </div>
-                  <ComputeEngineManagerPanel embedded />
                   <OctaveLabPanel />
                   <ScientificServicesPanel context="surface" sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
                     onResult={(record) => {
@@ -90337,7 +90339,16 @@ case "mobius":
                 [result.resultId]: result.provenance.operation.type ===
                   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
                   { kind: "combined", vector: "source-current", scalar: "source-current",
-                    complex: "source-current" } : "source-current" }));
+                    complex: "source-current",
+                    ...(["17x17-v3", "17x17-v4"].includes(
+                      result.provenance.operation.algorithmVersion) ?
+                      { divergence: "source-current" as const } : {}),
+                    ...(result.provenance.operation.algorithmVersion === "17x17-v4" ?
+                      { curlMagnitude: "source-current" as const } : {}) } :
+                  result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ?
+                    { kind: "vector-derived", vector: "source-current",
+                      divergence: "source-current", curlMagnitude: "source-current" } :
+                    "source-current" }));
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
@@ -110993,7 +111004,7 @@ case "mobius":
           </div>
         </div>
       )}
-      {computeCenterOpen && <ComputeCenterPanel onClose={() => setComputeCenterOpen(false)} onManageEngines={() => { setComputeCenterOpen(false); setPreferencesOpen(true); }} />}
+      {computeCenterOpen && <ComputeCenterPanel onClose={() => setComputeCenterOpen(false)} />}
       {preferencesOpen && (
         <div
           style={{
@@ -111134,7 +111145,9 @@ case "mobius":
                 </div>
               </section>
               <TheoryLabInstallationPanel />
-              <ComputeEngineManagerPanel />
+              <button type="button" onClick={() => { setPreferencesOpen(false); setComputeCenterOpen(true); }}>
+                Open Compute → Runtimes for Local WSL and Docker diagnostics
+              </button>
             </div>
           </div>
         </div>

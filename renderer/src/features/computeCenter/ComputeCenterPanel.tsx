@@ -4,6 +4,8 @@ import { getMeshBackendCapabilities } from "../../services/meshBackend";
 import { getPythonWorkerDiagnostics, type PythonWorkerDiagnosticsSnapshot } from "../../services/pythonWorkerDiagnosticsClient";
 import type { ScientificBackendCapabilitySnapshot } from "@math3d/kernel";
 import { discoverScientificBackends, getComputeJobs, subscribeComputeJobs, type ComputeJobRecord } from "./scientificJobTelemetry";
+import ComputeEngineManagerPanel from "../computeEngines/ComputeEngineManagerPanel";
+import SageRuntimeInspector from "./SageRuntimeInspector";
 
 type MemorySnapshot = Awaited<ReturnType<NonNullable<Window["appDiagnostics"]>["getRendererMemory"]>>;
 type Health = { ok: boolean; error?: string };
@@ -18,7 +20,8 @@ const labelFor = (job: ComputeJobRecord) => ({
 const statusColor = (ok: boolean | null) => ok === null ? "#64748b" : ok ? "#16803e" : "#a2530b";
 const formatBytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 
-export default function ComputeCenterPanel({ onClose, onManageEngines }: { onClose: () => void; onManageEngines: () => void }) {
+export default function ComputeCenterPanel({ onClose }: { onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "runtimes">("overview");
   const jobs = useSyncExternalStore(subscribeComputeJobs, getComputeJobs, getComputeJobs);
   const [python, setPython] = useState<PythonWorkerDiagnosticsSnapshot | null>(null);
   const [cgal, setCgal] = useState<Health | null>(null);
@@ -72,7 +75,7 @@ export default function ComputeCenterPanel({ onClose, onManageEngines }: { onClo
     { name: "Python", ok: python ? python.available : null, detail: python?.statusMessage ?? "Checking…" },
     { name: "VTK", ok: !vtkBridge ? false : python ? python.available : null, detail: !vtkBridge ? "Bridge unavailable" : python?.available ? "Bridge and Python worker ready" : "Waiting for Python worker" },
     { name: "CGAL", ok: cgal?.ok ?? null, detail: cgal ? cgal.ok ? "Health check passed" : cgal.error ?? "Unavailable" : "Checking…" },
-    { name: "Sage", ok: sage ? sage.healthy : null, detail: sage ? sage.statusText : "Checking…" },
+    { name: "Sage Docker", ok: sage ? sage.healthy : null, detail: sage ? sage.statusText : "Checking…" },
   ];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;
 
@@ -82,12 +85,17 @@ export default function ComputeCenterPanel({ onClose, onManageEngines }: { onClo
         <div><h2 id="compute-center-title" style={{ margin: 0, color: "#183b70", fontSize: 19 }}>Compute Center</h2><div style={{ color: "#64748b", fontSize: 12 }}>Local backends, scientific broker jobs, and live resources</div></div>
         <div style={{ display: "flex", gap: 8 }}><button type="button" style={button} onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh"}</button><button type="button" style={button} autoFocus onClick={onClose}>Close</button></div>
       </header>
+      <nav aria-label="Compute sections" style={{ display: "flex", gap: 7 }}>
+        <button type="button" style={button} aria-pressed={activeTab === "overview"} onClick={() => setActiveTab("overview")}>Overview</button>
+        <button type="button" style={button} aria-pressed={activeTab === "runtimes"} onClick={() => setActiveTab("runtimes")}>Runtimes</button>
+      </nav>
       {error && <div role="status" style={{ color: "#b42318" }}>{error}</div>}
+      {activeTab === "overview" && <>
       <section style={card} aria-label="Local backends"><h3 style={{ margin: "0 0 10px", fontSize: 14 }}>Local</h3><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8 }}>
         {entries.map((entry) => <div key={entry.name} style={{ display: "flex", gap: 8, alignItems: "start", background: "white", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px" }}><span aria-label={entry.ok === null ? "Checking" : entry.ok ? "Available" : "Unavailable"} style={{ color: statusColor(entry.ok), fontWeight: 800 }}>{entry.ok === null ? "○" : entry.ok ? "✓" : "○"}</span><div><strong style={{ fontSize: 12 }}>{entry.name}</strong><div style={{ fontSize: 11, color: "#64748b", overflowWrap: "anywhere" }}>{entry.detail}</div></div></div>)}
       </div><div style={{ color: "#64748b", fontSize: 11, marginTop: 10 }}>Broker routes discovered from active scientific job adapters</div>
       {brokerBackends.length ? <div data-testid="compute-center-broker-backends" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>{brokerBackends.map((backend) => <span key={backend.backendId} title={backend.operations.map((operation) => operation.operationType).join(", ")} style={{ background: "white", border: "1px solid #dbe4f0", borderRadius: 6, padding: "4px 7px", fontSize: 11 }}>{backend.availability === "available" ? "✓" : "○"} {backend.backendId} · {backend.transport}</span>)}</div> : <div style={{ color: "#64748b", fontSize: 11 }}>No broker adapters active yet.</div>}
-      <button type="button" style={{ ...button, marginTop: 10 }} onClick={onManageEngines}>Manage engines</button></section>
+      <button type="button" style={{ ...button, marginTop: 10 }} onClick={() => setActiveTab("runtimes")}>Open Runtimes</button></section>
       <section style={card} aria-label="Broker jobs"><h3 style={{ margin: "0 0 4px", fontSize: 14 }}>Jobs</h3><div style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>Scientific broker history in this app session: Curve, Volume, and Mesh differential jobs.</div>
         {jobs.length === 0 ? <div data-testid="compute-center-empty-jobs" style={{ color: "#64748b", fontSize: 12 }}>No broker jobs have run in this session.</div> : <div style={{ display: "grid", gap: 6 }}>{jobs.map((job) => <div key={job.jobId} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) auto auto", gap: 10, alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, background: "white", padding: "8px 10px", fontSize: 12 }}><div><strong>{labelFor(job)}</strong><div title={job.jobId} style={{ color: "#64748b", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.backendId ?? job.phase ?? job.jobId}</div></div><span style={{ textTransform: "capitalize", color: job.status === "failed" ? "#b42318" : job.status === "complete" ? "#16803e" : "#1d4ed8" }}>{job.status}</span><span>{job.progress === null ? "—" : `${Math.round(job.progress * 100)}%`}</span>{job.failure && <div style={{ gridColumn: "1 / -1", color: "#b42318", fontSize: 11 }}>{job.failure}</div>}</div>)}</div>}
       </section>
@@ -97,6 +105,11 @@ export default function ComputeCenterPanel({ onClose, onManageEngines }: { onClo
         <div><strong>Broker jobs active</strong><div>{activeBrokerJobs}</div></div>
         <div><strong>Python worker admission</strong><div data-testid="compute-center-python-admission">{python?.admission ? `${python.admission.active} active · ${python.admission.queued} queued` : "Unavailable"}</div></div>
       </div></section>
+      </>}
+      {activeTab === "runtimes" && <div data-testid="compute-runtimes" style={{ display: "grid", gap: 12 }}>
+        <SageRuntimeInspector />
+        <ComputeEngineManagerPanel embedded />
+      </div>}
     </div>
   </div>;
 }

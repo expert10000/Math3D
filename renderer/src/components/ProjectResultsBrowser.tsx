@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE, type KernelWorkspaceModule,
+  VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
@@ -26,13 +27,20 @@ const regionSourcePresentation = (status: SavedRegionSourceStatus | undefined) =
       ? { tone: "unavailable", label: "Changed source" } : status === "error"
         ? { tone: "unavailable", label: "Verification failed" }
         : typeof status === "object" ?
-          { tone: [status.vector, status.scalar, status.complex].every(value =>
+          { tone: [status.vector, ...(status.kind === "combined" ?
+              [status.scalar, status.complex] : []),
+              ...(status.divergence === undefined ? [] : [status.divergence]),
+              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
               value === "source-current") ? "current" : "unavailable",
-            label: [status.vector, status.scalar, status.complex].every(value =>
+            label: [status.vector, ...(status.kind === "combined" ?
+              [status.scalar, status.complex] : []),
+              ...(status.divergence === undefined ? [] : [status.divergence]),
+              ...(status.curlMagnitude === undefined ? [] : [status.curlMagnitude])].every(value =>
               value === "source-current") ? "All fields verified" : "Per-field status" } :
           { tone: "unavailable", label: "Checking sources" };
 const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
-  operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE;
+  operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
+  operation === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE;
 
 export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {} }) => {
   const [query, setQuery] = useState("");
@@ -131,18 +139,44 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
           {result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ?
             <div data-testid="project-combined-region-result">
               <p>Physical rectangle: <code>{readable(result.provenance.operation.parameters.region)}</code></p>
-              {(["vector", "scalar", "complexMagnitude", "complexPhase"] as const).map(key => {
+              {(["vector", "scalar", "complexMagnitude", "complexPhase",
+                ...(["17x17-v3", "17x17-v4"].includes(
+                  result.provenance.operation.algorithmVersion) ? ["divergence" as const] : []),
+                ...(result.provenance.operation.algorithmVersion === "17x17-v4" ?
+                  ["curlMagnitude" as const] : [])] as const).map(key => {
                 const state = regionResultStatuses[result.resultId];
                 const layer = key === "complexMagnitude" || key === "complexPhase" ?
                   "complex" : key;
-                const source = typeof state === "object" ? state[layer] : state ?? "checking";
+                const source = typeof state === "object" && state.kind === "combined" ?
+                  state[layer] ?? "checking" :
+                  state ?? "checking";
                 const unit = key === "vector" ? result.summary.vectorUnit :
                   key === "scalar" ? result.summary.scalarUnit :
-                    key === "complexPhase" ? "rad" : result.summary.complexUnit;
+                    key === "complexPhase" ? "rad" : key === "divergence" ?
+                      result.summary.divergenceUnit : key === "curlMagnitude" ?
+                        result.summary.curlMagnitudeUnit : result.summary.complexUnit;
                 return <p key={key} data-testid={`project-combined-${key}`}>
-                  {key} ({String(unit)}): {source === "source-current" ?
+                  {key === "curlMagnitude" ? "curl magnitude" : key} ({String(unit)}): {
+                    source === "source-current" ?
                     <code>{readable(result.summary[key])}</code> :
                     <>values withheld ({source})</>}
+                </p>;
+              })}
+            </div> :
+          result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ?
+            <div data-testid="project-vector-derived-region-result">
+              <p>Physical rectangle: <code>{readable(result.provenance.operation.parameters.region)}</code></p>
+              {(["vector", "divergence", "curlMagnitude"] as const).map(key => {
+                const state = regionResultStatuses[result.resultId];
+                const source = typeof state === "object" && state.kind === "vector-derived" ?
+                  state[key] : state ?? "checking";
+                const unit = key === "vector" ? result.summary.vectorUnit :
+                  key === "divergence" ? result.summary.divergenceUnit :
+                    result.summary.curlMagnitudeUnit;
+                return <p key={key} data-testid={`project-vector-derived-${key}`}>
+                  {key === "curlMagnitude" ? "curl magnitude" : key} ({String(unit)}): {
+                    source === "source-current" ? <code>{readable(result.summary[key])}</code> :
+                      <>values withheld ({typeof source === "string" ? source : "checking"})</>}
                 </p>;
               })}
             </div> :

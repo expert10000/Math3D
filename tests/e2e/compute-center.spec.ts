@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 
-test("Compute Center shows live local diagnostics and opens engine controls", async () => {
+test("Compute Center shows live diagnostics and opens Runtimes", async () => {
   test.setTimeout(180_000);
   let app: LaunchedSurfaceApp | null = null;
   try {
@@ -15,9 +15,10 @@ test("Compute Center shows live local diagnostics and opens engine controls", as
     await expect(center.getByRole("region", { name: "Broker jobs" })).toContainText("Scientific broker history");
     await expect(center.getByTestId("compute-center-python-admission")).not.toBeEmpty();
     await expect(center.getByTestId("compute-center-memory")).not.toBeEmpty();
-    await center.getByRole("button", { name: "Manage engines" }).click();
-    await expect(app.page.getByTestId("settings-preferences-panel")).toBeVisible();
-    await expect(app.page.getByTestId("compute-engine-manager")).toBeVisible();
+    await center.getByRole("button", { name: "Runtimes", exact: true }).click();
+    await expect(center.getByTestId("sage-runtime-local")).toContainText("Not checked");
+    await expect(center.getByTestId("sage-runtime-docker")).toContainText("Not checked");
+    await expect(center.getByTestId("compute-engine-manager")).toBeVisible();
   } finally {
     if (app) await closeSurfaceApp(app);
   }

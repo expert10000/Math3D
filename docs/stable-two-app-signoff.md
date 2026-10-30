@@ -272,3 +272,34 @@ Math3D round trip.
 The accepted migration scope remains registered **per-user v1.6.0 at the same
 destination**. This is a Windows prerelease, not a stable 1.7.0 publication;
 Linux and mobile packages are not part of this exact-file signoff.
+
+## Installed rc.4 trial and final stable release gate
+
+[Installed trial run 40882193460](https://github.com/expert10000/Math3D/actions/runs/40882193460)
+passed against the **published rc.4 Windows installer**, SHA-256
+`bb447b5f511f30f64481c0d1cebd13ff272d37010ba5e87eddf12f1bad1dfa33`.
+On a disposable Windows runner, the installed app opened the pinned QWZ Berry
+scene and the hydrogen 2p Volume preview; both **Fit visible field** and
+**Fit volume grid** responded. The first trial attempts exposed a harness
+timing error: a fresh install opens Settings before the Palette is available.
+The trial now waits for and closes that dialog. The renderer's bounded
+100-edit Project replay test also needed a 15-second explicit limit under
+parallel CI load; its targeted 34-test file passes locally.
+
+The stable [`release.yml`](../.github/workflows/release.yml) now has a
+publication barrier. It builds Windows and Linux assets without publishing,
+builds the pinned Theory Lab installer, then runs a **clean-install gate** and
+a separate **v1.6.0 upgrade gate** on the exact downloaded Windows installer
+bytes. The candidate manifest records both installer hashes and source
+revisions. The final publish job checks both passing evidence records and
+every Windows/Linux asset SHA-256 before uploading the tested installers,
+manifest and signoff JSON. A failed or skipped gate leaves the stable tag
+unpublished. The Lab producer is pinned to
+`3c883fa4a69da2ee9f59b1425ac181094a25c276` in that workflow; changing it
+requires an explicit recipe update before the final source freeze.
+
+For final 1.7.0: finish fixes, set the source package version to `1.7.0`,
+freeze and tag that exact commit, then let the tag workflow build and test
+**new final binaries**. The rc.4 pass certifies only its pinned commit and
+installer hashes. A workflow dispatch against a different tag does not reuse
+rc.4 evidence.

@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { checkSageHealth, isLocalSageOperation, runSageOperation } from "../../integrations/sage/sageClient";
+import { isLocalSageOperation, runSageOperation } from "../../integrations/sage/sageClient";
 import {
-  type SageHealthResponse,
   type SageSymbolicOperation,
   type SageRunResponse,
 } from "../../integrations/sage/sageSchemas";
@@ -54,9 +53,8 @@ const SageSymbolicPanel: React.FC<{
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
   const [coefficientsText, setCoefficientsText] = useState("-1, 0, 1");
   const [variablesText, setVariablesText] = useState("x");
-  const [health, setHealth] = useState<SageHealthResponse | null>(null);
   const [response, setResponse] = useState<SageRunResponse | null>(null);
-  const [busy, setBusy] = useState<"none" | "health" | "run">("none");
+  const [busy, setBusy] = useState<"none" | "run">("none");
   const [error, setError] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -68,18 +66,6 @@ const SageSymbolicPanel: React.FC<{
     () => variablesText.split(",").map((part) => part.trim()).filter(Boolean),
     [variablesText]
   );
-
-  const onCheckHealth = async () => {
-    setBusy("health");
-    setError(null);
-    try {
-      setHealth(await checkSageHealth(localSage ? "local" : "docker"));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to check SageMath service.");
-    } finally {
-      setBusy("none");
-    }
-  };
 
   const onRun = async () => {
     setBusy("run");
@@ -152,7 +138,6 @@ const SageSymbolicPanel: React.FC<{
           <span style={{ fontWeight: 700 }}>Engine</span>
           <select aria-label="SageMath backend" value={backend} disabled={busy !== "none"} onChange={(event) => {
             setBackend(event.target.value as "local" | "docker");
-            setHealth(null);
             setResponse(null);
             setError(null);
           }}>
@@ -160,11 +145,6 @@ const SageSymbolicPanel: React.FC<{
             <option value="docker">Docker service</option>
           </select>
           <span>{localSage ? "Bounded local worker · 20-second limit" : "Separate Docker service"}</span>
-          {health && (
-            <span style={{ color: health.available ? "#1f894f" : "#b42318" }}>
-              {health.engine}: {health.status}
-            </span>
-          )}
         </div>
 
         <strong>Symbolic operations</strong>
@@ -190,7 +170,6 @@ const SageSymbolicPanel: React.FC<{
             setOperation(next);
             if (!isLocalSageOperation(next)) setBackend("docker");
             setError(null);
-            setHealth(null);
             setResponse(null);
           }} style={fieldStyle}>
             {operations.map((entry) => (
@@ -229,9 +208,7 @@ const SageSymbolicPanel: React.FC<{
         </>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <button type="button" onClick={() => void onCheckHealth()} disabled={busy !== "none"}>
-            {busy === "health" ? "Checking..." : localSage ? "Check local SageMath" : "Check Docker SageMath"}
-          </button>
+          <span style={{ color: "#667085" }}>Backend health and controls: Compute → Runtimes</span>
           <button type="button" onClick={() => void onRun()} disabled={busy !== "none"}>
             {busy === "run" ? "Running..." : "Run"}
           </button>
