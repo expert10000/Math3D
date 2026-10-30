@@ -670,17 +670,16 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
       .locator("circle[data-graph2d-linked-region-series]").count())
       .toBeGreaterThan(5);
-    const intersectionControls = inspector.getByTestId("graph2d-combined-intersection-controls");
-    for (const axis of [1, 2] as const) {
-      const from = intersectionControls.getByRole("spinbutton", {
-        name: `Subrectangle axis ${axis} from` });
-      const to = intersectionControls.getByRole("spinbutton", {
-        name: `Subrectangle axis ${axis} to` });
-      const min = Number(await from.inputValue()), max = Number(await to.inputValue());
-      await from.fill(String(min + (max - min) * .25));
-      await to.fill(String(min + (max - min) * .75));
-    }
-    await intersectionControls.getByRole("button", { name: "Link physical subrectangle" }).click();
+    await inspector.getByTestId("graph2d-open-region-point").click();
+    const subFigure = explorer.getByRole("figure", { name: "XY field slice" });
+    await subFigure.getByTestId("scientific-select-graphs-subrectangle").click();
+    await subFigure.locator('[data-probe-cell="9-9"]').click();
+    await subFigure.locator('[data-probe-cell="12-12"]').click();
+    await expect(subFigure.getByTestId("scientific-subrectangle-preview"))
+      .toContainText("Proposed physical bounds");
+    await expect(subFigure.getByTestId("scientific-subrectangle-proposal-marker"))
+      .toBeVisible();
+    await subFigure.getByTestId("scientific-confirm-graphs-subrectangle").click();
     await expect(inspector.getByTestId("graph2d-combined-intersection"))
       .toContainText("curl-magnitude", { timeout: 60_000 });
     await expect.poll(() => page.getByTestId("graph2d-linked-region-highlight")
@@ -960,17 +959,17 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     const inspector = page.getByRole("complementary", { name: "Graph inspector" });
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("rows available", { timeout: 60_000 });
-    const intersectionControls = inspector.getByTestId("graph2d-combined-intersection-controls");
-    for (const axis of [1, 2] as const) {
-      const from = intersectionControls.getByRole("spinbutton", {
-        name: `Subrectangle axis ${axis} from` });
-      const to = intersectionControls.getByRole("spinbutton", {
-        name: `Subrectangle axis ${axis} to` });
-      const min = Number(await from.inputValue()), max = Number(await to.inputValue());
-      await from.fill(String(min + (max - min) * .25));
-      await to.fill(String(min + (max - min) * .75));
-    }
-    await intersectionControls.getByRole("button", { name: "Link physical subrectangle" }).click();
+    await inspector.getByTestId("graph2d-open-region-point").click();
+    const subFigure = explorer.getByRole("figure", { name: "XY field slice" });
+    await subFigure.getByTestId("scientific-select-graphs-subrectangle")
+      .click({ force: true, timeout: 120_000 });
+    await expect(subFigure.getByTestId("scientific-select-graphs-subrectangle"))
+      .toHaveAttribute("aria-pressed", "true", { timeout: 120_000 });
+    await subFigure.locator('[data-probe-cell="14-14"]').click();
+    await subFigure.locator('[data-probe-cell="18-18"]').click();
+    await expect(subFigure.getByTestId("scientific-subrectangle-preview"))
+      .toContainText("Proposed physical bounds");
+    await subFigure.getByTestId("scientific-confirm-graphs-subrectangle").click();
     await expect(inspector.getByTestId("graph2d-combined-intersection"))
       .toContainText("row curl-magnitude", { timeout: 60_000 });
     await page.getByTestId("projects-toggle").click();
@@ -1023,11 +1022,13 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("complex-phase");
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
-      .toContainText("rows available");
+      .toContainText("columns available");
     await expect(inspector.getByTestId("graph2d-combined-region-selection"))
       .toContainText("curl-magnitude");
     await expect(inspector.getByTestId("graph2d-combined-intersection"))
       .toContainText("column divergence", { timeout: 60_000 });
+    await expect(inspector.getByTestId("graph2d-combined-intersection"))
+      .toContainText("row curl-magnitude");
     await inspector.getByTestId("graph2d-open-intersection").click();
     await expect(explorer.getByTestId("scientific-region-graph-focus-intersection"))
       .toBeVisible({ timeout: 60_000 });

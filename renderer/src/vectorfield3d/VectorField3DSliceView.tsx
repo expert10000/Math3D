@@ -6,7 +6,8 @@ import type { VectorField3DDocument, VectorField3DSliceArtifact,
   Graph2DScientificVolume, Graph2DLinkedRegionSelection,
   AnalysisResultEnvelope } from "@math3d/core";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
-import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot } from "./sliceSeedPlacement";
+import { sliceSeedMarkerAtPoint, sliceSeedPointAtSvgPosition, slicePlot,
+  sliceSubrectangleBounds } from "./sliceSeedPlacement";
 import type { ScalarSliceOverlay, SliceOverlayArrow,
   LinkedOverlayLineProfile, OverlayRegionSummary, VectorSliceOverlayPlane } from "./scientificSliceOverlay";
 import { phaseContourSegments } from "./scientificSliceOverlay";
@@ -36,6 +37,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   overlayRegion = null, onOverlayRegionChange, savedRegionResults = [],
   regionResultStatuses = {}, onSaveRegionResult, onSendRegionToGraphs,
   onSendCombinedRegionToGraphs, onPublishCombinedRegion, onFocusRegionInGraphs,
+  onFocusSubrectangleInGraphs,
   onSendVectorDerivedToGraphs, onPublishVectorDerivedRegion,
   regionBusy = false, linkedRegionFocus = null }: {
   document: VectorField3DDocument; slice: VectorField3DSliceArtifact;
@@ -91,6 +93,8 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   onPublishVectorDerivedRegion?: (region: VectorField3DOverlayRegion) => Promise<void>;
   onFocusRegionInGraphs?: (region: VectorField3DOverlayRegion,
     physical: Graph2DLinkedRegionSelection["physical"], profileAxis: 0 | 1) => Promise<void>;
+  onFocusSubrectangleInGraphs?: (region: VectorField3DOverlayRegion,
+    bounds: VectorField3DOverlayRegion["bounds"]) => Promise<void>;
   regionBusy?: boolean;
   onSendLineToGraphs?: (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => void;
@@ -106,11 +110,19 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
   const [graphSelectionFirstX, setGraphSelectionFirstX] = useState<number | null>(null);
   const [graphSelectionBusy, setGraphSelectionBusy] = useState(false);
   const [graphSelectionError, setGraphSelectionError] = useState("");
+  const [subrectangleSelecting, setSubrectangleSelecting] = useState(false);
+  const [subrectangleFirst, setSubrectangleFirst] = useState<readonly [number, number, number] | null>(null);
+  const [subrectangleProposal, setSubrectangleProposal] = useState<VectorField3DOverlayRegion["bounds"] | null>(null);
+  const [subrectangleBusy, setSubrectangleBusy] = useState(false);
+  const [subrectangleError, setSubrectangleError] = useState("");
   useEffect(() => { setRegionSelecting(false); setRegionFirstCorner(null); },
     [slice.normalAxis, slice.fixedCoordinate, document.identity.structuralHash,
       document.workspace?.scalarOverlay?.visible, document.workspace?.complexOverlay?.visible]);
   useEffect(() => { setGraphSelectionMode(null); setGraphSelectionFirstX(null);
     setGraphSelectionError(""); }, [overlayRegion, slice.normalAxis, slice.fixedCoordinate]);
+  useEffect(() => { setSubrectangleSelecting(false); setSubrectangleFirst(null);
+    setSubrectangleProposal(null); setSubrectangleError(""); },
+    [overlayRegion, slice.normalAxis, slice.fixedCoordinate]);
   const arrowMarkerId = useId().replace(/:/g, "");
   const [first, second] = slice.planeAxes;
   const { left, top, width, height } = slicePlot;
@@ -147,6 +159,15 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     return sliceSeedMarkerAtPoint(slice, point);
   }) : null;
   const pendingRegionMarker = regionFirstCorner ? sliceSeedMarkerAtPoint(slice, regionFirstCorner) : null;
+  const pendingSubrectangleMarker = subrectangleFirst ?
+    sliceSeedMarkerAtPoint(slice, subrectangleFirst) : null;
+  const subrectangleMarkers = subrectangleProposal ? [0, 1].map(end => {
+    const point = [0, 0, 0] as [number, number, number];
+    point[slice.normalAxis] = slice.fixedCoordinate;
+    point[first] = subrectangleProposal[0][end];
+    point[second] = subrectangleProposal[1][end];
+    return sliceSeedMarkerAtPoint(slice, point);
+  }) : null;
   const crosshairCoordinate = (coordinates: readonly number[], value: number,
     start: number, cell: number) => {
     if (value < coordinates[0]! - 1e-9 || value > coordinates.at(-1)! + 1e-9) return null;
@@ -226,6 +247,28 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
     <svg viewBox={`${640 * center[0] - 320 / zoom} ${560 * center[1] - 280 / zoom} ${640 / zoom} ${560 / zoom}`}
       role="img" aria-label={`${slice.channel} map from ${slice.min.toPrecision(4)} to ${slice.max.toPrecision(4)} ${slice.unit}; ${slice.rejected} invalid samples`}
       onClick={event => {
+        if (subrectangleSelecting && overlayRegion && onFocusSubrectangleInGraphs) {
+          const transform = event.currentTarget.getScreenCTM();
+          const local = transform ? new DOMPoint(event.clientX, event.clientY)
+            .matrixTransform(transform.inverse()) : null;
+          const point = local ? sliceSeedPointAtSvgPosition(slice, local.x, local.y) : null;
+          if (!point || slice.planeAxes.some((axis, index) =>
+              point[axis] < overlayRegion.bounds[index][0] - 1e-9 ||
+              point[axis] > overlayRegion.bounds[index][1] + 1e-9)) {
+            setSubrectangleError("Click inside the saved physical rectangle."); return;
+          }
+          if (!subrectangleFirst || subrectangleProposal) {
+            setSubrectangleFirst(point); setSubrectangleProposal(null);
+            setSubrectangleError(""); return;
+          }
+          const bounds = sliceSubrectangleBounds(slice, overlayRegion, subrectangleFirst, point);
+          if (!bounds) {
+            setSubrectangleError("Choose two distinct corners inside the saved physical rectangle.");
+            return;
+          }
+          setSubrectangleProposal(bounds); setSubrectangleError("");
+          return;
+        }
         if (graphSelectionMode && overlayRegion && onFocusRegionInGraphs) {
           const transform = event.currentTarget.getScreenCTM();
           const local = transform ? new DOMPoint(event.clientX, event.clientY)
@@ -311,7 +354,7 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
             color(value, slice.min, slice.max)}
           opacity={clipped ? .2 : scalarOverlay ? scalarOverlay.opacity : 1}
           style={{ cursor: seedPlacementActive || onProbeSelect ? "crosshair" : undefined }} onClick={() => {
-            if (!onProbeSelect || seedPlacementActive || graphSelectionMode ||
+            if (!onProbeSelect || seedPlacementActive || graphSelectionMode || subrectangleSelecting ||
                 regionSelecting) return;
             const point = [0, 0, 0] as [number, number, number];
             point[slice.normalAxis] = slice.fixedCoordinate;
@@ -388,6 +431,17 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
           width={Math.abs(intersectionX[1]! - intersectionX[0]!)}
           height={Math.abs(intersectionY[1]! - intersectionY[0]!)}
           fill="#a78bfa" fillOpacity="0.32" stroke="#e9d5ff" strokeWidth="2" />}
+      {subrectangleMarkers?.[0] && subrectangleMarkers?.[1] && <rect
+        data-testid="scientific-subrectangle-proposal-marker" pointerEvents="none"
+        x={Math.min(subrectangleMarkers[0][0], subrectangleMarkers[1][0])}
+        y={Math.min(subrectangleMarkers[0][1], subrectangleMarkers[1][1])}
+        width={Math.abs(subrectangleMarkers[1][0] - subrectangleMarkers[0][0])}
+        height={Math.abs(subrectangleMarkers[1][1] - subrectangleMarkers[0][1])}
+        fill="#34d399" fillOpacity="0.3" stroke="#34d399" strokeWidth="2" />}
+      {pendingSubrectangleMarker && subrectangleSelecting && !subrectangleProposal &&
+        <circle data-testid="scientific-subrectangle-first-corner" pointerEvents="none"
+          cx={pendingSubrectangleMarker[0]} cy={pendingSubrectangleMarker[1]} r="7"
+          fill="#34d399" stroke="#fff" strokeWidth="2" />}
       {pendingRegionMarker && regionSelecting && <circle
         data-testid="scientific-overlay-region-first-corner" pointerEvents="none"
         cx={pendingRegionMarker[0]} cy={pendingRegionMarker[1]} r="7"
@@ -523,13 +577,31 @@ export function VectorField3DSliceView({ document, slice, probe, clipBounds, zoo
       graphSelectionBusy={graphSelectionBusy} graphSelectionError={graphSelectionError}
       onGraphSelectionMode={onFocusRegionInGraphs ? (mode, axis = 0) => {
         setRegionSelecting(false); setRegionFirstCorner(null);
+        setSubrectangleSelecting(false); setSubrectangleFirst(null); setSubrectangleProposal(null);
         setGraphSelectionAxis(axis);
         setGraphSelectionMode(mode); setGraphSelectionFirstX(null); setGraphSelectionError("");
       } : undefined}
+      subrectangleSelecting={subrectangleSelecting} subrectangleFirst={subrectangleFirst}
+      subrectangleProposal={subrectangleProposal} subrectangleBusy={subrectangleBusy}
+      subrectangleError={subrectangleError}
+      onSubrectangleToggle={onFocusSubrectangleInGraphs ? () => {
+        setGraphSelectionMode(null); setGraphSelectionFirstX(null);
+        setRegionSelecting(false); setRegionFirstCorner(null);
+        setSubrectangleSelecting(!subrectangleSelecting);
+        setSubrectangleFirst(null); setSubrectangleProposal(null); setSubrectangleError("");
+      } : undefined}
+      onSubrectangleConfirm={subrectangleProposal && overlayRegion && onFocusSubrectangleInGraphs ?
+        () => { setSubrectangleBusy(true); setSubrectangleError("");
+          void onFocusSubrectangleInGraphs(overlayRegion, subrectangleProposal)
+            .then(() => { setSubrectangleSelecting(false); setSubrectangleFirst(null);
+              setSubrectangleProposal(null); })
+            .catch(cause => setSubrectangleError(cause instanceof Error ? cause.message : String(cause)))
+            .finally(() => setSubrectangleBusy(false)); } : undefined}
       status={overlayStatus} onChange={onOverlayRegionChange}
       vectorStatus={vectorStatus} scalarStatus={scalarStatus} complexStatus={complexStatus}
       selecting={regionSelecting} onStartSelection={() => {
         setGraphSelectionMode(null); setGraphSelectionFirstX(null);
+        setSubrectangleSelecting(false); setSubrectangleFirst(null); setSubrectangleProposal(null);
         setRegionSelecting(!regionSelecting); setRegionFirstCorner(null);
       }} />}
   </figure>;

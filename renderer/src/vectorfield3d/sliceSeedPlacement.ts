@@ -1,4 +1,4 @@
-import type { VectorField3DSliceArtifact } from "@math3d/core";
+import type { VectorField3DSliceArtifact, VectorField3DOverlayRegion } from "@math3d/core";
 
 export const slicePlot = { left: 58, top: 16, width: 560, height: 480 } as const;
 
@@ -46,4 +46,28 @@ export function sliceSeedMarkerAtPoint(slice: VectorField3DSliceArtifact,
     slice.shape[0] * slicePlot.width,
   slicePlot.top + (1 - (cellAt(second, point[slice.planeAxes[1]]) + .5) /
     slice.shape[1]) * slicePlot.height];
+}
+
+/** Keep the slice's displayed axis order, including the upward second axis. */
+export function sliceSubrectangleBounds(slice: VectorField3DSliceArtifact,
+  region: VectorField3DOverlayRegion,
+  first: readonly [number, number, number], second: readonly [number, number, number]):
+  VectorField3DOverlayRegion["bounds"] | null {
+  if (region.normalAxis !== slice.normalAxis ||
+      Math.abs(region.fixedCoordinate - slice.fixedCoordinate) > 1e-9 ||
+      ![...first, ...second].every(Number.isFinite) ||
+      Math.abs(first[slice.normalAxis] - slice.fixedCoordinate) > 1e-9 ||
+      Math.abs(second[slice.normalAxis] - slice.fixedCoordinate) > 1e-9) return null;
+  const bounds = slice.planeAxes.map((axis, index) => {
+    const low = Math.min(first[axis], second[axis]);
+    const high = Math.max(first[axis], second[axis]);
+    const source = slice.coordinates[index];
+    if (!source.length || low < region.bounds[index][0] - 1e-9 ||
+        high > region.bounds[index][1] + 1e-9 ||
+        low < source[0]! - 1e-9 || high > source.at(-1)! + 1e-9 ||
+        high - low < 1e-10) return null;
+    return [low, high] as [number, number];
+  });
+  return bounds.every((pair): pair is [number, number] => pair !== null) ?
+    bounds as [[number, number], [number, number]] : null;
 }
