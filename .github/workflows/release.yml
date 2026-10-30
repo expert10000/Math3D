@@ -312,14 +312,6 @@ jobs:
           if-no-files-found: error
           path: release-assets/*
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          fail_on_unmatched_files: true
-          body_path: RELEASE_NOTES.md
-          files: ${{ steps.assets.outputs.asset_glob }}
-
   linux-release:
     needs: [mobile-release-gate, windows-release]
     runs-on: ubuntu-22.04
@@ -520,10 +512,247 @@ jobs:
           if-no-files-found: error
           path: release-assets-linux/*
 
-      - name: Publish Linux assets to GitHub release
+  theory-lab-installer:
+    needs: mobile-release-gate
+    runs-on: windows-2022
+    timeout-minutes: 90
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - name: Check out pinned Theory Lab source
+        uses: actions/checkout@v7
+        with:
+          repository: expert10000/theory-lab
+          ref: 3c883fa4a69da2ee9f59b1425ac181094a25c276
+      - name: Record source revision
+        id: source
+        shell: pwsh
+        run: |
+          "sha=$((& git rev-parse HEAD).Trim())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Build pinned Lab installer
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab npm ci failed' }
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab venv creation failed' }
+          & .\.venv\Scripts\python.exe -m pip install -c workers/quantum-python/requirements.lock -e workers/quantum-python
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab pinned worker install failed' }
+          & .\.venv\Scripts\python.exe -m pip install -r workers/quantum-python/requirements-packaging.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab frozen worker dependencies failed' }
+          $env:CI = 'false'
+          npm run package:win:installer
+          if ($LASTEXITCODE -ne 0) { throw 'Theory Lab NSIS build failed' }
+      - name: Upload exact Lab installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-theory-lab-installer
+          if-no-files-found: error
+          compression-level: 0
+          path: release/Quantum-Hamiltonian-Lab-Setup-*.exe
+
+  clean-install-gate:
+    needs: [windows-release, theory-lab-installer]
+    runs-on: windows-2022
+    timeout-minutes: 55
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+      - uses: actions/checkout@v7
+        with:
+          repository: expert10000/theory-lab
+          ref: ${{ needs.theory-lab-installer.outputs.source_sha }}
+          path: theory-lab
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets-${{ env.RELEASE_TAG }}
+          path: release-assets
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-theory-lab-installer
+          path: lab-installer
+      - name: Pin the exact installer bytes
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $math = (Resolve-Path -LiteralPath "release-assets/Math3D-Setup-$version.exe").Path
+          $lab = @(Get-ChildItem -LiteralPath lab-installer -Filter 'Quantum-Hamiltonian-Lab-Setup-*.exe' -File)
+          if ($lab.Count -ne 1) { throw 'Expected exactly one Lab installer' }
+          $mathSource = (& git rev-parse HEAD).Trim()
+          $labSource = (& git -C theory-lab rev-parse HEAD).Trim()
+          if ($labSource -ne '${{ needs.theory-lab-installer.outputs.source_sha }}') { throw 'Lab checkout drifted from build' }
+          New-Item -ItemType Directory -Path candidate -Force | Out-Null
+          Copy-Item -LiteralPath $math -Destination (Join-Path candidate ([IO.Path]::GetFileName($math)))
+          Copy-Item -LiteralPath $lab[0].FullName -Destination (Join-Path candidate $lab[0].Name)
+          [ordered]@{
+            schema = 'math3d/two-app-candidate/v1'
+            createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+            buildRunId = $env:GITHUB_RUN_ID
+            math3d = [ordered]@{
+              version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+              commit = $mathSource
+              channel = 'stable'
+              installerName = [IO.Path]::GetFileName($math)
+              installerSha256 = (Get-FileHash -LiteralPath $math -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+            theoryLab = [ordered]@{
+              version = (Get-Content theory-lab/package.json -Raw | ConvertFrom-Json).version
+              commit = $labSource
+              installerName = $lab[0].Name
+              installerSha256 = (Get-FileHash -LiteralPath $lab[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath candidate/candidate-manifest.json -Encoding UTF8
+          if ((Get-Content candidate/candidate-manifest.json -Raw | ConvertFrom-Json).math3d.version -ne $version) {
+            throw 'Final tag and frozen source package version differ'
+          }
+      - name: Install exact final files and run clean Lab handoff
+        shell: pwsh
+        run: |
+          $manifest = Get-Content candidate/candidate-manifest.json -Raw | ConvertFrom-Json
+          & scripts/stable-two-app-signoff.ps1 -TheoryLabRepo theory-lab `
+            -Math3DInstaller (Join-Path candidate $manifest.math3d.installerName) `
+            -TheoryLabInstaller (Join-Path candidate $manifest.theoryLab.installerName) `
+            -CandidateManifest candidate/candidate-manifest.json `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'final-clean-install') `
+            -EvidencePath (Join-Path $PWD 'test-results/final-clean-install.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Final clean-install gate failed' }
+      - name: Preserve exact final pair and clean evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: final-clean-install-evidence
+          if-no-files-found: ignore
+          compression-level: 0
+          path: |
+            candidate/*
+            test-results/final-clean-install.json
+            test-results/playwright/quantum-installed-ui-round*/trace.zip
+
+  upgrade-gate:
+    needs: [windows-release, theory-lab-installer, clean-install-gate]
+    runs-on: windows-2022
+    timeout-minutes: 55
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v7
+        with:
+          name: final-clean-install-evidence
+          path: clean-evidence
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets-${{ env.RELEASE_TAG }}
+          path: release-assets
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-theory-lab-installer
+          path: lab-installer
+      - name: Require identical files to clean-install gate
+        shell: pwsh
+        run: |
+          $manifest = Get-Content clean-evidence/candidate/candidate-manifest.json -Raw | ConvertFrom-Json
+          foreach ($pair in @(
+            @((Join-Path release-assets $manifest.math3d.installerName), $manifest.math3d.installerSha256),
+            @((Join-Path lab-installer $manifest.theoryLab.installerName), $manifest.theoryLab.installerSha256)
+          )) {
+            $actual = (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $pair[1]) { throw "Installer changed between gates: $($pair[0])" }
+          }
+          New-Item -ItemType Directory -Path candidate -Force | Out-Null
+          Copy-Item clean-evidence/candidate/* candidate/
+      - name: Download published v1.6.0 installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Path published -Force | Out-Null
+          gh release download v1.6.0 --repo expert10000/Math3D --pattern 'Math3D-Setup-1.6.0.exe' --dir published
+          if ($LASTEXITCODE -ne 0) { throw 'Published v1.6.0 download failed' }
+      - name: Upgrade v1.6.0 with the exact final files
+        shell: pwsh
+        run: |
+          & scripts/stable-upgrade-two-app-signoff.ps1 `
+            -PublishedInstaller published/Math3D-Setup-1.6.0.exe `
+            -CandidateDirectory candidate `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'final-upgrade') `
+            -EvidencePath (Join-Path $PWD 'test-results/final-upgrade.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Final v1.6.0 upgrade gate failed' }
+      - name: Preserve upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: final-upgrade-evidence
+          if-no-files-found: ignore
+          path: |
+            test-results/final-upgrade.json
+            test-results/playwright/stable-upgrade-project-settings*/trace.zip
+            test-results/playwright/quantum-installed-ui-round*/trace.zip
+
+  publish-release:
+    needs: [windows-release, linux-release, theory-lab-installer, clean-install-gate, upgrade-gate]
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets-${{ env.RELEASE_TAG }}
+          path: release-assets
+      - uses: actions/download-artifact@v7
+        with:
+          name: linux-release-assets-${{ env.RELEASE_TAG }}
+          path: release-assets-linux
+      - uses: actions/download-artifact@v7
+        with:
+          name: final-clean-install-evidence
+          path: clean-evidence
+      - uses: actions/download-artifact@v7
+        with:
+          name: final-upgrade-evidence
+          path: upgrade-evidence
+      - name: Test release evidence verifier
+        run: node scripts/test-stable-release-gates.mjs
+      - name: Verify both gates and exact publish bytes
+        run: node scripts/verify-stable-release-gates.mjs
+      - name: Publish tested stable assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ env.RELEASE_TAG }}
           fail_on_unmatched_files: true
           body_path: RELEASE_NOTES.md
-          files: ${{ steps.assets.outputs.asset_glob }}
+          files: |
+            release-assets/*
+            release-assets-linux/*
+            clean-evidence/candidate/Quantum-Hamiltonian-Lab-Setup-*.exe
+            clean-evidence/candidate/candidate-manifest.json
+            clean-evidence/test-results/final-clean-install.json
+            upgrade-evidence/test-results/final-upgrade.json
