@@ -33,6 +33,9 @@ try {
   write("resources/scientific-publisher/examples/sincos-grid.json", "{}\n");
   write("resources/LICENSE", "license fixture");
   write("resources/THIRD_PARTY_NOTICES.md", "notice fixture");
+  for (const name of ["dxcompiler.dll", "dxil.dll", "resources.pak", "resources/elevate.exe"]) {
+    write(name, `${name} fixture`);
+  }
   fs.writeFileSync(python, JSON.stringify({ pythonVersion: "3.11.0", packages: [{
     name: "fixture-lib", version: "1.0.0", licenseExpression: "MIT", dependencies: [],
   }] }));
@@ -56,6 +59,12 @@ try {
     const item = bom.components.find(component => component["bom-ref"] ===
       `file:resources/scientific-publisher/${name}`);
     assert.equal(item.properties.find(property => property.name === "math3d:owner").value, "application:math3d");
+  }
+  for (const name of ["dxcompiler.dll", "dxil.dll", "resources.pak", "resources/elevate.exe"]) {
+    const item = bom.components.find(component => component["bom-ref"] === `file:${name}`);
+    assert(item, `${name} is present in the SBOM`);
+    assert.equal(item.properties.find(property => property.name === "math3d:owner").value,
+      name === "resources/elevate.exe" ? "application:math3d" : `runtime:electron:${JSON.parse(fs.readFileSync(path.join(root, "node_modules/electron/package.json"))).version}`);
   }
 
   write("resources/unknown.exe", "unexpected binary");

@@ -284,9 +284,10 @@ const classify = (name) => {
   }
   if (name === "resources/app.asar" || name.startsWith("resources/app.asar.unpacked/") || name.startsWith("resources/quantum-scenes/") || name.startsWith("resources/scientific-scenes/") || name.startsWith("resources/scientific-publisher/") || name.startsWith("resources/LICENSE") || name.startsWith("resources/gallery-images/") || ["resources/THIRD_PARTY_NOTICES.md", "resources/SOURCE_OFFER.md"].includes(name)) return appRef;
   if (name === "resources/electron.asar") return electronRef;
-  if (name === "resources/app-update.yml") return appRef;
+  // electron-builder places its Windows elevation helper beside the app archive.
+  if (name === "resources/app-update.yml" || name === "resources/elevate.exe") return appRef;
   if (/^(?:Math3D(?: Dev)?\.exe|math3d(?:-dev)?)$/i.test(name)) return appRef;
-  if (/^(?:chrome(?:_100_percent|_200_percent)?\.pak|chrome-sandbox|chrome_crashpad_handler(?:\.exe)?|d3dcompiler_47\.dll|ffmpeg\.dll|icudtl\.dat|libEGL\.(?:dll|so)|libGLESv2\.(?:dll|so)|libffmpeg\.so|libvulkan\.so\.1|libvk_swiftshader\.so|snapshot_blob\.bin|v8_context_snapshot\.bin|vk_swiftshader\.dll|vk_swiftshader_icd\.json|vulkan-1\.dll|LICENSE\.electron\.txt|LICENSES\.chromium\.html|version)$/i.test(name)) return electronRef;
+  if (/^(?:chrome(?:_100_percent|_200_percent)?\.pak|chrome-sandbox|chrome_crashpad_handler(?:\.exe)?|d3dcompiler_47\.dll|dxcompiler\.dll|dxil\.dll|ffmpeg\.dll|icudtl\.dat|libEGL\.(?:dll|so)|libGLESv2\.(?:dll|so)|libffmpeg\.so|libvulkan\.so\.1|libvk_swiftshader\.so|resources\.pak|snapshot_blob\.bin|v8_context_snapshot\.bin|vk_swiftshader\.dll|vk_swiftshader_icd\.json|vulkan-1\.dll|LICENSE\.electron\.txt|LICENSES\.chromium\.html|version)$/i.test(name)) return electronRef;
   if (/^locales\/[A-Za-z0-9_-]+\.pak$/.test(name)) return electronRef;
   if (/^swiftshader\/(?:libEGL|libGLESv2)\.(?:dll|so)$/.test(name)) return electronRef;
   return null;
