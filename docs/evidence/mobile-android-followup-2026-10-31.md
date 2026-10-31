@@ -31,12 +31,18 @@ The existing internal and release apps were not changed.
   It applies Android keyboard height avoidance only while the keyboard is
   visible. The independent package was updated in place; saved projects remained
   available. APK Signature Scheme v2 verification passed with one debug signer.
-- Latest installed APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-function-error.apk`.
+- TP01/TP05/TP04 APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-function-error.apk`.
   SHA-256: `ea8a6b49165f365049571c5dd81b7f97024fb00c0447997c39ac2f8bd03f0c9f`.
   It adds a visible inline function-validation error in the Functions panel.
   Android v2 signature verification passed with one debug signer, and
   `adb install -r` preserved the isolated app's data. Mobile TypeScript and all
   417 mobile unit tests passed on this source.
+- Latest installed APK, built on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-analysis-error.apk`.
+  SHA-256: `fc99d655b4cd93e5a68c6327f853e19999fb974d3a5f366f7e040976b4c2e21d`.
+  It places failed-analysis errors inside the Analyze panel. Android v2
+  signature verification passed with the same one debug signer; `adb install -r`
+  preserved the isolated app's data. Mobile TypeScript and all 417 mobile unit
+  tests passed. The full TP04 walkthrough below was on the preceding APK.
 - `adb install -r` succeeded and kept the isolated app's saved data. Android
   APK Signature Scheme v2 verification passed with one existing debug signer,
   certificate SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
@@ -60,9 +66,11 @@ The existing internal and release apps were not changed.
 | Graph opening | The owner reported one apparent hang while opening a Graph, then reported that Beating waves responded to a single-finger drag after a restart. The intermediate keyboard-guard APK opened that featured Graph from Home on our retry; the first UI check, including a slow UI-tree dump, completed in 7.3 seconds. This does not establish the cause or rule out an intermittent stall. |
 | Graph opening retry on keyboard-guard APK | After reconnecting the Samsung, one Home → Beating waves launch completed with app-reported launch/screen-commit time 419 ms. Six Projects → saved Beating waves reopen cycles all showed the Graph. ADB helper plus UI-tree checks took 7.3–7.7 seconds each; those are not app launch times. The 297-line scoped process log had no filtered fatal/ANR match. The [retry readings](mobile-android-graph-open-retry-2026-10-31.json) are checked in; `graph-open-retry-process-logcat.txt` remains local. The owner's earlier hang remains unexplained. |
 | Portrait keyboard on keyboard-rotation APK | The keyboard-guard APK left the expression editor behind the Samsung keyboard. On the keyboard-rotation APK, focusing Beating waves' expression resized the Graph workspace from bottom coordinate 2042 to 1332 physical pixels, showed a full-height Functions panel above the keyboard, and kept the expression field visible. After scrolling, **Cancel function draft** was reachable; it closed the keyboard and restored the plot. Hiding the keyboard restored the 2042-pixel workspace. Rotating to landscape with the keyboard open, hiding it, and returning to portrait also restored full height; the preceding keyboard-layout APK had failed that sequence. Short landscape Graph without a keyboard retained a 529-pixel plot. See the [before](mobile-android-keyboard-before-2026-10-31.png) and [fixed](mobile-android-keyboard-fixed-2026-10-31.png) screenshots. |
-| TP01 authoring on latest APK | A new Two slopes copy showed `y=x`; applying `5*x` changed the plotted line. Undo restored `x`, Redo restored `5*x`. Applying invalid `x+` kept the draft open and showed a readable parse error inside the Functions panel. Cancel retained `5*x`. See the [exact-build TP01/TP05 record](mobile-android-tp01-tp05-2026-10-31.json) and its linked screenshots. |
-| TP05 persistence on latest APK | After `Graph saved.` and an app-reported 278 ms project-save completion, force-stop/relaunch retained `5*x`. Reopening that saved Graph from Projects also showed `5*x`. Explore → unsaved Catenoid showed one rendered surface and remained current after force-stop/relaunch. A preliminary trial stopped before Save completed and was excluded. |
-| Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, and the final process of the latest APK had 285, with no such match in these scoped captures. The reported hang was not accompanied by a matching log entry. |
+| TP01 authoring on function-error APK | A new Two slopes copy showed `y=x`; applying `5*x` changed the plotted line. Undo restored `x`, Redo restored `5*x`. Applying invalid `x+` kept the draft open and showed a readable parse error inside the Functions panel. Cancel retained `5*x`. See the [exact-build TP01/TP05 record](mobile-android-tp01-tp05-2026-10-31.json) and its linked screenshots. |
+| TP05 persistence on function-error APK | After `Graph saved.` and an app-reported 278 ms project-save completion, force-stop/relaunch retained `5*x`. Reopening that saved Graph from Projects also showed `5*x`. Explore → unsaved Catenoid showed one rendered surface and remained current after force-stop/relaunch. A preliminary trial stopped before Save completed and was excluded. |
+| TP04 analysis on function-error APK | A new Two slopes copy returned a complete intersection at `(-1.0000000, -1.0000000)` with residual 0 after explicitly selecting the two functions. A new tangent example returned `y - (1) = 2(x - (1))` for the parabola at `x=1`. After applying `x^2+1`, the previous tangent result was marked stale and Locate was disabled. See the [TP04 record](mobile-android-tp04-analysis-2026-11-01.json) and screenshots. |
+| Analyze error on latest installed APK | Before the change, a failed intersection attempt reported `Select two distinct explicit Graph2D functions.` below the overlaid Analyze panel. On the latest APK, an invalid `0z` analysis x displayed `Enter finite numeric inputs.` in red directly under Run analysis, including while the Samsung keyboard was open. Correcting it to `0` cleared the error. The TP04 math walkthrough was not repeated on this newer APK. |
+| Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, the final process of the function-error APK had 285, and the current analysis-error APK process had 460, with no such match in these scoped captures. The reported hang was not accompanied by a matching log entry. |
 
 The initial landscape failure is resolved for this Samsung phone at normal and
 1.3 font scale. Circular flow still reports `Approximate/incomplete display`
@@ -89,8 +97,8 @@ with unperformed steps pending.
 
 Build, signature, most screenshots, ten raw readings and scoped logcat are under
 `output/mobile-android-followup-20261031/` and are not committed. The keyboard
-before/after screenshots, Graph-open retry readings and TP01/TP05 screenshots
-and result are checked in beside this report.
+before/after screenshots, Graph-open retry readings, and TP01/TP04/TP05
+screenshots and results are checked in beside this report.
 The structured Samsung results are also copied to
 [mobile-android-followup-2026-10-31.results.json](mobile-android-followup-2026-10-31.results.json)
 beside this report.
@@ -100,10 +108,10 @@ beside this report.
 The [mobile roadmap](../mobile-roadmap.md), [canonical Graph roadmap](../math3d-graph2d-desktop-mobile-roadmap.md)
 and [1.6.0 test pack](../test-packs/1.6.0/README.md) define the wider scope.
 The comprehensive Samsung record has **TP10 and TP15 passed, 13 cases pending**;
-the separate latest-APK supplement has **TP01 and TP05 passed**. Partial
+the separate function-error-APK supplements have **TP01, TP04 and TP05 passed**. Partial
 observations in a pending case are not a complete pass. The comprehensive
 record identifies APK SHA-256 `332a61f9…`, while later supplemental checks used
-`19893849…`, `a41c6e61…`, and the latest installed `ea8a6b49…`. Keep those
+`19893849…`, `a41c6e61…`, `ea8a6b49…`, and the latest installed `fc99d655…`. Keep those
 evidence sets separate when adding results.
 
 1. **Diagnose the Graph-opening stall.** On the installed Notes Check APK,

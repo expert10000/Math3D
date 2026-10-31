@@ -122,7 +122,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
-  const visibleError = panelDestination === "Functions" && editor ? "" : error;
+  const visibleError = (panelDestination === "Functions" && editor) || panelDestination === "Analyze" ? "" : error;
   const [advanced, setAdvanced] = useState<MobileGraphAdvancedEditor | null>(null);
   const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
@@ -650,7 +650,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         {button("Clear probe", () => commit(() => adapter.commitSelection({ objectId: null, probe: null })))}
         {probe && button("Cycle overlap", () => tap(graph2DWorldToScreen(document.display.viewport, size, probe)))}
         <MobileGraphAnalysisPanel document={document} draft={analysisDraft} result={analysis} pending={analysisPending}
-          onDraft={(draft) => { cancelFit(false); setAnalysisDraft(draft); }} onRun={runAnalysis} onCancel={() => cancelFit(true)}
+          validationError={error} onDraft={(draft) => { cancelFit(false); setError(""); setAnalysisDraft(draft); }} onRun={runAnalysis} onCancel={() => cancelFit(true)}
           onSaveCandidate={(object) => commit(() => adapter.commitConstruction({ type: "create", object }))}
           onSaveTangent={(point) => commit(() => {
             if (!analysis || !isMobileGraphAnalysisCurrent(analysis, document, analysisDraft) || !analysis.overlays.length)

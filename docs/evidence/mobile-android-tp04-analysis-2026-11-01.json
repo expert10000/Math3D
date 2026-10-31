@@ -1,0 +1,30 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "cases": [
+    {
+      "id": "TP04",
+      "status": "passed",
+      "apkSha256": "ea8a6b49165f365049571c5dd81b7f97024fb00c0447997c39ac2f8bd03f0c9f",
+      "testedAtDate": "2026-10-31",
+      "observations": "On a new Two slopes copy, explicitly selected Steeper line and Intersect with Unit slope. The bounded analysis reported complete and Intersection: (-1.0000000, -1.0000000), residual 0. On a new A tangent at x = 1 copy, selected Parabola and ran tangent analysis at x=1. The result was y - (1) = 2(x - (1)). Changed the source expression from x^2 to x^2+1 and applied it. The old result remained visible as stale, with Locate disabled.",
+      "evidence": [
+        "mobile-android-tp04-intersection-2026-11-01.png",
+        "mobile-android-tp04-tangent-slope-2026-11-01.png",
+        "mobile-android-tp04-tangent-stale-2026-11-01.png"
+      ]
+    }
+  ],
+  "followup": {
+    "apkSha256": "fc99d655b4cd93e5a68c6327f853e19999fb974d3a5f366f7e040976b4c2e21d",
+    "testedAtDate": "2026-11-01",
+    "sourceBaseCommit": "05bd439061e7915f2aa23d2d4bce1427088daef0",
+    "sourceIncludesLocalChanges": true,
+    "observation": "The previous APK placed a failed intersection input error below the overlaid Analyze panel. The updated APK showed 'Enter finite numeric inputs.' in red directly below Run analysis for an invalid 0z analysis x. Editing the field back to 0 cleared that error. APK Signature Scheme v2 verified with the same single debug signer; adb install -r preserved app data. Mobile TypeScript and all 417 mobile unit tests passed.",
+    "evidence": ["mobile-android-analysis-error-visible-2026-11-01.png"]
+  },
+  "scope": "TP04 passed on the earlier isolated Notes Check APK. The follow-up error display was verified on the newer isolated APK; the complete TP04 walkthrough was not repeated on that build. Neither APK certifies the internal or release package."
+}

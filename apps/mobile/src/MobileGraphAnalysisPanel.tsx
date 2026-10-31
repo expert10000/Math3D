@@ -16,9 +16,9 @@ const firstPolarAngle = (source: Extract<Graph2DDocument["source"]["objects"][nu
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
 const firstParametricParameter = (source: Extract<Graph2DDocument["source"]["objects"][number], { kind: "parametric" }>) =>
   source.domain.includeMin ? source.domain.min : (source.domain.min + source.domain.max) / 2;
-export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onDraft, onRun, onCancel, onLocate, onSaveCandidate, onSaveTangent }: {
+export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, validationError, onDraft, onRun, onCancel, onLocate, onSaveCandidate, onSaveTangent }: {
   document: Graph2DDocument; draft: MobileGraphAnalysisDraft; result: MobileGraphRegressionAnalysis | null;
-  pending?: number | null; onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onCancel?: () => void;
+  pending?: number | null; validationError?: string; onDraft: (draft: MobileGraphAnalysisDraft) => void; onRun: () => void; onCancel?: () => void;
   onLocate: (probe: Graph2DProbe) => void;
   onSaveCandidate: (object: Graph2DConstructionObject) => void;
   onSaveTangent: (probe: Graph2DProbe) => void }) => {
@@ -106,6 +106,7 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
     {polarOperation && <Text>Angles are in radians. Swept area counts repeated traversal.</Text>}
     <View style={s.row}>{button("Run analysis", onRun, pending !== null && pending !== undefined || !sources.some((object) => object.id === draft.objectId))}
       {pending !== null && pending !== undefined && button("Cancel fit", () => onCancel?.())}</View>
+    {!!validationError && <Text accessibilityLiveRegion="polite" testID="mobile-graph-analysis-error" style={s.error}>{validationError}</Text>}
     {pending !== null && pending !== undefined && <Text accessibilityLiveRegion="polite">Fitting checked point series… {Math.round(pending * 100)}%</Text>}
     <Text>Approximate, bounded calculations. Error estimates are not certified. No automatic all-function calculations.</Text>
     {result && <View style={s.card} testID="mobile-graph-analysis-results"><Text accessibilityLiveRegion="polite" style={s.title}>
@@ -130,5 +131,6 @@ export const MobileGraphAnalysisPanel = ({ document, draft, result, pending, onD
   </View>;
 };
 const s = StyleSheet.create({ title: { fontSize: 16, fontWeight: "600" }, row: { flexDirection: "row", flexWrap: "wrap" },
+  error: { color: "#b91c1c", paddingVertical: 8 },
   card: { paddingVertical: 8, borderTopWidth: 1, borderColor: "#cbd5e1" }, button: { minHeight: 44, minWidth: 44, padding: 10, justifyContent: "center" },
   input: { minHeight: 44, borderWidth: 1, borderColor: "#94a3b8", padding: 8, backgroundColor: "white" } });
