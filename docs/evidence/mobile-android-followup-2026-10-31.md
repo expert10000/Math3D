@@ -8,18 +8,29 @@ The existing internal and release apps were not changed.
 
 ## Tested artifact and software gates
 
-- HEAD: `3c960e5d3f067a18c5750557a12ff257862b1fcc` plus local worktree
-  changes. The worktree is not a clean-source attestation.
+- Comprehensive-device source HEAD: `3c960e5d3f067a18c5750557a12ff257862b1fcc`
+  plus local worktree changes. The worktree is not a clean-source attestation.
 - Comprehensive-device-test APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-compact-final.apk`.
   SHA-256: `332a61f961fe17e334da5e8725dd1439d6b924b72c25f7c7ead7e963fecfcd94`.
   Package version `1.6.0-notescheck`, code `150008`.
-- Latest installed APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-keyboard-guard.apk`.
+- Intermediate keyboard-guard APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-keyboard-guard.apk`.
   SHA-256: `1989384909fb1008282e773abb8cfa875deebc80a605976d80f547df5d06d3c8`.
   It adds a physical-screen-orientation guard so an open portrait keyboard cannot
   trigger the short-landscape layout. It was installed with `adb install -r` and
   smoke-checked by cold starting the saved Beating waves Graph, opening Beating
   waves from Home, and rotating to landscape. The broader device readings below
   were collected on the preceding APK.
+- Intermediate keyboard-layout APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-keyboard-layout.apk`.
+  SHA-256: `c48c68f727445b3703ca3aea39fbb425f904c1ab8e054f7a87bfa0832b8f901c`.
+  Built from `905ebc66345f53649dc4311d39536116a7fc4834` plus the local
+  keyboard-layout change. It lets Android resize the Graph workspace above the
+  keyboard and gives the active edit panel the available height, but a
+  landscape-keyboard/portrait-return sequence left the workspace too short.
+- Latest installed APK: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-keyboard-rotation.apk`.
+  SHA-256: `a41c6e618ce451e4ca3af55189f1a4259e0e4c719361e481fd3de51dad150be6`.
+  It applies Android keyboard height avoidance only while the keyboard is
+  visible. The independent package was updated in place; saved projects remained
+  available. APK Signature Scheme v2 verification passed with one debug signer.
 - `adb install -r` succeeded and kept the isolated app's saved data. Android
   APK Signature Scheme v2 verification passed with one existing debug signer,
   certificate SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
@@ -38,10 +49,12 @@ The existing internal and release apps were not changed.
 | Large text | At system font scale 1.3, the short-landscape plot remained 512 physical pixels high and Analyze scrolled to its controls. System font scale and auto-rotate were restored to `1.0` and `accelerometer_rotation=1`, `user_rotation=0`. |
 | Native transfer | The desktop return handoff was pushed to Android Download and imported through **Graph project file** as editable `Two slopes import 1`; its first expression was `5*x`. The generic **Math3D project** path saved the same file as a mixed-project preview and kept the current editor. The invalid future-version Graph was rejected with `Invalid Graph2D schema version`, preserving the imported `5*x` Graph. Canceling a later picker reported `Graph import cancelled.` |
 | Pan and undo on comprehensive-test APK | An ADB single-pointer drag panned the imported graph. More → Undo restored the original viewport; Redo became available. Physical two-finger pinch was not performed on that APK. |
-| Owner gesture check on latest APK | On Beating waves, the owner confirmed that two-finger pinch zoomed smoothly and More → Undo restored the prior view. Focal-point stability, interrupted-gesture semantics and a video remain unverified. |
+| Owner gesture check on keyboard-guard APK | On Beating waves, the owner confirmed that two-finger pinch zoomed smoothly and More → Undo restored the prior view. Focal-point stability, interrupted-gesture semantics and a video remain unverified. |
 | Sampling workload | Ten repeated **Resume adaptive workload** generations on the saved imported Two slopes fixture at the mid/refine profile gave nearest-rank p95 sampling 9.8 ms and next-frame delivery 11.8 ms. Peak retained serialized artifacts were 6,405 bytes. No point-series source was present, so the point-table cache for this fixture was zero. The low 512-sample profile appeared after **Reduce workload** and the mid 1024-sample profile returned on Resume. A 10-second background interval and force-stop/relaunch both returned to the saved Graph. These are JS sampling/next-frame delivery readings, not GPU frame times or thermal certification. |
-| Graph opening | The owner reported one apparent hang while opening a Graph, then reported that Beating waves responded to a single-finger drag after a restart. The latest APK opened that featured Graph from Home on our retry; the first UI check, including a slow UI-tree dump, completed in 7.3 seconds. This does not establish the cause or rule out an intermittent stall. |
-| Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The latest APK process log had 221 lines and no such match after the launch/rotation smoke test. The reported hang was not accompanied by a matching log entry. |
+| Graph opening | The owner reported one apparent hang while opening a Graph, then reported that Beating waves responded to a single-finger drag after a restart. The intermediate keyboard-guard APK opened that featured Graph from Home on our retry; the first UI check, including a slow UI-tree dump, completed in 7.3 seconds. This does not establish the cause or rule out an intermittent stall. |
+| Graph opening retry on keyboard-guard APK | After reconnecting the Samsung, one Home → Beating waves launch completed with app-reported launch/screen-commit time 419 ms. Six Projects → saved Beating waves reopen cycles all showed the Graph. ADB helper plus UI-tree checks took 7.3–7.7 seconds each; those are not app launch times. The 297-line scoped process log had no filtered fatal/ANR match. The [retry readings](mobile-android-graph-open-retry-2026-10-31.json) are checked in; `graph-open-retry-process-logcat.txt` remains local. The owner's earlier hang remains unexplained. |
+| Portrait keyboard on latest APK | The keyboard-guard APK left the expression editor behind the Samsung keyboard. On the latest APK, focusing Beating waves' expression resized the Graph workspace from bottom coordinate 2042 to 1332 physical pixels, showed a full-height Functions panel above the keyboard, and kept the expression field visible. After scrolling, **Cancel function draft** was reachable; it closed the keyboard and restored the plot. Hiding the keyboard restored the 2042-pixel workspace. Rotating to landscape with the keyboard open, hiding it, and returning to portrait also restored full height; the preceding keyboard-layout APK had failed that sequence. Short landscape Graph without a keyboard retained a 529-pixel plot. See the [before](mobile-android-keyboard-before-2026-10-31.png) and [fixed](mobile-android-keyboard-fixed-2026-10-31.png) screenshots. |
+| Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, and the latest keyboard-rotation APK had 703, with no such match in the scoped captures. The reported hang was not accompanied by a matching log entry. |
 
 The initial landscape failure is resolved for this Samsung phone at normal and
 1.3 font scale. Circular flow still reports `Approximate/incomplete display`
@@ -57,6 +70,8 @@ with unperformed steps pending.
   TalkBack output on this phone. The owner confirmed pinch zoom and Undo, but
   cannot test TalkBack now. Accessibility labels and scrolling were inspected;
   spoken output was not attested.
+- Tablet split-layout and keyboard checks. The Samsung portrait keyboard editor
+  now passed, but no tablet was attached.
 - Full Graph fixture/CSV, publication format and long workload matrix. The
   fixed ten-run sampling workload is one fixture and one device profile.
 - Another Android class, Android tablet, iPhone and iPad. Only the Samsung was
@@ -64,8 +79,10 @@ with unperformed steps pending.
 - The original internal signing key/configuration, which the owner said is
   unavailable now; this run cannot certify the internal or release package.
 
-Build, signature, screenshots, ten raw readings, structured results and scoped
-logcat are under `output/mobile-android-followup-20261031/` and are not committed.
+Build, signature, most screenshots, ten raw readings and scoped logcat are under
+`output/mobile-android-followup-20261031/` and are not committed. The keyboard
+before/after screenshots and Graph-open retry readings are checked in beside
+this report.
 The structured Samsung results are also copied to
 [mobile-android-followup-2026-10-31.results.json](mobile-android-followup-2026-10-31.results.json)
 beside this report.
@@ -76,16 +93,17 @@ The [mobile roadmap](../mobile-roadmap.md), [canonical Graph roadmap](../math3d-
 and [1.6.0 test pack](../test-packs/1.6.0/README.md) define the wider scope.
 This Samsung record has **TP10 and TP15 passed, 13 cases pending**; partial
 observations in a pending case are not a complete pass. The comprehensive
-record identifies APK SHA-256 `332a61f9…`, while the later installed keyboard
-guard APK is `19893849…`. Keep those evidence sets separate when adding results.
+record identifies APK SHA-256 `332a61f9…`, while later supplemental checks used
+`19893849…` and the latest installed `a41c6e61…`. Keep those evidence sets
+separate when adding results.
 
 1. **Diagnose the Graph-opening stall.** On the installed Notes Check APK,
    repeat Home → featured Beating waves → Open Graph and Projects → saved Graph.
    Record the entry path, elapsed time, CPU, screenshot/video, and scoped logcat
    when a stall occurs. The single reported hang recovered after restart and was
-   not reproduced on the later APK; no cause has been established.
+   not reproduced in the later one-plus-six retry; no cause has been established.
 2. **Finish Samsung cases.** Record focal-point behavior and an interrupted
-   pinch/rotation for TP02; portrait keyboard use for TP07; spoken TalkBack
+   pinch/rotation for TP02; tablet layout/keyboard use for TP07; spoken TalkBack
    focus, controls and an invalid-expression error for TP09 when the owner can
    test it. Complete the remaining fixture, analysis, persistence, import/CSV,
    publication, scale, parameter and regression steps in the test pack. Do not

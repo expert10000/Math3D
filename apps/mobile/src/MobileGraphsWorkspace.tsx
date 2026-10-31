@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Dimensions, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
+import { AppState, Dimensions, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions, type GestureResponderEvent } from "react-native";
 import { fitGraph2DViewport, panGraph2DViewport, GRAPH2D_DEFAULT_VIEWPORT, graph2DWorldToScreen, graph2DHasLogScale, projectGraph2DConstructionVector, pickGraph2DProbe,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   resolveGraph2DViewport, selectionForGraph2DObject, clipGraph2DLineOverlay, Graph2DPointTableStore, graph2DParameterSessionKey,
@@ -107,10 +107,17 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   };
   const window = useWindowDimensions();
   const [frame, setFrame] = useState({ width: window.width, height: window.height });
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const shown = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hidden = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => { shown.remove(); hidden.remove(); };
+  }, []);
   const screen = Dimensions.get("screen");
   const layout = mobileGraphLayout({ ...frame, fontScale: window.fontScale, screenWidth: screen.width, screenHeight: screen.height });
   const compactLandscape = layout.compactLandscape && !presentation;
   const panelDestination = presentation ? null : mobileGraphPanelDestination(destination, layout.split);
+  const fullPanel = !layout.split && !!panelDestination && (compactLandscape || keyboardVisible);
   const [overlays, setOverlays] = useState(MOBILE_GRAPH_DEFAULT_OVERLAYS);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -369,7 +376,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const button = (label: string, action: () => void, disabled = false, compact = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={[s.button, compact && s.toolbarButton]}>
     <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8", fontSize: compact ? 12 : 14, textAlign: compact ? "center" : "left" }}>{label}</Text></Pressable>;
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace"
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : keyboardVisible ? "height" : undefined} style={s.root} testID="mobile-graphs-workspace"
     onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     {presentation ? <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -404,7 +411,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       {button(saving ? "Saving…" : "Save", () => { setSaving(true); void onSave().finally(() => setSaving(false)); }, saving)}
     </ScrollView>}</>}
     <View style={[s.workspace, layout.split && s.split]} testID={layout.split ? "mobile-graph-split-pane" : "mobile-graph-phone-layout"}>
-    <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }, compactLandscape && panelDestination && s.compactHiddenGraph]}>
+    <View style={[s.graphPane, layout.split && { minWidth: layout.graphMinWidth }, fullPanel && s.compactHiddenGraph]}>
     <View style={s.plot} testID="mobile-graph-plot" accessibilityLabel={document.source.objects.some(object => object.kind === "time-ode") ?
       "Graph plot with a time-dependent ODE. Time t is horizontal and state x is vertical. Initial value is marked. Backward path is dashed; forward path is solid. Use Analyze for each stop reason. Drag to pan and pinch to zoom." :
       "Graph plot. Drag marked phase portrait initial points to update orbits, drag saved points along curves, drag elsewhere to pan, pinch to zoom, tap to probe or place an armed initial point."}
@@ -546,8 +553,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     {!presentation && (error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null)}
     {!presentation && ticks.warnings.length > 0 && <Text accessibilityLiveRegion="polite" style={s.readout}>{ticks.warnings.join(" ")}</Text>}
     </View>
-    {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }, compactLandscape && s.compactPanel]}
-      accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : compactLandscape ? "panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
+    {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }, fullPanel && s.compactPanel]}
+      accessibilityLabel={`${panelDestination} ${layout.split ? "side panel" : fullPanel ? "panel" : "bottom sheet"}`} testID={`mobile-graph-${panelDestination.toLowerCase()}-sheet`}>
       {panelDestination === "Tools" ? <MobileGraphToolsPanel document={document} rowsAvailable={document.source.objects.every(o => o.id !== document.selection.objectId || o.kind !== "point-series" || !!tableStore.resolve(o.table))} onTool={routeTool} onClose={() => setDestination("Graph")} /> : panelDestination === "Parameters" || panelDestination === "Cards" ? <MobileGraphParametersPanel key={`${parameterKey}:${parameterEpoch}`} document={document} settled={sampling.settled && sampling.phase === "refine"} samplingError={sampling.error}
         compact={panelDestination === "Cards"} onExpand={() => setDestination("Parameters")} onClose={() => { cancelParameter(); setDestination("Graph"); }}
         onPreview={values => { if (values) previewGraph2DParameterValues(document, values); setParameterPreview(values ? { key: parameterKey, values } : null); }}

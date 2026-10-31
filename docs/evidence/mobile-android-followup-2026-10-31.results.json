@@ -44,14 +44,14 @@
     {
       "id": "TP06",
       "status": "pending",
-      "evidence": "hung-process-logcat.txt; keyboard-guard-process-logcat.txt",
-      "observations": "Owner reported a Graph-opening hang; after restart, Beating waves responded to drag. Reopening the featured Graph on the later keyboard-guard APK succeeded. Cause and lifecycle matrix remain pending."
+      "evidence": "hung-process-logcat.txt; keyboard-guard-process-logcat.txt; docs/evidence/mobile-android-graph-open-retry-2026-10-31.json; graph-open-retry-process-logcat.txt",
+      "observations": "Owner reported a Graph-opening hang; after restart, Beating waves responded to drag. Supplemental retry on keyboard-guard APK SHA-256 1989384909fb1008282e773abb8cfa875deebc80a605976d80f547df5d06d3c8: one Home featured launch measured 419 ms in the app, and six saved-Graph reopens all showed the plot. Cause and lifecycle matrix remain pending."
     },
     {
       "id": "TP07",
       "status": "pending",
-      "evidence": "large-text-analyze-landscape.png; circular-flow-landscape-final.png",
-      "observations": "Short landscape plot/panel usability fixed and checked; x+ draft and selection survived rotation; 130% text checked. Keyboard avoidance and tablet part pending."
+      "evidence": "large-text-analyze-landscape.png; circular-flow-landscape-final.png; docs/evidence/mobile-android-keyboard-before-2026-10-31.png; docs/evidence/mobile-android-keyboard-fixed-2026-10-31.png; keyboard-rotation-process-logcat.txt",
+      "observations": "Short landscape plot/panel usability fixed and checked; x+ draft and selection survived rotation; 130% text checked. Intermediate keyboard-layout APK SHA-256 c48c68f727445b3703ca3aea39fbb425f904c1ab8e054f7a87bfa0832b8f901c exposed a sticky height after a landscape keyboard. Latest APK SHA-256 a41c6e618ce451e4ca3af55189f1a4259e0e4c719361e481fd3de51dad150be6: portrait expression and Cancel were reachable above the keyboard; hide and landscape-to-portrait return restored full height. Tablet part pending."
     },
     {
       "id": "TP08",

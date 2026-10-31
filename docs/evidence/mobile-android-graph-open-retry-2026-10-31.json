@@ -1,0 +1,51 @@
+{
+  "format": "math3d.mobile.graph-open-retry.v1",
+  "testedAt": "2026-10-31T23:11:23.1371695+01:00",
+  "device": "Samsung SM-A566B",
+  "android": 16,
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "1989384909fb1008282e773abb8cfa875deebc80a605976d80f547df5d06d3c8",
+  "featuredHomeOpen": {
+    "preset": "wave-beats",
+    "appReportedLaunchMs": 419,
+    "appReportedScreenCommitMs": 419,
+    "graphVisible": true
+  },
+  "savedGraphReopens": [
+    {
+      "run": 1,
+      "uiCheckMs": 7670,
+      "graphVisible": true
+    },
+    {
+      "run": 2,
+      "uiCheckMs": 7320,
+      "graphVisible": true
+    },
+    {
+      "run": 3,
+      "uiCheckMs": 7484,
+      "graphVisible": true
+    },
+    {
+      "run": 4,
+      "uiCheckMs": 7465,
+      "graphVisible": true
+    },
+    {
+      "run": 5,
+      "uiCheckMs": 7563,
+      "graphVisible": true
+    },
+    {
+      "run": 6,
+      "uiCheckMs": 7664,
+      "graphVisible": true
+    }
+  ],
+  "uiCheckCaveat": "Elapsed wall time includes the ADB tap helper and a slow uiautomator XML dump; it is not app launch latency.",
+  "filteredFatalOrAnrMatches": 0,
+  "processLog": "graph-open-retry-process-logcat.txt",
+  "conclusion": "No stall reproduced in one Home featured launch and six saved-Graph reopen cycles; original owner-reported hang remains unexplained."
+}
