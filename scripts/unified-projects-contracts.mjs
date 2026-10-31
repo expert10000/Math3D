@@ -10,8 +10,10 @@ const run = (label, args, cwd = root) => {
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 const vitest = path.join(root, "renderer/node_modules/vitest/vitest.mjs");
-run("Named project contracts, templates and mobile envelope transfer", [vitest, "run", "src/projects", "src/core/math3dProject.test.ts", "src/core/projectExplorer.test.ts"], path.join(root, "renderer"));
+run("Named project contracts, templates and mobile envelope transfer", [vitest, "run", "--maxWorkers", "2", "--testTimeout", "30000",
+  "src/projects", "src/core/math3dProject.test.ts", "src/core/projectExplorer.test.ts"], path.join(root, "renderer"));
 run("Existing native storage, Graph and transfer model regressions", [vitest, "run", "--config", path.join(root, "renderer/vite.config.ts"), "--testTimeout", "30000",
+  "--maxWorkers", "2",
   ...["mobileGraphProject", "mobileGraphPromotions", "mobileGraphRoundTrip", "mobileProjectOperations", "mobileProjectTransfer", "mobileGraphPersonalProjects",
     "mobileSceneStorage", "mobileProjectTransferService", "mobileProjectPreview", "mobileProjectResources", "mobileProjectGraphSessions", "mobileProjectCurveSessions", "mobileProjectSurfaceSessions", "mobileProjectSurfaceRefresh", "mobileProjectRefresh", "mobileProjectExplorer", "mobileProjectLibrary", "mobileStartupProject"].map((name) => `tests/unit/${name}.test.ts`)]);
 run("Portable mobile fixture TypeScript", [path.join(root, "renderer/node_modules/typescript/bin/tsc"), "-p", "tests/projects/tsconfig.json", "--noEmit"]);

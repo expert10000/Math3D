@@ -7,6 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
+const mobileDependency = (name: string) => {
+  const rootPackage = path.resolve(rootDir, "../node_modules", name);
+  return fs.existsSync(rootPackage) ? rootPackage : path.resolve(rootDir, "../apps/mobile/node_modules", name);
+};
 const galleryImagesDir = path.resolve(rootDir, "../gallery-images");
 const proxyTarget = process.env.MATH3D_WEB_WORKER_PROXY_TARGET || "http://127.0.0.1:8787";
 const proxyEnabledRaw = String(process.env.MATH3D_WEB_WORKER_PROXY_ENABLED ?? "1").toLowerCase();
@@ -214,6 +218,10 @@ export default defineConfig({
       "@math3d/ui": path.resolve(rootDir, "../packages/ui/src"),
       "@math3d/workbook": path.resolve(rootDir, "../packages/workbook/src"),
       "@math3d/api-client": path.resolve(rootDir, "../packages/api-client/src"),
+      // Mobile model tests mock Expo from the workspace root. Resolve imports
+      // below apps/mobile to the same package instance so the mock applies.
+      "expo-file-system": mobileDependency("expo-file-system"),
+      "expo-sharing": mobileDependency("expo-sharing"),
       three: path.resolve(rootDir, "node_modules/three"),
     },
   },

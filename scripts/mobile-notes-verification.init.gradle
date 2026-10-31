@@ -1,0 +1,17 @@
+// Local device verification only: independent package, bundled JS, existing debug key.
+gradle.beforeProject { project ->
+    if (project.path == ':app') {
+        project.plugins.withId('com.android.application') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                android.buildTypes.create('notesVerification') {
+                    initWith(android.buildTypes.getByName('release'))
+                    signingConfig = android.signingConfigs.getByName('debug')
+                    applicationIdSuffix = '.notesverification'
+                    versionNameSuffix = '-notescheck'
+                    matchingFallbacks = ['release']
+                    resValue('string', 'app_name', 'Math3D Notes Check')
+                }
+            }
+        }
+    }
+}

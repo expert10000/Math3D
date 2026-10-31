@@ -9,7 +9,12 @@ export const mobileVectorField3DDirectoryReader = (directoryUri: string): Mobile
   async name => {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) || name.includes(".."))
       throw new TypeError("Invalid scientific bundle path.");
-    const file = new File(directoryUri, name);
+    // A picked Android folder is a SAF tree URI. Joining a filename onto that URI
+    // does not produce a child document URI; resolve it through the provider.
+    const entry = new Directory(directoryUri).list().find(item => item instanceof File && item.name === name);
+    if (!entry) return null;
+    // Expo's Android listAsRecords appends '/' to each returned URI, including files.
+    const file = new File(entry.uri.replace(/\/$/, ""));
     if (!file.exists) return null;
     if (file.size < 1 || file.size > MAX_SCIENTIFIC_SCENE_RESOURCE_BYTES)
       throw new TypeError(`Scientific bundle file is over budget: ${name}.`);

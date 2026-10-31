@@ -1,0 +1,114 @@
+{
+  "format": "math3d.release-test-pack-results.v1",
+  "release": "1.6.0",
+  "sourceCommit": "3c960e5d3f067a18c5750557a12ff257862b1fcc",
+  "artifactSha256": "332a61f961fe17e334da5e8725dd1439d6b924b72c25f7c7ead7e963fecfcd94",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "build": "1.6.0-notescheck (150008)",
+  "platform": "Android",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "tester": "Codex-assisted device session; owner unlocked device",
+  "testedAt": "2026-10-31T15:57:05.9665950+01:00",
+  "cases": [
+    {
+      "id": "TP01",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP02",
+      "status": "pending",
+      "evidence": "pan-before.png; pan-after.png; pan-undone.png",
+      "observations": "Single-pointer pan and Undo passed on this recorded APK. Supplemental owner check on later APK SHA-256 1989384909fb1008282e773abb8cfa875deebc80a605976d80f547df5d06d3c8: Beating waves pinch zoomed smoothly and More/Undo restored prior view. Focal-point stability, interrupted gesture and video remain pending."
+    },
+    {
+      "id": "TP03",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP04",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP05",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP06",
+      "status": "pending",
+      "evidence": "hung-process-logcat.txt; keyboard-guard-process-logcat.txt",
+      "observations": "Owner reported a Graph-opening hang; after restart, Beating waves responded to drag. Reopening the featured Graph on the later keyboard-guard APK succeeded. Cause and lifecycle matrix remain pending."
+    },
+    {
+      "id": "TP07",
+      "status": "pending",
+      "evidence": "large-text-analyze-landscape.png; circular-flow-landscape-final.png",
+      "observations": "Short landscape plot/panel usability fixed and checked; x+ draft and selection survived rotation; 130% text checked. Keyboard avoidance and tablet part pending."
+    },
+    {
+      "id": "TP08",
+      "status": "pending",
+      "evidence": "output/ggl09-desktop-return.handoff.json",
+      "observations": "Editable desktop Graph handoff imported, invalid future version rejected, picker cancel preserved work. Full CSV sidecar and external share receiving matrix pending."
+    },
+    {
+      "id": "TP09",
+      "status": "pending",
+      "evidence": "large-text-analyze-landscape.png",
+      "observations": "130% text and accessibility labels/scrolling inspected. Owner cannot test TalkBack now; actual speech and focus order remain pending."
+    },
+    {
+      "id": "TP10",
+      "status": "passed",
+      "evidence": "graph-10-runs-final.json",
+      "observations": "Ten fixed Two slopes generations, low/mid recovery, 10-second background and cold restart. p95 is nearest rank; no GPU or thermal measurement."
+    },
+    {
+      "id": "TP11",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP12",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP13",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP14",
+      "status": "pending",
+      "evidence": null,
+      "observations": null
+    },
+    {
+      "id": "TP15",
+      "status": "passed",
+      "evidence": "final-process-logcat.txt",
+      "observations": "Scoped process log had no fatal exception, AndroidRuntime, React Native JS error, ANR or fatal signal match."
+    }
+  ],
+  "metrics": {
+    "runs": 10,
+    "samplingP95Ms": 9.8,
+    "nextFrameDeliveryP95Ms": 11.8,
+    "serializedArtifactPeakBytes": 6405.0,
+    "serializedPointCachePeakBytes": 0,
+    "report": "graph-10-runs-final.json",
+    "calibrationDecision": "Retain mid profile for this Two slopes fixture; broader device and thermal calibration remains pending."
+  }
+}

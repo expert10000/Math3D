@@ -18,6 +18,13 @@ describe("MOB-G11 graph-first tablet layout", () => {
       expect(layout.panelWidth).toBeLessThanOrEqual(440 * fontScale!);
     }
   });
+  it("uses a compact full-panel layout only for short landscape phones", () => {
+    expect(mobileGraphLayout({ width: 850, height: 390 }).compactLandscape).toBe(true);
+    expect(mobileGraphLayout({ width: 390, height: 850 }).compactLandscape).toBe(false);
+    expect(mobileGraphLayout({ width: 1200, height: 800 }).compactLandscape).toBe(false);
+    expect(mobileGraphLayout({ width: 1260, height: 720, fontScale: 1.5 }).compactLandscape).toBe(false);
+    expect(mobileGraphLayout({ width: 384, height: 330, screenWidth: 384, screenHeight: 832 }).compactLandscape).toBe(false);
+  });
   it("retains the requested tools across a breakpoint; Graph defaults to Functions on tablets", () => {
     expect(mobileGraphPanelDestination("Graph", false)).toBeNull(); expect(mobileGraphPanelDestination("Graph", true)).toBe("Functions");
     for (const destination of ["Functions", "Analyze", "Display", "Promote"] as const) {

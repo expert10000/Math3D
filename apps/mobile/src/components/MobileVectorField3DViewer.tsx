@@ -59,13 +59,16 @@ export const MobileVectorField3DViewer: React.FC<{ document: VectorField3DDocume
     const token = ++requestId.current;
     setArtifact(null); setFirstFrameMs(null); setBusy(true);
     setStatus("Verifying source and preparing bounded arrows…");
-    startedAt.current = now();
     try {
       let fresh: VectorField3DArrowArtifact;
-      if (document.source.field.kind === "expressions") fresh = sampleMobileVectorField3DExpressions(document);
+      if (document.source.field.kind === "expressions") {
+        startedAt.current = now();
+        fresh = sampleMobileVectorField3DExpressions(document);
+      }
       else {
         if (!directory.current || chooseDirectory) directory.current = await pickMobileVectorField3DBundle();
         if (!directory.current) throw new TypeError("Choose a local .sscene bundle to verify.");
+        startedAt.current = now();
         fresh = await verifyMobileVectorField3DBundle(document,
           mobileVectorField3DDirectoryReader(directory.current));
       }
@@ -135,7 +138,7 @@ export const MobileVectorField3DViewer: React.FC<{ document: VectorField3DDocume
       <Text testID="mobile-vector-field3d-render-summary" style={local.note} accessibilityLiveRegion="polite">
         {shown} displayed of {artifact.accepted} verified arrows · density {artifact.density.join(" × ")} ·
         {" "}color by {artifact.colorBy}. {firstFrameMs === null ? "Preparing first frame…" :
-          `First frame after Verify: ${firstFrameMs} ms including source verification.`}
+          `First frame after ${document.source.field.kind === "expressions" ? "Verify" : "folder selection"}: ${firstFrameMs} ms including source verification.`}
       </Text>
       <View style={local.actions}>
         {([ ["Left", -.25, 0, 1], ["Right", .25, 0, 1], ["Up", 0, -.2, 1],
