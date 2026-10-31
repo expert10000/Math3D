@@ -937,5 +937,20 @@ archived installers. Both installed-app `.qscene` handoffs succeeded; the
 upgrade retained the old Project and setting. The prerelease asset SHA-256
 values match the CI manifest and are recorded in the
 [release evidence](stable-two-app-signoff.md#published-windows-prerelease-v170-rc4-2026-10-29).
-v1.6.0 remains the latest stable release. Later `main` commits and non-Windows
+At the time of rc.4, v1.6.0 was the latest stable release. Later `main` commits and non-Windows
 packages are outside this prerelease's tested source and installer scope.
+
+### Stable v1.7.0 two-app release (published 2026-10-31)
+
+[v1.7.0](https://github.com/expert10000/Math3D/releases/tag/v1.7.0) is now
+published from frozen Math3D source `fa06feee1f7e414c20d2954868de0f693c054217`.
+The final Windows installer and pinned Theory Lab installer passed both the
+clean-install and published-v1.6.0 upgrade gates on their exact SHA-256 bytes.
+The installed Lab UI created saved runs and exported `.qscene` bundles that
+installed Math3D opened with verified source identity in both gates. The
+Windows and Linux release assets and corresponding source were checked before
+the [publish-only run](https://github.com/expert10000/Math3D/actions/runs/41195466154)
+uploaded them. See the [final release evidence](stable-two-app-signoff.md#published-stable-v170-2026-10-31)
+for installer hashes, run IDs, the asset map, and the migration boundary.
+This completes the v1.7.0 desktop two-app release gate. Android remains a
+source regression prerequisite rather than a distributed 1.7.0 package.

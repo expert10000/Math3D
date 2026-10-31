@@ -304,8 +304,40 @@ for the shared source. The older Samsung signoff applies to mobile source at
 `15f945fcd07cc64b2fd3de511904e6c428521d39`; later mobile changes need a
 new physical-device signoff before a new Android artifact is distributed.
 
-For final 1.7.0: finish fixes, set the source package version to `1.7.0`,
-freeze and tag that exact commit, then let the tag workflow build and test
-**new final binaries**. The rc.4 pass certifies only its pinned commit and
-installer hashes. A workflow dispatch against a different tag does not reuse
-rc.4 evidence.
+The final 1.7.0 release required a frozen source commit and separate tests on
+**new final binaries**. The rc.4 pass certified only its pinned commit and
+installer hashes; it was not reused as final-release evidence.
+
+## Published stable v1.7.0 (2026-10-31)
+
+[Math3D v1.7.0](https://github.com/expert10000/Math3D/releases/tag/v1.7.0)
+is published as a stable release. The annotated tag resolves to frozen app
+source `fa06feee1f7e414c20d2954868de0f693c054217`. The exact final
+installers came from [build run 41060496904](https://github.com/expert10000/Math3D/actions/runs/41060496904),
+which passed the Windows and Linux builds, mobile source regression, pinned
+Theory Lab installer, clean Windows installation, and published-v1.6.0
+upgrade. The [publish-only run 41195466154](https://github.com/expert10000/Math3D/actions/runs/41195466154)
+rechecked the source run, both signoff JSON files, the candidate manifest,
+and every Windows and Linux asset hash before uploading the same bytes.
+
+| Published installer | Source commit | SHA-256 |
+| --- | --- | --- |
+| `Math3D-Setup-1.7.0.exe` | `fa06feee1f7e414c20d2954868de0f693c054217` | `eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db` |
+| `Quantum-Hamiltonian-Lab-Setup-0.1.0.exe` | `3c883fa4a69da2ee9f59b1425ac181094a25c276` | `8dba3c573ca4f820ab372f13395fab8d8799aff86a6458766bf66830680ab7a2` |
+| `candidate-manifest.json` | build run `41060496904` | `72921034c88abfd86504bb81172e3b630666fb83234d49bd236dc9b08389e769` |
+
+Both published evidence files report `status: passed`. The clean-install VM
+created a Lab run and opened its exact `.qscene` in installed Math3D. The
+upgrade VM installed published v1.6.0 first, saved a Graph Project and setting,
+then upgraded in place to the final 1.7.0 installer. Both survived, and the
+installed Lab → `.qscene` → Math3D round trip passed. This migration evidence
+is scoped to a registered per-user v1.6.0 installation at the same destination.
+
+The release page also contains `final-clean-install.json`,
+`final-upgrade.json`, platform checksum files, and `RELEASE_ASSET_MAP.json`.
+The asset map records the published filename and SHA-256 for each original
+platform artifact. Different Windows and Linux files that shared a build
+filename have distinct release names; no verified asset bytes were changed.
+GitHub's asset digests match all 48 mapped source entries and the downloaded
+signoff files. The final installers were tested before publication; the later
+publish recipe changes did not rebuild the app binaries.
