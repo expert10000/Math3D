@@ -4,8 +4,9 @@ Date: 2026-10-09 (navigation handoff; original plan dated October 7)
 
 Status: the Project navigation and first-open optimization were committed in
 `030f0010`. The supported Electron Project/Catenoid checks pass. Stable v1.7.0
-was released from its frozen source before the later PC09 work. PC10 remains
-the next comparison acceptance gate.
+was released from its frozen source before the later PC09 work. PC10 is
+complete for the bounded desktop comparison adapters. PC03 and PC05 remain
+Partial under the limits recorded below.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -32,6 +33,13 @@ comparison evidence carries both exact sources and alignment qualification.
 Authored comparison Notes retain the exact saved composition and both source
 generations; Notes can reopen the verified comparison. Missing, changed or
 tampered sources are refused. PC03 and PC05 retain the partial boundaries below.
+
+**PC10 desktop acceptance — October 31:** `npm run test:projects:pc10` checks
+source ownership, exact generations and units, alignment qualification,
+source-local and compatible-chart selection, Notes, Workbook/report export,
+restart, tamper refusal, and viewer cleanup for the supported Mesh, Geometry
+and bounded Surface pairs. TypeScript, build, 26 unit tests and 12 Electron
+tests pass. See [comparison acceptance](docs/project-comparison-and-composition.md#pc10--bounded-comparison-acceptance).
 
 ## Current delivery
 
@@ -1351,7 +1359,10 @@ the bounded supported adapters. PC08 exports checked A/B evidence with source
 revisions, hashes and qualified alignment. PC09 saves authored Notes spanning
 the exact composition and both source generations, and reopens them through
 Notes after verification. HTML reports and Workbook publications include only
-current observations. PC10 remains planned.
+current observations. PC10 is complete for these bounded desktop adapters; its
+repeatable gate includes the PC01–PC09 contracts and Electron flows plus WebGL
+release checks for all three renderer families. It does not close the PC03/PC05
+partial cases above.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
@@ -1379,8 +1390,9 @@ never reconstruct unavailable history from a current source and call it historic
 Reliable active-document navigation and the first Related/Overview/Workbook
 slice are delivered on `main`. The bounded current-generation composition view,
 qualified camera linking, Workbook embed, export evidence and comparison Notes
-are implemented. PC10 remains next; unretained historical generations and
-legacy alignment declarations remain partial under PC03/PC05.
+are implemented and PC10 qualifies their bounded desktop scope. Unretained
+historical generations and legacy alignment declarations remain partial under
+PC03/PC05.
 
 ## First-flow implementation — 2026-10-07
 

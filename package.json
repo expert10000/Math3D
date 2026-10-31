@@ -95,6 +95,7 @@
     "test:app:e2e": "playwright test",
     "test:projects:contracts": "node scripts/unified-projects-contracts.mjs",
     "test:projects:desktop": "playwright test tests/e2e/unified-projects.spec.ts tests/e2e/kernel-workspace.spec.ts tests/e2e/graph2d-gallery.spec.ts tests/e2e/project-freeze.spec.ts --reporter=list",
+    "test:projects:pc10": "npx vitest run tests/unit/projectComposition.test.ts tests/unit/projectComparisonTemplates.test.ts tests/unit/workbookProjectComparison.test.ts tests/unit/projectComparisonEvidence.test.ts tests/unit/projectComparisonNotes.test.ts renderer/src/core/projectNotes.test.ts --maxWorkers=1 && npm run typecheck:noemit && npm run build:core && npx playwright test tests/e2e/project-composition.spec.ts tests/e2e/workbook-comparison.spec.ts tests/e2e/project-comparison-evidence.spec.ts tests/e2e/project-comparison-observations.spec.ts tests/e2e/project-comparison-lifecycle.spec.ts --reporter=list",
     "test:projects:installed-sage": "node scripts/projects-installed-sage.mjs",
     "test:sage:desktop": "playwright test tests/e2e/sage-polynomial-desktop.spec.ts --reporter=list",
     "test:sage:web": "npm run build:main && playwright test --config playwright.sage-web.config.ts",
