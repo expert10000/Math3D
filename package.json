@@ -99,6 +99,7 @@
     "test:sage:desktop": "playwright test tests/e2e/sage-polynomial-desktop.spec.ts --reporter=list",
     "test:sage:web": "npm run build:main && playwright test --config playwright.sage-web.config.ts",
     "test:sage:live-docker": "playwright test --config playwright.sage-live-docker.config.ts",
+    "test:sage:live-desktop": "playwright test --config playwright.sage-live-desktop.config.ts",
     "test:projects:fixtures": "node scripts/projects-freeze-fixtures.mjs",
     "test:projects:web": "playwright test --config playwright.projects.config.ts",
     "test:projects:acceptance": "npm run test:projects:contracts && npm run typecheck:noemit && npm --prefix apps/mobile run typecheck && npm run build:core && npm run build:web && npm run test:projects:desktop && npm run test:projects:web && npm run check:kernel:boundaries",

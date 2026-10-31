@@ -1,5 +1,25 @@
 import { expect, test } from "@playwright/test";
 
+test("browser Sage Docker cancel reaches the live service", async ({ page }) => {
+  await page.goto("/");
+  const outcome = await page.evaluate(async () => {
+    const bridge = (window as unknown as Window & { sageService: {
+      run: (request: unknown) => Promise<unknown>;
+      cancel: (jobId: string) => Promise<{ ok: boolean }>;
+    } }).sageService;
+    const jobId = crypto.randomUUID();
+    const running = bridge.run({ jobId, backend: "docker", operation: "sage.symbolic.expand",
+      params: { expression: "(x+y+z)^50", variables: ["x", "y", "z"] } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const cancelled = await bridge.cancel(jobId);
+    let error = "";
+    try { await running; } catch (caught) { error = String(caught); }
+    return { cancelled, error };
+  });
+  expect(outcome.cancelled.ok).toBe(true);
+  expect(outcome.error).toContain("cancelled");
+});
+
 test("live Docker Sage operations report results and failures in Compute jobs", async ({ page, request }) => {
   const health = await request.get("http://127.0.0.1:8767/health");
   expect(health.ok(), "Start the SageMath Docker service before this opt-in test.").toBe(true);

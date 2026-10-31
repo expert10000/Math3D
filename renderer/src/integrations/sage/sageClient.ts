@@ -9,6 +9,7 @@ import {
 const baseUrlRaw = (import.meta as any)?.env?.VITE_SAGE_SERVICE_URL as string | undefined;
 const sageBaseUrl = (baseUrlRaw?.trim() || "http://127.0.0.1:8767").replace(/\/+$/, "");
 const localSageBaseUrl = "/api/sage";
+const dockerJobs = new Map<string, AbortController>();
 
 const sageServiceUnavailableMessage =
   "SageMath Docker service is unreachable. Start it with: docker compose -f services/sage-worker/docker-compose.yml up --build";
@@ -38,9 +39,13 @@ async function requestJson<T>(
   method: "GET" | "POST", path: string, body?: unknown,
   baseUrl = sageBaseUrl, unavailableMessage = sageServiceUnavailableMessage,
   timeoutMs = 15_000,
+  signal?: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) controller.abort();
   try {
     const response = await fetch(`${baseUrl}${path}`, {
       method,
@@ -57,6 +62,7 @@ async function requestJson<T>(
     }
     return payload as T;
   } catch (error) {
+    if (signal?.aborted) throw new Error("Sage Docker job cancelled.");
     const message = asErrorMessage(error, unavailableMessage);
     if (/failed to fetch|networkerror|abort/i.test(message)) {
       throw new Error(unavailableMessage);
@@ -64,8 +70,38 @@ async function requestJson<T>(
     throw new Error(message);
   } finally {
     window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
   }
 }
+
+const runDocker = async (request: SageRunRequest): Promise<SageRunResponse> => {
+  const jobId = request.jobId;
+  if (jobId && dockerJobs.has(jobId)) throw new Error("Sage Docker job ID is already running.");
+  const controller = new AbortController();
+  if (jobId) dockerJobs.set(jobId, controller);
+  try {
+    return normalizeSageRunResponse(await requestJson<unknown>(
+      "POST", "/run", request, sageBaseUrl, sageServiceUnavailableMessage, 15_000, controller.signal,
+    ));
+  } finally {
+    if (jobId) dockerJobs.delete(jobId);
+  }
+};
+
+const cancelSageJob = async (jobId: string): Promise<{ ok: boolean }> => {
+  const dockerJob = dockerJobs.get(jobId);
+  if (dockerJob) {
+    try {
+      await requestJson("POST", "/cancel", { jobId });
+    } finally {
+      dockerJob.abort();
+    }
+    return { ok: true };
+  }
+  return requestJson<{ ok: boolean }>(
+    "POST", "/cancel", { jobId }, localSageBaseUrl, localSageUnavailableMessage, 10_000,
+  );
+};
 
 const getBridge = () => (typeof window === "undefined" ? undefined : window.sageService);
 
@@ -89,9 +125,10 @@ export async function runSageOperation(request: SageRunRequest): Promise<SageRun
   if (bridge?.run) {
     return normalizeSageRunResponse(await bridge.run({ ...request, backend }));
   }
-  const payload = backend === "local"
-    ? await requestJson<unknown>("POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000)
-    : await requestJson<unknown>("POST", "/run", request);
+  if (backend === "docker") return runDocker(request);
+  const payload = await requestJson<unknown>(
+    "POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000,
+  );
   return normalizeSageRunResponse(payload);
 }
 
@@ -104,10 +141,8 @@ if (typeof window !== "undefined") {
       getStatus: () => requestJson<unknown>("GET", "/health").then(normalizeSageHealth),
       run: (request: SageRunRequest) => selectedSageBackend(request) === "local"
         ? requestJson<unknown>("POST", "/run", request, localSageBaseUrl, localSageUnavailableMessage, 35_000).then(normalizeSageRunResponse)
-        : requestJson<unknown>("POST", "/run", request).then(normalizeSageRunResponse),
-      cancel: (jobId: string) => requestJson<{ ok: boolean }>(
-        "POST", "/cancel", { jobId }, localSageBaseUrl, localSageUnavailableMessage, 10_000,
-      ),
+        : runDocker(request),
+      cancel: cancelSageJob,
     };
   }
 }

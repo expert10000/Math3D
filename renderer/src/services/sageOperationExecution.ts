@@ -115,18 +115,18 @@ export function runSageJob(
   const backendId = request.backend === "local" ? "sage-local-wsl" : "sage-docker";
   const backend: ScientificExecutionBackend = {
     backendId, backendVersion: "1", transport: request.backend === "local" ? "worker" : "remote",
-    priority: 100, supportsCancellation: request.backend === "local",
+    priority: 100, supportsCancellation: true,
     discover: () => ({ available: true, operations: [{
       operationType: definition.type, retrySafety: "never",
       maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
       maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000,
     }] }),
     execute: (job) => service.submit(job),
-    ...(request.backend === "local" ? { cancel: (id: string) => {
+    cancel: (id: string) => {
       service.cancel(id);
       const cancel = options.cancel ?? ((value: string) => window.sageService?.cancel(value));
       void Promise.resolve(cancel(id)).catch(() => undefined);
-    } } : {}),
+    },
   };
   const broker = createScientificExecutionBroker({ resolveSource, backends: [backend] });
   const execution = createExecutionService(broker);
@@ -139,7 +139,7 @@ export function runSageJob(
   });
   const promise = observeBrokerJob(jobId, definition.type, execution.submit(job, {
     preferredBackendIds: [backendId], allowFallback: false,
-  })).then((outcome) => {
+  }), backendId).then((outcome) => {
     const failed: SageRunResponse = {
       engine: "sagemath", operation: request.operation, success: false, latex: "", result: {}, warnings: [],
       error: outcome.ok ? "SageMath returned no response." : outcome.code === "cancelled"

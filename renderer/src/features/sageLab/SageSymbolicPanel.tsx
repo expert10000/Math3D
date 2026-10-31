@@ -94,8 +94,6 @@ const SageSymbolicPanel: React.FC<{
         if (!window.sageService?.run) {
           throw new Error("Local Sage operations require SageMath in WSL Ubuntu and the MATH3D desktop app or web proxy.");
         }
-        jobId = crypto.randomUUID();
-        setActiveJobId(jobId);
       }
       if (localPolynomial) {
         const coefficients = coefficientsText.split(",").map((part) => part.trim());
@@ -150,6 +148,8 @@ const SageSymbolicPanel: React.FC<{
         params = { a: inverseValueText.trim(), modulus: modulusText.trim() };
         inputSummary = `${inverseValueText.trim()} mod ${modulusText.trim()}`;
       }
+      jobId = crypto.randomUUID();
+      setActiveJobId(jobId);
       const result = isBrokeredSageOperation(operation)
         ? await (async () => {
           const handle = runSageJob({ operation, jobId, params, backend });
@@ -298,7 +298,7 @@ const SageSymbolicPanel: React.FC<{
           <button type="button" onClick={() => void onRun()} disabled={busy !== "none"}>
             {busy === "run" ? "Running..." : "Run"}
           </button>
-          {localSage && activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
+          {activeJobId && <button type="button" onClick={() => void onCancel()}>Cancel</button>}
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={showJson} onChange={(event) => setShowJson(event.target.checked)} />
             JSON

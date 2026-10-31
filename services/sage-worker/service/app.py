@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .sage_adapter import run_sage_operation
+from .sage_adapter import cancel_sage_job, run_sage_operation
 from .sage_runner import OPERATIONS
 
 
@@ -22,6 +22,11 @@ app.add_middleware(
 class SageRunRequest(BaseModel):
     operation: str = Field(min_length=1)
     params: dict[str, Any] = Field(default_factory=dict)
+    jobId: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class SageCancelRequest(BaseModel):
+    jobId: str = Field(min_length=1, max_length=128)
 
 
 @app.get("/")
@@ -34,6 +39,7 @@ def root():
             "health": "/health",
             "operations": "/operations",
             "run": "/run",
+            "cancel": "/cancel",
             "docs": "/docs",
         },
     }
@@ -61,5 +67,10 @@ def operations():
 def run(req: SageRunRequest):
     if req.operation not in OPERATIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported Sage operation: {req.operation}")
-    result = run_sage_operation(req.operation, req.params)
+    result = run_sage_operation(req.operation, req.params, job_id=req.jobId)
     return result
+
+
+@app.post("/cancel")
+def cancel(req: SageCancelRequest):
+    return {"ok": cancel_sage_job(req.jobId)}

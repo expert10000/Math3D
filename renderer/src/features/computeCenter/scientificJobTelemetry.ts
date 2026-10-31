@@ -63,9 +63,11 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
   jobId: string,
   operationType: string,
   promise: Promise<T>,
+  preferredBackendId?: string,
 ): Promise<T> {
   brokerSettled.delete(jobId);
-  publish({ jobId, operationType, status: "routing", progress: null, updatedAt: Date.now() });
+  publish({ jobId, operationType, status: "routing", progress: null,
+    backendId: preferredBackendId, updatedAt: Date.now() });
   return promise.then((outcome) => {
     brokerSettled.add(jobId);
     const existing = jobs.find((item) => item.jobId === jobId);
@@ -74,7 +76,7 @@ export function observeBrokerJob<T extends ScientificBrokerOutcome>(
       status: outcome.ok ? "complete" : outcome.code === "cancelled" ? "cancelled" : "failed",
       progress: outcome.ok ? 1 : existing?.progress ?? null,
       phase: existing?.phase,
-      backendId: outcome.ok ? outcome.backend.backendId : outcome.attempts.at(-1)?.backendId,
+      backendId: outcome.ok ? outcome.backend.backendId : outcome.attempts.at(-1)?.backendId ?? existing?.backendId,
       failure: outcome.ok ? undefined : outcome.message,
       updatedAt: Date.now(),
     });
