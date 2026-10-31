@@ -551,7 +551,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setNotesMessage("The exact saved comparison or one of its sources is unavailable. Reopen or relink the Project.");
         return;
       }
-      setComparisonInitialId(anchor.compositionId); setCompositionOpen(true); setNotesOpen(false);
+      setComparisonInitialId(anchor.compositionId); setCompositionOpen(true); setNotesOpen(false); onOpenChange(true);
       return;
     }
     if (anchor.kind === "workbook-block") {

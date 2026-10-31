@@ -128,6 +128,27 @@ PC03 remains **Partial** for legacy sources without coordinate declarations;
 PC05 remains **Partial** for unretained generations and unrelated-model
 selection mapping. PC08 does not reinterpret those limitations as verified.
 
+## PC09 · Observations across two saved documents
+
+Status: **Complete** for the saved Mesh, Geometry and bounded Surface comparisons
+supported by PC08. Open a named Project (save a starter first), then choose
+**Compare saved documents → Saved composition**. Select the exact saved
+comparison, enter an observation title and text, and choose **Save observation**.
+The Note records the saved composition hash, both exact document revisions and
+hashes, and whether alignment is source-declared, operator-asserted, or not
+applicable. It never changes either source.
+
+Open **Notes → Comparison → Open target** to return to the verified comparison.
+The action refuses a missing, changed or tampered composition or source; it
+does not substitute a newer generation. The HTML comparison report and Workbook
+publication include current authored observations with their Note hashes and
+explicitly distinguish them from scientific measurements. Export refuses stale
+observations. PC03 and PC05 remain **Partial** for the boundaries above; PC10
+is the next broader acceptance gate.
+
+Checks: `npx vitest run tests/unit/projectComparisonNotes.test.ts` and
+`npx playwright test tests/e2e/project-comparison-observations.spec.ts --reporter=list`.
+
 An optional source declaration uses the exact object
 `{"format":"math3d.coordinate-frame/v1","frame":"laboratory xyz","unit":"mm","axes":["x","y","z"],"handedness":"right"}`.
 The Mesh producer stores it at `source.origin.math3dCoordinateFrame`; the

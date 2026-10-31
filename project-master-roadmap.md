@@ -2,10 +2,10 @@
 
 Date: 2026-10-09 (navigation handoff; original plan dated October 7)
 
-Status: the Project navigation and first-open optimization are committed and
-pushed to remote `main` in `030f0010`. The supported Electron Project/Catenoid
-checks pass. Installer release and the wider PC08–PC10 phase remain separate
-work.
+Status: the Project navigation and first-open optimization were committed in
+`030f0010`. The supported Electron Project/Catenoid checks pass. Stable v1.7.0
+was released from its frozen source before the later PC09 work. PC10 remains
+the next comparison acceptance gate.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -26,6 +26,12 @@ this bounded implementation. See
 qualified one-way camera synchronization. Workbook Visualize blocks can link an
 exact saved Project composition and open its checked comparison inline, without
 copying or changing either source. The viewer loads only when expanded.
+
+**PC08–PC09 bounded continuation — October 31:** checked HTML and Workbook
+comparison evidence carries both exact sources and alignment qualification.
+Authored comparison Notes retain the exact saved composition and both source
+generations; Notes can reopen the verified comparison. Missing, changed or
+tampered sources are refused. PC03 and PC05 retain the partial boundaries below.
 
 ## Current delivery
 
@@ -1340,7 +1346,12 @@ poses are not persisted or transformed between unrelated frames. PC07 adds an
 exact, non-owning saved-composition reference to Workbook Visualize blocks and
 an on-demand embedded view. Composition hash, both member generations, replay,
 and sidecars are checked again on opening; stale or missing sources are refused
-without changing the active scientific documents. PC08–PC10 remain planned.
+without changing the active scientific documents. PC08 and PC09 are complete for
+the bounded supported adapters. PC08 exports checked A/B evidence with source
+revisions, hashes and qualified alignment. PC09 saves authored Notes spanning
+the exact composition and both source generations, and reopens them through
+Notes after verification. HTML reports and Workbook publications include only
+current observations. PC10 remains planned.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
@@ -1366,8 +1377,10 @@ versus live document. Resolve retained snapshots and missing resources explicitl
 never reconstruct unavailable history from a current source and call it historical.
 
 Reliable active-document navigation and the first Related/Overview/Workbook
-slice are delivered on `main`. The bounded current-generation composition view
-is implemented; retained historical comparison and PC06–PC10 remain next.
+slice are delivered on `main`. The bounded current-generation composition view,
+qualified camera linking, Workbook embed, export evidence and comparison Notes
+are implemented. PC10 remains next; unretained historical generations and
+legacy alignment declarations remain partial under PC03/PC05.
 
 ## First-flow implementation — 2026-10-07
 
