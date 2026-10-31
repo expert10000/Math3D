@@ -137,7 +137,7 @@ async function checkSavedCombinedSubrectangleResultSources(result: AnalysisResul
       parameters.scalarSampleSha256 as string,
       parameters.realSampleSha256 as string,
       parameters.imaginarySampleSha256 as string);
-    if (fresh.resultId !== result.resultId ||
+    if (fresh.resultId !== result.resultId.replace(/\/r[1-9][0-9]*$/, "") ||
         canonicalJsonStringify(fresh.provenance.operation) !==
           canonicalJsonStringify(result.provenance.operation) ||
         canonicalJsonStringify(fresh.summary) !== canonicalJsonStringify(result.summary))
@@ -169,7 +169,7 @@ async function checkSavedVectorSubrectangleResultSources(result: AnalysisResultE
       parameters.bounds as unknown as readonly [readonly [number, number],
         readonly [number, number]],
       { columnPairId: profiles.columnPairId, rowPairId: profiles.rowPairId }, bridge);
-    return fresh.resultId === result.resultId &&
+    return fresh.resultId === result.resultId.replace(/\/r[1-9][0-9]*$/, "") &&
       canonicalJsonStringify(fresh.provenance.operation) ===
         canonicalJsonStringify(result.provenance.operation) &&
       canonicalJsonStringify(fresh.summary) === canonicalJsonStringify(result.summary) ?

@@ -106,7 +106,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
             </> : <span>No Project target linked yet.</span>}
           </div>}
           {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
-            <ScientificSubrectangleWorkbookReport project={project} reference={reference} />}
+            <ScientificSubrectangleWorkbookReport project={project} reference={reference} workbookId={workbook.id}
+              previousResultId={block.scientificRegionReport.previousResultId} />}
           {block.type === "compute" && <div style={{ display: "grid", gap: 4 }}>
             <div>{block.compute?.summary || latestRun?.summary || "No saved result summary."}</div>
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}

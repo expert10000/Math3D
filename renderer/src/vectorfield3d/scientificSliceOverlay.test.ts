@@ -55,6 +55,9 @@ import { prepareCombinedSubrectanglePublication } from
   "./prepareCombinedSubrectanglePublication";
 import { prepareVectorSubrectanglePublication } from
   "./prepareVectorSubrectanglePublication";
+import { createNotebookReference } from "@math3d/workbook";
+import { rerunScientificSubrectangleReport } from
+  "../projects/scientificSubrectangleWorkbook";
 
 const scalarDirectory = resolve(import.meta.dirname, "../../../examples/scientific-scenes/quadratic-volume.sscene");
 const scalarManifest = readFileSync(resolve(scalarDirectory, "manifest.json"), "utf8");
@@ -1122,6 +1125,17 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
       committedSelection: null }), { stableKey: "combined-subrectangle" });
     expect(parseMath3DProject(serializeMath3DProject(project)).workspace.results)
       .toEqual([published.result]);
+    const rerun = await rerunScientificSubrectangleReport(project,
+      createNotebookReference(project, "result", published.result!.resultId), bridge);
+    expect(rerun.project.workspace.results.map(item => item.resultId)).toEqual([
+      published.result!.resultId, `${published.result!.resultId}/r1`]);
+    expect(rerun.result.summary).toEqual(published.result!.summary);
+    expect(rerun.differences).toContain("| scalar | 0 | 0 | 0 | 0 | 0 |");
+    expect(await checkSavedRegionResultSources(rerun.result, document,
+      bridge, [both])).toMatchObject({ kind: "combined", vector: "source-current",
+      scalar: "source-current", complexMagnitude: "source-current",
+      complexPhase: "source-current", divergence: "source-current",
+      curlMagnitude: "source-current" });
     expect(await checkSavedRegionResultSources(published.result!, document,
       bridge, [both])).toMatchObject({ kind: "combined", vector: "source-current",
       scalar: "source-current", complexMagnitude: "source-current",
@@ -1132,6 +1146,10 @@ describe("SCI-02 verified scalar and vector slice overlay", () => {
         { ok: false as const, status: "changed" as const, error: "changed" } :
         { ok: true as const, source: { manifestJson: complexManifest } } } as unknown as
       NonNullable<typeof window.scientificScenes>;
+    await expect(rerunScientificSubrectangleReport(project,
+      createNotebookReference(project, "result", published.result!.resultId),
+      changedScalar)).rejects.toThrow(/Rerun blocked.*quadraticVolume.*stale|Rerun blocked.*quadraticVolume.*changed/);
+    expect(project.workspace.results).toHaveLength(1);
     expect(await checkSavedRegionResultSources(published.result!, document,
       changedScalar, [both])).toMatchObject({ kind: "combined",
       vector: "source-current", scalar: "changed",

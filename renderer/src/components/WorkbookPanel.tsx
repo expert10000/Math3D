@@ -1863,7 +1863,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 />
               )}
               {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
-                <ScientificSubrectangleWorkbookReport project={dependencyProject} reference={block.notebookReference} />}
+                <ScientificSubrectangleWorkbookReport project={dependencyProject} reference={block.notebookReference}
+                  workbookId={activeWorkbook?.id} previousResultId={block.scientificRegionReport.previousResultId} />}
 
               {activeWorkbook && <WorkbookDependencies workbook={activeWorkbook} blockId={block.id} readOnly={readOnly}
                 getProject={getNotebookProject} onChange={onChangeDependencies} freshness={freshnessById.get(block.id)}

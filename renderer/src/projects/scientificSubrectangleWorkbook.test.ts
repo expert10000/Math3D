@@ -3,7 +3,8 @@ import { VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   type AnalysisResultEnvelope, type VectorField3DOverlayRegion } from "@math3d/core";
 import { summarizeVectorDerivedSubrectangle } from "../vectorfield3d/vectorDerivedSubrectangle";
-import { scientificSubrectangleReportMarkdown, subrectangleSourcesCurrent } from
+import { scientificSubrectangleDifferences, scientificSubrectangleReportMarkdown,
+  subrectangleSourcesCurrent } from
   "./scientificSubrectangleWorkbook";
 
 describe("SCI-19 scientific Workbook report", () => {
@@ -47,6 +48,14 @@ describe("SCI-19 scientific Workbook report", () => {
     expect(markdown).toContain("| divergence | 1/s | 9 | 0 | 0.25");
     expect(markdown).toContain(String(summary.curlMagnitude.mean));
     expect(markdown).toContain("columnRowsSha256");
+    const revision = { ...result, resultId: "oracle-result/r1",
+      summary: { ...result.summary, divergence: { ...summary.divergence,
+        mean: 0.251 } } } as AnalysisResultEnvelope;
+    const differences = scientificSubrectangleDifferences(result, revision);
+    expect(differences).toContain("Compared with oracle-result");
+    expect(differences).toContain(String(0.251 - 0.25));
+    expect(scientificSubrectangleDifferences(result,
+      { ...result, resultId: "oracle-result/r2" })).toContain("| divergence | 0 | 0 | 0 | 0 | 0 |");
   });
 
   it("withholds any incomplete or changed Burgers source status", () => {

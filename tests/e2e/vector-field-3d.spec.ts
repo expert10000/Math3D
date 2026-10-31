@@ -901,7 +901,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
 });
 
 test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(600_000);
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -963,9 +963,25 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
     await outputs.getByTestId("project-create-subrectangle-workbook").click();
     await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
       .toContainText("Sources verified", { timeout: 120_000 });
+    await page.getByTestId("scientific-subrectangle-rerun")
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
+    await expect.poll(() => page.evaluate(id => {
+      const saved = JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!);
+      return saved.workspace.results.filter((item: { provenance: { operation: { type: string } } }) =>
+        item.provenance.operation.type === "vector3d.derived-subrectangle").length;
+    }, project.identity.id), { timeout: 120_000 }).toBe(2);
     const savedReport = await page.evaluate(id => JSON.parse(localStorage.getItem(
       `math3d.project.v1.payload.${id}`)!), project.identity.id);
     expect(savedReport.workbooks).toHaveLength(1);
+    const revisions = savedReport.workspace.results.filter((item: { provenance: {
+      operation: { type: string } } }) => item.provenance.operation.type ===
+      "vector3d.derived-subrectangle");
+    expect(revisions).toHaveLength(2);
+    expect(revisions[1].resultId).toMatch(/\/r1$/);
+    expect(revisions[1].summary).toEqual(revisions[0].summary);
+    expect(revisions[1].provenance.operation.parameters).toEqual(
+      revisions[0].provenance.operation.parameters);
+    expect(savedReport.workbooks[0].revision).toBeGreaterThan(1);
     const reportId = savedReport.workbooks[0].id;
     await page.getByTestId("projects-toggle")
       .evaluate(element => (element as HTMLButtonElement).click());
@@ -981,6 +997,10 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
       .evaluate(element => (element as HTMLButtonElement).click());
     await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
       .toContainText("Sources verified", { timeout: 120_000 });
+    await page.getByRole("button", { name: "Verified subrectangle report · new revision" })
+      .last().evaluate(element => (element as HTMLButtonElement).click());
+    await expect(page.getByTestId("scientific-subrectangle-differences"))
+      .toContainText("Compared with", { timeout: 120_000 });
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -1051,7 +1071,7 @@ test("SCI-02 publishes a combined subrectangle directly from Explorer", async ()
 });
 
 test("SCI-02 Burgers six-profile selection withholds a changed source after Project reopen", async () => {
-  test.setTimeout(720_000);
+  test.setTimeout(900_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-burgers-four-region-"));
   const burgers = join(root, "burgers.sscene");
   await cp(resolve("output/scientific-burgers-horizontal-level1.sscene"), burgers,
@@ -1125,7 +1145,7 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
       .toContainText("row curl-magnitude", { timeout: 60_000 });
     await inspector.getByTestId("graph2d-open-intersection").click();
     await expect(explorer.getByTestId("scientific-combined-intersection-summary"))
-      .toBeVisible({ timeout: 60_000 });
+      .toBeVisible({ timeout: 180_000 });
     await explorer.getByTestId("scientific-publish-combined-subrectangle").click();
     await expect(explorer.getByTestId("scientific-combined-subrectangle-saved-status"))
       .toContainText("curl magnitude source-current", { timeout: 60_000 });

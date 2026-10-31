@@ -43,7 +43,8 @@ import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { projectWorkbookUses } from "../projects/projectWorkbookUsage";
 import { createScientificSubrectangleWorkbook, scientificSubrectangleReportMarkdown,
-  verifyScientificSubrectangleReport } from "../projects/scientificSubrectangleWorkbook";
+  verifyScientificSubrectangleReport, rerunScientificSubrectangleReport,
+  SCIENTIFIC_SUBRECTANGLE_REPORT } from "../projects/scientificSubrectangleWorkbook";
 import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
@@ -163,6 +164,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   }, [open, resultRequest?.token]);
   useEffect(() => { if (!open) { setQuick(false); setDetailView(false); setViewerCompanion(false); setViewingDocumentId(null); } }, [open]);
   const [busy, setBusy] = useState(false);
+  const subrectangleRerunPending = useRef(false);
   const openingStarter = useRef(false);
   const rippleResearchAttempted = useRef(new Set<string>());
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
@@ -804,6 +806,76 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Report export withheld: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
+  const rerunSubrectangleWorkbook = async (workbookId: string, resultId: string) => {
+    if (subrectangleRerunPending.current || busy) throw new Error("A Project operation is already running.");
+    if (preview || managed || !project) throw new Error("Open the saved Project before rerunning its Workbook.");
+    subrectangleRerunPending.current = true;
+    setBusy(true);
+    try {
+      const saved = loadLibraryProject(localStorage, project.identity.id);
+      const base = liveProject();
+      const workbookRef = base.workbooks?.find(item => item.id === workbookId);
+      if (!workbookRef) throw new Error("The Workbook is no longer in this Project.");
+      const previous = await loadProjectResources(saved);
+      const bytes = previous.bytes({ kind: "workbook-payload", id: workbookId });
+      if (!bytes) throw new Error("The saved Workbook resource is missing.");
+      const workbook = readProjectWorkbook(bytes, workbookRef);
+      if (!workbook.stages.some(stage => stage.blocks.some(block =>
+        block.scientificRegionReport?.kind === SCIENTIFIC_SUBRECTANGLE_REPORT &&
+        block.notebookReference?.targetId === resultId)))
+        throw new Error("The selected report is no longer in this Workbook.");
+      const rerun = await rerunScientificSubrectangleReport(base,
+        createNotebookReference(base, "result", resultId));
+      const reportBlockId = crypto.randomUUID();
+      const updated: Workbook = { ...workbook, updatedAt: Date.now(),
+        stages: workbook.stages.map(stage => stage.id === "compute" ? { ...stage,
+          blocks: [...stage.blocks,
+            { id: crypto.randomUUID(), type: "text", title: "Rerun numerical differences",
+              text: rerun.differences },
+            { id: reportBlockId, type: "reference", title: "Verified subrectangle report · new revision",
+              notebookReference: createNotebookReference(rerun.project, "result", rerun.result.resultId),
+              scientificRegionReport: { schemaVersion: 1, kind: SCIENTIFIC_SUBRECTANGLE_REPORT,
+                previousResultId: rerun.previous.resultId } }] } : stage) };
+      const prepared = prepareProjectWorkbook(rerun.project, updated, crypto.randomUUID());
+      const next = upsertMath3DProjectWorkbook(rerun.project, prepared.reference);
+      const resources = collectResources(next, previous, false,
+        { id: prepared.reference.id, bytes: prepared.bytes });
+      setLibrary(await commitProjectResources(next, resources,
+        () => saveLibraryProject(localStorage, next, Date.now(), undefined,
+          { expectedBytes: serializeMath3DProject(saved) })));
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false);
+      onRestoreWorkspace?.(next.workspace, resources, next);
+      onOpenWorkbook?.(prepared.workbook, "compute", reportBlockId);
+      setMessage(`Published ${rerun.result.resultId}; previous report retained. ${rerun.differences}`);
+      return rerun.differences;
+    } catch (cause) {
+      setMessage(`Workbook rerun blocked: ${(cause as Error).message}`);
+      throw cause;
+    } finally { subrectangleRerunPending.current = false; setBusy(false); }
+  };
+  useEffect(() => {
+    const onRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId: string; resultId: string;
+        workbookId: string; requestId: string }>).detail;
+      if (!detail) return;
+      if (detail.projectId !== project?.identity.id) {
+        window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun-complete", {
+          detail: { requestId: detail.requestId,
+            error: "Open this Workbook's named Project before rerunning it." } }));
+        return;
+      }
+      window.setTimeout(() => {
+        void rerunSubrectangleWorkbook(detail.workbookId, detail.resultId).then(message =>
+          window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun-complete", {
+            detail: { requestId: detail.requestId, message } }))).catch(cause =>
+          window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun-complete", {
+            detail: { requestId: detail.requestId, error: (cause as Error).message } })));
+      }, 0);
+    };
+    window.addEventListener("math3d:subrectangle-rerun", onRequest);
+    return () => window.removeEventListener("math3d:subrectangle-rerun", onRequest);
+  });
   const addRippleResearchToSavedProject = async (useSavedSnapshot = false) => {
     if (busy || preview || managed || !project) return;
     setBusy(true);

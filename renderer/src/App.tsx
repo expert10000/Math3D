@@ -91606,7 +91606,8 @@ case "mobius":
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && <WorkbookProvenance reference={fullWorkbookSelectedBlockMeta.block.notebookReference} project={getWorkbookDependencyProjectRef.current()} reader={readNotebookArtifact} />}
                       {fullWorkbookSelectedBlockMeta.block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
                         <ScientificSubrectangleWorkbookReport project={getWorkbookDependencyProjectRef.current()}
-                          reference={fullWorkbookSelectedBlockMeta.block.notebookReference} />}
+                          reference={fullWorkbookSelectedBlockMeta.block.notebookReference} workbookId={activeWorkbook?.id}
+                          previousResultId={fullWorkbookSelectedBlockMeta.block.scientificRegionReport.previousResultId} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && !IS_REPLAY_MODE && <WorkbookAnalysisRerun context={getNotebookContext()} reference={fullWorkbookSelectedBlockMeta.block.notebookReference} onRelink={notebookReference => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { notebookReference })} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {
                         const context = getNotebookContext();
