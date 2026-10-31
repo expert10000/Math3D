@@ -1,0 +1,34 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "date": "2026-10-31",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "ea8a6b49165f365049571c5dd81b7f97024fb00c0447997c39ac2f8bd03f0c9f",
+  "sourceBaseCommit": "4cf26244118e431b8c7ceb59fd67926c17d12664",
+  "sourceIncludesLocalChanges": true,
+  "cases": [
+    {
+      "id": "TP01",
+      "status": "passed",
+      "observations": "Opened a new Two slopes copy with Unit slope y=x. Applied 5*x; Undo restored x and Redo restored 5*x. Applying invalid x+ kept the edit draft open and displayed 'Expected a number, symbol, or parenthesized expression.' inside the Functions panel. Cancel retained the committed 5*x source.",
+      "evidence": [
+        "mobile-android-two-slopes-baseline-x-2026-10-31.png",
+        "mobile-android-two-slopes-undo-x-2026-10-31.png",
+        "mobile-android-two-slopes-redo-5x-2026-10-31.png",
+        "mobile-android-two-slopes-invalid-error-2026-10-31.png"
+      ]
+    },
+    {
+      "id": "TP05",
+      "status": "passed",
+      "observations": "Saved the edited Two slopes after 'Graph saved.' and a 278 ms project-save completion metric. Force-stop/relaunch restored y=5*x. Reopening that saved Graph from Projects still showed y=5*x. Explore opened an unsaved Catenoid with one rendered surface; after another force-stop/relaunch, Catenoid remained the current workspace with one rendered surface.",
+      "evidence": [
+        "mobile-android-two-slopes-redo-5x-2026-10-31.png",
+        "mobile-android-catenoid-unsaved-restart-2026-10-31.png"
+      ]
+    }
+  ],
+  "scope": "These cases passed on the independent Notes Check APK only. The original internal signing key and wider device matrix remain unavailable. A preliminary force-stop before Save completed was excluded from TP05; the recorded run waited for the completion message and metric."
+}

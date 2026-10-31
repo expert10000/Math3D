@@ -5,10 +5,11 @@ import { mobileGraphFunctionDraft, mobileGraphAuthoringAction, type MobileGraphE
 import { MOBILE_GRAPH_KINDS, mobileGraphKindEditor, type MobileGraphAdvancedEditor } from "./models/mobileGraphAdvancedAuthoring";
 import { MobileGraphAdvancedEditor as AdvancedEditor } from "./MobileGraphAdvancedEditor";
 
-export const MobileGraphFunctionsPanel = ({ document, editor, onEditor, onApply, onSelect, advanced, onAdvanced, onApplyAdvanced, onPick }: { document: Graph2DDocument;
+export const MobileGraphFunctionsPanel = ({ document, editor, onEditor, onApply, onSelect, advanced, onAdvanced, onApplyAdvanced, onPick, validationError }: { document: Graph2DDocument;
   advanced: MobileGraphAdvancedEditor | null; onAdvanced: (editor: MobileGraphAdvancedEditor | null) => void;
   onApplyAdvanced: () => void; onPick: () => void;
   editor: MobileGraphEditor | null; onEditor: (editor: MobileGraphEditor | null) => void;
+  validationError?: string;
   onApply: (action: Graph2DAuthoringAction) => boolean; onSelect: (id: string) => void }) => {
   const [chooser, setChooser] = useState(false);
   const button = (label: string, onPress: () => void, disabled = false) => <Pressable key={label} accessibilityRole="button"
@@ -35,6 +36,7 @@ export const MobileGraphFunctionsPanel = ({ document, editor, onEditor, onApply,
         accessibilityState={{ checked: editor.draft.lineStyle === lineStyle }} accessibilityLabel={`Line style ${lineStyle}`} style={s.button}
         onPress={() => onEditor({ ...editor, draft: { ...editor.draft, lineStyle } })}><Text>{lineStyle}</Text></Pressable>)}</View>
       {button("Apply function", () => { if (onApply(mobileGraphAuthoringAction(editor))) onEditor(null); })}
+      {!!validationError && <Text accessibilityLiveRegion="polite" testID="mobile-graph-function-error" style={s.error}>{validationError}</Text>}
       {button("Cancel function draft", () => onEditor(null))}
     </View>}
     {document.source.objects.map((object, index) => <View style={s.card} key={object.id}>
@@ -62,4 +64,5 @@ export const MobileGraphFunctionsPanel = ({ document, editor, onEditor, onApply,
 };
 const s = StyleSheet.create({ title: { fontSize: 16, fontWeight: "600" }, card: { paddingVertical: 8, borderTopWidth: 1, borderColor: "#cbd5e1" },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center" }, button: { minHeight: 44, minWidth: 44, padding: 10, justifyContent: "center" },
-  input: { borderWidth: 1, borderColor: "#94a3b8", minHeight: 44, padding: 8, backgroundColor: "white" } });
+  input: { borderWidth: 1, borderColor: "#94a3b8", minHeight: 44, padding: 8, backgroundColor: "white" },
+  error: { color: "#9a3412", paddingVertical: 8 } });

@@ -122,6 +122,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState<MobileGraphEditor | null>(null);
+  const visibleError = panelDestination === "Functions" && editor ? "" : error;
   const [advanced, setAdvanced] = useState<MobileGraphAdvancedEditor | null>(null);
   const [analysisDraft, setAnalysisDraft] = useState(() => mobileGraphAnalysisDraft(document));
   const [analysis, setAnalysis] = useState<MobileGraphRegressionAnalysis | null>(null);
@@ -550,7 +551,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
           ? "Plot downsampled for display. Regression uses all original checked rows."
           : "Approximate/incomplete display. Check Display diagnostics." : "",
     ].filter(Boolean).join(" ")}</Text>}
-    {!presentation && (error || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{error || sampling.error || message}</Text> : null)}
+    {!presentation && (visibleError || sampling.error || message ? <Text accessibilityLiveRegion="polite" numberOfLines={2} style={s.readout}>{visibleError || sampling.error || message}</Text> : null)}
     {!presentation && ticks.warnings.length > 0 && <Text accessibilityLiveRegion="polite" style={s.readout}>{ticks.warnings.join(" ")}</Text>}
     </View>
     {panelDestination && <ScrollView keyboardShouldPersistTaps="handled" style={[s.sheet, layout.split && s.sidePanel, layout.split && { width: layout.panelWidth }, fullPanel && s.compactPanel]}
@@ -565,7 +566,8 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
         onOverlays={setOverlays} onAxis={(key) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "axis", key }), "style"))}
         onQuality={(quality) => commit(() => adapter.commitScene(mobileGraphDisplayScene(document, { type: "quality", quality }), "style"))} /> : panelDestination === "Promote" ?
         <MobileGraphPromotionPanel document={document} promotions={promotions} onCreate={onPromotion}
-          onLocate={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : panelDestination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor} onEditor={setEditor}
+          onLocate={(id) => commit(() => adapter.commitSelection(selectionForGraph2DObject(document, series, id)))} /> : panelDestination === "Functions" ? <MobileGraphFunctionsPanel document={document} editor={editor}
+        onEditor={(next) => { setEditor(next); if (error) setError(""); }} validationError={editor ? error : ""}
         advanced={advanced} onAdvanced={setAdvanced}
         onApplyAdvanced={() => { if (!advanced) return; if (commit(() => {
           // Validate using a transient store before any persistent sidecar write or scene command.
