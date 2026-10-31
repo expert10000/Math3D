@@ -92,20 +92,28 @@ jobs:
         run: |
           git show "${{ github.sha }}:scripts/verify-stable-release-gates.mjs" > scripts/verify-stable-release-gates.mjs
           git show "${{ github.sha }}:scripts/test-stable-release-gates.mjs" > scripts/test-stable-release-gates.mjs
+          git show "${{ github.sha }}:scripts/stage-verified-release-assets.mjs" > scripts/stage-verified-release-assets.mjs
+          git show "${{ github.sha }}:scripts/test-stage-verified-release-assets.mjs" > scripts/test-stage-verified-release-assets.mjs
       - name: Verify exact final installer and release asset bytes
         run: |
           node scripts/test-stable-release-gates.mjs
           node scripts/verify-stable-release-gates.mjs
+      - name: Stage unique asset names without changing verified bytes
+        run: |
+          node scripts/test-stage-verified-release-assets.mjs
+          node scripts/stage-verified-release-assets.mjs
+          cp RELEASE_NOTES.md release-publish-notes.md
+          cat >> release-publish-notes.md <<'EOF'
+
+          ### Corresponding source asset names
+
+          Windows and Linux build artifacts with the same filename but different bytes are both retained. The Windows file keeps its original name; the Linux file is prefixed with `linux-`. Identical files are uploaded once. `RELEASE_ASSET_MAP.json` maps every original platform filename to its release asset and SHA-256 hash. `SHA256SUMS.txt` and `SHA256SUMS-linux.txt` retain the original build artifact names for independent verification.
+          EOF
       - name: Publish tested stable assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
           fail_on_unmatched_files: true
-          body_path: RELEASE_NOTES.md
+          body_path: release-publish-notes.md
           files: |
-            release-assets/*
-            release-assets-linux/*
-            clean-evidence/candidate/Quantum-Hamiltonian-Lab-Setup-*.exe
-            clean-evidence/candidate/candidate-manifest.json
-            clean-evidence/test-results/final-clean-install.json
-            upgrade-evidence/test-results/final-upgrade.json
+            publish-assets/*
