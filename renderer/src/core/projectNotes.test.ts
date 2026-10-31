@@ -88,6 +88,21 @@ describe("NTS01 Project Note contracts", () => {
     expect(normalizeProjectNoteAnchor({ ...note.anchor, probe: { x: Number.NaN, y: 4 } })).toBeNull();
   });
 
+  it("binds a comparison Note to its saved view and both exact generations", () => {
+    const first = { schemaVersion: 1 as const, id: documentId, revision: 1, structuralHash: structuralHash("first") };
+    const second = { schemaVersion: 1 as const, id: createStableDocumentId("mesh", "other"), revision: 3, structuralHash: structuralHash("second") };
+    const anchor = { kind: "comparison" as const, compositionId: "composition:pair", compositionHash: structuralHash("view"),
+      members: [first, second] as const, alignment: "operator assertion" as const };
+    const note = createProjectNote({ projectId, stableKey: "comparison", kind: "text", title: "A/B observation", body: "The profiles differ.", anchor, createdAt: 100 });
+    expect(parseProjectNote(serializeProjectNote(note))).toEqual(note);
+    const comparison = () => ({ hash: anchor.compositionHash, members: anchor.members, alignment: anchor.alignment, available: true });
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), comparison }).status).toBe("current");
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), comparison: () => ({ ...comparison(), available: false }) }).status).toBe("missing");
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), comparison: () => ({ ...comparison(), hash: structuralHash("changed") }) }).status).toBe("stale");
+    expect(inspectProjectNoteAnchor(note, { ...resolver(), comparison: () => ({ ...comparison(), members: [first, { ...second, revision: 4 }] as const }) }).status).toBe("stale");
+    expect(normalizeProjectNoteAnchor({ ...anchor, extra: true })).toBeNull();
+  });
+
   it("rejects oversized, malformed, or mismatched anchors", () => {
     const note = createProjectNote({ projectId, stableKey: "plain", kind: "text", title: "Observation", body: "A note.", createdAt: 100 });
     expect(inspectProjectNoteAnchor(note, resolver()).status).toBe("unanchored");

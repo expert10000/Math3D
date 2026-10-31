@@ -15,6 +15,8 @@ export const MAX_PROJECT_NOTE_BYTES = 16 * 1024;
 export type ProjectNoteKind = "text" | "callout" | "pinned" | "result";
 export type NotePoint3 = readonly [number, number, number];
 export type ProjectNoteAnchor =
+  | Readonly<{ kind: "comparison"; compositionId: string; compositionHash: StructuralHash;
+      members: readonly [DocumentIdentity, DocumentIdentity]; alignment: "source-declared match" | "operator assertion" | "not applicable" }>
   | Readonly<{ kind: "document"; source: ScientificSourceGeneration }>
   | Readonly<{ kind: "object-local"; source: ScientificSourceGeneration; objectId: string; localPosition: NotePoint3; shapeHash: StructuralHash }>
   | Readonly<{ kind: "subentity"; source: ScientificSourceGeneration; objectId: string; entityKind: "face" | "edge" | "vertex"; entityId: string; topologyHash: StructuralHash; barycentric?: NotePoint3 }>
@@ -47,6 +49,8 @@ export type ProjectNoteAnchorInspection = Readonly<{
 export type ProjectNoteAnchorResolver = Readonly<{
   projectId: StableDocumentId;
   source: (documentId: StableDocumentId) => ScientificSourceGeneration | null;
+  comparison?: (compositionId: string) => Readonly<{ hash: StructuralHash; members: readonly [DocumentIdentity, DocumentIdentity];
+    alignment: "source-declared match" | "operator assertion" | "not applicable"; available: boolean }> | null;
   objectShape?: (documentId: StableDocumentId, objectId: string) => StructuralHash | null;
   subentityTopology?: (documentId: StableDocumentId, objectId: string, entityKind: "face" | "edge" | "vertex", entityId: string) => StructuralHash | null;
   result?: (resultId: string) => Readonly<{ source: ScientificSourceGeneration; hash: StructuralHash }> | null;
@@ -68,7 +72,13 @@ const point = (value: unknown): value is NotePoint3 =>
 
 export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | null => {
   if (!record(value)) return null;
-  if (value.kind === "workbook-block") {
+  if (value.kind === "comparison") {
+    if (!exact(value, ["kind", "compositionId", "compositionHash", "members", "alignment"]) ||
+      !id(value.compositionId) || value.compositionId.length > 120 || !isStructuralHash(value.compositionHash) ||
+      !Array.isArray(value.members) || value.members.length !== 2 ||
+      !value.members.every((member: unknown) => isDocumentIdentity(member)) ||
+      !["source-declared match", "operator assertion", "not applicable"].includes(String(value.alignment))) return null;
+  } else if (value.kind === "workbook-block") {
     if (!exact(value, ["kind", "workbookId", "workbookRevision", "blockId", "blockHash"]) ||
       !isStableDocumentId(value.workbookId) || !value.workbookId.startsWith("math3d:workbook:") ||
       !positive(value.workbookRevision) || !id(value.blockId) || !isStructuralHash(value.blockHash)) return null;
@@ -187,6 +197,16 @@ export const inspectProjectNoteAnchor = (candidate: unknown, resolver: ProjectNo
   if (note.projectId !== resolver.projectId) return { status: "different-project", reason: "Note belongs to a different Project." };
   const anchor = note.anchor;
   if (!anchor) return { status: "unanchored", reason: "Note has no target." };
+  if (anchor.kind === "comparison") {
+    const current = resolver.comparison?.(anchor.compositionId);
+    if (!current) return { status: "missing", reason: "Saved comparison is unavailable." };
+    if (current.hash !== anchor.compositionHash || current.alignment !== anchor.alignment ||
+      current.members.some((member, index) => member.id !== anchor.members[index]!.id ||
+        member.revision !== anchor.members[index]!.revision || member.structuralHash !== anchor.members[index]!.structuralHash))
+      return { status: "stale", reason: "Saved comparison or a referenced source generation changed." };
+    return current.available ? { status: "current", reason: "Both exact comparison sources are available." } :
+      { status: "missing", reason: "An exact comparison source or resource is unavailable." };
+  }
   if (anchor.kind === "workbook-block") {
     const block = resolver.workbookBlock?.(anchor.workbookId, anchor.blockId);
     if (!block || !positive(block.revision) || !isStructuralHash(block.hash)) return { status: "missing", reason: "Workbook block is unavailable." };
