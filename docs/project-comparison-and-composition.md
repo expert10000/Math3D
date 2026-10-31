@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC08)
+# Project comparison and composition (PC01–PC11)
 
 This is a read-only view of two documents already saved in one Math3D Project. A
 composition saves source IDs, exact document revisions and hashes, visibility,
@@ -172,6 +172,33 @@ Project document family or arbitrary scientific alignment. PC03 remains
 **Partial** for legacy sources without coordinate declarations. PC05 remains
 **Partial** for historical generations without retained bytes and selection
 between unrelated models.
+
+## PC11 · Retained Mesh generation comparison
+
+Status: **Complete for one bounded pre-subdivision Mesh generation**. Open a
+saved Project containing a fresh Mesh, choose that Mesh in the Project navigator,
+then choose **Saved studies → Retain before and subdivide once**. This creates
+one edit with the original Mesh as its exact replay checkpoint. The action accepts
+1–10,000 triangular faces and at most 20,000 source vertices; the subdivided
+result must have at most 50,000 vertices. It refuses a Mesh with prior edits,
+because its older checkpoint would not be the immediate pre-remesh generation.
+
+Choose **Projects → Compare saved documents**. Select the same Mesh for A and B,
+set A's **Generation** to **retained checkpoint**, and leave B at **current**.
+Each pane displays its own revision and structural hash. Source-declared units
+are retained and shown; undeclared units remain undeclared. Mesh picks stay local
+to their pane because subdivision changes vertex and face IDs. Choose **Save
+composition**, then **Save project** to retain both exact binary sidecars. The
+saved composition can be reopened after a Project restart. The HTML comparison
+report includes both source hashes and viewer captures.
+
+Checks: `npx vitest run renderer/src/projects/retainedMeshGeneration.test.ts
+--maxWorkers=1` and `npx playwright test
+tests/e2e/project-mesh-generation.spec.ts --reporter=list`. They cover retained
+revisions, units, sidecars, missing and changed bytes, saved comparison and
+export, restart, and WebGL viewer cleanup. PC03 remains **Partial** for legacy
+sources without coordinate metadata. PC05 remains **Partial** for generations
+that were never retained and for selection between unrelated models.
 
 An optional source declaration uses the exact object
 `{"format":"math3d.coordinate-frame/v1","frame":"laboratory xyz","unit":"mm","axes":["x","y","z"],"handedness":"right"}`.

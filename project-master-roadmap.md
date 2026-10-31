@@ -6,7 +6,8 @@ Status: the Project navigation and first-open optimization were committed in
 `030f0010`. The supported Electron Project/Catenoid checks pass. Stable v1.7.0
 was released from its frozen source before the later PC09 work. PC10 is
 complete for the bounded desktop comparison adapters. PC03 and PC05 remain
-Partial under the limits recorded below.
+Partial under the limits recorded below. PC11 now retains one bounded Mesh
+generation before subdivision for exact before/after comparison.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -40,6 +41,13 @@ source-local and compatible-chart selection, Notes, Workbook/report export,
 restart, tamper refusal, and viewer cleanup for the supported Mesh, Geometry
 and bounded Surface pairs. TypeScript, build, 26 unit tests and 12 Electron
 tests pass. See [comparison acceptance](docs/project-comparison-and-composition.md#pc10--bounded-comparison-acceptance).
+
+**PC11 retained Mesh generation — October 31:** a fresh saved Mesh can retain
+its exact pre-subdivision checkpoint, resource hash, declared units and binary
+sidecar. Projects compares that checkpoint beside the current subdivided Mesh;
+picks remain local to each generation. The focused unit and Electron checks cover
+package round-trip, report export, restart, missing/tampered sidecars and viewer
+cleanup. See [retained Mesh comparison](docs/project-comparison-and-composition.md#pc11--retained-mesh-generation-comparison).
 
 ## Current delivery
 
@@ -1339,6 +1347,7 @@ budgets must be explicit before members can be combined.
 | PC08 | `feat(workbook): freeze comparison captures with both source generations` | Store provenance-qualified immutable captures with member generations, view settings and current/historical status. |
 | PC09 | `feat(notes): allow observations spanning multiple source documents` | Extend checked Note references with compatibility/migration acceptance; do not silently broaden existing anchor semantics. |
 | PC10 | `test(projects): qualify multi-document composition and comparison` | Prove ownership, generation, units, missing-data, selection, capture, restart and renderer-lifetime parity for the declared supported modes. |
+| PC11 | `feat(projects): retain bounded Mesh generations for comparison` | Retain the exact pre-subdivision Mesh and current Mesh with separate checked sidecars; compare source-local picks, export and reopen after restart. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1363,6 +1372,10 @@ current observations. PC10 is complete for these bounded desktop adapters; its
 repeatable gate includes the PC01–PC09 contracts and Electron flows plus WebGL
 release checks for all three renderer families. It does not close the PC03/PC05
 partial cases above.
+PC11 is complete for a fresh Mesh before one bounded subdivision. Its replay
+checkpoint is the exact prior revision, and both resource sidecars are checked
+on Project package export/import and comparison. Earlier unretained Mesh history
+is still unavailable; PC05 remains **Partial** for those generations.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
@@ -1382,10 +1395,11 @@ Keep two distinct modes:
 - **Compare:** separate viewers can show Parametric Surface beside Mesh, or other
   qualified combinations. Synchronization is optional and capability-checked.
 
-Generation comparison is a priority within PC05: current versus retained historic
-Surface, Mesh before versus after remeshing, result versus result, or snapshot
-versus live document. Resolve retained snapshots and missing resources explicitly;
-never reconstruct unavailable history from a current source and call it historical.
+Generation comparison now includes a retained Surface checkpoint and one bounded
+Mesh pre-subdivision checkpoint. Result-versus-result and snapshot-versus-live
+remain future extensions. Resolve retained snapshots and missing resources
+explicitly; never reconstruct unavailable history from a current source and
+call it historical.
 
 Reliable active-document navigation and the first Related/Overview/Workbook
 slice are delivered on `main`. The bounded current-generation composition view,
