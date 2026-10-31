@@ -144,10 +144,34 @@ does not substitute a newer generation. The HTML comparison report and Workbook
 publication include current authored observations with their Note hashes and
 explicitly distinguish them from scientific measurements. Export refuses stale
 observations. PC03 and PC05 remain **Partial** for the boundaries above; PC10
-is the next broader acceptance gate.
+is the broader acceptance gate below.
 
 Checks: `npx vitest run tests/unit/projectComparisonNotes.test.ts` and
 `npx playwright test tests/e2e/project-comparison-observations.spec.ts --reporter=list`.
+
+## PC10 · Bounded comparison acceptance
+
+Status: **Complete for the supported adapters** on desktop. Run the repeatable
+gate with `npm run test:projects:pc10`. It typechecks and builds the app, runs
+the composition, template, Note, Workbook and report contract tests, then
+exercises the saved comparison flows in Electron.
+
+| Evidence | Accepted scope |
+| --- | --- |
+| Ownership and revisions | Mesh, Geometry and bounded parametric Surface remain in their owning Project documents. A view saves references to exact source revisions and hashes. A retained Surface checkpoint is shown only when its replay is present. |
+| Units and alignment | Matching source-declared Mesh/Geometry frames qualify an overlay. Missing declarations remain an operator assertion; mismatched declarations refuse overlay. Surface and heterogeneous sources use separate panes. |
+| Selection and appearance | A picked Surface sample retains its exact source revision and shares stored `(u,v)` only with the compatible second generation. Other picks remain source-local; appearance does not edit either source. |
+| Notes and export | Comparison Notes, Workbook Visualize references, HTML reports and portable publications retain exact A/B provenance. Restart reopens checked links. Missing or changed generations, composition hashes and Mesh sidecar bytes are refused. |
+| Viewer lifetime | Closing Geometry overlay, Mesh/Geometry panes or retained/current Surface panes detaches their canvases and releases their WebGL contexts. The saved workspace remains unchanged. |
+
+The gate includes `tests/e2e/project-comparison-lifecycle.spec.ts` and the
+existing PC01–PC09 focused suites. It passed on October 31, 2026: 26 unit
+tests and 12 Electron tests, with TypeScript and the core build passing.
+This records desktop acceptance for the stated adapters, not support for every
+Project document family or arbitrary scientific alignment. PC03 remains
+**Partial** for legacy sources without coordinate declarations. PC05 remains
+**Partial** for historical generations without retained bytes and selection
+between unrelated models.
 
 An optional source declaration uses the exact object
 `{"format":"math3d.coordinate-frame/v1","frame":"laboratory xyz","unit":"mm","axes":["x","y","z"],"handedness":"right"}`.

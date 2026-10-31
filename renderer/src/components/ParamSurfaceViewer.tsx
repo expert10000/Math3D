@@ -4010,6 +4010,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
 
       renderer.dispose();
+      (renderer as { forceContextLoss?: () => void }).forceContextLoss?.();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
       }
