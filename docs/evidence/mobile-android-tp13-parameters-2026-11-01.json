@@ -1,0 +1,30 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "fixture": "docs/test-packs/1.6.0/fixtures/wave-beats-interactive.graph.json",
+  "apkSha256": "8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4",
+  "sourceBaseCommit": "4cafa7819a8f85d31eb293e46ec68ba82c7a19f5",
+  "sourceIncludesLocalChanges": true,
+  "testedAtDate": "2026-11-01",
+  "cases": [
+    {
+      "id": "TP13",
+      "status": "passed",
+      "observations": "Imported the interactive Beating waves test fixture with f=4.5. The Parameters panel showed No active frame before Play. Play advanced the animation; Stop left it at frame 3/15, and Cancel preview returned to No active frame without changing source. Tapping the slider previewed f=4.75. A vertical swipe beginning on the slider scrolled the panel while the preview remained 4.75; a horizontal swipe changed it to 4.6. After canceling that preview, a new 4.75 preview was applied as one source change. More > Undo restored f=4.5. Repeated Play, Stop and Cancel on this exact APK; the final source remained f=4.5.",
+      "evidence": [
+        "mobile-android-tp13-playing-2026-11-01.png",
+        "mobile-android-tp13-cancelled-2026-11-01.png",
+        "mobile-android-tp13-slider-before-2026-11-01.png",
+        "mobile-android-tp13-slider-after-2026-11-01.png",
+        "mobile-android-tp13-applied-2026-11-01.png",
+        "mobile-android-tp13-undone-2026-11-01.png"
+      ]
+    }
+  ],
+  "artifact": "output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-slider-scroll.apk",
+  "gates": "Mobile TypeScript and all 417 mobile unit tests passed. Android APK Signature Scheme v2 verified with the same single debug signer. adb install -r preserved the isolated app data. The 513-line scoped process log had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal signal match.",
+  "scope": "This verifies TP13 on the isolated Notes Check package on one Samsung phone. It does not certify the internal or release package."
+}

@@ -8,13 +8,20 @@ import { saveMobileGraphPublication, shareMobileGraphPublication } from "./servi
 
 function ParameterSlider({ name, control, value, disabled, onChange }: { name: string; control: Graph2DParameterControl; value: number; disabled: boolean; onChange: (value: number) => void }) {
   const [width, setWidth] = useState(200);
+  const touch = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const move = (x: number) => { if (!disabled) onChange(quantizeGraph2DParameterValue(control, control.min + Math.max(0, Math.min(1, x / width)) * (control.max - control.min))); };
   return <View style={{ height: 44, justifyContent: "center" }} accessibilityRole="adjustable" accessibilityLabel={`${name} slider`}
     accessibilityState={{ disabled }} accessibilityValue={{ min: control.min, max: control.max, now: value, text: `${value} ${control.unit}` }}
     accessibilityActions={[{ name: "increment" }, { name: "decrement" }]} onAccessibilityAction={event => {
       if (!disabled) onChange(quantizeGraph2DParameterValue(control, value + (event.nativeEvent.actionName === "increment" ? control.step : -control.step))); }}
     onLayout={event => setWidth(Math.max(1, event.nativeEvent.layout.width))}
-    onStartShouldSetResponder={() => !disabled} onMoveShouldSetResponder={() => !disabled}
+    onTouchStart={event => { touch.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY, moved: false }; }}
+    onTouchMove={event => { if (touch.current && (Math.abs(event.nativeEvent.pageX - touch.current.x) > 8 || Math.abs(event.nativeEvent.pageY - touch.current.y) > 8)) touch.current.moved = true; }}
+    onTouchEnd={event => { if (touch.current && !touch.current.moved) move(event.nativeEvent.locationX); touch.current = null; }}
+    onTouchCancel={() => { touch.current = null; }}
+    onStartShouldSetResponder={() => false}
+    onMoveShouldSetResponder={event => !!touch.current && !disabled && Math.abs(event.nativeEvent.pageX - touch.current.x) > 8 &&
+      Math.abs(event.nativeEvent.pageX - touch.current.x) > Math.abs(event.nativeEvent.pageY - touch.current.y) * 1.25}
     onResponderGrant={event => move(event.nativeEvent.locationX)} onResponderMove={event => move(event.nativeEvent.locationX)}>
     <View pointerEvents="none" style={{ height: 4, backgroundColor: "#94a3b8" }} />
     <View pointerEvents="none" style={{ position: "absolute", left: Math.max(0, Math.min(width - 20, (value - control.min) / (control.max - control.min) * (width - 20))), width: 20, height: 20, borderRadius: 10, backgroundColor: disabled ? "#94a3b8" : "#1d4ed8" }} />
