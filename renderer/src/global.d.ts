@@ -562,8 +562,11 @@ declare global {
       statusText: string;
     };
     docker: {
+      cliAvailable: boolean;
       dockerAvailable: boolean;
       composeAvailable: boolean;
+      command?: string;
+      clientVersion?: string;
       dockerVersion?: string;
       composeVersion?: string;
       error?: string;

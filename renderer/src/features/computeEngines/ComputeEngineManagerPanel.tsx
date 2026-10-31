@@ -51,6 +51,7 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
 
   const api = typeof window !== "undefined" ? window.computeEngines : undefined;
   const dockerReady = !!snapshot?.docker.dockerAvailable && !!snapshot?.docker.composeAvailable;
+  const dockerStatus = dockerReady ? "available" : !snapshot?.docker.cliAvailable ? "CLI unavailable" : !snapshot?.docker.composeAvailable ? "Compose unavailable" : "daemon unavailable";
   const serviceReachable = snapshot?.engines.some((engine) => engine.healthy) ?? false;
 
   const refresh = useCallback(async () => {
@@ -129,8 +130,9 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <strong>Docker CLI / Compose</strong>
-          <span style={{ color: statusColor(dockerReady, serviceReachable) }}>{dockerReady ? "available" : "CLI unavailable"}</span>
+          <span style={{ color: statusColor(dockerReady, serviceReachable) }}>{dockerStatus}</span>
         </div>
+        {snapshot?.docker.command && <div style={{ fontSize: 11, color: "#475467", overflowWrap: "anywhere" }}>CLI: {snapshot.docker.command}</div>}
         {snapshot?.docker.dockerVersion && (
           <div style={{ fontSize: 11, color: "#475467" }}>
             Docker {snapshot.docker.dockerVersion}
@@ -139,7 +141,7 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
         )}
         {!dockerReady && (
           <div style={{ display: "grid", gap: 6 }}>
-            {serviceReachable && <div style={{ fontSize: 11, color: "#9a6700" }}>A scientific service is reachable. Container management is unavailable from this app.</div>}
+            {serviceReachable && <div style={{ fontSize: 11, color: "#9a6700" }}>A scientific service is reachable. Container management needs the Docker daemon and Compose.</div>}
             <div style={{ fontSize: 11, color: "#b42318" }}>
               {snapshot?.docker.error || "Install Docker Desktop or Podman with Docker-compatible compose support."}
             </div>
@@ -152,7 +154,7 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
 
       {engines.map((engine) => {
         const engineBusy = busy.startsWith(`${engine.id}:`);
-        const canStart = dockerReady && !engine.running;
+        const canStart = dockerReady && engine.installed && !engine.running;
         const canStop = dockerReady && engine.running;
         return (
           <div key={engine.id} style={cardStyle}>

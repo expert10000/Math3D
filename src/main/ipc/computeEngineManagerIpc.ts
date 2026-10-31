@@ -16,8 +16,11 @@ type EngineDefinition = {
 };
 
 type DockerState = {
+  cliAvailable: boolean;
   dockerAvailable: boolean;
   composeAvailable: boolean;
+  command?: string;
+  clientVersion?: string;
   dockerVersion?: string;
   composeVersion?: string;
   error?: string;
@@ -88,10 +91,18 @@ const runCommand = (
   options: { cwd?: string; timeoutMs?: number } = {}
 ): Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number | null }> => {
   return new Promise((resolve) => {
+    const env = { ...process.env };
+    if (path.isAbsolute(command)) {
+      // Docker starts helpers such as docker-credential-desktop by name.
+      // Give them the CLI directory even when Electron inherited an older PATH.
+      const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") || "PATH";
+      env[pathKey] = `${path.dirname(command)}${path.delimiter}${env[pathKey] || ""}`;
+    }
     const proc = spawn(command, args, {
       cwd: options.cwd || process.cwd(),
       windowsHide: true,
       shell: false,
+      env,
     });
     let stdout = "";
     let stderr = "";
@@ -118,28 +129,55 @@ const runCommand = (
 
 const trimOutput = (value: string): string => value.trim().replace(/\s+/g, " ");
 
-const detectDocker = async (): Promise<DockerState> => {
-  const docker = await runCommand("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 15_000 });
-  if (!docker.ok) {
-    return {
-      dockerAvailable: false,
-      composeAvailable: false,
-      error: trimOutput(docker.stderr || docker.stdout || "Docker is not available."),
-    };
+const dockerCommandCandidates = (): string[] => {
+  const candidates = [process.env.MATH3D_DOCKER_CLI, "docker"];
+  if (process.platform === "win32") {
+    if (process.env.LOCALAPPDATA) {
+      candidates.push(path.join(process.env.LOCALAPPDATA, "Programs", "DockerDesktop", "resources", "bin", "docker.exe"));
+    }
+    if (process.env.ProgramFiles) {
+      candidates.push(path.join(process.env.ProgramFiles, "Docker", "Docker", "resources", "bin", "docker.exe"));
+    }
   }
-  const compose = await runCommand("docker", ["compose", "version", "--short"], { timeoutMs: 15_000 });
+  return [...new Set(candidates.filter((candidate): candidate is string => !!candidate))];
+};
+
+const detectDocker = async (): Promise<DockerState> => {
+  let command: string | undefined;
+  let clientVersion: string | undefined;
+  let lastError = "Docker CLI is not available.";
+  for (const candidate of dockerCommandCandidates()) {
+    if (path.isAbsolute(candidate) && !fs.existsSync(candidate)) continue;
+    const client = await runCommand(candidate, ["--version"], { timeoutMs: 15_000 });
+    if (client.ok) {
+      command = candidate;
+      clientVersion = trimOutput(client.stdout);
+      break;
+    }
+    lastError = trimOutput(client.stderr || client.stdout || lastError);
+  }
+  if (!command) return { cliAvailable: false, dockerAvailable: false, composeAvailable: false, error: lastError };
+  const [compose, server] = await Promise.all([
+    runCommand(command, ["compose", "version", "--short"], { timeoutMs: 15_000 }),
+    runCommand(command, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 15_000 }),
+  ]);
   return {
-    dockerAvailable: true,
+    cliAvailable: true,
+    dockerAvailable: server.ok,
     composeAvailable: compose.ok,
-    dockerVersion: trimOutput(docker.stdout),
+    command,
+    clientVersion,
+    dockerVersion: server.ok ? trimOutput(server.stdout) : undefined,
     composeVersion: compose.ok ? trimOutput(compose.stdout) : undefined,
-    error: compose.ok ? undefined : trimOutput(compose.stderr || compose.stdout || "Docker Compose is not available."),
+    error: !compose.ok
+      ? trimOutput(compose.stderr || compose.stdout || "Docker Compose is not available.")
+      : !server.ok ? trimOutput(server.stderr || server.stdout || "Docker daemon is not available.") : undefined,
   };
 };
 
-const inspectContainer = async (engine: EngineDefinition): Promise<{ installed: boolean; running: boolean; statusText: string }> => {
+const inspectContainer = async (engine: EngineDefinition, command: string): Promise<{ installed: boolean; running: boolean; statusText: string }> => {
   const result = await runCommand(
-    "docker",
+    command,
     ["ps", "-a", "--filter", `name=^/${engine.containerName}$`, "--format", "{{.Status}}"],
     { timeoutMs: 15_000 }
   );
@@ -187,14 +225,14 @@ const buildEngineStatus = async (engine: EngineDefinition, docker: DockerState):
       installed: false,
       running: health.healthy,
       healthy: health.healthy,
-      statusText: health.healthy ? "available" : "Docker CLI unavailable",
+      statusText: health.healthy ? "available" : docker.cliAvailable ? "Docker daemon unavailable" : "Docker CLI unavailable",
       containerName: engine.containerName,
       healthUrl: engine.healthUrl,
       version: health.version,
       lastError: health.healthy ? docker.error : health.error || docker.error,
     };
   }
-  const container = await inspectContainer(engine);
+  const container = await inspectContainer(engine, docker.command!);
   return {
     id: engine.id,
     label: engine.label,
@@ -229,9 +267,10 @@ const engineById = (id: unknown): EngineDefinition => {
   return engine;
 };
 
-const composeArgsFor = (engine: EngineDefinition, action: EngineAction): string[] => {
+const dockerArgsFor = (engine: EngineDefinition, action: EngineAction): string[] => {
   const base = ["compose", "-f", engine.composePath];
-  if (action === "install" || action === "start") return [...base, "up", "--build", "-d"];
+  if (action === "install") return [...base, "up", "--build", "-d"];
+  if (action === "start") return ["start", engine.containerName];
   if (action === "update") return [...base, "up", "--build", "--pull", "always", "-d"];
   if (action === "stop") return [...base, "stop"];
   if (action === "reset") return [...base, "down"];
@@ -251,7 +290,7 @@ const runEngineAction = async (id: unknown, action: EngineAction) => {
     };
   }
   const engine = engineById(id);
-  const result = await runCommand("docker", composeArgsFor(engine, action), {
+  const result = await runCommand(docker.command!, dockerArgsFor(engine, action), {
     cwd: path.dirname(engine.composePath),
     timeoutMs: action === "logs" ? 30_000 : 600_000,
   });
