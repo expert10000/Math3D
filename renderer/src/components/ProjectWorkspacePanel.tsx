@@ -44,6 +44,7 @@ import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/project
 import { projectWorkbookUses } from "../projects/projectWorkbookUsage";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
+import { createProjectComparisonNote, inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
@@ -166,6 +167,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [compositionOpen, setCompositionOpen] = useState(false);
+  const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
@@ -543,6 +545,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openNoteTarget = (note: ProjectNote) => {
     const anchor = note.anchor;
     if (!anchor) return;
+    if (anchor.kind === "comparison") {
+      const current = project?.identity.id === note.projectId ? project : notesProject;
+      if (!current || inspectProjectComparisonNote(current, note, comparisonResource).status !== "current") {
+        setNotesMessage("The exact saved comparison or one of its sources is unavailable. Reopen or relink the Project.");
+        return;
+      }
+      setComparisonInitialId(anchor.compositionId); setCompositionOpen(true); setNotesOpen(false);
+      return;
+    }
     if (anchor.kind === "workbook-block") {
       const target = noteWorkbooks.find((item) => item.workbook.id === anchor.workbookId);
       const stage = target?.workbook.stages.find((item) => item.blocks.some((block) => block.id === anchor.blockId));
@@ -1131,7 +1142,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setQuick(true);
     window.dispatchEvent(new CustomEvent("math3d:project-dock-visible", { detail: placement }));
   };
-  const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
+  const renderNotesPanel = (layout: "floating" | "page") => <ProjectNotesPanel layout={layout} project={notesProject} workspace={notesWorkspace} readResource={comparisonResource} drafts={noteDrafts} busy={busy} message={notesMessage} focusNoteId={selectedNoteId ?? noteRequest?.id}
     selectionAvailable={Boolean(captureNoteSelection?.())} workbooks={noteWorkbooks}
     onClose={() => setNotesOpen(false)} onOpenProjects={() => { setNotesOpen(false); if (layout === "floating") { setDetailView(true); onOpenChange(true); } }} onRefresh={refreshNotes}
     onCapture={captureNote} onCaptureResult={captureResultNote} onCaptureWorkbookBlock={captureWorkbookBlockNote} onOpenTarget={openNoteTarget}
@@ -1259,7 +1270,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2 &&
             !project.workspace.entries.some(entry => ["mesh", "geometry", "surface"].includes(entry.module) && !!entry.replay &&
               (entry.checkpoint.identity.revision !== entry.expected.revision || entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash))}
-            onClick={() => setCompositionOpen(true)}>Open comparison</button>
+            onClick={() => { setComparisonInitialId(undefined); setCompositionOpen(true); }}>Open comparison</button>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
@@ -1528,7 +1539,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             </section>
           </div>
           {fullDetails && detailPage === "documents" && project && <ProjectResearchLinks project={project} titles={documentTitles}
-            workbookBytes={projectWorkbookBytes} canOpenDocument={(id, module) => !preview && !!canNavigateDocument?.(id, module)}
+            workbookBytes={projectWorkbookBytes} readResource={comparisonResource} canOpenDocument={(id, module) => !preview && !!canNavigateDocument?.(id, module)}
             onOpenDocument={viewBesideProject} onInspectResult={(id) => { setResultFocus(previous => ({ id, token: (previous?.token ?? 0) + 1 })); openDetailPage("results"); }}
             onOpenWorkbookBlock={(id, stageId, blockId) => { void openProjectWorkbook(id, true, stageId, blockId); }}
             onOpenNote={(id) => openProjectNotes(id)} canOpenNote={!preview && !busy}
@@ -1611,7 +1622,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
-      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} onClose={() => setCompositionOpen(false)}
+      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} initialCompositionId={comparisonInitialId} onClose={() => setCompositionOpen(false)}
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
             const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
@@ -1620,6 +1631,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             return upsertMath3DProjectComposition(saved, composition);
           }, `Saved composition “${composition.title}”.`);
           if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");
+          return ok;
+        }} onSaveObservation={async (composition, title, body) => {
+          const ok = await commitNotes(saved => {
+            if (saved.identity.id !== project.identity.id) throw new Error("The open Project changed. Reopen this comparison.");
+            const note = createProjectComparisonNote(saved, composition, comparisonResource, title, body, Date.now(), crypto.randomUUID());
+            return upsertMath3DProjectNote(saved, note);
+          }, `Saved comparison observation “${title.trim()}”.`);
           return ok;
         }} /></React.Suspense>}
     </ProjectGalleryFrame>}

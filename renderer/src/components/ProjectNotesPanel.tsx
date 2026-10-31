@@ -5,15 +5,18 @@ import type { Workbook } from "@math3d/workbook";
 import type { NoteCaptureKind, ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
+import { resolveProjectComparisonNoteTarget } from "../projects/projectComparisonNotes";
+import type { ProjectResourceReader } from "../projects/projectResources";
 import { ProjectNoteLiveValues, type NoteValuePatch } from "./ProjectNoteLiveValues";
 
-type Filter = "all" | "scene" | "object" | "result" | "workbook";
+type Filter = "all" | "scene" | "object" | "result" | "workbook" | "comparison";
 const category = (anchor: ProjectNote["anchor"]): Exclude<Filter, "all"> | "global" =>
-  anchor?.kind === "document" ? "scene" : anchor?.kind === "object-local" || anchor?.kind === "subentity" || anchor?.kind === "entity-selection" || anchor?.kind === "graph-selection" ? "object" :
+  anchor?.kind === "comparison" ? "comparison" : anchor?.kind === "document" ? "scene" : anchor?.kind === "object-local" || anchor?.kind === "subentity" || anchor?.kind === "entity-selection" || anchor?.kind === "graph-selection" ? "object" :
     anchor?.kind === "result" ? "result" : anchor?.kind === "workbook-block" ? "workbook" : "global";
 
 const anchorLabel = (anchor: ProjectNote["anchor"]) => !anchor ? "Unanchored" :
-  anchor.kind === "workbook-block" ? `Workbook block ${anchor.blockId}` : anchor.kind === "result" ? `Result ${anchor.resultId}` :
+  anchor.kind === "comparison" ? `Comparison ${anchor.compositionId} · A r${anchor.members[0].revision} · B r${anchor.members[1].revision} · ${anchor.alignment}` :
+    anchor.kind === "workbook-block" ? `Workbook block ${anchor.blockId}` : anchor.kind === "result" ? `Result ${anchor.resultId}` :
     anchor.kind === "graph-selection" ? `Graph ${anchor.objectId}${anchor.probe ? ` · probe (${anchor.probe.x}, ${anchor.probe.y})` : ""}` :
     "objectId" in anchor ? `${anchor.objectId}${"entityId" in anchor ? ` · ${anchor.entityKind} ${anchor.entityId}` : ""}` : `Document ${anchor.source.documentId}`;
 type WorkbookBlockChoice = { workbookId: string; blockId: string; label: string };
@@ -35,6 +38,10 @@ const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; ta
     </> : <>
       <strong>{note.title}</strong><p data-testid="note-rendered-body" style={{ whiteSpace: "pre-wrap", margin: "5px 0" }}>{projectNoteRenderedBody(note, workspace)}</p>
       <ProjectNoteLiveValues note={note} workspace={workspace} busy={busy} onChange={onChangeValues} />
+      {note.anchor?.kind === "comparison" && <small style={{ display: "block", overflowWrap: "anywhere" }}>
+        A: {note.anchor.members[0].id} · {note.anchor.members[0].structuralHash}<br />
+        B: {note.anchor.members[1].id} · {note.anchor.members[1].structuralHash}
+      </small>}
       <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
       {note.anchor && <button type="button" disabled={busy} onClick={() => onOpen(note)} style={{ marginLeft: 5 }}>Open target</button>}
       <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
@@ -54,6 +61,7 @@ const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; ta
 
 export const ProjectNotesPanel: React.FC<{
   project: Math3DProject | null; workspace: MixedWorkspaceDocument | null; drafts: readonly ProjectNoteDraft[];
+  readResource?: ProjectResourceReader;
   layout?: "floating" | "page";
   busy: boolean; message: string; onClose: () => void; onOpenProjects: () => void; onRefresh: () => void;
   selectionAvailable: boolean; workbooks: readonly { workbook: Workbook; revision: number }[];
@@ -64,7 +72,7 @@ export const ProjectNotesPanel: React.FC<{
   onChangeValues: (note: ProjectNote, patch: NoteValuePatch) => Promise<boolean>;
   onSendToWorkbook: (note: ProjectNote, workbookId: string, blockId: string) => Promise<boolean>;
   focusNoteId?: string | null;
-}> = ({ project, workspace, drafts, layout = "floating", busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onChangeValues, onSendToWorkbook, focusNoteId }) => {
+}> = ({ project, workspace, drafts, readResource, layout = "floating", busy, message, selectionAvailable, workbooks, onClose, onOpenProjects, onRefresh, onCapture, onCaptureResult, onCaptureWorkbookBlock, onOpenTarget, onUpdateDraft, onDiscardDraft, onSaveDrafts, onSaveNote, onChangeValues, onSendToWorkbook, focusNoteId }) => {
   const [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
   const [resultId, setResultId] = useState(""), [blockKey, setBlockKey] = useState("");
   const notes = project?.notes ?? [];
@@ -88,7 +96,9 @@ export const ProjectNotesPanel: React.FC<{
   const resolver = useMemo(() => project && workspace ? projectNoteSourceResolver(project.identity.id, workspace) : null, [project?.identity.id, workspace]);
   const status = (note: ProjectNote): string => {
     if (!resolver) return "Source unavailable";
-    const state = inspectProjectNoteAnchor(note, { ...resolver, workbookBlock: (workbookId, blockId) => {
+    const state = inspectProjectNoteAnchor(note, { ...resolver, comparison: id => project && readResource ?
+      resolveProjectComparisonNoteTarget(project, id, readResource, note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable") : null,
+      workbookBlock: (workbookId, blockId) => {
       const target = workbooks.find((item) => item.workbook.id === workbookId);
       const block = target?.workbook.stages.flatMap((stage) => stage.blocks).find((item) => item.id === blockId);
       return target && block ? { revision: target.revision, hash: structuralHash(block) } : null;
@@ -122,7 +132,7 @@ export const ProjectNotesPanel: React.FC<{
     </div>}
     <label style={{ display: "grid", gap: 4, marginTop: 10 }}>Search Notes<input data-testid="notes-search" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
     <div aria-label="Note filters" style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-      {(["all", "scene", "object", "result", "workbook"] as const).map((item) => <button type="button" key={item} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0]!.toUpperCase() + item.slice(1)}</button>)}
+      {(["all", "scene", "object", "result", "workbook", "comparison"] as const).map((item) => <button type="button" key={item} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0]!.toUpperCase() + item.slice(1)}</button>)}
     </div>
     {drafts.length > 0 && <div style={{ marginTop: 10 }}><strong>Session drafts ({drafts.length})</strong>
       <button type="button" data-testid="notes-save" disabled={busy || !project || drafts.some((draft) => !draft.title.trim() || !draft.body.trim())} onClick={onSaveDrafts} style={{ marginLeft: 7 }}>Save to Project</button>

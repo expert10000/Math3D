@@ -17,6 +17,7 @@ import { surfaceDocumentBinding, type SurfaceDocumentBinding } from "../workspac
 import type { CameraSyncState, OverlayPointSet, OverlayPolylineGroup } from "./SurfaceViewer";
 import { type ComparisonEvidenceSelection } from "../projects/projectComparisonEvidence";
 import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceExport";
+import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -149,7 +150,9 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
 };
 
 export const ProjectCompositionView: React.FC<{ project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
-  onSave: (composition: ProjectComposition) => Promise<boolean> }> = ({ project, readResource, onClose, onSave }) => {
+  initialCompositionId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
+  onSaveObservation: (composition: ProjectComposition, title: string, body: string) => Promise<boolean> }> =
+  ({ project, readResource, onClose, initialCompositionId, onSave, onSaveObservation }) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKeyDown, true);
@@ -169,6 +172,9 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [palette, setPalette] = useState<[string, string]>([...colors]);
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
   const [pick, setPick] = useState<Pick | null>(null), [message, setMessage] = useState("");
+  const [observationTitle, setObservationTitle] = useState("Comparison observation");
+  const [observationBody, setObservationBody] = useState("");
+  const [observationBusy, setObservationBusy] = useState(false);
   const [linked, setLinked] = useState<{ uv: { u: number; v: number }; token: number } | null>(null);
   const [cameraMode, setCameraMode] = useState<"independent" | "linked">("independent");
   const [cameraLeader, setCameraLeader] = useState<0 | 1>(0);
@@ -189,6 +195,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     setVisible([choice.members[0].visible, choice.members[1].visible]);
     setPalette([choice.members[0].color, choice.members[1].color]); setOpacity([choice.members[0].opacity, choice.members[1].opacity]);
   };
+  useEffect(() => { if (initialCompositionId) chooseSaved(initialCompositionId); }, [initialCompositionId]);
   const composition = useMemo((): ProjectComposition | null => {
     if (!firstId || !secondId || firstId === secondId && (mode !== "side-by-side" || checkpoint[0] === checkpoint[1]) ||
       mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
@@ -309,6 +316,30 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       <button data-testid="project-comparison-export-evidence" disabled={!saved || !!resolved.error || report.busy} onClick={() => void report.exportEvidence()}>
         {report.busy ? "Capturing views…" : "Export checked HTML report with views"}</button>
       {report.message && <span role="status" style={{ marginLeft: 8 }}>{report.message}</span>}
+    </section>}
+    {saved && <section data-testid="project-comparison-observations" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
+      <strong>Observations on this comparison</strong>
+      <p style={{ margin: "5px 0" }}>A Note keeps this exact saved composition and both source generations. Its alignment label records whether the source frames matched or were asserted by the operator.</p>
+      <label style={{ display: "block" }}>Observation title <input aria-label="Comparison observation title" value={observationTitle} maxLength={160}
+        onChange={event => setObservationTitle(event.target.value)} /></label>
+      <label style={{ display: "block", marginTop: 5 }}>Observation <textarea aria-label="Comparison observation body" value={observationBody} maxLength={8192} rows={3}
+        onChange={event => setObservationBody(event.target.value)} style={{ display: "block", width: "min(100%, 680px)" }} /></label>
+      <button data-testid="project-comparison-save-observation" disabled={!composition || !!resolved.error || observationBusy || !observationTitle.trim() || !observationBody.trim()}
+        onClick={() => { if (!composition) return; setObservationBusy(true); void onSaveObservation(composition, observationTitle, observationBody).then(ok => {
+          if (ok) { setObservationBody(""); setMessage("Observation saved with both exact source generations."); }
+          else setMessage("Observation could not be saved; reopen the Project and check both sources.");
+        }).finally(() => setObservationBusy(false)); }}>Save observation</button>
+      {(project.notes ?? []).filter(note => note.anchor?.kind === "comparison" && note.anchor.compositionId === saved.id).map(note => {
+        const anchor = note.anchor!;
+        if (anchor.kind !== "comparison") return null;
+        const state = inspectProjectComparisonNote(project, note, readResource);
+        return <article key={note.identity.id} style={{ borderTop: "1px solid #cbd5e1", marginTop: 8, paddingTop: 8 }}>
+          <strong>{note.title}</strong> · {state.status}<p style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{note.body}</p>
+          <small>Alignment: {anchor.alignment}; composition {anchor.compositionId} · {anchor.compositionHash}<br />
+            A: {anchor.members[0].id} r{anchor.members[0].revision} · {anchor.members[0].structuralHash}<br />
+            B: {anchor.members[1].id} r{anchor.members[1].revision} · {anchor.members[1].structuralHash}</small>
+        </article>;
+      })}
     </section>}
     <footer style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}><strong>Selection</strong> {pick ?
       `${titleOf(project, pick.memberId)} · r${pick.revision} · ${pick.hash.slice(0, 20)}… · ${pick.meshKey ?? "mesh"} · face ${pick.faceIndex ?? "—"} · (${pick.point.x.toPrecision(5)}, ${pick.point.y.toPrecision(5)}, ${pick.point.z.toPrecision(5)})` :

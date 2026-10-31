@@ -4,6 +4,8 @@ import { inspectProjectNoteAnchor, matchesScientificSourceGeneration, structural
 import { inspectNotebookReference, type NotebookReference, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
+import { resolveProjectComparisonNoteTarget } from "../projects/projectComparisonNotes";
+import type { ProjectResourceReader } from "../projects/projectResources";
 
 type Status = "current" | "stale" | "missing" | "different-project" | "unanchored" | "invalid";
 type Citation = { workbookId: string; stageId: WorkbookStageId; blockId: string; blockTitle: string;
@@ -15,6 +17,7 @@ type Props = {
   project: Math3DProject;
   titles: ReadonlyMap<string, string>;
   workbookBytes: (id: string) => Uint8Array | null;
+  readResource: ProjectResourceReader;
   canOpenDocument: (id: string, module: KernelWorkspaceModule) => boolean;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onInspectResult: (id: string) => void;
@@ -30,7 +33,7 @@ const statusText = (status: Status) => ({ current: "Up to date", stale: "Histori
 const tone = (status: Status) => status === "current" ? "current" : status === "stale" ? "stale" : "unavailable";
 
 /** Reads verified Workbook payloads and the Project's stored Note anchors; prose is never treated as a link. */
-export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workbookBytes, canOpenDocument, onOpenDocument,
+export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workbookBytes, readResource, canOpenDocument, onOpenDocument,
   onInspectResult, onOpenWorkbookBlock, onOpenNote, canOpenNote, onAddRippleResearch, addRippleResearchBusy }) => {
   const research = useMemo(() => {
     const workbooks: LoadedWorkbook[] = (project.workbooks ?? []).map(reference => {
@@ -84,9 +87,11 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
       const block = loaded?.workbook?.stages.flatMap(stage => stage.blocks).find(item => item.id === blockId);
       return loaded && block ? { revision: loaded.reference.revision, hash: structuralHash(block) } : null;
     };
-    const notes = (project.notes ?? []).map(note => ({ note, inspection: inspectProjectNoteAnchor(note, { ...resolver, workbookBlock: blockLookup }) }));
+    const notes = (project.notes ?? []).map(note => ({ note, inspection: inspectProjectNoteAnchor(note, { ...resolver,
+      comparison: id => resolveProjectComparisonNoteTarget(project, id, readResource,
+        note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable"), workbookBlock: blockLookup }) }));
     return { workbooks, citations, noteUses, notes };
-  }, [project, workbookBytes]);
+  }, [project, workbookBytes, readResource]);
 
   const documentButton = (id: string, label: string, status: Status) => {
     const entry = project.workspace.entries.find(item => item.expected.id === id);
@@ -96,6 +101,7 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
   const noteTarget = (note: ProjectNote, status: Status) => {
     const anchor = note.anchor;
     if (!anchor) return <span>Project Note without a target</span>;
+    if (anchor.kind === "comparison") return <span>Comparison {anchor.compositionId} · A {titles.get(anchor.members[0].id) ?? anchor.members[0].id} r{anchor.members[0].revision} · B {titles.get(anchor.members[1].id) ?? anchor.members[1].id} r{anchor.members[1].revision} · {anchor.alignment}</span>;
     if (anchor.kind === "workbook-block") {
       const loaded = research.workbooks.find(item => item.reference.id === anchor.workbookId);
       const stage = loaded?.workbook?.stages.find(item => item.blocks.some(block => block.id === anchor.blockId));
