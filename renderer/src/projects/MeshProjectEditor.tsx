@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { subdivideWithRetainedMeshCheckpoint } from "./retainedMeshGeneration";
 
 export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onRestore: () => void }> = ({ adapter, onRestore }) => {
   const [translation, setTranslation] = useState(["0", "0", "0"]), [scale, setScale] = useState("1");
   const [selection, setSelection] = useState(JSON.stringify(adapter.selection()));
   const [error, setError] = useState("");
+  const [comparisonStatus, setComparisonStatus] = useState("");
   const run = (action: () => void) => {
     try { action(); setSelection(JSON.stringify(adapter.selection())); setError(""); onRestore(); }
     catch (failure) { setError((failure as Error).message); }
@@ -20,6 +22,10 @@ export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onResto
       if (!positions.every(Number.isFinite)) throw new TypeError("Transform exceeds the mesh coordinate range.");
       adapter.replaceMesh({ ...mesh, positions }, "object-edit", { translation: offsets, scale: factor });
     })}>Apply transform</button>
+    <button type="button" data-testid="project-mesh-retain-subdivide" onClick={() => run(() => {
+      const { before, after } = subdivideWithRetainedMeshCheckpoint(adapter);
+      setComparisonStatus(`Retained pre-subdivision Mesh r${before.identity.revision} (${before.identity.structuralHash}) and current r${after.identity.revision} (${after.identity.structuralHash}). Open Projects → Compare saved documents, choose this Mesh in both panes and select the retained checkpoint for A. Save the composition and Project to keep both sidecars.`);
+    })}>Retain before and subdivide once</button>
     <button type="button" data-testid="project-mesh-undo" disabled={!adapter.history().undoDepth} onClick={() => run(() => { adapter.undo(); })}>Undo</button>
     <button type="button" data-testid="project-mesh-redo" disabled={!adapter.history().redoDepth} onClick={() => run(() => { adapter.redo(); })}>Redo</button>
     <details style={{ maxWidth: "100%" }}><summary>Saved selection</summary>
@@ -27,6 +33,7 @@ export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onResto
       <button type="button" data-testid="project-mesh-select" onClick={() => run(() => { const ids: unknown = JSON.parse(selection); if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) throw new TypeError("Selection must be an array of entity IDs."); adapter.commitSelection(ids); })}>Apply selection</button>
     </details>
     {error && <span role="alert" data-testid="project-mesh-error">{error}</span>}
+    {comparisonStatus && <small role="status" data-testid="project-mesh-retained-status">{comparisonStatus}</small>}
     <small>Transforms edit saved coordinates. Projects → Save project retains resources and history.</small>
   </div>;
 };

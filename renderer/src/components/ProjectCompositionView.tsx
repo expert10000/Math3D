@@ -128,7 +128,7 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
   return <section aria-label={label} style={{ minWidth: 0, height, position: "relative", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
     <div style={{ position: "absolute", zIndex: 30, top: 58, left: 10, background: "#fff", padding: "4px 8px", borderRadius: 4, maxWidth: "min(80%, 450px)" }}>
-      <strong>{label}</strong><br /><small>{members.map(member => `${member.generation} r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? "unit not recorded"}`).join(" / ")}</small>
+      <strong>{label}</strong><br /><small>{members.map(member => `${member.generation} r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? member.coordinates.value?.unit ?? "unit not recorded"}`).join(" / ")}</small>
     </div>
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
@@ -265,6 +265,9 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       {cameraLinked && <small role="status">Camera linked from {cameraLeader === 0 ? "A" : "B"} · {cameraPose?.token ?? 0} updates</small>}
       {cameraMode === "linked" && !cameraQualification && <small role="alert">Saved camera link unavailable for these sources; choose independent cameras.</small>}
     </div>}
+    {mode === "side-by-side" && composition && composition.members[0].documentId === composition.members[1].documentId &&
+      project.workspace.entries.find(entry => entry.expected.id === composition.members[0].documentId)?.module === "mesh" &&
+      <small role="status">Mesh picks belong to their own revision. Remeshing can change vertex and face IDs, so selections are not mapped between panes.</small>}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12 }}>
       {([0, 1] as const).map(index => <div key={index} style={{ border: "1px solid #cbd5e1", padding: 8, borderRadius: 8 }}>
         <label>Source {index === 0 ? "A" : "B"} <select data-testid={`project-composition-source-${index}`} value={index === 0 ? firstId : secondId} onChange={event => onSelect(index, event.target.value)}>
