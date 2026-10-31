@@ -1,0 +1,111 @@
+name: Publish Verified Stable Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Frozen stable tag (for example v1.7.0)
+        required: true
+        type: string
+      build_run_id:
+        description: Completed Release Installer run whose build and signoff jobs passed
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      VERIFIED_BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Require completed source build and successful signoff jobs
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || ! "$VERIFIED_BUILD_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo 'Stable tag and numeric build run ID are required' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_BUILD_RUN_ID" > source-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$VERIFIED_BUILD_RUN_ID/jobs?per_page=100" > source-jobs.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const run = JSON.parse(fs.readFileSync('source-run.json', 'utf8'));
+          const { jobs, total_count: total } = JSON.parse(fs.readFileSync('source-jobs.json', 'utf8'));
+          if (run.name !== 'Release Installer' || run.event !== 'workflow_dispatch' || run.status !== 'completed' || total !== jobs.length)
+            throw new Error('Source run is not a complete Release Installer dispatch');
+          const required = ['windows-release', 'linux-release', 'theory-lab-installer', 'clean-install-gate', 'upgrade-gate'];
+          for (const name of required) {
+            if (jobs.filter(job => job.name === name && job.conclusion === 'success').length !== 1)
+              throw new Error(`Required build/signoff job did not pass exactly once: ${name}`);
+          }
+          if (jobs.filter(job => job.name.startsWith('mobile-release-gate / ') && job.conclusion === 'success').length !== 1)
+            throw new Error('Mobile regression prerequisite did not pass');
+          NODE
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists" >&2
+            exit 1
+          fi
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-assets-${{ inputs.tag }}
+          path: release-assets
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v7
+        with:
+          name: linux-release-assets-${{ inputs.tag }}
+          path: release-assets-linux
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v7
+        with:
+          name: final-clean-install-evidence
+          path: clean-evidence
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v7
+        with:
+          name: final-upgrade-evidence
+          path: upgrade-evidence/test-results
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Use reviewed cross-run evidence verifier
+        shell: bash
+        run: |
+          git show "${{ github.sha }}:scripts/verify-stable-release-gates.mjs" > scripts/verify-stable-release-gates.mjs
+          git show "${{ github.sha }}:scripts/test-stable-release-gates.mjs" > scripts/test-stable-release-gates.mjs
+      - name: Verify exact final installer and release asset bytes
+        run: |
+          node scripts/test-stable-release-gates.mjs
+          node scripts/verify-stable-release-gates.mjs
+      - name: Publish tested stable assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          fail_on_unmatched_files: true
+          body_path: RELEASE_NOTES.md
+          files: |
+            release-assets/*
+            release-assets-linux/*
+            clean-evidence/candidate/Quantum-Hamiltonian-Lab-Setup-*.exe
+            clean-evidence/candidate/candidate-manifest.json
+            clean-evidence/test-results/final-clean-install.json
+            upgrade-evidence/test-results/final-upgrade.json

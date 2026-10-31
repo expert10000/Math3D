@@ -9,8 +9,8 @@ const verifier = resolve('scripts/verify-stable-release-gates.mjs');
 const sha = data => createHash('sha256').update(data).digest('hex');
 const save = async (path, data) => { await mkdir(dirname(path), { recursive: true }); await writeFile(path, data); };
 const json = async (path, value) => save(path, JSON.stringify(value));
-const run = () => spawnSync(process.execPath, [verifier], {
-  cwd: root, encoding: 'utf8', env: { ...process.env, RELEASE_TAG: 'v1.7.0', GITHUB_RUN_ID: '42' },
+const run = (extraEnv = {}) => spawnSync(process.execPath, [verifier], {
+  cwd: root, encoding: 'utf8', env: { ...process.env, RELEASE_TAG: 'v1.7.0', GITHUB_RUN_ID: '42', VERIFIED_BUILD_RUN_ID: '42', ...extraEnv },
 });
 try {
   execFileSync('git', ['init', '-q'], { cwd: root });
@@ -41,6 +41,10 @@ try {
     inPlaceUpgrade: 'passed', retainedProjectAndSetting: 'passed', installedUiRoundtrip: 'passed' } };
   await json(upgradePath, upgrade);
   if (run().status !== 0) throw new Error('Valid gate evidence was refused');
+  if (run({ VERIFIED_BUILD_RUN_ID: '42', GITHUB_RUN_ID: '99' }).status !== 0)
+    throw new Error('Verified cross-run evidence was refused');
+  if (run({ VERIFIED_BUILD_RUN_ID: '43' }).status === 0)
+    throw new Error('Evidence from a different build run was accepted');
   await save(join(root, 'release-assets', mathName), 'changed Math3D installer');
   if (run().status === 0) throw new Error('Changed installer bytes were accepted');
   await save(join(root, 'release-assets', mathName), math);

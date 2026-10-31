@@ -5,6 +5,8 @@ import { execFileSync } from 'node:child_process';
 
 const tag = process.env.RELEASE_TAG;
 if (!/^v\d+\.\d+\.\d+$/.test(tag ?? '')) throw new Error('Stable release tag is required');
+const buildRunId = process.env.VERIFIED_BUILD_RUN_ID || process.env.GITHUB_RUN_ID;
+if (!/^\d+$/.test(buildRunId ?? '')) throw new Error('Verified build run ID is required');
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 const version = tag.slice(1);
 const root = process.cwd();
@@ -17,7 +19,7 @@ const upgrade = await readJson(join(root, 'upgrade-evidence/test-results/final-u
 if (candidate.schema !== 'math3d/two-app-candidate/v1' ||
     candidate.math3d.version !== version || candidate.math3d.commit !== sourceCommit ||
     candidate.math3d.channel !== 'stable' ||
-    candidate.buildRunId !== process.env.GITHUB_RUN_ID) {
+    candidate.buildRunId !== buildRunId) {
   throw new Error('Candidate identity differs from this frozen stable tag and build run');
 }
 for (const [label, evidence, checks] of [

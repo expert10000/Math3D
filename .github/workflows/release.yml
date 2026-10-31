@@ -739,7 +739,7 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           name: final-upgrade-evidence
-          path: upgrade-evidence
+          path: upgrade-evidence/test-results
       - name: Test release evidence verifier
         run: node scripts/test-stable-release-gates.mjs
       - name: Verify both gates and exact publish bytes
