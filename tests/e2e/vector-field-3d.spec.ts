@@ -951,6 +951,36 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
       linkedOrigin?: { kind: string } }) => item.linkedOrigin?.kind ===
       "vector-derived-linked-region/v1");
     expect(profiles).toHaveLength(6);
+    const projects = page.getByTestId("project-explorer-panel");
+    if (await projects.getByRole("button", { name: "Full gallery" }).count())
+      await projects.getByRole("button", { name: "Full gallery" }).click();
+    await projects.getByRole("button", { name: "View current project" }).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    await outputs.getByTestId("project-create-subrectangle-workbook").click();
+    await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
+      .toContainText("Sources verified", { timeout: 120_000 });
+    const savedReport = await page.evaluate(id => JSON.parse(localStorage.getItem(
+      `math3d.project.v1.payload.${id}`)!), project.identity.id);
+    expect(savedReport.workbooks).toHaveLength(1);
+    const reportId = savedReport.workbooks[0].id;
+    await page.getByTestId("projects-toggle")
+      .evaluate(element => (element as HTMLButtonElement).click());
+    const reopened = page.getByTestId("project-explorer-panel");
+    await expect(reopened).toBeVisible();
+    await reopened.getByTestId(`project-open-saved-${project.identity.id}`)
+      .evaluate(element => (element as HTMLButtonElement).click());
+    await expect(reopened.getByTestId("project-message"))
+      .toContainText("Opened supported project workspace", { timeout: 120_000 });
+    if (!await reopened.getByTestId("project-workbooks").isVisible())
+      await reopened.getByTestId("project-detail-tab-documents").click();
+    await reopened.getByTestId(`project-open-workbook-${reportId}`)
+      .evaluate(element => (element as HTMLButtonElement).click());
+    await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
+      .toContainText("Sources verified", { timeout: 120_000 });
   } finally { await closeSurfaceApp(app); }
 });
 
@@ -1143,6 +1173,7 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     expect(published.summary.curlMagnitudeUnit).toBe("1/s");
     await projects.getByTestId(`project-open-saved-${stored.identity.id}`).click();
     await page.keyboard.press("Escape");
+    await page.getByTestId("workspace-nav-graphs").click();
     if (await explorer.isVisible()) {
       await expect(explorer.getByTestId("scientific-combined-divergence-region"))
         .toContainText("1/s", { timeout: 90_000 });
@@ -1212,6 +1243,16 @@ test("SCI-02 Burgers six-profile selection withholds a changed source after Proj
     await expect(inspector.getByTestId("graph2d-shared-region-withheld"))
       .toContainText(/changed|integrity|checksum/i);
     await expect(page.getByTestId("graph2d-linked-region-highlight")).toHaveCount(0);
+    if (!await projects.isVisible())
+      await page.getByTestId("projects-toggle").click({ noWaitAfter: true });
+    if (await projects.getByRole("button", { name: "View current project" }).count())
+      await projects.getByRole("button", { name: "View current project" }).click();
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${subrectangleResult.resultId}`).click();
+    await outputs.getByTestId("project-export-subrectangle-report").click();
+    await expect(projects.getByTestId("project-message"))
+      .toContainText("Report export withheld", { timeout: 90_000 });
   } finally {
     await closeSurfaceApp(app);
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-burgers-four-region-"))

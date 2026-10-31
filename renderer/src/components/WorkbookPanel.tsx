@@ -10,6 +10,7 @@ import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
+import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
 import { WorkbookNamedParameters } from "./WorkbookNamedParameters";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
@@ -1861,6 +1862,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   onOpenProjects={onOpenProjects}
                 />
               )}
+              {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
+                <ScientificSubrectangleWorkbookReport project={dependencyProject} reference={block.notebookReference} />}
 
               {activeWorkbook && <WorkbookDependencies workbook={activeWorkbook} blockId={block.id} readOnly={readOnly}
                 getProject={getNotebookProject} onChange={onChangeDependencies} freshness={freshnessById.get(block.id)}

@@ -117,6 +117,7 @@ import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
 import { WorkbookPanel } from "./components/WorkbookPanel";
+import { ScientificSubrectangleWorkbookReport } from "./components/ScientificSubrectangleWorkbookReport";
 import { GeometryPickReadout } from "./components/GeometryPickReadout";
 import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisInspectorPanel";
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
@@ -91603,6 +91604,9 @@ case "mobius":
                       <div style={{ fontSize: 11, fontWeight: 700 }}>Selected block editor</div>
                       {fullWorkbookSelectedBlockMeta.block.type === "visualize" && <WorkbookSnapshotRecord block={fullWorkbookSelectedBlockMeta.block} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && <WorkbookProvenance reference={fullWorkbookSelectedBlockMeta.block.notebookReference} project={getWorkbookDependencyProjectRef.current()} reader={readNotebookArtifact} />}
+                      {fullWorkbookSelectedBlockMeta.block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
+                        <ScientificSubrectangleWorkbookReport project={getWorkbookDependencyProjectRef.current()}
+                          reference={fullWorkbookSelectedBlockMeta.block.notebookReference} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && !IS_REPLAY_MODE && <WorkbookAnalysisRerun context={getNotebookContext()} reference={fullWorkbookSelectedBlockMeta.block.notebookReference} onRelink={notebookReference => handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, { notebookReference })} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "assert" && activeWorkbook && (() => {
                         const context = getNotebookContext();

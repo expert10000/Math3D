@@ -321,6 +321,7 @@ export type WorkbookBlock = {
   documentContent?: WorkbookDocumentContent;
   claim?: WorkbookClaim;
   notebookReference?: NotebookReference;
+  scientificRegionReport?: { schemaVersion: 1; kind: "scientific-subrectangle-report/v1" };
   params?: WorkbookParamState;
   visualize?: {
     live: boolean;

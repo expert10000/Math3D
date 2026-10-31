@@ -42,6 +42,9 @@ import { prewarmNotebookStarter, takePreparedNotebookStarter } from "../projects
 import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { projectWorkbookUses } from "../projects/projectWorkbookUsage";
+import { createScientificSubrectangleWorkbook, scientificSubrectangleReportMarkdown,
+  verifyScientificSubrectangleReport } from "../projects/scientificSubrectangleWorkbook";
+import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { createProjectComparisonNote, inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
@@ -759,6 +762,48 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Workbook save failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
+  const createSubrectangleWorkbook = async (resultId: string) => {
+    if (busy || preview || managed || !project) return;
+    setBusy(true);
+    try {
+      const saved = loadLibraryProject(localStorage, project.identity.id);
+      const base = liveProject();
+      const result = base.workspace.results.find(item => item.resultId === resultId);
+      if (!result) throw new TypeError("Published result is unavailable.");
+      await verifyScientificSubrectangleReport(base, createNotebookReference(base, "result", resultId));
+      const workbook = createScientificSubrectangleWorkbook(base, result,
+        crypto.randomUUID(), crypto.randomUUID());
+      const prepared = prepareProjectWorkbook(base, workbook, crypto.randomUUID());
+      const next = upsertMath3DProjectWorkbook(base, prepared.reference);
+      const previous = await loadProjectResources(saved);
+      const resources = collectResources(next, previous, false,
+        { id: prepared.reference.id, bytes: prepared.bytes });
+      setLibrary(await commitProjectResources(next, resources,
+        () => saveLibraryProject(localStorage, next, Date.now())));
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false);
+      onOpenWorkbook?.(prepared.workbook, "compute", prepared.workbook.stages[1]!.blocks[0]!.id);
+      onOpenChange(false);
+      setMessage("Created a source-linked Workbook report from verified subrectangle data.");
+    } catch (error) { setMessage(`Workbook report failed: ${(error as Error).message}`); }
+    finally { setBusy(false); }
+  };
+  const exportSubrectangleReport = async (resultId: string) => {
+    if (!project || busy) return;
+    setBusy(true);
+    try {
+      const current = preview || managed ? project : liveProject();
+      const result = await verifyScientificSubrectangleReport(current,
+        createNotebookReference(current, "result", resultId));
+      const markdown = scientificSubrectangleReportMarkdown(result);
+      const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown" }));
+      const link = document.createElement("a");
+      link.href = url; link.download = `scientific-subrectangle-${resultId.replace(/[^a-zA-Z0-9_-]/g, "-")}.report.md`;
+      link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage("Verified and exported scientific subrectangle report.");
+    } catch (error) { setMessage(`Report export withheld: ${(error as Error).message}`); }
+    finally { setBusy(false); }
+  };
   const addRippleResearchToSavedProject = async (useSavedSnapshot = false) => {
     if (busy || preview || managed || !project) return;
     setBusy(true);
@@ -1432,6 +1477,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <p className="project-workspace-section-hint">Inspect recorded analyses, provenance and captured resources.</p>
           {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
             regionResultStatuses={regionResultStatuses}
+            onCreateScientificReport={createSubrectangleWorkbook} onExportScientificReport={exportSubrectangleReport}
             canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} focusResult={resultFocus} />}
         </section>}
         {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">

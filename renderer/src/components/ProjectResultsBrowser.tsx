@@ -8,6 +8,8 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
+import { isScientificSubrectangle } from
+  "../projects/scientificSubrectangleWorkbook";
 
 type Selection = { kind: "result" | "artifact"; id: string };
 type Props = {
@@ -18,6 +20,8 @@ type Props = {
   onOpen: (id: string, module: KernelWorkspaceModule) => void;
   focusResult?: { id: string; token: number } | null;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
+  onCreateScientificReport?: (resultId: string) => void;
+  onExportScientificReport?: (resultId: string) => void;
 };
 
 const readable = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
@@ -46,7 +50,7 @@ const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGIO
   operation === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE;
 
-export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {} }) => {
+export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport }) => {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
   const detailRef = useRef<HTMLElement>(null);
@@ -133,6 +137,12 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
           </div>
           <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          {isScientificSubrectangle(result) && <div className="project-results-links">
+            <button type="button" data-testid="project-create-subrectangle-workbook" disabled={!onCreateScientificReport}
+              onClick={() => onCreateScientificReport?.(result.resultId)}>Create source-linked Workbook report</button>
+            <button type="button" data-testid="project-export-subrectangle-report" disabled={!onExportScientificReport}
+              onClick={() => onExportScientificReport?.(result.resultId)}>Verify and export report</button>
+          </div>}
           <dl><div><dt>Source document</dt><dd>{sourceButton(result.provenance.source.documentId)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>

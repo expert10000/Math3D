@@ -782,6 +782,11 @@ Acceptance:
 
 #### SCI-19 — Analysis report and Workbook integration
 
+- First increment: published vector-only and combined subrectangles can create a
+  Project Workbook report linked to the saved result. Its physical bounds,
+  per-field statistics and gaps, units, method, source references, and verified
+  sample/profile hashes appear only after source revalidation. The dedicated
+  Markdown export rechecks sources and withholds changed data.
 - Persist charts, numerical summaries, units, methods, solver stats and warnings.
 - Export an audit-friendly report with source references and reproducibility metadata.
 - Support repeatable analysis recipe reruns.

@@ -12,6 +12,7 @@ import "katex/dist/katex.min.css";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
+import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 
 type Props = {
   workbook: Workbook;
@@ -104,6 +105,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
                 onClick={() => source && onOpenDocument(source.expected.id, source.module)} style={{ justifySelf: "start", fontSize: 11 }}>Open source document</button>
             </> : <span>No Project target linked yet.</span>}
           </div>}
+          {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
+            <ScientificSubrectangleWorkbookReport project={project} reference={reference} />}
           {block.type === "compute" && <div style={{ display: "grid", gap: 4 }}>
             <div>{block.compute?.summary || latestRun?.summary || "No saved result summary."}</div>
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}
