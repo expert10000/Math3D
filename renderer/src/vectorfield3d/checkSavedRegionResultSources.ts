@@ -21,6 +21,8 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
 import { VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
   verifyVectorField3DTrajectoryResult } from "@math3d/core";
+import { reverifyScientificTrajectoryResult, ScientificTrajectorySourceError,
+  type ScientificTrajectoryBridge } from "./reverifyScientificTrajectoryResult";
 import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
   verifiedVectorRegionProfile,
   type DivergenceSourceBridge } from
@@ -42,16 +44,21 @@ export type VectorDerivedRegionSourceStatus = Readonly<{ kind: "vector-derived";
 export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionSourceStatus |
   VectorDerivedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
-  "checkGraphDatasetReference" | "previewGraphVolume"> & DivergenceSourceBridge;
+  "checkGraphDatasetReference" | "previewGraphVolume"> & DivergenceSourceBridge &
+  ScientificTrajectoryBridge;
 
 /** Read-only Project reopen check, including every pinned source resource. */
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
   document: VectorField3DDocument, bridge: Bridge | undefined,
   graphs: readonly Graph2DDocument[] = []): Promise<SavedRegionSourceStatus> {
   if (result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE) {
-    try { verifyVectorField3DTrajectoryResult(result, document);
+    try {
+      if (document.source.field.kind === "scientific-bundle")
+        await reverifyScientificTrajectoryResult(result, document, bridge);
+      else verifyVectorField3DTrajectoryResult(result, document);
       return "source-current"; }
-    catch { return "changed"; }
+    catch (cause) { return cause instanceof ScientificTrajectorySourceError ?
+      cause.status : "changed"; }
   }
   if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE)
     return checkSavedCombinedSubrectangleResultSources(result, document, bridge, graphs);

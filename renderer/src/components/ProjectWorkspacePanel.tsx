@@ -783,7 +783,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const trajectory = isScientificTrajectory(result);
       const inspection = trajectory ? null : await inspectScientificSubrectangleReport(base,
         createNotebookReference(base, "result", resultId));
-      if (trajectory) verifyScientificTrajectoryReport(base,
+      if (trajectory) await verifyScientificTrajectoryReport(base,
         createNotebookReference(base, "result", resultId));
       else if (!subrectangleSourcesCurrent(inspection?.status))
         throw new TypeError("A saved source or profile row changed; report creation is withheld.");

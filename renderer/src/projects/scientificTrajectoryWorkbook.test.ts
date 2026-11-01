@@ -53,7 +53,7 @@ describe("SCI-19 trajectory solver Workbook result", () => {
     expect(verifyVectorField3DTrajectoryResult(backward, source)).toBe(backward);
   });
 
-  it("reopens a source-linked Project Workbook without saved trajectory arrays", () => {
+  it("reopens a source-linked Project Workbook without saved trajectory arrays", async () => {
     const source = field();
     const result = createVectorField3DTrajectoryResult(source,
       integrateVectorField3DTrajectories(source));
@@ -64,15 +64,15 @@ describe("SCI-19 trajectory solver Workbook result", () => {
       constructions: [], artifacts: [], committedSelection: null });
     const project = parseMath3DProject(serializeMath3DProject(
       createMath3DProject(workspace, { stableKey: "trajectory-report" })));
-    expect(verifyScientificTrajectoryReport(project,
-      createNotebookReference(project, "result", result.resultId)).summary)
+    expect((await verifyScientificTrajectoryReport(project,
+      createNotebookReference(project, "result", result.resultId))).summary)
       .toEqual(result.summary);
     const workbook = createScientificTrajectoryWorkbook(project, result,
       "solver-workbook", "solver-report");
     const reference = workbook.stages[1]!.blocks[0]!.notebookReference!;
-    expect(verifyScientificTrajectoryReport(project, reference).resultId).toBe(result.resultId);
-    expect(verifyScientificTrajectoryReport(project,
-      createNotebookReference(project, "result", result.resultId)).summary)
+    expect((await verifyScientificTrajectoryReport(project, reference)).resultId).toBe(result.resultId);
+    expect((await verifyScientificTrajectoryReport(project,
+      createNotebookReference(project, "result", result.resultId))).summary)
       .toEqual(result.summary);
     const prepared = prepareProjectWorkbook(project, workbook, "solver-report");
     const bound = upsertMath3DProjectWorkbook(project, prepared.reference);
@@ -82,7 +82,7 @@ describe("SCI-19 trajectory solver Workbook result", () => {
       item.kind === "workbook-payload")!;
     const reopened = readProjectWorkbook(resources.bytes(payload)!, bound.workbooks![0]!);
     const reopenedReference = reopened.stages[1]!.blocks[0]!.notebookReference!;
-    expect(verifyScientificTrajectoryReport(bound, reopenedReference).summary)
+    expect((await verifyScientificTrajectoryReport(bound, reopenedReference)).summary)
       .toEqual(result.summary);
     const renderBrowser = (status: "changed" | "source-current") =>
       renderToStaticMarkup(React.createElement(ProjectResultsBrowser, {

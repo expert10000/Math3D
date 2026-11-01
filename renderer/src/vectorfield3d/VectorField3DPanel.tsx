@@ -2763,7 +2763,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       Coordinate units {artifact.coordinateUnits.join(", ")}; vector units {artifact.componentUnits.join(", ")}.
     </p>}
     {trajectories && <div role="status" aria-live="polite" data-testid="vector-field3d-trajectory-status">
-      {document.source.field.kind === "expressions" && <button type="button"
+      <button type="button"
         disabled={!onSaveRegionResult || busy ||
           trajectories.source.structuralHash !== document.identity.structuralHash}
         onClick={() => {
@@ -2772,7 +2772,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
               createVectorField3DTrajectoryResult(document, trajectories));
             setSaveStatus("Trajectory solver statistics published to Project. Save the Project to retain them.");
           } catch (cause) { setSaveStatus((cause as Error).message); }
-        }}>Publish solver result</button>}
+        }}>Publish solver result</button>
       <p>Showing {visibleTrajectories?.trajectories.length ?? 0}/{trajectories.trajectories.length}
         {" "}trajectory results.</p>
       {visibleTrajectories?.trajectories.map(path => <p key={path.seedId}

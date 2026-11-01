@@ -1,7 +1,9 @@
 import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
+import { sha256Checksum } from "./documentIdentity";
 import { normalizeVectorField3DDocument, type VectorField3DDocument,
   type VectorField3DSource } from "./vectorField3DDocument";
 import { verifyVectorField3DVolumes, type VectorField3DVolumes } from "./vectorField3DScientific";
+import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { scientificPointWithinBounds } from "./scientificDatasetCoordinates";
 import { VectorField3DVerifiedTileCache } from "./vectorField3DVerifiedTileCache";
 
@@ -27,6 +29,9 @@ export type VectorField3DTrajectoryArtifact = Readonly<{
   verifiedTiles?: readonly Readonly<{ name: string; resourceSha256: string;
     verifiedTiles: number; totalTiles: number; tileIndices: readonly number[];
     tileSha256: readonly string[]; tileSetSha256: string }>[];
+  verifiedVolumes?: readonly Readonly<{ name: string; resourceSha256: string;
+    sampleSha256: string; sampleShape: readonly [number, number, number];
+    verifiedChunkSetSha256?: string }>[];
   sourceHash?: string; residentTileBytes?: number;
 }>;
 export type VectorField3DTrajectoryOptions = Readonly<{
@@ -388,7 +393,7 @@ export function integrateVectorField3DScientificTrajectories(document: VectorFie
     Array.from({ length: checked[0].sampleShape[index] }, (_, sampleIndex) =>
       axis.origin + axis.spacing * Math.round(sampleIndex * (checked[0].sourceShape[index] - 1) /
         (checked[0].sampleShape[index] - 1))));
-  return integrateWith(document, position => {
+  const result = integrateWith(document, position => {
     const lower: number[] = [], weight: number[] = [];
     for (let axis = 0; axis < 3; axis++) {
       const positions = samplePositions[axis]!;
@@ -411,6 +416,12 @@ export function integrateVectorField3DScientificTrajectories(document: VectorFie
     });
     return finiteVector(vector) ? vector : null;
   }, options);
+  return { ...result, sourceHash: createScientificDatasetLink(field.references).sourceHash,
+    verifiedVolumes: checked.map(volume => ({ name: volume.component,
+      resourceSha256: volume.resourceSha256, sampleSha256: volume.sampleSha256,
+      sampleShape: volume.sampleShape,
+      ...(volume.verifiedChunks ? { verifiedChunkSetSha256:
+        sha256Checksum(new TextEncoder().encode(volume.verifiedChunks.join("|"))).slice(7) } : {}) })) };
 }
 
 /** The caller supplies a manifest-pinned, tile-verified source-grid sampler. */
