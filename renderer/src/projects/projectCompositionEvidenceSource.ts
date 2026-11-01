@@ -13,10 +13,10 @@ export function verifyProjectCompositionEvidenceSources(project: Math3DProject, 
     if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
       throw new TypeError("The current source did not pass replay verification.");
     const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
-    const retained = entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
-      document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash) :
-      entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
-        entry.checkpoint.identity.structuralHash === member.expected.structuralHash ? entry.checkpoint : undefined;
+    const retained = entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
+      entry.checkpoint.identity.structuralHash === member.expected.structuralHash ? entry.checkpoint :
+      entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
+        document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash) : undefined;
     if (!currentSelected && !retained) throw new TypeError("The selected source has no matching retained generation.");
     const document: KernelWorkspaceDocument = currentSelected ? current : retained!;
     let vertexCount = 0;

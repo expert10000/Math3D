@@ -90,12 +90,12 @@ export const inspectProjectCompositionAvailability = (composition: ProjectCompos
     const entry = workspace.entries.find(item => item.expected.id === member.documentId);
     if (!entry) return "missing";
     if (entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash) return "current";
+    if (entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
+      entry.checkpoint.identity.structuralHash === member.expected.structuralHash) return "retained-checkpoint";
     if (entry.module === "mesh") {
       const retained = retainedMeshGenerationDocuments(entry).some(document =>
         document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
-      if (retained) return entry.checkpoint.identity.revision === member.expected.revision &&
-        entry.checkpoint.identity.structuralHash === member.expected.structuralHash ? "retained-checkpoint" : "retained-mesh";
-    } else if (entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
-      entry.checkpoint.identity.structuralHash === member.expected.structuralHash) return "retained-checkpoint";
+      if (retained) return "retained-mesh";
+    }
     return "unavailable-generation";
   });

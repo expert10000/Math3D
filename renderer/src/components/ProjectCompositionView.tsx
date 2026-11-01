@@ -35,15 +35,16 @@ const sameGeneration = (a: ProjectCompositionMember["expected"], b: ProjectCompo
 const generationChoices = (entry: MixedWorkspaceEntry): GenerationChoice[] => {
   const choices: GenerationChoice[] = [{ value: "current", expected: entry.expected, label: `Current r${entry.expected.revision}` }];
   if (!entry.replay) return choices;
+  if (!sameGeneration(entry.checkpoint.identity, entry.expected))
+    choices.push({ value: "checkpoint", expected: entry.checkpoint.identity,
+      label: `Retained checkpoint r${entry.checkpoint.identity.revision}` });
   if (entry.module === "mesh") {
     for (const document of retainedMeshGenerationDocuments(entry)) {
       const isCheckpoint = sameGeneration(document.identity, entry.checkpoint.identity);
-      choices.push({ value: isCheckpoint ? "checkpoint" : `retained:${document.identity.revision}:${document.identity.structuralHash}`,
-        expected: document.identity, label: `${isCheckpoint ? "Retained checkpoint" : "Retained snapshot"} r${document.identity.revision}` });
+      if (!isCheckpoint) choices.push({ value: `retained:${document.identity.revision}:${document.identity.structuralHash}`,
+        expected: document.identity, label: `Retained snapshot r${document.identity.revision}` });
     }
-  } else if (!sameGeneration(entry.checkpoint.identity, entry.expected))
-    choices.push({ value: "checkpoint", expected: entry.checkpoint.identity,
-      label: `Retained checkpoint r${entry.checkpoint.identity.revision}` });
+  }
   return choices;
 };
 const titleOf = (project: Math3DProject, id: string): string => {
@@ -63,9 +64,9 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
   if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
     throw new TypeError("The current source did not pass replay verification.");
   const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
-  const retainedDocument = entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
-    sameGeneration(document.identity, member.expected)) :
-    entry.replay && sameGeneration(entry.checkpoint.identity, member.expected) ? entry.checkpoint : undefined;
+  const retainedDocument = entry.replay && sameGeneration(entry.checkpoint.identity, member.expected) ? entry.checkpoint :
+    entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
+      sameGeneration(document.identity, member.expected)) : undefined;
   if (!currentSelected && !retainedDocument)
     throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint or snapshot.");
   const document = currentSelected ? current : retainedDocument!;

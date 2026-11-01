@@ -1,6 +1,7 @@
-# Project comparison and composition (PC01–PC11)
+# Project comparison and composition (PC01–PC12)
 
-This is a read-only view of two documents already saved in one Math3D Project. A
+This is a read-only view of two documents or explicitly retained generations
+already saved in one Math3D Project. A
 composition saves source IDs, exact document revisions and hashes, visibility,
 supported appearance choices, and view mode. It does not copy, edit, or merge
 the owning Surface, Mesh, or Geometry documents or their scientific buffers.
@@ -180,8 +181,8 @@ saved Project containing a fresh Mesh, choose that Mesh in the Project navigator
 then choose **Saved studies → Retain before and subdivide once**. This creates
 one edit with the original Mesh as its exact replay checkpoint. The action accepts
 1–10,000 triangular faces and at most 20,000 source vertices; the subdivided
-result must have at most 50,000 vertices. It refuses a Mesh with prior edits,
-because its older checkpoint would not be the immediate pre-remesh generation.
+result must have at most 50,000 vertices. PC12 extends the action to a Mesh with
+earlier edits, retaining its immediate pre-edit revision explicitly.
 
 Choose **Projects → Compare saved documents**. Select the same Mesh for A and B,
 set A's **Generation** to **retained checkpoint**, and leave B at **current**.
@@ -199,6 +200,37 @@ revisions, units, sidecars, missing and changed bytes, saved comparison and
 export, restart, and WebGL viewer cleanup. PC03 remains **Partial** for legacy
 sources without coordinate metadata. PC05 remains **Partial** for generations
 that were never retained and for selection between unrelated models.
+
+## PC12 · Multiple explicitly retained Mesh generations
+
+Status: **Complete for up to eight explicitly retained Mesh generations**.
+Choose a saved Mesh in the Project navigator and open **Saved studies**. Use
+**Retain before and subdivide once**, or set `dx`, `dy`, `dz` and scale and use
+**Retain before and apply transform**. Repeat either action on the current Mesh
+as needed. Each action marks the exact pre-edit document revision and hash in
+the replay log; its source units and binary sidecar remain attached. The same
+bounds apply to each edit: at most 20,000 source vertices and 10,000 source
+triangles, with at most 50,000 output vertices. A ninth retained generation is
+refused before changing the Mesh. The original replay checkpoint remains
+selectable when its bytes exist; ordinary *intermediate* edits without a
+retention marker do not become selectable historical generations.
+
+Choose **Projects → Compare saved documents**, select the same Mesh in both
+source slots, then pick any *different* retained or current revisions from the
+two **Generation** menus. The menu distinguishes the original replay checkpoint,
+intermediate retained snapshots and current Mesh. Each pane shows its own exact
+revision, hash and source-declared unit. Mesh vertex and face picks remain local
+to that pane; no mapping between remeshed IDs is inferred. Save the composition
+and Project to keep the selection and sidecars. Workbook and comparison Note
+links continue to resolve the exact saved composition. Exported HTML evidence
+records both selected generations and refuses missing or changed source bytes.
+
+Run `npm run test:projects:pc12`. The gate covers marker and replay verification,
+the eight-generation bound, declared units, package round-trip, missing and
+tampered sidecars, an unavailable invented generation, two-pane export, restart,
+and WebGL cleanup. PC03 remains **Partial** for legacy sources without coordinate
+metadata; PC05 remains **Partial** for generations that were never retained and
+selection between unrelated models.
 
 An optional source declaration uses the exact object
 `{"format":"math3d.coordinate-frame/v1","frame":"laboratory xyz","unit":"mm","axes":["x","y","z"],"handedness":"right"}`.
