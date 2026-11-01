@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from "react";
-import { isLocalSageOperation, runSageOperation } from "../../integrations/sage/sageClient";
-import { isBrokeredSageOperation, runSageJob, type SageOperationHandle } from "../../services/sageOperationExecution";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { isLocalSageOperation } from "../../integrations/sage/sageClient";
+import { isBrokeredSageOperation, sageExecutionRegistry, SAGE_JOB_OPERATIONS, type SageOperationHandle } from "../../services/sageOperationExecution";
 import {
   type SageSymbolicOperation,
   type SageRunResponse,
@@ -69,6 +69,7 @@ const SageSymbolicPanel: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [capability, setCapability] = useState<string>("Checking backend capability…");
   const activeHandle = useRef<SageOperationHandle | null>(null);
   const localPolynomial = operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact";
   const matrixOperation = operation === "sage.matrix.eigen_exact" || operation === "sage.matrix.charpoly";
@@ -77,6 +78,22 @@ const SageSymbolicPanel: React.FC<{
   const inverseOperation = operation === "sage.numberTheory.modInverse";
   const localCapable = isLocalSageOperation(operation);
   const localSage = backend === "local" && localCapable;
+
+  useEffect(() => {
+    let active = true;
+    setCapability("Checking backend capability…");
+    void sageExecutionRegistry.discoverBackends().then((snapshots) => {
+      if (!active) return;
+      const snapshot = snapshots.find((item) => item.backendId === (backend === "local" ? "sage-local-wsl" : "sage-docker"));
+      const operationType = isBrokeredSageOperation(operation) ? SAGE_JOB_OPERATIONS[operation].type : null;
+      setCapability(snapshot?.availability === "available" && snapshot.operations.some((item) => item.operationType === operationType)
+        ? "Backend available for this operation"
+        : snapshot?.unavailableReason ?? "Operation unavailable on this backend");
+    }).catch((error: unknown) => {
+      if (active) setCapability(error instanceof Error ? error.message : "Backend capability check failed.");
+    });
+    return () => { active = false; };
+  }, [backend, operation]);
 
   const variables = useMemo(
     () => variablesText.split(",").map((part) => part.trim()).filter(Boolean),
@@ -94,11 +111,6 @@ const SageSymbolicPanel: React.FC<{
         variables: variables.length ? variables : ["x"],
       };
       let inputSummary = expression;
-      if (localSage) {
-        if (!window.sageService?.run) {
-          throw new Error("Local Sage operations require SageMath in WSL Ubuntu and the MATH3D desktop app or web proxy.");
-        }
-      }
       if (localPolynomial) {
         const coefficients = coefficientsText.split(",").map((part) => part.trim());
         if (
@@ -155,13 +167,10 @@ const SageSymbolicPanel: React.FC<{
       jobId = crypto.randomUUID();
       setActiveJobId(jobId);
       const request: SageRunRequest = { operation, jobId, params: JSON.parse(JSON.stringify(params)), backend };
-      const result = isBrokeredSageOperation(operation)
-        ? await (async () => {
-          const handle = runSageJob({ operation, jobId, params, backend });
-          activeHandle.current = handle;
-          return (await handle.promise).response;
-        })()
-        : await runSageOperation({ operation, jobId, params, backend });
+      if (!isBrokeredSageOperation(operation)) throw new Error("Sage operation is not registered for scientific execution.");
+      const handle = sageExecutionRegistry.run({ operation, jobId, params, backend });
+      activeHandle.current = handle;
+      const result = (await handle.promise).response;
       setResponse(result);
       if (result.success) onResult?.({ response: result, request, expression: inputSummary,
         variables: groebnerOperation ? (params.variables as string[]) : variables.length ? variables : ["x"], backend,
@@ -180,12 +189,7 @@ const SageSymbolicPanel: React.FC<{
   const onCancel = async () => {
     if (!activeJobId) return;
     try {
-      if (activeHandle.current) {
-        if (!activeHandle.current.cancel()) setError("The Sage job has already finished.");
-        return;
-      }
-      const response = await window.sageService?.cancel(activeJobId);
-      if (!response?.ok) setError("The Sage job has already finished.");
+      if (!activeHandle.current?.cancel()) setError("The Sage job has already finished.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not cancel Sage job.");
     }
@@ -210,6 +214,7 @@ const SageSymbolicPanel: React.FC<{
             <option value="docker">Docker service</option>
           </select>
           <span>{localSage ? "Bounded local worker · 20-second limit" : "Separate Docker service"}</span>
+          <span role="status">{capability}</span>
         </div>
 
         <strong>Symbolic operations</strong>

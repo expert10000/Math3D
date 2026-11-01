@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
-import { runSageJob, SAGE_JOB_OPERATIONS, type BrokeredSageOperation } from "./sageOperationExecution";
+import { SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
+import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
+import { createSageExecutionRegistry, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
+
+const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
+  engine: "sagemath", status: "ok", available: true, operations: SAGE_SYMBOLIC_OPERATIONS,
+});
+const runSageJob = (
+  request: Parameters<ReturnType<typeof createSageExecutionRegistry>["run"]>[0],
+  options: Pick<SageExecutionRegistryOptions, "run" | "cancel"> = {},
+) => createSageExecutionRegistry({ ...options, health }).run(request);
 
 const operations = Object.keys(SAGE_JOB_OPERATIONS) as BrokeredSageOperation[];
 const dockerOnlyOperations = new Set<BrokeredSageOperation>([
@@ -19,6 +29,65 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : { expression: "x^2+y^2+z^2", variables: ["x", "y", "z"] };
 
 describe("Sage scientific execution contract", () => {
+  it("shares capability discovery and execution across Surface and Geometry", async () => {
+    const calls: unknown[] = [];
+    const registry = createSageExecutionRegistry({
+      health: async (backend) => ({ engine: "sagemath", status: backend === "docker" ? "ok" : "WSL unavailable",
+        available: backend === "docker", operations: ["sage.symbolic.simplify"] }),
+      run: async (request) => {
+        calls.push(request);
+        return { engine: "sagemath", operation: request.operation, success: true,
+          latex: "1", result: { text: "shared result" }, warnings: [] };
+      },
+    });
+    const snapshots = await registry.discoverBackends();
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots.find((item) => item.backendId === "sage-local-wsl")).toMatchObject({
+      availability: "unavailable", unavailableReason: "WSL unavailable",
+    });
+    expect(snapshots.find((item) => item.backendId === "sage-docker")?.operations.map((item) => item.operationType))
+      .toContain("symbolic.simplify");
+    for (const context of ["surface", "geometry"] as const) {
+      const operation = scientificOperationsFor(context, "Basic").find((item) => item.id === "sage.symbolic.simplify")!.id;
+      const handle = registry.run({ operation, backend: "docker", params: paramsFor(operation, "docker") });
+      const { response, broker } = await handle.promise;
+      expect(broker.ok).toBe(true);
+      expect(response.result.text).toBe("shared result");
+    }
+    expect(calls).toHaveLength(2);
+    const unavailable = registry.run({ operation: "sage.symbolic.simplify", backend: "local",
+      params: paramsFor("sage.symbolic.simplify", "local") });
+    expect((await unavailable.promise).broker).toMatchObject({ ok: false, code: "capability-unavailable" });
+    expect(getComputeJobs().find((job) => job.jobId === unavailable.jobId)).toMatchObject({
+      status: "failed", backendId: "sage-local-wsl",
+    });
+  });
+
+  it("cancels independent jobs through one shared service", async () => {
+    let started = 0;
+    let bothStarted!: () => void;
+    const running = new Promise<void>((resolve) => { bothStarted = resolve; });
+    const cancelled: string[] = [];
+    const registry = createSageExecutionRegistry({ health,
+      run: async () => {
+        started += 1;
+        if (started === 2) bothStarted();
+        return new Promise<never>(() => undefined);
+      },
+      cancel: (jobId) => { cancelled.push(jobId); },
+    });
+    const surface = registry.run({ operation: "sage.symbolic.simplify", backend: "local",
+      params: { expression: "x", variables: ["x"] } });
+    const geometry = registry.run({ operation: "sage.symbolic.simplify", backend: "docker",
+      params: { expression: "y", variables: ["y"] } });
+    await running;
+    expect(surface.cancel()).toBe(true);
+    expect(geometry.cancel()).toBe(true);
+    expect((await surface.promise).broker).toMatchObject({ ok: false, code: "cancelled" });
+    expect((await geometry.promise).broker).toMatchObject({ ok: false, code: "cancelled" });
+    expect(cancelled).toEqual([surface.jobId, geometry.jobId]);
+  });
+
   for (const operation of operations) {
     for (const backend of (dockerOnlyOperations.has(operation) ? ["docker"] : ["local", "docker"]) as ("local" | "docker")[]) {
       it(`routes ${operation} on ${backend} with its exact payload and reports completion`, async () => {

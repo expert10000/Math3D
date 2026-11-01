@@ -104,6 +104,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Reported status: ok");
     await runtimes.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(panel).toContainText("Backend available for this operation");
     await panel.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
     await panel.getByRole("button", { name: "Run", exact: true }).click();
     await expect(panel).toContainText("desktop-docker-result");
@@ -130,6 +131,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await page.getByTestId("geometry-open-built-in-scene-presets").click();
     const geometryServices = page.getByTestId("scientific-services-geometry");
     await geometryServices.getByLabel("SageMath backend").selectOption("docker");
+    await expect(geometryServices).toContainText("Backend available for this operation");
     await geometryServices.getByRole("button", { name: "Run", exact: true }).click();
     await expect(page.getByTestId("sage-analysis-result")).toContainText("Symbolic result · Simplified expression");
     await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();

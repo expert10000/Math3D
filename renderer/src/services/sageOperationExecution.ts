@@ -10,10 +10,11 @@ import {
   createInProcessScientificJobService,
   createScientificExecutionBroker,
   type ScientificBrokerOutcome,
+  type ScientificBackendCapabilitySnapshot,
   type ScientificExecutionBackend,
 } from "@math3d/kernel";
-import { runSageOperation } from "../integrations/sage/sageClient";
-import type { SageRunRequest, SageRunResponse } from "../integrations/sage/sageSchemas";
+import { checkSageHealth, isLocalSageOperation, runSageOperation } from "../integrations/sage/sageClient";
+import type { SageHealthResponse, SageRunRequest, SageRunResponse } from "../integrations/sage/sageSchemas";
 import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } from "../features/computeCenter/scientificJobTelemetry";
 
 export const SAGE_JOB_OPERATIONS = {
@@ -44,13 +45,17 @@ export type SageOperationHandle = {
 
 type Runner = (request: SageRunRequest) => Promise<SageRunResponse>;
 type Canceller = (jobId: string) => Promise<unknown> | unknown;
+type Backend = "local" | "docker";
+type HealthChecker = (backend: Backend) => Promise<SageHealthResponse>;
 
-/** Keeps Sage's transport protocol behind the backend-neutral scientific job envelope. */
-export function runSageJob(
-  request: SageRunRequest & { operation: BrokeredSageOperation; backend: "local" | "docker" },
-  options: { run?: Runner; cancel?: Canceller } = {},
-): SageOperationHandle {
-  const jobId = request.jobId ?? crypto.randomUUID();
+export type SageExecutionRegistryOptions = {
+  run?: Runner;
+  cancel?: Canceller;
+  health?: HealthChecker;
+  registerDiscovery?: boolean;
+};
+
+const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOperation; backend: Backend }): void => {
   const definition = SAGE_JOB_OPERATIONS[request.operation];
   const params = request.params;
   const polynomial = request.operation === "sage.polynomial.factor" || request.operation === "sage.polynomial.roots_exact";
@@ -85,67 +90,118 @@ export function runSageJob(
   if (!validParams) {
     throw new TypeError(`Invalid Sage ${definition.label} parameters.`);
   }
-  const payload = { operation: request.operation, params, backend: request.backend };
-  const source: ScientificSourceGeneration = {
-    documentId: createStableDocumentId("sage-operation", payload as CanonicalJsonValue),
-    revision: 1,
-    structuralHash: structuralHash(payload),
-    generation: 1,
-  };
-  const resolveSource = (documentId: ScientificSourceGeneration["documentId"]) => documentId === source.documentId ? source : null;
-  let response: SageRunResponse | null = null;
-  const run = options.run ?? runSageOperation;
-  const service = createInProcessScientificJobService({
-    resolveSource,
-    adapters: [{
-      operationType: definition.type,
-      execute: async (input, context) => {
-        const body = input.payload as typeof payload;
-        context.consumeWork(1);
-        context.reportProgress({ completed: 0, total: 1, message: `Running SageMath ${definition.label}` });
-        response = await run({ operation: body.operation, jobId: input.jobId,
-          params: body.params, backend: body.backend });
-        context.checkpoint();
-        if (!response.success) throw new Error(response.error ?? `SageMath ${definition.label} failed.`);
-        return JSON.parse(JSON.stringify(response)) as CanonicalJsonValue;
+};
+
+/** Shared Sage operation registry and ExecutionService for Surface and Geometry. */
+export class SageExecutionRegistry {
+  readonly #sources = new Map<string, ScientificSourceGeneration>();
+  readonly #responses = new Map<string, SageRunResponse>();
+  readonly #activeJobs = new Set<string>();
+  readonly #run: Runner;
+  readonly #cancel: Canceller;
+  readonly #health: HealthChecker;
+  readonly #broker: ReturnType<typeof createScientificExecutionBroker>;
+  readonly #execution: ReturnType<typeof createExecutionService>;
+
+  constructor(options: SageExecutionRegistryOptions = {}) {
+    this.#run = options.run ?? runSageOperation;
+    this.#cancel = options.cancel ?? ((jobId) => window.sageService?.cancel(jobId));
+    this.#health = options.health ?? checkSageHealth;
+    const resolveSource = (documentId: ScientificSourceGeneration["documentId"]) =>
+      this.#sources.get(documentId) ?? null;
+    const service = createInProcessScientificJobService({
+      resolveSource,
+      adapters: (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
+        .map(([operation, definition]) => ({
+          operationType: definition.type,
+          execute: async (input, context) => {
+            const body = input.payload as { operation: BrokeredSageOperation; params: Record<string, unknown>; backend: Backend };
+            if (body.operation !== operation) throw new Error("Sage operation payload does not match its registered adapter.");
+            context.consumeWork(1);
+            context.reportProgress({ completed: 0, total: 1, message: `Running SageMath ${definition.label}` });
+            const response = await this.#run({ ...body, jobId: input.jobId });
+            if (this.#activeJobs.has(input.jobId)) this.#responses.set(input.jobId, response);
+            context.checkpoint();
+            if (!response.success) throw new Error(response.error ?? `SageMath ${definition.label} failed.`);
+            return JSON.parse(JSON.stringify(response)) as CanonicalJsonValue;
+          },
+        })),
+    });
+    service.subscribe(recordScientificJobEvent);
+    const makeBackend = (scope: Backend): ScientificExecutionBackend => ({
+      backendId: scope === "local" ? "sage-local-wsl" : "sage-docker",
+      backendVersion: "1", transport: scope === "local" ? "worker" : "remote",
+      priority: 100, supportsCancellation: true,
+      discover: async () => {
+        const health = await this.#health(scope);
+        return {
+          available: health.available,
+          unavailableReason: health.available ? undefined : health.status,
+          operations: (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
+            .filter(([operation]) => health.operations.includes(operation) && (scope === "docker" || isLocalSageOperation(operation)))
+            .map(([, definition]) => ({
+              operationType: definition.type, retrySafety: "never" as const,
+              maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
+              maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000,
+            })),
+        };
       },
-    }],
-  });
-  service.subscribe(recordScientificJobEvent);
-  const backendId = request.backend === "local" ? "sage-local-wsl" : "sage-docker";
-  const backend: ScientificExecutionBackend = {
-    backendId, backendVersion: "1", transport: request.backend === "local" ? "worker" : "remote",
-    priority: 100, supportsCancellation: true,
-    discover: () => ({ available: true, operations: [{
-      operationType: definition.type, retrySafety: "never",
-      maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
-      maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000,
-    }] }),
-    execute: (job) => service.submit(job),
-    cancel: (id: string) => {
-      service.cancel(id);
-      const cancel = options.cancel ?? ((value: string) => window.sageService?.cancel(value));
-      void Promise.resolve(cancel(id)).catch(() => undefined);
-    },
-  };
-  const broker = createScientificExecutionBroker({ resolveSource, backends: [backend] });
-  const execution = createExecutionService(broker);
-  registerBrokerDiscovery(`${request.operation}:${request.backend}`, () => broker.discoverCapabilities());
-  const job = createScientificJobRequest({
-    jobId, source,
-    operation: { type: definition.type, payload: payload as CanonicalJsonValue },
-    limits: { deadlineAt: Date.now() + 40_000, maxInputBytes: 64 * 1024,
-      maxOutputBytes: 256 * 1024, maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000 },
-  });
-  const promise = observeBrokerJob(jobId, definition.type, execution.submit(job, {
-    preferredBackendIds: [backendId], allowFallback: false,
-  }), backendId).then((outcome) => {
-    const failed: SageRunResponse = {
-      engine: "sagemath", operation: request.operation, success: false, latex: "", result: {}, warnings: [],
-      error: outcome.ok ? "SageMath returned no response." : outcome.code === "cancelled"
-        ? definition.cancelled : outcome.message,
+      execute: (job) => service.submit(job),
+      cancel: (jobId) => {
+        service.cancel(jobId);
+        try {
+          void Promise.resolve(this.#cancel(jobId)).catch(() => undefined);
+        } catch {
+          // The broker owns the cancellation result; transport cleanup is best effort.
+        }
+      },
+    });
+    this.#broker = createScientificExecutionBroker({ resolveSource, backends: [makeBackend("local"), makeBackend("docker")] });
+    this.#execution = createExecutionService(this.#broker);
+    if (options.registerDiscovery) registerBrokerDiscovery("sage", () => this.#broker.discoverCapabilities());
+  }
+
+  discoverBackends(): Promise<readonly ScientificBackendCapabilitySnapshot[]> {
+    return this.#broker.discoverCapabilities();
+  }
+
+  run(request: SageRunRequest & { operation: BrokeredSageOperation; backend: Backend }): SageOperationHandle {
+    validateSageJob(request);
+    const jobId = request.jobId ?? crypto.randomUUID();
+    if (this.#activeJobs.has(jobId)) throw new Error("Sage job ID is already in use.");
+    const definition = SAGE_JOB_OPERATIONS[request.operation];
+    const payload = { operation: request.operation, params: request.params, backend: request.backend };
+    const source: ScientificSourceGeneration = {
+      documentId: createStableDocumentId("sage-operation", { jobId, payload } as CanonicalJsonValue),
+      revision: 1, structuralHash: structuralHash(payload), generation: 1,
     };
-    return { broker: outcome, response: outcome.ok ? response ?? failed : response?.success === false ? response : failed };
-  });
-  return { jobId, promise, cancel: () => execution.cancel(jobId) };
+    const backendId = request.backend === "local" ? "sage-local-wsl" : "sage-docker";
+    const job = createScientificJobRequest({
+      jobId, source,
+      operation: { type: definition.type, payload: payload as CanonicalJsonValue },
+      limits: { deadlineAt: Date.now() + 40_000, maxInputBytes: 64 * 1024,
+        maxOutputBytes: 256 * 1024, maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000 },
+    });
+    this.#activeJobs.add(jobId);
+    this.#sources.set(source.documentId, source);
+    const promise = observeBrokerJob(jobId, definition.type, this.#execution.submit(job, {
+      preferredBackendIds: [backendId], allowFallback: false,
+    }), backendId).then((outcome) => {
+      const response = this.#responses.get(jobId);
+      const failed: SageRunResponse = {
+        engine: "sagemath", operation: request.operation, success: false, latex: "", result: {}, warnings: [],
+        error: outcome.ok ? "SageMath returned no response." : outcome.code === "cancelled"
+          ? definition.cancelled : outcome.message,
+      };
+      return { broker: outcome, response: outcome.ok ? response ?? failed : response?.success === false ? response : failed };
+    }).finally(() => {
+      this.#activeJobs.delete(jobId);
+      this.#responses.delete(jobId);
+      this.#sources.delete(source.documentId);
+    });
+    return { jobId, promise, cancel: () => this.#execution.cancel(jobId) };
+  }
 }
+
+export const createSageExecutionRegistry = (options: SageExecutionRegistryOptions = {}) => new SageExecutionRegistry(options);
+export const sageExecutionRegistry = createSageExecutionRegistry({ registerDiscovery: true });

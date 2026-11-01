@@ -484,10 +484,12 @@ unlinked; they are not silently marked current. Hosted gateway and code-cell
 provenance are separate future work.
 
 The bounded WSL worker and optional Docker service are local delivery slices.
-They do not complete the hosted gateway or the shared `ExecutionService`
-migration. The current Surface symbolic panel still routes through its Sage
-client compatibility facade; the UI rollout below should replace that
-feature-side routing with the common operation registry and broker.
+They do not complete the hosted gateway. Surface and Geometry Sage operations
+now use one shared operation registry and `ExecutionService`, with backend
+capabilities discovered from the WSL and Docker health contracts. The shared
+broker handles execution, cancellation, and Compute diagnostics; the Sage
+client remains only as its transport adapter. Other modules still need to join
+this common Services flow.
 
 ### Scientific Services UI rollout — implementation sequence
 
@@ -501,9 +503,9 @@ Workbook or an optional docked console.
 
 | Priority | UI change | Scope | Current state / acceptance |
 | --- | --- | --- | --- |
-| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Planned. A module declares available operations, inputs, capability requirements, result types, and limits; the shared panel filters and invokes them through `ExecutionService`. No module-specific Sage URL, process, or duplicate queue. |
+| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Implemented for Surface and Geometry Sage operations. The shared panel filters contextual operations and invokes one `ExecutionService` registry with no per-run broker or direct feature-side transport path. Extend the same contract to other modules. |
 | P0 | Move Docker/WSL configuration and diagnostics into `Compute → Runtimes` | Global | Planned. Show availability, version, environment, probe result, limits, and actionable errors for each backend; changing the global profile does not execute an operation. Services shows the selected backend and a link to these diagnostics. |
-| P0 | Add SageMath engine with WSL backend | Services | Partly shipped. The bounded local WSL worker and explicit Docker choice support a restricted symbolic/polynomial set. Complete the registry/broker adapter, capability reporting, and cross-module operation selection before marking this row done. |
+| P0 | Add SageMath engine with WSL backend | Services | Surface and Geometry share the bounded Local WSL and Docker adapters, capability reporting, execution, cancellation, and Compute diagnostics. Broader module registration remains open. |
 | P1 | Add operation-specific result cards and artifact actions | Inspector | Partly shipped for Surface/Implicit. Generalize exact expression, vector, matrix, solution set, and error cards; show source revision, backend, warnings, and stale state. Actions must use typed result/artifact contracts. |
 | P1 | Visualize a result as an overlay or save it as an object | Viewer | Partly shipped for Surface gradients and scalar implicit geometry. Add explicit preview/commit actions, source-linked provenance, stale invalidation, and appropriate geometry or overlay adapters per result type. |
 | P2 | Add a Sage Console bottom dock | Advanced users | Planned. Make session state, execution limits, cancellation, and output provenance visible; do not turn the public worker contract into arbitrary code execution. |
