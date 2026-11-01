@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, sameProjectCoordinateFrame,
+  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedMeshGenerationDocuments, sameProjectCoordinateFrame,
   type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
-  type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember,
+  type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember, type MixedWorkspaceEntry,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { projectResourceInventory, type ProjectResourceReader } from "../projects/projectResources";
@@ -22,13 +22,30 @@ import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
 } };
-export type RenderMember = { id: string; title: string; revision: number; hash: string; generation: "current" | "retained checkpoint"; slot?: 0 | 1;
+export type RenderMember = { id: string; title: string; revision: number; hash: string; generation: "current" | "retained checkpoint" | "retained snapshot"; slot?: 0 | 1;
   coordinates: ProjectCoordinateFrameRead; meshes: RenderMesh[]; points: OverlayPointSet[]; lines: OverlayPolylineGroup[];
   param?: { binding?: SurfaceDocumentBinding; x?: string; y?: string; z?: string; domain?: { uMin: number; uMax: number; vMin: number; vMax: number }; unit: string; opacity: number } };
 type Pick = ComparisonEvidenceSelection & { meshKey?: string; faceIndex?: number; uv?: { u: number; v: number };
   point: { x: number; y: number; z: number } };
 const colors = ["#3976d7", "#e8793a"] as const;
 const supported = (project: Math3DProject) => project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module));
+type GenerationChoice = { value: string; expected: ProjectCompositionMember["expected"]; label: string };
+const sameGeneration = (a: ProjectCompositionMember["expected"], b: ProjectCompositionMember["expected"]) =>
+  a.id === b.id && a.revision === b.revision && a.structuralHash === b.structuralHash;
+const generationChoices = (entry: MixedWorkspaceEntry): GenerationChoice[] => {
+  const choices: GenerationChoice[] = [{ value: "current", expected: entry.expected, label: `Current r${entry.expected.revision}` }];
+  if (!entry.replay) return choices;
+  if (entry.module === "mesh") {
+    for (const document of retainedMeshGenerationDocuments(entry)) {
+      const isCheckpoint = sameGeneration(document.identity, entry.checkpoint.identity);
+      choices.push({ value: isCheckpoint ? "checkpoint" : `retained:${document.identity.revision}:${document.identity.structuralHash}`,
+        expected: document.identity, label: `${isCheckpoint ? "Retained checkpoint" : "Retained snapshot"} r${document.identity.revision}` });
+    }
+  } else if (!sameGeneration(entry.checkpoint.identity, entry.expected))
+    choices.push({ value: "checkpoint", expected: entry.checkpoint.identity,
+      label: `Retained checkpoint r${entry.checkpoint.identity.revision}` });
+  return choices;
+};
 const titleOf = (project: Math3DProject, id: string): string => {
   const chosen = project.metadata.documents?.[id]?.title;
   if (chosen) return chosen;
@@ -46,11 +63,12 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
   if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
     throw new TypeError("The current source did not pass replay verification.");
   const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
-  const checkpointSelected = !!entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
-    entry.checkpoint.identity.structuralHash === member.expected.structuralHash;
-  if (!currentSelected && !checkpointSelected)
-    throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint.");
-  const document = currentSelected ? current : entry.checkpoint;
+  const retainedDocument = entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
+    sameGeneration(document.identity, member.expected)) :
+    entry.replay && sameGeneration(entry.checkpoint.identity, member.expected) ? entry.checkpoint : undefined;
+  if (!currentSelected && !retainedDocument)
+    throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint or snapshot.");
+  const document = currentSelected ? current : retainedDocument!;
   const color = Number.parseInt(member.color.slice(1), 16), meshes: RenderMesh[] = [];
   const points: OverlayPointSet[] = [], lines: OverlayPolylineGroup[] = [];
   let param: RenderMember["param"];
@@ -98,7 +116,7 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
   const vertices = meshes.reduce((total, mesh) => total + mesh.positions.length / 3, 0);
   if (vertices > 500_000) throw new TypeError("This composition exceeds the 500,000-vertex preview limit; the source remains unchanged.");
   return { id: member.documentId, title: titleOf(project, member.documentId), revision: document.identity.revision,
-    generation: currentSelected ? "current" : "retained checkpoint",
+    generation: currentSelected ? "current" : sameGeneration(document.identity, entry.checkpoint.identity) ? "retained checkpoint" : "retained snapshot",
     coordinates: readProjectCoordinateFrame(document), hash: document.identity.structuralHash, meshes, points, lines, ...(param ? { param } : {}) };
 };
 
@@ -163,9 +181,10 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const saved = project.compositions?.find(item => item.id === savedId);
   const [firstId, setFirstId] = useState<string>(candidates[0]?.expected.id ?? ""),
     [secondId, setSecondId] = useState<string>(candidates[1]?.expected.id ?? candidates[0]?.expected.id ?? "");
-  const [checkpoint, setCheckpoint] = useState<[boolean, boolean]>([candidates.length === 1 && !!candidates[0]?.replay &&
-    (candidates[0].checkpoint.identity.revision !== candidates[0].expected.revision ||
-      candidates[0].checkpoint.identity.structuralHash !== candidates[0].expected.structuralHash), false]);
+  const [generation, setGeneration] = useState<[string, string]>([
+    candidates.length === 1 ? generationChoices(candidates[0]!).find(choice => choice.value !== "current")?.value ?? "current" : "current",
+    "current",
+  ]);
   const [mode, setMode] = useState<"overlay" | "side-by-side">("side-by-side");
   const [frame, setFrame] = useState(""), [unit, setUnit] = useState("");
   const [visible, setVisible] = useState<[boolean, boolean]>([true, true]);
@@ -187,32 +206,33 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     if (!choice) { setCameraMode("independent"); return; }
     setFirstId(choice.members[0].documentId); setSecondId(choice.members[1].documentId); setMode(choice.mode);
     setCameraMode(choice.camera?.mode ?? "independent"); setCameraLeader(choice.camera?.leader === "B" ? 1 : 0);
-    setCheckpoint(choice.members.map(member => {
+    setGeneration(choice.members.map(member => {
       const entry = candidates.find(item => item.expected.id === member.documentId);
-      return !!entry && (entry.expected.revision !== member.expected.revision || entry.expected.structuralHash !== member.expected.structuralHash);
-    }) as [boolean, boolean]);
+      return entry ? generationChoices(entry).find(option => sameGeneration(option.expected, member.expected))?.value ??
+        `unavailable:${member.expected.revision}:${member.expected.structuralHash}` : "current";
+    }) as [string, string]);
     setFrame(choice.alignment?.frame ?? ""); setUnit(choice.alignment?.unit ?? "");
     setVisible([choice.members[0].visible, choice.members[1].visible]);
     setPalette([choice.members[0].color, choice.members[1].color]); setOpacity([choice.members[0].opacity, choice.members[1].opacity]);
   };
   useEffect(() => { if (initialCompositionId) chooseSaved(initialCompositionId); }, [initialCompositionId]);
   const composition = useMemo((): ProjectComposition | null => {
-    if (!firstId || !secondId || firstId === secondId && (mode !== "side-by-side" || checkpoint[0] === checkpoint[1]) ||
+    if (!firstId || !secondId || firstId === secondId && (mode !== "side-by-side" || generation[0] === generation[1]) ||
       mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
     const entries = [firstId, secondId].map(id => candidates.find(item => item.expected.id === id));
     if (entries.some(entry => !entry)) return null;
     return { id: saved?.id ?? `composition:${crypto.randomUUID()}`, title: saved?.title ?? `${titleOf(project, firstId)} / ${titleOf(project, secondId)}`, mode,
       members: entries.map((entry, index) => ({ documentId: entry!.expected.id,
         expected: saved?.members[index].documentId === entry!.expected.id ? saved.members[index].expected :
-          checkpoint[index] && entry!.replay ? entry!.checkpoint.identity : entry!.expected,
+          generationChoices(entry!).find(option => option.value === generation[index])?.expected ?? entry!.expected,
         visible: visible[index]!, color: palette[index]!, opacity: opacity[index]! })) as unknown as ProjectComposition["members"],
       ...(mode === "overlay" ? { alignment: { frame: frame.trim(), unit: unit.trim() } } : {}),
       ...(mode === "side-by-side" && cameraMode === "linked" ? { camera: { mode: "linked", leader: cameraLeader === 0 ? "A" : "B" } } : {}) };
-  }, [firstId, secondId, checkpoint, mode, frame, unit, visible, palette, opacity, cameraMode, cameraLeader, savedId, project]);
+  }, [firstId, secondId, generation, mode, frame, unit, visible, palette, opacity, cameraMode, cameraLeader, savedId, project]);
   const resolved = useMemo(() => {
     if (!composition) return { members: [] as RenderMember[], error: "Choose two different saved documents, or two retained generations of one document. Overlay also requires a declared frame and unit." };
     const statuses = inspectProjectCompositionAvailability(composition, project.workspace);
-    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint"))
+    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh"))
       return { members: [] as RenderMember[], error: `Source status: ${statuses.join(" / ")}. Unavailable historical bytes are not reconstructed.` };
     if (composition.mode === "overlay" && composition.members.some(member => project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface"))
       return { members: [] as RenderMember[], error: "Overlay currently accepts Mesh and Geometry sources only. Use side-by-side for a Surface." };
@@ -239,7 +259,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
   const onSelect = (index: 0 | 1, id: string) => { setSavedId(""); setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null);
-    setCheckpoint(current => current.map((value, i) => i === index ? false : value) as [boolean, boolean]); if (index === 0) setFirstId(id); else setSecondId(id); };
+    setGeneration(current => current.map((value, i) => i === index ? "current" : value) as [string, string]); if (index === 0) setFirstId(id); else setSecondId(id); };
   return createPortal(<div role="dialog" aria-modal="true" aria-label="Project comparison and composition" data-testid="project-composition-view"
     style={{ position: "fixed", inset: 16, zIndex: 10000, background: "#f8fafc", color: "#18243a", border: "1px solid #94a3b8", borderRadius: 12,
       boxShadow: "0 24px 80px #0008", overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -274,14 +294,14 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
           <option value="">Choose document</option>{candidates.map(entry => <option key={entry.expected.id} value={entry.expected.id}>{titleOf(project, entry.expected.id)} · {entry.module} r{entry.expected.revision}</option>)}</select></label>
         {(() => {
           const entry = candidates.find(item => item.expected.id === (index === 0 ? firstId : secondId));
-          const retained = !!entry?.replay && (entry.checkpoint.identity.revision !== entry.expected.revision ||
-            entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash);
-          if (!entry || !retained) return null;
+          if (!entry) return null;
+          const choices = generationChoices(entry);
+          if (choices.length === 1 && !generation[index].startsWith("unavailable:")) return null;
           return <label style={{ marginLeft: 10 }}>Generation <select data-testid={`project-composition-generation-${index}`}
-            value={checkpoint[index] ? "checkpoint" : "current"} onChange={event => { setSavedId(""); setPick(null); setCameraMode("independent"); setCameraPose(null);
-              setCheckpoint(current => current.map((value, i) => i === index ? event.target.value === "checkpoint" : value) as [boolean, boolean]); }}>
-            <option value="current">Current r{entry.expected.revision}</option>
-            <option value="checkpoint">Retained checkpoint r{entry.checkpoint.identity.revision}</option>
+            value={generation[index]} onChange={event => { setSavedId(""); setPick(null); setCameraMode("independent"); setCameraPose(null);
+              setGeneration(current => current.map((value, i) => i === index ? event.target.value : value) as [string, string]); }}>
+            {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+            {generation[index].startsWith("unavailable:") && <option value={generation[index]}>Saved generation unavailable</option>}
           </select></label>;
         })()}
         <label style={{ marginLeft: 10 }}><input type="checkbox" checked={visible[index]} onChange={event => { setCameraMode("independent"); setCameraPose(null);

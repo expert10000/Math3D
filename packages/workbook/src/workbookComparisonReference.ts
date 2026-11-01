@@ -33,5 +33,5 @@ export function inspectWorkbookComparisonReference(project: Math3DProject | null
   if (!composition) return { status: "missing", composition: null };
   if (structuralHash(composition) !== ref.compositionHash) return { status: "stale", composition };
   const available = inspectProjectCompositionAvailability(composition, project.workspace);
-  return { status: available.every(item => item === "current" || item === "retained-checkpoint") ? "current" : "missing", composition };
+  return { status: available.every(item => item === "current" || item === "retained-checkpoint" || item === "retained-mesh") ? "current" : "missing", composition };
 }

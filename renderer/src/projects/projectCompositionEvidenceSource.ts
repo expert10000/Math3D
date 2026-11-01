@@ -1,4 +1,4 @@
-import { readProjectCoordinateFrame, type KernelWorkspaceDocument, type Math3DProject, type ProjectComposition } from "@math3d/core";
+import { readProjectCoordinateFrame, retainedMeshGenerationDocuments, type KernelWorkspaceDocument, type Math3DProject, type ProjectComposition } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
 import { projectResourceInventory, type ProjectResourceReader } from "./projectResources";
@@ -13,10 +13,12 @@ export function verifyProjectCompositionEvidenceSources(project: Math3DProject, 
     if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
       throw new TypeError("The current source did not pass replay verification.");
     const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
-    const checkpointSelected = !!entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
-      entry.checkpoint.identity.structuralHash === member.expected.structuralHash;
-    if (!currentSelected && !checkpointSelected) throw new TypeError("The selected source has no matching retained generation.");
-    const document: KernelWorkspaceDocument = currentSelected ? current : entry.checkpoint;
+    const retained = entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
+      document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash) :
+      entry.replay && entry.checkpoint.identity.revision === member.expected.revision &&
+        entry.checkpoint.identity.structuralHash === member.expected.structuralHash ? entry.checkpoint : undefined;
+    if (!currentSelected && !retained) throw new TypeError("The selected source has no matching retained generation.");
+    const document: KernelWorkspaceDocument = currentSelected ? current : retained!;
     let vertexCount = 0;
     if (document.format === "math3d.mesh-document") {
       const requirement = projectResourceInventory(project).find(item => item.kind === "mesh-buffers" && item.id === document.source.resource.id);
@@ -30,7 +32,8 @@ export function verifyProjectCompositionEvidenceSources(project: Math3DProject, 
       throw new TypeError("Only saved Mesh, Geometry and Surface sources can be compared.");
     const coordinates = readProjectCoordinateFrame(document);
     return { id: member.documentId, revision: document.identity.revision, hash: document.identity.structuralHash,
-      generation: currentSelected ? "current" as const : "retained checkpoint" as const,
+      generation: currentSelected ? "current" as const : document.identity.revision === entry.checkpoint.identity.revision &&
+        document.identity.structuralHash === entry.checkpoint.identity.structuralHash ? "retained checkpoint" as const : "retained snapshot" as const,
       unit: document.format === "math3d.surface-document" ? String((document.source.units as { length: string }).length) : coordinates.value?.unit ?? null,
       coordinates, vertexCount };
   });
