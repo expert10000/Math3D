@@ -23,7 +23,9 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
+const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
+import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -172,6 +174,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [compositionOpen, setCompositionOpen] = useState(false);
+  const [meshResultComparisonOpen, setMeshResultComparisonOpen] = useState(false);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
@@ -1388,6 +1391,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             !project.workspace.entries.some(entry => ["mesh", "geometry", "surface"].includes(entry.module) && !!entry.replay &&
               (entry.checkpoint.identity.revision !== entry.expected.revision || entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash))}
             onClick={() => { setComparisonInitialId(undefined); setCompositionOpen(true); }}>Open comparison</button>
+          <div style={{ marginTop: 12 }}><strong>Saved Mesh analysis results</strong><p>Compare exact stored quality or curvature summaries. {comparableSavedMeshResults(project).length} eligible results.</p>
+            <button type="button" data-testid="project-open-mesh-result-comparison" disabled={busy || comparableSavedMeshResults(project).length < 2}
+              onClick={() => setMeshResultComparisonOpen(true)}>Compare saved results</button></div>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
@@ -1758,6 +1764,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           }, `Saved comparison observation “${title.trim()}”.`);
           return ok;
         }} /></React.Suspense>}
+      {meshResultComparisonOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh results…</p>}><ProjectSavedMeshResultComparisonView project={project} readResource={comparisonResource} onClose={() => setMeshResultComparisonOpen(false)} /></React.Suspense>}
     </ProjectGalleryFrame>}
   </div>;
 };
