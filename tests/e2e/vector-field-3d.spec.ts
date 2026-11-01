@@ -998,22 +998,28 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
       revisions[0].provenance.operation.parameters);
     expect(savedReport.workbooks[0].revision).toBeGreaterThan(1);
     const reportId = savedReport.workbooks[0].id;
-    await page.getByTestId("projects-toggle")
-      .evaluate(element => (element as HTMLButtonElement).click());
+    const projectsToggle = page.getByTestId("projects-toggle");
+    await expect(projectsToggle).toBeEnabled({ timeout: 120_000 });
+    await projectsToggle.evaluate(element => {
+      setTimeout(() => (element as HTMLButtonElement).click(), 0);
+    }, undefined, { timeout: 120_000 });
     const reopened = page.getByTestId("project-explorer-panel");
     await expect(reopened).toBeVisible();
     await reopened.getByTestId(`project-open-saved-${project.identity.id}`)
-      .evaluate(element => (element as HTMLButtonElement).click());
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect(reopened.getByTestId("project-message"))
       .toContainText("Opened supported project workspace", { timeout: 120_000 });
     if (!await reopened.getByTestId("project-workbooks").isVisible())
       await reopened.getByTestId("project-detail-tab-documents").click();
     await reopened.getByTestId(`project-open-workbook-${reportId}`)
-      .evaluate(element => (element as HTMLButtonElement).click());
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
       .toContainText("Sources verified", { timeout: 120_000 });
-    await page.getByRole("button", { name: "Verified subrectangle report · new revision" })
-      .last().evaluate(element => (element as HTMLButtonElement).click());
+    await page.getByText("Verified subrectangle report · new revision", { exact: true })
+      .last().evaluate(element => { setTimeout(() => element.closest("button")?.click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect(page.getByTestId("scientific-subrectangle-differences"))
       .toContainText("Compared with", { timeout: 120_000 });
   } finally { await closeSurfaceApp(app); }
