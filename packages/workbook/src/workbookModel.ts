@@ -317,6 +317,7 @@ export type WorkbookBlock = {
   inputs?: WorkbookPort[];
   outputs?: WorkbookPort[];
   text?: string;
+  sageEvidence?: import("./workbookSageEvidence").WorkbookSageEvidence;
   formula?: string;
   documentContent?: WorkbookDocumentContent;
   claim?: WorkbookClaim;

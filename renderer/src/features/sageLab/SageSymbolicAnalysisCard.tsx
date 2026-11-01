@@ -37,7 +37,7 @@ export const SageSymbolicAnalysisCard: React.FC<{
       <span style={{ color: "#17603c" }}>Exact · SageMath ({backend === "local" ? "Local WSL" : "Docker"})</span>
     </div>
     <div style={{ color: "#526477", overflowWrap: "anywhere" }}>Input = <code>{expression}</code></div>
-    {stale && <div role="status" style={{ color: "#9a3412" }}>The surface equation changed after this run. Run the operation again before using the result.</div>}
+    {stale && <div role="status" style={{ color: "#9a3412" }}>The source changed after this run. Run the operation again before using the result.</div>}
     {math ? <div style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: math }} /> : <code style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{text}</code>}
     {Array.isArray(response.result.components) && <div>Components: <code>{response.result.components.map(String).join(" ; ")}</code></div>}
     {Array.isArray(response.result.points) && <div>{response.result.points.length} singular point{response.result.points.length === 1 ? "" : "s"} found for F = 0 and ∇F = 0.</div>}

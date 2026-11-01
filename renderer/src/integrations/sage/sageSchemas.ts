@@ -34,6 +34,7 @@ export type SageRunRequest = {
 
 export type SageRunResponse = {
   engine: "sagemath" | string;
+  engineVersion?: string;
   operation: SageOperation | string;
   success: boolean;
   latex: string;
@@ -113,6 +114,7 @@ export const normalizeSageRunResponse = (payload: unknown): SageRunResponse => {
     : {};
   return {
     engine: data.engine,
+    engineVersion: typeof data.engineVersion === "string" && data.engineVersion ? data.engineVersion : undefined,
     operation,
     success: data.success,
     latex: typeof data.latex === "string" ? data.latex : "",

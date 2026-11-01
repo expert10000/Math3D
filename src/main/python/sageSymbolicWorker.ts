@@ -108,8 +108,10 @@ else:
     else: raise ValueError("Unsupported local Sage operation.")
     if operation not in ("sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"):
         result = {"text": str(value)}
+from sage.env import SAGE_VERSION
 print(json.dumps({"schemaVersion": 1, "jobId": request["jobId"], "operation": operation,
-    "status": "succeeded", "result": result, "latex": str(latex(value))}, separators=(",", ":")))
+    "status": "succeeded", "result": result, "latex": str(latex(value)),
+    "engineVersion": str(SAGE_VERSION)}, separators=(",", ":")))
 `;
 
 type ActiveJob = { child: ChildProcessWithoutNullStreams; cancelled: boolean };
@@ -201,7 +203,7 @@ export async function runSageSymbolicJob(
           reply.status !== "succeeded" || !reply.result || typeof reply.latex !== "string") {
           throw new Error("Sage worker returned an invalid symbolic contract.");
         }
-        finish(undefined, { engine: "sagemath", operation, success: true, latex: reply.latex,
+        finish(undefined, { engine: "sagemath", engineVersion: reply.engineVersion, operation, success: true, latex: reply.latex,
           result: { ...(reply.result as object), schemaVersion: 1, jobId, inputHash,
             diagnostics: ["Parsed with a bounded arithmetic AST; no expression evaluator used."] },
           warnings: [], elapsedMs: Date.now() - started });

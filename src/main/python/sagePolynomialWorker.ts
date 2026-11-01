@@ -5,6 +5,7 @@ const SAGE_POLYNOMIAL_SCRIPT = String.raw`
 import json
 import sys
 from sage.all import ComplexIntervalField, PolynomialRing, QQ, QQbar, ZZ, latex
+from sage.env import SAGE_VERSION
 
 request = json.load(sys.stdin)
 coefficients = request["parameters"]["coefficients"]
@@ -78,6 +79,7 @@ print(json.dumps({
     "jobId": request["jobId"],
     "operation": operation,
     "status": "succeeded",
+    "engineVersion": str(SAGE_VERSION),
     "result": result,
     "diagnostics": diagnostics,
 }, separators=(",", ":")))
@@ -194,6 +196,7 @@ export async function runSagePolynomialJob(
           status?: string;
           result?: Record<string, unknown>;
           diagnostics?: string[];
+          engineVersion?: string;
         };
         if (
           reply.schemaVersion !== 1 || reply.jobId !== jobId ||
@@ -204,6 +207,7 @@ export async function runSagePolynomialJob(
         }
         finish(undefined, {
           engine: "sagemath",
+          engineVersion: reply.engineVersion,
           operation,
           success: true,
           latex: reply.result.latex,

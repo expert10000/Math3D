@@ -76,7 +76,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     req.on("data", (chunk) => { body += String(chunk); });
     req.on("end", () => {
       requests.push(JSON.parse(body));
-      res.end(JSON.stringify({ engine: "sagemath", operation: "sage.symbolic.simplify", success: true,
+      res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.6", operation: "sage.symbolic.simplify", success: true,
         result: { text: "desktop-docker-result" }, latex: "1", warnings: [] }));
     });
   });
@@ -104,9 +104,39 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Reported status: ok");
     await runtimes.getByRole("button", { name: "Close", exact: true }).click();
+    await panel.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
     await panel.getByRole("button", { name: "Run", exact: true }).click();
     await expect(panel).toContainText("desktop-docker-result");
     expect(requests).toMatchObject([{ operation: "sage.symbolic.simplify" }]);
+    await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source current");
+    await page.getByRole("button", { name: "Surface editor", exact: true }).click();
+    const sourceEditor = page.getByTestId("surface-formula-editor-sheet").locator("textarea").last();
+    await sourceEditor.fill("x^2+y^2-z^2-1");
+    await sourceEditor.press("Control+Enter");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
+    await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
+    await page.reload();
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source unavailable — verify before reuse");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
+    await page.getByTestId("workbook-sage-evidence").getByText("Exact request, response, and diagnostics").click();
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText('"backend": "docker"');
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText('"text": "desktop-docker-result"');
+    await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
+    await page.getByTestId("geometry-mode-procedural").click();
+    await page.getByTestId("geometry-open-built-in-scene-presets").click();
+    const geometryServices = page.getByTestId("scientific-services-geometry");
+    await geometryServices.getByLabel("SageMath backend").selectOption("docker");
+    await geometryServices.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(page.getByTestId("sage-analysis-result")).toContainText("Symbolic result · Simplified expression");
+    await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source unavailable — verify before reuse");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("sage-input:geometry");
+    expect(requests).toHaveLength(2);
     const localOnlyError = await page.evaluate(async () => {
       try {
         const sageService = (window as Window & { sageService?: { run: (request: unknown) => Promise<unknown> } }).sageService;

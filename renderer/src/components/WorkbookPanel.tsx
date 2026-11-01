@@ -14,6 +14,7 @@ import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWo
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
 import { WorkbookNamedParameters } from "./WorkbookNamedParameters";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
+import { WorkbookSageEvidenceView } from "./WorkbookSageEvidence";
 import { assessWorkbookClaim } from "@math3d/workbook";
 import { uiStyles as styles } from "../uiStyles";
 import type {
@@ -30,8 +31,9 @@ import type {
   WorkbookProblemPack,
   WorkbookGeometryTaskSpec,
   WorkbookDependency,
+  WorkbookSageEvidence,
 } from "@math3d/workbook";
-import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG, resolveWorkbookFreshness, workbookNeedsProjectInspection } from "@math3d/workbook";
+import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG, resolveWorkbookFreshness, resolveWorkbookSageFreshness, workbookNeedsProjectInspection } from "@math3d/workbook";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
 import { isSplinePatchSurfaceId } from "../math/splineSurface";
 import { computeMeanEdgeLength } from "../mesh/meshOps";
@@ -39,6 +41,7 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 type WorkbookPanelProps = {
   workbooks: Workbook[];
+  resolveSageSource?: (source: WorkbookSageEvidence["source"]) => WorkbookSageEvidence["source"] | null;
   readComparisonResource?: ProjectResourceReader;
   activeWorkbookId: string | null;
   activeStageId: WorkbookStageId;
@@ -487,6 +490,7 @@ const VisualizeDiffPanel: React.FC<{
 
 export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   workbooks,
+  resolveSageSource,
   readComparisonResource,
   activeWorkbookId,
   activeStageId,
@@ -630,6 +634,11 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "missing" | "fail" | "pending" | "disabled"; label: string } => {
     if (!isBlockEnabled(block)) {
       return { state: "disabled", label: "disabled" };
+    }
+    if (block.sageEvidence) {
+      const state = resolveWorkbookSageFreshness(block.sageEvidence.source,
+        resolveSageSource?.(block.sageEvidence.source) ?? null);
+      if (state !== "current") return { state: state === "stale" ? "stale" : "missing", label: state };
     }
     const freshness = freshnessById.get(block.id);
     if (freshness?.status === "failed") return { state: "fail", label: "failed" };
@@ -1829,6 +1838,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               />
 
               {block.type === "text" && (
+                <>{block.sageEvidence && <WorkbookSageEvidenceView evidence={block.sageEvidence}
+                  currentSource={resolveSageSource?.(block.sageEvidence.source) ?? null} />}
                 <textarea
                   value={block.text ?? ""}
                   onChange={(e) => onUpdateBlock(activeStageId, block.id, { text: e.target.value })}
@@ -1836,7 +1847,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   placeholder="Markdown text..."
                   disabled={readOnly}
                   style={{ width: "100%", padding: 6, fontSize: 12, fontFamily: "inherit" }}
-                />
+                /></>
               )}
 
               {block.type === "formula" && (

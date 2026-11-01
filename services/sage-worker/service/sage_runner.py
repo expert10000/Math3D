@@ -29,6 +29,7 @@ class SageRequestError(ValueError):
 def _success(operation, result, latex_value="", warnings=None, elapsed_ms=0):
     return {
         "engine": ENGINE,
+        "engineVersion": str(SAGE_VERSION),
         "operation": operation,
         "success": True,
         "latex": latex_value,
@@ -41,6 +42,7 @@ def _success(operation, result, latex_value="", warnings=None, elapsed_ms=0):
 def _failure(operation, message, elapsed_ms=0):
     return {
         "engine": ENGINE,
+        "engineVersion": str(SAGE_VERSION),
         "operation": operation,
         "success": False,
         "latex": "",

@@ -57,6 +57,8 @@ import { WorkbookClaimEditor } from "./components/WorkbookClaimEditor";
 import { WorkbookNamedParameters } from "./components/WorkbookNamedParameters";
 import { WorkbookAnalysisRerun } from "./components/WorkbookAnalysisRerun";
 import { WorkbookProvenance } from "./components/WorkbookProvenance";
+import { WorkbookSageEvidenceView } from "./components/WorkbookSageEvidence";
+import { resolveWorkbookSageFreshness, type WorkbookSageEvidence } from "@math3d/workbook";
 import type { NotebookReference, NotebookArtifactReader } from "@math3d/workbook";
 import { captureProjectViewThumbnail } from "./projects/projectViewThumbnail";
 import { supportsSavedSurfaceResolution, type SurfaceStudyResolution } from "./projects/surfaceStudyResolution";
@@ -44623,6 +44625,7 @@ const App: React.FC = () => {
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   const [symbolicAnalysisRecord, setSymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [geometrySymbolicAnalysisRecord, setGeometrySymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
+  const sageSourceSessionId = useRef(makeId()).current;
   const [symbolicActionStatus, setSymbolicActionStatus] = useState<string | null>(null);
   const [symbolicGradientOverlaySource, setSymbolicGradientOverlaySource] = useState<string | null>(null);
   const [symbolicGradientOverlayLines, setSymbolicGradientOverlayLines] = useState<OverlayPolylineGroup["lines"]>([]);
@@ -79602,16 +79605,32 @@ case "mobius":
     setSurfaceViewerKind("implicit");
     setSymbolicActionStatus("Created an implicit surface from the exact scalar expression.");
   };
-  const handleSymbolicSaveWorkbook = () => {
-    const record = symbolicAnalysisRecord;
-    if (!record || IS_REPLAY_MODE) return;
+  const saveSageResultToWorkbook = (record: SymbolicResultRecord) => {
+    if (IS_REPLAY_MODE) return;
     const { response } = record;
+    const evidence: WorkbookSageEvidence = {
+      schemaVersion: 1, kind: "sage-result/v1", savedAt: Date.now(),
+      source: record.source ?? { module: "geometry", id: "sage-input:unlinked", revision: 0,
+        expression: record.expression, fingerprint: hashValue(record.request.params) },
+      request: { operation: record.request.operation, params: JSON.parse(JSON.stringify(record.request.params)),
+        backend: record.backend, jobId: record.request.jobId },
+      engine: { name: "SageMath", backend: record.backend, version: response.engineVersion ?? "unreported" },
+      response: JSON.parse(JSON.stringify(response)),
+      diagnostics: [
+        ...response.warnings,
+        ...(Array.isArray(response.result.diagnostics) ? response.result.diagnostics.map(String) : []),
+        ...(response.error ? [response.error] : []),
+        ...(response.engineVersion ? [] : ["SageMath version was not reported by this worker."]),
+      ],
+    };
     const block: WorkbookBlock = {
       id: makeId(), type: "text", title: `SageMath ${response.operation.replace("sage.symbolic.", "")}`,
+      sageEvidence: evidence,
       text: [
         `Source: F = ${record.expression}`,
         `Operation: ${response.operation}`,
-        `Engine: SageMath (${record.backend === "local" ? "Local WSL" : "Docker"})`,
+        `Engine: SageMath ${evidence.engine.version} (${record.backend === "local" ? "Local WSL" : "Docker"})`,
+        `Source revision: ${evidence.source.revision}`,
         `Result: ${typeof response.result.text === "string" ? response.result.text : JSON.stringify(response.result)}`,
         response.latex ? `LaTeX: $${response.latex}$` : "",
         `Input hash: ${String(response.result.inputHash ?? "not reported")}`,
@@ -79631,8 +79650,30 @@ case "mobius":
     });
     setActiveWorkbookId(targetId);
     setActiveStageId("explain");
+    setFullWorkbookSelectedBlockRef({ stageId: "explain", blockId: block.id });
     setRightPanelTab("workbook");
-    setSymbolicActionStatus("Saved exact result to the Workbook Explain stage.");
+  };
+  const handleSymbolicSaveWorkbook = () => {
+    if (!symbolicAnalysisRecord) return;
+    saveSageResultToWorkbook(symbolicAnalysisRecord);
+    setSymbolicActionStatus("Saved exact result and provenance to the Workbook Explain stage.");
+  };
+  const currentSageWorkbookSource = (saved: WorkbookSageEvidence["source"]): WorkbookSageEvidence["source"] | null => {
+    if (saved.module === "surface" && saved.id === `surface:active-implicit:${sageSourceSessionId}`) {
+      if (surfaceViewerKind !== "implicit") return null;
+      return { module: "surface", id: saved.id,
+        revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
+        expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) };
+    }
+    if (saved.module === "geometry") {
+      const object = geometryObjects.find((item) => item.id === saved.id) ??
+        geometryDatasetMeshObjects.find((item) => item.id === saved.id);
+      if (!object) return null;
+      return { module: "geometry", id: object.id,
+        revision: geometryObjectRevisionById[object.id] ?? 0,
+        expression: saved.expression, fingerprint: hashValue(object) };
+    }
+    return null;
   };
   const renderNativeSurfaceInspector = () => (<>
                     {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
@@ -86247,7 +86288,12 @@ case "mobius":
                   <OctaveLabPanel />
                   <ScientificServicesPanel context="surface" sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
                     onResult={(record) => {
-                      setSymbolicAnalysisRecord(record);
+                      setSymbolicAnalysisRecord({ ...record, source: record.sourceSurfaceExpression === activeImplicitExpr
+                        ? { module: "surface", id: `surface:active-implicit:${sageSourceSessionId}`,
+                          revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
+                          expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) }
+                        : { module: "surface", id: "sage-input:surface", revision: 0,
+                          expression: record.expression, fingerprint: hashValue(record.request.params) } });
                       setSymbolicActionStatus(null);
                       setSymbolicGradientOverlayLines([]);
                       setRightPanelTab("inspector");
@@ -90211,6 +90257,7 @@ case "mobius":
                   ) : (
                     <WorkbookPanel
                       workbooks={workbooks}
+                      resolveSageSource={currentSageWorkbookSource}
                       readComparisonResource={readComparisonResource}
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
@@ -91602,6 +91649,9 @@ case "mobius":
                   {fullWorkbookSelectedBlockMeta ? (
                     <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, display: "grid", gap: 8 }}>
                       <div style={{ fontSize: 11, fontWeight: 700 }}>Selected block editor</div>
+                      {fullWorkbookSelectedBlockMeta.block.sageEvidence && <WorkbookSageEvidenceView
+                        evidence={fullWorkbookSelectedBlockMeta.block.sageEvidence}
+                        currentSource={currentSageWorkbookSource(fullWorkbookSelectedBlockMeta.block.sageEvidence.source)} />}
                       {fullWorkbookSelectedBlockMeta.block.type === "visualize" && <WorkbookSnapshotRecord block={fullWorkbookSelectedBlockMeta.block} />}
                       {fullWorkbookSelectedBlockMeta.block.notebookReference && <WorkbookProvenance reference={fullWorkbookSelectedBlockMeta.block.notebookReference} project={getWorkbookDependencyProjectRef.current()} reader={readNotebookArtifact} />}
                       {fullWorkbookSelectedBlockMeta.block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
@@ -102410,7 +102460,10 @@ case "mobius":
                     {geometryProceduralPanelTab === "debug" && (
                       <div style={{ display: "grid", gap: 8 }}>
                       <ScientificServicesPanel context="geometry" onResult={(record) => {
-                        setGeometrySymbolicAnalysisRecord(record);
+                        setGeometrySymbolicAnalysisRecord({ ...record, source: {
+                          module: "geometry", id: "sage-input:geometry", revision: 0,
+                          expression: record.expression, fingerprint: hashValue(record.request.params),
+                        } });
                         setGeometryRightPanelTab("analysis");
                         setShowRightPanel(true);
                       }} />
@@ -106601,7 +106654,16 @@ case "mobius":
                           </div>
                     ) : geometryRightPanelTab === "analysis" ? (
                       <div style={{ display: "grid", gap: 8 }}>
-                      {geometrySymbolicAnalysisRecord && <SageSymbolicAnalysisCard record={geometrySymbolicAnalysisRecord} stale={false} />}
+                      {geometrySymbolicAnalysisRecord && <SageSymbolicAnalysisCard record={geometrySymbolicAnalysisRecord}
+                        stale={Boolean(geometrySymbolicAnalysisRecord.source &&
+                          !geometrySymbolicAnalysisRecord.source.id.startsWith("sage-input:") &&
+                          resolveWorkbookSageFreshness(geometrySymbolicAnalysisRecord.source,
+                            currentSageWorkbookSource(geometrySymbolicAnalysisRecord.source)) !== "current")}
+                        onSaveWorkbook={() => {
+                          saveSageResultToWorkbook(geometrySymbolicAnalysisRecord);
+                          setGeometryMode("workbook");
+                          setGeometryWorkbookUiMode("full");
+                        }} />}
                       <GeometryAnalysisInspectorPanel
                         result={geometryActiveAnalysisInspectorRecord}
                         savedResults={geometrySavedAnalysisResults}

@@ -4,7 +4,9 @@ import { isBrokeredSageOperation, runSageJob, type SageOperationHandle } from ".
 import {
   type SageSymbolicOperation,
   type SageRunResponse,
+  type SageRunRequest,
 } from "../../integrations/sage/sageSchemas";
+import type { WorkbookSageEvidence } from "@math3d/workbook";
 import { SCIENTIFIC_OPERATION_CATALOG, type ScientificOperationEntry } from "../scientificServices/operationCatalog";
 
 export type SymbolicResultRecord = {
@@ -12,6 +14,8 @@ export type SymbolicResultRecord = {
   expression: string;
   variables: string[];
   backend: "local" | "docker";
+  request: SageRunRequest;
+  source?: WorkbookSageEvidence["source"];
   sourceSurfaceExpression?: string;
 };
 
@@ -150,6 +154,7 @@ const SageSymbolicPanel: React.FC<{
       }
       jobId = crypto.randomUUID();
       setActiveJobId(jobId);
+      const request: SageRunRequest = { operation, jobId, params: JSON.parse(JSON.stringify(params)), backend };
       const result = isBrokeredSageOperation(operation)
         ? await (async () => {
           const handle = runSageJob({ operation, jobId, params, backend });
@@ -158,7 +163,7 @@ const SageSymbolicPanel: React.FC<{
         })()
         : await runSageOperation({ operation, jobId, params, backend });
       setResponse(result);
-      if (result.success) onResult?.({ response: result, expression: inputSummary,
+      if (result.success) onResult?.({ response: result, request, expression: inputSummary,
         variables: groebnerOperation ? (params.variables as string[]) : variables.length ? variables : ["x"], backend,
         sourceSurfaceExpression: !matrixOperation && !groebnerOperation && !gcdOperation && !inverseOperation &&
           sourceExpression === expression ? sourceExpression : undefined });
