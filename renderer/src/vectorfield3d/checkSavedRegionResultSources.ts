@@ -21,8 +21,12 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
 import { VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
   verifyVectorField3DTrajectoryResult } from "@math3d/core";
+import { VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
+  verifyVectorField3DEquilibriumResult } from "@math3d/core";
 import { reverifyScientificTrajectoryResult, ScientificTrajectorySourceError,
   type ScientificTrajectoryBridge } from "./reverifyScientificTrajectoryResult";
+import { reverifyScientificEquilibriumResult, ScientificEquilibriumSourceError,
+  type ScientificEquilibriumBridge } from "./reverifyScientificEquilibriumResult";
 import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
   verifiedVectorRegionProfile,
   type DivergenceSourceBridge } from
@@ -45,7 +49,7 @@ export type SavedRegionSourceStatus = SingleRegionSourceStatus | CombinedRegionS
   VectorDerivedRegionSourceStatus;
 type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
   "checkGraphDatasetReference" | "previewGraphVolume"> & DivergenceSourceBridge &
-  ScientificTrajectoryBridge;
+  ScientificTrajectoryBridge & ScientificEquilibriumBridge;
 
 /** Read-only Project reopen check, including every pinned source resource. */
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
@@ -58,6 +62,15 @@ export async function checkSavedRegionResultSources(result: AnalysisResultEnvelo
       else verifyVectorField3DTrajectoryResult(result, document);
       return "source-current"; }
     catch (cause) { return cause instanceof ScientificTrajectorySourceError ?
+      cause.status : "changed"; }
+  }
+  if (result.provenance.operation.type === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE) {
+    try {
+      if (document.source.field.kind === "scientific-bundle")
+        await reverifyScientificEquilibriumResult(result, document, bridge);
+      else verifyVectorField3DEquilibriumResult(result, document);
+      return "source-current";
+    } catch (cause) { return cause instanceof ScientificEquilibriumSourceError ?
       cause.status : "changed"; }
   }
   if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE)

@@ -52,6 +52,8 @@ import { createScientificSubrectangleWorkbook, scientificSubrectangleReportMarkd
   SCIENTIFIC_SUBRECTANGLE_REPORT } from "../projects/scientificSubrectangleWorkbook";
 import { createScientificTrajectoryWorkbook, isScientificTrajectory,
   verifyScientificTrajectoryReport } from "../projects/scientificTrajectoryWorkbook";
+import { createScientificEquilibriumWorkbook, isScientificEquilibrium,
+  verifyScientificEquilibriumReport } from "../projects/scientificEquilibriumWorkbook";
 import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
@@ -781,14 +783,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const result = base.workspace.results.find(item => item.resultId === resultId);
       if (!result) throw new TypeError("Published result is unavailable.");
       const trajectory = isScientificTrajectory(result);
-      const inspection = trajectory ? null : await inspectScientificSubrectangleReport(base,
+      const equilibrium = isScientificEquilibrium(result);
+      const inspection = trajectory || equilibrium ? null : await inspectScientificSubrectangleReport(base,
         createNotebookReference(base, "result", resultId));
       if (trajectory) await verifyScientificTrajectoryReport(base,
+        createNotebookReference(base, "result", resultId));
+      else if (equilibrium) await verifyScientificEquilibriumReport(base,
         createNotebookReference(base, "result", resultId));
       else if (!subrectangleSourcesCurrent(inspection?.status))
         throw new TypeError("A saved source or profile row changed; report creation is withheld.");
       const workbook = trajectory ? createScientificTrajectoryWorkbook(base, result,
-        crypto.randomUUID(), crypto.randomUUID()) :
+        crypto.randomUUID(), crypto.randomUUID()) : equilibrium ?
+        createScientificEquilibriumWorkbook(base, result,
+          crypto.randomUUID(), crypto.randomUUID()) :
         createScientificSubrectangleWorkbook(base, result,
           crypto.randomUUID(), crypto.randomUUID());
       const prepared = prepareProjectWorkbook(base, workbook, crypto.randomUUID());
@@ -804,6 +811,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       onOpenWorkbook?.(prepared.workbook, "compute", prepared.workbook.stages[1]!.blocks[0]!.id);
       onOpenChange(false);
       setMessage(trajectory ? "Created a verified trajectory solver Workbook report." :
+        equilibrium ? "Created a verified equilibrium solver Workbook report." :
         "Created a source-linked Workbook report from verified subrectangle data.");
     } catch (error) { setMessage(`Workbook report failed: ${(error as Error).message}`); }
     finally { setBusy(false); }

@@ -12,6 +12,7 @@ import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 import { ScientificTrajectoryWorkbookReport } from "./ScientificTrajectoryWorkbookReport";
+import { ScientificEquilibriumWorkbookReport } from "./ScientificEquilibriumWorkbookReport";
 import { WorkbookContentEditor } from "./WorkbookContentEditor";
 import { WorkbookNamedParameters } from "./WorkbookNamedParameters";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
@@ -1879,6 +1880,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   workbookId={activeWorkbook?.id} previousResultId={block.scientificRegionReport.previousResultId} />}
               {block.scientificRegionReport?.kind === "scientific-trajectory-report/v1" &&
                 <ScientificTrajectoryWorkbookReport project={dependencyProject}
+                  reference={block.notebookReference} />}
+              {block.scientificRegionReport?.kind === "scientific-equilibrium-report/v1" &&
+                <ScientificEquilibriumWorkbookReport project={dependencyProject}
                   reference={block.notebookReference} />}
 
               {activeWorkbook && <WorkbookDependencies workbook={activeWorkbook} blockId={block.id} readOnly={readOnly}

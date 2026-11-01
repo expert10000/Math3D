@@ -810,6 +810,7 @@ import {
   VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
+  VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE,
   vectorField3DRegionResultRelation,
   type AnalysisResultEnvelope,
   type ComplexContourRecord,
@@ -78726,7 +78727,8 @@ case "mobius":
             result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
             result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE ||
             result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE ||
-            result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE));
+            result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
+            result.provenance.operation.type === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE));
           setVectorField3DRegionStatuses({});
           setScientificSceneLibrary([...(workspace.scientificScenes ?? [])]);
           const field = workspace.entries.find((entry) => entry.module === "vector3d")?.checkpoint;
@@ -79096,14 +79098,16 @@ case "mobius":
       result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
       result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE ||
       result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE ||
-      result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE));
+      result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
+      result.provenance.operation.type === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE));
     const regionResults = workspace.results.filter(result =>
       result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
       result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
       result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
       result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE ||
       result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE ||
-      result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE);
+      result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
+      result.provenance.operation.type === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE);
     const checkEpoch = ++regionResultCheckEpoch.current;
     setVectorField3DRegionStatuses(Object.fromEntries(regionResults.map(result =>
       [result.resultId, "checking" as const])));

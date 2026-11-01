@@ -1,4 +1,5 @@
 import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
+import { sha256Checksum } from "./documentIdentity";
 import { createScientificDatasetLink } from "./scientificDatasetLink";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { analyzeVectorField3DEigenvalues, type VectorField3DEigenvalue } from
@@ -10,7 +11,7 @@ type Vec3 = readonly [number, number, number];
 type Matrix3 = readonly [Vec3, Vec3, Vec3];
 type ScientificSource = Readonly<{ manifestJson: string; fingerprint: string; volumes: VectorField3DVolumes }>;
 export type VectorField3DEquilibrium = Readonly<{
-  position: Vec3; residual: number; conditionEstimate: number | null;
+  position: Vec3; residual: number; iterations: number; conditionEstimate: number | null;
   jacobian: Matrix3 | null; eigenvalueRealParts: Vec3 | null;
   eigenvalues: readonly [VectorField3DEigenvalue, VectorField3DEigenvalue,
     VectorField3DEigenvalue] | null;
@@ -24,10 +25,16 @@ export type VectorField3DEquilibriumSearch = Readonly<{
   sourceHash: string | null; status: "bounded-incomplete" | "budget-reached";
   candidates: readonly VectorField3DEquilibrium[]; attemptedSeeds: number;
   evaluations: number; rejectedSeeds: number; maxEvaluations: number;
+  seedResolution: 3 | 5;
+  stopCounts: Readonly<{ converged: number; undefined: number;
+    residual: number; duplicate: number }>;
   residualTolerance: number; diagnostics: readonly string[];
   verifiedTiles?: readonly Readonly<{ name: string; resourceSha256: string;
     verifiedTiles: number; totalTiles: number; tileIndices: readonly number[];
     tileSha256: readonly string[]; tileSetSha256: string }>[];
+  verifiedVolumes?: readonly Readonly<{ name: string; resourceSha256: string;
+    sampleSha256: string; sampleShape: readonly [number, number, number];
+    verifiedChunkSetSha256?: string }>[];
   residentTileBytes?: number;
   tileBatchRequests?: number; completedSeedsKept?: number; prefetchedTiles?: number;
   profile?: Readonly<{ tileRoundTripMs: number; rendererForwardMs: number;
@@ -38,6 +45,7 @@ export type VectorField3DEquilibriumContinuation = Readonly<{
   sourceStructuralHash: string; nextSeedIndex: number; attemptedSeeds: number;
   rejectedSeeds: number; evaluations: number; candidates: readonly VectorField3DEquilibrium[];
   maxEvaluations: number; seedResolution: 3 | 5;
+  stopCounts?: VectorField3DEquilibriumSearch["stopCounts"];
   activeSeed?: Readonly<{ phase: "initial" | "newton" | "classify";
     point: Vec3; value: Vec3 | null; iteration: number; startEvaluations: number;
     sampled: readonly Readonly<{ point: Vec3; value: Vec3 | null }>[] }>;
@@ -99,6 +107,10 @@ function searchEquilibria(document: VectorField3DDocument,
   const sourceHash = field.kind === "scientific-bundle" ? createScientificDatasetLink(field.references).sourceHash : null;
   let evaluations = resume?.evaluations ?? 0, rejectedSeeds = resume?.rejectedSeeds ?? 0;
   let attemptedSeeds = resume?.attemptedSeeds ?? 0, budgetReached = false;
+  const stopCounts = { converged: resume?.stopCounts?.converged ?? 0,
+    undefined: resume?.stopCounts?.undefined ?? 0,
+    residual: resume?.stopCounts?.residual ?? 0,
+    duplicate: resume?.stopCounts?.duplicate ?? 0 };
   const coordinateLattice = volumes && field.kind === "scientific-bundle" ? axes.map((_, axis) => {
     const ref = field.references[0], count = volumes[0].sampleShape[axis];
     return Array.from({ length: count }, (_, i) => ref.axes[axis].origin +
@@ -252,9 +264,12 @@ function searchEquilibria(document: VectorField3DDocument,
     active.phase = "classify";
     active.sampled.length = 0; sampleCursor = 0;
     }
-    if (!value || norm(value) > tolerance) { rejectedSeeds++; continue; }
+    if (!value || norm(value) > tolerance) {
+      rejectedSeeds++; if (!value) stopCounts.undefined++; else stopCounts.residual++;
+      continue;
+    }
     if (candidates.some(candidate => norm(point.map((v, i) => v - candidate.position[i]) as
-      [number, number, number]) <= dedupeDistance)) continue;
+      [number, number, number]) <= dedupeDistance)) { stopCounts.duplicate++; continue; }
     const j = jacobian(point, seedSample), det = j ? determinant(j) : 0;
     const condition = j && Math.abs(det) > 0 ? infinityNorm(j) * infinityNorm(adjugate(j)) / Math.abs(det) : null;
     const componentUnit = field.kind === "expressions" ? field.components[0].unit : field.componentUnits[0];
@@ -285,13 +300,16 @@ function searchEquilibria(document: VectorField3DDocument,
       ...(!locallySmooth ? ["The point is on a domain boundary or opposite derivative stencils disagree; smooth local linearization is uncertain."] : []),
       ...(condition === null || condition >= 1e8 ? ["Jacobian is singular or poorly conditioned."] : []),
     ];
-    candidates.push({ position: point, residual: norm(value), conditionEstimate: Number.isFinite(condition) ?
+    candidates.push({ position: point, residual: norm(value), iterations: active.iteration,
+      conditionEstimate: Number.isFinite(condition) ?
       condition : null, jacobian: j, eigenvalueRealParts: eigen, eigenvalues,
       eigenvalueUnit: spectral?.unit ?? null, classification, diagnostics });
+    stopCounts.converged++;
     } catch (cause) {
       if (verifiedTileSample && cause instanceof VectorField3DNeededTile)
         throw new VectorField3DEquilibriumNeedsTiles(cause.indicesBatch, {
           ...checkpoint, attemptedSeeds, rejectedSeeds, evaluations,
+          stopCounts: { ...stopCounts },
           activeSeed: { phase: active.phase, point: active.point, value: active.value,
             iteration: active.iteration, startEvaluations: active.startEvaluations,
             sampled: active.sampled },
@@ -306,7 +324,13 @@ function searchEquilibria(document: VectorField3DDocument,
     structuralHash: checked.identity.structuralHash }, sourceHash,
     status: stoppedEarly ? "budget-reached" : "bounded-incomplete", candidates,
     attemptedSeeds, rejectedSeeds, evaluations: Math.min(evaluations, maxEvaluations),
-    maxEvaluations, residualTolerance: tolerance,
+    maxEvaluations, seedResolution: resolution, stopCounts,
+    residualTolerance: tolerance,
+    ...(volumes ? { verifiedVolumes: volumes.map(volume => ({ name: volume.component,
+      resourceSha256: volume.resourceSha256, sampleSha256: volume.sampleSha256,
+      sampleShape: volume.sampleShape,
+      ...(volume.verifiedChunks ? { verifiedChunkSetSha256:
+        sha256Checksum(new TextEncoder().encode(volume.verifiedChunks.join("|"))).slice(7) } : {}) })) } : {}),
     diagnostics: [stoppedEarly ? "Search stopped at its evaluation or 32-candidate budget." :
       "Seeded local search finished; unsampled equilibria may remain.",
       "Classification is a candidate local linearization for a smooth autonomous field, not a global topology proof."] };

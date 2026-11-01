@@ -11,8 +11,9 @@ export const VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE = "vector3d.trajectory-solver
 const sha = (value: unknown): value is string =>
   typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 
-function compactScientificSource(document: VectorField3DDocument,
-  artifact: VectorField3DTrajectoryArtifact) {
+export function compactVerifiedVectorSource(document: VectorField3DDocument,
+  artifact: Pick<VectorField3DTrajectoryArtifact,
+    "sourceHash" | "verifiedTiles" | "verifiedVolumes">) {
   const field = document.source.field;
   if (field.kind !== "scientific-bundle") throw new TypeError("A scientific vector source is required.");
   const link = createScientificDatasetLink(field.references);
@@ -86,7 +87,7 @@ export function createVectorField3DTrajectoryResult(document: VectorField3DDocum
     parameters.sourceReferences = JSON.parse(canonicalJsonStringify(
       document.source.field.references)) as CanonicalJsonValue;
     parameters.verifiedSource = JSON.parse(canonicalJsonStringify(
-      compactScientificSource(document, artifact))) as CanonicalJsonValue;
+      compactVerifiedVectorSource(document, artifact))) as CanonicalJsonValue;
   }
   const resultId = `vector3d-trajectories:${structuralHash({ source,
     parameters, summary }).slice(7)}`;

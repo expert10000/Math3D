@@ -5,6 +5,7 @@ import { searchVectorField3DEquilibria, searchVectorField3DVerifiedTileEquilibri
   type VectorField3DVolumes } from "@math3d/core";
 
 type Request = { document: VectorField3DDocument;
+  options?: { maxEvaluations?: number; seedResolution?: 3 | 5 };
   scientific?: { manifestJson: string; fingerprint: string; volumes?: VectorField3DVolumes;
     tileMode?: boolean } } | { tilesResponse: VectorField3DVerifiedTile[] };
 let tileCache: VectorField3DVerifiedTileCache | null = null;
@@ -34,6 +35,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       return;
     }
     const document = event.data.document;
+    const options = event.data.options ?? {};
     workerStarted = performance.now();
     if (event.data.scientific?.tileMode) {
       tileCache = new VectorField3DVerifiedTileCache(document,
@@ -41,7 +43,8 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       tileRun = () => {
         const computeStarted = performance.now();
         try {
-          const result = searchVectorField3DVerifiedTileEquilibria(document, tileCache!, {}, continuation);
+          const result = searchVectorField3DVerifiedTileEquilibria(document, tileCache!,
+            options, continuation);
           workerComputeMs += performance.now() - computeStarted;
           self.postMessage({ ok: true, result: { ...result, verifiedTiles: tileCache!.provenance,
             residentTileBytes: tileCache!.residentBytes, tileBatchRequests,
@@ -58,14 +61,17 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           else throw cause;
         }
       };
-      const plan = tileCache.equilibriumPrefetchPlan(document);
+      const plan = tileCache.equilibriumPrefetchPlan(document,
+        options.seedResolution ?? 5,
+        options.maxEvaluations ?? 40000);
       if (plan) { prefetchQueue = [...plan]; requestPrefetch(); }
       else tileRun();
       return;
     }
     self.postMessage({ ok: true, result: searchVectorField3DEquilibria(event.data.document,
       event.data.scientific?.volumes ? { ...event.data.scientific,
-        volumes: event.data.scientific.volumes } : undefined) });
+        volumes: event.data.scientific.volumes } : undefined,
+      options) });
   } catch (cause) {
     self.postMessage({ ok: false, error: cause instanceof Error ? cause.message : String(cause) });
   }

@@ -9,6 +9,7 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   createVectorField3DPointResult, reverifyVectorField3DPointResult,
   createVectorField3DTrajectoryResult,
+  createVectorField3DEquilibriumResult,
   createCombinedVectorField3DRegionResultWithCurl,
   createVectorDerivedRegionResult,
   verifyVectorField3DVolumes,
@@ -2600,6 +2601,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {equilibriumSearch && <div role="status" data-testid="vector-field3d-equilibria"
         data-equilibrium-profile={equilibriumSearch.profile ?
           JSON.stringify(equilibriumSearch.profile) : undefined}>
+        <button type="button" disabled={!onSaveRegionResult || busy ||
+          equilibriumSearch.source.structuralHash !== document.identity.structuralHash}
+          onClick={() => {
+            try {
+              onSaveRegionResult?.(document,
+                createVectorField3DEquilibriumResult(document, equilibriumSearch));
+              setSaveStatus("Equilibrium solver statistics published to Project. Save the Project to retain them.");
+            } catch (cause) { setSaveStatus((cause as Error).message); }
+          }}>Publish equilibrium result</button>
         <p>{equilibriumSearch.status === "budget-reached" ? "Partial scan · budget reached" :
           "Bounded scan · coverage incomplete"} · {equilibriumSearch.candidates.length} candidates ·
           {" "}{equilibriumSearch.attemptedSeeds} seeds · {equilibriumSearch.evaluations}/
