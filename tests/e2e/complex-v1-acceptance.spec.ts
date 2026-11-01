@@ -16,7 +16,7 @@ test.describe.serial("C12 Complex Analysis v1 integrated acceptance", () => {
     }
     await page.getByRole("banner").getByRole("button", { name: "Branch Lab", exact: true }).click();
     await page.getByRole("button", { name: "sqrt(z)", exact: true }).click();
-    await page.getByRole("button", { name: "Branch", exact: true }).last().click();
+    await page.getByRole("combobox", { name: "Geometry view" }).selectOption({ label: "Branch" });
     await page.getByTestId("analyze-complex-continuation").click();
     await expect(page.getByTestId("complex-continuation-inspector")).toContainText("validated");
     await page.screenshot({ path: testInfo.outputPath("complex-v1-branch-analysis.png"), fullPage: false });

@@ -91,15 +91,15 @@ test.describe("Curves canonical workspace", () => {
 
       await ctx.page.getByTestId("curve-panel-gallery").click();
       await ctx.page.getByRole("button", { name: /Custom x\(t\), y\(t\)/ }).first().click();
-      await ctx.page.getByRole("textbox", { name: "x(t)", exact: true }).fill("t");
-      await ctx.page.getByRole("textbox", { name: "y(t)", exact: true }).fill("t^3");
+      await ctx.page.getByRole("textbox", { name: "Curve x expression", exact: true }).fill("t");
+      await ctx.page.getByRole("textbox", { name: "Curve y expression", exact: true }).fill("t^3");
       await ctx.page.getByTestId("curve-panel-analysis").click();
       await ctx.page.getByTestId("curve-analysis-preset").selectOption("planar-inflection-map");
       await ctx.page.getByTestId("curve-apply-analysis-preset").click();
       await expectUsableCurveViewer();
       await expect(ctx.page.getByTestId("curve-analysis-plot-series")).toContainText("Signed curvature");
       await expect(ctx.page.getByTestId("curve-analysis-viewport-evidence")).toContainText(/inflection markers.*markers [1-9]\d*/);
-      await ctx.page.getByRole("textbox", { name: "y(t)", exact: true }).fill("t^3 + 0.01*t");
+      await ctx.page.getByRole("textbox", { name: "Curve y expression", exact: true }).fill("t^3 + 0.01*t");
       await expect(ctx.page.getByTestId("curve-active-analysis-preset")).toContainText("stale");
 
       await ctx.page.getByTestId("curve-panel-gallery").click();
@@ -122,7 +122,8 @@ test.describe("Curves canonical workspace", () => {
       ctx = await launchSurfaceApp();
       await resetSurfaceAppState(ctx.page);
       await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
-      await ctx.page.getByTestId("curve-inspector-tab-sampling").click();
+      await ctx.page.getByTestId("curve-inspector").getByTestId("shared-inspector-tab-selection").click();
+      await ctx.page.getByRole("combobox", { name: "Selection view" }).selectOption("sampling");
       const panel = ctx.page.getByTestId("curve-worker-panel");
       await expect(panel).toBeVisible();
       await ctx.page.getByTestId("curve-worker-operation").selectOption("sampling");
@@ -147,7 +148,8 @@ test.describe("Curves canonical workspace", () => {
       ctx = await launchSurfaceApp();
       await resetSurfaceAppState(ctx.page);
       await ctx.page.getByRole("button", { name: "Curves", exact: true }).first().click();
-      await ctx.page.getByTestId("curve-inspector-tab-backend").click();
+      await ctx.page.getByTestId("curve-inspector").getByTestId("shared-inspector-tab-diagnostics").click();
+      await ctx.page.getByRole("combobox", { name: "Diagnostics view" }).selectOption("backend");
       const panel = ctx.page.getByTestId("curve-backend-panel");
       await expect(panel).toBeVisible();
       await expect(ctx.page.getByTestId("curve-backend-availability")).toContainText("math3d-native · available · curve-core-v1");
@@ -364,7 +366,8 @@ test.describe("Curves canonical workspace", () => {
       await ctx.page.getByTestId("curve-panel-analysis").click();
       await expect(ctx.page.getByTestId("curve-workspace-analysis")).toBeVisible();
       await expect(ctx.page.getByTestId("curve-inspector")).toBeVisible();
-      await ctx.page.getByTestId("curve-inspector-tab-sampling").click();
+      await ctx.page.getByTestId("curve-inspector").getByTestId("shared-inspector-tab-selection").click();
+      await ctx.page.getByRole("combobox", { name: "Selection view" }).selectOption("sampling");
       await expect(ctx.page.getByTestId("curve-inspector-content-sampling")).toContainText("arc-length entries");
       await expect(ctx.page.getByTestId("curve-viewport-display-controls")).toContainText("Control polygon");
       await expect(ctx.page.getByTestId("app-status-bar")).toContainText("Curve circle2d");
@@ -386,7 +389,8 @@ test.describe("Curves canonical workspace", () => {
       await expect(ctx.page.getByTestId("curve-pinned-probes")).toContainText("Pinned probes (3)");
       await expect(ctx.page.getByTestId("curve-probe-comparison")).toContainText("Compare latest");
       await expect(ctx.page.getByTestId("curve-probe-annotation-count")).toContainText("Annotations: 9");
-      await ctx.page.getByTestId("curve-inspector-tab-diagnostics").click();
+      await ctx.page.getByTestId("curve-inspector").getByTestId("shared-inspector-tab-diagnostics").click();
+      await ctx.page.getByRole("combobox", { name: "Diagnostics view" }).selectOption("diagnostics");
       await expect(ctx.page.getByTestId("curve-diagnostic-status")).toContainText("OK");
       await expect(ctx.page.getByTestId("curve-diagnostic-summaries")).toContainText("geometry 1");
       await ctx.page.getByTestId("curve-diagnostic-save").click();
@@ -421,7 +425,7 @@ test.describe("Curves canonical workspace", () => {
       const custom = ctx.page.getByRole("button", { name: /Custom x\(t\), y\(t\)/ }).first();
       await custom.click();
       await expect(contract).toContainText("ID: custom2d · revision 1");
-      await ctx.page.getByRole("textbox", { name: "x(t)", exact: true }).fill("2*cos(t)");
+      await ctx.page.getByRole("textbox", { name: "Curve x expression", exact: true }).fill("2*cos(t)");
       await expect(contract).toContainText("ID: custom2d · revision 2");
 
       await expect.poll(async () => ctx?.page.evaluate(() => {

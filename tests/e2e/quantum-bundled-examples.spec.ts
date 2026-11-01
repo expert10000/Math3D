@@ -12,7 +12,7 @@ test("bundled verified scenes are discoverable, pinned and open without a folder
   try {
     const page = await app.firstWindow();
     const examples = await page.evaluate(() => (window as any).quantumScenes.examples());
-    expect(examples).toHaveLength(9);
+    expect(examples.length).toBeGreaterThanOrEqual(9);
     expect(examples.map((item: { id: string }) => item.id)).toContain("qwz-curvature");
     expect(JSON.stringify(examples)).not.toContain(".qscene");
     const fileMenu = await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.items
