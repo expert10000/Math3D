@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
-import { subdivideWithRetainedMeshCheckpoint } from "./retainedMeshGeneration";
+import { subdivideWithRetainedMeshCheckpoint, transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 
 export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onRestore: () => void }> = ({ adapter, onRestore }) => {
   const [translation, setTranslation] = useState(["0", "0", "0"]), [scale, setScale] = useState("1");
@@ -24,8 +24,15 @@ export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onResto
     })}>Apply transform</button>
     <button type="button" data-testid="project-mesh-retain-subdivide" onClick={() => run(() => {
       const { before, after } = subdivideWithRetainedMeshCheckpoint(adapter);
-      setComparisonStatus(`Retained pre-subdivision Mesh r${before.identity.revision} (${before.identity.structuralHash}) and current r${after.identity.revision} (${after.identity.structuralHash}). Open Projects → Compare saved documents, choose this Mesh in both panes and select the retained checkpoint for A. Save the composition and Project to keep both sidecars.`);
+      setComparisonStatus(`Retained Mesh r${before.identity.revision} (${before.identity.structuralHash}) and current r${after.identity.revision} (${after.identity.structuralHash}). Open Projects → Compare saved documents and choose two generations of this Mesh. Save the composition and Project to keep the sidecars.`);
     })}>Retain before and subdivide once</button>
+    <button type="button" data-testid="project-mesh-retain-transform" onClick={() => run(() => {
+      const offsets = translation.map(Number);
+      if (translation.some(value => !value.trim()) || !scale.trim()) throw new TypeError("Enter finite translation values and a positive scale.");
+      const { before, after } = transformWithRetainedMeshSnapshot(adapter,
+        offsets as [number, number, number], Number(scale));
+      setComparisonStatus(`Retained Mesh r${before.identity.revision} (${before.identity.structuralHash}) and current r${after.identity.revision} (${after.identity.structuralHash}). Open Projects → Compare saved documents and choose two generations of this Mesh.`);
+    })}>Retain before and apply transform</button>
     <button type="button" data-testid="project-mesh-undo" disabled={!adapter.history().undoDepth} onClick={() => run(() => { adapter.undo(); })}>Undo</button>
     <button type="button" data-testid="project-mesh-redo" disabled={!adapter.history().redoDepth} onClick={() => run(() => { adapter.redo(); })}>Redo</button>
     <details style={{ maxWidth: "100%" }}><summary>Saved selection</summary>
@@ -34,6 +41,6 @@ export const MeshProjectEditor: React.FC<{ adapter: MeshDocumentAdapter; onResto
     </details>
     {error && <span role="alert" data-testid="project-mesh-error">{error}</span>}
     {comparisonStatus && <small role="status" data-testid="project-mesh-retained-status">{comparisonStatus}</small>}
-    <small>Transforms edit saved coordinates. Projects → Save project retains resources and history.</small>
+      <small>Retain before a supported edit to make that exact revision selectable in Projects → Compare saved documents. At most eight generations can be retained. Projects → Save project keeps their checked sidecars.</small>
   </div>;
 };

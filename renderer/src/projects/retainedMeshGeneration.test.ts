@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, readProjectCoordinateFrame, upsertMath3DProjectComposition } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, readProjectCoordinateFrame, retainedMeshGenerationDocuments, upsertMath3DProjectComposition } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage, projectResourceInventory } from "./projectResources";
 import { verifyProjectCompositionEvidenceSources } from "./projectCompositionEvidenceSource";
-import { subdivideWithRetainedMeshCheckpoint } from "./retainedMeshGeneration";
+import { subdivideWithRetainedMeshCheckpoint, transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 
 const square = () => ({ label: "Square", source: { kind: "detachedMesh" as const, math3dCoordinateFrame: {
   format: "math3d.coordinate-frame/v1", frame: "laboratory xyz", unit: "mm",
@@ -48,9 +48,25 @@ describe("PC11 retained Mesh generation", () => {
     expect(() => captureProjectResources(project, item => item.id === before.source.resource.id ? null : adapter.resources.bytes(item.reference as never))).toThrow("Missing source");
   });
 
-  it("refuses an ambiguous pre-remesh checkpoint after an earlier edit", () => {
+  it("retains successive explicit generations and refuses unmarked history", () => {
     const adapter = MeshDocumentAdapter.fromMesh(square());
-    adapter.replaceMesh({ ...adapter.mesh(), positions: new Float32Array([-2,-1,0, 1,-1,0, 1,1,0, -1,1,0]) });
-    expect(() => subdivideWithRetainedMeshCheckpoint(adapter)).toThrow("already has edits");
+    const first = subdivideWithRetainedMeshCheckpoint(adapter);
+    const second = subdivideWithRetainedMeshCheckpoint(adapter);
+    const third = transformWithRetainedMeshSnapshot(adapter, [1, 0, 0], 1.5);
+    const replay = adapter.replayBundle();
+    const entry = { module: "mesh" as const, checkpoint: replay.checkpoint.document,
+      expected: adapter.document().identity, replay: { format: "math3d.mesh-replay.v1", payload: replay as never } };
+    expect(retainedMeshGenerationDocuments(entry).map(document => document.identity)).toEqual([
+      first.before.identity, second.before.identity, third.before.identity,
+    ]);
+    expect(third.after.source.origin).toEqual(first.before.source.origin);
+    expect(readProjectCoordinateFrame(third.after)).toMatchObject({ status: "declared", value: { unit: "mm" } });
+    const unmarked = MeshDocumentAdapter.fromMesh(square());
+    unmarked.replaceMesh({ ...unmarked.mesh(), positions: new Float32Array([-2,-1,0, 1,-1,0, 1,1,0, -1,1,0]) });
+    const marked = transformWithRetainedMeshSnapshot(unmarked, [0, 1, 0], 1);
+    const later = unmarked.replayBundle();
+    expect(retainedMeshGenerationDocuments({ module: "mesh", checkpoint: later.checkpoint.document,
+      expected: unmarked.document().identity, replay: { format: "math3d.mesh-replay.v1", payload: later as never } })
+      .map(document => document.identity)).toEqual([marked.before.identity]);
   });
 });

@@ -87,6 +87,7 @@ export * from "./mixedWorkspace";
 export * from "./scientificSceneLibrary";
 export * from "./math3dProject";
 export * from "./projectComposition";
+export * from "./retainedMeshGenerations";
 export * from "./quantumSceneDocument";
 export * from "./projectNotes";
 export * from "./projectNoteValues";
