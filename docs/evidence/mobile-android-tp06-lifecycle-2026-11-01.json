@@ -1,0 +1,28 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4",
+  "sourceEquivalentCommit": "ae59155565833ebed60483e0bacff3fb141dbab3",
+  "testedAtDate": "2026-11-01",
+  "cases": [
+    {
+      "id": "TP06",
+      "status": "passed",
+      "observations": "Reopened the saved Beating waves (interactive) project with source f=4.5 and no active preview. Started its parameter animation and captured an active f=4.15 frame with Stop enabled. Sent the app Home during playback, waited about five seconds, and resumed the same process (PID 14588). The preview had cleared and the panel showed f=4.5 and 'Preview is not saved.' It remained stable for another five seconds. Force-stop and cold relaunch started PID 28649, retained the interactive Graph and f=4.5, and showed no active preview. No stale preview, visible retry loop, or attributable fatal error was observed. The 1664-line background/resume process log and 180-line cold-process log had no filtered fatal/ANR matches; the first contained one non-severe TRIM_MEMORY_UI_HIDDEN notice.",
+      "evidence": [
+        "mobile-android-tp06-playing-before-background-2026-11-01.png",
+        "mobile-android-tp06-resumed-2026-11-01.png",
+        "mobile-android-tp06-cold-source-2026-11-01.png"
+      ]
+    }
+  ],
+  "artifact": "output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-slider-scroll.apk",
+  "logs": [
+    "output/mobile-android-followup-20261031/tp06-lifecycle-process-logcat.txt",
+    "output/mobile-android-followup-20261031/tp06-cold-process-logcat.txt"
+  ],
+  "scope": "This verifies animation/background and cold recovery on one isolated Notes Check package. No native share/export was started in this case. It does not certify the internal or release package."
+}
