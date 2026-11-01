@@ -1,0 +1,25 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4",
+  "sourceEquivalentCommit": "ae59155565833ebed60483e0bacff3fb141dbab3",
+  "testedAtDate": "2026-11-01",
+  "case": "TP14",
+  "status": "passed",
+  "observations": [
+    "Following TP08, the regression.csv sidecar and regression-reference.graph.json imported an editable Graph with eight original rows; row_8 probed at x=7.00000, y=15.2000.",
+    "Linear regression on Reference data reported n=8, excluded=0, df=6, residual SD=0.23094011 and R²=0.99809886. Its centered/scaled equation was z=(x-3.5)/3.5; y=8.0000000 + 7.0000000*z^1, equivalent to y=2*x+1.",
+    "All eight displayed residuals were +0.2 or -0.2, so their squared sum is 0.32. The UI did not directly display an SSE value in this walkthrough.",
+    "The plot showed a brown fit, purple dashed mean-response limits and purple dotted new-observation limits. The panel identified them as 95% pointwise, not simultaneous, with no extrapolation.",
+    "Importing gaps.csv through Android's file picker and applying those replacement rows removed the previous transient fit because the picker backgrounded the app. Undo restored the eight-row data. After rerunning the fit, entering replacement rows directly in the app and applying them displayed Stale result — inputs or source changed; run again. The old n=8 fit remained visible as stale."
+  ],
+  "evidence": [
+    "mobile-android-tp14-fit-2026-11-01.png",
+    "mobile-android-tp14-residuals-2026-11-01.png",
+    "mobile-android-tp14-stale-2026-11-01.png"
+  ],
+  "scope": "TP14 passed on the independent Notes Check APK. SSE=0.32 follows from the eight displayed ±0.2 residuals; the UI did not print SSE directly. The distinct 95% mean-response and new-observation limits were visually checked; their numerical report/CSV export remains TP11 publication work. Data edits affected only an independent Graph copy after the TP08 export was captured."
+}

@@ -1,0 +1,24 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "versionName": "1.6.0-notescheck",
+  "versionCode": 150008,
+  "apkSha256": "0ec968a14e5f6d904793dfbea01474a743cd3559cdbbb163f2fe6c614ed1806d",
+  "debugSignerCertificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+  "sourceEquivalentCommit": "057adf1bcec17f90b26d12d7a9029e30f209fa91",
+  "testedAtDate": "2026-11-01",
+  "case": "export producer-version correction",
+  "status": "passed",
+  "observations": [
+    "Built :app:assembleNotesVerification from the clean worktree with the existing debug signer; APK Signature Scheme v2 verification passed with one signer.",
+    "adb install -r succeeded for the independent Notes Check package and preserved its saved Regression reference Graph projects.",
+    "The native Graph export created a new math3d.project-handoff file with producer platform mobile and version 1.6.0. Its Graph checkpoint still referenced eight original point-table rows.",
+    "The 403-line scoped process log after installation and export had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match."
+  ],
+  "exportedHandoff": "mobile-android-producer-version-export-2026-11-01.math3d.handoff.json",
+  "exportedHandoffSha256": "f3a8cda396fe289ae6e08adba49d9b39a7f4e9848163c73a5d20f8f414c6fd01",
+  "scope": "Focused regression check of the producer-version fix on a newer APK. The full TP08 and TP14 physical walkthroughs remain anchored to the preceding APK SHA-256 8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4. The internal or release package was not changed."
+}

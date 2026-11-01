@@ -1,0 +1,49 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4",
+  "sourceEquivalentCommit": "ae59155565833ebed60483e0bacff3fb141dbab3",
+  "testedAtDate": "2026-11-01",
+  "case": "TP08",
+  "status": "passed",
+  "observations": [
+    "Pushed the exact 1.6.0 test-pack Graph fixtures and CSVs to Android Download. The system file picker opened piecewise-data-gaps.graph.json. Gallery preview identified two Graph objects and one external point-table sidecar. Because the matching Gallery example had already populated that sidecar in this app's data store, this preview was not a missing-sidecar trial.",
+    "Open independent editable Graph copy imported Endpoints and missing data. The Graph responded to a measured-point tap with x=1.00000, y=0.500000, row_4, showing that the existing original row remained usable in the independent copy.",
+    "Canceling a later system file picker displayed Import cancelled. Current work remains open. The imported Graph remained current.",
+    "The untouched regression-reference.graph.json fixture preview identified one external point-table sidecar and reported one required point-table sidecar missing or corrupt. Open independent editable Graph copy was disabled. This correctly refused an incomplete data Graph.",
+    "After reconnecting the Samsung, imported regression.csv from Android Download into the point-series editor. The draft showed the eight original x,y rows and Apply committed them. Reopening regression-reference.graph.json removed the missing-sidecar warning and enabled the independent-copy action. The imported Graph showed eight plotted points; the final point probed as Reference data: x=7.00000, y=15.2000, row_8.",
+    "The exact reject-future-version.graph.json fixture was refused with Import preview failed: Unsupported Graph2D document format or version. The Regression reference project remained listed.",
+    "Exported Regression reference to Android Download/Math3D-TP08-20261101 as a .math3d.handoff.json file. The exported checkpoint has a new Graph identity but the same structural source hash and eight-row table reference as the canonical regression fixture. The file contains no point-table row bytes; the app states that rows remain external sidecars.",
+    "Opened the exported handoff with View local Graph file, then Open independent editable Graph copy. The new editable Graph again probed the final measured point as x=7.00000, y=15.2000, row_8."
+  ],
+  "evidence": [
+    "mobile-android-tp08-gaps-import-2026-11-01.png",
+    "mobile-android-tp08-gaps-row-2026-11-01.png",
+    "mobile-android-tp08-picker-cancel-2026-11-01.png",
+    "mobile-android-tp08-regression-missing-2026-11-01.png",
+    "mobile-android-tp08-regression-ready-2026-11-01.png",
+    "mobile-android-tp08-regression-row8-2026-11-01.png",
+    "mobile-android-tp08-invalid-2026-11-01.png",
+    "mobile-android-tp08-export-file-2026-11-01.png",
+    "mobile-android-tp08-export-preview-2026-11-01.png",
+    "mobile-android-tp08-export-row8-2026-11-01.png",
+    "mobile-android-tp08-exported-2026-11-01.math3d.handoff.json"
+  ],
+  "transferIntegrity": {
+    "exportedFormat": "math3d.project-handoff",
+    "exportedFile": "Regression-reference-20261101T113624Z.math3d.handoff.json",
+    "exportedFileSha256": "8147203f1575a35d042cb4d9d98729d6c546f6857b07988fb065aaaf7359b808",
+    "exportedGraphId": "math3d:graph2d:fb95f2720260842d7c2f9b3128b237ad",
+    "canonicalFixtureGraphId": "math3d:graph2d:626b4a9a2ec2f2835c2943adeefe6ffa",
+    "canonicalStructuralHashPreserved": true,
+    "canonicalTableReferencePreserved": true,
+    "pointTableRowCount": 8,
+    "rowsEmbeddedInHandoff": false,
+    "producerVersionInExport": "1.5.1"
+  },
+  "interruption": "ADB lost the Samsung USB connection while navigating to the data editor, then the owner reconnected it. The app resumed the independent gaps Graph. The subsequent TP08 actions completed. The 1240-line scoped app-process log after reconnection had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match.",
+  "scope": "TP08 passed on this Samsung with a separately transferred CSV and an export/reimport on the same device. A second-device handoff was not tested; its external CSV must be transferred separately. The export reports producer version 1.5.1 despite this installed APK being 1.6.0-notescheck, a metadata issue to correct in source. This independent debug-signed package does not certify the internal or release package."
+}

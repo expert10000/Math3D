@@ -43,13 +43,22 @@ The existing internal and release apps were not changed.
   signature verification passed with the same one debug signer; `adb install -r`
   preserved the isolated app's data. Mobile TypeScript and all 417 mobile unit
   tests passed. The full TP04 walkthrough below was on the preceding APK.
-- Latest installed TP13 APK, built on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-slider-scroll.apk`.
+- TP13/TP03/TP06/TP08/TP14 APK, built on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-slider-scroll.apk`.
   SHA-256: `8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4`.
   It lets vertical swipes scroll the Parameters panel without changing the slider
   preview, while taps and horizontal drags still adjust it. Built from clean
   `4cafa781` plus this slider change. Android v2 signature verification passed
   with the same debug signer; `adb install -r` preserved the isolated app data.
   Mobile TypeScript and all 417 mobile unit tests passed.
+- Latest installed producer-version APK, built on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-producer-version.apk`.
+  SHA-256: `0ec968a14e5f6d904793dfbea01474a743cd3559cdbbb163f2fe6c614ed1806d`.
+  It derives export producer metadata from the mobile package version instead of
+  a stale `1.5.1` literal. Android v2 signature verification passed with the same
+  one debug signer; `adb install -r` preserved saved Graphs. A focused native
+  handoff export reported producer version `1.6.0` and an eight-row table
+  reference. Mobile typecheck and 418 mobile unit tests passed on this source.
+  See the [exact-build correction record](mobile-android-producer-version-2026-11-01.json).
+  The full TP08/TP14 walkthroughs below were on the preceding APK.
 - `adb install -r` succeeded and kept the isolated app's saved data. Android
   APK Signature Scheme v2 verification passed with one existing debug signer,
   certificate SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
@@ -77,9 +86,11 @@ The existing internal and release apps were not changed.
 | TP05 persistence on function-error APK | After `Graph saved.` and an app-reported 278 ms project-save completion, force-stop/relaunch retained `5*x`. Reopening that saved Graph from Projects also showed `5*x`. Explore → unsaved Catenoid showed one rendered surface and remained current after force-stop/relaunch. A preliminary trial stopped before Save completed and was excluded. |
 | TP04 analysis on function-error APK | A new Two slopes copy returned a complete intersection at `(-1.0000000, -1.0000000)` with residual 0 after explicitly selecting the two functions. A new tangent example returned `y - (1) = 2(x - (1))` for the parabola at `x=1`. After applying `x^2+1`, the previous tangent result was marked stale and Locate was disabled. See the [TP04 record](mobile-android-tp04-analysis-2026-11-01.json) and screenshots. |
 | Analyze error on analysis-error APK | Before the change, a failed intersection attempt reported `Select two distinct explicit Graph2D functions.` below the overlaid Analyze panel. On the analysis-error APK, an invalid `0z` analysis x displayed `Enter finite numeric inputs.` in red directly under Run analysis, including while the Samsung keyboard was open. Correcting it to `0` cleared the error. The TP04 math walkthrough was not repeated on this newer APK. |
-| TP13 parameters on latest installed APK | Imported the interactive Beating waves fixture at `f=4.5`. There was no autoplay. Play advanced to frame 3/15, Stop halted it, and Cancel returned to no active frame. The old slider had changed a preview during vertical panel scrolling. The new APK kept `4.75` during the same vertical swipe, while a tap and horizontal drag still changed the preview. Applying `4.75` made one source change; Undo restored `4.5`. A repeated Play/Stop/Cancel left the final source at `4.5`. See the [exact-build TP13 record](mobile-android-tp13-parameters-2026-11-01.json) and screenshots. |
-| TP03 probes on latest installed APK | Gallery copies with test-pack-matching definitions covered explicit, parametric, polar, implicit contour and measured-series probes. Two slopes' crossing cycled from Unit slope to Steeper line on a repeat tap; an empty tap cleared it. Cycloid and Rose readouts included their parameters. The measured point at `(1,0.5)` showed original `row_4`; tapping the missing-data gap at `(0,0)` cleared the probe. See the [exact-build TP03 record](mobile-android-tp03-probes-2026-11-01.json) for all displayed values and screenshots. The separate file/CSV transfer path remains TP08 work. |
-| TP06 lifecycle on latest installed APK | Reopened saved interactive Beating waves at `f=4.5`, started animation, and sent it Home while the preview showed `f=4.15` with Stop enabled. Returning after about five seconds to the same process showed no preview and retained `f=4.5`; five more seconds produced no visible retry. A force-stop and cold relaunch retained the Graph and source. See the [exact-build TP06 record](mobile-android-tp06-lifecycle-2026-11-01.json) and screenshots. Native share/export was outside this check. |
+| TP13 parameters on `8d2da190…` APK | Imported the interactive Beating waves fixture at `f=4.5`. There was no autoplay. Play advanced to frame 3/15, Stop halted it, and Cancel returned to no active frame. The old slider had changed a preview during vertical panel scrolling. The new APK kept `4.75` during the same vertical swipe, while a tap and horizontal drag still changed the preview. Applying `4.75` made one source change; Undo restored `4.5`. A repeated Play/Stop/Cancel left the final source at `4.5`. See the [exact-build TP13 record](mobile-android-tp13-parameters-2026-11-01.json) and screenshots. |
+| TP03 probes on `8d2da190…` APK | Gallery copies with test-pack-matching definitions covered explicit, parametric, polar, implicit contour and measured-series probes. Two slopes' crossing cycled from Unit slope to Steeper line on a repeat tap; an empty tap cleared it. Cycloid and Rose readouts included their parameters. The measured point at `(1,0.5)` showed original `row_4`; tapping the missing-data gap at `(0,0)` cleared the probe. See the [exact-build TP03 record](mobile-android-tp03-probes-2026-11-01.json) for all displayed values and screenshots. The separate file/CSV path was subsequently checked in TP08. |
+| TP06 lifecycle on `8d2da190…` APK | Reopened saved interactive Beating waves at `f=4.5`, started animation, and sent it Home while the preview showed `f=4.15` with Stop enabled. Returning after about five seconds to the same process showed no preview and retained `f=4.5`; five more seconds produced no visible retry. A force-stop and cold relaunch retained the Graph and source. See the [exact-build TP06 record](mobile-android-tp06-lifecycle-2026-11-01.json) and screenshots. Native share/export was outside this check. |
+| TP08 file and CSV transfer on `8d2da190…` APK | Pushed the exact 1.6.0 Graph/CSV fixtures to Android Download. Picker cancellation preserved the current Graph. The regression Graph correctly refused import while its sidecar was absent; importing `regression.csv` through the point-series editor then enabled an independent copy with all eight plotted points and a `row_8` probe at `(7,15.2)`. The future-version fixture was rejected while the regression project remained listed. Exported a native handoff, reopened it as another independent editable Graph and probed `row_8` again. The exported source hash and table reference match the fixture, but the handoff does not contain CSV row bytes; another device needs the CSV separately. See the [exact-build TP08 record](mobile-android-tp08-transfer-2026-11-01.json) and screenshots. |
+| TP14 regression on `8d2da190…` APK | The eight imported rows yielded centered equation `z=(x-3.5)/3.5; y=8+7*z`, equivalent to `y=2*x+1`, with residual SD `0.23094011` and eight residuals of ±0.2 (squared sum `0.32`). The plot distinguished mean-response from new-observation 95% pointwise limits. An in-app data edit then marked the prior fit `Stale result — inputs or source changed; run again`. Numeric interval values in a publication export remain TP11 work. See the [exact-build TP14 record](mobile-android-tp14-regression-2026-11-01.json). |
 | Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, the final process of the function-error APK had 285, the analysis-error APK process had 460, and the latest slider-scroll APK process had 513 lines for TP13, 1499 lines after TP03, 1664 lines for TP06 background/resume, and 180 lines after its cold relaunch, with no such match in these scoped captures. The TP06 log contained a non-severe hidden-UI memory notice. The reported hang was not accompanied by a matching log entry. |
 
 The initial landscape failure is resolved for this Samsung phone at normal and
@@ -98,7 +109,7 @@ with unperformed steps pending.
   spoken output was not attested.
 - Tablet split-layout and keyboard checks. The Samsung portrait keyboard editor
   now passed, but no tablet was attached.
-- Full Graph fixture/CSV, publication format and long workload matrix. The
+- The full Graph fixture, publication format and long workload matrix. TP08 passed on this Samsung, but transfer to a second device was not tested and its CSV is external to the exported handoff. The
   fixed ten-run sampling workload is one fixture and one device profile.
 - Another Android class, Android tablet, iPhone and iPad. Only the Samsung was
   attached in this session.
@@ -107,7 +118,7 @@ with unperformed steps pending.
 
 Build, signature, most screenshots, ten raw readings and scoped logcat are under
 `output/mobile-android-followup-20261031/` and are not committed. The keyboard
-before/after screenshots, Graph-open retry readings, and TP01/TP03/TP04/TP05/TP06/TP13
+before/after screenshots, Graph-open retry readings, and TP01/TP03/TP04/TP05/TP06/TP08/TP13/TP14
 screenshots and results are checked in beside this report.
 The structured Samsung results are also copied to
 [mobile-android-followup-2026-10-31.results.json](mobile-android-followup-2026-10-31.results.json)
@@ -118,10 +129,10 @@ beside this report.
 The [mobile roadmap](../mobile-roadmap.md), [canonical Graph roadmap](../math3d-graph2d-desktop-mobile-roadmap.md)
 and [1.6.0 test pack](../test-packs/1.6.0/README.md) define the wider scope.
 The comprehensive Samsung record has **TP10 and TP15 passed, 13 cases pending**;
-the separate exact-build supplements have **TP01, TP03, TP04, TP05, TP06 and TP13 passed**. Partial
+the separate exact-build supplements have **TP01, TP03, TP04, TP05, TP06, TP08, TP13 and TP14 passed**. Partial
 observations in a pending case are not a complete pass. The comprehensive
 record identifies APK SHA-256 `332a61f9…`, while later supplemental checks used
-`19893849…`, `a41c6e61…`, `ea8a6b49…`, `fc99d655…`, and the latest installed `8d2da190…`. Keep those
+`19893849…`, `a41c6e61…`, `ea8a6b49…`, `fc99d655…`, `8d2da190…`, and the latest installed `0ec968a1…`. Keep those
 evidence sets separate when adding results.
 
 1. **Diagnose the Graph-opening stall.** On the installed Notes Check APK,
@@ -132,8 +143,9 @@ evidence sets separate when adding results.
 2. **Finish Samsung cases.** Record focal-point behavior and an interrupted
    pinch/rotation for TP02; tablet layout/keyboard use for TP07; spoken TalkBack
    focus, controls and an invalid-expression error for TP09 when the owner can
-   test it. Complete the remaining probe, analysis, import/CSV, publication,
-   scale, parameter and regression steps in the test pack. Do not
+   test it. Finish TP11 publication and TP12 scales, including the regression
+   report's numerical interval export. TP08 file/CSV transfer and TP14 regression now
+   has its own exact-build pass. Complete any remaining scope in the pack; do not
    infer a full case pass from the focused checks above.
 3. **Expand the physical matrix.** Run the same pack on another Android phone
    class and Android tablet, then iPhone/iPad when available. Record exact
