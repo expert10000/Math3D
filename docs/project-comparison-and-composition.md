@@ -241,3 +241,32 @@ never adds them to an existing source merely to permit overlay.
 
 Focused checks: `npx vitest run tests/unit/projectComposition.test.ts` and
 `npx playwright test tests/e2e/project-composition.spec.ts --reporter=list`.
+
+## PC13 · Compare immutable saved Mesh analysis results
+
+Status: **Complete for stored Mesh quality and discrete curvature summaries**.
+In the Mesh workspace, open **Saved studies** and choose **Save mesh quality** or
+**Save discrete curvature** for two source generations. Choose **Projects → Save
+project**, then **Compare saved results** in the Project comparison section.
+Select A and B from the saved result menus. This is a result comparison, separate
+from the PC11–PC12 two-viewer Mesh generation comparison.
+
+Each selected envelope is validated and tied to its exact Mesh document ID,
+revision, structural hash and retained or current generation. Its binary source
+sidecar is checked before display and again before HTML export. Missing results,
+unretained or changed generations, and missing or altered bytes are refused.
+The report records both complete stored summaries, algorithms, versions, engines,
+result hashes and source hashes. It never reruns Mesh analysis.
+
+Only the same operation, algorithm, algorithm version and result status can
+produce differences. Each scalar difference is **B − A** and requires matching,
+known units for that metric. Dimensionless ratios, counts and angle degrees can
+be compared even when source length units are undeclared. Length, area and
+curvature values remain side by side but have no difference without matching
+source-declared length units. A changed unit suppresses only its dependent
+metrics. Vertex and face IDs are not aligned across generations.
+
+Run `npm run test:projects:pc13` for saved-result compatibility, unit rules,
+source verification, tamper refusal, HTML export and Electron restart. PC03
+remains **Partial** for legacy sources without coordinate metadata. PC05 remains
+**Partial** for unretained historical generations and unrelated-model selection.
