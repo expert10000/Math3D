@@ -50,8 +50,8 @@ The existing internal and release apps were not changed.
   `4cafa781` plus this slider change. Android v2 signature verification passed
   with the same debug signer; `adb install -r` preserved the isolated app data.
   Mobile TypeScript and all 417 mobile unit tests passed.
-- Latest installed producer-version APK, built on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-producer-version.apk`.
-  SHA-256: `0ec968a14e5f6d904793dfbea01474a743cd3559cdbbb163f2fe6c614ed1806d`.
+- Latest installed producer-version APK, rebuilt after the remote-main rebase on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-producer-version-rebased.apk`.
+  SHA-256: `996faf3cc2d40bdd63fe59b2a0fa094127db21dfbae9b392a67eda245062e883`.
   It derives export producer metadata from the mobile package version instead of
   a stale `1.5.1` literal. Android v2 signature verification passed with the same
   one debug signer; `adb install -r` preserved saved Graphs. A focused native

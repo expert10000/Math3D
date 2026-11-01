@@ -6,9 +6,9 @@
   "applicationId": "com.math3d.mobile.notesverification",
   "versionName": "1.6.0-notescheck",
   "versionCode": 150008,
-  "apkSha256": "0ec968a14e5f6d904793dfbea01474a743cd3559cdbbb163f2fe6c614ed1806d",
+  "apkSha256": "996faf3cc2d40bdd63fe59b2a0fa094127db21dfbae9b392a67eda245062e883",
   "debugSignerCertificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
-  "sourceEquivalentCommit": "057adf1bcec17f90b26d12d7a9029e30f209fa91",
+  "sourceEquivalentCommit": "0da552d910d34ef00937fe4db8c37b9cea6aa4da",
   "testedAtDate": "2026-11-01",
   "case": "export producer-version correction",
   "status": "passed",
@@ -16,7 +16,7 @@
     "Built :app:assembleNotesVerification from the clean worktree with the existing debug signer; APK Signature Scheme v2 verification passed with one signer.",
     "adb install -r succeeded for the independent Notes Check package and preserved its saved Regression reference Graph projects.",
     "The native Graph export created a new math3d.project-handoff file with producer platform mobile and version 1.6.0. Its Graph checkpoint still referenced eight original point-table rows.",
-    "The 403-line scoped process log after installation and export had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match."
+    "The 363-line scoped process log after the rebased APK installation and export had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match."
   ],
   "exportedHandoff": "mobile-android-producer-version-export-2026-11-01.math3d.handoff.json",
   "exportedHandoffSha256": "f3a8cda396fe289ae6e08adba49d9b39a7f4e9848163c73a5d20f8f414c6fd01",
