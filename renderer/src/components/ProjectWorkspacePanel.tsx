@@ -45,7 +45,10 @@ import type { ProjectStarterId } from "./ProjectTemplatesPanel";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { projectWorkbookUses } from "../projects/projectWorkbookUsage";
 import { createScientificSubrectangleWorkbook, scientificSubrectangleReportMarkdown,
-  verifyScientificSubrectangleReport, rerunScientificSubrectangleReport,
+  verifyScientificSubrectangleReport, inspectScientificSubrectangleReport,
+  subrectangleSourcesCurrent, primeScientificSubrectangleReport,
+  clearJustCreatedScientificSubrectangleReport,
+  rerunScientificSubrectangleReport,
   SCIENTIFIC_SUBRECTANGLE_REPORT } from "../projects/scientificSubrectangleWorkbook";
 import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
@@ -775,7 +778,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const base = liveProject();
       const result = base.workspace.results.find(item => item.resultId === resultId);
       if (!result) throw new TypeError("Published result is unavailable.");
-      await verifyScientificSubrectangleReport(base, createNotebookReference(base, "result", resultId));
+      const inspection = await inspectScientificSubrectangleReport(base,
+        createNotebookReference(base, "result", resultId));
+      if (!subrectangleSourcesCurrent(inspection.status))
+        throw new TypeError("A saved source or profile row changed; report creation is withheld.");
       const workbook = createScientificSubrectangleWorkbook(base, result,
         crypto.randomUUID(), crypto.randomUUID());
       const prepared = prepareProjectWorkbook(base, workbook, crypto.randomUUID());
@@ -786,6 +792,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setLibrary(await commitProjectResources(next, resources,
         () => saveLibraryProject(localStorage, next, Date.now())));
       resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      primeScientificSubrectangleReport(next, inspection);
       display(next, false);
       onOpenWorkbook?.(prepared.workbook, "compute", prepared.workbook.stages[1]!.blocks[0]!.id);
       onOpenChange(false);
@@ -1121,6 +1128,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   };
   const openLibraryProject = async (id: string, showDetails = false, preferredVectorDocumentId?: string) => {
     if (busy) return;
+    clearJustCreatedScientificSubrectangleReport();
     const sequence = ++importSequence.current;
     setBusy(true);
     try {
@@ -1555,7 +1563,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <p className="project-workspace-section-hint">Inspect recorded analyses, provenance and captured resources.</p>
           {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
             regionResultStatuses={regionResultStatuses}
-            onCreateScientificReport={createSubrectangleWorkbook} onExportScientificReport={exportSubrectangleReport}
+            onCreateScientificReport={busy || preview || managed ? undefined :
+              createSubrectangleWorkbook} onExportScientificReport={exportSubrectangleReport}
             canOpen={(id, module) => !preview && !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} focusResult={resultFocus} />}
         </section>}
         {fullDetails && <section className="project-detail-history project-workspace-section" data-testid="project-detail-history" aria-label="Project history">

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
-  VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
+  VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE, structuralHash,
   type AnalysisResultEnvelope, type VectorField3DOverlayRegion } from "@math3d/core";
+import { pointTableStore } from "../graph2d/pointTableStore";
+import { scientificSubrectangleChartSvg,
+  scientificSubrectangleProfileChart } from "./scientificSubrectangleChart";
 import { summarizeVectorDerivedSubrectangle } from "../vectorfield3d/vectorDerivedSubrectangle";
 import { scientificSubrectangleDifferences, scientificSubrectangleReportMarkdown,
   subrectangleSourcesCurrent } from
@@ -91,5 +94,57 @@ describe("SCI-19 scientific Workbook report", () => {
     expect(markdown).toContain("| complexMagnitude | Pa | 2 | 1 |");
     expect(markdown).toContain("| complexPhase | rad | 2 | 1 |");
     expect(markdown).toContain("imaginary-hash");
+  });
+
+  it("plots verified physical rows with gaps and withholds changed fields independently", () => {
+    const series = ["vector", "scalar", "complex-magnitude", "complex-phase",
+      "divergence", "curl-magnitude"];
+    const rows = Array.from({ length: 17 }, (_, index) => ({ id: `row_${index + 1}`,
+      x: -4 + index / 2, y: index === 7 ? null : index + 1 }));
+    const hash = structuralHash(rows);
+    const table = pointTableStore.publish(rows);
+    const objects = [0, 1].flatMap(axis => series.map((name, index) => ({
+      kind: "point-series", table, linkedOrigin: {
+        kind: axis === 0 ? "vector-scalar-complex-curl-linked-region/v4" :
+          "vector-scalar-complex-curl-row-linked-region/v5",
+        pairId: axis === 0 ? "columns" : "rows", series: name,
+        ...(axis === 1 ? { profileAxis: 1 } : {}),
+        xName: axis === 0 ? "x" : "y", xUnit: "m",
+        yUnit: ["m/s", "V", "Pa", "rad", "1/s", "1/s"][index],
+        rowsSha256: hash } })));
+    const result = { resultId: "chart-result", provenance: { source: {
+      structuralHash: "source-hash" }, operation: {
+        type: VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
+        parameters: { bounds: [[-1, 1], [-2, 2]], profiles: {
+          columnPairId: "columns", rowPairId: "rows",
+          columnRowsSha256: Array(6).fill(hash),
+          rowRowsSha256: Array(6).fill(hash) } } } } } as unknown as AnalysisResultEnvelope;
+    const status = { kind: "combined" as const, vector: "source-current" as const,
+      scalar: "changed" as const, complex: "source-current" as const,
+      complexMagnitude: "source-current" as const,
+      complexPhase: "source-current" as const,
+      divergence: "source-current" as const,
+      curlMagnitude: "source-current" as const };
+    const graph = { source: { objects } } as never;
+    const chart = scientificSubrectangleProfileChart(result, [graph], status);
+    expect(chart.fields).toHaveLength(6);
+    expect(chart.fields[0]?.column?.rows).toHaveLength(17);
+    expect(chart.fields[1]).toMatchObject({ key: "scalar", status: "changed" });
+    expect(chart.fields[2]?.column?.yUnit).toBe("Pa");
+    const svg = scientificSubrectangleChartSvg(chart);
+    expect(svg).toContain("x (m)");
+    expect(svg).toContain("y (m)");
+    expect(svg).toContain("1 gaps");
+    expect(svg).toContain("Values withheld: changed");
+    expect(svg).toContain("<path d=\"M");
+    const altered = { ...result, provenance: { ...result.provenance,
+      operation: { ...result.provenance.operation, parameters: {
+        ...result.provenance.operation.parameters,
+        profiles: { ...result.provenance.operation.parameters.profiles,
+          rowRowsSha256: [hash, hash, hash, "bad-hash", hash, hash] } } } } } as AnalysisResultEnvelope;
+    const badChart = scientificSubrectangleProfileChart(altered, [graph], status);
+    expect(badChart.fields[3]).toMatchObject({ key: "complexPhase",
+      status: "changed" });
+    expect(badChart.fields[0]?.status).toBe("source-current");
   });
 });

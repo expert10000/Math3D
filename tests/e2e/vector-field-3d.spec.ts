@@ -932,6 +932,8 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-explorer-panel")
       .getByTestId("project-save").click();
+    await expect(page.getByTestId("project-explorer-panel")
+      .getByTestId("project-save")).toBeEnabled({ timeout: 120_000 });
     await expect.poll(() => page.evaluate(() =>
       localStorage.getItem("math3d.project.v1"))).not.toBeNull();
     const project = JSON.parse((await page.evaluate(() =>
@@ -962,9 +964,18 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
     await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
     await outputs.getByTestId("project-create-subrectangle-workbook").click();
     await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
-      .toContainText("Sources verified", { timeout: 120_000 });
+      .toContainText("Sources verified", { timeout: 180_000 });
+    const chart = page.getByTestId("scientific-subrectangle-profile-chart");
+    await expect(chart).toContainText("Vector speed", { timeout: 120_000 });
+    await expect(chart).toContainText("Divergence");
+    await expect(chart).toContainText("Curl magnitude");
+    await expect(chart.locator("svg")).toHaveAttribute("aria-label",
+      "Verified scientific subrectangle profile chart");
+    await expect(page.getByTestId("scientific-subrectangle-export-chart"))
+      .toBeEnabled();
     await page.getByTestId("scientific-subrectangle-rerun")
-      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect.poll(() => page.evaluate(id => {
       const saved = JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!);
       return saved.workspace.results.filter((item: { provenance: { operation: { type: string } } }) =>
@@ -1005,7 +1016,7 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
 });
 
 test("SCI-02 publishes a combined subrectangle directly from Explorer", async () => {
-  test.setTimeout(360_000);
+  test.setTimeout(600_000);
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -1047,6 +1058,8 @@ test("SCI-02 publishes a combined subrectangle directly from Explorer", async ()
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-explorer-panel")
       .getByTestId("project-save").click();
+    await expect(page.getByTestId("project-explorer-panel")
+      .getByTestId("project-save")).toBeEnabled({ timeout: 120_000 });
     await expect.poll(() => page.evaluate(() =>
       localStorage.getItem("math3d.project.v1"))).not.toBeNull();
     const raw = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
@@ -1067,6 +1080,29 @@ test("SCI-02 publishes a combined subrectangle directly from Explorer", async ()
       "vector-scalar-complex-curl-linked-region/v4" || item.linkedOrigin?.kind ===
       "vector-scalar-complex-curl-row-linked-region/v5");
     expect(profiles).toHaveLength(12);
+    const projects = page.getByTestId("project-explorer-panel");
+    if (await projects.getByRole("button", { name: "Full gallery" }).count())
+      await projects.getByRole("button", { name: "Full gallery" }).click();
+    await projects.getByRole("button", { name: "View current project" }).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    await outputs.getByTestId("project-create-subrectangle-workbook").click();
+    await expect.poll(() => page.evaluate(id => {
+      const saved = localStorage.getItem(`math3d.project.v1.payload.${id}`);
+      return saved ? JSON.parse(saved).workbooks?.length ?? 0 : 0;
+    }, project.identity.id), { timeout: 180_000 }).toBe(1);
+    const reportBlock = page.getByTestId("scientific-subrectangle-workbook-report");
+    await expect(reportBlock).toBeVisible({ timeout: 60_000 });
+    await expect(reportBlock).toContainText("Sources verified", { timeout: 180_000 });
+    const chart = page.getByTestId("scientific-subrectangle-profile-chart");
+    await expect(chart).toContainText("Scalar Q", { timeout: 180_000 });
+    await expect(chart).toContainText("Complex phase");
+    await expect(chart).toContainText("Curl magnitude");
+    await expect(chart.locator("svg")).toContainText("Column means");
+    await expect(chart.locator("svg")).toContainText("Row means");
   } finally { await closeSurfaceApp(app); }
 });
 
