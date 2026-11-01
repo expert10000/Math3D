@@ -8,6 +8,7 @@ import { admitMobileMeshForRendering, type MobileMeshAdmission } from "./mobileM
 import { createUniqueMobileSceneObjectId } from "./mobileSceneObjectOperations";
 import type { MobileSceneObjectImportPreview } from "./mobileSceneObjectImport";
 import type { MobileMeshPayload, MobileRenderQuality } from "../viewer/mobileSurfacePreview";
+import { MOBILE_APP_VERSION } from "./mobileAppVersion";
 
 export const MAX_MOBILE_MESH_IMPORT_BYTES = 32 * 1024 * 1024;
 export const MAX_MOBILE_MESH_IMPORT_VERTICES = 250_000;
@@ -807,7 +808,7 @@ export const parseMobileMeshFile = (
 
 const meshEnvelope = (parsed: ParsedMesh, sourceName: string, objectId: string): SceneObjectEnvelope =>
   createSceneObjectEnvelope({
-    producer: { name: "Math3D Mobile", version: "1.5.1", platform: "mobile" },
+    producer: { name: "Math3D Mobile", version: MOBILE_APP_VERSION, platform: "mobile" },
     object: {
       id: objectId,
       kind: "mesh",

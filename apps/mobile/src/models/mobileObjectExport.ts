@@ -10,6 +10,7 @@ import {
 import type { MobileMeshPayload, MobileRenderQuality } from "../viewer/mobileSurfacePreview";
 import { buildSurfacePreviewGeometry } from "../viewer/mobileSurfacePreview";
 import { readMobileImportedSceneObject } from "./mobileSceneObjectImport";
+import { MOBILE_APP_VERSION } from "./mobileAppVersion";
 
 export const MOBILE_DERIVED_MESH_SEMANTICS_WARNING =
   "Mesh-only export does not include the formula, editable definition, domain, analysis metadata, or Math3D provenance.";
@@ -93,7 +94,7 @@ export const createMobileSemanticObjectEnvelope = (
     throw new Error("This mesh has no self-contained geometry to export.");
   }
   return createSceneObjectEnvelope({
-    producer: { name: "Math3D Mobile", version: "1.5.1", platform: "mobile" },
+    producer: { name: "Math3D Mobile", version: MOBILE_APP_VERSION, platform: "mobile" },
     object: {
       id: surface.id,
       kind: surface.kind,

@@ -6,9 +6,11 @@ import {
   type SceneDocument,
 } from "@math3d/core";
 import type { MobileStoredSceneProject } from "../../apps/mobile/src/models/mobileScene";
+import mobilePackage from "../../apps/mobile/package.json";
 import {
   createMobileProjectExportName,
   importMobileSceneProject,
+  serializeMobileProjectHandoff,
   validateMobileProjectForTransfer,
 } from "../../apps/mobile/src/models/mobileProjectTransfer";
 
@@ -40,6 +42,11 @@ const project: MobileStoredSceneProject = {
 };
 
 describe("mobile project transfer", () => {
+  it("identifies the current mobile app version in exported handoffs", () => {
+    const handoff = JSON.parse(serializeMobileProjectHandoff(project)) as { producer: { version: string } };
+    expect(handoff.producer.version).toBe(mobilePackage.version);
+  });
+
   it("imports a valid canonical scene project without changing a unique identity", () => {
     const imported = importMobileSceneProject(serializedProject, [], 10);
     expect(imported).toMatchObject({

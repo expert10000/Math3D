@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import mobilePackage from "../../apps/mobile/package.json";
 const files = vi.hoisted(() => new Map<string, string>());
 const faults = vi.hoisted(() => ({ write: "", move: "" }));
 vi.mock("expo-file-system", () => {
@@ -69,6 +70,7 @@ describe("ordinary mobile preset creation and atomic current-work preservation",
     expect(document.source).toEqual(preset.template.source); expect(document.display).toEqual(preset.template.display);
     expect(document.identity.id).not.toBe(preset.template.identity.id); expect(result.project.source).toBeUndefined();
     const handoff = parseWorkspaceProjectHandoff(serializeMobileProjectHandoff(result.project));
+    expect(handoff.producer.version).toBe(mobilePackage.version);
     expect(handoff.baseRevision).toBeNull(); expect(handoff.project.entries[0]!.checkpoint).toEqual(document);
     for (const object of document.source.objects) if (object.kind === "point-series") expect(mobileGraphPointTables.resolve(object.table)).toEqual(preset.sidecars[0]!.rows);
   });

@@ -5,6 +5,7 @@ import { serializeMobileProjectPackage } from "./mobileProjectResources";
 import { readMobileGraph, readMobileGraphWorkspace, readMobileNamedGraphProject } from "./mobileGraphProject";
 import { serializeGraph2DDocument, serializeMixedWorkspaceDocument } from "@math3d/core";
 import { createGraph2DWorkspaceProject, createWorkspaceProjectHandoff, serializeWorkspaceProjectHandoff } from "@math3d/core";
+import { MOBILE_APP_VERSION } from "./mobileAppVersion";
 
 export const MOBILE_SCENE_EXPORT_EXTENSION = ".math3d.scene.json";
 export const MOBILE_HANDOFF_EXPORT_EXTENSION = ".math3d.handoff.json";
@@ -50,7 +51,7 @@ export const serializeMobileProjectHandoff = (project: MobileStoredSceneProject)
     if (named) return serializeMath3DProject(named);
     const workspace = readMobileGraphWorkspace(project) ?? createGraph2DWorkspaceProject(readMobileGraph(project));
     return serializeWorkspaceProjectHandoff(createWorkspaceProjectHandoff(workspace, {
-      producer: { platform: "mobile", name: "Math3D Mobile", version: "1.5.1" },
+      producer: { platform: "mobile", name: "Math3D Mobile", version: MOBILE_APP_VERSION },
       baseRevision: project.source?.handoffRevision ?? null,
     }));
   }
@@ -59,7 +60,7 @@ export const serializeMobileProjectHandoff = (project: MobileStoredSceneProject)
   const parsed = deserializeSceneProject(checked.serializedProject);
   if (!parsed.ok) throw new Error(parsed.errors.join("; "));
   return serializeProjectHandoff(createProjectHandoff(parsed.value, {
-    producer: { platform: "mobile", name: "Math3D Mobile", version: "1.5.1" },
+    producer: { platform: "mobile", name: "Math3D Mobile", version: MOBILE_APP_VERSION },
     baseRevision: project.source?.handoffRevision ?? null,
     requiredCapabilities: (parsed.value.scene.surfaces ?? []).map((surface) => `surface.${surface.kind}`),
   }));
