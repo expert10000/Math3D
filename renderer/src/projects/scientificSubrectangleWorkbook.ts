@@ -104,6 +104,7 @@ export function scientificSubrectangleReportMarkdown(result: AnalysisResultEnvel
     `Source: ${result.provenance.source.documentId} · revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation} · ${result.provenance.source.structuralHash}`,
     `Physical region: ${JSON.stringify(p.region)}\nSelected bounds: ${JSON.stringify(p.bounds)}\nCoordinate units: ${axisUnits}\nPositions: ${s.sampleCount}`,
     `Method: ${result.provenance.operation.algorithm} ${result.provenance.operation.algorithmVersion}; ${String(p.method ?? "verified 17×17 source-grid sampling")}`,
+    `Solver statistics: not applicable. This subrectangle uses bounded source-grid sampling and finite differences; it does not run an iterative solver.`,
     `Engine: ${result.provenance.engine.name} ${result.provenance.engine.version}; precision ${result.provenance.numericContext?.precision?.binaryBits ?? "unknown"} binary bits; elapsed ${result.provenance.elapsedMs} ms`,
     `| Field | Unit | Values | Gaps | Mean | Min | Max |\n|---|---|---:|---:|---:|---:|---:|\n${rows.join("\n")}`,
     `Source references, verified sample and profile hashes:\n\`\`\`json\n${JSON.stringify({ profiles: p.profiles,

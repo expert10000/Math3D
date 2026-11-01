@@ -51,6 +51,7 @@ describe("SCI-19 scientific Workbook report", () => {
     expect(markdown).toContain("| divergence | 1/s | 9 | 0 | 0.25");
     expect(markdown).toContain(String(summary.curlMagnitude.mean));
     expect(markdown).toContain("columnRowsSha256");
+    expect(markdown).toContain("Solver statistics: not applicable");
     const revision = { ...result, resultId: "oracle-result/r1",
       summary: { ...result.summary, divergence: { ...summary.divergence,
         mean: 0.251 } } } as AnalysisResultEnvelope;

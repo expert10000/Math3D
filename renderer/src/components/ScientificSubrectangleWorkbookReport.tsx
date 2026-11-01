@@ -97,11 +97,17 @@ export const ScientificSubrectangleWorkbookReport: React.FC<{
   const rerun = () => {
     if (!project || !reference || !workbookId || busy) return;
     const requestId = crypto.randomUUID();
+    const progress = (event: Event) => {
+      const detail = (event as CustomEvent<{ requestId: string;
+        message: string }>).detail;
+      if (detail?.requestId === requestId) setMessage(detail.message);
+    };
     const completed = (event: Event) => {
       const detail = (event as CustomEvent<{ requestId: string; message?: string;
         error?: string }>).detail;
       if (detail?.requestId !== requestId) return;
       window.removeEventListener("math3d:subrectangle-rerun-complete", completed);
+      window.removeEventListener("math3d:subrectangle-rerun-progress", progress);
       setBusy(false);
       setMessage(detail.error ? `Rerun blocked: ${detail.error}` :
         "New result revision published; the original report remains in the Workbook. " +
@@ -111,6 +117,7 @@ export const ScientificSubrectangleWorkbookReport: React.FC<{
       setBusy(true); setReport(""); setChart(null);
       setMessage("Rerunning saved physical bounds from verified sources…");
       window.addEventListener("math3d:subrectangle-rerun-complete", completed);
+      window.addEventListener("math3d:subrectangle-rerun-progress", progress);
       window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun", { detail: {
         requestId, projectId: project.identity.id, resultId: reference.targetId, workbookId } }));
     }, 0);

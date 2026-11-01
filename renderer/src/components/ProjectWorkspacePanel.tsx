@@ -816,12 +816,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setMessage(`Report export withheld: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };
-  const rerunSubrectangleWorkbook = async (workbookId: string, resultId: string) => {
+  const rerunSubrectangleWorkbook = async (workbookId: string, resultId: string,
+    progress: (message: string) => void = () => {}) => {
     if (subrectangleRerunPending.current || busy) throw new Error("A Project operation is already running.");
     if (preview || managed || !project) throw new Error("Open the saved Project before rerunning its Workbook.");
     subrectangleRerunPending.current = true;
     setBusy(true);
     try {
+      progress("Loading the saved Workbook and Project resources…");
       const saved = loadLibraryProject(localStorage, project.identity.id);
       const base = liveProject();
       const workbookRef = base.workbooks?.find(item => item.id === workbookId);
@@ -834,8 +836,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         block.scientificRegionReport?.kind === SCIENTIFIC_SUBRECTANGLE_REPORT &&
         block.notebookReference?.targetId === resultId)))
         throw new Error("The selected report is no longer in this Workbook.");
+      progress("Reverifying the vector source and six saved profile rows…");
       const rerun = await rerunScientificSubrectangleReport(base,
         createNotebookReference(base, "result", resultId));
+      progress("Publishing the verified result revision…");
       const reportBlockId = crypto.randomUUID();
       const updated: Workbook = { ...workbook, updatedAt: Date.now(),
         stages: workbook.stages.map(stage => stage.id === "compute" ? { ...stage,
@@ -864,19 +868,28 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       throw cause;
     } finally { subrectangleRerunPending.current = false; setBusy(false); }
   };
+  const rerunSubrectangleWorkbookRef = useRef(rerunSubrectangleWorkbook);
+  rerunSubrectangleWorkbookRef.current = rerunSubrectangleWorkbook;
+  const rerunProjectIdRef = useRef(project?.identity.id);
+  rerunProjectIdRef.current = project?.identity.id;
   useEffect(() => {
     const onRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId: string; resultId: string;
         workbookId: string; requestId: string }>).detail;
       if (!detail) return;
-      if (detail.projectId !== project?.identity.id) {
+      if (detail.projectId !== rerunProjectIdRef.current) {
         window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun-complete", {
           detail: { requestId: detail.requestId,
             error: "Open this Workbook's named Project before rerunning it." } }));
         return;
       }
+      const progress = (message: string) => window.dispatchEvent(new CustomEvent(
+        "math3d:subrectangle-rerun-progress", { detail: {
+          requestId: detail.requestId, message } }));
+      progress("Project accepted the Workbook rerun request…");
       window.setTimeout(() => {
-        void rerunSubrectangleWorkbook(detail.workbookId, detail.resultId).then(message =>
+        void rerunSubrectangleWorkbookRef.current(detail.workbookId,
+          detail.resultId, progress).then(message =>
           window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun-complete", {
             detail: { requestId: detail.requestId, message } }))).catch(cause =>
           window.dispatchEvent(new CustomEvent("math3d:subrectangle-rerun-complete", {
@@ -885,7 +898,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     };
     window.addEventListener("math3d:subrectangle-rerun", onRequest);
     return () => window.removeEventListener("math3d:subrectangle-rerun", onRequest);
-  });
+  }, []);
   const addRippleResearchToSavedProject = async (useSavedSnapshot = false) => {
     if (busy || preview || managed || !project) return;
     setBusy(true);

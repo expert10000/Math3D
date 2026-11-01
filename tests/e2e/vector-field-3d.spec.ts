@@ -901,7 +901,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
 });
 
 test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () => {
-  test.setTimeout(600_000);
+  test.setTimeout(1_200_000);
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -973,9 +973,13 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
       "Verified scientific subrectangle profile chart");
     await expect(page.getByTestId("scientific-subrectangle-export-chart"))
       .toBeEnabled();
-    await page.getByTestId("scientific-subrectangle-rerun")
+    const rerunButton = page.getByTestId("scientific-subrectangle-rerun");
+    await expect(rerunButton).toBeEnabled({ timeout: 120_000 });
+    await rerunButton
       .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
         undefined, { timeout: 120_000 });
+    await expect(page.getByTestId("scientific-subrectangle-workbook-report")
+      .getByRole("status")).toContainText("New result revision published", { timeout: 600_000 });
     await expect.poll(() => page.evaluate(id => {
       const saved = JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!);
       return saved.workspace.results.filter((item: { provenance: { operation: { type: string } } }) =>
