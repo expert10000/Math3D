@@ -10,6 +10,7 @@ import { createScientificTrajectoryWorkbook, scientificTrajectoryReportMarkdown,
   verifyScientificTrajectoryReport } from "./scientificTrajectoryWorkbook";
 import { createNotebookReference } from "@math3d/workbook";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
+import { createScientificSolverAuditExport } from "./scientificSolverAuditExport";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectResultsBrowser } from "../components/ProjectResultsBrowser";
@@ -84,6 +85,27 @@ describe("SCI-19 trajectory solver Workbook result", () => {
     const reopenedReference = reopened.stages[1]!.blocks[0]!.notebookReference!;
     expect((await verifyScientificTrajectoryReport(bound, reopenedReference)).summary)
       .toEqual(result.summary);
+    const audit = await createScientificSolverAuditExport(bound, reopenedReference,
+      "trajectory", () => verifyScientificTrajectoryReport(bound, reopenedReference),
+      () => new Date("2026-11-02T00:00:00.000Z"));
+    expect(audit.verification).toMatchObject({ status: "verified",
+      checkedAt: "2026-11-02T00:00:00.000Z" });
+    if (audit.verification.status !== "verified") throw new Error("Expected verified audit");
+    expect(audit.sourceHashes.document).toBe(result.provenance.source.structuralHash);
+    expect(audit.settings).toEqual(result.summary.solver);
+    expect(audit.figures).toEqual(result.summary);
+    expect(audit.units).toMatchObject({ coordinates: ["m", "m", "m"],
+      vector: ["m/s", "m/s", "m/s"], parameter: "s" });
+    expect(JSON.stringify(audit)).not.toContain('"points"');
+    const withheld = await createScientificSolverAuditExport(bound,
+      reopenedReference, "trajectory", async () => {
+        throw new TypeError("Saved solver figures changed");
+      });
+    expect(Object.keys(withheld).sort()).toEqual([
+      "analysis", "kind", "projectId", "resultId", "schemaVersion", "verification"]);
+    expect(withheld.verification).toMatchObject({ status: "withheld",
+      reason: "Saved solver figures changed" });
+    expect(JSON.stringify(withheld)).not.toContain('"figures"');
     const renderBrowser = (status: "changed" | "source-current") =>
       renderToStaticMarkup(React.createElement(ProjectResultsBrowser, {
         project: bound, inspection: null, titles: new Map(),

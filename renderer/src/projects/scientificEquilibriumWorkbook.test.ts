@@ -18,6 +18,7 @@ import { createScientificEquilibriumWorkbook, scientificEquilibriumReportMarkdow
 import { reverifyScientificEquilibriumResult, type ScientificEquilibriumBridge,
   type ScientificEquilibriumReplay } from "../vectorfield3d/reverifyScientificEquilibriumResult";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
+import { createScientificSolverAuditExport } from "./scientificSolverAuditExport";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectResultsBrowser } from "../components/ProjectResultsBrowser";
@@ -173,6 +174,17 @@ describe("SCI-19 equilibrium Workbook result", () => {
     const reference = reopened.stages[1]!.blocks[0]!.notebookReference!;
     expect((await verifyScientificEquilibriumReport(project, reference)).summary)
       .toEqual(result.summary);
+    const audit = await createScientificSolverAuditExport(project, reference,
+      "equilibrium", () => verifyScientificEquilibriumReport(project, reference));
+    expect(audit.verification.status).toBe("verified");
+    if (audit.verification.status !== "verified") throw new Error("Expected verified audit");
+    expect(audit.sourceHashes.document).toBe(result.provenance.source.structuralHash);
+    expect(audit.settings).toMatchObject({ seedResolution: search.seedResolution,
+      maxEvaluations: search.maxEvaluations });
+    expect(audit.units).toMatchObject({ coordinates: ["m", "m", "m"],
+      vector: ["m/s", "m/s", "m/s"], residual: "m/s" });
+    expect(audit.figures).toEqual(result.summary);
+    expect(JSON.stringify(audit)).not.toContain('"sampled"');
     const show = (status: "changed" | "source-current") =>
       renderToStaticMarkup(React.createElement(ProjectResultsBrowser, {
         project, inspection: null, titles: new Map(), canOpen: () => false,
@@ -209,10 +221,26 @@ describe("SCI-19 equilibrium Workbook result", () => {
     expect((await verifyScientificEquilibriumReport(project,
       workbook.stages[1]!.blocks[0]!.notebookReference!, bridge, replay)).summary)
       .toEqual(result.summary);
+    const reference = workbook.stages[1]!.blocks[0]!.notebookReference!;
+    const audit = await createScientificSolverAuditExport(project, reference,
+      "equilibrium", () => verifyScientificEquilibriumReport(project,
+        reference, bridge, replay));
+    expect(audit.verification.status).toBe("verified");
+    if (audit.verification.status !== "verified") throw new Error("Expected verified audit");
+    expect(audit.sourceReferences).toHaveLength(3);
+    expect(audit.sourceHashes.measured).toEqual(
+      result.provenance.operation.parameters.verifiedSource);
     const changed = { ...bridge, previewVectorVolume: vi.fn(async () =>
       [scene.volumes[0], { ...scene.volumes[1], values: scene.volumes[1].values.map(
         (value, index) => index === 0 ? value + 1 : value) }, scene.volumes[2]] as
       typeof scene.volumes) } as ScientificEquilibriumBridge;
+    const withheld = await createScientificSolverAuditExport(project, reference,
+      "equilibrium", () => verifyScientificEquilibriumReport(project,
+        reference, changed, replay));
+    expect(withheld.verification.status).toBe("withheld");
+    expect(Object.keys(withheld).sort()).toEqual([
+      "analysis", "kind", "projectId", "resultId", "schemaVersion", "verification"]);
+    expect(JSON.stringify(withheld)).not.toContain('"candidates"');
     await expect(reverifyScientificEquilibriumResult(result, scene.document,
       changed, replay)).rejects.toMatchObject({ status: "changed" });
     expect(changed.closeGraphDataset).toHaveBeenCalledWith(scene.fingerprint);

@@ -4,6 +4,8 @@ import type { NotebookReference } from "@math3d/workbook";
 import { scientificEquilibriumReportMarkdown,
   verifyScientificEquilibriumReport } from "../projects/scientificEquilibriumWorkbook";
 import { renderNotebookMarkdown } from "../workbook/notebookContent";
+import { createScientificSolverAuditExport,
+  downloadScientificSolverAuditExport } from "../projects/scientificSolverAuditExport";
 
 export const ScientificEquilibriumWorkbookReport: React.FC<{
   project?: Math3DProject | null; reference?: NotebookReference;
@@ -45,10 +47,28 @@ export const ScientificEquilibriumWorkbookReport: React.FC<{
       setMessage(`Export withheld: ${(cause as Error).message}`); }
     finally { if (epoch === verificationEpoch.current) setBusy(false); }
   };
+  const exportJson = async () => {
+    if (!project || !reference || busy) return;
+    const epoch = verificationEpoch.current;
+    setBusy(true); setMarkdown("");
+    try {
+      const audit = await createScientificSolverAuditExport(project, reference,
+        "equilibrium", () => verifyScientificEquilibriumReport(project, reference));
+      if (epoch !== verificationEpoch.current) return;
+      downloadScientificSolverAuditExport(audit);
+      setMessage(audit.verification.status === "verified" ?
+        "Source reverified; equilibrium JSON audit exported." :
+        "Equilibrium values withheld; verification failure JSON exported.");
+    } catch (cause) { if (epoch === verificationEpoch.current)
+      setMessage(`JSON export failed: ${(cause as Error).message}`); }
+    finally { if (epoch === verificationEpoch.current) setBusy(false); }
+  };
   return <section data-testid="scientific-equilibrium-workbook-report">
     <p role="status">{message}</p>
     <button type="button" disabled={!project || !reference || busy}
       onClick={() => void exportReport()}>Verify and export equilibrium report</button>
+    <button type="button" disabled={!project || !reference || busy}
+      onClick={() => void exportJson()}>Verify and export JSON audit</button>
     {markdown && <div dangerouslySetInnerHTML={{ __html: renderNotebookMarkdown(markdown) }} />}
   </section>;
 };

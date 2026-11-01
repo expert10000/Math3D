@@ -4,6 +4,8 @@ import type { NotebookReference } from "@math3d/workbook";
 import { scientificTrajectoryReportMarkdown,
   verifyScientificTrajectoryReport } from "../projects/scientificTrajectoryWorkbook";
 import { renderNotebookMarkdown } from "../workbook/notebookContent";
+import { createScientificSolverAuditExport,
+  downloadScientificSolverAuditExport } from "../projects/scientificSolverAuditExport";
 
 export const ScientificTrajectoryWorkbookReport: React.FC<{
   project?: Math3DProject | null; reference?: NotebookReference;
@@ -45,10 +47,28 @@ export const ScientificTrajectoryWorkbookReport: React.FC<{
       setMessage(`Export withheld: ${(cause as Error).message}`); }
     finally { if (epoch === verificationEpoch.current) setBusy(false); }
   };
+  const exportJson = async () => {
+    if (!project || !reference || busy) return;
+    const epoch = verificationEpoch.current;
+    setBusy(true); setMarkdown("");
+    try {
+      const audit = await createScientificSolverAuditExport(project, reference,
+        "trajectory", () => verifyScientificTrajectoryReport(project, reference));
+      if (epoch !== verificationEpoch.current) return;
+      downloadScientificSolverAuditExport(audit);
+      setMessage(audit.verification.status === "verified" ?
+        "Source reverified; trajectory JSON audit exported." :
+        "Trajectory values withheld; verification failure JSON exported.");
+    } catch (cause) { if (epoch === verificationEpoch.current)
+      setMessage(`JSON export failed: ${(cause as Error).message}`); }
+    finally { if (epoch === verificationEpoch.current) setBusy(false); }
+  };
   return <section data-testid="scientific-trajectory-workbook-report">
     <p role="status">{message}</p>
     <button type="button" disabled={!project || !reference || busy}
       onClick={exportReport}>Verify and export solver report</button>
+    <button type="button" disabled={!project || !reference || busy}
+      onClick={() => void exportJson()}>Verify and export JSON audit</button>
     {markdown && <div dangerouslySetInnerHTML={{
       __html: renderNotebookMarkdown(markdown) }} />}
   </section>;
