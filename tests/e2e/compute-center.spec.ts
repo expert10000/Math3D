@@ -16,8 +16,10 @@ test("Compute Center shows live diagnostics and opens Runtimes", async () => {
     await expect(center.getByTestId("compute-center-python-admission")).not.toBeEmpty();
     await expect(center.getByTestId("compute-center-memory")).not.toBeEmpty();
     await center.getByRole("button", { name: "Runtimes", exact: true }).click();
-    await expect(center.getByTestId("sage-runtime-local")).toContainText("Not checked");
-    await expect(center.getByTestId("sage-runtime-docker")).toContainText("Not checked");
+    await expect(center.getByTestId("sage-runtime-local")).toContainText("Checked", { timeout: 30_000 });
+    await expect(center.getByTestId("sage-runtime-docker")).toContainText("Checked", { timeout: 30_000 });
+    await expect(center.getByTestId("sage-runtime-local")).toContainText("Environment: WSL Ubuntu");
+    await expect(center.getByTestId("sage-runtime-version-local")).toContainText("Version:");
     await expect(center.getByTestId("compute-engine-manager")).toBeVisible();
   } finally {
     if (app) await closeSurfaceApp(app);

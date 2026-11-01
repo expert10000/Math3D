@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .sage_adapter import cancel_sage_job, run_sage_operation
-from .sage_runner import OPERATIONS
+from .sage_runner import OPERATIONS, SAGE_VERSION
 
 
 app = FastAPI(title="Math3D SageMath Service")
@@ -50,6 +50,7 @@ def health():
     return {
         "status": "ok",
         "engine": "sagemath",
+        "engineVersion": str(SAGE_VERSION),
         "available": True,
         "operations": sorted(OPERATIONS.keys()),
     }

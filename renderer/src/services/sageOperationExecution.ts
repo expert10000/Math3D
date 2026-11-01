@@ -12,6 +12,7 @@ import {
   type ScientificBrokerOutcome,
   type ScientificBackendCapabilitySnapshot,
   type ScientificExecutionBackend,
+  type ScientificOperationCapability,
 } from "@math3d/kernel";
 import { checkSageHealth, isLocalSageOperation, runSageOperation } from "../integrations/sage/sageClient";
 import type { SageHealthResponse, SageRunRequest, SageRunResponse } from "../integrations/sage/sageSchemas";
@@ -45,8 +46,21 @@ export type SageOperationHandle = {
 
 type Runner = (request: SageRunRequest) => Promise<SageRunResponse>;
 type Canceller = (jobId: string) => Promise<unknown> | unknown;
-type Backend = "local" | "docker";
+export type SageBackend = "local" | "docker";
+type Backend = SageBackend;
 type HealthChecker = (backend: Backend) => Promise<SageHealthResponse>;
+const SAGE_LIMITS = { maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
+  maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000 } as const;
+
+export type SageRuntimeProbe = Readonly<{
+  backend: Backend;
+  backendId: string;
+  backendVersion: string;
+  transport: "worker" | "remote";
+  health: SageHealthResponse;
+  limits: typeof SAGE_LIMITS;
+  operations: readonly ScientificOperationCapability[];
+}>;
 
 export type SageExecutionRegistryOptions = {
   run?: Runner;
@@ -133,17 +147,11 @@ export class SageExecutionRegistry {
       backendVersion: "1", transport: scope === "local" ? "worker" : "remote",
       priority: 100, supportsCancellation: true,
       discover: async () => {
-        const health = await this.#health(scope);
+        const probe = await this.probeBackend(scope);
         return {
-          available: health.available,
-          unavailableReason: health.available ? undefined : health.status,
-          operations: (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
-            .filter(([operation]) => health.operations.includes(operation) && (scope === "docker" || isLocalSageOperation(operation)))
-            .map(([, definition]) => ({
-              operationType: definition.type, retrySafety: "never" as const,
-              maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
-              maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000,
-            })),
+          available: probe.health.available,
+          unavailableReason: probe.health.available ? undefined : probe.health.status,
+          operations: probe.operations,
         };
       },
       execute: (job) => service.submit(job),
@@ -165,6 +173,25 @@ export class SageExecutionRegistry {
     return this.#broker.discoverCapabilities();
   }
 
+  async probeBackend(backend: Backend): Promise<SageRuntimeProbe> {
+    let health: SageHealthResponse;
+    try {
+      health = await this.#health(backend);
+    } catch (error) {
+      health = { engine: "sagemath", available: false, operations: [],
+        status: error instanceof Error ? error.message : "SageMath health check failed." };
+    }
+    const operations = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
+      .filter(([operation]) => health.operations.includes(operation) && (backend === "docker" || isLocalSageOperation(operation)))
+      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const, ...SAGE_LIMITS }))
+      .sort((left, right) => left.operationType.localeCompare(right.operationType));
+    return {
+      backend, backendId: backend === "local" ? "sage-local-wsl" : "sage-docker",
+      backendVersion: "1", transport: backend === "local" ? "worker" : "remote",
+      health, limits: SAGE_LIMITS, operations,
+    };
+  }
+
   run(request: SageRunRequest & { operation: BrokeredSageOperation; backend: Backend }): SageOperationHandle {
     validateSageJob(request);
     const jobId = request.jobId ?? crypto.randomUUID();
@@ -179,8 +206,7 @@ export class SageExecutionRegistry {
     const job = createScientificJobRequest({
       jobId, source,
       operation: { type: definition.type, payload: payload as CanonicalJsonValue },
-      limits: { deadlineAt: Date.now() + 40_000, maxInputBytes: 64 * 1024,
-        maxOutputBytes: 256 * 1024, maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000 },
+      limits: { deadlineAt: Date.now() + 40_000, ...SAGE_LIMITS },
     });
     this.#activeJobs.add(jobId);
     this.#sources.set(source.documentId, source);

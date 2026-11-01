@@ -21,6 +21,7 @@ export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.intege
 export type SageHealthResponse = {
   status: string;
   engine: "sagemath" | string;
+  engineVersion?: string;
   available: boolean;
   operations: SageOperation[];
 };
@@ -92,6 +93,7 @@ export const normalizeSageHealth = (payload: unknown): SageHealthResponse => {
   return {
     status: data.status,
     engine: data.engine,
+    ...(typeof data.engineVersion === "string" && data.engineVersion.trim() ? { engineVersion: data.engineVersion } : {}),
     available: data.available,
     operations,
   };

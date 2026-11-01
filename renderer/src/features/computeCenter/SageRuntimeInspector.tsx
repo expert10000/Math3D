@@ -1,54 +1,75 @@
-import React, { useState } from "react";
-import { checkSageHealth } from "../../integrations/sage/sageClient";
-import type { SageHealthResponse } from "../../integrations/sage/sageSchemas";
+import React, { useEffect, useRef, useState } from "react";
+import { sageExecutionRegistry, type SageBackend, type SageRuntimeProbe } from "../../services/sageOperationExecution";
 
-type Backend = "local" | "docker";
-type Probe = { health?: SageHealthResponse; error?: string; checkedAt?: number };
+type ProbeState = { probe?: SageRuntimeProbe; error?: string; checkedAt?: number; checking: boolean };
 
-const RUNTIMES: readonly { id: Backend; label: string; detail: string }[] = [
-  { id: "local", label: "Local WSL", detail: "Bounded SageMath worker in WSL Ubuntu" },
-  { id: "docker", label: "Docker", detail: "Separate SageMath container service" },
+const RUNTIMES: readonly { id: SageBackend; label: string; environment: string; action: string }[] = [
+  { id: "local", label: "Local WSL", environment: "WSL Ubuntu · bounded local worker",
+    action: "Install SageMath in WSL Ubuntu, then run wsl -d Ubuntu --exec /usr/bin/sage --version." },
+  { id: "docker", label: "Docker", environment: "SageMath container service",
+    action: "Start the service with docker compose -f services/sage-worker/docker-compose.yml up --build, then check its URL." },
 ];
 
-export default function SageRuntimeInspector() {
-  const [probes, setProbes] = useState<Record<Backend, Probe>>({ local: {}, docker: {} });
-  const [checking, setChecking] = useState<Backend | null>(null);
+const formatBytes = (bytes: number) => bytes >= 1024 ** 2
+  ? `${Math.round(bytes / 1024 ** 2)} MiB` : `${Math.round(bytes / 1024)} KiB`;
 
-  const check = async (backend: Backend) => {
-    setChecking(backend);
+export default function SageRuntimeInspector() {
+  const [probes, setProbes] = useState<Record<SageBackend, ProbeState>>({
+    local: { checking: false }, docker: { checking: false },
+  });
+  const started = useRef(false);
+
+  const check = async (backend: SageBackend) => {
+    setProbes((current) => ({ ...current, [backend]: { ...current[backend], checking: true } }));
     try {
-      const health = await checkSageHealth(backend);
-      setProbes((current) => ({ ...current, [backend]: { health, checkedAt: Date.now() } }));
+      const probe = await sageExecutionRegistry.probeBackend(backend);
+      setProbes((current) => ({ ...current, [backend]: { probe, checkedAt: Date.now(), checking: false } }));
     } catch (error) {
       setProbes((current) => ({ ...current, [backend]: {
-        error: error instanceof Error ? error.message : "SageMath health check failed.", checkedAt: Date.now(),
+        error: error instanceof Error ? error.message : "SageMath capability discovery failed.",
+        checkedAt: Date.now(), checking: false,
       } }));
-    } finally {
-      setChecking(null);
     }
   };
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void Promise.all(RUNTIMES.map(({ id }) => check(id)));
+  }, []);
 
   return <section aria-label="SageMath runtimes" data-testid="sage-runtime-inspector" style={{ display: "grid", gap: 9 }}>
     <div>
       <strong style={{ fontSize: 14 }}>SageMath backends</strong>
-      <div style={{ color: "#64748b", fontSize: 11 }}>Each health check runs only when requested. Status is recorded at check time.</div>
+      <div style={{ color: "#64748b", fontSize: 11 }}>Availability and limits come from the same capability probes used to route Sage jobs. Refresh a backend after changing its setup.</div>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 9 }}>
-      {RUNTIMES.map(({ id, label, detail }) => {
-        const probe = probes[id];
-        const status = probe.error ? "Unavailable" : probe.health ? probe.health.available ? "Available" : "Unavailable" : "Not checked";
+      {RUNTIMES.map(({ id, label, environment, action }) => {
+        const state = probes[id];
+        const probe = state.probe;
+        const available = probe?.health.available === true;
+        const problem = state.error ?? (probe && !available ? probe.health.status : null);
+        const status = state.checking ? "Checking…" : problem ? "Unavailable" : available ? "Available" : "Not checked";
         return <div key={id} data-testid={`sage-runtime-${id}`} style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: 11, background: "#fff", display: "grid", gap: 5, fontSize: 11 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{label}</strong><span role="status" style={{ color: probe.error || probe.health?.available === false ? "#b42318" : probe.health?.available ? "#16803e" : "#64748b" }}>{status}</span></div>
-          <div style={{ color: "#64748b" }}>{detail}</div>
-          {probe.health && <>
-            <div><strong>Engine:</strong> {probe.health.engine}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <strong>{label}</strong>
+            <span role="status" style={{ color: problem ? "#b42318" : available ? "#16803e" : "#64748b" }}>{status}</span>
+          </div>
+          <div style={{ color: "#64748b" }}>Environment: {environment}</div>
+          {probe && <>
+            <div data-testid={`sage-runtime-version-${id}`}><strong>Version:</strong> {probe.health.engineVersion ? `SageMath ${probe.health.engineVersion}` : "Not reported"} · adapter v{probe.backendVersion}</div>
+            <div><strong>Route:</strong> {probe.backendId} · {probe.transport}</div>
             <div><strong>Reported status:</strong> {probe.health.status}</div>
-            <div><strong>Operations:</strong> {probe.health.operations.length} declared</div>
+            <div><strong>Operations:</strong> {probe.operations.length} available through this route</div>
+            <div data-testid={`sage-runtime-limits-${id}`}>
+              <strong>Per-job limits:</strong> input {formatBytes(probe.limits.maxInputBytes)} · output {formatBytes(probe.limits.maxOutputBytes)} · memory {formatBytes(probe.limits.maxMemoryBytes)} · work {probe.limits.maxWorkUnits.toLocaleString()} units
+            </div>
+            {probe.health.available && probe.operations.length === 0 && <div role="status">No registered Sage operation was reported by this backend.</div>}
           </>}
-          {probe.error && <div role="alert" style={{ color: "#b42318", overflowWrap: "anywhere" }}>{probe.error}</div>}
-          {probe.checkedAt && <div style={{ color: "#64748b" }}>Checked {new Date(probe.checkedAt).toLocaleString()}</div>}
-          <button type="button" onClick={() => void check(id)} disabled={checking !== null} style={{ justifySelf: "start", fontSize: 11, padding: "4px 8px" }}>
-            {checking === id ? "Checking…" : `Check ${label}`}
+          {problem && <div role="alert" style={{ color: "#b42318", overflowWrap: "anywhere" }}>{problem}<div style={{ marginTop: 4 }}>Next: {action}</div></div>}
+          {state.checkedAt && <div style={{ color: "#64748b" }}>Checked {new Date(state.checkedAt).toLocaleString()}</div>}
+          <button type="button" onClick={() => void check(id)} disabled={state.checking} style={{ justifySelf: "start", fontSize: 11, padding: "4px 8px" }}>
+            {state.checking ? "Checking…" : `Check ${label}`}
           </button>
         </div>;
       })}

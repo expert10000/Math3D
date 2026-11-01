@@ -66,10 +66,13 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
 test("desktop Sage backend selector sends shared operations to the Docker service", async () => {
   test.setTimeout(120_000);
   const requests: unknown[] = [];
+  let serviceAvailable = true;
   const server = createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/health") {
-      res.end(JSON.stringify({ engine: "sagemath", available: true, status: "ok", operations: ["sage.symbolic.simplify"] }));
+      res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: serviceAvailable,
+        status: serviceAvailable ? "ok" : "service stopped",
+        operations: serviceAvailable ? ["sage.symbolic.simplify"] : [] }));
       return;
     }
     let body = "";
@@ -98,9 +101,19 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
     const panel = page.getByText("Symbolic Mathematics", { exact: true }).locator("..");
     await panel.getByLabel("SageMath backend").selectOption("docker");
-    await page.getByTestId("top-compute-center-button").click();
+    await panel.getByRole("button", { name: "Open Compute → Runtimes" }).click();
     const runtimes = page.getByTestId("compute-center");
-    await runtimes.getByRole("button", { name: "Runtimes", exact: true }).click();
+    await expect(runtimes.getByRole("button", { name: "Runtimes", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
+    await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Reported status: ok");
+    await expect(runtimes.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+    await expect(runtimes.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB · output 256 KiB · memory 512 MiB");
+    serviceAvailable = false;
+    await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
+    await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("service stopped");
+    await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Next: Start the service with docker compose");
+    await expect(runtimes.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB");
+    serviceAvailable = true;
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Reported status: ok");
     await runtimes.getByRole("button", { name: "Close", exact: true }).click();

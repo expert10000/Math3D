@@ -128,7 +128,8 @@ export async function checkLocalSageHealth(): Promise<Record<string, unknown>> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ engine: "sagemath", available, status, operations });
+      const engineVersion = available ? output.match(/SageMath version\s+([^\s,]+)/i)?.[1] : undefined;
+      resolve({ engine: "sagemath", engineVersion, available, status, operations });
     };
     const timer = setTimeout(() => { child.kill(); finish(false, "Local SageMath check exceeded 12 seconds."); }, 12_000);
     child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString("utf8").slice(0, 256); });

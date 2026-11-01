@@ -52,7 +52,8 @@ const SageSymbolicPanel: React.FC<{
   sourceExpression?: string;
   operations?: readonly ScientificOperationEntry[];
   onResult?: (record: SymbolicResultRecord) => void;
-}> = ({ compact = false, sourceExpression, operations = SCIENTIFIC_OPERATION_CATALOG, onResult }) => {
+  onOpenRuntimes?: () => void;
+}> = ({ compact = false, sourceExpression, operations = SCIENTIFIC_OPERATION_CATALOG, onResult, onOpenRuntimes }) => {
   const [backend, setBackend] = useState<"local" | "docker">("local");
   const [operation, setOperation] = useState<SageSymbolicOperation>(operations[0]?.id ?? "sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
@@ -304,7 +305,7 @@ const SageSymbolicPanel: React.FC<{
         </>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <span style={{ color: "#667085" }}>Backend health and controls: Compute → Runtimes</span>
+          {onOpenRuntimes && <button type="button" onClick={onOpenRuntimes}>Open Compute → Runtimes</button>}
           <button type="button" onClick={() => void onRun()} disabled={busy !== "none"}>
             {busy === "run" ? "Running..." : "Run"}
           </button>

@@ -5,7 +5,7 @@ import { scientificOperationsFor } from "../features/scientificServices/operatio
 import { createSageExecutionRegistry, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
 
 const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
-  engine: "sagemath", status: "ok", available: true, operations: SAGE_SYMBOLIC_OPERATIONS,
+  engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_SYMBOLIC_OPERATIONS,
 });
 const runSageJob = (
   request: Parameters<ReturnType<typeof createSageExecutionRegistry>["run"]>[0],
@@ -29,6 +29,26 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : { expression: "x^2+y^2+z^2", variables: ["x", "y", "z"] };
 
 describe("Sage scientific execution contract", () => {
+  it("exposes the same version and limits used by backend discovery", async () => {
+    const registry = createSageExecutionRegistry({ health });
+    const probe = await registry.probeBackend("docker");
+    const discovered = (await registry.discoverBackends()).find((item) => item.backendId === probe.backendId)!;
+    expect(probe.health.engineVersion).toBe("10.6");
+    expect(probe.operations).toEqual(discovered.operations);
+    expect(probe.operations[0]).toMatchObject({ maxInputBytes: 64 * 1024,
+      maxOutputBytes: 256 * 1024, maxMemoryBytes: 512 * 1024 * 1024,
+      maxWorkUnits: 1_000, retrySafety: "never" });
+  });
+
+  it("keeps declared limits and a diagnostic when a health probe fails", async () => {
+    const registry = createSageExecutionRegistry({ health: async () => { throw new Error("service unreachable"); } });
+    const probe = await registry.probeBackend("docker");
+    expect(probe.health).toMatchObject({ available: false, status: "service unreachable" });
+    expect(probe.limits.maxInputBytes).toBe(64 * 1024);
+    expect((await registry.discoverBackends()).find((item) => item.backendId === "sage-docker"))
+      .toMatchObject({ availability: "unavailable", unavailableReason: "service unreachable" });
+  });
+
   it("shares capability discovery and execution across Surface and Geometry", async () => {
     const calls: unknown[] = [];
     const registry = createSageExecutionRegistry({

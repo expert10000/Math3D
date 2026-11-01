@@ -11,7 +11,8 @@ export const ScientificServicesPanel: React.FC<{
   context: ScientificServiceContext;
   sourceExpression?: string;
   onResult: (record: SymbolicResultRecord) => void;
-}> = ({ context, sourceExpression, onResult }) => {
+  onOpenRuntimes?: () => void;
+}> = ({ context, sourceExpression, onResult, onOpenRuntimes }) => {
   const [preset, setPreset] = useState<ScientificServicePreset>("All");
   const operations = scientificOperationsFor(context, preset);
 
@@ -28,7 +29,7 @@ export const ScientificServicesPanel: React.FC<{
       Inspect completed results in Inspector → Analysis.
     </div>
     {operations.length
-      ? <SageSymbolicPanel key={preset} compact sourceExpression={sourceExpression} operations={operations} onResult={onResult} />
+      ? <SageSymbolicPanel key={preset} compact sourceExpression={sourceExpression} operations={operations} onResult={onResult} onOpenRuntimes={onOpenRuntimes} />
       : <div role="status" style={{ fontSize: 11, color: "#667085" }}>No {preset.toLowerCase()} operation is registered for {context} yet.</div>}
   </section>;
 };

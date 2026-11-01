@@ -18,6 +18,11 @@ describe("Sage schemas", () => {
     });
   });
 
+  it("retains a reported SageMath runtime version", () => {
+    expect(normalizeSageHealth({ status: "ok", engine: "sagemath", engineVersion: "10.6",
+      available: true, operations: ["sage.symbolic.simplify"] }).engineVersion).toBe("10.6");
+  });
+
   it("normalizes successful run responses", () => {
     expect(
       normalizeSageRunResponse({

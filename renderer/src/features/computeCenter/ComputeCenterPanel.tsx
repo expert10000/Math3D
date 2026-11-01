@@ -34,8 +34,8 @@ const labelFor = (job: ComputeJobRecord) => ({
 const statusColor = (ok: boolean | null) => ok === null ? "#64748b" : ok ? "#16803e" : "#a2530b";
 const formatBytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 
-export default function ComputeCenterPanel({ onClose }: { onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "runtimes">("overview");
+export default function ComputeCenterPanel({ onClose, initialTab = "overview" }: { onClose: () => void; initialTab?: "overview" | "runtimes" }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "runtimes">(initialTab);
   const jobs = useSyncExternalStore(subscribeComputeJobs, getComputeJobs, getComputeJobs);
   const [python, setPython] = useState<PythonWorkerDiagnosticsSnapshot | null>(null);
   const [cgal, setCgal] = useState<Health | null>(null);

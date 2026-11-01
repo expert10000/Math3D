@@ -41811,6 +41811,7 @@ const App: React.FC = () => {
   const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
+  const [computeCenterInitialTab, setComputeCenterInitialTab] = useState<"overview" | "runtimes">("overview");
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -86287,6 +86288,7 @@ case "mobius":
                   </div>
                   <OctaveLabPanel />
                   <ScientificServicesPanel context="surface" sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
+                    onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
                     onResult={(record) => {
                       setSymbolicAnalysisRecord({ ...record, source: record.sourceSurfaceExpression === activeImplicitExpr
                         ? { module: "surface", id: `surface:active-implicit:${sageSourceSessionId}`,
@@ -102459,7 +102461,7 @@ case "mobius":
                     )}
                     {geometryProceduralPanelTab === "debug" && (
                       <div style={{ display: "grid", gap: 8 }}>
-                      <ScientificServicesPanel context="geometry" onResult={(record) => {
+                      <ScientificServicesPanel context="geometry" onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }} onResult={(record) => {
                         setGeometrySymbolicAnalysisRecord({ ...record, source: {
                           module: "geometry", id: "sage-input:geometry", revision: 0,
                           expression: record.expression, fingerprint: hashValue(record.request.params),
@@ -111087,7 +111089,7 @@ case "mobius":
           </div>
         </div>
       )}
-      {computeCenterOpen && <ComputeCenterPanel onClose={() => setComputeCenterOpen(false)} />}
+      {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {preferencesOpen && (
         <div
           style={{
