@@ -16,7 +16,7 @@
 | SCI-09 | Field Explorer extracts a bounded speed isosurface inside the physical clipping box with a cancellable worker, a 64,000-cell lattice and a saved triangle budget. V3 reads verified tiles through the 64 MiB cache; v1/v2 retain verified bounded volumes. Shared edge vertices form an indexed mesh with smoothed normals, bounds, connected-component and boundary/nonmanifold-edge counts, and an explicit open-at-clip label. A self-contained indexed glTF exports physical coordinates, mesh quality metrics, source references and verified tile hashes. The indexed mesh can be promoted into a source-linked Project Mesh resource with recipe and topology. On reopen, required tiles are reverified before the Mesh is labelled current; a changed tile marks it stale. Mesh can rerun its saved recipe against the verified source, publish a new revision with updated topology and tile provenance, and retain the previous revision. | Other scalar channels, isolines, Surfaces promotion and adaptive extraction remain open. |
 | SCI-07 | One physical-point probe persists with the field workspace and can drive XY/XZ/YZ planes in split or quad views. A saved link toggle lets planes keep independent fixed coordinates. The 3D camera orbit/target/zoom and each 2D pane's pan/zoom survive Project reopen independently. Scientific-bundle Graph lines retain selected component and fixed coordinates; authored expression-field line profiles now send bounded samples to Graphs with source expressions, hash, revision and physical fixed coordinates. | Mouse/touch drag panning and broader cross-module linked selection remain open. |
 | SCI-12 | Analytic constant, vortex and saddle oracles check numerical values and trajectory results. A verified three-component bundle fixture checks independently known P/Q/R values at the same physical point in XY, XZ and YZ, rejects missing/changed components and axis-order errors, and checks stationary, boundary, step-limit and cancellation stop reasons. The committed [80³ numerical golden fixture](scientific-field-numerical-golden.md) checks divergence, signed curl, speed gradient and Laplacian with explicit interior/boundary limits, all three derived plane orientations and both trajectory modes. A [measured Burgers vortex treatment](scientific-burgers-measured-curation.md) now exercises verified grid orientation, unit conversion, three-plane/probe parity, tamper rejection and first-view measurements. Tests protect source-data invariance under display clipping and workspace migration. | Broader reference families, cross-runtime comparison and variance-aware CPU/memory gates remain open. |
-| SCI-19 | A published vector-only or combined subrectangle can create a source-linked Project Workbook report. The verified view and Markdown export include physical bounds, statistics, units, gaps, methods, source references, warnings and sample/profile hashes. The report reverifies on Project reopen and before export; a changed Burgers tile withholds its values. A Workbook can rerun its saved physical recipe against verified sources, publish a new result and report revision while retaining the old report, and show numerical deltas or a stale-source reason. The 80³ oracle and Project round-trip are tested. A verified column/row profile chart shows physical axes, distinct units and coverage gaps, and rechecks saved sources and rows before display or SVG export; changed fields are withheld independently. Subrectangle reports identify iterative solver statistics as inapplicable. | Source-linked trajectory or equilibrium reports with real solver statistics, and further audit-friendly export formats, remain open. |
+| SCI-19 | Published vector-only and combined subrectangles have source-linked Workbook reports and verified column/row charts with physical axes, units and gaps. Reopen, rerun and Markdown/SVG export recheck source bytes and saved profile rows. Authored expression-field trajectories can publish compact solver results with steps, evaluations, stop reasons and error estimates; their Workbook reports recompute the source on reopen and before export. Subrectangle reports identify iterative solver statistics as inapplicable. | Measured-field trajectory and equilibrium reports, plus further audit-friendly export formats, remain open. |
 
 ### Worked overlay example: Swirling flow, Quadratic potential, and Complex wave
 
@@ -800,13 +800,17 @@ Acceptance:
   changed combined-field source withholds only its field's chart panels.
   The subrectangle report labels iterative solver statistics as inapplicable:
   it samples a bounded grid and computes finite differences, with no iterative
-  solve or residual history to report.
-- **Remaining:** Give analyses that actually run a solver, such as trajectories
-  or equilibria, source-linked Workbook reports with their recorded solver
-  statistics. Extend audit-friendly exports beyond Markdown and chart SVG.
-- **Next increment:** Persist and verify a trajectory or equilibrium analysis
-  result, then show its solver diagnostics in the Workbook report with the same
-  reopen and export checks.
+  solve or residual history to report. Authored expression-field trajectories
+  can now publish a compact Project result with accepted/rejected steps,
+  evaluations, stop reasons, final parameter, arc length, local-error maximum,
+  solver settings and source generation. Its Workbook report recomputes the
+  trajectory from the pinned field before showing or exporting those figures;
+  trajectory point arrays remain outside the Project result.
+- **Remaining:** Extend solver reports to verified scientific-bundle trajectories
+  and equilibrium searches. Extend audit-friendly exports beyond Markdown and
+  chart SVG.
+- **Next increment:** Persist and verify measured-field trajectory diagnostics,
+  including pinned source tiles, for the same Workbook report.
 
 #### SCI-20 — Theory Lab artifact round-trip
 

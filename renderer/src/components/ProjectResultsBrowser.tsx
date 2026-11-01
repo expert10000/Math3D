@@ -4,12 +4,14 @@ import { VECTOR_FIELD3D_POINT_RESULT_TYPE, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE,
+  VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
   type Math3DProject } from "@math3d/core";
 import type { ProjectDependencyInspection } from "../projects/projectDependencies";
 import { presentProjectFreshness } from "../projects/projectFreshnessPresentation";
 import type { SavedRegionSourceStatus } from "../vectorfield3d/checkSavedRegionResultSources";
 import { isScientificSubrectangle } from
   "../projects/scientificSubrectangleWorkbook";
+import { isScientificTrajectory } from "../projects/scientificTrajectoryWorkbook";
 
 type Selection = { kind: "result" | "artifact"; id: string };
 type Props = {
@@ -48,7 +50,8 @@ const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGIO
   operation === VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE ||
-  operation === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE;
+  operation === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE ||
+  operation === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE;
 
 export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport }) => {
   const [query, setQuery] = useState("");
@@ -143,6 +146,13 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
             <button type="button" data-testid="project-export-subrectangle-report" disabled={!onExportScientificReport}
               onClick={() => onExportScientificReport?.(result.resultId)}>Verify and export report</button>
           </div>}
+          {isScientificTrajectory(result) && <div className="project-results-links">
+            <button type="button" data-testid="project-create-trajectory-workbook"
+              disabled={!onCreateScientificReport ||
+                regionResultStatuses[result.resultId] !== "source-current"}
+              onClick={() => onCreateScientificReport?.(result.resultId)}>
+              Create verified solver Workbook report</button>
+          </div>}
           <dl><div><dt>Source document</dt><dd>{sourceButton(result.provenance.source.documentId)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>
@@ -214,9 +224,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
                 </p>;
               })}
             </div> :
-          result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE &&
+          (result.provenance.operation.type === VECTOR_FIELD3D_REGION_RESULT_TYPE ||
+            result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE) &&
             regionResultStatuses[result.resultId] !== "source-current" ?
-            <p data-testid="project-region-result-gated">Saved region values are withheld.
+            <p data-testid="project-region-result-gated">Saved analysis values are withheld.
               {regionResultStatuses[result.resultId] === "missing" ? " A source is missing." :
                 regionResultStatuses[result.resultId] === "changed" ? " A source has changed." :
                   " Source verification is pending or unavailable."}</p> :

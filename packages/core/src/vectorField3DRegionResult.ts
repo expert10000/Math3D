@@ -4,6 +4,7 @@ import { createDocumentRelation, type DocumentRelation } from "./documentRelatio
 import { type Graph2DFieldReference } from "./graph2dFieldReference";
 import { type VectorField3DDocument, type VectorField3DOverlayRegion } from "./vectorField3DDocument";
 import { viewerSourceFromDocument } from "./viewerProvenance";
+import { VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE } from "./vectorField3DTrajectoryResult";
 
 export const VECTOR_FIELD3D_REGION_RESULT_TYPE = "vector3d.linked-region" as const;
 export const VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE = "vector3d.linked-region-combined" as const;
@@ -128,7 +129,8 @@ export function vectorField3DRegionResultRelation(result: AnalysisResultEnvelope
       result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE &&
       result.provenance.operation.type !== VECTOR_FIELD3D_DERIVED_REGION_RESULT_TYPE &&
       result.provenance.operation.type !== VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE &&
-      result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE)
+      result.provenance.operation.type !== VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE &&
+      result.provenance.operation.type !== VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE)
     throw new TypeError("Expected a linked region result.");
   return createDocumentRelation({ kind: "analysis-of", sources: [result.provenance.source],
     sourceOrder: "ordered", target: { type: "result", resultId: result.resultId,

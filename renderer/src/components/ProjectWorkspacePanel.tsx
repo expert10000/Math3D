@@ -50,6 +50,8 @@ import { createScientificSubrectangleWorkbook, scientificSubrectangleReportMarkd
   clearJustCreatedScientificSubrectangleReport,
   rerunScientificSubrectangleReport,
   SCIENTIFIC_SUBRECTANGLE_REPORT } from "../projects/scientificSubrectangleWorkbook";
+import { createScientificTrajectoryWorkbook, isScientificTrajectory,
+  verifyScientificTrajectoryReport } from "../projects/scientificTrajectoryWorkbook";
 import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
@@ -778,12 +780,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const base = liveProject();
       const result = base.workspace.results.find(item => item.resultId === resultId);
       if (!result) throw new TypeError("Published result is unavailable.");
-      const inspection = await inspectScientificSubrectangleReport(base,
+      const trajectory = isScientificTrajectory(result);
+      const inspection = trajectory ? null : await inspectScientificSubrectangleReport(base,
         createNotebookReference(base, "result", resultId));
-      if (!subrectangleSourcesCurrent(inspection.status))
+      if (trajectory) verifyScientificTrajectoryReport(base,
+        createNotebookReference(base, "result", resultId));
+      else if (!subrectangleSourcesCurrent(inspection?.status))
         throw new TypeError("A saved source or profile row changed; report creation is withheld.");
-      const workbook = createScientificSubrectangleWorkbook(base, result,
-        crypto.randomUUID(), crypto.randomUUID());
+      const workbook = trajectory ? createScientificTrajectoryWorkbook(base, result,
+        crypto.randomUUID(), crypto.randomUUID()) :
+        createScientificSubrectangleWorkbook(base, result,
+          crypto.randomUUID(), crypto.randomUUID());
       const prepared = prepareProjectWorkbook(base, workbook, crypto.randomUUID());
       const next = upsertMath3DProjectWorkbook(base, prepared.reference);
       const previous = await loadProjectResources(saved);
@@ -792,11 +799,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setLibrary(await commitProjectResources(next, resources,
         () => saveLibraryProject(localStorage, next, Date.now())));
       resourceSession.current = resources; resourceSessionId.current = next.identity.id;
-      primeScientificSubrectangleReport(next, inspection);
+      if (inspection) primeScientificSubrectangleReport(next, inspection);
       display(next, false);
       onOpenWorkbook?.(prepared.workbook, "compute", prepared.workbook.stages[1]!.blocks[0]!.id);
       onOpenChange(false);
-      setMessage("Created a source-linked Workbook report from verified subrectangle data.");
+      setMessage(trajectory ? "Created a verified trajectory solver Workbook report." :
+        "Created a source-linked Workbook report from verified subrectangle data.");
     } catch (error) { setMessage(`Workbook report failed: ${(error as Error).message}`); }
     finally { setBusy(false); }
   };

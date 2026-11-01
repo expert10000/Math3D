@@ -19,6 +19,8 @@ import { canonicalJsonStringify, createCombinedVectorField3DRegionResult,
   type VectorField3DDocument,
   type VectorField3DRegionSummary,
   type VectorField3DRegionSampleDigest } from "@math3d/core";
+import { VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE,
+  verifyVectorField3DTrajectoryResult } from "@math3d/core";
 import { verifiedCombinedDerivedRegionProfiles, verifiedDivergenceRegionProfile,
   verifiedVectorRegionProfile,
   type DivergenceSourceBridge } from
@@ -46,6 +48,11 @@ type Bridge = Pick<NonNullable<typeof window.scientificScenes>,
 export async function checkSavedRegionResultSources(result: AnalysisResultEnvelope,
   document: VectorField3DDocument, bridge: Bridge | undefined,
   graphs: readonly Graph2DDocument[] = []): Promise<SavedRegionSourceStatus> {
+  if (result.provenance.operation.type === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE) {
+    try { verifyVectorField3DTrajectoryResult(result, document);
+      return "source-current"; }
+    catch { return "changed"; }
+  }
   if (result.provenance.operation.type === VECTOR_FIELD3D_COMBINED_SUBRECTANGLE_RESULT_TYPE)
     return checkSavedCombinedSubrectangleResultSources(result, document, bridge, graphs);
   if (result.provenance.operation.type === VECTOR_FIELD3D_DERIVED_SUBRECTANGLE_RESULT_TYPE)
