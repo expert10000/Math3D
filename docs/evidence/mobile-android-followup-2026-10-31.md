@@ -78,7 +78,8 @@ The existing internal and release apps were not changed.
 | TP04 analysis on function-error APK | A new Two slopes copy returned a complete intersection at `(-1.0000000, -1.0000000)` with residual 0 after explicitly selecting the two functions. A new tangent example returned `y - (1) = 2(x - (1))` for the parabola at `x=1`. After applying `x^2+1`, the previous tangent result was marked stale and Locate was disabled. See the [TP04 record](mobile-android-tp04-analysis-2026-11-01.json) and screenshots. |
 | Analyze error on analysis-error APK | Before the change, a failed intersection attempt reported `Select two distinct explicit Graph2D functions.` below the overlaid Analyze panel. On the analysis-error APK, an invalid `0z` analysis x displayed `Enter finite numeric inputs.` in red directly under Run analysis, including while the Samsung keyboard was open. Correcting it to `0` cleared the error. The TP04 math walkthrough was not repeated on this newer APK. |
 | TP13 parameters on latest installed APK | Imported the interactive Beating waves fixture at `f=4.5`. There was no autoplay. Play advanced to frame 3/15, Stop halted it, and Cancel returned to no active frame. The old slider had changed a preview during vertical panel scrolling. The new APK kept `4.75` during the same vertical swipe, while a tap and horizontal drag still changed the preview. Applying `4.75` made one source change; Undo restored `4.5`. A repeated Play/Stop/Cancel left the final source at `4.5`. See the [exact-build TP13 record](mobile-android-tp13-parameters-2026-11-01.json) and screenshots. |
-| Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, the final process of the function-error APK had 285, the analysis-error APK process had 460, and the latest slider-scroll APK process had 513, with no such match in these scoped captures. The reported hang was not accompanied by a matching log entry. |
+| TP03 probes on latest installed APK | Gallery copies with test-pack-matching definitions covered explicit, parametric, polar, implicit contour and measured-series probes. Two slopes' crossing cycled from Unit slope to Steeper line on a repeat tap; an empty tap cleared it. Cycloid and Rose readouts included their parameters. The measured point at `(1,0.5)` showed original `row_4`; tapping the missing-data gap at `(0,0)` cleared the probe. See the [exact-build TP03 record](mobile-android-tp03-probes-2026-11-01.json) for all displayed values and screenshots. The separate file/CSV transfer path remains TP08 work. |
+| Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, the final process of the function-error APK had 285, the analysis-error APK process had 460, and the latest slider-scroll APK process had 513 lines for TP13 and 1499 lines after TP03, with no such match in these scoped captures. The reported hang was not accompanied by a matching log entry. |
 
 The initial landscape failure is resolved for this Samsung phone at normal and
 1.3 font scale. Circular flow still reports `Approximate/incomplete display`
@@ -105,7 +106,7 @@ with unperformed steps pending.
 
 Build, signature, most screenshots, ten raw readings and scoped logcat are under
 `output/mobile-android-followup-20261031/` and are not committed. The keyboard
-before/after screenshots, Graph-open retry readings, and TP01/TP04/TP05/TP13
+before/after screenshots, Graph-open retry readings, and TP01/TP03/TP04/TP05/TP13
 screenshots and results are checked in beside this report.
 The structured Samsung results are also copied to
 [mobile-android-followup-2026-10-31.results.json](mobile-android-followup-2026-10-31.results.json)
@@ -116,7 +117,7 @@ beside this report.
 The [mobile roadmap](../mobile-roadmap.md), [canonical Graph roadmap](../math3d-graph2d-desktop-mobile-roadmap.md)
 and [1.6.0 test pack](../test-packs/1.6.0/README.md) define the wider scope.
 The comprehensive Samsung record has **TP10 and TP15 passed, 13 cases pending**;
-the separate exact-build supplements have **TP01, TP04, TP05 and TP13 passed**. Partial
+the separate exact-build supplements have **TP01, TP03, TP04, TP05 and TP13 passed**. Partial
 observations in a pending case are not a complete pass. The comprehensive
 record identifies APK SHA-256 `332a61f9…`, while later supplemental checks used
 `19893849…`, `a41c6e61…`, `ea8a6b49…`, `fc99d655…`, and the latest installed `8d2da190…`. Keep those

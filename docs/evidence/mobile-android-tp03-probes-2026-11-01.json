@@ -1,0 +1,30 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "8d2da1907804e9ecc0d26a6e9bcd3644f3771ea2492aedd0c2ab1e08223f8fa4",
+  "sourceEquivalentCommit": "ae59155565833ebed60483e0bacff3fb141dbab3",
+  "testedAtDate": "2026-11-01",
+  "cases": [
+    {
+      "id": "TP03",
+      "status": "passed",
+      "observations": "Opened independent editable copies from the built-in Graph Gallery, using the same definitions as the test pack examples. On Two slopes, repeated taps at the crossing cycled from Unit slope: x=-0.997273, y=-0.997273 to Steeper line: x=-1.00083, y=-1.00166; an empty tap cleared the probe. On A rolling circle's trace, the Cycloid readout included x=3.18461, y=1.99977, parameter=3.16310. On A three-petal rose, the Rose readout included x=0.865045, y=0.501662, parameter=3.66712 (signed-radius branch). On Implicit conics, Circle read x=0.0217392, y=0.972222 and Hyperbola read x=1.00000, y=0.0483092. On Endpoints and missing data, a measured point read x=1.00000, y=0.500000, row_4; tapping the empty x=0,y=0 gap cleared the probe.",
+      "evidence": [
+        "mobile-android-tp03-explicit-first-2026-11-01.png",
+        "mobile-android-tp03-explicit-second-2026-11-01.png",
+        "mobile-android-tp03-cycloid-probe-2026-11-01.png",
+        "mobile-android-tp03-rose-probe-2026-11-01.png",
+        "mobile-android-tp03-conics-circle-2026-11-01.png",
+        "mobile-android-tp03-conics-hyperbola-2026-11-01.png",
+        "mobile-android-tp03-data-probe-2026-11-01.png",
+        "mobile-android-tp03-data-gap-2026-11-01.png"
+      ]
+    }
+  ],
+  "artifact": "output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-slider-scroll.apk",
+  "scopedLog": "The 1499-line scoped app-process log had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match.",
+  "scope": "TP03 probe behavior was exercised on Gallery copies with matching source definitions. The test-pack file and CSV transfer path remains pending under TP08. This does not certify the internal or release package."
+}
