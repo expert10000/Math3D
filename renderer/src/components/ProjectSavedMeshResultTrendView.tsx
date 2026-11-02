@@ -5,9 +5,11 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "../projects/projectSavedMeshResultTrend";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
+import { resolveSavedMeshTrendPoint, type SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 
-export function ProjectSavedMeshResultTrendView({ project, readResource, onClose }: {
+export function ProjectSavedMeshResultTrendView({ project, readResource, onClose, onOpenResult }: {
   project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
+  onOpenResult: (target: SavedMeshTrendTarget) => void;
 }) {
   const choices = useMemo(() => comparableSavedMeshResults(project), [project]);
   const [anchorId, setAnchorId] = useState(choices[0]?.resultId ?? "");
@@ -39,6 +41,12 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
       setMessage("Verified saved-result trend report downloaded.");
     } catch (error) { setMessage(`Trend export refused: ${(error as Error).message}`); }
   };
+  const openResult = () => {
+    try {
+      if (!study || !selected?.resultId) throw new TypeError("Select a verified recorded point.");
+      onOpenResult(resolveSavedMeshTrendPoint(project, study, selected.resultId, readResource));
+    } catch (error) { setMessage(`Saved result opening refused: ${(error as Error).message}`); }
+  };
   return createPortal(<div className="project-gallery-preview-backdrop" data-testid="project-mesh-result-trend" style={{ zIndex: 10000 }}>
     <div className="project-gallery-preview-sheet" role="dialog" aria-modal="true" aria-label="Saved Mesh analysis trend" style={{ width: "min(96vw,1100px)", maxWidth: 1100, maxHeight: "90vh", overflow: "auto", padding: 20 }}>
       <header style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><div><h2>Saved Mesh analysis trend</h2><p>One point per recorded result. Retained generations without results stay visible as gaps; no analysis or interpolation runs here.</p></div><button type="button" onClick={onClose}>Close</button></header>
@@ -69,6 +77,7 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
         </svg>}
         {selected && <section data-testid="project-mesh-trend-selection" aria-label="Selected stored result" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, overflowWrap: "anywhere", marginTop: 12 }}>
           <strong>r{selected.revision} · {selected.value} {selected.unit}</strong><p>Result {selected.resultId}<br />Result hash {selected.resultHash}<br />Mesh {study.sourceDocumentId} · source hash {selected.sourceHash}<br />{selected.generation} source</p>
+          <button type="button" data-testid="project-mesh-trend-open-result" onClick={openResult}>Open saved result</button>
         </section>}
         <h3>Exact saved generations</h3><div style={{ overflowX: "auto" }}><table style={{ width: "100%" }}><thead><tr><th>Revision</th><th>Stored value</th><th>Unit</th><th>Status</th><th>Result</th><th>Source hash</th></tr></thead><tbody>
           {study.rows.map(row => <tr key={`${row.revision}:${row.sourceHash}:${row.resultId ?? "none"}`} data-testid={`project-mesh-trend-row-${row.revision}`}>

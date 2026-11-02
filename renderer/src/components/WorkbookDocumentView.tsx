@@ -13,6 +13,7 @@ import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock } from "./WorkbookSavedMeshTrendBlock";
+import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 
 type Props = {
@@ -27,6 +28,7 @@ type Props = {
   onEditBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenNote: (noteId: string) => void;
   readComparisonResource?: ProjectResourceReader;
 };
@@ -39,7 +41,7 @@ const blockKinds: Record<WorkbookBlock["type"], string> = {
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
 export const WorkbookDocumentView: React.FC<Props> = ({
-  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote, readComparisonResource,
+  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote, readComparisonResource, onOpenSavedMeshResult,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
   return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12, minWidth: 0 }}>
@@ -86,7 +88,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.type === "visualize" && block.visualize?.comparison && <WorkbookComparisonBlock project={project}
             reference={block.visualize.comparison} readResource={readComparisonResource} />}
           {block.type === "visualize" && block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={project}
-            reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} />}
+            reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
           {block.type === "text" && <textarea aria-label={`${block.title || "Text"} content`} value={block.text ?? ""}
             onChange={(event) => onUpdateBlock(stage.id, block.id, { text: event.target.value })} readOnly={readOnly}
             rows={Math.max(3, Math.min(12, (block.text ?? "").split("\n").length + 1))}

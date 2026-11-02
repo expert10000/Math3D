@@ -80404,6 +80404,12 @@ case "mobius":
         }}
         onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
         onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+        onOpenSavedMeshResult={target => {
+          if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
+          setProjectMiddleContent(null);
+          setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
+          setProjectsOpen(true);
+        }}
         onOpenProjects={() => setProjectsOpen(true)} />}
       {projectMiddleContent?.kind === "project-detail" && activeProjectDocumentId && activeNotebookProjectRef.current && <ProjectDetailMiddleView
         project={activeNotebookProjectRef.current} selectedDocumentId={activeProjectDocumentId}
@@ -90434,6 +90440,11 @@ case "mobius":
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}
+                      onOpenSavedMeshResult={target => {
+                        if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
+                        setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
                       onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
                       onOpenNotebookDocument={(id, module) => {
                         if (navigateRestoredDocument(id, module)) return;

@@ -6,6 +6,7 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { createWorkbookComparisonReference } from "@math3d/workbook";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock, WorkbookSavedMeshTrendEditor } from "./WorkbookSavedMeshTrendBlock";
+import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
@@ -71,6 +72,7 @@ type WorkbookPanelProps = {
   getNotebookProject: () => NotebookProjectContext | null;
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenNote: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
@@ -517,6 +519,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   getNotebookProject,
   onOpenNotebookDocument,
   onOpenProjects,
+  onOpenSavedMeshResult,
   onOpenNote,
   onRemoveBlock,
   onMoveBlock,
@@ -1551,7 +1554,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         readComparisonResource={readComparisonResource}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onEditBlock={(stageId, blockId) => {
+        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
       <div style={{ marginBottom: 10 }}>
@@ -1915,7 +1918,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   readOnly={readOnly} onChange={savedMeshTrend => onUpdateBlock(activeStageId, block.id,
                     { visualize: { ...(block.visualize ?? { live: true }), savedMeshTrend } })} />
                 {block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={dependencyProject}
-                  reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} />}
+                  reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

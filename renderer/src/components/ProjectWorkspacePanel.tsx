@@ -1595,6 +1595,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           <h3>Results and artifacts</h3>
           <p className="project-workspace-section-hint">Inspect recorded analyses, provenance and captured resources.</p>
           {project && <ProjectResultsBrowser key={project.identity.id} project={project} inspection={dashboardDependencies} titles={documentTitles}
+            readResource={comparisonResource}
             regionResultStatuses={regionResultStatuses}
             onCreateScientificReport={busy || preview || managed ? undefined :
               createSubrectangleWorkbook} onExportScientificReport={exportSubrectangleReport}
@@ -1807,7 +1808,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           return ok;
         }} /></React.Suspense>}
       {meshResultComparisonOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh results…</p>}><ProjectSavedMeshResultComparisonView project={project} readResource={comparisonResource} onClose={() => setMeshResultComparisonOpen(false)} /></React.Suspense>}
-      {meshResultTrendOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh trend…</p>}><ProjectSavedMeshResultTrendView project={project} readResource={comparisonResource} onClose={() => setMeshResultTrendOpen(false)} /></React.Suspense>}
+      {meshResultTrendOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh trend…</p>}><ProjectSavedMeshResultTrendView project={project} readResource={comparisonResource} onClose={() => setMeshResultTrendOpen(false)}
+        onOpenResult={target => {
+          if (target.projectId !== project.identity.id) throw new TypeError("The Project changed. Reopen the saved trend.");
+          setMeshResultTrendOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(true);
+          setResultFocus(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
+          openDetailPage("results");
+        }} /></React.Suspense>}
     </ProjectGalleryFrame>}
   </div>;
 };

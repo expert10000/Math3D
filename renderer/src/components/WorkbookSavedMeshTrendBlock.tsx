@@ -5,6 +5,7 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import { savedMeshTrendMetricChoices } from "../projects/projectSavedMeshResultTrend";
 import { createWorkbookSavedMeshTrendReference, inspectWorkbookSavedMeshTrend } from "../projects/projectSavedMeshWorkbookTrend";
+import { resolveSavedMeshTrendPoint, type SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 
 export const WorkbookSavedMeshTrendEditor: React.FC<{
   project: Math3DProject | null; reference?: WorkbookSavedMeshTrendReference; readResource?: ProjectResourceReader;
@@ -38,8 +39,10 @@ export const WorkbookSavedMeshTrendEditor: React.FC<{
 
 /** Read-only embedded evidence; source bytes are reverified whenever the view opens. */
 export const WorkbookSavedMeshTrendBlock: React.FC<{ project: Math3DProject | null;
-  reference: WorkbookSavedMeshTrendReference; readResource?: ProjectResourceReader }> = ({ project, reference, readResource }) => {
+  reference: WorkbookSavedMeshTrendReference; readResource?: ProjectResourceReader;
+  onOpenResult?: (target: SavedMeshTrendTarget) => void }> = ({ project, reference, readResource, onOpenResult }) => {
   const [open, setOpen] = useState(false), [selectedId, setSelectedId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
   let inspected: ReturnType<typeof inspectWorkbookSavedMeshTrend>;
   try { inspected = open ? inspectWorkbookSavedMeshTrend(project, reference, readResource) :
     { status: inspectWorkbookSavedMeshTrendReference(project, reference), study: null, reason: "Open to verify exact source bytes." }; }
@@ -69,7 +72,14 @@ export const WorkbookSavedMeshTrendBlock: React.FC<{ project: Math3DProject | nu
             <text x={xAt(row.revision)} y="194" fontSize="11" textAnchor="middle" pointerEvents="none">r{row.revision}</text>
           </g>)}
         </svg>
-        {selected && <div data-testid="workbook-mesh-trend-selection" style={{ overflowWrap: "anywhere" }}>r{selected.revision} · {selected.value} {selected.unit}<br />Result {selected.resultId} · {selected.resultHash}<br />Source {selected.sourceHash}</div>}
+        {selected && <div data-testid="workbook-mesh-trend-selection" style={{ overflowWrap: "anywhere" }}>r{selected.revision} · {selected.value} {selected.unit}<br />Result {selected.resultId} · {selected.resultHash}<br />Source {selected.sourceHash}<br />
+          <button type="button" data-testid="workbook-mesh-trend-open-result" disabled={!onOpenResult} onClick={() => {
+            try {
+              if (!project || !readResource || !study || !selected.resultId) throw new TypeError("The saved Project or selected result is unavailable.");
+              onOpenResult?.(resolveSavedMeshTrendPoint(project, study, selected.resultId, readResource));
+            } catch (error) { setMessage(`Saved result opening refused: ${(error as Error).message}`); }
+          }}>Open saved result</button></div>}
+        {message && <p role="alert">{message}</p>}
         <table><thead><tr><th>Revision</th><th>Recorded value</th><th>Status</th><th>Result</th></tr></thead><tbody>{study.rows.map(row =>
           <tr key={`${row.revision}:${row.resultId ?? "gap"}`}><td>r{row.revision}</td><td>{row.status === "available" ? `${row.value} ${row.unit}` : "—"}</td><td>{row.status}{row.reason ? ` · ${row.reason}` : ""}</td><td>{row.resultId ?? "No saved result"}</td></tr>)}</tbody></table>
       </div>}
