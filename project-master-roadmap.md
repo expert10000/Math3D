@@ -14,6 +14,8 @@ PC14 shows compatible saved metrics across retained Mesh generations, including
 explicit unavailable gaps for missing or changed source evidence.
 PC15 retains an exact PC14 trend reference in Workbook Visualize blocks and
 re-verifies its stored results and source bytes on open and export.
+PC16 opens an exact verified trend point in the saved Project result inspector
+and previews its checked Mesh generation, including retained revisions.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -1386,6 +1388,7 @@ budgets must be explicit before members can be combined.
 | PC13 | `feat(projects): compare immutable saved Mesh analysis results` | Compare only stored quality or curvature envelopes with checked source generations and sidecars; qualify scalar differences by operation, algorithm version and units. |
 | PC14 | `feat(projects): show saved Mesh analysis trends` | Plot only compatible, verified saved Mesh metrics across retained generations; mark missing or tampered evidence unavailable without recalculation or interpolation. |
 | PC15 | `feat(workbook): retain saved Mesh analysis trends` | Link exact saved Mesh result sets into Visualize blocks; verify Project resources on open and export, preserving recorded gaps without recalculation. |
+| PC16 | `feat(projects): open exact saved Mesh trend results` | Reverify a selected Projects or Workbook trend point, inspect its saved result and show its exact retained Mesh generation when available. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1432,6 +1435,11 @@ their existing legacy-source and unretained-history limits.
 PC15 is complete for linked saved Mesh trends in Workbook Visualize blocks.
 Links retain exact result and source hashes, and report/export paths refuse
 missing or changed evidence. PC03 and PC05 remain **Partial**.
+PC16 is complete for verified saved Mesh trend points. Projects and Workbook
+open the exact result in the Project inspector; a separate read-only viewer
+shows its verified current or retained Mesh generation. Missing or changed
+source bytes are stated in the inspector, without substituting the current
+revision. PC03 and PC05 remain **Partial**.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

@@ -36,6 +36,11 @@ test("PC15 links an exact saved Mesh trend in Workbook and releases its viewer",
     await expect(preview.locator("g[role=button]")).toHaveCount(2);
     await link.getByTestId(`workbook-mesh-trend-point-${results[1].resultId}`).locator("circle").click();
     await expect(link.getByTestId("workbook-mesh-trend-selection")).toContainText(results[1].provenance.source.structuralHash);
+    await link.getByTestId("workbook-mesh-trend-open-result").click();
+    await expect(controls.panel.getByTestId("project-result-detail")).toContainText(results[1].resultId);
+    await expect(controls.panel.getByTestId("project-saved-mesh-evidence")).toContainText(results[1].provenance.source.structuralHash);
+    await controls.hide();
+    await expect(preview).toBeVisible();
     await link.getByText("Show embedded trend").click();
     await expect(preview).toHaveCount(0);
     await page.reload();

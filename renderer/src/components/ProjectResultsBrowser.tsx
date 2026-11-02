@@ -101,6 +101,10 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
     ? selection : results[0] ? { kind: "result" as const, id: results[0].resultId } : artifacts[0] ? { kind: "artifact" as const, id: artifacts[0].handle.artifactId } : null;
   const result = active?.kind === "result" ? results.find(item => item.resultId === active.id) : undefined;
   const meshResult = result?.provenance.operation.type.startsWith("mesh.saved.") ? result : undefined;
+  const meshCurrent = meshResult && project.workspace.entries.find(item => item.module === "mesh" &&
+    item.expected.id === meshResult.provenance.source.documentId)?.expected;
+  const meshSourceIsHistorical = !!meshResult && (!meshCurrent || meshCurrent.revision !== meshResult.provenance.source.revision ||
+    meshCurrent.structuralHash !== meshResult.provenance.source.structuralHash);
   const meshVerification = useMemo(() => {
     if (!meshResult || !readResource) return null;
     try { return { checked: verifySavedMeshResult(project, meshResult.resultId, readResource), error: null }; }
@@ -184,8 +188,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               onClick={() => onCreateScientificReport?.(result.resultId)}>
               Create verified equilibrium Workbook report</button>
           </div>}
-          <dl><div><dt>Source document</dt><dd>{meshResult && meshVerification?.checked?.generation === "retained" ?
-            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · retained revision; use the exact generation view above</span> : sourceButton(result.provenance.source.documentId)}</dd></div>
+          <dl><div><dt>Source document</dt><dd>{meshSourceIsHistorical ?
+            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · historical revision; use the exact generation view above when available</span> : sourceButton(result.provenance.source.documentId)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>
             <div><dt>Method</dt><dd>{result.provenance.operation.algorithm} · version {result.provenance.operation.algorithmVersion}</dd></div>

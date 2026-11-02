@@ -83,10 +83,10 @@ describe("PC16 exact saved trend points", () => {
     const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
     const study = buildSavedMeshResultTrend(project, first.resultId, "faceCount", read);
     expect(() => resolveSavedMeshTrendPoint(project, study, middle.resultId, () => null)).toThrow();
-    const changed = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace,
+    const changed = { ...project, workspace: createMixedWorkspaceDocument({ ...project.workspace,
       results: project.workspace.results.map(item => item.resultId === middle.resultId ?
-        { ...item, summary: { ...item.summary, faceCount: 999 } } : item) }), { stableKey: "pc16-changed" });
-    expect(() => resolveSavedMeshTrendPoint(changed, study, middle.resultId, read)).toThrow();
+        { ...item, summary: { ...item.summary, faceCount: 999 } } : item) }) };
+    expect(() => resolveSavedMeshTrendPoint(changed, study, middle.resultId, read)).toThrow(/changed/);
     expect(() => resolveSavedMeshTrendPoint(project, { ...study, rows: study.rows.slice(1) }, middle.resultId, read)).toThrow(/changed/);
     expect(() => resolveSavedMeshTrendPoint(project, study, "missing", read)).toThrow(/no verified/);
   });

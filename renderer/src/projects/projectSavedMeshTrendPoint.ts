@@ -17,6 +17,7 @@ export function resolveSavedMeshTrendPoint(project: Math3DProject, study: SavedM
   const fresh = buildSavedMeshResultTrend(project, resultId, study.metricPath, read);
   if (structuralHash(fresh) !== structuralHash(study)) throw new TypeError("The saved trend changed. Reopen it before selecting a result.");
   const checked = verifySavedMeshResult(project, resultId, read);
+  if (row.generation === "unretained") throw new TypeError("This Mesh generation was never retained.");
   if (checked.resultHash !== row.resultHash || checked.source.identity.id !== study.sourceDocumentId ||
     checked.source.identity.revision !== row.revision || checked.source.identity.structuralHash !== row.sourceHash ||
     checked.generation !== row.generation) throw new TypeError("The saved result or exact Mesh source changed.");
