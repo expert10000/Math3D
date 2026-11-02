@@ -10,6 +10,32 @@ currently use Docker. The Docker polynomial roots endpoint works over the ration
 choose Local WSL for algebraic root certificates. Switching backends does not start or
 install either runtime automatically.
 
+## Local WSL setup on Windows
+
+Install Ubuntu with WSL, then install a SageMath Conda environment inside Ubuntu.
+The desktop worker probes `/usr/bin/sage`, `/usr/local/bin/sage`, and a named
+`sage` environment under Miniforge, Mambaforge, or Miniconda in the default
+Linux user's home directory. It runs Sage only for an explicit computation.
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Inside Ubuntu, install Miniforge and create the environment:
+
+Use the [Miniforge installer](https://github.com/conda-forge/miniforge#install)
+and the [SageMath installation guide](https://doc.sagemath.org/html/en/installation/index.html)
+for the current installer steps. Then run:
+
+```bash
+conda create -n sage -c conda-forge sage python=3.12
+~/miniforge3/envs/sage/bin/sage --version
+```
+
+If the distribution is named differently, set `MATH3D_WSL_DISTRO` before
+starting Math3D. A cold WSL startup can take up to a minute; the app reports
+missing Sage or WSL startup failures through its local health check.
+
 ## Start
 
 ```powershell

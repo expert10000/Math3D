@@ -25,7 +25,7 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await services.getByRole("button", { name: "Gradient", exact: true }).click();
     await expect(services.getByLabel("Expression")).toHaveValue(/x.*y.*z/);
     await services.getByRole("button", { name: "Run", exact: true }).click();
-    await expect(analysis).toContainText("Symbolic result · Gradient", { timeout: 60_000 });
+    await expect(analysis).toContainText("Symbolic result · Gradient", { timeout: 120_000 });
     await expect(analysis).toContainText("Exact · SageMath (Local WSL)");
     await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
     await analysis.getByRole("button", { name: "Visualize vector field" }).click();

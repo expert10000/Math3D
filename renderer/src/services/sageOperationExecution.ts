@@ -206,7 +206,7 @@ export class SageExecutionRegistry {
     const job = createScientificJobRequest({
       jobId, source,
       operation: { type: definition.type, payload: payload as CanonicalJsonValue },
-      limits: { deadlineAt: Date.now() + 40_000, ...SAGE_LIMITS },
+      limits: { deadlineAt: Date.now() + (request.backend === "local" ? 120_000 : 40_000), ...SAGE_LIMITS },
     });
     this.#activeJobs.add(jobId);
     this.#sources.set(source.documentId, source);
