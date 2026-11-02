@@ -36,6 +36,16 @@ test("PC15 links an exact saved Mesh trend in Workbook and releases its viewer",
     await expect(preview.locator("g[role=button]")).toHaveCount(2);
     await link.getByTestId(`workbook-mesh-trend-point-${results[1].resultId}`).locator("circle").click();
     await expect(link.getByTestId("workbook-mesh-trend-selection")).toContainText(results[1].provenance.source.structuralHash);
+    await link.getByTestId("workbook-mesh-trend-pin-a").click();
+    await link.getByTestId(`workbook-mesh-trend-point-${results[0].resultId}`).locator("circle").click();
+    await link.getByTestId("workbook-mesh-trend-pin-b").click();
+    await link.getByTestId("workbook-mesh-trend-compare").click();
+    const comparison = page.getByTestId("project-mesh-result-comparison");
+    await expect(comparison.getByTestId("project-mesh-result-0")).toHaveValue(results[1].resultId);
+    await expect(comparison.getByTestId("project-mesh-result-1")).toHaveValue(results[0].resultId);
+    await comparison.getByTestId("project-mesh-result-return").click();
+    await expect(comparison).toHaveCount(0);
+    await link.getByTestId(`workbook-mesh-trend-point-${results[1].resultId}`).locator("circle").click();
     await link.getByTestId("workbook-mesh-trend-open-result").click();
     await expect(controls.panel.getByTestId("project-result-detail")).toContainText(results[1].resultId);
     await expect(controls.panel.getByTestId("project-saved-mesh-evidence")).toContainText(results[1].provenance.source.structuralHash);
@@ -51,5 +61,12 @@ test("PC15 links an exact saved Mesh trend in Workbook and releases its viewer",
     await expect(page.getByTestId("workbook-mesh-trend-link").first()).toContainText("Saved Mesh trend");
     await page.getByTestId("workbook-mesh-trend-link").first().getByText("Show embedded trend").click();
     await expect(page.getByTestId("workbook-mesh-trend-preview").first().locator("g[role=button]")).toHaveCount(2);
+    const reopened = page.getByTestId("workbook-mesh-trend-link").first();
+    await reopened.getByTestId("workbook-mesh-trend-pin-a").click();
+    await reopened.getByTestId(`workbook-mesh-trend-point-${results[1].resultId}`).locator("circle").click();
+    await reopened.getByTestId("workbook-mesh-trend-pin-b").click();
+    await reopened.getByTestId("workbook-mesh-trend-compare").click();
+    await expect(page.getByTestId("project-mesh-result-comparison").getByTestId("project-mesh-result-1")).toHaveValue(results[1].resultId);
+    await page.getByTestId("project-mesh-result-return").click();
   } finally { await closeSurfaceApp(ctx); }
 });

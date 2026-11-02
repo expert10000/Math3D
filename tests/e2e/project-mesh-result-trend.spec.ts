@@ -35,6 +35,20 @@ test("PC14 shows exact saved Mesh points, exports, and reopens after restart", a
     await view.getByTestId(`project-mesh-trend-point-${middle.resultId}`).locator("circle").click();
     await expect(view.getByTestId("project-mesh-trend-selection")).toContainText(middle.resultId);
     await expect(view.getByTestId("project-mesh-trend-selection")).toContainText(middle.provenance.source.structuralHash);
+    await view.getByTestId("project-mesh-trend-pin-a").click();
+    await view.getByTestId(`project-mesh-trend-point-${results[2].resultId}`).locator("circle").click();
+    await view.getByTestId("project-mesh-trend-pin-b").click();
+    await expect(view.getByTestId("project-mesh-trend-pin-status")).toContainText(middle.resultId);
+    await expect(view.getByTestId("project-mesh-trend-pin-status")).toContainText(results[2].resultId);
+    await view.getByTestId("project-mesh-trend-compare").click();
+    const comparison = page.getByTestId("project-mesh-result-comparison");
+    await expect(comparison.getByTestId("project-mesh-result-0")).toHaveValue(middle.resultId);
+    await expect(comparison.getByTestId("project-mesh-result-1")).toHaveValue(results[2].resultId);
+    await expect(comparison.getByTestId("project-mesh-result-status")).toContainText("compatible");
+    await comparison.getByTestId("project-mesh-result-return").click();
+    await expect(comparison).toHaveCount(0);
+    await expect(view.getByTestId("project-mesh-trend-pin-status")).toContainText(middle.resultId);
+    await view.getByTestId(`project-mesh-trend-point-${middle.resultId}`).locator("circle").click();
     await view.getByTestId("project-mesh-trend-open-result").click();
     await expect(view).toHaveCount(0);
     const inspector = controls.panel.getByTestId("project-result-detail");
@@ -64,7 +78,12 @@ test("PC14 shows exact saved Mesh points, exports, and reopens after restart", a
     await view.getByTestId("project-mesh-trend-metric").selectOption("faceCount");
     await expect(view.getByTestId("project-mesh-trend-status")).toContainText("3 verified recorded points");
     await expect(view.getByTestId("project-mesh-trend-plot").locator("g[role=button]")).toHaveCount(3);
+    await view.getByTestId("project-mesh-trend-pin-a").click();
     await view.getByTestId(`project-mesh-trend-point-${results[2].resultId}`).locator("circle").click();
+    await view.getByTestId("project-mesh-trend-pin-b").click();
+    await view.getByTestId("project-mesh-trend-compare").click();
+    await expect(page.getByTestId("project-mesh-result-comparison").getByTestId("project-mesh-result-1")).toHaveValue(results[2].resultId);
+    await page.getByTestId("project-mesh-result-return").click();
     await view.getByTestId("project-mesh-trend-open-result").click();
     await expect(controls.panel.getByTestId("project-result-detail")).toContainText(results[2].resultId);
   } finally { await closeSurfaceApp(ctx); }
