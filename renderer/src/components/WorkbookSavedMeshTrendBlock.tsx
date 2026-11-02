@@ -6,6 +6,10 @@ import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultCo
 import { savedMeshTrendMetricChoices } from "../projects/projectSavedMeshResultTrend";
 import { createWorkbookSavedMeshTrendReference, inspectWorkbookSavedMeshTrend } from "../projects/projectSavedMeshWorkbookTrend";
 import { resolveSavedMeshTrendPoint, type SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
+import type { SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
+import { MeshTrendPinControls } from "./MeshTrendPinControls";
+
+const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
 
 export const WorkbookSavedMeshTrendEditor: React.FC<{
   project: Math3DProject | null; reference?: WorkbookSavedMeshTrendReference; readResource?: ProjectResourceReader;
@@ -43,6 +47,7 @@ export const WorkbookSavedMeshTrendBlock: React.FC<{ project: Math3DProject | nu
   onOpenResult?: (target: SavedMeshTrendTarget) => void }> = ({ project, reference, readResource, onOpenResult }) => {
   const [open, setOpen] = useState(false), [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [comparison, setComparison] = useState<SavedMeshTrendComparison | null>(null);
   let inspected: ReturnType<typeof inspectWorkbookSavedMeshTrend>;
   try { inspected = open ? inspectWorkbookSavedMeshTrend(project, reference, readResource) :
     { status: inspectWorkbookSavedMeshTrendReference(project, reference), study: null, reason: "Open to verify exact source bytes." }; }
@@ -80,9 +85,16 @@ export const WorkbookSavedMeshTrendBlock: React.FC<{ project: Math3DProject | nu
             } catch (error) { setMessage(`Saved result opening refused: ${(error as Error).message}`); }
           }}>Open saved result</button></div>}
         {message && <p role="alert">{message}</p>}
+        {project && readResource && <MeshTrendPinControls project={project} study={study}
+          selectedResultId={selected?.resultId ?? null} readResource={readResource}
+          onCompare={setComparison} prefix="workbook-mesh-trend" />}
         <table><thead><tr><th>Revision</th><th>Recorded value</th><th>Status</th><th>Result</th></tr></thead><tbody>{study.rows.map(row =>
           <tr key={`${row.revision}:${row.resultId ?? "gap"}`}><td>r{row.revision}</td><td>{row.status === "available" ? `${row.value} ${row.unit}` : "—"}</td><td>{row.status}{row.reason ? ` · ${row.reason}` : ""}</td><td>{row.resultId ?? "No saved result"}</td></tr>)}</tbody></table>
       </div>}
     </details>}
+    {comparison && project && readResource && <React.Suspense fallback={<p role="status">Opening saved Mesh comparison…</p>}>
+      <ProjectSavedMeshResultComparisonView project={project} readResource={readResource}
+        trendSelection={comparison} onReturnToTrend={() => setComparison(null)} onClose={() => setComparison(null)} />
+    </React.Suspense>}
   </section>;
 };

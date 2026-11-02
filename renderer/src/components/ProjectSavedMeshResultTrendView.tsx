@@ -5,11 +5,14 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "../projects/projectSavedMeshResultTrend";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
-import { resolveSavedMeshTrendPoint, type SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
+import { resolveSavedMeshTrendPoint, type SavedMeshTrendComparison, type SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
+import { MeshTrendPinControls } from "./MeshTrendPinControls";
 
-export function ProjectSavedMeshResultTrendView({ project, readResource, onClose, onOpenResult }: {
+export function ProjectSavedMeshResultTrendView({ project, readResource, onClose, onOpenResult, onCompare, comparisonOpen = false }: {
   project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
   onOpenResult: (target: SavedMeshTrendTarget) => void;
+  onCompare: (selection: SavedMeshTrendComparison) => void;
+  comparisonOpen?: boolean;
 }) {
   const choices = useMemo(() => comparableSavedMeshResults(project), [project]);
   const [anchorId, setAnchorId] = useState(choices[0]?.resultId ?? "");
@@ -19,8 +22,8 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
     paths.includes("metrics.aspectRatio.avg") ? "metrics.aspectRatio.avg" : paths.includes("faceCount") ? "faceCount" : paths[0] ?? "";
   const [selectedId, setSelectedId] = useState<string | null>(null), [message, setMessage] = useState("");
   useEffect(() => { setAnchorId(choices[0]?.resultId ?? ""); setMetricPath(""); setSelectedId(null); setMessage(""); }, [project.identity.id, choices]);
-  useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key); }, [onClose]);
+  useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === "Escape" && !comparisonOpen) onClose(); };
+    document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key); }, [onClose, comparisonOpen]);
   const resolved = useMemo(() => {
     if (!anchorId || !activeMetric) return { study: null, error: "Choose a saved result and recorded metric." };
     try { return { study: buildSavedMeshResultTrend(project, anchorId, activeMetric, readResource), error: "" }; }
@@ -79,6 +82,8 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
           <strong>r{selected.revision} · {selected.value} {selected.unit}</strong><p>Result {selected.resultId}<br />Result hash {selected.resultHash}<br />Mesh {study.sourceDocumentId} · source hash {selected.sourceHash}<br />{selected.generation} source</p>
           <button type="button" data-testid="project-mesh-trend-open-result" onClick={openResult}>Open saved result</button>
         </section>}
+        <MeshTrendPinControls project={project} study={study} selectedResultId={selected?.resultId ?? null}
+          readResource={readResource} onCompare={onCompare} prefix="project-mesh-trend" />
         <h3>Exact saved generations</h3><div style={{ overflowX: "auto" }}><table style={{ width: "100%" }}><thead><tr><th>Revision</th><th>Stored value</th><th>Unit</th><th>Status</th><th>Result</th><th>Source hash</th></tr></thead><tbody>
           {study.rows.map(row => <tr key={`${row.revision}:${row.sourceHash}:${row.resultId ?? "none"}`} data-testid={`project-mesh-trend-row-${row.revision}`}>
             <th>r{row.revision} · {row.generation}</th><td>{row.status === "available" ? row.value : "—"}</td><td>{row.unit ?? "—"}</td><td>{row.status}{row.reason ? ` · ${row.reason}` : ""}</td><td>{row.resultId ?? "No saved result"}{row.resultHash && <><br />{row.resultHash}</>}</td><td style={{ overflowWrap: "anywhere" }}>{row.sourceHash}</td>
