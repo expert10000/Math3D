@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Math3DProject } from "@math3d/core";
 import type { NotebookReference } from "@math3d/workbook";
 import { scientificSubrectangleDifferences, scientificSubrectangleReportMarkdown,
@@ -9,6 +9,9 @@ import { scientificSubrectangleChartSvg,
   type ScientificSubrectangleChart } from
   "../projects/scientificSubrectangleChart";
 import { renderNotebookMarkdown } from "../workbook/notebookContent";
+import { createScientificSubrectangleAuditExport,
+  downloadScientificSubrectangleAuditExport } from
+  "../projects/scientificSubrectangleAuditExport";
 
 export const ScientificSubrectangleWorkbookReport: React.FC<{
   project: Math3DProject | null; reference: NotebookReference | undefined;
@@ -19,12 +22,14 @@ export const ScientificSubrectangleWorkbookReport: React.FC<{
   const [message, setMessage] = useState("Checking verified sources…");
   const [busy, setBusy] = useState(false);
   const [differences, setDifferences] = useState("");
+  const verificationEpoch = useRef(0);
   const reportHtml = useMemo(() => report ? renderNotebookMarkdown(report) : "", [report]);
   const chartSvg = useMemo(() => chart ? scientificSubrectangleChartSvg(chart) : "", [chart]);
   const differencesHtml = useMemo(() => differences ?
     renderNotebookMarkdown(differences) : "", [differences]);
   useEffect(() => {
     let active = true;
+    ++verificationEpoch.current;
     setReport("");
     setChart(null);
     setDifferences("");
@@ -94,6 +99,24 @@ export const ScientificSubrectangleWorkbookReport: React.FC<{
     } catch (error) { setMessage((error as Error).message); }
     finally { setBusy(false); }
   };
+  const exportJson = async () => {
+    if (!project || !reference || busy) return;
+    const epoch = verificationEpoch.current;
+    setBusy(true); setReport(""); setChart(null); setDifferences("");
+    setMessage("Rechecking sources and profile rows before JSON export…");
+    try {
+      const audit = await createScientificSubrectangleAuditExport(project, reference);
+      if (epoch !== verificationEpoch.current) return;
+      downloadScientificSubrectangleAuditExport(audit);
+      setMessage(audit.verification.status === "verified" ?
+        "All fields verified; JSON audit exported." :
+        audit.verification.status === "partial" ?
+          "JSON audit exported with changed fields' values withheld." :
+          "Verification failed; failure-only JSON audit exported.");
+    } catch (error) { if (epoch === verificationEpoch.current)
+      setMessage(`JSON export failed: ${(error as Error).message}`); }
+    finally { if (epoch === verificationEpoch.current) setBusy(false); }
+  };
   const rerun = () => {
     if (!project || !reference || !workbookId || busy) return;
     const requestId = crypto.randomUUID();
@@ -128,6 +151,9 @@ export const ScientificSubrectangleWorkbookReport: React.FC<{
     <button type="button" data-testid="scientific-subrectangle-export-chart"
       disabled={!project || !reference || busy}
       onClick={() => { void exportChart(); }}>Verify and export chart (SVG)</button>
+    <button type="button" data-testid="scientific-subrectangle-export-json"
+      disabled={!project || !reference || busy}
+      onClick={() => { void exportJson(); }}>Verify and export JSON audit</button>
     {workbookId &&
       <button type="button" data-testid="scientific-subrectangle-rerun"
         disabled={!project || !reference || busy} onClick={rerun}>Rerun from verified sources</button>}
