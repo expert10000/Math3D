@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createMath3DProject, createMixedWorkspaceDocument, structuralHash } from "@math3d/core";
-import { createDefaultWorkbook, normalizeWorkbookSavedMeshTrendReference } from "@math3d/workbook";
+import { createDefaultWorkbook, inspectWorkbookSavedMeshTrendReference, normalizeWorkbookSavedMeshTrendReference } from "@math3d/workbook";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
 import { createWorkbookSavedMeshTrendReference, inspectWorkbookSavedMeshTrend } from "./projectSavedMeshWorkbookTrend";
+import { createPortableNotebookPublication, inspectPortableNotebookPublication, notebookPublicationManifest,
+  notebookPublicationManifestHtml, notebookPublicationMarkdown } from "../workbook/notebookPublication";
 
 const fixture = () => {
   const adapter = MeshDocumentAdapter.fromMesh({ label: "Trend", source: { kind: "import" as const, format: "obj" as const,
@@ -29,6 +31,7 @@ describe("PC15 Workbook saved Mesh trend reference", () => {
   it("stores exact result/source hashes and survives a portable Project and Workbook restart", () => {
     const { project, resources, first, second } = fixture();
     const ref = createWorkbookSavedMeshTrendReference(project, first.resultId, "faceCount", item => resources.bytes(item));
+    expect(inspectWorkbookSavedMeshTrendReference(project, ref)).toBe("current");
     expect(ref.results.map(item => item.resultId)).toEqual([first.resultId, second.resultId]);
     expect(ref.results.map(item => item.sourceHash)).toEqual([first, second].map(item => item.provenance.source.structuralHash));
     let n = 0; const workbook = createDefaultWorkbook(() => `pc15-${++n}`);
@@ -50,8 +53,26 @@ describe("PC15 Workbook saved Mesh trend reference", () => {
     expect(inspectWorkbookSavedMeshTrend(project, ref, () => null).status).toBe("missing");
     expect(inspectWorkbookSavedMeshTrend(project, { ...ref, results: [{ ...ref.results[0]!, resultHash: structuralHash("changed") }, ...ref.results.slice(1)] }, read).status).toBe("stale");
     const changed = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace, results: [first] }), { stableKey: "pc15" });
+    expect(inspectWorkbookSavedMeshTrendReference(changed, ref)).toBe("missing");
     expect(inspectWorkbookSavedMeshTrend(changed, ref, read).status).toBe("stale");
     expect(inspectWorkbookSavedMeshTrend(project, ref, item => { const bytes = read(item); if (!bytes) return null;
       const copy = bytes.slice(); copy[0] ^= 1; return copy; }).status).toBe("missing");
+  });
+  it("exports checked Workbook evidence and re-verifies a portable publication", () => {
+    const { project, resources, first, second } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const ref = createWorkbookSavedMeshTrendReference(project, first.resultId, "faceCount", read);
+    let n = 0; const workbook = createDefaultWorkbook(() => `pc15-export-${++n}`);
+    workbook.stages[2]!.blocks[0]!.visualize = { live: false, savedMeshTrend: ref };
+    const manifest = notebookPublicationManifest([workbook], project, undefined, undefined, read);
+    expect(manifest.blocks.some(block => block.savedMeshTrend?.rows.length === 2)).toBe(true);
+    const html = notebookPublicationManifestHtml(manifest), markdown = notebookPublicationMarkdown(manifest);
+    expect(html).toContain("data-saved-mesh-trend");
+    for (const result of [first, second]) { expect(html).toContain(result.resultId); expect(markdown).toContain(result.provenance.source.structuralHash); }
+    const portable = createPortableNotebookPublication(project, [workbook], resources, undefined, read);
+    expect(inspectPortableNotebookPublication(portable).project.identity.id).toBe(project.identity.id);
+    expect(() => notebookPublicationManifest([workbook], project, undefined, undefined, () => null)).toThrow(/trend/);
+    const changed = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace, results: [first] }), { stableKey: "pc15" });
+    expect(() => notebookPublicationManifest([workbook], changed, undefined, undefined, read)).toThrow(/trend/);
   });
 });

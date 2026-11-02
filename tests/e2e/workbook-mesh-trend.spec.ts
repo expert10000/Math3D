@@ -1,0 +1,50 @@
+import { expect, test } from "@playwright/test";
+import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { freezeControls, projectFreezeFixture } from "./helpers/projectFreeze";
+
+test("PC15 links an exact saved Mesh trend in Workbook and releases its viewer", async () => {
+  test.setTimeout(240_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const fixture = projectFreezeFixture();
+    const meshId = fixture.project.workspace.entries.find((item: any) => item.module === "mesh" && item.expected.id !== fixture.targets.mesh)?.expected.id as string;
+    if (!meshId) throw new Error("A saved Mesh fixture is required.");
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, controls = freezeControls(page);
+    await controls.importOpen(fixture.raw); await controls.open(meshId);
+    await page.getByTestId("project-mesh-study-view").click();
+    await page.getByTestId("project-saved-mesh-quality").click();
+    await page.getByTestId("project-mesh-retain-subdivide").click();
+    await page.getByTestId("project-mesh-study-view").click();
+    await page.getByTestId("project-saved-mesh-quality").click();
+    const saved = await controls.save();
+    const results = saved.workspace.results.filter((item: any) => item.provenance.operation.type === "mesh.saved.quality" && item.provenance.source.documentId === meshId);
+    expect(results).toHaveLength(2);
+    await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
+    const back = page.getByTestId("project-source-back-to-module");
+    if (await back.isVisible()) await back.click();
+    await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+    await page.getByRole("button", { name: /^3 Visualize$/ }).click();
+    await page.getByTestId("workbook-mesh-trend-anchor").first().selectOption(results[0].resultId);
+    await page.getByTestId("workbook-mesh-trend-metric").first().selectOption("faceCount");
+    await page.getByTestId("workbook-mesh-trend-attach").first().click();
+    const link = page.getByTestId("workbook-mesh-trend-link").first();
+    await expect(link).toContainText("Saved Mesh trend");
+    await link.getByText("Show embedded trend").click();
+    const preview = link.getByTestId("workbook-mesh-trend-preview");
+    await expect(preview).toBeVisible();
+    await expect(preview.locator("g[role=button]")).toHaveCount(2);
+    await link.getByTestId(`workbook-mesh-trend-point-${results[1].resultId}`).locator("circle").click();
+    await expect(link.getByTestId("workbook-mesh-trend-selection")).toContainText(results[1].provenance.source.structuralHash);
+    await link.getByText("Show embedded trend").click();
+    await expect(preview).toHaveCount(0);
+    await page.reload();
+    await controls.reopen(saved.identity.id);
+    await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
+    await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+    await page.getByRole("button", { name: /^3 Visualize$/ }).click();
+    await expect(page.getByTestId("workbook-mesh-trend-link").first()).toContainText("Saved Mesh trend");
+    await page.getByTestId("workbook-mesh-trend-link").first().getByText("Show embedded trend").click();
+    await expect(page.getByTestId("workbook-mesh-trend-preview").first().locator("g[role=button]")).toHaveCount(2);
+  } finally { await closeSurfaceApp(ctx); }
+});

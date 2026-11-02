@@ -28,7 +28,7 @@ export const WorkbookSavedMeshTrendEditor: React.FC<{
       {!paths.length && <option value="">No recorded scalar</option>}
       {paths.map(path => <option key={path} value={path}>{path}</option>)}
     </select></label>
-    <div style={{ display: "flex", gap: 8 }}><button type="button" data-testid="workbook-mesh-trend-link" disabled={readOnly || !project || !readResource || !selectedAnchor || !selectedMetric}
+    <div style={{ display: "flex", gap: 8 }}><button type="button" data-testid="workbook-mesh-trend-attach" disabled={readOnly || !project || !readResource || !selectedAnchor || !selectedMetric}
       onClick={() => { try { onChange(createWorkbookSavedMeshTrendReference(project!, selectedAnchor, selectedMetric, readResource!)); setMessage("Exact trend linked. Save the Workbook in Projects to retain it."); }
         catch (error) { setMessage(`Trend link refused: ${(error as Error).message}`); } }}>Link verified trend</button>
       {reference && <button type="button" disabled={readOnly} onClick={() => { onChange(undefined); setMessage("Trend link removed from this block."); }}>Remove link</button>}</div>
