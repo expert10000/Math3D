@@ -5,6 +5,7 @@ import type { Workbook, WorkbookBlock } from "./workbookModel";
 import { assessWorkbookClaim } from "./workbookClaims";
 import { inspectWorkbookComparisonReference } from "./workbookComparisonReference";
 import { inspectWorkbookSavedMeshTrendReference } from "./workbookSavedMeshTrendReference";
+import { workbookSageCodeRunStatus } from "./workbookSageCode";
 
 export type WorkbookFreshnessStatus = "current" | "stale" | "missing" | "failed";
 export type WorkbookBlockFreshness = Readonly<{
@@ -52,10 +53,15 @@ export function resolveWorkbookFreshness(
       ? inspectWorkbookComparisonReference(project, block.visualize.comparison) : null;
     const savedMeshTrend = block.type === "visualize" && block.visualize?.savedMeshTrend
       ? inspectWorkbookSavedMeshTrendReference(project, block.visualize.savedMeshTrend) : null;
+    const sageCodeStatus = block.type === "sage-code" ? workbookSageCodeRunStatus(workbook, block) : null;
     const base = block.enabled === false || intrinsicComputeStatus[id] === "disabled"
       ? { status: "missing" as const, reason: "Block is disabled.", path: [id], blockedBySource: false }
       : intrinsicComputeStatus[id] === "failed" || block.type === "assert" && !block.claim && block.assert?.status === "fail"
         ? { status: "failed" as const, reason: "Block failed.", path: [id], blockedBySource: false }
+      : sageCodeStatus === "failed"
+        ? { status: "failed" as const, reason: "Sage code execution failed.", path: [id], blockedBySource: false }
+      : sageCodeStatus === "stale" || sageCodeStatus === "pending"
+        ? { status: "stale" as const, reason: sageCodeStatus === "pending" ? "Sage code has not run." : "Sage code or dependency links changed after the saved run.", path: [id], blockedBySource: false }
         : reference && reference.status !== "current"
           ? { status: reference.status === "different-project" ? "missing" as const : reference.status,
             reason: reference.reason, path: [id], blockedBySource: true }

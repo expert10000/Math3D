@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { captureProjectResources, createEmptyGraph2DDocument, createGraph2DWorkspaceProject, createMath3DProject,
   createProjectNote, inspectProjectNoteAnchor, projectResourceInventory, structuralHash, upsertMath3DProjectWorkbook } from "@math3d/core";
-import { createDefaultWorkbook } from "@math3d/workbook";
+import { createBlockDependencySource, createDefaultWorkbook, workbookSageCodeSourceHash } from "@math3d/workbook";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
 
 const fixture = () => {
@@ -12,6 +12,23 @@ const fixture = () => {
 };
 
 describe("WB00 Project Workbook binding", () => {
+  it("retains Sage code, output provenance and dependency snapshots in a Project Workbook resource", () => {
+    const { project, personal } = fixture();
+    const cell = { id: "sage-study", type: "sage-code" as const, title: "Exact result",
+      sageCode: { code: "2^10", runs: [] as import("@math3d/workbook").WorkbookSageCodeRun[] } };
+    personal.stages[1].blocks.push(cell);
+    personal.dependencies = [{ id: "sage-source", targetBlockId: cell.id,
+      source: createBlockDependencySource(personal, personal.stages[0].blocks[0].id) }];
+    cell.sageCode.runs.push({ id: "job-1", savedAt: 1, code: cell.sageCode.code,
+      sourceHash: workbookSageCodeSourceHash(personal, cell), dependencies: personal.dependencies,
+      status: "succeeded", output: { jobId: "job-1", success: true, backendId: "sage-local-wsl",
+        engineVersion: "9.5", stdout: "", result: "1024", warnings: [], inputHash: "a".repeat(64), elapsedMs: 4 } });
+    const saved = prepareProjectWorkbook(project, personal, "sage-study");
+    const reopened = readProjectWorkbook(saved.bytes, saved.reference);
+    expect(reopened.stages[1].blocks[0].sageCode).toEqual(cell.sageCode);
+    expect(reopened.dependencies).toEqual(personal.dependencies);
+  });
+
   it("retains NOTE03 prose, equations, tables and figure captions in the existing resource payload", () => {
     const { project, personal } = fixture();
     personal.stages[0]!.blocks.push({ id: "rich-text", type: "text", title: "Catenoid investigation", text: "**Observation**: $H=0$",

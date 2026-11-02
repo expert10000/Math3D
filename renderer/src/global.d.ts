@@ -842,8 +842,8 @@ declare global {
       cancel: (jobId: string) => Promise<{ ok: boolean }>;
     };
     sageConsole?: {
-      setTrusted: (trusted: boolean) => Promise<{ trusted: boolean }>;
-      run: (request: { jobId: string; code: string }) => Promise<import("./features/sageLab/sageConsoleTypes").SageConsoleResponse>;
+      setTrusted: (trusted: boolean, scope?: string) => Promise<{ trusted: boolean }>;
+      run: (request: { jobId: string; code: string; scope?: string }) => Promise<import("./features/sageLab/sageConsoleTypes").SageConsoleResponse>;
       cancel: (jobId: string) => Promise<{ ok: boolean }>;
     };
     computeEngines?: {

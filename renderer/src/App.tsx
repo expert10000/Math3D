@@ -1197,6 +1197,7 @@ import {
   createWorkbookFromTemplate,
   normalizeNotebookReference,
   workbookBlockSourceHash,
+  workbookSageCodeOutputText,
   workbookNamedParameterHash,
   workbookParameterAffectedBlocks,
   workbookDependencyInputSignature,
@@ -10014,6 +10015,9 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
             },
           };
         }
+        if (block.type === "sage-code") return { ...block,
+          sageCode: { code: typeof block.sageCode?.code === "string" ? block.sageCode.code : "",
+            runs: Array.isArray(block.sageCode?.runs) ? block.sageCode.runs : [] } };
         return block;
       }),
     })),
@@ -10081,6 +10085,7 @@ const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
   reference: "Project reference",
   visualize: "Visualize",
   compute: "Compute",
+  "sage-code": "Sage code",
   interaction: "Interact",
   assert: "Assert",
 };
@@ -10216,6 +10221,15 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
           if (block.compute?.lastRun?.status) lines.push(`Status: ${block.compute.lastRun.status}`);
           if (block.compute?.summary) lines.push(`Summary: ${block.compute.summary}`);
+        } else if (block.type === "sage-code") {
+          lines.push("```sage", block.sageCode?.code ?? "", "```");
+          lines.push(`Source freshness at export: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
+          const run = block.sageCode?.runs.at(-1);
+          if (run) lines.push(`Saved run: ${run.status} · ${formatExportTimestamp(run.savedAt)}`,
+            `Source/dependency hash: ${run.sourceHash}`, `Dependencies: ${JSON.stringify(run.dependencies)}`,
+            `Backend: ${run.output?.backendId ?? "sage-local-wsl"} · SageMath ${run.output?.engineVersion ?? "unknown"}`,
+            `Source SHA-256: ${run.output?.inputHash ?? "unavailable"}`,
+            "```text", workbookSageCodeOutputText(run), "```");
         } else if (block.type === "interaction") {
           if (block.interaction?.kind) lines.push(`Interaction: ${block.interaction.kind}`);
           if (block.interaction?.summary) lines.push(`Summary: ${block.interaction.summary}`);
@@ -10447,6 +10461,16 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             ${block.compute?.lastRun?.status ? `<div>Status: ${escapeHtml(block.compute.lastRun.status)}</div>` : ""}
             ${block.compute?.summary ? `<div>Summary: ${escapeHtml(block.compute.summary)}</div>` : ""}
           </div>`;
+        } else if (block.type === "sage-code") {
+          const run = block.sageCode?.runs.at(-1);
+          body = `<div class="block-body"><pre>${escapeHtml(block.sageCode?.code ?? "")}</pre>
+            <div>Source freshness at export: ${escapeHtml(resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing")}</div>
+            ${run ? `<div>Saved run: ${escapeHtml(run.status)} · ${escapeHtml(formatExportTimestamp(run.savedAt))}</div>
+              <div>Backend: ${escapeHtml(run.output?.backendId ?? "sage-local-wsl")} · SageMath ${escapeHtml(run.output?.engineVersion ?? "unknown")}</div>
+              <div>Source/dependency hash: ${escapeHtml(run.sourceHash)}</div>
+              <div>Source SHA-256: ${escapeHtml(run.output?.inputHash ?? "unavailable")}</div>
+              <div>Dependencies: ${escapeHtml(JSON.stringify(run.dependencies))}</div>
+              <pre>${escapeHtml(workbookSageCodeOutputText(run))}</pre>` : "No saved run yet."}</div>`;
         } else if (block.type === "interaction") {
           body = `<div class="block-body">
             ${block.interaction?.kind ? `<div>Interaction: ${escapeHtml(block.interaction.kind)}</div>` : ""}
@@ -11351,6 +11375,7 @@ const DEFAULT_BLOCK_PORTS: Record<WorkbookBlockType, { inputs: WorkbookPort[]; o
     outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
   },
   compute: { inputs: BASE_COMPUTE_INPUTS, outputs: [] },
+  "sage-code": { inputs: [], outputs: [{ id: "text", label: "Output", type: "text" }] },
   interaction: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
   assert: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
 };
@@ -53177,6 +53202,7 @@ case "mobius":
         title: "Compute",
         compute: { status: "idle", inputs: [], outputs: undefined, lastRun: undefined, runHistory: [], cache: {} },
       });
+    if (type === "sage-code") return applyDefaultPorts({ ...base, title: "Sage code", sageCode: { code: "", runs: [] } });
     if (type === "interaction") {
       return applyDefaultPorts({
         ...base,

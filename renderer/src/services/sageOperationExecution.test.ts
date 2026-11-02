@@ -30,7 +30,7 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
 
 describe("Sage scientific execution contract", () => {
   it("discovers trusted local console execution and records output provenance through the shared service", async () => {
-    const calls: { jobId: string; code: string }[] = [];
+    const calls: { jobId: string; code: string; scope?: string }[] = [];
     const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true,
       consoleRun: async (request) => {
         calls.push(request);
@@ -41,10 +41,10 @@ describe("Sage scientific execution contract", () => {
     expect((await registry.probeBackend("local")).operations.map((item) => item.operationType)).toContain(SAGE_CONSOLE_OPERATION);
     expect((await registry.probeBackend("docker")).operations.map((item) => item.operationType)).not.toContain(SAGE_CONSOLE_OPERATION);
     expect(() => registry.runConsole({ code: "1+1", trusted: false })).toThrow("Trust an available local Sage runtime");
-    const handle = registry.runConsole({ code: "1+1", trusted: true });
+    const handle = registry.runConsole({ code: "1+1", trusted: true, scope: "workbook:one:cell" });
     const { broker, response } = await handle.promise;
     expect(broker.ok).toBe(true);
-    expect(calls).toEqual([{ jobId: handle.jobId, code: "1+1" }]);
+    expect(calls).toEqual([{ jobId: handle.jobId, code: "1+1", scope: "workbook:one:cell" }]);
     expect(response).toMatchObject({ inputHash: "abc", result: "2", backendId: "sage-local-wsl" });
     expect(getComputeJobs().find((job) => job.jobId === handle.jobId)).toMatchObject({
       operationType: SAGE_CONSOLE_OPERATION, status: "complete", backendId: "sage-local-wsl",

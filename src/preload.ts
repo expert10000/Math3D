@@ -689,8 +689,8 @@ contextBridge.exposeInMainWorld("sageService", {
 });
 
 contextBridge.exposeInMainWorld("sageConsole", {
-  setTrusted: (trusted: boolean): Promise<{ trusted: boolean }> => ipcRenderer.invoke("sage:console:trust", trusted),
-  run: (request: { jobId: string; code: string }): Promise<unknown> => ipcRenderer.invoke("sage:console:run", request),
+  setTrusted: (trusted: boolean, scope?: string): Promise<{ trusted: boolean }> => ipcRenderer.invoke("sage:console:trust", trusted, scope),
+  run: (request: { jobId: string; code: string; scope?: string }): Promise<unknown> => ipcRenderer.invoke("sage:console:run", request),
   cancel: (jobId: string): Promise<{ ok: boolean }> => ipcRenderer.invoke("sage:console:cancel", jobId),
 });
 

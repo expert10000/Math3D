@@ -1,6 +1,6 @@
 import React from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
-import { inspectNotebookReference, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import { inspectNotebookReference, workbookSageCodeOutputText, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookAnalysisRerun } from "./WorkbookAnalysisRerun";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -34,6 +34,7 @@ type Props = {
 const blockKinds: Record<WorkbookBlock["type"], string> = {
   text: "Text", formula: "Equation", reference: "Project reference", visualize: "Figure",
   compute: "Result", interaction: "Interaction", assert: "Check",
+  "sage-code": "Sage code",
 };
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
@@ -115,6 +116,14 @@ export const WorkbookDocumentView: React.FC<Props> = ({
             <div>{block.compute?.summary || latestRun?.summary || "No saved result summary."}</div>
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}
             {!latestRun && <small>No saved run yet.</small>}
+          </div>}
+          {block.type === "sage-code" && <div data-testid="workbook-document-sage-code" style={{ display: "grid", gap: 5 }}>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, background: "#f8fafc", padding: 8 }}>{block.sageCode?.code ?? ""}</pre>
+            <span>Saved runs: {block.sageCode?.runs.length ?? 0}. Open Block view to trust the local runtime and run this cell.</span>
+            {block.sageCode?.runs.at(-1) && <>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0 }}>{workbookSageCodeOutputText(block.sageCode.runs.at(-1)!)}</pre>
+              <span>Job {block.sageCode.runs.at(-1)?.id} · {block.sageCode.runs.at(-1)?.status}</span>
+            </>}
           </div>}
           {block.type === "visualize" && !block.documentContent && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {snapshots.length ? snapshots.map((snapshot, index) => <figure key={index} style={{ margin: 0, maxWidth: 260 }}>

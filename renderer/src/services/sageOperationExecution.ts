@@ -72,7 +72,7 @@ export type SageExecutionRegistryOptions = {
   run?: Runner;
   cancel?: Canceller;
   health?: HealthChecker;
-  consoleRun?: (request: { jobId: string; code: string }) => Promise<SageConsoleResponse>;
+  consoleRun?: (request: { jobId: string; code: string; scope?: string }) => Promise<SageConsoleResponse>;
   consoleCancel?: Canceller;
   consoleAvailable?: () => boolean;
   registerDiscovery?: boolean;
@@ -125,7 +125,7 @@ export class SageExecutionRegistry {
   readonly #run: Runner;
   readonly #cancel: Canceller;
   readonly #health: HealthChecker;
-  readonly #consoleRun: (request: { jobId: string; code: string }) => Promise<SageConsoleResponse>;
+  readonly #consoleRun: (request: { jobId: string; code: string; scope?: string }) => Promise<SageConsoleResponse>;
   readonly #consoleCancel: Canceller;
   readonly #consoleAvailable: () => boolean;
   readonly #broker: ReturnType<typeof createScientificExecutionBroker>;
@@ -159,11 +159,11 @@ export class SageExecutionRegistry {
         })), {
           operationType: SAGE_CONSOLE_OPERATION,
           execute: async (input: ScientificJobExecutionInput, context: ScientificJobExecutionContext) => {
-            const body = input.payload as { code: string; backend: string };
+            const body = input.payload as { code: string; backend: string; scope?: string };
             if (body.backend !== "local" || typeof body.code !== "string") throw new Error("Sage Console requires the local backend.");
             context.consumeWork(1);
             context.reportProgress({ completed: 0, total: 1, message: "Running trusted Sage code" });
-            const response = await this.#consoleRun({ jobId: input.jobId, code: body.code });
+            const response = await this.#consoleRun({ jobId: input.jobId, code: body.code, ...(body.scope ? { scope: body.scope } : {}) });
             if (this.#activeJobs.has(input.jobId)) this.#consoleResponses.set(input.jobId, response);
             context.checkpoint();
             if (!response.success) throw new Error(response.error ?? "Sage Console failed.");
@@ -261,7 +261,7 @@ export class SageExecutionRegistry {
     return { jobId, promise, cancel: () => this.#execution.cancel(jobId) };
   }
 
-  runConsole(request: { code: string; trusted: boolean; jobId?: string }): {
+  runConsole(request: { code: string; trusted: boolean; jobId?: string; scope?: string }): {
     jobId: string;
     promise: Promise<{ response: SageConsoleResponse | null; broker: ScientificBrokerOutcome }>;
     cancel: () => boolean;
@@ -273,7 +273,7 @@ export class SageExecutionRegistry {
     }
     const jobId = request.jobId ?? crypto.randomUUID();
     if (this.#activeJobs.has(jobId)) throw new Error("Sage job ID is already in use.");
-    const payload = { code: request.code, backend: "local" };
+    const payload = { code: request.code, backend: "local", ...(request.scope ? { scope: request.scope } : {}) };
     const source: ScientificSourceGeneration = {
       documentId: createStableDocumentId("sage-console", { jobId, payload } as CanonicalJsonValue),
       revision: 1, structuralHash: structuralHash(payload), generation: 1,
