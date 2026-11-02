@@ -96,6 +96,7 @@ The existing internal and release apps were not changed.
 | TP14 regression on `8d2da190…` APK | The eight imported rows yielded centered equation `z=(x-3.5)/3.5; y=8+7*z`, equivalent to `y=2*x+1`, with residual SD `0.23094011` and eight residuals of ±0.2 (squared sum `0.32`). The plot distinguished mean-response from new-observation 95% pointwise limits. An in-app data edit then marked the prior fit `Stale result — inputs or source changed; run again`. Numeric interval values were subsequently verified in TP11 on a newer APK. See the [exact-build TP14 record](mobile-android-tp14-regression-2026-11-01.json). |
 | TP11 publication on `a74cc08f…` APK | The regression reference exported verified SVG, PNG, CSV and HTML with one snapshot ID and three analysis tables. CSV reported SSE `0.32`; at `x=3.5`, the 95% mean interval was `[7.800210483970861, 8.19978951602914]` and the new-observation interval was `[7.400631451912581, 8.59936854808742]`. Endpoint bounds matched the independent reference calculation. The HTML opened from local storage, stayed visible with Wi-Fi and mobile data off, and rendered an 11-page A4 print preview; no job was sent. The capture recipe identified its external eight-row table, and Presentation exited to normal controls. See the [exact-build TP11 record](mobile-android-tp11-publication-2026-11-02.json) and linked artifacts. |
 | TP12 scales on `a74cc08f…` APK | On an independent Two slopes copy, linear Equal aspect applied; Equal plus log10 and non-positive log bounds were rejected. Positive log10 bounds applied on both axes, omitted non-positive plot coordinates, and preserved the authored-world `(-1,-1)` intersection in analysis/CSV. Undo/Redo restored the scale states. Light dotted continuation rendered beyond the authored `[-4,4]` domain but did not probe; tangent analysis at `x=6` reported outside-domain/unsupported. The continuation-on CSV records the toggle and exclusion warning and exports only `[-4,4]` x geometry. Save and cold relaunch retained the checked toggle. See the [exact-build TP12 record](mobile-android-tp12-scales-2026-11-02.json), three CSVs and screenshots. |
+| TP07 phone portrait/landscape on `ac0c1baa…` APK | Home, Explore, Projects and Settings kept bottom navigation reachable in short landscape. Beating waves kept the editor above the Samsung keyboard through portrait → landscape → portrait, with an unsaved draft intact. Settings tabs and URL field remained visible through keyboard and rotation. Catenoid rendered in portrait and landscape; all six inspector tabs, Analyze and Scene expanded content, collapse handle and plot were reachable in landscape. See the [phone layout record](mobile-android-layout-2026-11-02.json) and before/after screenshots. Tablet scope remains pending. |
 | Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, the final process of the function-error APK had 285, the analysis-error APK process had 460, and the latest slider-scroll APK process had 513 lines for TP13, 1499 lines after TP03, 1664 lines for TP06 background/resume, and 180 lines after its cold relaunch, with no such match in these scoped captures. The TP06 log contained a non-severe hidden-UI memory notice. The reported hang was not accompanied by a matching log entry. |
 
 The initial landscape failure is resolved for this Samsung phone at normal and
@@ -112,8 +113,9 @@ with unperformed steps pending.
   TalkBack output on this phone. The owner confirmed pinch zoom and Undo, but
   cannot test TalkBack now. Accessibility labels and scrolling were inspected;
   spoken output was not attested.
-- Tablet split-layout and keyboard checks. The Samsung portrait keyboard editor
-  now passed, but no tablet was attached.
+- Tablet split-layout and keyboard checks. The Samsung phone portrait and short-
+  landscape layout passed its [focused supplement](mobile-android-layout-2026-11-02.json),
+  but no tablet was attached.
 - The full Graph fixture, multi-fixture publication and long workload matrix. TP08 and the regression-focused TP11 passed on this Samsung, but transfer to a second device was not tested and the TP08 CSV is external to its exported handoff. The
   fixed ten-run sampling workload is one fixture and one device profile.
 - Another Android class, Android tablet, iPhone and iPad. Only the Samsung was
@@ -134,7 +136,7 @@ beside this report.
 The [mobile roadmap](../mobile-roadmap.md), [canonical Graph roadmap](../math3d-graph2d-desktop-mobile-roadmap.md)
 and [1.6.0 test pack](../test-packs/1.6.0/README.md) define the wider scope.
 The comprehensive Samsung record has **TP10 and TP15 passed, 13 cases pending**;
-the separate exact-build supplements have **TP01, TP03, TP04, TP05, TP06, TP08, TP11, TP12, TP13 and TP14 passed**. Partial
+the separate exact-build supplements have **TP01, TP03, TP04, TP05, TP06, TP08, TP11, TP12, TP13 and TP14 passed**, plus a **TP07 phone-only layout pass**. Partial
 observations in a pending case are not a complete pass. The comprehensive
 record identifies APK SHA-256 `332a61f9…`, while later supplemental checks used
 `19893849…`, `a41c6e61…`, `ea8a6b49…`, `fc99d655…`, `8d2da190…`, `0ec968a1…`, and the latest installed `a74cc08f…`. Keep those
@@ -146,7 +148,7 @@ evidence sets separate when adding results.
    when a stall occurs. The single reported hang recovered after restart and was
    not reproduced in the later one-plus-six retry; no cause has been established.
 2. **Finish Samsung cases.** Record focal-point behavior and an interrupted
-   pinch/rotation for TP02; tablet layout/keyboard use for TP07; spoken TalkBack
+   pinch/rotation for TP02; tablet layout/keyboard use for full TP07; spoken TalkBack
    focus, controls and an invalid-expression error for TP09 when the owner can
    test it. TP08 file/CSV transfer, TP11 publication, TP12 scales and TP14 regression now
    have their own exact-build passes. Complete any remaining scope in the pack; do not
