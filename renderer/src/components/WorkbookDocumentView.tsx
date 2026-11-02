@@ -12,6 +12,7 @@ import "katex/dist/katex.min.css";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
+import { WorkbookSavedMeshTrendBlock } from "./WorkbookSavedMeshTrendBlock";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 
 type Props = {
@@ -83,6 +84,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.type === "visualize" && <WorkbookSnapshotRecord block={block} />}
           {block.type === "visualize" && block.visualize?.comparison && <WorkbookComparisonBlock project={project}
             reference={block.visualize.comparison} readResource={readComparisonResource} />}
+          {block.type === "visualize" && block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={project}
+            reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} />}
           {block.type === "text" && <textarea aria-label={`${block.title || "Text"} content`} value={block.text ?? ""}
             onChange={(event) => onUpdateBlock(stage.id, block.id, { text: event.target.value })} readOnly={readOnly}
             rows={Math.max(3, Math.min(12, (block.text ?? "").split("\n").length + 1))}
