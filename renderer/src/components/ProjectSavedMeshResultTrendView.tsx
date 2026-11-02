@@ -14,7 +14,7 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
   const paths = useMemo(() => savedMeshTrendMetricChoices(project, anchorId), [project, anchorId]);
   const [metricPath, setMetricPath] = useState("");
   const activeMetric = paths.includes(metricPath) ? metricPath :
-    paths.includes("metrics.triangleArea.avg") ? "metrics.triangleArea.avg" : paths.includes("metrics.aspectRatio.avg") ? "metrics.aspectRatio.avg" : paths[0] ?? "";
+    paths.includes("metrics.aspectRatio.avg") ? "metrics.aspectRatio.avg" : paths.includes("faceCount") ? "faceCount" : paths[0] ?? "";
   const [selectedId, setSelectedId] = useState<string | null>(null), [message, setMessage] = useState("");
   useEffect(() => { setAnchorId(choices[0]?.resultId ?? ""); setMetricPath(""); setSelectedId(null); setMessage(""); }, [project.identity.id, choices]);
   useEffect(() => { const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -59,11 +59,12 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
           <path d="M70 30V215H750" stroke="#64748b" fill="none" strokeWidth="2" />
           <text x="70" y="248" fontSize="14" fill="#334155">Mesh source revision →</text>
           <text x="12" y="26" fontSize="13" fill="#334155">{study.unit ?? "unit"}</text>
+          <text x="28" y="45" fontSize="12" fill="#334155">{yMax}</text><text x="28" y="215" fontSize="12" fill="#334155">{yMin}</text>
           {available.map(row => <g key={row.resultId} role="button" tabIndex={0} data-testid={`project-mesh-trend-point-${row.resultId}`}
             aria-label={`Mesh revision ${row.revision}, stored value ${row.value} ${row.unit}, result ${row.resultId}`}
             onClick={() => setSelectedId(row.resultId)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(row.resultId); } }}>
-            <circle cx={xAt(row.revision)} cy={yAt(row.value!)} r={selected?.resultId === row.resultId ? 9 : 7} fill={selected?.resultId === row.resultId ? "#c15d16" : "#2265b1"} stroke="white" strokeWidth="2"><title>r{row.revision} · {row.value} {row.unit}</title></circle>
-            <text x={xAt(row.revision)} y="234" textAnchor="middle" fontSize="12" fill="#334155">r{row.revision}</text>
+            <circle cx={xAt(row.revision)} cy={yAt(row.value!)} r={selected?.resultId === row.resultId ? 9 : 7} fill={selected?.resultId === row.resultId ? "#c15d16" : "#2265b1"} stroke="white" strokeWidth="2" style={{ cursor: "pointer" }}><title>r{row.revision} · {row.value} {row.unit}</title></circle>
+            <text x={xAt(row.revision)} y="234" textAnchor="middle" fontSize="12" fill="#334155" pointerEvents="none">r{row.revision}</text>
           </g>)}
         </svg>}
         {selected && <section data-testid="project-mesh-trend-selection" aria-label="Selected stored result" style={{ padding: 12, border: "1px solid #cbd5e1", borderRadius: 8, overflowWrap: "anywhere", marginTop: 12 }}>

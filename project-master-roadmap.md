@@ -10,6 +10,8 @@ Partial under the limits recorded below. PC11 now retains one bounded Mesh
 generation before subdivision for exact before/after comparison. PC12 extends
 that path to multiple explicitly retained Mesh generations. PC13 compares
 immutable saved Mesh quality and curvature results without recalculation.
+PC14 shows compatible saved metrics across retained Mesh generations, including
+explicit unavailable gaps for missing or changed source evidence.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -65,6 +67,13 @@ method, source generation and binary sidecar. It shows B − A only for matching
 scalar metrics with compatible units; undeclared length units suppress dependent
 differences. HTML export and Electron restart are covered. No Mesh analysis runs
 in the comparison view. See [saved Mesh result comparison](docs/project-comparison-and-composition.md#pc13--compare-immutable-saved-mesh-analysis-results).
+
+**PC14 saved Mesh analysis trends — November 2:** Projects displays one point
+per verified saved quality or curvature result across retained Mesh generations.
+The method, algorithm version, exact source revision, hash, sidecar and metric
+unit are checked for every point. Missing generations remain visible without
+interpolation. The read-only trend and HTML report never recalculate analysis.
+See [saved Mesh analysis trends](docs/project-comparison-and-composition.md#pc14--saved-mesh-analysis-trends).
 
 ## Current delivery
 
@@ -1367,6 +1376,7 @@ budgets must be explicit before members can be combined.
 | PC11 | `feat(projects): retain bounded Mesh generations for comparison` | Retain the exact pre-subdivision Mesh and current Mesh with separate checked sidecars; compare source-local picks, export and reopen after restart. |
 | PC12 | `feat(projects): compare multiple explicitly retained Mesh generations` | Mark bounded pre-edit Mesh revisions during repeated subdivision or transform; verify replay, units and sidecars; select any retained pair without inferring unretained history. |
 | PC13 | `feat(projects): compare immutable saved Mesh analysis results` | Compare only stored quality or curvature envelopes with checked source generations and sidecars; qualify scalar differences by operation, algorithm version and units. |
+| PC14 | `feat(projects): show saved Mesh analysis trends` | Plot only compatible, verified saved Mesh metrics across retained generations; mark missing or tampered evidence unavailable without recalculation or interpolation. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1405,6 +1415,11 @@ Projects A/B result view and export verify the exact result and source generatio
 and calculate only unit-qualified differences from stored scalar values. It does
 not recompute results or align Mesh vertex IDs. PC03 and PC05 retain the same
 **Partial** boundaries.
+PC14 is complete for compatible saved Mesh metric trends across explicitly
+retained generations. Its dots, exact-point inspector and HTML report use only
+verified saved results and sources. Missing or changed evidence remains visible
+as unavailable, and export refuses it. PC03 and PC05 remain **Partial** under
+their existing legacy-source and unretained-history limits.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
