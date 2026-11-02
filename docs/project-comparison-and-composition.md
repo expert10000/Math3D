@@ -362,3 +362,19 @@ restart requires reopening the saved Project and checked Workbook resources;
 pins are temporary UI choices and are made again after reopening. No Mesh
 analysis or interpolation runs on this path. PC03 and PC05 remain **Partial**
 for legacy coordinate metadata and unretained history.
+
+### Ready-to-use Mesh comparison starter
+
+Open **Projects → Starter projects → Saved Mesh Comparison Study → Open**.
+The starter contains one square Mesh with coordinate units in metres, three
+explicitly retained revisions, and one recorded quality result per revision.
+Its mean triangle areas are 0.5, 1.125, and 2.53125 m². These are stored
+measurements of the three supplied Meshes, not values calculated by the trend
+viewer. Save the Project to retain the copy.
+
+In the Project's **Compare saved documents → Saved Mesh analysis results**,
+choose **View saved result trend**. Set **Stored scalar metric** to
+`metrics.triangleArea.avg`, select the first dot and **Pin selected as A**,
+then select the last dot and **Pin selected as B**. **Compare pinned results**
+shows the checked 2.03125 m² B − A difference; **Return to trend** keeps the
+plot. **Compare saved results** opens the same A/B inspector directly.
