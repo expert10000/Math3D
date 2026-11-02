@@ -1,6 +1,6 @@
 import React from "react";
 import type { KernelWorkspaceModule, Math3DProject } from "@math3d/core";
-import { inspectNotebookReference, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
+import { inspectNotebookReference, workbookSageCodeOutputText, type NotebookArtifactReader, type Workbook, type WorkbookBlock, type WorkbookStageId } from "@math3d/workbook";
 import type { NotebookProjectContext } from "../workbook/notebookProjectContext";
 import { WorkbookAnalysisRerun } from "./WorkbookAnalysisRerun";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -12,6 +12,8 @@ import "katex/dist/katex.min.css";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
+import { WorkbookSavedMeshTrendBlock } from "./WorkbookSavedMeshTrendBlock";
+import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 
 type Props = {
@@ -26,6 +28,7 @@ type Props = {
   onEditBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenNote: (noteId: string) => void;
   readComparisonResource?: ProjectResourceReader;
 };
@@ -33,11 +36,12 @@ type Props = {
 const blockKinds: Record<WorkbookBlock["type"], string> = {
   text: "Text", formula: "Equation", reference: "Project reference", visualize: "Figure",
   compute: "Result", interaction: "Interaction", assert: "Check",
+  "sage-code": "Sage code",
 };
 
 /** A reading surface over the live Workbook model. Project targets are resolved by ID, never copied. */
 export const WorkbookDocumentView: React.FC<Props> = ({
-  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote, readComparisonResource,
+  workbook, context, project, projectLive, readArtifact, readOnly, statusFor, onUpdateBlock, onEditBlock, onOpenDocument, onOpenProjects, onOpenNote, readComparisonResource, onOpenSavedMeshResult,
 }) => {
   const projectWorkbook = project?.workbooks?.find((item) => item.id === workbook.id);
   return <article data-testid="workbook-document-view" style={{ display: "grid", gap: 16, fontSize: 12, minWidth: 0 }}>
@@ -83,6 +87,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.type === "visualize" && <WorkbookSnapshotRecord block={block} />}
           {block.type === "visualize" && block.visualize?.comparison && <WorkbookComparisonBlock project={project}
             reference={block.visualize.comparison} readResource={readComparisonResource} />}
+          {block.type === "visualize" && block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={project}
+            reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
           {block.type === "text" && <textarea aria-label={`${block.title || "Text"} content`} value={block.text ?? ""}
             onChange={(event) => onUpdateBlock(stage.id, block.id, { text: event.target.value })} readOnly={readOnly}
             rows={Math.max(3, Math.min(12, (block.text ?? "").split("\n").length + 1))}
@@ -112,6 +118,14 @@ export const WorkbookDocumentView: React.FC<Props> = ({
             <div>{block.compute?.summary || latestRun?.summary || "No saved result summary."}</div>
             {latestRun && <small>Saved run: {latestRun.status} · {new Date(latestRun.savedAt).toLocaleString()} · input {latestRun.inputHash.slice(0, 12)}</small>}
             {!latestRun && <small>No saved run yet.</small>}
+          </div>}
+          {block.type === "sage-code" && <div data-testid="workbook-document-sage-code" style={{ display: "grid", gap: 5 }}>
+            <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, background: "#f8fafc", padding: 8 }}>{block.sageCode?.code ?? ""}</pre>
+            <span>Saved runs: {block.sageCode?.runs.length ?? 0}. Open Block view to trust the local runtime and run this cell.</span>
+            {block.sageCode?.runs.at(-1) && <>
+              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0 }}>{workbookSageCodeOutputText(block.sageCode.runs.at(-1)!)}</pre>
+              <span>Job {block.sageCode.runs.at(-1)?.id} · {block.sageCode.runs.at(-1)?.status}</span>
+            </>}
           </div>}
           {block.type === "visualize" && !block.documentContent && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {snapshots.length ? snapshots.map((snapshot, index) => <figure key={index} style={{ margin: 0, maxWidth: 260 }}>

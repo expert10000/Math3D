@@ -5,6 +5,7 @@ import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "./projectSavedMeshResultTrend";
+import { resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 
 const mesh = () => ({ label: "Trend square", source: { kind: "import" as const, format: "obj" as const, filename: "square.obj",
   math3dCoordinateFrame: { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m", axes: ["x", "y", "z"], handedness: "right" } },
@@ -63,5 +64,30 @@ describe("PC14 saved Mesh analysis trends", () => {
     });
     expect(tampered.rows.some(row => row.status === "unavailable")).toBe(true);
     expect(() => savedMeshResultTrendHtml(tampered)).toThrow(/unavailable/);
+  });
+});
+
+describe("PC16 exact saved trend points", () => {
+  it("resolves a retained point to its exact result, Mesh revision, hash and sidecar", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "faceCount", read);
+    expect(resolveSavedMeshTrendPoint(project, study, middle.resultId, read)).toMatchObject({
+      projectId: project.identity.id, resultId: middle.resultId,
+      meshId: middle.provenance.source.documentId, revision: middle.provenance.source.revision,
+      sourceHash: middle.provenance.source.structuralHash, generation: "retained",
+    });
+  });
+  it("refuses a changed result, missing sidecar, and a stale plot snapshot", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "faceCount", read);
+    expect(() => resolveSavedMeshTrendPoint(project, study, middle.resultId, () => null)).toThrow();
+    const changed = { ...project, workspace: createMixedWorkspaceDocument({ ...project.workspace,
+      results: project.workspace.results.map(item => item.resultId === middle.resultId ?
+        { ...item, summary: { ...item.summary, faceCount: 999 } } : item) }) };
+    expect(() => resolveSavedMeshTrendPoint(changed, study, middle.resultId, read)).toThrow(/changed/);
+    expect(() => resolveSavedMeshTrendPoint(project, { ...study, rows: study.rows.slice(1) }, middle.resultId, read)).toThrow(/changed/);
+    expect(() => resolveSavedMeshTrendPoint(project, study, "missing", read)).toThrow(/no verified/);
   });
 });

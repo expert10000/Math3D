@@ -12,6 +12,10 @@ that path to multiple explicitly retained Mesh generations. PC13 compares
 immutable saved Mesh quality and curvature results without recalculation.
 PC14 shows compatible saved metrics across retained Mesh generations, including
 explicit unavailable gaps for missing or changed source evidence.
+PC15 retains an exact PC14 trend reference in Workbook Visualize blocks and
+re-verifies its stored results and source bytes on open and export.
+PC16 opens an exact verified trend point in the saved Project result inspector
+and previews its checked Mesh generation, including retained revisions.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -74,6 +78,12 @@ The method, algorithm version, exact source revision, hash, sidecar and metric
 unit are checked for every point. Missing generations remain visible without
 interpolation. The read-only trend and HTML report never recalculate analysis.
 See [saved Mesh analysis trends](docs/project-comparison-and-composition.md#pc14--saved-mesh-analysis-trends).
+
+**PC15 Workbook saved Mesh trends — November 2:** Visualize blocks link an
+exact PC14 trend by Project, Mesh, method, metric, saved result IDs and hashes.
+The embedded view loads on demand and shows only source-verified recorded
+points and explicit gaps. Workbook reports and portable publications reverify
+the source sidecars before export. See [Workbook saved Mesh trends](docs/project-comparison-and-composition.md#pc15--saved-mesh-trend-in-workbook).
 
 ## Current delivery
 
@@ -1377,6 +1387,8 @@ budgets must be explicit before members can be combined.
 | PC12 | `feat(projects): compare multiple explicitly retained Mesh generations` | Mark bounded pre-edit Mesh revisions during repeated subdivision or transform; verify replay, units and sidecars; select any retained pair without inferring unretained history. |
 | PC13 | `feat(projects): compare immutable saved Mesh analysis results` | Compare only stored quality or curvature envelopes with checked source generations and sidecars; qualify scalar differences by operation, algorithm version and units. |
 | PC14 | `feat(projects): show saved Mesh analysis trends` | Plot only compatible, verified saved Mesh metrics across retained generations; mark missing or tampered evidence unavailable without recalculation or interpolation. |
+| PC15 | `feat(workbook): retain saved Mesh analysis trends` | Link exact saved Mesh result sets into Visualize blocks; verify Project resources on open and export, preserving recorded gaps without recalculation. |
+| PC16 | `feat(projects): open exact saved Mesh trend results` | Reverify a selected Projects or Workbook trend point, inspect its saved result and show its exact retained Mesh generation when available. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1420,6 +1432,14 @@ retained generations. Its dots, exact-point inspector and HTML report use only
 verified saved results and sources. Missing or changed evidence remains visible
 as unavailable, and export refuses it. PC03 and PC05 remain **Partial** under
 their existing legacy-source and unretained-history limits.
+PC15 is complete for linked saved Mesh trends in Workbook Visualize blocks.
+Links retain exact result and source hashes, and report/export paths refuse
+missing or changed evidence. PC03 and PC05 remain **Partial**.
+PC16 is complete for verified saved Mesh trend points. Projects and Workbook
+open the exact result in the Project inspector; a separate read-only viewer
+shows its verified current or retained Mesh generation. Missing or changed
+source bytes are stated in the inspector, without substituting the current
+revision. PC03 and PC05 remain **Partial**.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

@@ -1,5 +1,30 @@
 import { expect, test } from "@playwright/test";
 
+test("web Sage Console keeps code execution unavailable", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("top-sage-console-button").click();
+  const dock = page.getByTestId("sage-console-dock");
+  await expect(dock).toContainText("Code execution requires the trusted local desktop runtime.");
+  await expect(dock.getByTestId("sage-console-trust")).toBeDisabled();
+  await dock.getByTestId("sage-console-code").fill("2^10");
+  await expect(dock.getByTestId("sage-console-run")).toBeDisabled();
+});
+
+test("web Workbook Sage code cells retain text but cannot trust or execute hosted code", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+  await page.getByRole("button", { name: "2 Compute" }).click();
+  await page.getByRole("button", { name: "Sage code", exact: true }).click();
+  const cell = page.locator('[data-testid^="workbook-sage-code-"]').first();
+  await cell.getByTestId("workbook-sage-code-input").fill("2^10");
+  await expect(cell.getByTestId("workbook-sage-code-trust")).toBeDisabled();
+  await expect(cell.getByTestId("workbook-sage-code-run")).toBeDisabled();
+  await page.reload();
+  await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
+  await page.getByRole("button", { name: "2 Compute" }).click();
+  await expect(page.locator('[data-testid^="workbook-sage-code-"]').first().getByTestId("workbook-sage-code-input")).toHaveValue("2^10");
+});
+
 test("Surface and Geometry Services share the same Sage operation and Analysis destination", async ({ page }) => {
   const requests: Array<{ operation: string; params: { expression?: string } }> = [];
   await page.route("http://127.0.0.1:8767/**", async (route) => {

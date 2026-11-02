@@ -19,6 +19,7 @@ export type WorkbookBlockType =
   | "reference"
   | "visualize"
   | "compute"
+  | "sage-code"
   | "assert"
   | "interaction";
 export type WorkbookValueType =
@@ -318,6 +319,7 @@ export type WorkbookBlock = {
   outputs?: WorkbookPort[];
   text?: string;
   sageEvidence?: import("./workbookSageEvidence").WorkbookSageEvidence;
+  sageCode?: { code: string; runs: import("./workbookSageCode").WorkbookSageCodeRun[] };
   formula?: string;
   documentContent?: WorkbookDocumentContent;
   claim?: WorkbookClaim;
@@ -329,6 +331,7 @@ export type WorkbookBlock = {
   visualize?: {
     live: boolean;
     comparison?: import("./workbookComparisonReference").WorkbookComparisonReference;
+    savedMeshTrend?: import("./workbookSavedMeshTrendReference").WorkbookSavedMeshTrendReference;
     snapshot?: WorkbookViewSnapshot | null;
     snapshotA?: WorkbookViewSnapshot | null;
     snapshotB?: WorkbookViewSnapshot | null;
@@ -468,6 +471,7 @@ export type WorkbookTemplateBlockSpec = {
   text?: string;
   formula?: string;
   computeOperatorId?: string;
+  sageCode?: string;
   interactionKind?: WorkbookInteractionKind;
   visualizeLive?: boolean;
   visualizeNotes?: string;
@@ -607,6 +611,7 @@ const buildBlockFromSpec = (spec: WorkbookTemplateBlockSpec, makeId: () => strin
         cache: {},
       },
     };
+  if (spec.type === "sage-code") return { ...base, sageCode: { code: spec.sageCode ?? "", runs: [] } };
   if (spec.type === "interaction")
     return {
       ...base,

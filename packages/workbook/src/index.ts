@@ -1,5 +1,6 @@
 export * from "./operatorRegistry";
 export * from "./workbookModel";
+export * from "./workbookSageCode";
 export * from "./notebookReferences";
 export * from "./workbookDependencies";
 export * from "./workbookFreshness";
@@ -9,4 +10,5 @@ export * from "./notebookProvenance";
 export * from "./workbookClaims";
 export * from "./workbookSnapshotProvenance";
 export * from "./workbookComparisonReference";
+export * from "./workbookSavedMeshTrendReference";
 export * from "./workbookSageEvidence";

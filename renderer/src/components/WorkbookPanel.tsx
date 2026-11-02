@@ -5,6 +5,8 @@ import type { NotebookProjectContext } from "../workbook/notebookProjectContext"
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { createWorkbookComparisonReference } from "@math3d/workbook";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
+import { WorkbookSavedMeshTrendBlock, WorkbookSavedMeshTrendEditor } from "./WorkbookSavedMeshTrendBlock";
+import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
@@ -17,6 +19,7 @@ import { WorkbookContentEditor } from "./WorkbookContentEditor";
 import { WorkbookNamedParameters } from "./WorkbookNamedParameters";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
 import { WorkbookSageEvidenceView } from "./WorkbookSageEvidence";
+import { WorkbookSageCodeCell } from "./WorkbookSageCodeCell";
 import { assessWorkbookClaim } from "@math3d/workbook";
 import { uiStyles as styles } from "../uiStyles";
 import type {
@@ -69,6 +72,7 @@ type WorkbookPanelProps = {
   getNotebookProject: () => NotebookProjectContext | null;
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
+  onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   onOpenNote: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
@@ -148,6 +152,7 @@ const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
   reference: "Project reference",
   visualize: "Visualize",
   compute: "Compute",
+  "sage-code": "Sage code",
   interaction: "Interact",
   assert: "Assert",
 };
@@ -158,6 +163,7 @@ const BLOCK_ACCENT: Record<WorkbookBlockType, string> = {
   reference: "#2563eb",
   visualize: "#1f3556",
   compute: "#0f766e",
+  "sage-code": "#0369a1",
   interaction: "#7c3aed",
   assert: "#9a3412",
 };
@@ -513,6 +519,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   getNotebookProject,
   onOpenNotebookDocument,
   onOpenProjects,
+  onOpenSavedMeshResult,
   onOpenNote,
   onRemoveBlock,
   onMoveBlock,
@@ -1547,7 +1554,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         readComparisonResource={readComparisonResource}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onEditBlock={(stageId, blockId) => {
+        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
       <div style={{ marginBottom: 10 }}>
@@ -1863,6 +1870,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 />
               )}
 
+              {block.type === "sage-code" && activeWorkbook && <WorkbookSageCodeCell
+                workbook={activeWorkbook} block={block} freshness={freshnessById.get(block.id)} project={dependencyProject} readOnly={readOnly || !enabled}
+                onChange={(patch) => onUpdateBlock(activeStageId, block.id, patch)} />}
+
               {(block.type === "text" || block.type === "visualize") && <WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(activeStageId, block.id, patch)} />}
               {block.type === "assert" && activeWorkbook && <WorkbookClaimEditor workbook={activeWorkbook} block={block} project={dependencyProject} projectLive={projectLive} reader={artifactContext?.readArtifact} readOnly={readOnly} onChange={claim => onUpdateBlock(activeStageId, block.id, { claim })} />}
               {block.type === "reference" && (
@@ -1903,6 +1914,11 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 </select></label>
                 {!dependencyProject && <small>Open and save a Project comparison before linking it to this Visualize block.</small>}
                 {block.visualize?.comparison && <WorkbookComparisonBlock project={dependencyProject} reference={block.visualize.comparison} readResource={readComparisonResource} />}
+                <WorkbookSavedMeshTrendEditor project={dependencyProject} reference={block.visualize?.savedMeshTrend} readResource={readComparisonResource}
+                  readOnly={readOnly} onChange={savedMeshTrend => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), savedMeshTrend } })} />
+                {block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={dependencyProject}
+                  reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

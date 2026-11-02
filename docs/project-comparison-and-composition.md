@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC14)
+# Project comparison and composition (PC01–PC16)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -296,3 +296,50 @@ Run `npm run test:projects:pc14`. Its unit cases cover three retained revisions,
 method grouping, missing result gaps, source bytes, portable Project package
 import and report refusal. The Electron case covers exact point selection,
 export and restart. PC03 and PC05 retain their existing **Partial** boundaries.
+
+## PC15 · Saved Mesh trend in Workbook
+
+Status: **Complete for the PC14 saved quality and curvature trend scope**.
+Save compatible Mesh analysis results on explicitly retained generations and
+save the Project. Open **Workbook → 3 Visualize → Saved Mesh trend**, select a
+Mesh method and scalar, then choose **Link verified trend**. The Visualize block
+stores the Project and Mesh IDs, method, algorithm version, metric, and each
+exact result ID, result hash, source revision and source hash. Save the Workbook
+in Projects to retain the link with the Project. Source arrays stay in Project
+resources.
+
+Choose **Show embedded trend** to verify the exact sources and display one
+independent point per stored result. A retained generation without a saved
+result is an explicit gap. Selecting a dot shows its recorded value and hashes.
+Closing the view releases the plot. Changed result sets, missing generations,
+missing sidecars or tampered bytes refuse the embedded view. Relink deliberately
+when adding a new saved result to the trend. After restarting Math3D, reopen
+the saved Project so its checked source resources are available, then open the
+Workbook trend.
+
+Workbook Markdown, HTML and portable publication export include the stored
+values, revisions and hashes after re-verification. Export refuses stale or
+unavailable linked evidence. `npm run test:projects:pc15` covers contract and
+portable import, export refusal, Electron selection, restart and viewer cleanup.
+No Mesh analysis runs in the Workbook. PC03 and PC05 remain **Partial** for
+legacy sources and history that was never retained.
+
+## PC16 · Open a trend point's exact saved result
+
+Status: **Complete for verified PC14 and PC15 Mesh trend points**.
+In **Projects → Compare saved documents → View saved result trend**, select a
+recorded dot and choose **Open saved result**. The same action appears under
+**Workbook → 3 Visualize → Show embedded trend**. Math3D checks the exact
+result ID and hash, Mesh revision and hash, and source sidecar before taking
+you to **Projects → Results and artifacts**. The inspector shows the stored
+method and summary. **Show exact Mesh generation** opens a read-only view of
+the checked source, including a retained generation; **Return to saved result**
+closes that view and releases its renderer. Picks remain local to that Mesh
+revision.
+
+If the retained generation or sidecar is absent or changed, the saved result
+inspector explains why the source cannot open and does not substitute the
+current Mesh. The plot action itself refuses an unverified point. Restart and
+portable import require reopening the Project and its resources. No Mesh
+analysis runs on this navigation path. PC03 and PC05 remain **Partial** for
+legacy coordinate metadata and generations that were never retained.

@@ -35,6 +35,21 @@ test("PC14 shows exact saved Mesh points, exports, and reopens after restart", a
     await view.getByTestId(`project-mesh-trend-point-${middle.resultId}`).locator("circle").click();
     await expect(view.getByTestId("project-mesh-trend-selection")).toContainText(middle.resultId);
     await expect(view.getByTestId("project-mesh-trend-selection")).toContainText(middle.provenance.source.structuralHash);
+    await view.getByTestId("project-mesh-trend-open-result").click();
+    await expect(view).toHaveCount(0);
+    const inspector = controls.panel.getByTestId("project-result-detail");
+    await expect(inspector).toContainText(middle.resultId);
+    await expect(inspector.getByTestId("project-saved-mesh-evidence")).toContainText(`r${middle.provenance.source.revision}`);
+    await inspector.getByTestId("project-open-exact-mesh-generation").click();
+    const generation = page.getByTestId("project-mesh-generation-preview");
+    await expect(generation.getByTestId("project-mesh-generation-identity")).toContainText(middle.provenance.source.structuralHash);
+    await expect.poll(() => generation.locator("canvas").count()).toBeGreaterThan(0);
+    await generation.getByRole("button", { name: "Return to saved result" }).click();
+    await expect(generation).toHaveCount(0);
+    await expect(inspector).toContainText(middle.resultId);
+    await controls.panel.getByTestId("project-open-mesh-result-trend").click();
+    await view.getByTestId("project-mesh-trend-anchor").selectOption(results[0].resultId);
+    await view.getByTestId("project-mesh-trend-metric").selectOption("faceCount");
     const report = test.info().outputPath("pc14-saved-mesh-trend.html");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), report);
     await view.getByTestId("project-mesh-trend-export").click();
@@ -49,5 +64,8 @@ test("PC14 shows exact saved Mesh points, exports, and reopens after restart", a
     await view.getByTestId("project-mesh-trend-metric").selectOption("faceCount");
     await expect(view.getByTestId("project-mesh-trend-status")).toContainText("3 verified recorded points");
     await expect(view.getByTestId("project-mesh-trend-plot").locator("g[role=button]")).toHaveCount(3);
+    await view.getByTestId(`project-mesh-trend-point-${results[2].resultId}`).locator("circle").click();
+    await view.getByTestId("project-mesh-trend-open-result").click();
+    await expect(controls.panel.getByTestId("project-result-detail")).toContainText(results[2].resultId);
   } finally { await closeSurfaceApp(ctx); }
 });

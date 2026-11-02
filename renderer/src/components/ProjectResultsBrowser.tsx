@@ -14,6 +14,10 @@ import { isScientificSubrectangle } from
   "../projects/scientificSubrectangleWorkbook";
 import { isScientificTrajectory } from "../projects/scientificTrajectoryWorkbook";
 import { isScientificEquilibrium } from "../projects/scientificEquilibriumWorkbook";
+import type { ProjectResourceReader } from "../projects/projectResources";
+import { verifySavedMeshResult } from "../projects/projectSavedMeshResultComparison";
+
+const ProjectSavedMeshGenerationPreview = React.lazy(() => import("./ProjectSavedMeshGenerationPreview").then(module => ({ default: module.ProjectSavedMeshGenerationPreview })));
 
 type Selection = { kind: "result" | "artifact"; id: string };
 type Props = {
@@ -23,6 +27,7 @@ type Props = {
   canOpen: (id: string, module: KernelWorkspaceModule) => boolean;
   onOpen: (id: string, module: KernelWorkspaceModule) => void;
   focusResult?: { id: string; token: number } | null;
+  readResource?: ProjectResourceReader;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onCreateScientificReport?: (resultId: string) => void;
   onExportScientificReport?: (resultId: string) => void;
@@ -56,18 +61,21 @@ const isRegionResult = (operation: string) => operation === VECTOR_FIELD3D_REGIO
   operation === VECTOR_FIELD3D_TRAJECTORY_RESULT_TYPE ||
   operation === VECTOR_FIELD3D_EQUILIBRIUM_RESULT_TYPE;
 
-export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport }) => {
+export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, titles, canOpen, onOpen, focusResult, readResource, regionResultStatuses = {}, onCreateScientificReport, onExportScientificReport }) => {
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [meshPreviewOpen, setMeshPreviewOpen] = useState(false);
   const detailRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (focusResult && project.workspace.results.some(result => result.resultId === focusResult.id)) {
       setSelection({ kind: "result", id: focusResult.id });
+      setMeshPreviewOpen(false);
       if (window.innerWidth <= 760) window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start", behavior: "auto" }));
     }
   }, [focusResult?.token, project.identity.id]);
   const select = (next: Selection) => {
     setSelection(next);
+    setMeshPreviewOpen(false);
     if (window.innerWidth <= 760) window.requestAnimationFrame(() => {
       detailRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
       detailRef.current?.focus({ preventScroll: true });
@@ -92,6 +100,16 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
   const active = selection && (selection.kind === "result" ? results.some(result => result.resultId === selection.id) : artifacts.some(artifact => artifact.handle.artifactId === selection.id))
     ? selection : results[0] ? { kind: "result" as const, id: results[0].resultId } : artifacts[0] ? { kind: "artifact" as const, id: artifacts[0].handle.artifactId } : null;
   const result = active?.kind === "result" ? results.find(item => item.resultId === active.id) : undefined;
+  const meshResult = result?.provenance.operation.type.startsWith("mesh.saved.") ? result : undefined;
+  const meshCurrent = meshResult && project.workspace.entries.find(item => item.module === "mesh" &&
+    item.expected.id === meshResult.provenance.source.documentId)?.expected;
+  const meshSourceIsHistorical = !!meshResult && (!meshCurrent || meshCurrent.revision !== meshResult.provenance.source.revision ||
+    meshCurrent.structuralHash !== meshResult.provenance.source.structuralHash);
+  const meshVerification = useMemo(() => {
+    if (!meshResult || !readResource) return null;
+    try { return { checked: verifySavedMeshResult(project, meshResult.resultId, readResource), error: null }; }
+    catch (error) { return { checked: null, error: (error as Error).message }; }
+  }, [project, meshResult, readResource]);
   const artifact = active?.kind === "artifact" ? artifacts.find(item => item.handle.artifactId === active.id) : undefined;
   const resultStatus = result && inspection?.results.find(item => item.id === result.resultId);
   const artifactStatus = artifact && inspection?.artifacts.find(item => item.id === artifact.handle.artifactId);
@@ -143,6 +161,13 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               : resultStatus && <span className="project-freshness-badge" data-tone={presentProjectFreshness(resultStatus.freshness).tone}>{presentProjectFreshness(resultStatus.freshness).label}</span>}
           </div>
           <p>Recorded status: <strong>{result.status}</strong>{resultStatus?.missingArtifactIds.length ? ` · ${resultStatus.missingArtifactIds.length} unavailable artifact(s)` : ""}</p>
+          {meshResult && <div data-testid="project-saved-mesh-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10 }}>
+            <strong>Exact saved Mesh evidence</strong>
+            {meshVerification?.checked ? <><p>Result {meshResult.resultId} · hash {meshVerification.checked.resultHash}<br />
+              Mesh r{meshVerification.checked.source.identity.revision} · {meshVerification.checked.generation} · source hash {meshVerification.checked.source.identity.structuralHash}</p>
+              <button type="button" data-testid="project-open-exact-mesh-generation" onClick={() => setMeshPreviewOpen(true)}>Show exact Mesh generation</button></> :
+              <p role="alert">Saved result inspection remains available; the exact Mesh generation cannot open: {meshVerification?.error ?? "source bytes are unavailable"}. No current Mesh is substituted.</p>}
+          </div>}
           {isScientificSubrectangle(result) && <div className="project-results-links">
             <button type="button" data-testid="project-create-subrectangle-workbook" disabled={!onCreateScientificReport}
               onClick={() => onCreateScientificReport?.(result.resultId)}>Create source-linked Workbook report</button>
@@ -163,7 +188,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
               onClick={() => onCreateScientificReport?.(result.resultId)}>
               Create verified equilibrium Workbook report</button>
           </div>}
-          <dl><div><dt>Source document</dt><dd>{sourceButton(result.provenance.source.documentId)}</dd></div>
+          <dl><div><dt>Source document</dt><dd>{meshSourceIsHistorical ?
+            <span>{titles.get(result.provenance.source.documentId) ?? result.provenance.source.documentId} · historical revision; use the exact generation view above when available</span> : sourceButton(result.provenance.source.documentId)}</dd></div>
             <div><dt>Source generation</dt><dd>Revision {result.provenance.source.revision} · generation {result.provenance.source.generation}</dd></div>
             <div><dt>Source hash</dt><dd><code>{result.provenance.source.structuralHash}</code></dd></div>
             <div><dt>Method</dt><dd>{result.provenance.operation.algorithm} · version {result.provenance.operation.algorithmVersion}</dd></div>
@@ -274,5 +300,8 @@ export const ProjectResultsBrowser: React.FC<Props> = ({ project, inspection, ti
         {!result && !artifact && <p>No saved result or artifact is available to inspect.</p>}
       </section>
     </div>
+    {meshPreviewOpen && meshResult && readResource && <React.Suspense fallback={<p role="status">Opening retained Mesh generation…</p>}>
+      <ProjectSavedMeshGenerationPreview project={project} resultId={meshResult.resultId} readResource={readResource} onClose={() => setMeshPreviewOpen(false)} />
+    </React.Suspense>}
   </div>;
 };
