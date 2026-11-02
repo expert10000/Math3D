@@ -379,7 +379,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const button = (label: string, action: () => void, disabled = false, compact = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={[s.button, compact && s.toolbarButton]}>
     <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8", fontSize: compact ? 12 : 14, textAlign: compact ? "center" : "left" }}>{label}</Text></Pressable>;
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : keyboardVisible ? "height" : undefined} style={s.root} testID="mobile-graphs-workspace"
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace"
     onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     {presentation ? <View style={{ flexDirection: "row", alignItems: "center" }}>

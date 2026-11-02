@@ -102,6 +102,12 @@ export const styles = StyleSheet.create({
     flex: 1,
     minHeight: 150,
   },
+  workspaceViewportFrameCompact: {
+    minHeight: 110,
+  },
+  workspaceViewportFrameHidden: {
+    display: "none",
+  },
   workspaceAddButton: {
     width: 42,
     height: 42,
@@ -238,6 +244,10 @@ export const styles = StyleSheet.create({
     borderColor: "#d5dbe2",
     overflow: "hidden",
   },
+  inspectorSheetFullScreen: {
+    flex: 1,
+    flexShrink: 0,
+  },
   inspectorHandleArea: {
     alignItems: "center",
     paddingTop: 7,
@@ -282,6 +292,10 @@ export const styles = StyleSheet.create({
     maxHeight: 235,
     borderTopWidth: 1,
     borderTopColor: "#e3e8ef",
+  },
+  inspectorContentFullScreen: {
+    flex: 1,
+    maxHeight: "100%",
   },
   inspectorContentInner: {
     padding: 12,

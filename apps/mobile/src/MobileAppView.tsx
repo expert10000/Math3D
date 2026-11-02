@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, Text, View } from "react-native";
+import { Dimensions, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { tabs, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
@@ -17,12 +17,16 @@ import { mobileExamples } from "./data/mobileSeedData";
 export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model }) => {
   const { tab, setTab } = model;
   const [graphPresentation, setGraphPresentation] = useState(false);
+  const window = useWindowDimensions();
+  const screen = Dimensions.get("screen");
+  const compactLandscapeWorkspace = tab === "workspace" && screen.width > screen.height &&
+    window.width > window.height && window.height < 480;
   return (
-    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}
-      enabled={tab !== "workspace" && !model.graphGalleryOpen}>
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}
+      enabled={Platform.OS === "ios" && tab !== "workspace" && !model.graphGalleryOpen}>
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" translucent={false} />
-      {!(tab === "workspace" && model.graphDocument) && <View style={styles.header}>
+      {!(tab === "workspace" && (model.graphDocument || compactLandscapeWorkspace)) && <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.title}>Math3D</Text>

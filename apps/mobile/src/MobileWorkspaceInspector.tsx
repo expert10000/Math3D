@@ -6,7 +6,7 @@ import { MOBILE_DERIVED_MESH_SEMANTICS_WARNING, MOBILE_OBJECT_EXPORT_FORMATS } f
 import { surfaceSummary, type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
 
-export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; viewerDocument: SceneDocument }> = ({ model, viewerDocument }) => {
+export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; viewerDocument: SceneDocument; compactFullScreen?: boolean }> = ({ model, viewerDocument, compactFullScreen }) => {
   const {
     inspectorSection,
     setInspectorSection,
@@ -84,7 +84,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
     finishInspectorSwipe
   } = model;
   return (
-    <View style={styles.inspectorSheet}>
+    <View style={[styles.inspectorSheet, compactFullScreen && styles.inspectorSheetFullScreen]}>
       <View
         style={styles.inspectorHandleArea}
         accessibilityRole="button"
@@ -115,7 +115,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
         ))}
       </View>
       {inspectorExpanded && (
-        <ScrollView style={styles.inspectorContent} contentContainerStyle={styles.inspectorContentInner}>
+        <ScrollView style={[styles.inspectorContent, compactFullScreen && styles.inspectorContentFullScreen]} contentContainerStyle={styles.inspectorContentInner}>
           {inspectorSection === "scene" && (
             <>
               <Text style={styles.panelTitle}>Scene</Text>
