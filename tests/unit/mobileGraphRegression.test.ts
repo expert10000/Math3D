@@ -27,6 +27,33 @@ it.each(["linear", "quadratic", "cubic", "quartic"] as const)("native %s fit mat
   expect(isMobileGraphAnalysisCurrent(result, document, { ...draft, kind: model === "linear" ? "regression-quadratic" : "regression-linear" })).toBe(false);
   expect(mobileGraphPublicationRequest(document, tables, result, { ...draft, x: "44" }, { width: 320, height: 240 }, { x: "", y: "" }).analyses).toHaveLength(0);
 });
+it("exports the eight-row release reference with numerical 95% mean and prediction limits", () => {
+  const values = [1.2, 2.8, 4.8, 7.2, 9.2, 10.8, 12.8, 15.2];
+  const rows = values.map((y, x) => ({ id: `row_${x + 1}`, x, y }));
+  const tables = new Graph2DPointTableStore(), table = tables.publish(rows);
+  const source = applyGraph2DAuthoring(createEmptyGraph2DDocument("publication-reference", "Regression reference"), { type: "create-point-series",
+    draft: { label: "Reference data", table, domain: graph2DPointDomain(rows), mode: "points",
+      style: { visible: true, color: "#2563eb", lineWidth: 2, lineStyle: "solid" } } });
+  const document = createGraph2DDocument({ ...source, stableKey: "publication-reference" });
+  const draft = { ...mobileGraphAnalysisDraft(document), objectId: document.source.objects[0]!.id, kind: "regression-linear" as const };
+  const result = runMobileGraphAnalysis(document, draft, rows), fit = result.regression!;
+  expect(fit.n).toBe(8); expect(fit.sse).toBeCloseTo(.32, 10);
+  const middle = fit.curve[64]!;
+  expect(middle.x).toBe(3.5); expect(middle.y).toBeCloseTo(8, 10);
+  expect(middle.meanLow).toBeCloseTo(7.800210484, 8);
+  expect(middle.meanHigh).toBeCloseTo(8.199789516, 8);
+  expect(middle.predictionLow).toBeCloseTo(7.400631452, 8);
+  expect(middle.predictionHigh).toBeCloseTo(8.599368548, 8);
+  const publication = createGraph2DPublication({ ...mobileGraphPublicationRequest(document, tables, result, draft,
+    { width: 640, height: 480 }, { x: "", y: "" }), deterministic: true });
+  expect(publication.analyses).toHaveLength(3);
+  for (const format of ["csv", "html"] as const) {
+    const exported = new TextDecoder().decode(renderGraph2DPublicationArtifact(publication, format).bytes);
+    expect(exported).toContain("95% mean low"); expect(exported).toContain("95% prediction low");
+    expect(exported).toContain(String(middle.meanLow)); expect(exported).toContain(String(middle.predictionLow));
+    expect(exported).toContain("row_8"); expect(exported).toContain(fit.table.checksum);
+  }
+});
 it("G2D39 native missing sidecars fail explicitly; no fit of downsampled points", () => {
   const { document, objectId } = dataset(), draft = { ...mobileGraphAnalysisDraft(document), objectId, kind: "regression-linear" as const };
   expect(() => runMobileGraphAnalysis(document, draft)).toThrow(/original checked/);

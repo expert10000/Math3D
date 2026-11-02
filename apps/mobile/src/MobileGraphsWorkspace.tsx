@@ -198,7 +198,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     if (active && (active.sourceKey !== sourceKey || active.draftHash !== draftHash || destination !== "Analyze")) cancelFit(false);
   }, [sourceKey, draftHash, destination]);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview || !!phaseSeedPreview,
-    () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined, tableStore);
+    // A completed analysis remains source-linked while Android's document picker backgrounds the app.
+    // In-flight fits are cancelled above; source/draft identity still gates display and publication.
+    () => { setParameterPreview(null); }, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
   const selectedPhase = series.find(item => item.objectId === document.selection.objectId &&
     "kind" in item.artifact && item.artifact.kind === "phase-portrait")?.artifact as Graph2DPhasePortraitArtifact | undefined;
