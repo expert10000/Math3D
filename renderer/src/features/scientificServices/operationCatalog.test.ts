@@ -19,4 +19,13 @@ describe("Scientific Services contextual operation catalog", () => {
     expect(scientificOperationsFor("geometry", "Symbolic").some((entry) => entry.id === "sage.symbolic.gradient")).toBe(true);
     expect(scientificOperationsFor("geometry", "Numerical")).toEqual([]);
   });
+
+  it("composes every registered Sage operation in CAS without changing Surface or Geometry contracts", () => {
+    expect(scientificOperationsFor("cas").map((entry) => entry.id).sort()).toEqual([...SAGE_SYMBOLIC_OPERATIONS].sort());
+    expect(scientificOperationsFor("cas", "Number Theory").map((entry) => entry.id)).toEqual([
+      "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
+    ]);
+    expect(scientificOperationsFor("cas", "Basic").find((entry) => entry.id === "sage.symbolic.simplify"))
+      .toBe(scientificOperationsFor("surface", "Basic").find((entry) => entry.id === "sage.symbolic.simplify"));
+  });
 });

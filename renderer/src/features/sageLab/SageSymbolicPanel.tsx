@@ -219,7 +219,7 @@ const SageSymbolicPanel: React.FC<{
         </div>
 
         <strong>Symbolic operations</strong>
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Surface math shortcuts">
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Symbolic operation shortcuts">
           {operations.filter((entry) => (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.solve", "sage.symbolic.factor", "sage.symbolic.singularities"] as SageSymbolicOperation[]).includes(entry.id)).map((entry) => (
             <button key={entry.id} type="button" disabled={busy !== "none"} aria-pressed={operation === entry.id}
               onClick={() => {

@@ -1,5 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+test("web CAS uses shared Sage discovery and Inspector while code remains gated", async ({ page }) => {
+  const requests: Array<{ operation: string; backend: string; params: Record<string, unknown> }> = [];
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (route.request().url().endsWith("/health")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok",
+        operations: ["sage.symbolic.simplify"] }) });
+    const request = route.request().postDataJSON() as typeof requests[number];
+    requests.push(request);
+    await route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", operation: request.operation,
+        success: true, result: { text: "web-cas-result" }, latex: "", warnings: [] }) });
+  });
+  await page.goto("/");
+  await page.getByTestId("workspace-nav-cas").click();
+  const cas = page.getByTestId("cas-algebra-workspace");
+  await expect(cas).toBeVisible();
+  const services = cas.getByTestId("scientific-services-cas");
+  await services.getByLabel("Services preset").selectOption("Basic");
+  await services.getByLabel("SageMath backend").selectOption("docker");
+  await services.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(cas.getByTestId("sage-analysis-result")).toContainText("web-cas-result");
+  await expect(cas.getByTestId("sage-analysis-result")).toContainText("Freeform input");
+  expect(requests).toMatchObject([{ operation: "sage.symbolic.simplify", backend: "docker",
+    params: { expression: "sin(x)^2 + cos(x)^2" } }]);
+  await cas.getByRole("button", { name: "Runtimes", exact: true }).click();
+  await expect(cas.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+  await cas.getByRole("button", { name: "Open trusted Sage Console" }).click();
+  await expect(page.getByTestId("sage-console-trust")).toBeDisabled();
+  await expect(page.getByTestId("sage-console-run")).toBeDisabled();
+});
+
 test("web Sage Console keeps code execution unavailable", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("top-sage-console-button").click();

@@ -326,6 +326,7 @@ import { previewSageGradientLines, previewSageScalarMesh, sageViewerProvenance,
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import SageConsoleDock from "./features/sageLab/SageConsoleDock";
+import CASAlgebraWorkspace from "./features/sageLab/CASAlgebraWorkspace";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
 import { ParamSurfaceViewer, wrapFlagsFor, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
@@ -41867,6 +41868,8 @@ const App: React.FC = () => {
   const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
+  const [casWorkspaceOpen, setCasWorkspaceOpen] = useState(false);
+  const [casAnalysisRecord, setCasAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [sageConsoleOpen, setSageConsoleOpen] = useState(false);
   const [computeCenterInitialTab, setComputeCenterInitialTab] = useState<"overview" | "runtimes">("overview");
 
@@ -76909,7 +76912,7 @@ case "mobius":
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
-    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis";
+    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -76966,6 +76969,12 @@ case "mobius":
       label: "Geometry",
       active: mode === "geometry",
       onSelect: () => setMode("geometry"),
+    },
+    {
+      id: "cas",
+      label: "CAS / Algebra",
+      active: casWorkspaceOpen,
+      onSelect: () => setCasWorkspaceOpen(true),
     },
     {
       id: "volume",
@@ -80535,7 +80544,7 @@ case "mobius":
                   </div>
                   <div style={topNavSegmentStyle}>
                     {sectionNavEntries.map((entry) => {
-                      const active = entry.active;
+                      const active = entry.id === "cas" ? casWorkspaceOpen : !casWorkspaceOpen && entry.active;
                       const disabled = !!entry.disabled;
                       return (
                         <button
@@ -80545,6 +80554,8 @@ case "mobius":
                           aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
                           aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={() => {
+                            if (entry.id === "cas") { setProjectsOpen(false); setCasWorkspaceOpen(true); return; }
+                            setCasWorkspaceOpen(false);
                             if (entry.id !== "projects") setProjectsOpen(false);
                             if (entry.id === "surfaces") {
                               openNormalSurfacesWorkspace(); return;
@@ -111287,6 +111298,14 @@ case "mobius":
         </div>
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
+      {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord}
+        onResult={(record) => setCasAnalysisRecord({ ...record, source: { module: "cas", id: "sage-input:cas", revision: 0,
+          expression: record.expression, fingerprint: hashValue(record.request.params) } })}
+        onSaveWorkbook={(record) => { setCasWorkspaceOpen(false); openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
+        onOpenWorkbook={() => { setCasWorkspaceOpen(false); openNormalSurfacesWorkspace(); setActiveStageId("compute"); setRightPanelTab("workbook"); }}
+        onOpenConsole={() => setSageConsoleOpen(true)}
+        onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
+        onClose={() => setCasWorkspaceOpen(false)} />}
       {sageConsoleOpen && <SageConsoleDock onClose={() => setSageConsoleOpen(false)} onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }} />}
       {preferencesOpen && (
         <div

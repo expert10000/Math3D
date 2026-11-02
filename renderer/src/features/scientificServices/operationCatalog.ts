@@ -1,6 +1,6 @@
 import { SAGE_SYMBOLIC_OPERATIONS, type SageSymbolicOperation } from "../../integrations/sage/sageSchemas";
 
-export type ScientificServiceContext = "surface" | "geometry";
+export type ScientificServiceContext = "surface" | "geometry" | "cas";
 export type ScientificServicePreset = "All" | "Basic" | "Symbolic" | "Numerical" | "Algebraic Geometry" | "Number Theory";
 
 export const SCIENTIFIC_SERVICE_PRESETS: readonly ScientificServicePreset[] = [
@@ -15,8 +15,8 @@ export type ScientificOperationEntry = {
   contexts: readonly ScientificServiceContext[];
 };
 
-const BOTH: readonly ScientificServiceContext[] = ["surface", "geometry"];
-const SURFACE: readonly ScientificServiceContext[] = ["surface"];
+const BOTH: readonly ScientificServiceContext[] = ["surface", "geometry", "cas"];
+const SURFACE: readonly ScientificServiceContext[] = ["surface", "cas"];
 
 // This is a UI catalog. The Sage schema and worker still validate the executable contract.
 export const SCIENTIFIC_OPERATION_CATALOG: readonly ScientificOperationEntry[] = [

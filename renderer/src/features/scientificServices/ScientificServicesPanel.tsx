@@ -25,7 +25,7 @@ export const ScientificServicesPanel: React.FC<{
       </select>
     </label>
     <div style={{ color: "#667085", fontSize: 11 }}>
-      {context === "surface" ? "Surface" : "Geometry"} operations use the same SageMath request and result contract.
+      {context === "surface" ? "Surface" : context === "geometry" ? "Geometry" : "CAS / Algebra"} operations use the same SageMath request and result contract.
       Inspect completed results in Inspector → Analysis.
     </div>
     {operations.length
