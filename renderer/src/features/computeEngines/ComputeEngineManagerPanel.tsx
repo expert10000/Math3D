@@ -166,9 +166,9 @@ const ComputeEngineManagerPanel: React.FC<{ embedded?: boolean }> = ({ embedded 
             </div>
             <div style={{ fontSize: 11, color: "#475467", display: "grid", gap: 2 }}>
               <div>Container: {engine.containerName}</div>
-              <div>Health: {engine.healthUrl}</div>
+              <div>State endpoint: {engine.healthUrl}</div>
               {engine.version && <div>Engine: {engine.version}</div>}
-              {engine.lastError && <div style={{ color: "#9a6700" }}>{engine.healthy ? "Management detail" : "Health / management detail"}: {engine.lastError}</div>}
+              {engine.lastError && <div style={{ color: "#9a6700" }}>{engine.healthy ? "Management detail" : "State / management detail"}: {engine.lastError}</div>}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               <button

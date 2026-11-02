@@ -2448,7 +2448,7 @@ export const useMobileAppController = () => {
 
     if (response.ok && negotiation.status === "ready") {
       setBackendHealthStatus("ok");
-      setBackendHealthMessage(`Backend healthy at ${normalizedUrl} (${latencyMs} ms). ${negotiation.message}`);
+      setBackendHealthMessage(`Backend ready at ${normalizedUrl} (${latencyMs} ms). ${negotiation.message}`);
       setBackendDiagnostics((current) => ({
         ...current,
         status: "ready",

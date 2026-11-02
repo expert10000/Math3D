@@ -71,7 +71,7 @@ const OctaveLabPanel: React.FC = () => {
       const response = await checkOctaveHealth();
       setHealth(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to check Octave runtime health.");
+      setError(err instanceof Error ? err.message : "Failed to check Octave runtime state.");
     } finally {
       setBusy("none");
     }

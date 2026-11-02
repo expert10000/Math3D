@@ -73059,7 +73059,7 @@ case "mobius":
       vertexCount,
       faceCount,
       bounds,
-      stateLabel: activeHasIssues ? "Active mesh needs review" : meshWorkspaceGeometryEntries.length ? "Linked meshes unverified" : "Active mesh healthy",
+      stateLabel: activeHasIssues ? "Active mesh needs review" : meshWorkspaceGeometryEntries.length ? "Linked meshes unverified" : "Active mesh clean",
     };
   }, [
     meshGeometryRoundTripSource?.objectId,
@@ -101280,7 +101280,7 @@ case "mobius":
                                   </div>
                                   <div data-testid="geometry-validity-analysis-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Topology, continuity and validity</div>
-                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Inspect semantic bodies through vertices, parameter/trim validity, and display-mesh health as separate evidence.</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Inspect semantic bodies through vertices, parameter/trim validity, and display-mesh state as separate evidence.</div>
                                     <button type="button" data-testid="geometry-run-validity-analysis" onClick={handleRunGeometryValidityAnalysis} style={{ fontSize: 11 }}>Run exact Geometry diagnostics</button>
                                   </div>
                                   <details data-testid="geometry-measure-group" open style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>

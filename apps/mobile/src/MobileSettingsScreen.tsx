@@ -93,11 +93,11 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
             <Text style={styles.secondaryBtnText}>Save URL</Text>
           </Pressable>
           <Pressable onPress={() => void runBackendHealthCheck()} style={styles.secondaryBtn}>
-            <Text style={styles.secondaryBtnText}>Health Check</Text>
+            <Text style={styles.secondaryBtnText}>Check backend state</Text>
           </Pressable>
         </View>
         <Text style={styles.itemMeta}>Applied URL: {workerBaseUrl || "Not configured"}</Text>
-        <Text style={styles.itemMeta}>Health: {backendHealthStatus}</Text>
+        <Text style={styles.itemMeta}>State: {backendHealthStatus}</Text>
         <Text style={styles.itemMeta}>Negotiation: {workerNegotiation.status}</Text>
         <Text style={styles.itemMeta}>{workerNegotiation.message}</Text>
         <Text style={styles.itemMeta}>
@@ -256,7 +256,7 @@ export const MobileSettingsScreen: React.FC<{ model: MobileAppController }> = ({
         <View style={styles.backendPanel}>
           <Text style={styles.backendPanelTitle}>Backend diagnostics</Text>
           <Text style={styles.itemMeta}>Status: {backendDiagnostics.status}</Text>
-          <Text style={styles.itemMeta}>Health: {backendDiagnostics.healthOk == null ? "unknown" : backendDiagnostics.healthOk ? "ok" : "error"}</Text>
+          <Text style={styles.itemMeta}>State: {backendDiagnostics.healthOk == null ? "unknown" : backendDiagnostics.healthOk ? "ok" : "error"}</Text>
           <Text style={styles.itemMeta}>Latency: {backendDiagnostics.latencyMs == null ? "n/a" : `${backendDiagnostics.latencyMs} ms`}</Text>
           <Text style={styles.itemMeta}>Worker version: {backendDiagnostics.workerVersion || "unknown"}</Text>
           <Text style={styles.itemMeta}>Worker protocol: {backendDiagnostics.workerProtocol || "unknown"}</Text>

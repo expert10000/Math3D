@@ -55,9 +55,9 @@ export default function PythonWorkerStatusCard() {
     try {
       const result = await cgalHealth();
       setStatus(await getPythonWorkerDiagnostics());
-      if (!result.ok) setActionError(result.error ?? "Worker health check failed.");
+      if (!result.ok) setActionError(result.error ?? "Worker state check failed.");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Worker health check failed.");
+      setActionError(error instanceof Error ? error.message : "Worker state check failed.");
       setStatus(await getPythonWorkerDiagnostics());
     } finally {
       setChecking(false);
@@ -83,7 +83,7 @@ export default function PythonWorkerStatusCard() {
           {refreshing ? "Refreshing..." : "Refresh worker status"}
         </button>
         <button type="button" onClick={() => void checkWorker()} disabled={refreshing || checking} style={{ fontSize: 11, padding: "4px 8px" }}>
-          {checking ? "Checking..." : status?.available ? "Run health check" : "Retry worker startup"}
+          {checking ? "Checking..." : status?.available ? "Check worker state" : "Retry worker startup"}
         </button>
         {status && <span style={detailStyle}>Checked: {formatTime(status.lastCheckAt)}</span>}
       </div>

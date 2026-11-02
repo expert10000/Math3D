@@ -1674,7 +1674,7 @@ export async function getPythonWorker(): Promise<PythonWorker> {
       const version = await worker.version(workerStartupHealthTimeoutMs);
       if (version.protocol !== "2026-03-15") throw new Error(`Unsupported Python worker protocol ${version.protocol}.`);
       const health = await worker.health(workerStartupHealthTimeoutMs);
-      if (!health?.ok) throw new Error(`Python worker health check failed: ${health?.error ?? "unknown error"}.`);
+      if (!health?.ok) throw new Error(`Python worker state check failed: ${health?.error ?? "unknown error"}.`);
     } catch (err) {
       recordUnexpectedFailure("startup-rejected", String((err as Error)?.message ?? err));
       worker.kill();

@@ -527,7 +527,7 @@ const builtinImplementationEntries: Array<[GeometryAnalysisResultKind, GeometryA
     const geometryValidity = analyzeGeometryValidity(context.geometryValidity);
     const outputs: GeometryAnalysisOutput[] = [{ id: "semantic-topology", label: "Geometry-native topology", kind: "table", columns: ["entity", "count"], rows: Object.entries(geometryValidity.counts) }];
     geometryValidity.exactGeometry.issues.forEach((issue) => outputs.push({ id: issue.id, label: issue.kind, kind: "warning", value: issue.message, severity: issue.severity === "error" ? "error" : issue.severity === "warning" ? "warning" : "info" }));
-    outputs.push({ id: "mesh-separation", label: "Display mesh health", kind: "summary", value: geometryValidity.conventions.meshSeparation });
+    outputs.push({ id: "mesh-separation", label: "Display mesh state", kind: "summary", value: geometryValidity.conventions.meshSeparation });
     return { algorithm: "geometry-semantic-validity-v1", backend: "Geometry exact validity core", outputs, summary: { valid: geometryValidity.exactGeometry.valid, issueCount: geometryValidity.exactGeometry.issues.length, ...geometryValidity.counts, continuity: geometryValidity.exactGeometry.continuity?.classification ?? null }, warnings: geometryValidity.exactGeometry.issues.filter((issue) => issue.severity !== "info").map((issue) => issue.message), geometryValidity };
   }],
   ["measurement", ({ context }) => {

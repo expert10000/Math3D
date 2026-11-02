@@ -541,7 +541,7 @@ const defaultScientificMethod = (input: MeshActiveAnalysisResultInput): string =
     case "chart-analysis": return "Descriptive scalar statistics";
     case "mesh-quality": return "VTK/Verdict-compatible mesh quality";
     case "geodesics": return "Mesh path computation";
-    case "diagnostics": return "Canonical mesh health validation";
+    case "diagnostics": return "Canonical mesh state validation";
   }
 };
 

@@ -11509,7 +11509,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     : meshAnalyzeDiagnostics?.state ?? "Unverified";
   const meshHealthStatusDisplay =
     meshHealthStatusLabel === "Healthy"
-      ? "✓ Healthy"
+      ? "✓ Clean"
       : meshHealthStatusLabel === "Invalid"
         ? "✕ Invalid"
         : meshHealthStatusLabel === "Warning"
@@ -11764,7 +11764,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       }}
                     >
                       <strong style={{ color: meshHealthTone.color }}>
-                        {meshHealthStatusLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
+                        {meshHealthStatusLabel === "Healthy" ? "Clean" : meshHealthStatusLabel} · {meshHealthIssueCategoryCount} issue categor{meshHealthIssueCategoryCount === 1 ? "y" : "ies"}
                       </strong>
                       {renderHealthCountRow("Boundary edges", meshHealthBoundaryEdgeCount)}
                       {renderHealthCountRow("Non-manifold edges", meshHealthNonManifoldEdgeCount)}
@@ -12517,7 +12517,7 @@ export const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </span>
             </div>
             <div data-testid="mesh-inspector-canonical-health" style={{ border: "1px solid #dbe4ee", borderRadius: 7, background: "#f8fafc", padding: "7px", marginBottom: 9, display: "grid", gap: 4, fontSize: 10 }}>
-              <strong>Canonical MeshHealthResult</strong>
+              <strong>Canonical mesh state</strong>
               <div><strong>Backend:</strong> {meshAnalyzeDiagnostics?.backend === "hybrid" ? "Math3D + CGAL" : meshAnalyzeDiagnostics?.backend === "cgal" ? "CGAL" : "Math3D"}</div>
               <div><strong>Status:</strong> {meshAnalyzeDiagnostics?.state ?? "not ready"}</div>
               <div><strong>Warnings:</strong> {meshAnalyzeDiagnostics?.warnings.length ? meshAnalyzeDiagnostics.warnings.join("; ") : "none"}</div>

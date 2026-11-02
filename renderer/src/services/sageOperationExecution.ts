@@ -209,7 +209,7 @@ export class SageExecutionRegistry {
       health = await this.#health(backend);
     } catch (error) {
       health = { engine: "sagemath", available: false, operations: [],
-        status: error instanceof Error ? error.message : "SageMath health check failed." };
+        status: error instanceof Error ? error.message : "SageMath state check failed." };
     }
     const operations: ScientificOperationCapability[] = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
       .filter(([operation]) => health.operations.includes(operation) && (backend === "docker" || isLocalSageOperation(operation)))

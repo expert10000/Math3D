@@ -381,7 +381,7 @@ export function registerCgalMeshIpc() {
   ipcMain.handle("mesh:cgal:health", async (): Promise<CgalHealthResponse> => {
     try {
       const native = getNativeCgalWorker();
-      if (native) return (await native.health()) ? { ok: true } : { ok: false, error: "Native CGAL health check failed" };
+      if (native) return (await native.health()) ? { ok: true } : { ok: false, error: "Native CGAL state check failed" };
       const worker = await getPythonWorker();
       const res = await worker.health();
       if (res?.ok === false) {
