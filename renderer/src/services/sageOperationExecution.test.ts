@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 import { SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
 import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
-import { createSageExecutionRegistry, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
+import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
 
 const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
   engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_SYMBOLIC_OPERATIONS,
@@ -29,6 +29,43 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : { expression: "x^2+y^2+z^2", variables: ["x", "y", "z"] };
 
 describe("Sage scientific execution contract", () => {
+  it("discovers trusted local console execution and records output provenance through the shared service", async () => {
+    const calls: { jobId: string; code: string }[] = [];
+    const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true,
+      consoleRun: async (request) => {
+        calls.push(request);
+        return { jobId: request.jobId, success: true, backendId: "sage-local-wsl", engineVersion: "10.6",
+          stdout: "hello\n", result: "2", warnings: [], inputHash: "abc", elapsedMs: 3 };
+      },
+    });
+    expect((await registry.probeBackend("local")).operations.map((item) => item.operationType)).toContain(SAGE_CONSOLE_OPERATION);
+    expect((await registry.probeBackend("docker")).operations.map((item) => item.operationType)).not.toContain(SAGE_CONSOLE_OPERATION);
+    expect(() => registry.runConsole({ code: "1+1", trusted: false })).toThrow("Trust an available local Sage runtime");
+    const handle = registry.runConsole({ code: "1+1", trusted: true });
+    const { broker, response } = await handle.promise;
+    expect(broker.ok).toBe(true);
+    expect(calls).toEqual([{ jobId: handle.jobId, code: "1+1" }]);
+    expect(response).toMatchObject({ inputHash: "abc", result: "2", backendId: "sage-local-wsl" });
+    expect(getComputeJobs().find((job) => job.jobId === handle.jobId)).toMatchObject({
+      operationType: SAGE_CONSOLE_OPERATION, status: "complete", backendId: "sage-local-wsl",
+    });
+  });
+
+  it("cancels a console job through its dedicated local transport", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => { started = resolve; });
+    const cancelled: string[] = [];
+    const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true,
+      consoleRun: async () => { started(); return new Promise<never>(() => undefined); },
+      consoleCancel: (jobId) => { cancelled.push(jobId); },
+    });
+    const handle = registry.runConsole({ code: "while True: pass", trusted: true });
+    await running;
+    expect(handle.cancel()).toBe(true);
+    expect((await handle.promise).broker).toMatchObject({ ok: false, code: "cancelled" });
+    expect(cancelled).toEqual([handle.jobId]);
+  });
+
   it("exposes the same version and limits used by backend discovery", async () => {
     const registry = createSageExecutionRegistry({ health });
     const probe = await registry.probeBackend("docker");

@@ -37,7 +37,8 @@ export type Math3DWorkerOperationId =
   | "matrix.charpoly"
   | "algebra.groebner"
   | "number-theory.gcd"
-  | "number-theory.mod-inverse";
+  | "number-theory.mod-inverse"
+  | "sage.console.execute";
 
 export type WorkerOperationOwner =
   | "math3d-js"
@@ -321,6 +322,14 @@ const definitions = [
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "sage.console.execute",
+    title: "Sage Console",
+    canonicalOwner: "sage",
+    method: "algorithmic",
+    environments: ["desktop"],
     legacyRequestKinds: [],
   },
 ] as const satisfies readonly Math3DWorkerOperationDefinition[];

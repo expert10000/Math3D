@@ -841,6 +841,11 @@ declare global {
       run: (req: SageRunRequest) => Promise<SageRunResponse>;
       cancel: (jobId: string) => Promise<{ ok: boolean }>;
     };
+    sageConsole?: {
+      setTrusted: (trusted: boolean) => Promise<{ trusted: boolean }>;
+      run: (request: { jobId: string; code: string }) => Promise<import("./features/sageLab/sageConsoleTypes").SageConsoleResponse>;
+      cancel: (jobId: string) => Promise<{ ok: boolean }>;
+    };
     computeEngines?: {
       getStatus: () => Promise<ComputeEngineSnapshot>;
       runAction: (engineId: ComputeEngineId, action: ComputeEngineAction) => Promise<ComputeEngineActionResult>;

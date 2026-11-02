@@ -325,6 +325,7 @@ import { previewSageGradientLines, previewSageScalarMesh, sageViewerProvenance,
   type SageViewerProvenance } from "./features/sageLab/sageViewerArtifact";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
+import SageConsoleDock from "./features/sageLab/SageConsoleDock";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
 import { ParamSurfaceViewer, wrapFlagsFor, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
@@ -41841,6 +41842,7 @@ const App: React.FC = () => {
   const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
+  const [sageConsoleOpen, setSageConsoleOpen] = useState(false);
   const [computeCenterInitialTab, setComputeCenterInitialTab] = useState<"overview" | "runtimes">("overview");
 
   useEffect(() => {
@@ -80797,6 +80799,7 @@ case "mobius":
                     >
                       Compute
                     </button>
+                    <button type="button" data-testid="top-sage-console-button" onClick={() => setSageConsoleOpen(true)} title="Sage Console" style={topNavButtonStyle(sageConsoleOpen)}>Sage Console</button>
                     <button
                       type="button"
                       onClick={() => setCommandPaletteOpen(true)}
@@ -111247,6 +111250,7 @@ case "mobius":
         </div>
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
+      {sageConsoleOpen && <SageConsoleDock onClose={() => setSageConsoleOpen(false)} onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }} />}
       {preferencesOpen && (
         <div
           style={{

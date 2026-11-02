@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { cancelSagePolynomialJob, runSagePolynomialJob } from "../python/sagePolynomialWorker";
 import { cancelSageSymbolicJob, checkLocalSageHealth, LOCAL_SYMBOLIC_OPERATIONS, runSageSymbolicJob } from "../python/sageSymbolicWorker";
+import { cancelSageConsoleJob, runSageConsoleJob } from "../python/sageConsoleWorker";
 
 type SageOperation =
   | "sage.symbolic.simplify"
@@ -28,6 +29,9 @@ const baseUrl = String(process.env.MATH3D_SAGE_SERVICE_URL || "http://127.0.0.1:
 const serviceUnavailableMessage =
   "SageMath Docker service is unreachable. Start it with: docker compose -f services/sage-worker/docker-compose.yml up --build";
 const dockerJobs = new Map<string, AbortController>();
+const trustedConsoleSenders = new Set<number>();
+const observedConsoleSenders = new Set<number>();
+const consoleJobOwners = new Map<string, number>();
 
 async function requestJson(path: string, init?: RequestInit, signal?: AbortSignal): Promise<unknown> {
   const controller = new AbortController();
@@ -65,6 +69,40 @@ async function requestJson(path: string, init?: RequestInit, signal?: AbortSigna
 }
 
 export function registerSageServiceIpc(): void {
+  ipcMain.handle("sage:console:trust", (event, trusted: boolean) => {
+    if (typeof trusted !== "boolean") throw new Error("Invalid Sage console trust setting.");
+    const senderId = event.sender.id;
+    if (trusted) {
+      trustedConsoleSenders.add(senderId);
+      if (!observedConsoleSenders.has(senderId)) {
+        observedConsoleSenders.add(senderId);
+        const revoke = () => {
+          trustedConsoleSenders.delete(senderId);
+          for (const [jobId, owner] of consoleJobOwners) if (owner === senderId) cancelSageConsoleJob(jobId);
+        };
+        event.sender.on("did-navigate", revoke);
+        event.sender.once("destroyed", () => {
+          observedConsoleSenders.delete(senderId);
+          revoke();
+        });
+      }
+    } else {
+      trustedConsoleSenders.delete(senderId);
+      for (const [jobId, owner] of consoleJobOwners) if (owner === senderId) cancelSageConsoleJob(jobId);
+    }
+    return { trusted: trustedConsoleSenders.has(senderId) };
+  });
+  ipcMain.handle("sage:console:run", async (event, request: { jobId: string; code: string }) => {
+    if (!trustedConsoleSenders.has(event.sender.id)) throw new Error("Trust the local Sage runtime before executing code.");
+    if (!request || typeof request.jobId !== "string" || typeof request.code !== "string") throw new Error("Invalid Sage console request.");
+    if (consoleJobOwners.has(request.jobId)) throw new Error("Sage console job ID is already running.");
+    consoleJobOwners.set(request.jobId, event.sender.id);
+    try { return await runSageConsoleJob(request.jobId, request.code); }
+    finally { consoleJobOwners.delete(request.jobId); }
+  });
+  ipcMain.handle("sage:console:cancel", (event, jobId: string) => ({
+    ok: typeof jobId === "string" && consoleJobOwners.get(jobId) === event.sender.id && cancelSageConsoleJob(jobId),
+  }));
   ipcMain.handle("sage:health", async (_evt, scope?: "local" | "docker") =>
     scope === "local" ? checkLocalSageHealth() : requestJson("/health", { method: "GET" }));
   ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) => {
