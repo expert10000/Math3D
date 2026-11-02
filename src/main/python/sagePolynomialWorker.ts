@@ -149,8 +149,8 @@ export async function runSagePolynomialJob(
       "wsl.exe",
       [
         "-d", localSageDistro(), "--exec",
-        "/usr/bin/timeout", "--kill-after=1s", "45s",
-        "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--",
+        "/usr/bin/timeout", "--kill-after=1s", "75s",
+        "/usr/bin/prlimit", "--as=4294967296", "--cpu=45", "--",
         executable, "-c", SAGE_POLYNOMIAL_SCRIPT,
       ],
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
@@ -164,7 +164,7 @@ export async function runSagePolynomialJob(
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
-    }, 60_000);
+    }, 100_000);
     const finish = (error?: Error, result?: Record<string, unknown>) => {
       if (settled) return;
       settled = true;
@@ -191,7 +191,7 @@ export async function runSagePolynomialJob(
     child.once("close", (code) => {
       const taskName = operation === "sage.polynomial.factor" ? "factorization" : "root calculation";
       if (job.cancelled) return finish(new Error(`Sage ${taskName} cancelled.`));
-      if (timedOut || code === 124) return finish(new Error(`Sage ${taskName} exceeded the 45-second limit.`));
+      if (timedOut || code === 124) return finish(new Error(`Sage ${taskName} exceeded the 75-second WSL limit.`));
       if (code !== 0) return finish(new Error(`Sage worker exited with code ${code}: ${stderr.trim().slice(-2000)}`));
       try {
         const reply = JSON.parse(stdout.trim()) as {

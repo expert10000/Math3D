@@ -220,7 +220,7 @@ const SageSymbolicPanel: React.FC<{
             <option value="local" disabled={!localCapable}>Local WSL</option>
             <option value="docker">Docker service</option>
           </select>
-          <span>{localSage ? "Bounded local worker · up to 60 seconds to start WSL, then 45 seconds to compute" : "Separate Docker service"}</span>
+          <span>{localSage ? "Bounded local worker · Sage startup may take about a minute; 75-second WSL run limit" : "Separate Docker service"}</span>
           <span role="status">{capability}</span>
         </div>
 

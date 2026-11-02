@@ -239,7 +239,7 @@ export class SageExecutionRegistry {
     const job = createScientificJobRequest({
       jobId, source,
       operation: { type: definition.type, payload: payload as CanonicalJsonValue },
-      limits: { deadlineAt: Date.now() + (request.backend === "local" ? 120_000 : 40_000), ...SAGE_LIMITS },
+      limits: { deadlineAt: Date.now() + (request.backend === "local" ? 180_000 : 40_000), ...SAGE_LIMITS },
     });
     this.#activeJobs.add(jobId);
     this.#sources.set(source.documentId, source);
@@ -280,8 +280,8 @@ export class SageExecutionRegistry {
     };
     const job = createScientificJobRequest({
       jobId, source, operation: { type: SAGE_CONSOLE_OPERATION, payload },
-      // WSL discovery can take a minute on a cold start; the worker still caps code execution at 20 seconds.
-      limits: { deadlineAt: Date.now() + 120_000, ...SAGE_CONSOLE_LIMITS },
+      // WSL discovery and Sage imports can each take tens of seconds on a cold start.
+      limits: { deadlineAt: Date.now() + 180_000, ...SAGE_CONSOLE_LIMITS },
     });
     this.#activeJobs.add(jobId);
     this.#consoleJobs.add(jobId);

@@ -7,7 +7,7 @@ export const SAGE_CONSOLE_LIMITS = {
   maxOutputBytes: 64 * 1024,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024,
   maxWorkUnits: 1,
-  deadlineMs: 20_000,
+  deadlineMs: 75_000,
 } as const;
 
 export type SageConsoleResponse = {
@@ -80,8 +80,8 @@ export async function runSageConsoleJob(jobId: string, code: string): Promise<Sa
   const executable = await resolveLocalSageExecutable();
   if (active.size > 0) throw new Error("A Sage console job is already running.");
   return new Promise<SageConsoleResponse>((resolve, reject) => {
-    const child = spawn("wsl.exe", ["-d", localSageDistro(), "--exec", "/usr/bin/timeout", "--kill-after=1s", "20s",
-      "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--", executable, "-c", SCRIPT],
+    const child = spawn("wsl.exe", ["-d", localSageDistro(), "--exec", "/usr/bin/timeout", "--kill-after=1s", "75s",
+      "/usr/bin/prlimit", "--as=4294967296", "--cpu=45", "--", executable, "-c", SCRIPT],
     { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     const job: Active = { child, cancelled: false };
     active.set(jobId, job);
@@ -89,7 +89,7 @@ export async function runSageConsoleJob(jobId: string, code: string): Promise<Sa
     let stderr = "";
     let settled = false;
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 25_000);
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 100_000);
     const finish = (error?: Error, response?: SageConsoleResponse) => {
       if (settled) return;
       settled = true;
@@ -112,7 +112,7 @@ export async function runSageConsoleJob(jobId: string, code: string): Promise<Sa
     child.once("error", (error) => finish(error));
     child.once("close", (exitCode) => {
       if (job.cancelled) return finish(new Error("Sage console job cancelled."));
-      if (timedOut || exitCode === 124) return finish(new Error("Sage console exceeded the 20-second limit."));
+      if (timedOut || exitCode === 124) return finish(new Error("Sage console exceeded the 75-second WSL limit."));
       if (exitCode !== 0) return finish(new Error(stderr.trim().slice(0, 1024) || `Sage console exited with code ${exitCode}.`));
       try {
         const data = JSON.parse(stdout.trim()) as Partial<SageConsoleResponse>;

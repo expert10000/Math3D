@@ -136,7 +136,7 @@ export async function checkLocalSageHealth(): Promise<Record<string, unknown>> {
       const engineVersion = available ? output.trim().match(/^(?:SageMath version\s+)?(\d+\.\d+(?:\.\d+)?)/i)?.[1] : undefined;
       resolve({ engine: "sagemath", engineVersion, available, status, operations });
     };
-    const timer = setTimeout(() => { child.kill(); finish(false, "Local SageMath check exceeded 45 seconds."); }, 45_000);
+    const timer = setTimeout(() => { child.kill(); finish(false, "Local SageMath check exceeded 90 seconds."); }, 90_000);
     child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString("utf8").slice(0, 256); });
     child.once("error", () => finish(false, "SageMath is unavailable in WSL Ubuntu."));
     child.once("close", (code) => finish(code === 0, code === 0
@@ -176,14 +176,14 @@ export async function runSageSymbolicJob(
   if (activeJobs.size > 0) throw new Error("A local Sage symbolic job is already running.");
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const child = spawn("wsl.exe", [
-      "-d", localSageDistro(), "--exec", "/usr/bin/timeout", "--kill-after=1s", "45s",
-      "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--",
+      "-d", localSageDistro(), "--exec", "/usr/bin/timeout", "--kill-after=1s", "75s",
+      "/usr/bin/prlimit", "--as=4294967296", "--cpu=45", "--",
       executable, "-c", SAGE_SYMBOLIC_SCRIPT,
     ], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     const job: ActiveJob = { child, cancelled: false };
     activeJobs.set(jobId, job);
     let stdout = ""; let stderr = ""; let settled = false; let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 60_000);
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 100_000);
     const finish = (error?: Error, result?: Record<string, unknown>) => {
       if (settled) return;
       settled = true; clearTimeout(timer); activeJobs.delete(jobId);
@@ -200,7 +200,7 @@ export async function runSageSymbolicJob(
     child.once("error", (error) => finish(error));
     child.once("close", (code) => {
       if (job.cancelled) return finish(new Error("Sage symbolic job cancelled."));
-      if (timedOut || code === 124) return finish(new Error("Sage symbolic job exceeded the 45-second limit."));
+      if (timedOut || code === 124) return finish(new Error("Sage symbolic job exceeded the 75-second WSL limit."));
       if (code !== 0) {
         const rejected = stderr.match(/(?:ValueError|SyntaxError): ([^\r\n]+)/);
         return finish(new Error(rejected ? rejected[1] : `Sage worker exited with code ${code}: ${stderr.trim().slice(-1500)}`));
