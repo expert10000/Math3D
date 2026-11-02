@@ -512,6 +512,8 @@ Workbook or an optional docked console.
 | P2 | Add persistent Sage code cells | Workbook | Implemented as Sage code blocks with saved inputs, output history, exact dependency snapshots, and source freshness in Block, Document, and export views. Each cell uses the shared `ExecutionService` and requires explicit session trust for Local WSL; web and hosted routes cannot execute cell code. Private runtime support remains open. |
 | P3 | Add a dedicated CAS/Algebra workspace | Global module | Implemented as a peer scientific workspace with the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Exact jobs retain freeform input provenance when saved to Workbook. The Console opens from CAS but code execution still requires explicit trust in the Local WSL desktop runtime; web code execution remains unavailable. Desktop and web flows are covered. |
 
+The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in this gate used a local test service; a live Docker deployment remains a separate runtime check.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate
