@@ -14,14 +14,14 @@ test("Sage Console requires local trust and publishes provenance through Compute
     const page = await app.firstWindow();
     await page.getByTestId("top-sage-console-button").click();
     const dock = page.getByTestId("sage-console-dock");
-    await expect(dock).toContainText("SageMath 9.5", { timeout: 30_000 });
+    await expect(dock).toContainText(/SageMath \d+\.\d+/, { timeout: 90_000 });
     await expect(dock.getByTestId("sage-console-run")).toBeDisabled();
     await expect(page.evaluate(() => (window as any).sageConsole.run({ jobId: crypto.randomUUID(), code: "2^10" })))
       .rejects.toThrow("Trust the local Sage runtime");
     await dock.getByTestId("sage-console-code").fill("print('hello')\n2^10");
     await dock.getByTestId("sage-console-trust").check();
     await dock.getByTestId("sage-console-run").click();
-    await expect(dock.getByTestId("sage-console-state")).toContainText("succeeded", { timeout: 60_000 });
+    await expect(dock.getByTestId("sage-console-state")).toContainText("succeeded", { timeout: 120_000 });
     await expect(dock.getByTestId("sage-console-output")).toContainText("hello\n1024");
     await expect(dock.getByTestId("sage-console-provenance")).toContainText("sage-local-wsl");
     await expect(dock.getByTestId("sage-console-provenance")).toContainText(/Source SHA-256: [0-9a-f]{64}/);

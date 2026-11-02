@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
+import { localSageDistro, resolveLocalSageExecutable } from "./localSageRuntime";
 
 export const SAGE_CONSOLE_LIMITS = {
   maxInputBytes: 16 * 1024,
@@ -76,9 +77,11 @@ export async function runSageConsoleJob(jobId: string, code: string): Promise<Sa
   if (active.size > 0) throw new Error("A Sage console job is already running.");
   const inputHash = createHash("sha256").update(code).digest("hex");
   const started = Date.now();
+  const executable = await resolveLocalSageExecutable();
+  if (active.size > 0) throw new Error("A Sage console job is already running.");
   return new Promise<SageConsoleResponse>((resolve, reject) => {
-    const child = spawn("wsl.exe", ["-d", "Ubuntu", "--exec", "/usr/bin/timeout", "--kill-after=1s", "20s",
-      "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--", "/usr/bin/sage", "-python", "-c", SCRIPT],
+    const child = spawn("wsl.exe", ["-d", localSageDistro(), "--exec", "/usr/bin/timeout", "--kill-after=1s", "20s",
+      "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--", executable, "-c", SCRIPT],
     { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     const job: Active = { child, cancelled: false };
     active.set(jobId, job);

@@ -280,7 +280,8 @@ export class SageExecutionRegistry {
     };
     const job = createScientificJobRequest({
       jobId, source, operation: { type: SAGE_CONSOLE_OPERATION, payload },
-      limits: { deadlineAt: Date.now() + 20_000, ...SAGE_CONSOLE_LIMITS },
+      // WSL discovery can take a minute on a cold start; the worker still caps code execution at 20 seconds.
+      limits: { deadlineAt: Date.now() + 120_000, ...SAGE_CONSOLE_LIMITS },
     });
     this.#activeJobs.add(jobId);
     this.#consoleJobs.add(jobId);
