@@ -4,38 +4,46 @@ import type { Math3DProject } from "@math3d/core";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { comparableSavedMeshResults, compareSavedMeshResults, savedMeshResultComparisonHtml } from "../projects/projectSavedMeshResultComparison";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
+import { compareSavedMeshTrendPoints, type SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
 
-export function ProjectSavedMeshResultComparisonView({ project, readResource, onClose }: {
+export function ProjectSavedMeshResultComparisonView({ project, readResource, onClose, trendSelection, onReturnToTrend }: {
   project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
+  trendSelection?: SavedMeshTrendComparison | null; onReturnToTrend?: () => void;
 }) {
   const choices = useMemo(() => comparableSavedMeshResults(project), [project]);
-  const [aId, setAId] = useState(choices[0]?.resultId ?? ""), [bId, setBId] = useState(choices[1]?.resultId ?? "");
+  const [aId, setAId] = useState(trendSelection?.a.resultId ?? choices[0]?.resultId ?? ""),
+    [bId, setBId] = useState(trendSelection?.b.resultId ?? choices[1]?.resultId ?? "");
   const [message, setMessage] = useState("");
-  useEffect(() => { setAId(choices[0]?.resultId ?? ""); setBId(choices[1]?.resultId ?? ""); setMessage(""); }, [project.identity.id, choices]);
+  useEffect(() => { setAId(trendSelection?.a.resultId ?? choices[0]?.resultId ?? "");
+    setBId(trendSelection?.b.resultId ?? choices[1]?.resultId ?? ""); setMessage(""); }, [project.identity.id, choices, trendSelection]);
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") (onReturnToTrend ?? onClose)(); };
     document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key);
-  }, [onClose]);
+  }, [onClose, onReturnToTrend]);
   let evidence: ReturnType<typeof compareSavedMeshResults> | null = null, error = "";
-  if (aId && bId) try { evidence = compareSavedMeshResults(project, aId, bId, readResource); }
+  if (aId && bId) try { evidence = trendSelection ? compareSavedMeshTrendPoints(project, trendSelection, readResource) :
+    compareSavedMeshResults(project, aId, bId, readResource); }
   catch (failure) { error = (failure as Error).message; }
   const label = (id: string) => {
-    const result = choices.find(item => item.resultId === id)!;
+    const result = choices.find(item => item.resultId === id);
+    if (!result) return `Missing saved result · ${id}`;
     return `${result.provenance.operation.type.replace("mesh.saved.", "")} · ${result.provenance.source.documentId} r${result.provenance.source.revision} · ${id.slice(-12)}`;
   };
   const exportEvidence = () => {
     try {
-      const checked = compareSavedMeshResults(project, aId, bId, readResource);
+      const checked = trendSelection ? compareSavedMeshTrendPoints(project, trendSelection, readResource) :
+        compareSavedMeshResults(project, aId, bId, readResource);
       downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked)], { type: "text/html" }), "math3d-saved-mesh-results-comparison.html");
       setMessage("Verified stored-result report downloaded.");
     } catch (failure) { setMessage(`Export refused: ${(failure as Error).message}`); }
   };
-  return createPortal(<div className="project-gallery-preview-backdrop" data-testid="project-mesh-result-comparison" style={{ zIndex: 10000 }}>
+  return createPortal(<div className="project-gallery-preview-backdrop" data-testid="project-mesh-result-comparison" style={{ zIndex: trendSelection ? 10001 : 10000 }}>
     <div className="project-gallery-preview-sheet" role="dialog" aria-modal="true" aria-label="Compare saved Mesh analysis results" style={{ maxWidth: 1100, width: "min(95vw,1100px)", maxHeight: "90vh", overflow: "auto", padding: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><div><h2>Compare saved Mesh analysis</h2><p>Stored quality or curvature summaries, with exact result and Mesh source provenance. No analysis is rerun.</p></div><button type="button" onClick={onClose}>Close</button></div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><div><h2>{trendSelection ? "Compare pinned trend points" : "Compare saved Mesh analysis"}</h2><p>Stored quality or curvature summaries, with exact result and Mesh source provenance. No analysis is rerun.</p></div><button type="button" data-testid="project-mesh-result-return" onClick={onReturnToTrend ?? onClose}>{trendSelection ? "Return to trend" : "Close"}</button></div>
+      {trendSelection && <p data-testid="project-mesh-result-trend-source">From saved trend · {trendSelection.study.metricPath} · Mesh {trendSelection.study.sourceDocumentId}. A and B stay pinned to their exact results.</p>}
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
         {([0, 1] as const).map(slot => <label key={slot} style={{ flex: "1 1 320px" }}>{slot ? "B" : "A"} saved result
-          <select data-testid={`project-mesh-result-${slot}`} value={slot ? bId : aId} onChange={event => { slot ? setBId(event.target.value) : setAId(event.target.value); setMessage(""); }} style={{ display: "block", maxWidth: "100%", width: "100%" }}>
+          <select data-testid={`project-mesh-result-${slot}`} value={slot ? bId : aId} disabled={!!trendSelection} onChange={event => { slot ? setBId(event.target.value) : setAId(event.target.value); setMessage(""); }} style={{ display: "block", maxWidth: "100%", width: "100%" }}>
             <option value="">Choose result</option>{choices.map(item => <option key={item.resultId} value={item.resultId}>{label(item.resultId)}</option>)}
           </select></label>)}
       </div>

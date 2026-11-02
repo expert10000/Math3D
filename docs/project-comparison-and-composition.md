@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC16)
+# Project comparison and composition (PC01–PC17)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -343,3 +343,22 @@ current Mesh. The plot action itself refuses an unverified point. Restart and
 portable import require reopening the Project and its resources. No Mesh
 analysis runs on this navigation path. PC03 and PC05 remain **Partial** for
 legacy coordinate metadata and generations that were never retained.
+
+## PC17 · Compare two saved trend points
+
+Status: **Complete for the verified PC14 and PC15 Mesh trend scope**.
+Open the saved result trend from Projects or its embedded Workbook Visualize
+block. Select one recorded dot and choose **Pin selected as A**; select a
+different dot and choose **Pin selected as B**. **Compare pinned results**
+rechecks both exact result IDs and hashes, Mesh revisions and hashes, and
+source sidecars before opening the existing PC13 A/B inspector. **Return to
+trend** preserves the plot, pins and selection. The A/B view shows stored
+inputs, methods, provenance and scalar values. It calculates B − A only for
+matching operations, algorithm versions and metric units; incompatible values
+remain source-local with an explicit reason.
+
+Missing or changed evidence refuses the comparison and report export. A
+restart requires reopening the saved Project and checked Workbook resources;
+pins are temporary UI choices and are made again after reopening. No Mesh
+analysis or interpolation runs on this path. PC03 and PC05 remain **Partial**
+for legacy coordinate metadata and unretained history.
