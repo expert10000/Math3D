@@ -320,6 +320,7 @@ import OctaveLabPanel from "./features/octaveLab/OctaveLabPanel";
 import { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel";
 import { ScientificServicesPanel } from "./features/scientificServices/ScientificServicesPanel";
 import { SageSymbolicAnalysisCard } from "./features/sageLab/SageSymbolicAnalysisCard";
+import type { SageSourceStatus } from "./features/sageLab/sageResultPresentation";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
@@ -79665,7 +79666,7 @@ case "mobius":
   const handleSymbolicSaveWorkbook = () => {
     if (!symbolicAnalysisRecord) return;
     saveSageResultToWorkbook(symbolicAnalysisRecord);
-    setSymbolicActionStatus("Saved exact result and provenance to the Workbook Explain stage.");
+    setSymbolicActionStatus("Saved Sage result and provenance to the Workbook Explain stage.");
   };
   const currentSageWorkbookSource = (saved: WorkbookSageEvidence["source"]): WorkbookSageEvidence["source"] | null => {
     if (saved.module === "surface" && saved.id === `surface:active-implicit:${sageSourceSessionId}`) {
@@ -79684,10 +79685,16 @@ case "mobius":
     }
     return null;
   };
+  const sageInspectorSourceStatus = (record: SymbolicResultRecord): SageSourceStatus => {
+    const source = record.source;
+    if (!source || source.id.startsWith("sage-input:")) return "unlinked";
+    const freshness = resolveWorkbookSageFreshness(source, currentSageWorkbookSource(source));
+    return freshness === "source-unavailable" ? "unavailable" : freshness;
+  };
   const renderNativeSurfaceInspector = () => (<>
                     {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
                       record={symbolicAnalysisRecord}
-                      stale={Boolean(symbolicAnalysisRecord.sourceSurfaceExpression && symbolicAnalysisRecord.sourceSurfaceExpression !== activeImplicitExpr)}
+                      sourceStatus={sageInspectorSourceStatus(symbolicAnalysisRecord)}
                       onVisualize={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
                         ? handleSymbolicVisualize : undefined}
                       onCreateGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(symbolicAnalysisRecord.response.operation)
@@ -106665,10 +106672,7 @@ case "mobius":
                     ) : geometryRightPanelTab === "analysis" ? (
                       <div style={{ display: "grid", gap: 8 }}>
                       {geometrySymbolicAnalysisRecord && <SageSymbolicAnalysisCard record={geometrySymbolicAnalysisRecord}
-                        stale={Boolean(geometrySymbolicAnalysisRecord.source &&
-                          !geometrySymbolicAnalysisRecord.source.id.startsWith("sage-input:") &&
-                          resolveWorkbookSageFreshness(geometrySymbolicAnalysisRecord.source,
-                            currentSageWorkbookSource(geometrySymbolicAnalysisRecord.source)) !== "current")}
+                        sourceStatus={sageInspectorSourceStatus(geometrySymbolicAnalysisRecord)}
                         onSaveWorkbook={() => {
                           saveSageResultToWorkbook(geometrySymbolicAnalysisRecord);
                           setGeometryMode("workbook");

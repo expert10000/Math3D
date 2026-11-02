@@ -173,7 +173,7 @@ const SageSymbolicPanel: React.FC<{
       activeHandle.current = handle;
       const result = (await handle.promise).response;
       setResponse(result);
-      if (result.success) onResult?.({ response: result, request, expression: inputSummary,
+      onResult?.({ response: result, request, expression: inputSummary,
         variables: groebnerOperation ? (params.variables as string[]) : variables.length ? variables : ["x"], backend,
         sourceSurfaceExpression: !matrixOperation && !groebnerOperation && !gcdOperation && !inverseOperation &&
           sourceExpression === expression ? sourceExpression : undefined });
