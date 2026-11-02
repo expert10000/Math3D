@@ -28,4 +28,14 @@ describe("Scientific Services contextual operation catalog", () => {
     expect(scientificOperationsFor("cas", "Basic").find((entry) => entry.id === "sage.symbolic.simplify"))
       .toBe(scientificOperationsFor("surface", "Basic").find((entry) => entry.id === "sage.symbolic.simplify"));
   });
+
+  it("registers Graph symbolic and polynomial operations through the same catalog entries", () => {
+    const graph = scientificOperationsFor("graphs");
+    expect(graph.map((entry) => entry.id)).toEqual([
+      "sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand", "sage.symbolic.solve",
+      "sage.polynomial.roots_exact", "sage.polynomial.factor",
+    ]);
+    expect(graph[0]).toBe(scientificOperationsFor("surface")[0]);
+    expect(scientificOperationsFor("graphs", "Number Theory")).toEqual([]);
+  });
 });

@@ -327,6 +327,7 @@ import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel"
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import SageConsoleDock from "./features/sageLab/SageConsoleDock";
 import CASAlgebraWorkspace from "./features/sageLab/CASAlgebraWorkspace";
+import { graphSageSource } from "./features/sageLab/graphSageSource";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
 import { ParamSurfaceViewer, wrapFlagsFor, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
@@ -44707,9 +44708,14 @@ const App: React.FC = () => {
         revision: geometryObjectRevisionById[object.id] ?? 0,
         expression: saved.expression, fingerprint: hashValue(object) };
     }
+    if (saved.module === "graphs") {
+      const prefix = `${graph2dDocument.identity.id}:`;
+      if (!saved.id.startsWith(prefix)) return null;
+      return graphSageSource(graph2dDocument, saved.id.slice(prefix.length));
+    }
     return null;
   }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeImplicitExpr, geometryDatasetMeshObjects,
-    geometryObjectRevisionById, geometryObjects, sageSourceSessionId, surfaceViewerKind]);
+    geometryObjectRevisionById, geometryObjects, graph2dDocument, sageSourceSessionId, surfaceViewerKind]);
   const sageInspectorSourceStatus = useCallback((record: SymbolicResultRecord): SageSourceStatus => {
     const source = record.source;
     if (!source || source.id.startsWith("sage-input:")) return "unlinked";
@@ -79842,9 +79848,9 @@ case "mobius":
                     {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
                       record={symbolicAnalysisRecord}
                       sourceStatus={sageInspectorSourceStatus(symbolicAnalysisRecord)}
-                      onPreviewVector={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
+                      onPreviewVector={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceExpression
                         ? handleSymbolicPreviewVector : undefined}
-                      onCommitVector={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
+                      onCommitVector={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceExpression
                         ? handleSymbolicCommitVector : undefined}
                       onPreviewGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(symbolicAnalysisRecord.response.operation)
                         ? handleSymbolicPreviewGeometry : undefined}
@@ -86476,7 +86482,7 @@ case "mobius":
                   <ScientificServicesPanel context="surface" sourceExpression={surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined}
                     onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
                     onResult={(record) => {
-                      setSymbolicAnalysisRecord({ ...record, source: record.sourceSurfaceExpression === activeImplicitExpr
+                      setSymbolicAnalysisRecord({ ...record, source: record.sourceExpression === activeImplicitExpr
                         ? { module: "surface", id: `surface:active-implicit:${sageSourceSessionId}`,
                           revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
                           expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) }
@@ -90571,6 +90577,8 @@ case "mobius":
           </div>
         ) : mode === "graphs" ? (
           <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} analysisRequest={projectGraphAnalysisRequest}
+            onSaveSageResult={(record) => { openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
+            onOpenSageRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}
             onSaveVectorField3D={field => { setVectorField3DDocument(field); setVectorField3DOpenRequest(null); }}
             onPromoteVectorField3DIsosurface={promoteFieldIsosurfaceToMesh}

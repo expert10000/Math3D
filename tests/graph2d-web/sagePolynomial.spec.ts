@@ -1,4 +1,62 @@
 import { expect, test } from "@playwright/test";
+import { graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
+
+test("web Graph Services uses shared Sage discovery, jobs, cancellation, and Inspector", async ({ page }) => {
+  const requests: Array<{ operation: string; backend: string; params: { expression?: string } }> = [];
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (route.request().url().endsWith("/health")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok",
+        operations: ["sage.symbolic.simplify"] }) });
+    const request = route.request().postDataJSON() as typeof requests[number];
+    requests.push(request);
+    if (requests.length > 1) await new Promise((resolve) => setTimeout(resolve, 5000));
+    try {
+      await route.fulfill({ status: 200, contentType: "application/json", headers,
+        body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", operation: request.operation,
+          success: true, result: { text: "web-graph-exact" }, latex: "", warnings: [] }) });
+    } catch { /* Cancellation may close the request before the delayed response. */ }
+  });
+  await page.goto("/");
+  await page.getByTestId("workspace-nav-graphs").click();
+  await openGraphType(page, "Function");
+  await graphEditor(page).getByLabel("Start from preset").selectOption("parabola");
+  await graphEditor(page).getByLabel("Function expression").fill("x^2 + 1");
+  await saveGraphEditor(page);
+  await page.getByLabel("Graph functions").getByRole("button", { name: "Select Parabola" }).click();
+  await page.getByTestId("graph2d-services-tab").click();
+  const services = page.getByTestId("scientific-services-graphs");
+  await services.getByLabel("Services preset").selectOption("Basic");
+  await services.getByLabel("SageMath backend").selectOption("docker");
+  await expect(services).toContainText("Backend available for this operation");
+  await services.getByRole("button", { name: "Use selected graph y(x)" }).click();
+  await services.getByRole("button", { name: "Run", exact: true }).click();
+  const result = page.getByLabel("Graph inspector").getByTestId("sage-analysis-result");
+  await expect(result).toContainText("web-graph-exact");
+  await expect(result).toContainText("Source current");
+  expect(requests[0]).toMatchObject({ operation: "sage.symbolic.simplify", backend: "docker",
+    params: { expression: "x^2 + 1" } });
+  await services.getByRole("button", { name: "Open Compute → Runtimes" }).click();
+  const compute = page.getByTestId("compute-center");
+  await expect(compute.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+  await compute.getByRole("button", { name: "Close", exact: true }).click();
+  await services.getByRole("button", { name: "Run", exact: true }).click();
+  await services.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(services).toContainText("cancelled", { timeout: 30_000 });
+  await page.getByTestId("top-compute-center-button").click();
+  await expect(page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" })).toContainText("cancelled");
+  await page.getByTestId("compute-center").getByRole("button", { name: "Close", exact: true }).click();
+  await page.setViewportSize({ width: 600, height: 800 });
+  await expect(services).toBeVisible();
+  await page.getByRole("button", { name: "Close Graph Services" }).click();
+  await page.getByTestId("graph2d-toolbar-services").click();
+  await expect(services).toBeVisible();
+  await page.getByRole("button", { name: "Close Graph Services" }).click();
+  const compactInspector = page.locator('.graph2d-compact-panels > details:has(> summary:text-is("Inspector"))');
+  await compactInspector.locator(":scope > summary").click();
+  await expect(compactInspector.getByTestId("sage-analysis-result")).toContainText("Sage symbolic job cancelled.");
+});
 
 test("web CAS uses shared Sage discovery and Inspector while code remains gated", async ({ page }) => {
   const requests: Array<{ operation: string; backend: string; params: Record<string, unknown> }> = [];
@@ -63,6 +121,9 @@ test("Surface and Geometry Services share the same Sage operation and Analysis d
   await page.route("http://127.0.0.1:8767/**", async (route) => {
     const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
     if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (route.request().url().endsWith("/health")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok",
+        operations: ["sage.symbolic.simplify"] }) });
     const request = route.request().postDataJSON() as { operation: string; params: { expression?: string } };
     requests.push(request);
     await route.fulfill({ status: 200, contentType: "application/json", headers,

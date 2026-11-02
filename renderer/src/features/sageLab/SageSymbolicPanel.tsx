@@ -16,7 +16,7 @@ export type SymbolicResultRecord = {
   backend: "local" | "docker";
   request: SageRunRequest;
   source?: WorkbookSageEvidence["source"];
-  sourceSurfaceExpression?: string;
+  sourceExpression?: string;
 };
 
 const DEFAULT_EXPRESSION = "sin(x)^2 + cos(x)^2";
@@ -50,10 +50,14 @@ const resultText = (response: SageRunResponse | null): string => {
 const SageSymbolicPanel: React.FC<{
   compact?: boolean;
   sourceExpression?: string;
+  sourceProvenance?: SymbolicResultRecord["source"];
+  sourceLabel?: string;
+  sourceVariables?: string;
   operations?: readonly ScientificOperationEntry[];
   onResult?: (record: SymbolicResultRecord) => void;
   onOpenRuntimes?: () => void;
-}> = ({ compact = false, sourceExpression, operations = SCIENTIFIC_OPERATION_CATALOG, onResult, onOpenRuntimes }) => {
+}> = ({ compact = false, sourceExpression, sourceProvenance, sourceLabel = "Use current surface F(x,y,z)", sourceVariables = "x,y,z",
+  operations = SCIENTIFIC_OPERATION_CATALOG, onResult, onOpenRuntimes }) => {
   const [backend, setBackend] = useState<"local" | "docker">("local");
   const [operation, setOperation] = useState<SageSymbolicOperation>(operations[0]?.id ?? "sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
@@ -173,10 +177,12 @@ const SageSymbolicPanel: React.FC<{
       activeHandle.current = handle;
       const result = (await handle.promise).response;
       setResponse(result);
+      const linkedExpression = !localPolynomial && !matrixOperation && !groebnerOperation && !gcdOperation && !inverseOperation &&
+        sourceExpression === expression;
       onResult?.({ response: result, request, expression: inputSummary,
         variables: groebnerOperation ? (params.variables as string[]) : variables.length ? variables : ["x"], backend,
-        sourceSurfaceExpression: !matrixOperation && !groebnerOperation && !gcdOperation && !inverseOperation &&
-          sourceExpression === expression ? sourceExpression : undefined });
+        source: linkedExpression ? sourceProvenance : undefined,
+        sourceExpression: linkedExpression ? sourceExpression : undefined });
       if (!result.success && result.error) setError(result.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to run SageMath operation.");
@@ -226,7 +232,7 @@ const SageSymbolicPanel: React.FC<{
                 setOperation(entry.id);
                 if (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"].includes(entry.id)) setVariablesText("x,y,z");
                 if (sourceExpression) {
-                  setExpression(sourceExpression); setVariablesText("x,y,z");
+                  setExpression(sourceExpression); setVariablesText(sourceVariables);
                 }
                 setResponse(null); setError(null);
               }}>
@@ -288,8 +294,8 @@ const SageSymbolicPanel: React.FC<{
           <span>Example: -1, 0, 1 means x² − 1. Local WSL receives only coefficients and supplies algebraic root certificates. Docker receives a polynomial built from those coefficients and currently returns roots over the rationals.</span>
         </label> : <>
         {sourceExpression && <button type="button" onClick={() => {
-          setExpression(sourceExpression); setVariablesText("x,y,z"); setResponse(null); setError(null);
-        }} style={{ justifySelf: "start" }}>Use current surface F(x,y,z)</button>}
+          setExpression(sourceExpression); setVariablesText(sourceVariables); setResponse(null); setError(null);
+        }} style={{ justifySelf: "start" }}>{sourceLabel}</button>}
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Expression</span>
           <textarea
