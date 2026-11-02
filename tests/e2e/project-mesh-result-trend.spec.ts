@@ -1,0 +1,53 @@
+import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
+import { freezeControls, projectFreezeFixture } from "./helpers/projectFreeze";
+
+test("PC14 shows exact saved Mesh points, exports, and reopens after restart", async () => {
+  test.setTimeout(240_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const fixture = projectFreezeFixture();
+    const meshId = fixture.project.workspace.entries.find((item: any) => item.module === "mesh" && item.expected.id !== fixture.targets.mesh)?.expected.id as string;
+    if (!meshId) throw new Error("A saved Mesh fixture is required.");
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, controls = freezeControls(page);
+    await controls.importOpen(fixture.raw); await controls.open(meshId);
+    await page.getByTestId("project-mesh-study-view").click();
+    await page.getByTestId("project-saved-mesh-quality").click();
+    await page.getByTestId("project-mesh-retain-subdivide").click();
+    await page.getByTestId("project-mesh-study-view").click();
+    await page.getByTestId("project-saved-mesh-quality").click();
+    await page.getByTestId("project-mesh-scale").fill("1.25");
+    await page.getByTestId("project-mesh-retain-transform").click();
+    await page.getByTestId("project-mesh-study-view").click();
+    await page.getByTestId("project-saved-mesh-quality").click();
+    const saved = await controls.save();
+    const results = saved.workspace.results.filter((item: any) => item.provenance.operation.type === "mesh.saved.quality" && item.provenance.source.documentId === meshId);
+    expect(results).toHaveLength(3);
+    await controls.panel.getByTestId("project-open-mesh-result-trend").click();
+    const view = page.getByTestId("project-mesh-result-trend");
+    await view.getByTestId("project-mesh-trend-anchor").selectOption(results[0].resultId);
+    await view.getByTestId("project-mesh-trend-metric").selectOption("faceCount");
+    await expect(view.getByTestId("project-mesh-trend-status")).toContainText("3 verified recorded points");
+    await expect(view.getByTestId("project-mesh-trend-plot").locator("g[role=button]")).toHaveCount(3);
+    const middle = results[1];
+    await view.getByTestId(`project-mesh-trend-point-${middle.resultId}`).locator("circle").click();
+    await expect(view.getByTestId("project-mesh-trend-selection")).toContainText(middle.resultId);
+    await expect(view.getByTestId("project-mesh-trend-selection")).toContainText(middle.provenance.source.structuralHash);
+    const report = test.info().outputPath("pc14-saved-mesh-trend.html");
+    await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), report);
+    await view.getByTestId("project-mesh-trend-export").click();
+    await expect.poll(() => { try { return readFileSync(report).length > 0; } catch { return false; } }, { timeout: 30_000 }).toBe(true);
+    const html = readFileSync(report, "utf8");
+    for (const result of results) { expect(html).toContain(result.resultId); expect(html).toContain(result.provenance.source.structuralHash); }
+    expect(html).toContain("Gaps are not estimated or connected");
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload(); await controls.reopen(saved.identity.id);
+    await page.getByTestId("project-explorer-panel").getByTestId("project-open-mesh-result-trend").click();
+    await view.getByTestId("project-mesh-trend-anchor").selectOption(results[0].resultId);
+    await view.getByTestId("project-mesh-trend-metric").selectOption("faceCount");
+    await expect(view.getByTestId("project-mesh-trend-status")).toContainText("3 verified recorded points");
+    await expect(view.getByTestId("project-mesh-trend-plot").locator("g[role=button]")).toHaveCount(3);
+  } finally { await closeSurfaceApp(ctx); }
+});

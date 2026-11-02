@@ -41,12 +41,12 @@ export function verifySavedMeshResult(project: Math3DProject, resultId: string, 
     generation: sameSource(source, current) ? "current" : "retained" };
 }
 
-const numbers = (value: unknown, prefix = ""): Array<{ path: string; value: number }> => {
+export const savedMeshSummaryNumbers = (value: unknown, prefix = ""): Array<{ path: string; value: number }> => {
   if (typeof value === "number" && Number.isFinite(value)) return [{ path: prefix, value }];
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  return Object.entries(value).flatMap(([key, child]) => numbers(child, prefix ? `${prefix}.${key}` : key));
+  return Object.entries(value).flatMap(([key, child]) => savedMeshSummaryNumbers(child, prefix ? `${prefix}.${key}` : key));
 };
-const metricUnit = (operation: string, path: string, length: string | null): string | null => {
+export const savedMeshMetricUnit = (operation: string, path: string, length: string | null): string | null => {
   if (operation === "mesh.saved.quality") {
     if (path.startsWith("metrics.edgeLength.")) return length;
     if (path.startsWith("metrics.triangleArea.")) return length ? `${length}²` : null;
@@ -65,9 +65,9 @@ export function compareSavedMeshResults(project: Math3DProject, aId: string, bId
   const compatible = ao.type === bo.type && ao.algorithm === bo.algorithm && ao.algorithmVersion === bo.algorithmVersion &&
     a.result.status === b.result.status && a.result.status !== "failed" && a.result.status !== "cancelled";
   const reason = compatible ? null : "Operation, algorithm, algorithm version, or result status differs; values remain source-local.";
-  const bValues = new Map(numbers(b.result.summary).map(item => [item.path, item.value]));
-  const metrics = numbers(a.result.summary).filter(item => bValues.has(item.path)).map(item => {
-    const unitA = metricUnit(ao.type, item.path, a.lengthUnit), unitB = metricUnit(bo.type, item.path, b.lengthUnit);
+  const bValues = new Map(savedMeshSummaryNumbers(b.result.summary).map(item => [item.path, item.value]));
+  const metrics = savedMeshSummaryNumbers(a.result.summary).filter(item => bValues.has(item.path)).map(item => {
+    const unitA = savedMeshMetricUnit(ao.type, item.path, a.lengthUnit), unitB = savedMeshMetricUnit(bo.type, item.path, b.lengthUnit);
     const comparable = compatible && unitA !== null && unitA === unitB;
     const valueB = bValues.get(item.path)!;
     return { path: item.path, a: item.value, b: valueB, unit: comparable ? unitA : null,

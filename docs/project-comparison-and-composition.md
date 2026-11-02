@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC12)
+# Project comparison and composition (PC01–PC14)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -270,3 +270,29 @@ Run `npm run test:projects:pc13` for saved-result compatibility, unit rules,
 source verification, tamper refusal, HTML export and Electron restart. PC03
 remains **Partial** for legacy sources without coordinate metadata. PC05 remains
 **Partial** for unretained historical generations and unrelated-model selection.
+
+## PC14 · Saved Mesh analysis trends
+
+Status: **Complete for stored Mesh quality and discrete curvature scalars**.
+In the Mesh workspace, open **Saved studies** and save the same analysis on
+successive explicitly retained Mesh generations. Save the Project, then choose
+**Projects → Compare saved documents → View saved result trend**. Pick the Mesh
+method and a recorded scalar metric. The chart draws one independent dot per
+verified saved result; it never connects or interpolates points. Selecting a dot
+shows that result's exact ID and hash, Mesh revision and source hash.
+
+The view includes all current, checkpoint and explicitly retained revisions of
+the selected Mesh. A retained revision with no saved result appears as **not
+recorded**. A saved result with missing, changed or unretained source bytes
+appears as **unavailable**, without displaying an unverified value. Only one
+Mesh document, operation, algorithm, version and result status enters a trend.
+Units are checked per metric. Counts, ratios and degrees can be displayed with
+undeclared source length units; area, length and curvature need compatible
+declared length units. The HTML report is regenerated from verified saved data
+at export and refuses any unavailable saved result. Gaps without a saved result
+remain explicit in the report.
+
+Run `npm run test:projects:pc14`. Its unit cases cover three retained revisions,
+method grouping, missing result gaps, source bytes, portable Project package
+import and report refusal. The Electron case covers exact point selection,
+export and restart. PC03 and PC05 retain their existing **Partial** boundaries.

@@ -24,6 +24,7 @@ import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
+const ProjectSavedMeshResultTrendView = React.lazy(() => import("./ProjectSavedMeshResultTrendView").then(module => ({ default: module.ProjectSavedMeshResultTrendView })));
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
@@ -182,6 +183,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [project, setProject] = useState<Math3DProject | null>(null);
   const [compositionOpen, setCompositionOpen] = useState(false);
   const [meshResultComparisonOpen, setMeshResultComparisonOpen] = useState(false);
+  const [meshResultTrendOpen, setMeshResultTrendOpen] = useState(false);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
@@ -1430,7 +1432,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             onClick={() => { setComparisonInitialId(undefined); setCompositionOpen(true); }}>Open comparison</button>
           <div style={{ marginTop: 12 }}><strong>Saved Mesh analysis results</strong><p>Compare exact stored quality or curvature summaries. {comparableSavedMeshResults(project).length} eligible results.</p>
             <button type="button" data-testid="project-open-mesh-result-comparison" disabled={busy || comparableSavedMeshResults(project).length < 2}
-              onClick={() => setMeshResultComparisonOpen(true)}>Compare saved results</button></div>
+              onClick={() => setMeshResultComparisonOpen(true)}>Compare saved results</button>{" "}
+            <button type="button" data-testid="project-open-mesh-result-trend" disabled={busy || comparableSavedMeshResults(project).length < 1}
+              onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button></div>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
@@ -1803,6 +1807,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           return ok;
         }} /></React.Suspense>}
       {meshResultComparisonOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh results…</p>}><ProjectSavedMeshResultComparisonView project={project} readResource={comparisonResource} onClose={() => setMeshResultComparisonOpen(false)} /></React.Suspense>}
+      {meshResultTrendOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh trend…</p>}><ProjectSavedMeshResultTrendView project={project} readResource={comparisonResource} onClose={() => setMeshResultTrendOpen(false)} /></React.Suspense>}
     </ProjectGalleryFrame>}
   </div>;
 };
