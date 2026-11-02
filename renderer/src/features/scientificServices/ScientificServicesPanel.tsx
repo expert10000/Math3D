@@ -10,9 +10,12 @@ import {
 export const ScientificServicesPanel: React.FC<{
   context: ScientificServiceContext;
   sourceExpression?: string;
+  sourceProvenance?: SymbolicResultRecord["source"];
+  sourceLabel?: string;
+  sourceVariables?: string;
   onResult: (record: SymbolicResultRecord) => void;
   onOpenRuntimes?: () => void;
-}> = ({ context, sourceExpression, onResult, onOpenRuntimes }) => {
+}> = ({ context, sourceExpression, sourceProvenance, sourceLabel, sourceVariables, onResult, onOpenRuntimes }) => {
   const [preset, setPreset] = useState<ScientificServicePreset>("All");
   const operations = scientificOperationsFor(context, preset);
 
@@ -25,11 +28,13 @@ export const ScientificServicesPanel: React.FC<{
       </select>
     </label>
     <div style={{ color: "#667085", fontSize: 11 }}>
-      {context === "surface" ? "Surface" : "Geometry"} operations use the same SageMath request and result contract.
+      {context === "surface" ? "Surface" : context === "geometry" ? "Geometry" : context === "graphs" ? "Graphs" : "CAS / Algebra"} operations use the same SageMath request and result contract.
       Inspect completed results in Inspector → Analysis.
     </div>
     {operations.length
-      ? <SageSymbolicPanel key={preset} compact sourceExpression={sourceExpression} operations={operations} onResult={onResult} onOpenRuntimes={onOpenRuntimes} />
+      ? <SageSymbolicPanel key={preset} compact sourceExpression={sourceExpression} sourceProvenance={sourceProvenance}
+          sourceLabel={sourceLabel} sourceVariables={sourceVariables}
+          operations={operations} onResult={onResult} onOpenRuntimes={onOpenRuntimes} />
       : <div role="status" style={{ fontSize: 11, color: "#667085" }}>No {preset.toLowerCase()} operation is registered for {context} yet.</div>}
   </section>;
 };

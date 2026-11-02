@@ -1,0 +1,43 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "a74cc08f0710bea52f24e32c90bd6dee0ad524d5f63bef37ed879f3f56de9421",
+  "debugSignerCertificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+  "sourceEquivalentCommit": "6fc7a21c0e0c5be57924c6755e0c91c501b8ece0",
+  "testedAtDate": "2026-11-02",
+  "case": "TP12",
+  "status": "passed",
+  "fixture": "Independent Two slopes Gallery copy: y=x and y=2x+1, both authored on [-4,4]",
+  "sourceStructuralHash": "sha256:b3ab30f0b3c05026b885f84f03c4225266f3785d35d14157c536b300dcf21081",
+  "observations": [
+    "Linear axes with Free aspect rendered. Equal aspect applied on two linear axes. Attempting x log10 while Equal showed Equal world-unit scale requires two linear axes. Choose Free for logarithmic axes; the committed linear view remained intact.",
+    "Free aspect with a non-positive log bound was rejected with the positive-bound validation message. Positive x=[0.1,10] and y=[0.1,6] bounds with both axes log10 applied; the plot omitted non-positive coordinates and showed log tick labels.",
+    "On the log plot, Intersections still reported the authored-world crossing (-1,-1), residual 0. The log CSV records both log10 scales and the same (-1,-1) candidate, while its plotted samples have positive x and y. Its warning says analysis and CSV coordinates remain world values, not logarithms.",
+    "Undo after applying log scales returned the linear Equal view; Redo returned the log view. Reset view returned the default linear Equal bounds [-10,10] on each axis.",
+    "Show continuation rendered lighter dotted extensions of both explicit lines beyond their authored [-4,4] x domains. Tapping the dotted Unit slope segment left the probe empty; tapping the solid segment produced Unit slope: x=2.17874, y=2.17874.",
+    "With continuation visibly enabled, the CSV viewport has continuation=true and an explicit exclusion warning. All 108 sampled point x coordinates stay in [-4,4]. The source hash matches the log export.",
+    "With continuation enabled, tangent analysis at x=6 on Steeper line was unsupported: its publication analysis reports undefined-point, Probe is outside the function domain, and unavailable tangent, normal and curvature. The same CSV still bounds all geometry to [-4,4].",
+    "Save reported Graph saved. After force-stop and cold relaunch, the same Two slopes Graph reopened and the Show continuation switch was checked. The current app-process log after relaunch had 197 lines with no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match."
+  ],
+  "artifacts": {
+    "logCsv": { "file": "mobile-android-tp12-log-2026-11-02.csv", "sha256": "299c0fc8dca0e08533ea44123fa9ca99ed1bd20055be6dac306cef86856ed15d", "snapshotId": "sha256:b10e0d0c5bb0a46901498f3a40406a8e6c1302a8a0b53cef783e63904344ceb7" },
+    "continuationCsv": { "file": "mobile-android-tp12-continuation-2026-11-02.csv", "sha256": "5559af4bd3a6a8333f2c0687a1866b21e563c96f2bdc54ebfceeb7d9636977b5", "snapshotId": "sha256:6f731cec20f4a5b738e58e36a6f27f4bd94961135bdc56f64188f6a7f3ff7504" },
+    "outsideDomainCsv": { "file": "mobile-android-tp12-outside-domain-2026-11-02.csv", "sha256": "d8a2bbdd6ec9f2f8bf4c64013f5dfc37522eab4c92c4309890b69c7baf641f3c", "snapshotId": "sha256:b50cce71247e26ba1ef04582c3d287b368fe1b1f440f85664cfadecd6a640787" }
+  },
+  "screenshots": [
+    "mobile-android-tp12-linear-before-2026-11-02.png",
+    "mobile-android-tp12-equal-2026-11-02.png",
+    "mobile-android-tp12-reject-equal-log-2026-11-02.png",
+    "mobile-android-tp12-invalid-log-2026-11-02.png",
+    "mobile-android-tp12-log-applied-2026-11-02.png",
+    "mobile-android-tp12-log-world-analysis-visible-2026-11-02.png",
+    "mobile-android-tp12-undo-linear-2026-11-02.png",
+    "mobile-android-tp12-continuation-2026-11-02.png",
+    "mobile-android-tp12-tangent-outside-2026-11-02.png",
+    "mobile-android-tp12-reopen-on-2026-11-02.png"
+  ],
+  "scope": "Physical TP12 scales and continuation pass for this debug-signed Samsung Notes Check APK and one explicit-function Gallery copy. No tablet, second device or internal/release signing check was performed."
+}

@@ -1,0 +1,440 @@
+{
+  "format": "math3d.graph2d-capture-recipe",
+  "version": 1,
+  "snapshotId": "sha256:229d1ebec259eb37619649fcc34f1d367c3f296bfe0b15cfd2505c166f8e9830",
+  "sourceHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c",
+  "document": {
+    "display": {
+      "axes": {
+        "grid": true,
+        "labels": true,
+        "x": true,
+        "y": true
+      },
+      "objects": [
+        {
+          "color": "#2563eb",
+          "lineStyle": "solid",
+          "lineWidth": 2,
+          "objectId": "series_1",
+          "visible": true
+        }
+      ],
+      "sampling": {
+        "maxDepth": 12,
+        "maxSamples": 12000,
+        "tolerancePx": 0.75
+      },
+      "viewport": {
+        "aspect": "equal",
+        "xMax": 10.821731973970133,
+        "xMin": -3.821731973970133,
+        "yMax": 17.410526315789475,
+        "yMin": -1.0105263157894768
+      }
+    },
+    "format": "math3d.graph2d-document",
+    "identity": {
+      "id": "math3d:graph2d:73bd109faf7961b2eeef0c798d5e7417",
+      "revision": 1,
+      "schemaVersion": 1,
+      "structuralHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c"
+    },
+    "metadata": {
+      "title": "Regression reference"
+    },
+    "requiredCapabilities": [
+      "graph2d.explicit.v1",
+      "graph2d.point-series.v1"
+    ],
+    "schemaVersion": 1,
+    "selection": {
+      "objectId": null,
+      "probe": null
+    },
+    "source": {
+      "assumptions": [],
+      "objects": [
+        {
+          "domain": {
+            "includeMax": true,
+            "includeMin": true,
+            "max": 7,
+            "min": 0
+          },
+          "id": "series_1",
+          "kind": "point-series",
+          "label": "Reference data",
+          "missing": "gap",
+          "mode": "points",
+          "table": {
+            "checksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+            "encoding": "math3d.graph2d-point-table.v1",
+            "id": "graph2d-table:cd615386f66df00ad4566da0272f9045",
+            "rowCount": 8
+          }
+        }
+      ],
+      "variables": []
+    }
+  },
+  "view": {
+    "viewport": {
+      "aspect": "equal",
+      "xMax": 10.821731973970133,
+      "xMin": -3.821731973970133,
+      "yMax": 17.410526315789475,
+      "yMin": -1.0105263157894768
+    },
+    "effectiveViewport": {
+      "aspect": "equal",
+      "xMax": 15.780701754385968,
+      "xMin": -8.780701754385968,
+      "yMax": 17.410526315789475,
+      "yMin": -1.0105263157894768
+    },
+    "size": {
+      "width": 640,
+      "height": 480
+    },
+    "hostWindow": {
+      "width": 384,
+      "height": 832
+    },
+    "uiTheme": "light",
+    "publicationTheme": "light"
+  },
+  "attribution": "Math3D Graph publication",
+  "publicationMetadata": {
+    "format": "math3d.graph2d-publication.v1",
+    "recipeVersion": 1,
+    "title": "Regression reference",
+    "source": {
+      "id": "math3d:graph2d:73bd109faf7961b2eeef0c798d5e7417",
+      "revision": 1,
+      "schemaVersion": 1,
+      "structuralHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c"
+    },
+    "viewport": {
+      "aspect": "equal",
+      "xMax": 10.821731973970133,
+      "xMin": -3.821731973970133,
+      "yMax": 17.410526315789475,
+      "yMin": -1.0105263157894768
+    },
+    "effectiveViewport": {
+      "aspect": "equal",
+      "xMax": 15.780701754385968,
+      "xMin": -8.780701754385968,
+      "yMax": 17.410526315789475,
+      "yMin": -1.0105263157894768
+    },
+    "size": {
+      "width": 640,
+      "height": 480
+    },
+    "units": {
+      "x": "unspecified",
+      "y": "unspecified"
+    },
+    "unitSemantics": "declared-labels-only",
+    "canonicalSource": {
+      "assumptions": [],
+      "objects": [
+        {
+          "domain": {
+            "includeMax": true,
+            "includeMin": true,
+            "max": 7,
+            "min": 0
+          },
+          "id": "series_1",
+          "kind": "point-series",
+          "label": "Reference data",
+          "missing": "gap",
+          "mode": "points",
+          "table": {
+            "checksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+            "encoding": "math3d.graph2d-point-table.v1",
+            "id": "graph2d-table:cd615386f66df00ad4566da0272f9045",
+            "rowCount": 8
+          }
+        }
+      ],
+      "variables": []
+    },
+    "axes": {
+      "grid": true,
+      "labels": true,
+      "x": true,
+      "y": true
+    },
+    "savedSampling": {
+      "maxDepth": 12,
+      "maxSamples": 12000,
+      "tolerancePx": 0.75
+    },
+    "sampling": {
+      "maxDepth": 12,
+      "maxSamples": 4096,
+      "tolerancePx": 0.75
+    },
+    "method": "shared-graph2d-scene-sampler-v1",
+    "objects": [
+      {
+        "objectId": "series_1",
+        "kind": "point-series",
+        "label": "Reference data",
+        "style": {
+          "color": "#2563eb",
+          "lineStyle": "solid",
+          "lineWidth": 2,
+          "objectId": "series_1",
+          "visible": true
+        },
+        "samplesEvaluated": 8,
+        "converged": true,
+        "diagnostics": []
+      }
+    ],
+    "warnings": [
+      "Static publication, not an editable Graph checkpoint. Use the existing Graph/handoff export to retain portable editing.",
+      "Sampled floating-point geometry is approximate; convergence is not proof of continuity or absence of narrow features.",
+      "Publication excludes transient selection, hover, analysis overlays and mixed-workspace companion geometry. Analysis tables carry separate result provenance.",
+      "Canonical source metadata includes hidden objects; plotted geometry contains visible objects only.",
+      "CSV contains bounded sampled geometry, not the original dataset; gaps and region fills are described explicitly.",
+      "Unit labels are user declarations, not dimensional validation or conversion; unspecified units remain unspecified.",
+      "PNG uses a deterministic pixel raster and compact numeric tick font; use SVG/HTML for full text and scalable presentation."
+    ],
+    "analyses": [
+      {
+        "artifacts": [],
+        "diagnostics": [],
+        "provenance": {
+          "elapsedMs": 175,
+          "engine": {
+            "name": "math3d-core",
+            "version": "1"
+          },
+          "numericContext": {
+            "precision": {
+              "binaryBits": 53
+            }
+          },
+          "operation": {
+            "algorithm": "centered-scaled-reorthogonalized-qr",
+            "algorithmVersion": "1",
+            "parameters": {
+              "confidence": 0.95,
+              "curveSamples": 129,
+              "maxRows": 10000,
+              "model": "linear",
+              "objectId": "series_1",
+              "table": {
+                "checksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+                "encoding": "math3d.graph2d-point-table.v1",
+                "id": "graph2d-table:cd615386f66df00ad4566da0272f9045",
+                "rowCount": 8
+              }
+            },
+            "type": "graph2d.regression"
+          },
+          "source": {
+            "documentId": "math3d:graph2d:73bd109faf7961b2eeef0c798d5e7417",
+            "generation": 1,
+            "revision": 1,
+            "structuralHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c"
+          }
+        },
+        "resultId": "graph2d.regression.c71d433417e337a8d57bdaf199b9044178dccfa72eb7df5657aa8b4a9aad7ad6",
+        "schemaVersion": 1,
+        "status": "numerical",
+        "summary": {
+          "basis": "z=(x-center)/scale; y=c0+c1*z^1",
+          "center": 3.5,
+          "coefficients": [
+            8,
+            6.999999999999999
+          ],
+          "confidence": 0.95,
+          "datasetChecksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+          "degreesOfFreedom": 6,
+          "excluded": 0,
+          "extent": {
+            "max": 7,
+            "min": 0
+          },
+          "intervalSemantics": "pointwise-mean-response-and-new-observation",
+          "model": "linear",
+          "n": 8,
+          "rSquared": 0.9980988593155894,
+          "residualSD": 0.23094010767584996,
+          "scale": 3.5,
+          "sse": 0.31999999999999906,
+          "tCritical": 2.446911851144968
+        },
+        "warnings": [
+          "Unweighted ordinary least squares in original world coordinates; x is treated as fixed and measured without error.",
+          "Intervals assume independent, normally distributed, constant-variance errors and a correctly specified model; these assumptions are not tested automatically.",
+          "95% intervals are pointwise, not a simultaneous confidence band. Mean response uncertainty differs from a new observation prediction interval.",
+          "Missing y and rows outside the authored domain are excluded, not imputed. No extrapolation beyond the fitted x extent."
+        ]
+      },
+      {
+        "artifacts": [],
+        "diagnostics": [],
+        "provenance": {
+          "elapsedMs": 175,
+          "engine": {
+            "name": "math3d-core",
+            "version": "1"
+          },
+          "numericContext": {
+            "precision": {
+              "binaryBits": 53
+            }
+          },
+          "operation": {
+            "algorithm": "centered-scaled-reorthogonalized-qr",
+            "algorithmVersion": "1",
+            "parameters": {
+              "confidence": 0.95,
+              "curveSamples": 129,
+              "maxRows": 10000,
+              "model": "linear",
+              "objectId": "series_1",
+              "table": {
+                "checksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+                "encoding": "math3d.graph2d-point-table.v1",
+                "id": "graph2d-table:cd615386f66df00ad4566da0272f9045",
+                "rowCount": 8
+              }
+            },
+            "type": "graph2d.regression"
+          },
+          "source": {
+            "documentId": "math3d:graph2d:73bd109faf7961b2eeef0c798d5e7417",
+            "generation": 1,
+            "revision": 1,
+            "structuralHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c"
+          }
+        },
+        "resultId": "graph2d.regression.c71d433417e337a8d57bdaf199b9044178dccfa72eb7df5657aa8b4a9aad7ad6",
+        "schemaVersion": 1,
+        "status": "numerical",
+        "summary": {
+          "basis": "z=(x-center)/scale; y=c0+c1*z^1",
+          "center": 3.5,
+          "coefficients": [
+            8,
+            6.999999999999999
+          ],
+          "confidence": 0.95,
+          "datasetChecksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+          "degreesOfFreedom": 6,
+          "excluded": 0,
+          "extent": {
+            "max": 7,
+            "min": 0
+          },
+          "intervalSemantics": "pointwise-mean-response-and-new-observation",
+          "model": "linear",
+          "n": 8,
+          "rSquared": 0.9980988593155894,
+          "residualSD": 0.23094010767584996,
+          "scale": 3.5,
+          "sse": 0.31999999999999906,
+          "tCritical": 2.446911851144968
+        },
+        "warnings": [
+          "Unweighted ordinary least squares in original world coordinates; x is treated as fixed and measured without error.",
+          "Intervals assume independent, normally distributed, constant-variance errors and a correctly specified model; these assumptions are not tested automatically.",
+          "95% intervals are pointwise, not a simultaneous confidence band. Mean response uncertainty differs from a new observation prediction interval.",
+          "Missing y and rows outside the authored domain are excluded, not imputed. No extrapolation beyond the fitted x extent."
+        ]
+      },
+      {
+        "artifacts": [],
+        "diagnostics": [],
+        "provenance": {
+          "elapsedMs": 175,
+          "engine": {
+            "name": "math3d-core",
+            "version": "1"
+          },
+          "numericContext": {
+            "precision": {
+              "binaryBits": 53
+            }
+          },
+          "operation": {
+            "algorithm": "centered-scaled-reorthogonalized-qr",
+            "algorithmVersion": "1",
+            "parameters": {
+              "confidence": 0.95,
+              "curveSamples": 129,
+              "maxRows": 10000,
+              "model": "linear",
+              "objectId": "series_1",
+              "table": {
+                "checksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+                "encoding": "math3d.graph2d-point-table.v1",
+                "id": "graph2d-table:cd615386f66df00ad4566da0272f9045",
+                "rowCount": 8
+              }
+            },
+            "type": "graph2d.regression"
+          },
+          "source": {
+            "documentId": "math3d:graph2d:73bd109faf7961b2eeef0c798d5e7417",
+            "generation": 1,
+            "revision": 1,
+            "structuralHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c"
+          }
+        },
+        "resultId": "graph2d.regression.c71d433417e337a8d57bdaf199b9044178dccfa72eb7df5657aa8b4a9aad7ad6",
+        "schemaVersion": 1,
+        "status": "numerical",
+        "summary": {
+          "basis": "z=(x-center)/scale; y=c0+c1*z^1",
+          "center": 3.5,
+          "coefficients": [
+            8,
+            6.999999999999999
+          ],
+          "confidence": 0.95,
+          "datasetChecksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3",
+          "degreesOfFreedom": 6,
+          "excluded": 0,
+          "extent": {
+            "max": 7,
+            "min": 0
+          },
+          "intervalSemantics": "pointwise-mean-response-and-new-observation",
+          "model": "linear",
+          "n": 8,
+          "rSquared": 0.9980988593155894,
+          "residualSD": 0.23094010767584996,
+          "scale": 3.5,
+          "sse": 0.31999999999999906,
+          "tCritical": 2.446911851144968
+        },
+        "warnings": [
+          "Unweighted ordinary least squares in original world coordinates; x is treated as fixed and measured without error.",
+          "Intervals assume independent, normally distributed, constant-variance errors and a correctly specified model; these assumptions are not tested automatically.",
+          "95% intervals are pointwise, not a simultaneous confidence band. Mean response uncertainty differs from a new observation prediction interval.",
+          "Missing y and rows outside the authored domain are excluded, not imputed. No extrapolation beyond the fitted x extent."
+        ]
+      }
+    ]
+  },
+  "externalTables": [
+    {
+      "id": "graph2d-table:cd615386f66df00ad4566da0272f9045",
+      "rowCount": 8,
+      "checksum": "sha256:cd615386f66df00ad4566da0272f90453634c95c670c6605186552a1035975d3"
+    }
+  ],
+  "completeness": "external-point-tables-required",
+  "note": "Recreate the static image with Graph publication export. G2D36 publication currently uses a light canvas regardless of UI theme. This recipe does not embed external table rows or result artifacts; sampling is approximate."
+}

@@ -8,6 +8,8 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   sampleVectorField3DSparseSlice, sampleVectorField3DSparseProbe,
   analyzeVectorField3DDifferential, sampleVectorField3DDerivedSlice,
   createVectorField3DPointResult, reverifyVectorField3DPointResult,
+  createVectorField3DTrajectoryResult,
+  createVectorField3DEquilibriumResult,
   createCombinedVectorField3DRegionResultWithCurl,
   createVectorDerivedRegionResult,
   verifyVectorField3DVolumes,
@@ -2599,6 +2601,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       {equilibriumSearch && <div role="status" data-testid="vector-field3d-equilibria"
         data-equilibrium-profile={equilibriumSearch.profile ?
           JSON.stringify(equilibriumSearch.profile) : undefined}>
+        <button type="button" disabled={!onSaveRegionResult || busy ||
+          equilibriumSearch.source.structuralHash !== document.identity.structuralHash}
+          onClick={() => {
+            try {
+              onSaveRegionResult?.(document,
+                createVectorField3DEquilibriumResult(document, equilibriumSearch));
+              setSaveStatus("Equilibrium solver statistics published to Project. Save the Project to retain them.");
+            } catch (cause) { setSaveStatus((cause as Error).message); }
+          }}>Publish equilibrium result</button>
         <p>{equilibriumSearch.status === "budget-reached" ? "Partial scan · budget reached" :
           "Bounded scan · coverage incomplete"} · {equilibriumSearch.candidates.length} candidates ·
           {" "}{equilibriumSearch.attemptedSeeds} seeds · {equilibriumSearch.evaluations}/
@@ -2762,6 +2773,16 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       Coordinate units {artifact.coordinateUnits.join(", ")}; vector units {artifact.componentUnits.join(", ")}.
     </p>}
     {trajectories && <div role="status" aria-live="polite" data-testid="vector-field3d-trajectory-status">
+      <button type="button"
+        disabled={!onSaveRegionResult || busy ||
+          trajectories.source.structuralHash !== document.identity.structuralHash}
+        onClick={() => {
+          try {
+            onSaveRegionResult?.(document,
+              createVectorField3DTrajectoryResult(document, trajectories));
+            setSaveStatus("Trajectory solver statistics published to Project. Save the Project to retain them.");
+          } catch (cause) { setSaveStatus((cause as Error).message); }
+        }}>Publish solver result</button>
       <p>Showing {visibleTrajectories?.trajectories.length ?? 0}/{trajectories.trajectories.length}
         {" "}trajectory results.</p>
       {visibleTrajectories?.trajectories.map(path => <p key={path.seedId}

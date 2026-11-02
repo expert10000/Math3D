@@ -66,7 +66,12 @@ import {
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
+import { resolveWorkbookSageFreshness } from "@math3d/workbook";
 import type { WorkspaceDockLayout } from "../workspaceDocks";
+import { ScientificServicesPanel } from "../features/scientificServices/ScientificServicesPanel";
+import { SageSymbolicAnalysisCard } from "../features/sageLab/SageSymbolicAnalysisCard";
+import type { SymbolicResultRecord } from "../features/sageLab/SageSymbolicPanel";
+import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
@@ -246,6 +251,8 @@ type Props = {
   onRemoveScientificScene?: (scene: ScientificSceneLibraryReference) => void;
   openScientificFieldRequest?: { document: ScientificFieldDocument; token: number } | null;
   onSaveScientificField?: (document: ScientificFieldDocument) => void;
+  onSaveSageResult?: (record: SymbolicResultRecord) => void;
+  onOpenSageRuntimes?: () => void;
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
@@ -261,8 +268,11 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
   openScientificFieldRequest, onSaveScientificField,
-  savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D }: Props) {
+  savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D,
+  onSaveSageResult, onOpenSageRuntimes }: Props) {
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [leftSection, setLeftSection] = useState<"objects" | "services">("objects");
+  const [sageRecord, setSageRecord] = useState<SymbolicResultRecord | null>(null);
   const [galleryStartCategory, setGalleryStartCategory] = useState<"All" | "Differential equations">("All");
   const [leftPalette, setLeftPalette] = useState<Graph2DLeftPalette>(readGraph2DLeftPalette);
   const changeLeftPalette = (palette: Graph2DLeftPalette) => {
@@ -1545,6 +1555,23 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const selectedSageExpression = selectedObject?.kind === "explicit-cartesian"
+    ? selectedObject.expression.source : undefined;
+  const selectedSageSource = selectedObject?.kind === "explicit-cartesian"
+    ? graphSageSource(document, selectedObject.id) ?? undefined : undefined;
+  const sageSourceStatus = (() => {
+    const source = sageRecord?.source;
+    if (!source || source.id.startsWith("sage-input:")) return "unlinked" as const;
+    const prefix = `${document.identity.id}:`;
+    if (source.module !== "graphs" || !source.id.startsWith(prefix)) return "unavailable" as const;
+    const current = graphSageSource(document, source.id.slice(prefix.length));
+    if (!current) return "unavailable" as const;
+    return resolveWorkbookSageFreshness(source, current) === "current" ? "current" as const : "stale" as const;
+  })();
+  const onGraphSageResult = (record: SymbolicResultRecord) => {
+    setSageRecord({ ...record, source: record.source ?? { module: "graphs", id: "sage-input:graphs", revision: 0,
+      expression: record.expression, fingerprint: structuralHash(record.request.params) } });
+  };
   const selectedLinkedVectorField = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin ?
     parseVectorField3DDocument(selectedObject.linkedOrigin.vectorDocumentJson).source.field : null;
   const selectedLinkedReady = selectedObject?.kind !== "point-series" || !selectedObject.linkedOrigin ||
@@ -3540,11 +3567,24 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   return (
     <section data-testid="graphs-workspace" aria-label="Graphs workspace" className="graph2d-workspace"
       data-left={showLeft} data-right={showRight} data-presentation={presentation}
+      data-services={leftSection === "services"}
       data-field-explorer={vectorField3DOpen}
       style={{ "--graph2d-left-width": showLeft ? `${dockLayout.left}px` : "0px",
         "--graph2d-right-width": showRight ? `${dockLayout.right}px` : "0px" } as CSSProperties}>
-      {showLeft && <aside className="graph2d-panel graph2d-left" data-palette={leftPalette} aria-label="Graph functions">
-        {functionList("desktop")}
+      {(showLeft || leftSection === "services" && !presentation) && <aside className="graph2d-panel graph2d-left" data-palette={leftPalette} aria-label="Graph functions">
+        <nav aria-label="Graph workspace sections" style={{ display: "flex", gap: 6, padding: "6px 8px" }}>
+          <button type="button" data-testid="graph2d-objects-tab" aria-pressed={leftSection === "objects"}
+            onClick={() => setLeftSection("objects")}>Objects</button>
+          <button type="button" data-testid="graph2d-services-tab" aria-pressed={leftSection === "services"}
+            onClick={() => setLeftSection("services")}>Services</button>
+          {leftSection === "services" && <button type="button" aria-label="Close Graph Services"
+            onClick={() => setLeftSection("objects")}>Close</button>}
+        </nav>
+        {leftSection === "objects" ? functionList("desktop") :
+          <div style={{ padding: 8 }}><ScientificServicesPanel context="graphs" sourceExpression={selectedSageExpression}
+            sourceProvenance={selectedSageSource}
+            sourceLabel="Use selected graph y(x)" sourceVariables="x" onResult={onGraphSageResult}
+            onOpenRuntimes={onOpenSageRuntimes} /></div>}
       </aside>}
       {!showLeft && functionList("modal-only")}
       <div data-testid="main-viewer" className="graph2d-viewer" aria-label="Graph scene" ref={viewerRef}
@@ -3586,6 +3626,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
             <div className="graph2d-toolbar-group" role="group" aria-label="Analysis">
               <button type="button" disabled={!showRight} title={!showRight ? "Open the Inspector dock to view analysis." : undefined}
                 onClick={() => { finishWheel(); openInspector(); }}>Inspector</button>
+              <button type="button" data-testid="graph2d-toolbar-services" aria-pressed={leftSection === "services"}
+                onClick={() => { finishWheel(); setLeftSection("services"); }}>Services</button>
             </div>
             <details className="graph2d-toolbar-menu"><summary>More</summary><div className="graph2d-toolbar-menu-content">
               <div className="graph2d-toolbar-group" role="group" aria-label="Authoring">
@@ -4072,7 +4114,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {toolHint && <p className="graph2d-tool-hint" role="status">{toolHint}</p>}
         <div className="graph2d-compact-panels">
           {showLeft && <details><summary>Graph objects ({document.source.objects.length})</summary>{functionList("compact")}</details>}
-          {showRight && <details><summary>Inspector</summary>{inspector}{savedFields}</details>}
+          {showRight && <details><summary>Inspector</summary>
+            {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
+              onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
+            {inspector}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
@@ -4117,6 +4162,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
       </div>
       {showRight && <aside className="graph2d-panel graph2d-right" aria-label="Graph inspector">
         <h2>Inspector</h2>
+        {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
+          onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
         {guided && <details className="graph2d-guided-panel" data-testid="graph2d-guided-panel">
           <summary>Guide: {guided.concept.title} · {guided.state}</summary>
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}

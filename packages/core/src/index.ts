@@ -144,6 +144,8 @@ export * from "./vectorField3DDerivedLine";
 export * from "./vectorField3DDifferential";
 export * from "./vectorField3DEigenanalysis";
 export * from "./vectorField3DPointResult";
+export * from "./vectorField3DTrajectoryResult";
+export * from "./vectorField3DEquilibriumResult";
 export * from "./vectorField3DRegionResult";
 export * from "./vectorField3DTrajectories";
 export * from "./topologyDocument";

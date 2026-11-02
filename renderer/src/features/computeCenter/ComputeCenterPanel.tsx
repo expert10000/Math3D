@@ -30,6 +30,7 @@ const labelFor = (job: ComputeJobRecord) => ({
   "algebra.groebner": "Gröbner basis",
   "number-theory.gcd": "Greatest common divisor",
   "number-theory.mod-inverse": "Modular inverse",
+  "sage.console.execute": "Sage Console",
 } as Record<string, string>)[job.operationType] ?? job.operationType;
 const statusColor = (ok: boolean | null) => ok === null ? "#64748b" : ok ? "#16803e" : "#a2530b";
 const formatBytes = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;

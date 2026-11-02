@@ -4,6 +4,7 @@ import type { Workbook } from "@math3d/workbook";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ProjectMiddlePortal } from "./ProjectMiddlePortal";
 import type { ProjectResourceReader } from "../projects/projectResources";
+import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 
 type Props = {
   workbook: Workbook;
@@ -14,12 +15,13 @@ type Props = {
   onOpenDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenNote: (id: string) => void;
   onOpenProjects: () => void;
+  onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
   focusBlockId?: string;
   readComparisonResource?: ProjectResourceReader;
 };
 
 /** A presentation layer over the current viewer; its document session stays mounted. */
-export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, documentTitle, onReturn, onEdit, onOpenDocument, onOpenNote, onOpenProjects, focusBlockId, readComparisonResource }) => {
+export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, documentTitle, onReturn, onEdit, onOpenDocument, onOpenNote, onOpenProjects, onOpenSavedMeshResult, focusBlockId, readComparisonResource }) => {
   useEffect(() => {
     if (!focusBlockId) return;
     const frame = requestAnimationFrame(() => document.querySelector(`[data-testid="workbook-document-block-${CSS.escape(focusBlockId)}"]`)?.scrollIntoView({ block: "start" }));
@@ -34,6 +36,6 @@ export const ProjectWorkbookMiddleView: React.FC<Props> = ({ workbook, project, 
     <WorkbookDocumentView workbook={workbook} project={project} projectLive={!!project} readOnly
       readComparisonResource={readComparisonResource}
       statusFor={() => ({ state: "saved", label: "Saved" })} onUpdateBlock={() => undefined}
-      onEditBlock={onEdit} onOpenDocument={onOpenDocument} onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} />
+      onEditBlock={onEdit} onOpenDocument={onOpenDocument} onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult} />
   </ProjectMiddlePortal>;
 };

@@ -78,8 +78,11 @@ export async function verifiedVectorSubrectangleResult(field: VectorField3DDocum
       throw new VectorSubrectangleSourceError(status,
         `Saved ${origin.series} profile source ${status}.`);
   }
-  const speed = await verifiedVectorRegionProfile(field, region, bridge);
-  const derived = await verifiedCombinedDerivedRegionProfiles(field, region, bridge);
+  // Each saved row was checked against these freshly verified profiles above.
+  // Reuse that bounded stencil instead of reading the same source twice.
+  const speed = await (session.speed ??= verifiedVectorRegionProfile(field, region, bridge));
+  const derived = await (session.derived ??=
+    verifiedCombinedDerivedRegionProfiles(field, region, bridge));
   if (canonicalJsonStringify(column.origins[0]!.vectorSamples) !==
         canonicalJsonStringify(speed.samples) ||
       canonicalJsonStringify(column.origins[0]!.derivedSamples) !==

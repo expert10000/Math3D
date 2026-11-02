@@ -3,8 +3,9 @@ import { assessWorkbookClaim, inspectNotebookProvenance, normalizeNotebookRefere
 import { captureProjectResources, exportProjectPackage, parseProjectPackage, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
-import { inspectWorkbookComparisonReference } from "@math3d/workbook";
+import { inspectWorkbookComparisonReference, normalizeWorkbookSavedMeshTrendReference } from "@math3d/workbook";
 import { createProjectComparisonEvidence } from "../projects/projectComparisonEvidence";
+import { inspectWorkbookSavedMeshTrend } from "../projects/projectSavedMeshWorkbookTrend";
 
 export const notebookPublicationManifest = (books: readonly Workbook[], project: Math3DProject | null, reader?: NotebookArtifactReader, selected?: readonly string[], sourceReader?: ProjectResourceReader) => {
   const citations = new Map<string, NotebookReference>();
@@ -26,13 +27,19 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
         throw new TypeError(`Workbook comparison ${block.title} is stale, missing, or lacks verified source bytes.`);
       return createProjectComparisonEvidence(project, inspected.composition, sourceReader);
     })() : null;
+    const savedMeshTrend = block.visualize?.savedMeshTrend ? (() => {
+      const inspected = inspectWorkbookSavedMeshTrend(project, block.visualize.savedMeshTrend!, sourceReader);
+      if (inspected.status !== "current" || !inspected.study)
+        throw new TypeError(`Workbook saved Mesh trend ${block.title} is ${inspected.status}: ${inspected.reason}`);
+      return inspected.study;
+    })() : null;
     const notes = (book.dependencies ?? []).filter(edge => edge.targetBlockId === block.id && edge.source.kind === "note").map(edge => {
       if (edge.source.kind !== "note") throw new Error("Expected Note source");
       const ref = edge.source, note = ref.projectId === project?.identity.id ? project.notes?.find(note => note.identity.id === ref.noteId) : undefined;
       return { reference: ref, status: note ? note.identity.structuralHash === ref.hash && note.identity.revision === ref.revision ? "current" : "stale" : "missing",
         renderedBody: note ? projectNoteRenderedBody(note, project!.workspace) : null };
     });
-    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison };
+    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison, savedMeshTrend };
   })));
   return { schemaVersion: 1 as const, projectId: project?.identity.id ?? null, projectHash: project ? structuralHash(project) : null,
     parameters: books.map(book => ({ workbookId: book.id, namedParameters: book.namedParameters ?? [] })),
@@ -43,7 +50,10 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
     }) };
 };
 export type NotebookPublicationManifest = ReturnType<typeof notebookPublicationManifest>;
-export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n${manifest.blocks.filter(block => block.comparison).map(block => {
+export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n${manifest.blocks.filter(block => block.savedMeshTrend).map(block => {
+  const study = block.savedMeshTrend!;
+  return `### Saved Mesh trend · ${study.metricPath}\n\n${study.qualification}\n\n${study.rows.map(row => `- r${row.revision}: ${row.status === "available" ? `${row.value} ${row.unit}` : row.status}; result ${row.resultId ?? "none"}; result hash ${row.resultHash ?? "none"}; source hash ${row.sourceHash}`).join("\n")}`;
+}).join("\n\n")}\n\n${manifest.blocks.filter(block => block.comparison).map(block => {
   const comparison = block.comparison!;
   return `### Saved Project comparison · ${comparison.title}\n\nAlignment: ${comparison.alignment}.\n\n${comparison.members.map(member => `- ${member.slot}: ${member.title} · ${member.documentId} · r${member.revision} · ${member.structuralHash} · ${member.unit ?? "unit not recorded"}`).join("\n")}\n\nSelection: ${comparison.selection ? JSON.stringify(comparison.selection) : "No recorded selection in this report; use the open comparison to export a selected view."}\n\nAuthored observations (not independent measurements):\n${comparison.observations.length ? comparison.observations.map(note => `- ${JSON.stringify(note.title)}: ${JSON.stringify(note.body)} · ${note.noteId} r${note.noteRevision} · ${note.noteHash}`).join("\n") : "- None saved."}`;
 }).join("\n\n")}\n\n\`\`\`json\n${JSON.stringify(manifest, null, 2)}\n\`\`\``;
@@ -57,8 +67,13 @@ export const notebookPublicationManifestHtml = (manifest: NotebookPublicationMan
     const comparison = block.comparison!;
     return `<section data-comparison-evidence><h3>Saved Project comparison · ${escapeHtml(comparison.title)}</h3><p>Mode: ${comparison.mode} · alignment: <strong>${comparison.alignment}</strong></p><p>Project ${escapeHtml(comparison.projectId)} · composition ${escapeHtml(comparison.compositionHash)}</p><table><thead><tr><th>Source</th><th>Exact saved generation</th><th>Unit</th></tr></thead><tbody>${comparison.members.map(member => `<tr><td>${member.slot} · ${escapeHtml(member.title)}<br>${escapeHtml(member.documentId)}</td><td>r${member.revision} · ${escapeHtml(member.generation)}<br>${escapeHtml(member.structuralHash)}</td><td>${escapeHtml(member.unit ?? "not recorded")}</td></tr>`).join("")}</tbody></table><p>Selection: none recorded in this publication. Export a selected view from the open comparison.</p><h4>Authored observations</h4><p>These Notes are not independent scientific measurements.</p>${comparison.observations.map(note => `<article><strong>${escapeHtml(note.title)}</strong><p>${escapeHtml(note.body)}</p><small>${escapeHtml(note.noteId)} · r${note.noteRevision} · ${escapeHtml(note.noteHash)}</small></article>`).join("") || "<p>None saved.</p>"}<p>${escapeHtml(comparison.qualification)}</p></section>`;
   }).join("");
+  const trends = manifest.blocks.filter(block => block.savedMeshTrend).map(block => {
+    const study = block.savedMeshTrend!;
+    return `<section data-saved-mesh-trend><h3>Saved Mesh trend · ${escapeHtml(study.metricPath)}</h3><p>${escapeHtml(study.operation)} · ${escapeHtml(study.algorithm)} v${escapeHtml(study.algorithmVersion)} · ${escapeHtml(study.unit ?? "unqualified")}</p><p>${escapeHtml(study.qualification)}</p><table><thead><tr><th>Mesh revision</th><th>Stored value</th><th>Status</th><th>Exact result and hash</th><th>Source hash</th></tr></thead><tbody>${study.rows.map(row => `<tr><td>r${row.revision}</td><td>${row.status === "available" ? escapeHtml(`${row.value} ${row.unit}`) : "—"}</td><td>${escapeHtml(row.status)}</td><td>${escapeHtml(row.resultId ?? "No saved result")}<br>${escapeHtml(row.resultHash ?? "—")}</td><td>${escapeHtml(row.sourceHash)}</td></tr>`).join("")}</tbody></table></section>`;
+  }).join("");
   return `<section data-publication-manifest><h2>Linked-source manifest</h2><p>${escapeHtml(manifest.qualification)}</p>
     ${comparisons}
+    ${trends}
     <table style="width:100%;font-size:11px;overflow-wrap:anywhere"><thead><tr><th>Exact target</th><th>Freshness</th><th>Recorded source</th><th>Authority, method and warnings</th></tr></thead><tbody>${rows}</tbody></table>
     <details><summary>Exact manifest (JSON)</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(JSON.stringify(manifest, null, 2))}</pre></details></section>`;
 };
@@ -100,6 +115,17 @@ export const inspectPortableNotebookPublication = (payload: ReturnType<typeof cr
     if (!saved) throw new TypeError("Publication comparison is missing from the Project.");
     const checked = createProjectComparisonEvidence(reopened.project, saved, item => reopened.resources.bytes(item));
     if (structuralHash(checked) !== structuralHash(block.comparison)) throw new TypeError("Publication comparison source or generation changed.");
+  }
+  for (const block of payload.manifest.blocks) if (block.savedMeshTrend) {
+    const saved = block.savedMeshTrend;
+    const reference = normalizeWorkbookSavedMeshTrendReference(
+      { schemaVersion: 1, projectId: saved.projectId, meshId: saved.sourceDocumentId, operation: saved.operation,
+        algorithm: saved.algorithm, algorithmVersion: saved.algorithmVersion, metricPath: saved.metricPath,
+        results: saved.rows.filter(row => row.resultId).map(row => ({ resultId: row.resultId!, resultHash: row.resultHash!,
+          revision: row.revision, sourceHash: row.sourceHash })) });
+    const checked = inspectWorkbookSavedMeshTrend(reopened.project, reference, item => reopened.resources.bytes(item));
+    if (checked.status !== "current" || !checked.study || structuralHash(checked.study) !== structuralHash(saved))
+      throw new TypeError("Publication saved Mesh trend source or generation changed.");
   }
   for (const artifact of payload.artifacts) {
     const binary = atob(artifact.data), bytes = Uint8Array.from(binary, c => c.charCodeAt(0));

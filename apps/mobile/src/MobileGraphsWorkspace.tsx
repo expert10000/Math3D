@@ -198,7 +198,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
     if (active && (active.sourceKey !== sourceKey || active.draftHash !== draftHash || destination !== "Analyze")) cancelFit(false);
   }, [sourceKey, draftHash, destination]);
   const sampling = useMobileGraphSampling(sampledDocument, viewport, size, !!preview || !!phaseSeedPreview,
-    () => { setAnalysis(null); setParameterPreview(null); }, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined, tableStore);
+    // A completed analysis remains source-linked while Android's document picker backgrounds the app.
+    // In-flight fits are cancelled above; source/draft identity still gates display and publication.
+    () => { setParameterPreview(null); }, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined, tableStore);
   const { series, budget } = sampling;
   const selectedPhase = series.find(item => item.objectId === document.selection.objectId &&
     "kind" in item.artifact && item.artifact.kind === "phase-portrait")?.artifact as Graph2DPhasePortraitArtifact | undefined;
@@ -377,7 +379,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const button = (label: string, action: () => void, disabled = false, compact = false) => <Pressable key={label} accessibilityRole="button"
     accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={action} style={[s.button, compact && s.toolbarButton]}>
     <Text style={{ color: disabled ? "#94a3b8" : "#1d4ed8", fontSize: compact ? 12 : 14, textAlign: compact ? "center" : "left" }}>{label}</Text></Pressable>;
-  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : keyboardVisible ? "height" : undefined} style={s.root} testID="mobile-graphs-workspace"
+  return <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.root} testID="mobile-graphs-workspace"
     onLayout={(event) => { const { width, height } = event.nativeEvent.layout; if (width > 0 && height > 0)
       setFrame((current) => current.width === width && current.height === height ? current : { width, height }); }}>
     {presentation ? <View style={{ flexDirection: "row", alignItems: "center" }}>

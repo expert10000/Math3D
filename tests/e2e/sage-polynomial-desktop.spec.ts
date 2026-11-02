@@ -27,13 +27,22 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await services.getByRole("button", { name: "Run", exact: true }).click();
     await expect(analysis).toContainText("Symbolic result · Gradient", { timeout: 120_000 });
     await expect(analysis).toContainText("Exact · SageMath (Local WSL)");
+    await expect(analysis.getByTestId("sage-result-kind-vector")).toBeVisible();
+    await expect(analysis).toContainText("Source current");
+    await expect(analysis).toContainText("Version:");
+    await expect(analysis).toContainText("Revision:");
     await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
-    await analysis.getByRole("button", { name: "Visualize vector field" }).click();
-    await expect(analysis).toContainText("normalized gradient directions");
+    await analysis.getByRole("button", { name: "Preview vector field" }).click();
+    await expect(analysis).toContainText("Previewing");
+    await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("source surface:active-implicit:");
+    await analysis.getByRole("button", { name: "Commit vector overlay" }).click();
+    await expect(analysis).toContainText("Committed");
 
     await services.getByRole("button", { name: "Hessian", exact: true }).click();
     await services.getByRole("button", { name: "Run", exact: true }).click();
     await expect(analysis).toContainText("Symbolic result · Hessian", { timeout: 60_000 });
+    await expect(analysis.getByTestId("sage-result-kind-matrix")).toBeVisible();
+    await expect(analysis.getByRole("button", { name: "Preview vector field" })).toHaveCount(0);
     await expect(services).toContainText("[[2, 0, 0], [0, 2, 0], [0, 0, 2]]");
     await page.getByTestId("top-compute-center-button").click();
     const calculusJobs = page.getByTestId("compute-center").getByRole("region", { name: "Broker jobs" });
@@ -44,6 +53,7 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await services.getByRole("button", { name: "Singularities", exact: true }).click();
     await services.getByRole("button", { name: "Run", exact: true }).click();
     await expect(analysis).toContainText("0 singular points", { timeout: 60_000 });
+    await expect(analysis.getByTestId("sage-result-kind-solution")).toBeVisible();
     await analysis.getByRole("button", { name: "Save to Workbook" }).click();
     await expect(page.getByRole("button", { name: "Workbook", exact: true }).first()).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("textbox", { name: "Block title" }).last()).toHaveValue("SageMath singularities");
@@ -53,8 +63,10 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await services.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
     await services.getByRole("button", { name: "Run", exact: true }).click();
     await expect(analysis).toContainText("Simplified expression", { timeout: 60_000 });
-    await analysis.getByRole("button", { name: "Create geometry" }).click();
-    await expect(analysis).toContainText("Created an implicit surface from the exact scalar expression.");
+    await analysis.getByRole("button", { name: "Preview geometry" }).click();
+    await expect(analysis).toContainText("Previewing derived implicit geometry");
+    await analysis.getByRole("button", { name: "Commit geometry" }).click();
+    await expect(analysis).toContainText("Committed an implicit surface");
   } finally {
     await app?.close();
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))
@@ -80,7 +92,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     req.on("end", () => {
       requests.push(JSON.parse(body));
       res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.6", operation: "sage.symbolic.simplify", success: true,
-        result: { text: "desktop-docker-result" }, latex: "1", warnings: [] }));
+        result: { text: requests.length > 1 ? "x*x+y*y+z*z-1" : "desktop-docker-result" }, latex: "1", warnings: [] }));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -121,6 +133,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await panel.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
     await panel.getByRole("button", { name: "Run", exact: true }).click();
     await expect(panel).toContainText("desktop-docker-result");
+    await expect(page.getByTestId("sage-result-kind-expression")).toBeVisible();
     expect(requests).toMatchObject([{ operation: "sage.symbolic.simplify" }]);
     await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
@@ -131,6 +144,9 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await sourceEditor.press("Control+Enter");
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
     await page.getByRole("button", { name: "Inspector", exact: true }).click();
+    await expect(page.getByTestId("sage-analysis-result")).toContainText("Source changed — rerun required");
+    await expect(page.getByTestId("sage-analysis-result").getByRole("button", { name: "Preview geometry" })).toBeDisabled();
+    await expect(page.getByTestId("sage-analysis-result").getByRole("button", { name: "Commit geometry" })).toBeDisabled();
     await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
     await page.reload();
@@ -147,8 +163,13 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await expect(geometryServices).toContainText("Backend available for this operation");
     await geometryServices.getByRole("button", { name: "Run", exact: true }).click();
     await expect(page.getByTestId("sage-analysis-result")).toContainText("Symbolic result · Simplified expression");
+    await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Preview geometry" }).click();
+    await expect(page.getByTestId("sage-analysis-result")).toContainText("Previewing derived geometry");
+    await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Commit geometry" }).click();
+    await expect(page.getByTestId("sage-analysis-result")).toContainText("Committed Sage simplify geometry as a Geometry object");
+    await expect(page.getByTestId("geometry-inspector-summary")).toContainText("Sage simplify geometry");
     await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();
-    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source unavailable — verify before reuse");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Freeform input saved with this result");
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("sage-input:geometry");
     expect(requests).toHaveLength(2);

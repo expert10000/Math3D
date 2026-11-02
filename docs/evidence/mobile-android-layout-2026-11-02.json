@@ -1,0 +1,34 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "ac0c1baae1de621827a24675e38b81174dd94b307396014cea1ee17bbf860507",
+  "debugSignerCertificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+  "sourceEquivalentCommit": "bd702659393f8e827b0b97e00068b727994bce8c",
+  "testedAtDate": "2026-11-02",
+  "case": "TP07-phone-layout-supplement",
+  "status": "passed-phone-scope",
+  "observations": [
+    "The initial short-landscape build clipped the bottom navigation on Home and Explore. The final build kept Home, Explore, Projects and Settings navigation visible, with their content scrollable above it. The Graph workspace retained its plot and bottom navigation in landscape.",
+    "On the Beating waves Graph, the Samsung keyboard kept the expression editor visible in portrait and landscape. Rotating portrait to landscape and back with the keyboard open preserved the unsaved expression draft. Cancel function draft left the committed expression unchanged.",
+    "After rotating portrait to landscape on Settings, the bottom tabs remained visible. Focusing the URL field with the Samsung keyboard open kept the field and tabs visible in both orientations; no setting was saved.",
+    "Explore Catenoid rendered one surface in portrait and short landscape. In landscape, the collapsed inspector exposed all six tabs and the collapse/expand handle. Analyze expanded to a readable inspector panel. Scene expanded to show its controls and object list. Collapsing returned the 3D viewport and toolbar.",
+    "Mobile typecheck and the sequential mobile unit rerun passed: 70 files, 419 tests. A first unit run concurrently with typecheck hit one 5-second timeout in mobileProjectSurfaceRefresh; the sequential rerun passed. git diff --check passed.",
+    "The final app-process log had 800 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The device's original auto rotation setting (accelerometer_rotation=1, user_rotation=0) was restored."
+  ],
+  "screenshots": [
+    "mobile-android-layout-home-landscape-2026-11-02.png",
+    "mobile-android-layout-home-landscape-fixed-2026-11-02.png",
+    "mobile-android-layout-explore-landscape-fixed-2026-11-02.png",
+    "mobile-android-layout-keyboard-portrait-return-fixed-2026-11-02.png",
+    "mobile-android-layout-keyboard-landscape-fixed-2026-11-02.png",
+    "mobile-android-layout-settings-rotation-fixed-2026-11-02.png",
+    "mobile-android-layout-catenoid-portrait-2026-11-02.png",
+    "mobile-android-layout-catenoid-landscape-2026-11-02.png",
+    "mobile-android-layout-catenoid-landscape-inspector-collapsed-final-2026-11-02.png",
+    "mobile-android-layout-catenoid-landscape-scene-expanded-2026-11-02.png"
+  ],
+  "scope": "Physical portrait and short-landscape layout on this Samsung phone and independent debug-signed Notes Check APK. A tablet, another Android class, iOS, TalkBack, interrupted gestures and internal/release signing remain outside this supplement."
+}

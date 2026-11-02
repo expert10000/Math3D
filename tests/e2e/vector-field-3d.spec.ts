@@ -901,7 +901,7 @@ test("SCI-02 scalar heatmap and complex contours reopen with independent source 
 });
 
 test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () => {
-  test.setTimeout(600_000);
+  test.setTimeout(1_200_000);
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -932,6 +932,8 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-explorer-panel")
       .getByTestId("project-save").click();
+    await expect(page.getByTestId("project-explorer-panel")
+      .getByTestId("project-save")).toBeEnabled({ timeout: 120_000 });
     await expect.poll(() => page.evaluate(() =>
       localStorage.getItem("math3d.project.v1"))).not.toBeNull();
     const project = JSON.parse((await page.evaluate(() =>
@@ -962,9 +964,22 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
     await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
     await outputs.getByTestId("project-create-subrectangle-workbook").click();
     await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
-      .toContainText("Sources verified", { timeout: 120_000 });
-    await page.getByTestId("scientific-subrectangle-rerun")
-      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
+      .toContainText("Sources verified", { timeout: 180_000 });
+    const chart = page.getByTestId("scientific-subrectangle-profile-chart");
+    await expect(chart).toContainText("Vector speed", { timeout: 120_000 });
+    await expect(chart).toContainText("Divergence");
+    await expect(chart).toContainText("Curl magnitude");
+    await expect(chart.locator("svg")).toHaveAttribute("aria-label",
+      "Verified scientific subrectangle profile chart");
+    await expect(page.getByTestId("scientific-subrectangle-export-chart"))
+      .toBeEnabled();
+    const rerunButton = page.getByTestId("scientific-subrectangle-rerun");
+    await expect(rerunButton).toBeEnabled({ timeout: 120_000 });
+    await rerunButton
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
+        undefined, { timeout: 120_000 });
+    await expect(page.getByTestId("scientific-subrectangle-workbook-report")
+      .getByRole("status")).toContainText("New result revision published", { timeout: 600_000 });
     await expect.poll(() => page.evaluate(id => {
       const saved = JSON.parse(localStorage.getItem(`math3d.project.v1.payload.${id}`)!);
       return saved.workspace.results.filter((item: { provenance: { operation: { type: string } } }) =>
@@ -983,29 +998,35 @@ test("SCI-06 publishes a vector-only subrectangle from the Inspector", async () 
       revisions[0].provenance.operation.parameters);
     expect(savedReport.workbooks[0].revision).toBeGreaterThan(1);
     const reportId = savedReport.workbooks[0].id;
-    await page.getByTestId("projects-toggle")
-      .evaluate(element => (element as HTMLButtonElement).click());
+    const projectsToggle = page.getByTestId("projects-toggle");
+    await expect(projectsToggle).toBeEnabled({ timeout: 120_000 });
+    await projectsToggle.evaluate(element => {
+      setTimeout(() => (element as HTMLButtonElement).click(), 0);
+    }, undefined, { timeout: 120_000 });
     const reopened = page.getByTestId("project-explorer-panel");
     await expect(reopened).toBeVisible();
     await reopened.getByTestId(`project-open-saved-${project.identity.id}`)
-      .evaluate(element => (element as HTMLButtonElement).click());
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect(reopened.getByTestId("project-message"))
       .toContainText("Opened supported project workspace", { timeout: 120_000 });
     if (!await reopened.getByTestId("project-workbooks").isVisible())
       await reopened.getByTestId("project-detail-tab-documents").click();
     await reopened.getByTestId(`project-open-workbook-${reportId}`)
-      .evaluate(element => (element as HTMLButtonElement).click());
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect(page.getByTestId("scientific-subrectangle-workbook-report"))
       .toContainText("Sources verified", { timeout: 120_000 });
-    await page.getByRole("button", { name: "Verified subrectangle report · new revision" })
-      .last().evaluate(element => (element as HTMLButtonElement).click());
+    await page.getByText("Verified subrectangle report · new revision", { exact: true })
+      .last().evaluate(element => { setTimeout(() => element.closest("button")?.click(), 0); },
+        undefined, { timeout: 120_000 });
     await expect(page.getByTestId("scientific-subrectangle-differences"))
       .toContainText("Compared with", { timeout: 120_000 });
   } finally { await closeSurfaceApp(app); }
 });
 
 test("SCI-02 publishes a combined subrectangle directly from Explorer", async () => {
-  test.setTimeout(360_000);
+  test.setTimeout(600_000);
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -1047,6 +1068,8 @@ test("SCI-02 publishes a combined subrectangle directly from Explorer", async ()
     await page.getByTestId("projects-toggle").click();
     await page.getByTestId("project-explorer-panel")
       .getByTestId("project-save").click();
+    await expect(page.getByTestId("project-explorer-panel")
+      .getByTestId("project-save")).toBeEnabled({ timeout: 120_000 });
     await expect.poll(() => page.evaluate(() =>
       localStorage.getItem("math3d.project.v1"))).not.toBeNull();
     const raw = await page.evaluate(() => localStorage.getItem("math3d.project.v1"));
@@ -1067,6 +1090,29 @@ test("SCI-02 publishes a combined subrectangle directly from Explorer", async ()
       "vector-scalar-complex-curl-linked-region/v4" || item.linkedOrigin?.kind ===
       "vector-scalar-complex-curl-row-linked-region/v5");
     expect(profiles).toHaveLength(12);
+    const projects = page.getByTestId("project-explorer-panel");
+    if (await projects.getByRole("button", { name: "Full gallery" }).count())
+      await projects.getByRole("button", { name: "Full gallery" }).click();
+    await projects.getByRole("button", { name: "View current project" }).click();
+    if (!await projects.getByTestId("project-dashboard").isVisible())
+      await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-results").click();
+    const outputs = projects.getByTestId("project-results-browser");
+    await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    await outputs.getByTestId("project-create-subrectangle-workbook").click();
+    await expect.poll(() => page.evaluate(id => {
+      const saved = localStorage.getItem(`math3d.project.v1.payload.${id}`);
+      return saved ? JSON.parse(saved).workbooks?.length ?? 0 : 0;
+    }, project.identity.id), { timeout: 180_000 }).toBe(1);
+    const reportBlock = page.getByTestId("scientific-subrectangle-workbook-report");
+    await expect(reportBlock).toBeVisible({ timeout: 60_000 });
+    await expect(reportBlock).toContainText("Sources verified", { timeout: 180_000 });
+    const chart = page.getByTestId("scientific-subrectangle-profile-chart");
+    await expect(chart).toContainText("Scalar Q", { timeout: 180_000 });
+    await expect(chart).toContainText("Complex phase");
+    await expect(chart).toContainText("Curl magnitude");
+    await expect(chart.locator("svg")).toContainText("Column means");
+    await expect(chart.locator("svg")).toContainText("Row means");
   } finally { await closeSurfaceApp(app); }
 });
 

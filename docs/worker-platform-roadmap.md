@@ -488,7 +488,8 @@ They do not complete the hosted gateway. Surface and Geometry Sage operations
 now use one shared operation registry and `ExecutionService`, with backend
 capabilities discovered from the WSL and Docker health contracts. The shared
 broker handles execution, cancellation, and Compute diagnostics; the Sage
-client remains only as its transport adapter. Other modules still need to join
+client remains only as its transport adapter. Graphs now joins this flow for
+symbolic and polynomial operations. Other modules still need to join
 this common Services flow.
 
 ### Scientific Services UI rollout — implementation sequence
@@ -503,14 +504,16 @@ Workbook or an optional docked console.
 
 | Priority | UI change | Scope | Current state / acceptance |
 | --- | --- | --- | --- |
-| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Implemented for Surface and Geometry Sage operations. The shared panel filters contextual operations and invokes one `ExecutionService` registry with no per-run broker or direct feature-side transport path. Extend the same contract to other modules. |
+| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Implemented for Surface, Geometry, Graphs, and CAS Sage operations. The shared panel filters contextual operations and invokes one `ExecutionService` registry with no per-run broker or direct feature-side transport path. Extend the same contract to other modules. |
 | P0 | Move Docker/WSL configuration and diagnostics into `Compute → Runtimes` | Global | Sage Local WSL and Docker now show availability, reported SageMath version, environment, route, operation limits, and actionable probe errors from the shared registry. Services links directly to this view. Broader runtime profile controls remain in the Compute engine manager. |
-| P0 | Add SageMath engine with WSL backend | Services | Surface and Geometry share the bounded Local WSL and Docker adapters, capability reporting, execution, cancellation, and Compute diagnostics. Broader module registration remains open. |
-| P1 | Add operation-specific result cards and artifact actions | Inspector | Partly shipped for Surface/Implicit. Generalize exact expression, vector, matrix, solution set, and error cards; show source revision, backend, warnings, and stale state. Actions must use typed result/artifact contracts. |
-| P1 | Visualize a result as an overlay or save it as an object | Viewer | Partly shipped for Surface gradients and scalar implicit geometry. Add explicit preview/commit actions, source-linked provenance, stale invalidation, and appropriate geometry or overlay adapters per result type. |
-| P2 | Add a Sage Console bottom dock | Advanced users | Planned. Make session state, execution limits, cancellation, and output provenance visible; do not turn the public worker contract into arbitrary code execution. |
-| P2 | Add persistent Sage code cells | Workbook | Planned. Reuse Workbook blocks, saved inputs/outputs, dependencies, and source freshness. Gate code execution behind an explicit trusted local or private runtime policy; do not silently send cells to a hosted backend. |
-| P3 | Add a dedicated CAS/Algebra workspace | Global module | Planned after the shared Services and Inspector flow proves reusable. It composes the same operations and results rather than creating a second backend architecture. |
+| P0 | Add SageMath engine with WSL backend | Services | Surface, Geometry, Graphs, and CAS share the bounded Local WSL and Docker adapters, capability reporting, execution, cancellation, and Compute diagnostics. Broader module registration remains open. |
+| P1 | Add operation-specific result cards and artifact actions | Inspector | Shared Surface, Geometry, Graphs, and CAS Sage cards render expression, vector, matrix, solution set, and error results with backend, SageMath version, warnings, source revision, and freshness. Typed actions allow gradient previews and commits for usable vectors in Surface and Geometry, scalar geometry for usable expressions, and Workbook evidence for every result, including errors. Graph expressions retain object source freshness in Inspector and Workbook. Desktop and web flows cover the shared path. |
+| P1 | Visualize a result as an overlay or save it as an object | Viewer | Surface and Geometry now offer explicit preview, discard, and commit actions for Sage gradient overlays and scalar geometry. Surface commits replace the active implicit expression; Geometry commits create a mesh object with serialized Sage source metadata. Commits also save exact Workbook evidence. Linked source changes invalidate live previews and overlays. Gradient overlays remain session-scoped; extend persistent overlay adapters to later modules as needed. |
+| P2 | Add a Sage Console bottom dock | Advanced users | Implemented for the trusted Local WSL desktop runtime. The dock shows session state, limits, cancellation, output, and SHA-256 input provenance through the shared `ExecutionService` and Compute job flow. Trust is explicit and session scoped; web and public Docker routes do not accept code. Private runtime support remains open. |
+| P2 | Add persistent Sage code cells | Workbook | Implemented as Sage code blocks with saved inputs, output history, exact dependency snapshots, and source freshness in Block, Document, and export views. Each cell uses the shared `ExecutionService` and requires explicit session trust for Local WSL; web and hosted routes cannot execute cell code. Private runtime support remains open. |
+| P3 | Add a dedicated CAS/Algebra workspace | Global module | Implemented as a peer scientific workspace with the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Exact jobs retain freeform input provenance when saved to Workbook. The Console opens from CAS but code execution still requires explicit trust in the Local WSL desktop runtime; web code execution remains unavailable. Desktop and web flows are covered. |
+
+The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in this gate used a local test service; a live Docker deployment remains a separate runtime check.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual

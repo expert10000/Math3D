@@ -54,6 +54,11 @@ html[data-theme="dark"] .graph2d-workspace {
 .graph2d-workspace[data-left="true"][data-right="false"] { grid-template-columns: var(--graph2d-left-width) minmax(0, 1fr); }
 .graph2d-workspace[data-left="false"][data-right="true"] { grid-template-columns: minmax(0, 1fr) var(--graph2d-right-width); }
 .graph2d-workspace[data-presentation="true"] { grid-template-columns: minmax(0, 1fr); }
+.graph2d-workspace[data-left="false"][data-services="true"] .graph2d-left {
+  display: block; position: absolute; z-index: 5; left: 8px; top: 8px;
+  width: min(360px, calc(100% - 16px)); max-height: calc(100% - 74px);
+  box-sizing: border-box; overflow: auto; box-shadow: 0 8px 28px #0f172a33;
+}
 .graph2d-workspace[data-presentation="true"] .graph2d-toolbar,
 .graph2d-workspace[data-presentation="true"] .graph2d-compact-panels { display: none; }
 .graph2d-presentation-controls { position: absolute; z-index: 3; top: 8px; right: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 16px); padding: 5px; border-radius: 8px; background: var(--panel-strong); border: 1px solid var(--border); }
@@ -639,6 +644,11 @@ html[data-theme="dark"] .graph2d-draft-plot-preview { --graph2d-chart-bg:#182231
   .graph2d-parameters-panel header, .graph2d-parameter-preview-actions { position: static; }
   .graph2d-workspace[data-left][data-right] { grid-template-columns: minmax(0, 1fr); }
   .graph2d-left { display: none; }
+  .graph2d-workspace[data-services="true"] .graph2d-left {
+    display: block; position: absolute; z-index: 5; left: 8px; top: 8px;
+    width: min(360px, calc(100% - 16px)); max-height: calc(100% - 74px);
+    box-sizing: border-box; overflow: auto; box-shadow: 0 8px 28px #0f172a33;
+  }
   .graph2d-compact-panels { left: 8px; right: 8px; display: flex; align-items: flex-start; gap: 6px; }
   .graph2d-compact-panels details:first-child { display: block; }
   .graph2d-toolbar { top: auto; bottom: 8px; max-width: calc(100% - 16px); }

@@ -1,0 +1,42 @@
+{
+  "format": "math3d.mobile.samsung-supplement.v1",
+  "device": "Samsung SM-A566B",
+  "os": "Android 16",
+  "serial": "RZCY71087BY",
+  "applicationId": "com.math3d.mobile.notesverification",
+  "apkSha256": "a74cc08f0710bea52f24e32c90bd6dee0ad524d5f63bef37ed879f3f56de9421",
+  "debugSignerCertificateSha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+  "sourceEquivalentCommit": "6fc7a21c0e0c5be57924c6755e0c91c501b8ece0",
+  "testedAtDate": "2026-11-02",
+  "case": "TP11",
+  "status": "passed",
+  "fixture": "test-packs/1.6.0/fixtures/regression-reference.graph.json and regression.csv, previously imported as an independent Graph in TP08",
+  "sourceStructuralHash": "sha256:9b0544df2ece662fa6aac5f1ab655a8afe81bdd259847e78d3e8cd2fd841894c",
+  "publicationSnapshotId": "sha256:229d1ebec259eb37619649fcc34f1d367c3f296bfe0b15cfd2505c166f8e9830",
+  "observations": [
+    "The installed independent Notes Check APK retained the eight original point rows. Linear regression reported n=8, excluded=0, df=6, residual SD 0.23094011 and centered/scaled equation equivalent to y=2*x+1.",
+    "Native folder-picker saves of CSV, HTML, SVG and PNG each reported Saved and verified. All four final artifacts have the same publication snapshot ID; SVG metadata contains three analysis tables and PNG iTXt contains the snapshot ID.",
+    "The CSV has eight sampled source point rows and three analysis tables with 155 analysis rows, including eight residual rows and 129 fitted-curve rows. Its summary reports SSE 0.31999999999999906, confidence 0.95 and pointwise mean-response/new-observation interval semantics.",
+    "At x=3.5, fitted y=8, 95% mean interval [7.800210483970861, 8.19978951602914] and 95% new-observation interval [7.400631451912581, 8.59936854808742]. At x=0 and x=7, all four bounds agree with the independent Student-t/OLS reference calculation to better than 3e-15. Prediction limits are wider than mean limits at each checked x.",
+    "The HTML report has a restrictive Content-Security-Policy, inline SVG, source hash, method, caveats, labelled analysis tables and row_8. It opened from local storage in Android HTML Viewer and Chrome. Chrome still displayed the report after Wi-Fi and mobile data were disabled; both radios were restored to their original on state.",
+    "Chrome's print preview rendered an 11-page A4 document including provenance, limits, plot and analysis tables. The preview was exited without submitting a print job.",
+    "Saved capture recipe JSON has the same snapshot ID, the same source hash and an eight-row external point-table reference. It declares completeness external-point-tables-required and says the recipe does not embed row or result bytes. Presentation mode opened and Exit presentation restored the normal Graph controls.",
+    "The 659-line scoped app-process log had no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. ADB disconnected once after the HTML save; the owner reconnected it and the test continued."
+  ],
+  "artifacts": {
+    "csv": { "file": "mobile-android-tp11-regression-2026-11-02.csv", "sha256": "b4da884501e03a0ed913a3227eabe2feefdb4ed7ccaddfd11684091e8c17deba" },
+    "html": { "file": "mobile-android-tp11-regression-2026-11-02.html", "sha256": "71e6adacea105dff05e3e13a2dd10cb6dae2ff023e143027dd588bc88664b763" },
+    "svg": { "file": "mobile-android-tp11-regression-2026-11-02.svg", "sha256": "5384cf3dd1df98dce05ef51baa0a48b8688077f22a1463ebecb598957f63fd20" },
+    "png": { "file": "mobile-android-tp11-regression-2026-11-02.png", "sha256": "db4d782d00564e80a0c9fa18b22e4b7f3e00d99497e1819f3171771c6bf5f473" },
+    "captureRecipe": { "file": "mobile-android-tp11-capture-2026-11-02.json", "sha256": "639956fa9dfdd6a22307ac804a3ba2d9972d4143a05faef111ad9f4173c91de6" }
+  },
+  "screenshots": [
+    "mobile-android-tp11-html-offline-2026-11-02.png",
+    "mobile-android-tp11-html-analysis-2026-11-02.png",
+    "mobile-android-tp11-html-radio-off-2026-11-02.png",
+    "mobile-android-tp11-print-preview-2026-11-02.png",
+    "mobile-android-tp11-presentation-2026-11-02.png",
+    "mobile-android-tp11-presentation-exited-2026-11-02.png"
+  ],
+  "scope": "Physical TP11 publication pass for this debug-signed Samsung Notes Check APK. The artifacts are static publications, not editable Graph checkpoints; the capture recipe requires separately transferred point-table rows. No physical printer job, second device or internal/release signing check was performed."
+}

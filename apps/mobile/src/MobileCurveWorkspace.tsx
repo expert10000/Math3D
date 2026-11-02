@@ -31,7 +31,7 @@ export const MobileCurveWorkspace: React.FC<{ document: CurveDocument; adapter: 
   const button = (label: string, id: string, action: () => void, disabled = false) => <Pressable key={id} testID={id}
     accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled || saving} onPress={action} style={styles.secondaryBtn}>
     <Text style={styles.secondaryBtnText}>{label}</Text></Pressable>;
-  return <ScrollView testID="mobile-curve-workspace" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  return <ScrollView testID="mobile-curve-workspace" style={styles.contentScroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <Text style={styles.itemTitle}>{document.metadata.title}</Text>
     <Text style={styles.itemMeta}>{document.source.dimension}D Curve · revision {document.identity.revision} · {document.source.domain.parameter}</Text>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>

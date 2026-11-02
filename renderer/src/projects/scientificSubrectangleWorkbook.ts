@@ -10,6 +10,8 @@ import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "../vectorfield3d/checkSavedRegionResultSources";
 import { verifiedVectorSubrectangleResult } from "../vectorfield3d/vectorDerivedSubrectangleResult";
 import { inspectCombinedSubrectangle } from "../vectorfield3d/combinedSubrectangleResult";
+import { scientificSubrectangleProfileChart,
+  type ScientificSubrectangleChart } from "./scientificSubrectangleChart";
 
 export const SCIENTIFIC_SUBRECTANGLE_REPORT = "scientific-subrectangle-report/v1";
 export const isScientificSubrectangle = (result: AnalysisResultEnvelope) =>
@@ -24,6 +26,44 @@ export const subrectangleSourcesCurrent = (status: SavedRegionSourceStatus | und
     [status.vector, status.scalar, status.complex, status.complexMagnitude,
       status.complexPhase, status.divergence, status.curlMagnitude].every(value => value === "source-current");
 };
+
+type ReportInspection = { result: AnalysisResultEnvelope;
+  status: SavedRegionSourceStatus; chart: ScientificSubrectangleChart };
+let justCreatedReport: { projectId: string; resultId: string;
+  resultHash: string; expiresAt: number; firstUsedAt?: number;
+  inspection: ReportInspection } | null = null;
+
+/** One-use handoff from the verification that created a Workbook to its first view. */
+export function primeScientificSubrectangleReport(project: Math3DProject,
+  inspection: ReportInspection): void {
+  if (!subrectangleSourcesCurrent(inspection.status))
+    throw new TypeError("A current source check is required for this report.");
+  justCreatedReport = { projectId: project.identity.id,
+    resultId: inspection.result.resultId,
+    resultHash: structuralHash(inspection.result),
+    expiresAt: Date.now() + 300_000, inspection };
+}
+
+export function clearJustCreatedScientificSubrectangleReport(): void {
+  justCreatedReport = null;
+}
+
+export function takeJustCreatedScientificSubrectangleReport(project: Math3DProject,
+  reference: NotebookReference): ReportInspection | null {
+  const primed = justCreatedReport;
+  if (!primed) return null;
+  if (Date.now() > primed.expiresAt || primed.firstUsedAt &&
+      Date.now() > primed.firstUsedAt + 5_000) {
+    justCreatedReport = null; return null;
+  }
+  if (primed.projectId !== project.identity.id ||
+      primed.resultId !== reference.targetId) return null;
+  const checked = inspectNotebookReference(project, reference);
+  if (checked.status !== "current" || !checked.result ||
+      structuralHash(checked.result) !== primed.resultHash) return null;
+  primed.firstUsedAt ??= Date.now();
+  return primed.inspection;
+}
 
 /** The Workbook stores a citation and recipe; figures are resolved only after source verification. */
 export function createScientificSubrectangleWorkbook(project: Math3DProject,
@@ -64,6 +104,7 @@ export function scientificSubrectangleReportMarkdown(result: AnalysisResultEnvel
     `Source: ${result.provenance.source.documentId} · revision ${result.provenance.source.revision} · generation ${result.provenance.source.generation} · ${result.provenance.source.structuralHash}`,
     `Physical region: ${JSON.stringify(p.region)}\nSelected bounds: ${JSON.stringify(p.bounds)}\nCoordinate units: ${axisUnits}\nPositions: ${s.sampleCount}`,
     `Method: ${result.provenance.operation.algorithm} ${result.provenance.operation.algorithmVersion}; ${String(p.method ?? "verified 17×17 source-grid sampling")}`,
+    `Solver statistics: not applicable. This subrectangle uses bounded source-grid sampling and finite differences; it does not run an iterative solver.`,
     `Engine: ${result.provenance.engine.name} ${result.provenance.engine.version}; precision ${result.provenance.numericContext?.precision?.binaryBits ?? "unknown"} binary bits; elapsed ${result.provenance.elapsedMs} ms`,
     `| Field | Unit | Values | Gaps | Mean | Min | Max |\n|---|---|---:|---:|---:|---:|---:|\n${rows.join("\n")}`,
     `Source references, verified sample and profile hashes:\n\`\`\`json\n${JSON.stringify({ profiles: p.profiles,
@@ -156,12 +197,12 @@ export async function rerunScientificSubrectangleReport(project: Math3DProject,
     result, differences: scientificSubrectangleDifferences(previous, result) };
 }
 
-/** Always replays the Project and rechecks source bytes before disclosing figures. */
-export async function verifyScientificSubrectangleReport(project: Math3DProject,
+/** Recheck each source and saved profile row before resolving chart values. */
+export async function inspectScientificSubrectangleReport(project: Math3DProject,
   reference: NotebookReference,
   bridge: Parameters<typeof checkSavedRegionResultSources>[2] =
     typeof window === "undefined" ? undefined : window.scientificScenes):
-  Promise<AnalysisResultEnvelope> {
+  Promise<ReportInspection> {
   const inspected = inspectNotebookReference(project, reference);
   const result = inspected.result;
   if (inspected.status !== "current" || !result || !isScientificSubrectangle(result))
@@ -174,6 +215,18 @@ export async function verifyScientificSubrectangleReport(project: Math3DProject,
     import("@math3d/core").Graph2DDocument => document.format ===
       "math3d.graph2d-document");
   const status = await checkSavedRegionResultSources(result, source, bridge, graphs);
+  return { result, status,
+    chart: scientificSubrectangleProfileChart(result, graphs, status) };
+}
+
+/** Full Markdown report figures require every source to remain current. */
+export async function verifyScientificSubrectangleReport(project: Math3DProject,
+  reference: NotebookReference,
+  bridge: Parameters<typeof checkSavedRegionResultSources>[2] =
+    typeof window === "undefined" ? undefined : window.scientificScenes):
+  Promise<AnalysisResultEnvelope> {
+  const { result, status } = await inspectScientificSubrectangleReport(project,
+    reference, bridge);
   if (!subrectangleSourcesCurrent(status))
     throw new TypeError(`Report values withheld: required source verification failed (${JSON.stringify(status)}). Repair or relink the scientific scene.`);
   return result;

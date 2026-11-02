@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Dimensions, Pressable, Text, View, useWindowDimensions } from "react-native";
 import { MobileSceneViewport } from "./components/MobileSceneViewport";
 import { type MobileAppController } from "./mobileAppController";
 import { styles } from "./mobileAppStyles";
@@ -28,6 +28,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
     selectWorkspaceObject,
     clearWorkspaceSelection,
     setInspectorSection,
+    inspectorExpanded,
     setInspectorExpanded,
     cameraOrbit,
     setCameraOrbit,
@@ -50,6 +51,10 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
   const [addLauncherOpen, setAddLauncherOpen] = useState(false);
   const [viewportToolbarHeight, setViewportToolbarHeight] = useState(0);
   const [adaptiveBadgeHeight, setAdaptiveBadgeHeight] = useState(0);
+  const window = useWindowDimensions();
+  const screen = Dimensions.get("screen");
+  const compactLandscape = screen.width > screen.height && window.width > window.height && window.height < 480;
+  const compactFullScreenInspector = compactLandscape && inspectorExpanded;
   const viewportDocument = authoringPreviewScene ?? viewerDocument;
   const previewSurfaceId = authoringPreviewScene?.surfaces?.[0]?.id ?? null;
   const adaptiveBadgeBottom = viewportToolbarHeight + 16;
@@ -83,7 +88,8 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
             {workspaceAddMessage ? <Text style={styles.itemMeta}>{workspaceAddMessage}</Text> : null}
             {limitedMode && <Text style={styles.warningNote}>Offline mode: cached previews only</Text>}
           </View>
-          <View style={styles.workspaceViewportFrame}>
+          <View style={[styles.workspaceViewportFrame, compactLandscape && styles.workspaceViewportFrameCompact,
+            compactFullScreenInspector && styles.workspaceViewportFrameHidden]}>
             <MobileSceneViewport
               scene={viewportDocument!}
               quality={effectiveRenderQuality}
@@ -169,7 +175,7 @@ export const MobileWorkspaceScreen: React.FC<{ model: MobileAppController }> = (
             )}
             {addLauncherOpen ? <MobileWorkspaceAddLauncher model={model} onClose={() => setAddLauncherOpen(false)} /> : null}
           </View>
-          <MobileWorkspaceInspector model={model} viewerDocument={viewerDocument} />
+          <MobileWorkspaceInspector model={model} viewerDocument={viewerDocument} compactFullScreen={compactFullScreenInspector} />
         </>
       ) : (
         <View style={styles.workspaceEmpty}>
