@@ -224,6 +224,7 @@ const SageSymbolicPanel: React.FC<{
             <button key={entry.id} type="button" disabled={busy !== "none"} aria-pressed={operation === entry.id}
               onClick={() => {
                 setOperation(entry.id);
+                if (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"].includes(entry.id)) setVariablesText("x,y,z");
                 if (sourceExpression) {
                   setExpression(sourceExpression); setVariablesText("x,y,z");
                 }
@@ -239,6 +240,7 @@ const SageSymbolicPanel: React.FC<{
           <select value={operation} disabled={busy !== "none"} onChange={(event) => {
             const next = event.target.value as SageSymbolicOperation;
             setOperation(next);
+            if (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"].includes(next)) setVariablesText("x,y,z");
             if (!isLocalSageOperation(next)) setBackend("docker");
             setError(null);
             setResponse(null);

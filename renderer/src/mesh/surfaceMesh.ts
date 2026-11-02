@@ -12,6 +12,9 @@ export type MeshImportFormat = "stl" | "obj" | "ply" | "gltf" | "glb";
 export type SurfaceMeshSource =
   | { kind: "import"; format?: MeshImportFormat; filename?: string }
   | { kind: "bakedFromImplicit" }
+  | { kind: "sageResult"; operation: string; backend: "local" | "docker"; engineVersion: string; jobId: string;
+      sourceId: string; sourceRevision: number; sourceFingerprint: string; inputExpression: string;
+      resultExpression: string; warnings: string[]; createdAt: number }
   | { kind: "bakedFromExplicit" }
   | { kind: "bakedFromParam" }
   | { kind: "bakedFromWeierstrass" }
@@ -113,6 +116,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
     }
     case "bakedFromImplicit":
       return "baked from implicit";
+    case "sageResult":
+      return `SageMath ${source.engineVersion} ${source.operation} from ${source.sourceId} r${source.sourceRevision}`;
     case "bakedFromExplicit":
       return "baked from explicit";
     case "bakedFromParam":
