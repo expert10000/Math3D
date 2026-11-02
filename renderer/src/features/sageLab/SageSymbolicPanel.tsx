@@ -219,7 +219,7 @@ const SageSymbolicPanel: React.FC<{
         </div>
 
         <strong>Symbolic operations</strong>
-        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Symbolic operation shortcuts">
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }} aria-label="Symbolic shortcuts">
           {operations.filter((entry) => (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.solve", "sage.symbolic.factor", "sage.symbolic.singularities"] as SageSymbolicOperation[]).includes(entry.id)).map((entry) => (
             <button key={entry.id} type="button" disabled={busy !== "none"} aria-pressed={operation === entry.id}
               onClick={() => {
@@ -237,7 +237,7 @@ const SageSymbolicPanel: React.FC<{
 
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontWeight: 600 }}>Operation</span>
-          <select value={operation} disabled={busy !== "none"} onChange={(event) => {
+          <select aria-label="Operation" value={operation} disabled={busy !== "none"} onChange={(event) => {
             const next = event.target.value as SageSymbolicOperation;
             setOperation(next);
             if (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"].includes(next)) setVariablesText("x,y,z");

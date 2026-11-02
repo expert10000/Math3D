@@ -169,7 +169,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await expect(page.getByTestId("sage-analysis-result")).toContainText("Committed Sage simplify geometry as a Geometry object");
     await expect(page.getByTestId("geometry-inspector-summary")).toContainText("Sage simplify geometry");
     await page.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();
-    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source unavailable — verify before reuse");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Freeform input saved with this result");
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("sage-input:geometry");
     expect(requests).toHaveLength(2);
