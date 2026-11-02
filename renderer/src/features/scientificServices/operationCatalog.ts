@@ -24,7 +24,7 @@ export const SCIENTIFIC_OPERATION_CATALOG: readonly ScientificOperationEntry[] =
   { id: "sage.symbolic.factor", label: "Factor", engine: "SageMath", presets: ["Basic", "Symbolic"], contexts: BOTH },
   { id: "sage.symbolic.expand", label: "Expand", engine: "SageMath", presets: ["Symbolic"], contexts: BOTH },
   { id: "sage.symbolic.solve", label: "Solve", engine: "SageMath", presets: ["Basic", "Symbolic"], contexts: BOTH },
-  { id: "sage.symbolic.gradient", label: "Gradient", engine: "SageMath", presets: ["Basic", "Symbolic"], contexts: SURFACE },
+  { id: "sage.symbolic.gradient", label: "Gradient", engine: "SageMath", presets: ["Basic", "Symbolic"], contexts: BOTH },
   { id: "sage.symbolic.hessian", label: "Hessian", engine: "SageMath", presets: ["Symbolic"], contexts: SURFACE },
   { id: "sage.symbolic.singularities", label: "Singularities", engine: "SageMath", presets: ["Algebraic Geometry"], contexts: SURFACE },
   { id: "sage.matrix.eigen_exact", label: "Exact eigen", engine: "SageMath", presets: ["Symbolic"], contexts: BOTH },

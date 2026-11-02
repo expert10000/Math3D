@@ -22,7 +22,7 @@ describe("Sage Inspector result presentation", () => {
     const gradient = result("sage.symbolic.gradient", { components: ["1", "2", "3"] });
     expect(sageResultActions(gradient, "current")).toMatchObject({ visualize: true, createGeometry: false });
     expect(sageResultActions(gradient, "stale").visualize).toBe(false);
-    expect(sageResultActions(gradient, "unlinked").visualize).toBe(false);
+    expect(sageResultActions(gradient, "unlinked").visualize).toBe(true);
     expect(sageResultActions(result("sage.symbolic.factor", { text: "x^2" }), "unlinked").createGeometry).toBe(true);
     expect(sageResultActions(result("sage.symbolic.factor", { text: "x^2" }), "stale").createGeometry).toBe(false);
     expect(sageResultActions(result("sage.symbolic.solve", { solutions: [] }), "current").createGeometry).toBe(false);

@@ -321,6 +321,8 @@ import { type SymbolicResultRecord } from "./features/sageLab/SageSymbolicPanel"
 import { ScientificServicesPanel } from "./features/scientificServices/ScientificServicesPanel";
 import { SageSymbolicAnalysisCard } from "./features/sageLab/SageSymbolicAnalysisCard";
 import type { SageSourceStatus } from "./features/sageLab/sageResultPresentation";
+import { previewSageGradientLines, previewSageScalarMesh, sageViewerProvenance,
+  type SageViewerProvenance } from "./features/sageLab/sageViewerArtifact";
 import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel";
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
@@ -5253,6 +5255,9 @@ type GeometryDatasetMeshObject = {
   restoredGeometryPreset?: GeometryRestoredObjectPresetMetadata | null;
   sourceSelectionOverlay?: MeshSourceSelectionOverlay | null;
 };
+type SageVectorArtifact = { record: SymbolicResultRecord; provenance: SageViewerProvenance;
+  lines: OverlayPolylineGroup["lines"]; stage: "preview" | "committed" };
+type SageScalarPreview = { record: SymbolicResultRecord; mesh: SurfaceMeshData };
 
 const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
 const DEFAULT_GEOMETRY_MATERIAL_OPACITY = 1;
@@ -12970,6 +12975,16 @@ const App: React.FC = () => {
   const [geometryOperationNodeParameterDrafts, setGeometryOperationNodeParameterDrafts] =
     useState<OperationNodeParameterDrafts>({});
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
+  const [geometrySageVectorArtifact, setGeometrySageVectorArtifact] = useState<SageVectorArtifact | null>(null);
+  const [geometrySageScalarPreview, setGeometrySageScalarPreview] = useState<SageScalarPreview | null>(null);
+  const geometrySagePreviewUsable = useCallback((record: SymbolicResultRecord) => {
+    const source = record.source;
+    if (!source || source.id.startsWith("sage-input:")) return true;
+    const object = geometryObjects.find((item) => item.id === source.id) ??
+      geometryDatasetMeshObjects.find((item) => item.id === source.id);
+    return Boolean(object && source.module === "geometry" && source.revision === (geometryObjectRevisionById[source.id] ?? 0) &&
+      source.fingerprint === hashValue(object));
+  }, [geometryDatasetMeshObjects, geometryObjectRevisionById, geometryObjects]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(() => {
     const saved = readGeometryEditSessionSnapshot()?.selectedObjectId;
@@ -24556,6 +24571,10 @@ const App: React.FC = () => {
     if (geometryTopologyEditFeedbackMeshGroups?.length) {
       groups.push(...geometryTopologyEditFeedbackMeshGroups);
     }
+    if (geometrySageScalarPreview && geometrySagePreviewUsable(geometrySageScalarPreview.record)) {
+      groups.push({ positions: geometrySageScalarPreview.mesh.positions, indices: geometrySageScalarPreview.mesh.indices,
+        color: 0x8b5cf6, opacity: 0.42, doubleSided: true, depthWrite: false });
+    }
     return groups.length ? groups : null;
   }, [
     geometryAppliedContextualViewportPreviewOverlays,
@@ -24565,6 +24584,8 @@ const App: React.FC = () => {
     geometryProceduralSelectionFaceMeshGroups,
     geometrySelectionHighlightOverlays.meshGroups,
     geometryTopologyEditFeedbackMeshGroups,
+    geometrySageScalarPreview,
+    geometrySagePreviewUsable,
   ]);
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
@@ -32248,6 +32269,10 @@ const App: React.FC = () => {
         radiusScale: group.radiusScale != null ? group.radiusScale * 0.72 : group.radiusScale,
       })) ?? [];
     const helperGroupsVisible = !geometryPrecisionPickActive || geometryPickThroughHelpersEnabled;
+    if (geometrySageVectorArtifact && geometrySagePreviewUsable(geometrySageVectorArtifact.record)) {
+      groups.push({ lines: geometrySageVectorArtifact.lines, color: 0x07a9cf, radiusWorld: 0.012,
+        opacity: geometrySageVectorArtifact.stage === "preview" ? 0.45 : 0.95 });
+    }
     if (geometryProceduralOverlayGroups?.length) {
       groups.push(...(geometryPrecisionPickActive ? dimGroups(geometryProceduralOverlayGroups, 0.26) : geometryProceduralOverlayGroups));
     }
@@ -32303,6 +32328,8 @@ const App: React.FC = () => {
     return groups.length ? groups : null;
   }, [
     geometryMode,
+    geometrySageVectorArtifact,
+    geometrySagePreviewUsable,
     geometryObjectSelectionPolylineGroups,
     geometryProceduralOverlayGroups,
     geometryProceduralSelectionOverlayGroups,
@@ -44631,8 +44658,55 @@ const App: React.FC = () => {
   const [geometrySymbolicAnalysisRecord, setGeometrySymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const sageSourceSessionId = useRef(makeId()).current;
   const [symbolicActionStatus, setSymbolicActionStatus] = useState<string | null>(null);
-  const [symbolicGradientOverlaySource, setSymbolicGradientOverlaySource] = useState<string | null>(null);
-  const [symbolicGradientOverlayLines, setSymbolicGradientOverlayLines] = useState<OverlayPolylineGroup["lines"]>([]);
+  const [geometrySageActionStatus, setGeometrySageActionStatus] = useState<string | null>(null);
+  const [surfaceSageVectorArtifact, setSurfaceSageVectorArtifact] = useState<SageVectorArtifact | null>(null);
+  const [surfaceSageScalarPreview, setSurfaceSageScalarPreview] = useState<SageScalarPreview | null>(null);
+  const [surfaceSageCommittedGeometry, setSurfaceSageCommittedGeometry] = useState<SageViewerProvenance | null>(null);
+  const currentSageWorkbookSource = useCallback((saved: WorkbookSageEvidence["source"]): WorkbookSageEvidence["source"] | null => {
+    if (saved.module === "surface" && saved.id === `surface:active-implicit:${sageSourceSessionId}`) {
+      if (surfaceViewerKind !== "implicit") return null;
+      return { module: "surface", id: saved.id,
+        revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
+        expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) };
+    }
+    if (saved.module === "geometry") {
+      const object = geometryObjects.find((item) => item.id === saved.id) ??
+        geometryDatasetMeshObjects.find((item) => item.id === saved.id);
+      if (!object) return null;
+      return { module: "geometry", id: object.id,
+        revision: geometryObjectRevisionById[object.id] ?? 0,
+        expression: saved.expression, fingerprint: hashValue(object) };
+    }
+    return null;
+  }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeImplicitExpr, geometryDatasetMeshObjects,
+    geometryObjectRevisionById, geometryObjects, sageSourceSessionId, surfaceViewerKind]);
+  const sageInspectorSourceStatus = useCallback((record: SymbolicResultRecord): SageSourceStatus => {
+    const source = record.source;
+    if (!source || source.id.startsWith("sage-input:")) return "unlinked";
+    const freshness = resolveWorkbookSageFreshness(source, currentSageWorkbookSource(source));
+    return freshness === "source-unavailable" ? "unavailable" : freshness;
+  }, [currentSageWorkbookSource]);
+  useEffect(() => {
+    if (surfaceSageVectorArtifact && sageInspectorSourceStatus(surfaceSageVectorArtifact.record) !== "current") {
+      setSurfaceSageVectorArtifact(null);
+      if (surfaceSageVectorArtifact.stage === "preview")
+        setSymbolicActionStatus("Sage vector overlay invalidated because its source changed or became unavailable.");
+    }
+    if (surfaceSageScalarPreview && !["current", "unlinked"].includes(sageInspectorSourceStatus(surfaceSageScalarPreview.record))) {
+      setSurfaceSageScalarPreview(null);
+      setSymbolicActionStatus("Sage geometry preview invalidated because its source changed or became unavailable.");
+    }
+    if (geometrySageVectorArtifact && !geometrySagePreviewUsable(geometrySageVectorArtifact.record)) {
+      setGeometrySageVectorArtifact(null);
+      if (geometrySageVectorArtifact.stage === "preview")
+        setGeometrySageActionStatus("Sage vector overlay invalidated because its source changed or became unavailable.");
+    }
+    if (geometrySageScalarPreview && !geometrySagePreviewUsable(geometrySageScalarPreview.record)) {
+      setGeometrySageScalarPreview(null);
+      setGeometrySageActionStatus("Sage geometry preview invalidated because its source changed or became unavailable.");
+    }
+  }, [geometrySagePreviewUsable, geometrySageScalarPreview, geometrySageVectorArtifact,
+    sageInspectorSourceStatus, surfaceSageScalarPreview, surfaceSageVectorArtifact]);
   const resetSurfaceLeftPanelScroll = () => {
     if (surfaceLeftPanelRef.current) surfaceLeftPanelRef.current.scrollTop = 0;
     requestAnimationFrame(() => {
@@ -66489,12 +66563,21 @@ case "mobius":
     if (meshBooleanReviewOverlayMeshGroups?.length) groups.push(...meshBooleanReviewOverlayMeshGroups);
     if (meshSelectionHighlightOverlays.meshGroups.length) groups.push(...meshSelectionHighlightOverlays.meshGroups);
     if (meshAnalyzeQualityFieldOverlay) groups.push(meshAnalyzeQualityFieldOverlay);
+    if (surfaceViewerKind === "implicit" && surfaceSageScalarPreview &&
+      sageInspectorSourceStatus(surfaceSageScalarPreview.record) !== "stale" &&
+      sageInspectorSourceStatus(surfaceSageScalarPreview.record) !== "unavailable") {
+      groups.push({ positions: surfaceSageScalarPreview.mesh.positions, indices: surfaceSageScalarPreview.mesh.indices,
+        color: 0x8b5cf6, opacity: 0.42, doubleSided: true, depthWrite: false });
+    }
     return groups.length ? groups : null;
   }, [
     combinedOverlayMeshGroups,
     meshAnalyzeQualityFieldOverlay,
     meshBooleanReviewOverlayMeshGroups,
     meshSelectionHighlightOverlays.meshGroups,
+    sageInspectorSourceStatus,
+    surfaceSageScalarPreview,
+    surfaceViewerKind,
   ]);
   const overlayHeatmapValues = meshAnalyzeCurvatureHeatmapValues ?? baseOverlayHeatmapValues;
   const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
@@ -72822,12 +72905,14 @@ case "mobius":
   const meshWorkspaceOverlayPolylineGroupsWithDiagnostics = useMemo<OverlayPolylineGroup[] | null>(() => {
     const groups = [...(meshViewerOverlayPolylineGroupsWithDiagnostics ?? [])];
     if (meshWorkspaceEntryBoundsOverlayGroups?.length) groups.push(...meshWorkspaceEntryBoundsOverlayGroups);
-    if (surfaceViewerKind === "implicit" && symbolicGradientOverlaySource === activeImplicitExpr && symbolicGradientOverlayLines.length) {
-      groups.push({ lines: symbolicGradientOverlayLines, color: 0x07a9cf, radiusWorld: 0.012, opacity: 0.95 });
+    if (surfaceViewerKind === "implicit" && surfaceSageVectorArtifact &&
+      sageInspectorSourceStatus(surfaceSageVectorArtifact.record) === "current") {
+      groups.push({ lines: surfaceSageVectorArtifact.lines, color: 0x07a9cf, radiusWorld: 0.012,
+        opacity: surfaceSageVectorArtifact.stage === "preview" ? 0.45 : 0.95 });
     }
     return groups.length ? groups : null;
   }, [meshViewerOverlayPolylineGroupsWithDiagnostics, meshWorkspaceEntryBoundsOverlayGroups,
-    surfaceViewerKind, symbolicGradientOverlaySource, activeImplicitExpr, symbolicGradientOverlayLines]);
+    surfaceViewerKind, surfaceSageVectorArtifact, sageInspectorSourceStatus]);
   const meshWorkspaceProvenanceEntries = useMemo<MeshWorkspaceProvenanceEntry[]>(() => {
     const historyEntries = meshOperationHistory.slice(0, 32);
     const knownIds = new Set(historyEntries.map((entry) => entry.id));
@@ -79571,51 +79656,97 @@ case "mobius":
                             showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
                             onParamGeodesicState={handleParamGeodesicState}
                           />);
-  const handleSymbolicVisualize = () => {
+  const handleSymbolicPreviewVector = () => {
     const record = symbolicAnalysisRecord;
-    if (!record || record.response.operation !== "sage.symbolic.gradient" ||
-        record.sourceSurfaceExpression !== activeImplicitExpr) return;
-    const components = record.response.result.components;
-    if (!Array.isArray(components) || components.length !== 3 || !surfaceSampleSet?.samples?.length) {
-      setSymbolicActionStatus("The gradient or surface samples are unavailable for an overlay.");
-      return;
-    }
-    const compiled = components.map((component) => compileExpression(String(component), ["x", "y", "z"]));
-    if (compiled.some((entry) => !entry.fn || entry.error)) {
-      setSymbolicActionStatus("The exact gradient cannot be evaluated by the viewer expression parser.");
-      return;
-    }
-    const lines: OverlayPolylineGroup["lines"] = [];
-    const samples = surfaceSampleSet.samples;
-    const stride = Math.max(1, Math.ceil(samples.length / 64));
-    for (let index = 0; index < samples.length; index += stride) {
-      const p = samples[index].position;
-      const vector = compiled.map((entry) => entry.fn!({ x: p.x, y: p.y, z: p.z }));
-      const length = Math.hypot(vector[0], vector[1], vector[2]);
-      if (!Number.isFinite(length) || length < 1e-8) continue;
-      const scale = 0.25 / length;
-      lines.push([{ x: p.x, y: p.y, z: p.z },
-        { x: p.x + vector[0] * scale, y: p.y + vector[1] * scale, z: p.z + vector[2] * scale }]);
-    }
-    setSymbolicGradientOverlayLines(lines);
-    setSymbolicGradientOverlaySource(activeImplicitExpr);
-    setSymbolicActionStatus(lines.length ? `Showing ${lines.length} normalized gradient directions on the surface.` : "No finite nonzero gradient samples were found.");
+    if (!record || sageInspectorSourceStatus(record) !== "current") return;
+    try {
+      const lines = previewSageGradientLines(record, surfaceSampleSet?.samples?.map((sample) => sample.position) ?? []);
+      setSurfaceSageVectorArtifact({ record, lines, stage: "preview",
+        provenance: sageViewerProvenance(record, String(record.response.result.text ?? "gradient")) });
+      setSurfaceSageScalarPreview(null);
+      setSymbolicActionStatus(`Previewing ${lines.length} normalized gradient directions. Commit the overlay to keep it in the Viewer.`);
+    } catch (error) { setSymbolicActionStatus(error instanceof Error ? error.message : "Could not preview the gradient."); }
   };
-  const handleSymbolicCreateGeometry = () => {
+  const handleSymbolicCommitVector = () => {
     const record = symbolicAnalysisRecord;
-    if (!record || !["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(record.response.operation)) return;
-    const expression = record.response.result.text;
-    if (typeof expression !== "string" || !expression.trim() || compileExpression(expression, ["x", "y", "z"]).error) {
-      setSymbolicActionStatus("This exact expression cannot be converted to a MATH3D implicit surface.");
-      return;
-    }
+    if (!record || !surfaceSageVectorArtifact || surfaceSageVectorArtifact.stage !== "preview" ||
+      surfaceSageVectorArtifact.record.request.jobId !== record.request.jobId || sageInspectorSourceStatus(record) !== "current") return;
+    setSurfaceSageVectorArtifact({ ...surfaceSageVectorArtifact, stage: "committed" });
+    saveSageResultToWorkbook(record, false);
+    setSymbolicActionStatus(`Committed ${surfaceSageVectorArtifact.lines.length} normalized gradient directions from SageMath ${surfaceSageVectorArtifact.provenance.engineVersion}.`);
+  };
+  const handleSymbolicPreviewGeometry = () => {
+    const record = symbolicAnalysisRecord;
+    if (!record || !["current", "unlinked"].includes(sageInspectorSourceStatus(record))) return;
+    try {
+      const mesh = previewSageScalarMesh(record);
+      setSurfaceSageScalarPreview({ record, mesh });
+      setSymbolicActionStatus(`Previewing derived implicit geometry (${Math.floor((mesh.indices?.length ?? 0) / 3)} triangles). Commit to replace the active surface.`);
+    } catch (error) { setSymbolicActionStatus(error instanceof Error ? error.message : "Could not preview the scalar geometry."); }
+  };
+  const handleSymbolicCommitGeometry = () => {
+    const record = symbolicAnalysisRecord;
+    if (!record || !surfaceSageScalarPreview || surfaceSageScalarPreview.record.request.jobId !== record.request.jobId ||
+      !["current", "unlinked"].includes(sageInspectorSourceStatus(record))) return;
+    const expression = surfaceSageScalarPreview.mesh.source.kind === "sageResult"
+      ? surfaceSageScalarPreview.mesh.source.resultExpression : null;
+    if (!expression) return;
     setImplicitExpr(expression);
     setImplicitSurfaceId("implicit_custom");
     setDatasetKind("surface");
     setSurfaceViewerKind("implicit");
-    setSymbolicActionStatus("Created an implicit surface from the exact scalar expression.");
+    setSurfaceSageCommittedGeometry(surfaceSageScalarPreview.mesh.source as SageViewerProvenance);
+    setSurfaceSageScalarPreview(null);
+    saveSageResultToWorkbook(record, false);
+    setSymbolicActionStatus("Committed an implicit surface from the Sage scalar expression; its source and backend remain recorded below.");
   };
-  const saveSageResultToWorkbook = (record: SymbolicResultRecord) => {
+  const handleGeometrySagePreviewVector = () => {
+    const record = geometrySymbolicAnalysisRecord;
+    if (!record || !["current", "unlinked"].includes(sageInspectorSourceStatus(record))) return;
+    try {
+      const axis = [-1, 0, 1];
+      const points = axis.flatMap((x) => axis.flatMap((y) => axis.map((z) => ({ x, y, z }))));
+      const lines = previewSageGradientLines(record, points);
+      setGeometrySageVectorArtifact({ record, lines, stage: "preview",
+        provenance: sageViewerProvenance(record, String(record.response.result.text ?? "gradient")) });
+      setGeometrySageScalarPreview(null);
+      setGeometrySageActionStatus(`Previewing ${lines.length} gradient directions in the Geometry Viewer.`);
+    } catch (error) { setGeometrySageActionStatus(error instanceof Error ? error.message : "Could not preview the gradient."); }
+  };
+  const handleGeometrySageCommitVector = () => {
+    const record = geometrySymbolicAnalysisRecord;
+    if (!record || !geometrySageVectorArtifact || geometrySageVectorArtifact.stage !== "preview" ||
+      geometrySageVectorArtifact.record.request.jobId !== record.request.jobId || !geometrySagePreviewUsable(record)) return;
+    setGeometrySageVectorArtifact({ ...geometrySageVectorArtifact, stage: "committed" });
+    saveSageResultToWorkbook(record, false);
+    setGeometrySageActionStatus(`Committed ${geometrySageVectorArtifact.lines.length} gradient directions from SageMath ${geometrySageVectorArtifact.provenance.engineVersion}.`);
+  };
+  const handleGeometrySagePreviewGeometry = () => {
+    const record = geometrySymbolicAnalysisRecord;
+    if (!record || !["current", "unlinked"].includes(sageInspectorSourceStatus(record))) return;
+    try {
+      const mesh = previewSageScalarMesh(record);
+      setGeometrySageScalarPreview({ record, mesh });
+      setGeometrySageActionStatus(`Previewing derived geometry (${Math.floor((mesh.indices?.length ?? 0) / 3)} triangles). Commit to add a Geometry mesh object.`);
+    } catch (error) { setGeometrySageActionStatus(error instanceof Error ? error.message : "Could not preview the scalar geometry."); }
+  };
+  const handleGeometrySageCommitGeometry = () => {
+    const record = geometrySymbolicAnalysisRecord;
+    if (!record || !geometrySageScalarPreview || geometrySageScalarPreview.record.request.jobId !== record.request.jobId ||
+      !geometrySagePreviewUsable(record)) return;
+    const mesh = geometrySageScalarPreview.mesh;
+    const id = makeId();
+    const object: GeometryDatasetMeshObject = { id, name: mesh.label, mesh,
+      transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 } },
+      visible: true, material: { color: 0x8b5cf6, opacity: 1 }, promotion: null, sourceSelectionOverlay: null };
+    setGeometryDatasetMeshObjects((previous) => [object, ...previous]);
+    setGeometrySelectedObjectId(id);
+    setGeometryMode("procedural");
+    setGeometrySageScalarPreview(null);
+    saveSageResultToWorkbook(record, false);
+    setGeometrySageActionStatus(`Committed ${mesh.label} as a Geometry object with Sage source provenance.`);
+  };
+  const saveSageResultToWorkbook = (record: SymbolicResultRecord, navigateToWorkbook = true) => {
     if (IS_REPLAY_MODE) return;
     const { response } = record;
     const evidence: WorkbookSageEvidence = {
@@ -79659,46 +79790,40 @@ case "mobius":
       });
     });
     setActiveWorkbookId(targetId);
-    setActiveStageId("explain");
-    setFullWorkbookSelectedBlockRef({ stageId: "explain", blockId: block.id });
-    setRightPanelTab("workbook");
+    if (navigateToWorkbook) {
+      setActiveStageId("explain");
+      setFullWorkbookSelectedBlockRef({ stageId: "explain", blockId: block.id });
+      setRightPanelTab("workbook");
+    }
   };
   const handleSymbolicSaveWorkbook = () => {
     if (!symbolicAnalysisRecord) return;
     saveSageResultToWorkbook(symbolicAnalysisRecord);
     setSymbolicActionStatus("Saved Sage result and provenance to the Workbook Explain stage.");
   };
-  const currentSageWorkbookSource = (saved: WorkbookSageEvidence["source"]): WorkbookSageEvidence["source"] | null => {
-    if (saved.module === "surface" && saved.id === `surface:active-implicit:${sageSourceSessionId}`) {
-      if (surfaceViewerKind !== "implicit") return null;
-      return { module: "surface", id: saved.id,
-        revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
-        expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) };
-    }
-    if (saved.module === "geometry") {
-      const object = geometryObjects.find((item) => item.id === saved.id) ??
-        geometryDatasetMeshObjects.find((item) => item.id === saved.id);
-      if (!object) return null;
-      return { module: "geometry", id: object.id,
-        revision: geometryObjectRevisionById[object.id] ?? 0,
-        expression: saved.expression, fingerprint: hashValue(object) };
-    }
-    return null;
-  };
-  const sageInspectorSourceStatus = (record: SymbolicResultRecord): SageSourceStatus => {
-    const source = record.source;
-    if (!source || source.id.startsWith("sage-input:")) return "unlinked";
-    const freshness = resolveWorkbookSageFreshness(source, currentSageWorkbookSource(source));
-    return freshness === "source-unavailable" ? "unavailable" : freshness;
-  };
   const renderNativeSurfaceInspector = () => (<>
                     {surfaceViewerKind === "implicit" && symbolicAnalysisRecord && <SageSymbolicAnalysisCard
                       record={symbolicAnalysisRecord}
                       sourceStatus={sageInspectorSourceStatus(symbolicAnalysisRecord)}
-                      onVisualize={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
-                        ? handleSymbolicVisualize : undefined}
-                      onCreateGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(symbolicAnalysisRecord.response.operation)
-                        ? handleSymbolicCreateGeometry : undefined}
+                      onPreviewVector={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
+                        ? handleSymbolicPreviewVector : undefined}
+                      onCommitVector={symbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" && symbolicAnalysisRecord.sourceSurfaceExpression
+                        ? handleSymbolicCommitVector : undefined}
+                      onPreviewGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(symbolicAnalysisRecord.response.operation)
+                        ? handleSymbolicPreviewGeometry : undefined}
+                      onCommitGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(symbolicAnalysisRecord.response.operation)
+                        ? handleSymbolicCommitGeometry : undefined}
+                      previewKind={surfaceSageVectorArtifact?.stage === "preview" && surfaceSageVectorArtifact.record.request.jobId === symbolicAnalysisRecord.request.jobId &&
+                        sageInspectorSourceStatus(symbolicAnalysisRecord) === "current" ? "vector" :
+                        surfaceSageScalarPreview?.record.request.jobId === symbolicAnalysisRecord.request.jobId &&
+                        ["current", "unlinked"].includes(sageInspectorSourceStatus(symbolicAnalysisRecord)) ? "geometry" : null}
+                      onDiscardPreview={() => { setSurfaceSageVectorArtifact((previous) => previous?.stage === "committed" ? previous : null);
+                        setSurfaceSageScalarPreview(null); setSymbolicActionStatus("Preview discarded."); }}
+                      viewerProvenance={surfaceSageVectorArtifact?.record.request.jobId === symbolicAnalysisRecord.request.jobId
+                        ? surfaceSageVectorArtifact?.provenance : surfaceSageScalarPreview?.record.request.jobId === symbolicAnalysisRecord.request.jobId &&
+                        surfaceSageScalarPreview?.mesh.source.kind === "sageResult"
+                        ? surfaceSageScalarPreview?.mesh.source
+                        : surfaceSageCommittedGeometry?.jobId === symbolicAnalysisRecord.request.jobId ? surfaceSageCommittedGeometry : null}
                       onSaveWorkbook={handleSymbolicSaveWorkbook}
                       actionStatus={symbolicActionStatus}
                     />}
@@ -86312,7 +86437,8 @@ case "mobius":
                         : { module: "surface", id: "sage-input:surface", revision: 0,
                           expression: record.expression, fingerprint: hashValue(record.request.params) } });
                       setSymbolicActionStatus(null);
-                      setSymbolicGradientOverlayLines([]);
+                      setSurfaceSageVectorArtifact((previous) => previous?.stage === "committed" ? previous : null);
+                      setSurfaceSageScalarPreview(null);
                       setRightPanelTab("inspector");
                       setShowRightPanel(true);
                     }} />
@@ -102481,6 +102607,9 @@ case "mobius":
                           module: "geometry", id: "sage-input:geometry", revision: 0,
                           expression: record.expression, fingerprint: hashValue(record.request.params),
                         } });
+                        setGeometrySageVectorArtifact((previous) => previous?.stage === "committed" ? previous : null);
+                        setGeometrySageScalarPreview(null);
+                        setGeometrySageActionStatus(null);
                         setGeometryRightPanelTab("analysis");
                         setShowRightPanel(true);
                       }} />
@@ -106673,6 +106802,22 @@ case "mobius":
                       <div style={{ display: "grid", gap: 8 }}>
                       {geometrySymbolicAnalysisRecord && <SageSymbolicAnalysisCard record={geometrySymbolicAnalysisRecord}
                         sourceStatus={sageInspectorSourceStatus(geometrySymbolicAnalysisRecord)}
+                        onPreviewVector={geometrySymbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" ? handleGeometrySagePreviewVector : undefined}
+                        onCommitVector={geometrySymbolicAnalysisRecord.response.operation === "sage.symbolic.gradient" ? handleGeometrySageCommitVector : undefined}
+                        onPreviewGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(geometrySymbolicAnalysisRecord.response.operation)
+                          ? handleGeometrySagePreviewGeometry : undefined}
+                        onCommitGeometry={["sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand"].includes(geometrySymbolicAnalysisRecord.response.operation)
+                          ? handleGeometrySageCommitGeometry : undefined}
+                        previewKind={geometrySageVectorArtifact?.stage === "preview" && geometrySageVectorArtifact.record.request.jobId === geometrySymbolicAnalysisRecord.request.jobId &&
+                          geometrySagePreviewUsable(geometrySymbolicAnalysisRecord) ? "vector" :
+                          geometrySageScalarPreview?.record.request.jobId === geometrySymbolicAnalysisRecord.request.jobId &&
+                          geometrySagePreviewUsable(geometrySymbolicAnalysisRecord) ? "geometry" : null}
+                        onDiscardPreview={() => { setGeometrySageVectorArtifact((previous) => previous?.stage === "committed" ? previous : null);
+                          setGeometrySageScalarPreview(null); setGeometrySageActionStatus("Preview discarded."); }}
+                        viewerProvenance={geometrySageVectorArtifact?.record.request.jobId === geometrySymbolicAnalysisRecord.request.jobId
+                          ? geometrySageVectorArtifact?.provenance : geometrySageScalarPreview?.record.request.jobId === geometrySymbolicAnalysisRecord.request.jobId &&
+                          geometrySageScalarPreview?.mesh.source.kind === "sageResult" ? geometrySageScalarPreview?.mesh.source : null}
+                        actionStatus={geometrySageActionStatus}
                         onSaveWorkbook={() => {
                           saveSageResultToWorkbook(geometrySymbolicAnalysisRecord);
                           setGeometryMode("workbook");

@@ -2,6 +2,7 @@ import React from "react";
 import katex from "katex";
 import type { SymbolicResultRecord } from "./SageSymbolicPanel";
 import { sageResultActions, sageResultDiagnostics, sageResultKind, type SageSourceStatus } from "./sageResultPresentation";
+import type { SageViewerProvenance } from "./sageViewerArtifact";
 
 const labelFor = (operation: string) => ({
   "sage.symbolic.gradient": "Gradient",
@@ -23,11 +24,17 @@ const labelFor = (operation: string) => ({
 export const SageSymbolicAnalysisCard: React.FC<{
   record: SymbolicResultRecord;
   sourceStatus: SageSourceStatus;
-  onVisualize?: () => void;
-  onCreateGeometry?: () => void;
+  onPreviewVector?: () => void;
+  onCommitVector?: () => void;
+  onPreviewGeometry?: () => void;
+  onCommitGeometry?: () => void;
+  onDiscardPreview?: () => void;
+  previewKind?: "vector" | "geometry" | null;
+  viewerProvenance?: SageViewerProvenance | null;
   onSaveWorkbook?: () => void;
   actionStatus?: string | null;
-}> = ({ record, sourceStatus, onVisualize, onCreateGeometry, onSaveWorkbook, actionStatus }) => {
+}> = ({ record, sourceStatus, onPreviewVector, onCommitVector, onPreviewGeometry, onCommitGeometry,
+  onDiscardPreview, previewKind, viewerProvenance, onSaveWorkbook, actionStatus }) => {
   const { response, expression, backend } = record;
   const kind = sageResultKind(response);
   const actions = sageResultActions(response, sourceStatus);
@@ -77,9 +84,16 @@ export const SageSymbolicAnalysisCard: React.FC<{
     </div>
     {response.warnings.length > 0 && <div role="status" style={{ color: "#9a3412" }}><strong>Warnings:</strong> {response.warnings.join(" · ")}</div>}
     {diagnostics.length > 0 && <details><summary>Diagnostics ({diagnostics.length})</summary><ul>{diagnostics.map((entry, index) => <li key={index}>{entry}</li>)}</ul></details>}
+    {viewerProvenance && <div data-testid="sage-viewer-provenance" style={{ color: "#334155" }}>
+      Viewer artifact · SageMath {viewerProvenance.engineVersion} ({viewerProvenance.backend === "local" ? "Local WSL" : "Docker"}) ·
+      source {viewerProvenance.sourceId} r{viewerProvenance.sourceRevision} · job {viewerProvenance.jobId}
+    </div>}
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      {kind === "vector" && onVisualize && <button type="button" onClick={onVisualize} disabled={!actions.visualize}>Visualize vector field</button>}
-      {kind === "expression" && onCreateGeometry && <button type="button" onClick={onCreateGeometry} disabled={!actions.createGeometry}>Create geometry</button>}
+      {kind === "vector" && onPreviewVector && <button type="button" onClick={onPreviewVector} disabled={!actions.visualize}>Preview vector field</button>}
+      {kind === "vector" && onCommitVector && <button type="button" onClick={onCommitVector} disabled={!actions.visualize || previewKind !== "vector"}>Commit vector overlay</button>}
+      {kind === "expression" && onPreviewGeometry && <button type="button" onClick={onPreviewGeometry} disabled={!actions.createGeometry}>Preview geometry</button>}
+      {kind === "expression" && onCommitGeometry && <button type="button" onClick={onCommitGeometry} disabled={!actions.createGeometry || previewKind !== "geometry"}>Commit geometry</button>}
+      {previewKind && onDiscardPreview && <button type="button" onClick={onDiscardPreview}>Discard preview</button>}
       {onSaveWorkbook && actions.saveWorkbook && <button type="button" onClick={onSaveWorkbook}>Save to Workbook</button>}
     </div>
     {actionStatus && <div role="status">{actionStatus}</div>}

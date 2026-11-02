@@ -22,7 +22,7 @@ export function sageResultActions(response: SageRunResponse, sourceStatus: SageS
   const kind = sageResultKind(response);
   const usableSource = sourceStatus === "current" || sourceStatus === "unlinked";
   return {
-    visualize: kind === "vector" && sourceStatus === "current",
+    visualize: kind === "vector" && usableSource,
     createGeometry: kind === "expression" && usableSource && SCALAR_GEOMETRY_OPERATIONS.has(response.operation),
     saveWorkbook: true,
   };

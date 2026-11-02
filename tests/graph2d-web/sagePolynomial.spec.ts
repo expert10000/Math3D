@@ -85,20 +85,38 @@ test("Surface and Geometry route polynomial factor and exact roots through Compu
 });
 
 test("Surface Services runs exact calculus and Analysis exposes its result actions", async ({ page }) => {
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS",
+      "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (route.request().url().endsWith("/health")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok",
+        operations: ["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities", "sage.symbolic.simplify"] }) });
+    const request = route.request().postDataJSON() as { operation: string };
+    const result: Record<string, unknown> = request.operation === "sage.symbolic.gradient"
+      ? { components: ["2*x", "2*y", "2*z"] } : request.operation === "sage.symbolic.hessian"
+      ? { matrix: [["2", "0", "0"], ["0", "2", "0"], ["0", "0", "2"]] } : request.operation === "sage.symbolic.singularities"
+      ? { points: [] } : { text: "x*x+y*y+z*z-1" };
+    await route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", operation: request.operation,
+        success: true, result, latex: "", warnings: [] }) });
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Palette", exact: true }).click();
   await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...")
     .fill("Open backend services panel");
   await page.getByRole("button", { name: "Open backend services panel", exact: true }).click();
   const panel = page.getByText("Symbolic Mathematics", { exact: true }).locator("..");
+  await panel.getByLabel("SageMath backend").selectOption("docker");
   await panel.getByRole("button", { name: "Gradient", exact: true }).click();
   await expect(panel.getByLabel("Expression")).toHaveValue(/x.*y.*z/);
   await panel.getByRole("button", { name: "Run", exact: true }).click();
   const analysis = page.getByTestId("sage-analysis-result");
   await expect(analysis).toContainText("Gradient", { timeout: 60_000 });
   await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
-  await analysis.getByRole("button", { name: "Visualize vector field" }).click();
+  await analysis.getByRole("button", { name: "Preview vector field" }).click();
   await expect(analysis).toContainText("normalized gradient directions");
+  await analysis.getByRole("button", { name: "Commit vector overlay" }).click();
   await panel.getByRole("button", { name: "Hessian", exact: true }).click();
   await panel.getByRole("button", { name: "Run", exact: true }).click();
   await expect(analysis).toContainText("Hessian", { timeout: 60_000 });
@@ -114,8 +132,9 @@ test("Surface Services runs exact calculus and Analysis exposes its result actio
   await panel.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
   await panel.getByRole("button", { name: "Run", exact: true }).click();
   await expect(analysis).toContainText("Simplified expression", { timeout: 60_000 });
-  await analysis.getByRole("button", { name: "Create geometry" }).click();
-  await expect(analysis).toContainText("Created an implicit surface from the exact scalar expression.");
+  await analysis.getByRole("button", { name: "Preview geometry" }).click();
+  await analysis.getByRole("button", { name: "Commit geometry" }).click();
+  await expect(analysis).toContainText("Committed an implicit surface from the Sage scalar expression");
 });
 
 test("local Chrome Sage panel factors and finds roots with rejection and cancellation", async ({ page }) => {

@@ -16,7 +16,7 @@ describe("Scientific Services contextual operation catalog", () => {
 
   it("filters contextual and unimplemented operations without inventing capabilities", () => {
     expect(scientificOperationsFor("surface", "Symbolic").some((entry) => entry.id === "sage.symbolic.gradient")).toBe(true);
-    expect(scientificOperationsFor("geometry", "Symbolic").some((entry) => entry.id === "sage.symbolic.gradient")).toBe(false);
+    expect(scientificOperationsFor("geometry", "Symbolic").some((entry) => entry.id === "sage.symbolic.gradient")).toBe(true);
     expect(scientificOperationsFor("geometry", "Numerical")).toEqual([]);
   });
 });

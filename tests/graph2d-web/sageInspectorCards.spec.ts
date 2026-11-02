@@ -12,7 +12,7 @@ test("Surface and Geometry Inspectors render typed Sage results and failures", a
       body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok", operations }) });
     const body = request.postDataJSON() as { operation: string };
     const results: Record<string, Record<string, unknown>> = {
-      "sage.symbolic.simplify": { text: "x^2+1" },
+      "sage.symbolic.simplify": { text: "x*x+y*y+z*z-1" },
       "sage.symbolic.gradient": { components: ["2*x", "2*y", "2*z"], text: "[2*x, 2*y, 2*z]" },
       "sage.symbolic.hessian": { matrix: [["2", "0", "0"], ["0", "2", "0"], ["0", "0", "2"]] },
       "sage.symbolic.solve": { solutions: ["x=1", "x=-1"] },
@@ -33,22 +33,37 @@ test("Surface and Geometry Inspectors render typed Sage results and failures", a
   const analysis = page.getByTestId("sage-analysis-result");
 
   await surface.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(analysis.getByTestId("sage-result-kind-expression")).toContainText("x^2+1");
+  await expect(analysis.getByTestId("sage-result-kind-expression")).toContainText("x*x+y*y+z*z-1");
   await expect(analysis).toContainText("Version: 10.6");
   await expect(analysis).toContainText("Warnings: Exact domain assumed");
   await expect(analysis).toContainText("Freeform input — no saved source link");
-  await expect(analysis.getByRole("button", { name: "Create geometry" })).toBeEnabled();
+  await analysis.getByRole("button", { name: "Preview geometry" }).click();
+  await expect(analysis).toContainText("Previewing derived implicit geometry");
+  await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("SageMath 10.6");
+  await analysis.getByRole("button", { name: "Discard preview" }).click();
+  await expect(analysis.getByRole("button", { name: "Commit geometry" })).toBeDisabled();
 
   await surface.getByRole("button", { name: "Gradient", exact: true }).click();
   await surface.getByRole("button", { name: "Run", exact: true }).click();
   await expect(analysis.getByTestId("sage-result-kind-vector")).toContainText("2*x ; 2*y ; 2*z");
   await expect(analysis).toContainText("Source current");
-  await expect(analysis.getByRole("button", { name: "Visualize vector field" })).toBeEnabled();
+  await analysis.getByRole("button", { name: "Preview vector field" }).click();
+  await expect(analysis.getByRole("button", { name: "Commit vector overlay" })).toBeEnabled();
+  await analysis.getByRole("button", { name: "Commit vector overlay" }).click();
+  await expect(analysis).toContainText("Committed");
+  await analysis.getByRole("button", { name: "Preview vector field" }).click();
+  await page.getByRole("button", { name: "Surface editor", exact: true }).click();
+  const sourceEditor = page.getByTestId("surface-formula-editor-sheet").locator("textarea").last();
+  await sourceEditor.fill("x*x+y*y-z*z-1");
+  await sourceEditor.press("Control+Enter");
+  await expect(analysis).toContainText("Source changed — rerun required");
+  await expect(analysis).toContainText("Sage vector overlay invalidated");
+  await expect(analysis.getByRole("button", { name: "Commit vector overlay" })).toBeDisabled();
 
   await surface.getByRole("button", { name: "Hessian", exact: true }).click();
   await surface.getByRole("button", { name: "Run", exact: true }).click();
   await expect(analysis.getByTestId("sage-result-kind-matrix").locator("td")).toHaveCount(9);
-  await expect(analysis.getByRole("button", { name: "Visualize vector field" })).toHaveCount(0);
+  await expect(analysis.getByRole("button", { name: "Preview vector field" })).toHaveCount(0);
 
   await surface.getByLabel("Operation").selectOption("sage.symbolic.solve");
   await surface.getByRole("button", { name: "Run", exact: true }).click();
@@ -58,16 +73,42 @@ test("Surface and Geometry Inspectors render typed Sage results and failures", a
   await surface.getByRole("button", { name: "Run", exact: true }).click();
   await expect(analysis.getByTestId("sage-result-kind-error")).toContainText("Factorization unavailable");
   await expect(analysis).toContainText("Warnings: Exact domain assumed");
-  await expect(analysis.getByRole("button", { name: "Create geometry" })).toHaveCount(0);
+  await expect(analysis.getByRole("button", { name: "Preview geometry" })).toHaveCount(0);
   await expect(analysis.getByRole("button", { name: "Save to Workbook" })).toBeVisible();
+
+  await surface.getByLabel("Operation").selectOption("sage.symbolic.simplify");
+  await surface.getByRole("button", { name: "Run", exact: true }).click();
+  await analysis.getByRole("button", { name: "Preview geometry" }).click();
+  await sourceEditor.fill("x*x+y*y+z*z-4");
+  await sourceEditor.press("Control+Enter");
+  await expect(analysis).toContainText("Sage geometry preview invalidated");
+  await expect(analysis.getByRole("button", { name: "Commit geometry" })).toBeDisabled();
+  await surface.getByRole("button", { name: "Use current surface F(x,y,z)" }).click();
+  await surface.getByRole("button", { name: "Run", exact: true }).click();
+  await analysis.getByRole("button", { name: "Preview geometry" }).click();
+  await analysis.getByRole("button", { name: "Commit geometry" }).click();
+  await expect(analysis).toContainText("Committed an implicit surface");
 
   await page.getByRole("button", { name: "Geometry", exact: true }).first().click();
   await page.getByTestId("geometry-professional-panel-services").click({ force: true });
   const geometry = page.getByTestId("scientific-services-geometry");
   await geometry.getByLabel("SageMath backend").selectOption("docker");
   await geometry.getByRole("button", { name: "Run", exact: true }).click();
-  await expect(analysis.getByTestId("sage-result-kind-expression")).toContainText("x^2+1");
+  await expect(analysis.getByTestId("sage-result-kind-expression")).toContainText("x*x+y*y+z*z-1");
   await expect(analysis).toContainText("Freeform input — no saved source link");
+  await geometry.getByRole("button", { name: "Gradient", exact: true }).click();
+  await geometry.getByRole("button", { name: "Run", exact: true }).click();
+  await analysis.getByRole("button", { name: "Preview vector field" }).click();
+  await expect(analysis.getByRole("button", { name: "Commit vector overlay" })).toBeEnabled();
+  await analysis.getByRole("button", { name: "Commit vector overlay" }).click();
+  await expect(analysis).toContainText("Committed");
+  await geometry.getByLabel("Operation").selectOption("sage.symbolic.simplify");
+  await geometry.getByRole("button", { name: "Run", exact: true }).click();
+  await analysis.getByRole("button", { name: "Preview geometry" }).click();
+  await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("source sage-input:geometry r0");
+  await analysis.getByRole("button", { name: "Commit geometry" }).click();
+  await expect(analysis).toContainText("Committed Sage simplify geometry as a Geometry object");
+  await expect(page.getByTestId("geometry-inspector-summary")).toContainText("Sage simplify geometry");
   await geometry.getByLabel("Operation").selectOption("sage.symbolic.factor");
   await geometry.getByRole("button", { name: "Run", exact: true }).click();
   await expect(analysis.getByTestId("sage-result-kind-error")).toContainText("Factorization unavailable");
