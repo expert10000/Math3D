@@ -5,7 +5,7 @@ import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "./projectSavedMeshResultTrend";
-import { resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
+import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 
 const mesh = () => ({ label: "Trend square", source: { kind: "import" as const, format: "obj" as const, filename: "square.obj",
   math3dCoordinateFrame: { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m", axes: ["x", "y", "z"], handedness: "right" } },
@@ -89,5 +89,34 @@ describe("PC16 exact saved trend points", () => {
     expect(() => resolveSavedMeshTrendPoint(changed, study, middle.resultId, read)).toThrow(/changed/);
     expect(() => resolveSavedMeshTrendPoint(project, { ...study, rows: study.rows.slice(1) }, middle.resultId, read)).toThrow(/changed/);
     expect(() => resolveSavedMeshTrendPoint(project, study, "missing", read)).toThrow(/no verified/);
+  });
+});
+
+describe("PC17 pinned saved trend comparisons", () => {
+  it("uses the existing PC13 stored-result difference for two exact retained points", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "metrics.triangleArea.avg", read);
+    const a = resolveSavedMeshTrendPoint(project, study, first.resultId, read);
+    const b = resolveSavedMeshTrendPoint(project, study, middle.resultId, read);
+    const evidence = compareSavedMeshTrendPoints(project, { study, a, b }, read);
+    expect(evidence.compatible).toBe(true);
+    expect(evidence.a.resultId).toBe(first.resultId);
+    expect(evidence.b.resultId).toBe(middle.resultId);
+    expect(evidence.metrics.find(item => item.path === "metrics.triangleArea.avg")).toMatchObject({ a: 0.5, b: 2, unit: "m²", difference: 1.5 });
+  });
+  it("refuses duplicate pins, stale pinned hashes, missing and tampered sidecars", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "faceCount", read);
+    const a = resolveSavedMeshTrendPoint(project, study, first.resultId, read);
+    const b = resolveSavedMeshTrendPoint(project, study, middle.resultId, read);
+    expect(() => compareSavedMeshTrendPoints(project, { study, a, b: a }, read)).toThrow(/distinct/);
+    expect(() => compareSavedMeshTrendPoints(project, { study, a, b: { ...b, resultHash: "sha256:changed" } }, read)).toThrow(/changed/);
+    expect(() => compareSavedMeshTrendPoints(project, { study, a, b }, () => null)).toThrow();
+    expect(() => compareSavedMeshTrendPoints(project, { study, a, b }, item => {
+      const bytes = resources.bytes(item); if (!bytes) return null;
+      const changed = bytes.slice(); changed[0] ^= 1; return changed;
+    })).toThrow();
   });
 });
