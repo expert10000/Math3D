@@ -40,7 +40,7 @@ export const MobileAppView: React.FC<{ model: MobileAppController }> = ({ model 
         onPresentationChange={setGraphPresentation} /> :
         <MobileWorkspaceScreen model={model} />)}
 
-      {tab !== "workspace" && <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {tab !== "workspace" && <ScrollView style={styles.contentScroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {tab === "home" && <MobileHomeScreen model={model} />}
         {tab === "projects" && <MobileProjectsScreen model={model} />}
         {tab === "explore" && <MobileExploreScreen model={model} />}

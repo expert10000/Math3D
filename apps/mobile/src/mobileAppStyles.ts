@@ -369,6 +369,9 @@ export const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 12,
   },
+  contentScroll: {
+    flex: 1,
+  },
   panel: {
     borderRadius: 14,
     backgroundColor: "#ffffff",

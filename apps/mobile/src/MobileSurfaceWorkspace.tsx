@@ -37,7 +37,7 @@ export const MobileSurfaceWorkspace: React.FC<{ document: SurfaceDocument; adapt
   const button = (label: string, id: string, action: () => void, disabled = false) => <Pressable key={id} testID={id}
     accessibilityRole="button" accessibilityState={{ disabled: disabled || saving }} disabled={disabled || saving} onPress={action} style={styles.secondaryBtn}>
     <Text style={styles.secondaryBtnText}>{label}</Text></Pressable>;
-  return <ScrollView testID="mobile-surface-workspace" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  return <ScrollView testID="mobile-surface-workspace" style={styles.contentScroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <Text style={styles.itemTitle}>{document.metadata.title}</Text>
     <Text style={styles.itemMeta}>Surface · revision {document.identity.revision} · u, v</Text>
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
