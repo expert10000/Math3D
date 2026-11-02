@@ -50,7 +50,7 @@ The existing internal and release apps were not changed.
   `4cafa781` plus this slider change. Android v2 signature verification passed
   with the same debug signer; `adb install -r` preserved the isolated app data.
   Mobile TypeScript and all 417 mobile unit tests passed.
-- Latest installed producer-version APK, rebuilt after the remote-main rebase on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-producer-version-rebased.apk`.
+- Producer-version APK, rebuilt after the remote-main rebase on 2026-11-01: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-producer-version-rebased.apk`.
   SHA-256: `996faf3cc2d40bdd63fe59b2a0fa094127db21dfbae9b392a67eda245062e883`.
   It derives export producer metadata from the mobile package version instead of
   a stale `1.5.1` literal. Android v2 signature verification passed with the same
@@ -59,6 +59,9 @@ The existing internal and release apps were not changed.
   reference. Mobile typecheck and 418 mobile unit tests passed on this source.
   See the [exact-build correction record](mobile-android-producer-version-2026-11-01.json).
   The full TP08/TP14 walkthroughs below were on the preceding APK.
+- Latest installed TP11 APK, built on 2026-11-02 from the pulled `4c55b176` baseline plus `6fc7a21c`: `output/mobile-android-followup-20261031/Math3D-1.6.0-notescheck-tp11-picker-rebased.apk`.
+  SHA-256: `a74cc08f0710bea52f24e32c90bd6dee0ad524d5f63bef37ed879f3f56de9421`.
+  It keeps a completed source-linked analysis when Android's native folder picker backgrounds the app. The prior APK's first picker return dropped the regression fit and cancelled that export; subsequent SVG/PNG files lacked the analysis tables. Mobile typecheck and 419 mobile unit tests passed after the fix. Android v2 signature verification passed with the same debug signer. The [TP11 record](mobile-android-tp11-publication-2026-11-02.json) is tied to this exact APK; TP08/TP14 remain tied to their earlier APK.
 - `adb install -r` succeeded and kept the isolated app's saved data. Android
   APK Signature Scheme v2 verification passed with one existing debug signer,
   certificate SHA-256 `fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c`.
@@ -90,7 +93,8 @@ The existing internal and release apps were not changed.
 | TP03 probes on `8d2da190…` APK | Gallery copies with test-pack-matching definitions covered explicit, parametric, polar, implicit contour and measured-series probes. Two slopes' crossing cycled from Unit slope to Steeper line on a repeat tap; an empty tap cleared it. Cycloid and Rose readouts included their parameters. The measured point at `(1,0.5)` showed original `row_4`; tapping the missing-data gap at `(0,0)` cleared the probe. See the [exact-build TP03 record](mobile-android-tp03-probes-2026-11-01.json) for all displayed values and screenshots. The separate file/CSV path was subsequently checked in TP08. |
 | TP06 lifecycle on `8d2da190…` APK | Reopened saved interactive Beating waves at `f=4.5`, started animation, and sent it Home while the preview showed `f=4.15` with Stop enabled. Returning after about five seconds to the same process showed no preview and retained `f=4.5`; five more seconds produced no visible retry. A force-stop and cold relaunch retained the Graph and source. See the [exact-build TP06 record](mobile-android-tp06-lifecycle-2026-11-01.json) and screenshots. Native share/export was outside this check. |
 | TP08 file and CSV transfer on `8d2da190…` APK | Pushed the exact 1.6.0 Graph/CSV fixtures to Android Download. Picker cancellation preserved the current Graph. The regression Graph correctly refused import while its sidecar was absent; importing `regression.csv` through the point-series editor then enabled an independent copy with all eight plotted points and a `row_8` probe at `(7,15.2)`. The future-version fixture was rejected while the regression project remained listed. Exported a native handoff, reopened it as another independent editable Graph and probed `row_8` again. The exported source hash and table reference match the fixture, but the handoff does not contain CSV row bytes; another device needs the CSV separately. See the [exact-build TP08 record](mobile-android-tp08-transfer-2026-11-01.json) and screenshots. |
-| TP14 regression on `8d2da190…` APK | The eight imported rows yielded centered equation `z=(x-3.5)/3.5; y=8+7*z`, equivalent to `y=2*x+1`, with residual SD `0.23094011` and eight residuals of ±0.2 (squared sum `0.32`). The plot distinguished mean-response from new-observation 95% pointwise limits. An in-app data edit then marked the prior fit `Stale result — inputs or source changed; run again`. Numeric interval values in a publication export remain TP11 work. See the [exact-build TP14 record](mobile-android-tp14-regression-2026-11-01.json). |
+| TP14 regression on `8d2da190…` APK | The eight imported rows yielded centered equation `z=(x-3.5)/3.5; y=8+7*z`, equivalent to `y=2*x+1`, with residual SD `0.23094011` and eight residuals of ±0.2 (squared sum `0.32`). The plot distinguished mean-response from new-observation 95% pointwise limits. An in-app data edit then marked the prior fit `Stale result — inputs or source changed; run again`. Numeric interval values were subsequently verified in TP11 on a newer APK. See the [exact-build TP14 record](mobile-android-tp14-regression-2026-11-01.json). |
+| TP11 publication on `a74cc08f…` APK | The regression reference exported verified SVG, PNG, CSV and HTML with one snapshot ID and three analysis tables. CSV reported SSE `0.32`; at `x=3.5`, the 95% mean interval was `[7.800210483970861, 8.19978951602914]` and the new-observation interval was `[7.400631451912581, 8.59936854808742]`. Endpoint bounds matched the independent reference calculation. The HTML opened from local storage, stayed visible with Wi-Fi and mobile data off, and rendered an 11-page A4 print preview; no job was sent. The capture recipe identified its external eight-row table, and Presentation exited to normal controls. See the [exact-build TP11 record](mobile-android-tp11-publication-2026-11-02.json) and linked artifacts. |
 | Scoped logs | The comprehensive-test app process log had 582 lines and no filtered fatal exception, AndroidRuntime, React Native JS error, ANR or fatal-signal match. The keyboard-guard APK process log had 221 lines, the intermediate keyboard-layout APK had 393, the keyboard-rotation APK had 703, the final process of the function-error APK had 285, the analysis-error APK process had 460, and the latest slider-scroll APK process had 513 lines for TP13, 1499 lines after TP03, 1664 lines for TP06 background/resume, and 180 lines after its cold relaunch, with no such match in these scoped captures. The TP06 log contained a non-severe hidden-UI memory notice. The reported hang was not accompanied by a matching log entry. |
 
 The initial landscape failure is resolved for this Samsung phone at normal and
@@ -109,7 +113,7 @@ with unperformed steps pending.
   spoken output was not attested.
 - Tablet split-layout and keyboard checks. The Samsung portrait keyboard editor
   now passed, but no tablet was attached.
-- The full Graph fixture, publication format and long workload matrix. TP08 passed on this Samsung, but transfer to a second device was not tested and its CSV is external to the exported handoff. The
+- The full Graph fixture, multi-fixture publication and long workload matrix. TP08 and the regression-focused TP11 passed on this Samsung, but transfer to a second device was not tested and the TP08 CSV is external to its exported handoff. The
   fixed ten-run sampling workload is one fixture and one device profile.
 - Another Android class, Android tablet, iPhone and iPad. Only the Samsung was
   attached in this session.
@@ -143,9 +147,8 @@ evidence sets separate when adding results.
 2. **Finish Samsung cases.** Record focal-point behavior and an interrupted
    pinch/rotation for TP02; tablet layout/keyboard use for TP07; spoken TalkBack
    focus, controls and an invalid-expression error for TP09 when the owner can
-   test it. Finish TP11 publication and TP12 scales, including the regression
-   report's numerical interval export. TP08 file/CSV transfer and TP14 regression now
-   has its own exact-build pass. Complete any remaining scope in the pack; do not
+   test it. Finish TP12 scales. TP08 file/CSV transfer, TP11 publication and TP14 regression now
+   have their own exact-build passes. Complete any remaining scope in the pack; do not
    infer a full case pass from the focused checks above.
 3. **Expand the physical matrix.** Run the same pack on another Android phone
    class and Android tablet, then iPhone/iPad when available. Record exact
