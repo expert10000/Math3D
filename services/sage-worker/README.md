@@ -57,6 +57,18 @@ inverse in Surface Services, then runs Gröbner basis in Geometry Services. It
 checks exact results, a non-invertible modular-inverse diagnostic, and the
 corresponding successful and failed Compute jobs. It does not mock `/run`.
 
+The Number Theory workspace has focused live Docker checks on both platforms:
+
+```powershell
+npx playwright test --config playwright.sage-live-docker.config.ts --grep 'web Number Theory runs'
+npx playwright test --config playwright.sage-live-desktop.config.ts --grep 'live desktop Number Theory runs'
+```
+
+These checks run GCD and modular inverse with the workspace defaults (84 and 30,
+then 3 modulo 11), verify the exact results in Inspector, and confirm the
+reported SageMath version and completed Compute jobs. They contact the real
+service on `127.0.0.1:8767` without intercepting its requests.
+
 ## API
 
 - `GET /health`
