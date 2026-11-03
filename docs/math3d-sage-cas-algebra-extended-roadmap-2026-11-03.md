@@ -278,6 +278,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **Next implementation commit:** `SAGE-A01`, the versioned algebra object schema. Before adding visible controls, define discriminated object kinds, stable IDs/references, canonical definitions, versioning and validation. Its first gate is a serialized `QQ[x,y]` definition that roundtrips exactly while malformed domains, variables and references are rejected. The existing CAS and Number Theory calculations and Workbook evidence must continue to work.
 
+**A01 implementation update (2026-11-03):** The [A01 acceptance record](evidence/sage-a01-schema-2026-11-03.md) covers the first schema-v1 slice in `@math3d/core`: integer and rational base domains, modular rings, canonical finite fields and polynomial rings. It validates exact revisioned parent references, computes the definition hash using the existing canonical SHA-256 contract, and rejects malformed or tampered JSON. This is a contract layer; object registry persistence, dangling-reference resolution, staleness and Sage reconstruction remain A02–A04. The next implementation gate is **SAGE-A02**, a project-scoped registry that saves and reopens records with stable IDs and explicit revision history.
+
 ---
 
 ## 3. P0 — Algebra object registry
