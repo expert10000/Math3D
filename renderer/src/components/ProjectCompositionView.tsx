@@ -18,6 +18,7 @@ import type { CameraSyncState, OverlayPointSet, OverlayPolylineGroup } from "./S
 import { type ComparisonEvidenceSelection } from "../projects/projectComparisonEvidence";
 import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceExport";
 import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
+import { resolveLinkedCoordinateProbe, type LinkedCoordinateProbe } from "../projects/projectLinkedCoordinateProbe";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -140,15 +141,25 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
 export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
   captureToken?: number; onCaptureThumbnail?: (dataUrl: string | null) => void;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
+  coordinateProbe?: LinkedCoordinateProbe | null;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
-  const points = useMemo(() => members.flatMap(member => member.points), [members]);
+  const points = useMemo(() => [...members.flatMap(member => member.points),
+    ...(coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : [])],
+    [members, coordinateProbe]);
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
   return <section aria-label={label} style={{ minWidth: 0, height, position: "relative", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
     <div style={{ position: "absolute", zIndex: 30, top: 58, left: 10, background: "#fff", padding: "4px 8px", borderRadius: 4, maxWidth: "min(80%, 450px)" }}>
       <strong>{label}</strong><br /><small>{members.map(member => `${member.generation} r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? member.coordinates.value?.unit ?? "unit not recorded"}`).join(" / ")}</small>
     </div>
+    {coordinateProbe && <div data-testid="project-composition-linked-coordinate" style={{ position: "absolute", zIndex: 30, left: 10, bottom: 10,
+      background: "#fff", padding: "5px 8px", borderRadius: 4, maxWidth: "min(80%, 480px)" }}>
+      <strong>Linked coordinate · {coordinateProbe.frame}</strong><br />
+      <small>From {coordinateProbe.source.slot === 0 ? "A" : "B"} · {coordinateProbe.source.id} r{coordinateProbe.source.revision} · {coordinateProbe.source.hash.slice(0, 16)}…<br />
+        ({coordinateProbe.point.x.toPrecision(5)}, {coordinateProbe.point.y.toPrecision(5)}, {coordinateProbe.point.z.toPrecision(5)}) {coordinateProbe.unit}.
+        Coordinate marker only; no target element or value inferred.</small>
+    </div>}
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
       paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
@@ -256,6 +267,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   }, [composition, project, readResource]);
   const report = useComparisonEvidenceExport(project, composition, readResource, pick);
   const linkable = mode === "side-by-side" && compatibleCompositionParameterChart(resolved.members);
+  const coordinateProbe = mode === "side-by-side" && !resolved.error ? resolveLinkedCoordinateProbe(resolved.members, pick) : null;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
@@ -321,6 +333,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
           label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
           captureToken={report.captureToken} onCaptureThumbnail={report.onCapture(index)}
           linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token}
+          coordinateProbe={coordinateProbe?.target.slot === index ? coordinateProbe : null}
           onCameraSync={cameraLinked && index === cameraLeader ? onLeaderCamera : undefined}
           cameraOverride={cameraLinked && index !== cameraLeader ? cameraPose?.state : null}
           cameraOverrideToken={cameraLinked && index !== cameraLeader ? cameraPose?.token : undefined} />)}
@@ -371,7 +384,11 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       {saved && <span style={{ marginLeft: 16 }}>Saved source status: {inspectProjectCompositionAvailability(saved, project.workspace).join(" / ")}</span>}
       {mode === "side-by-side" && (linkable ? <p>Linked selection uses the same stored parameter ‘u,v’ in both generations, not an inferred physical-point match.
         {linked && ` Selected u=${linked.uv.u.toPrecision(5)}, v=${linked.uv.v.toPrecision(5)}.`}</p> :
-        <p>Linked selection unavailable: these panes do not share a verified parameter chart. Each selection remains source-specific.</p>)}
+        coordinateProbe ? <p data-testid="project-composition-probe-status">Linked coordinate from {coordinateProbe.source.slot === 0 ? "A" : "B"} to {coordinateProbe.target.slot === 0 ? "A" : "B"}:
+          {` (${coordinateProbe.point.x.toPrecision(5)}, ${coordinateProbe.point.y.toPrecision(5)}, ${coordinateProbe.point.z.toPrecision(5)}) ${coordinateProbe.unit}`}
+          {` in ${coordinateProbe.frame}.`} Source: {coordinateProbe.source.id} r{coordinateProbe.source.revision} · {coordinateProbe.source.hash}.
+          Mesh and Geometry element picks remain source-local; the other pane shows a coordinate marker only.</p> :
+        <p data-testid="project-composition-probe-status">Linked coordinate unavailable until a Mesh or Geometry is picked in two visible sources with matching declared frames, axes, handedness, and units. Element picks remain source-local.</p>)}
       {message && <p role="status">{message}</p>}
     </footer>
   </div>, document.body);
