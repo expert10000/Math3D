@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, structuralHash, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, structuralHash, upsertMath3DProjectNote, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
@@ -7,6 +7,7 @@ import { captureProjectResources, exportProjectPackage, parseProjectPackage } fr
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "./projectSavedMeshResultTrend";
 import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 import { createSavedMeshPinnedComparison, inspectSavedMeshPinnedComparison } from "./projectSavedMeshPinnedComparison";
+import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "./projectSavedMeshComparisonNotes";
 import { createWorkbookSavedMeshComparisonReference, inspectWorkbookSavedMeshComparisonReference,
   normalizeWorkbookSavedMeshComparisonReference, createDefaultWorkbook, validateWorkbookDependencies } from "@math3d/workbook";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
@@ -71,6 +72,29 @@ describe("PC14 saved Mesh analysis trends", () => {
     });
     expect(tampered.rows.some(row => row.status === "unavailable")).toBe(true);
     expect(() => savedMeshResultTrendHtml(tampered)).toThrow(/unavailable/);
+  });
+});
+
+describe("PC20 exact saved Mesh comparison Note", () => {
+  it("binds authored text to the saved pair, both results, and both source generations", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "metrics.triangleArea.avg", read);
+    const pair = createSavedMeshPinnedComparison(project, { study,
+      a: resolveSavedMeshTrendPoint(project, study, first.resultId, read),
+      b: resolveSavedMeshTrendPoint(project, study, middle.resultId, read) }, read, "pc20-pair", "PC20 pair");
+    expect(() => createProjectSavedMeshComparisonNote(project, pair, read, "Observation", "Stored area increased.", 100, "pc20-note")).toThrow();
+    const saved = upsertMath3DProjectSavedMeshComparison(project, pair);
+    const note = createProjectSavedMeshComparisonNote(saved, pair, read, "Observation", "Stored area increased.", 100, "pc20-note");
+    expect(note.anchor).toMatchObject({ kind: "saved-mesh-comparison", comparisonHash: structuralHash(pair), metricPath: pair.metricPath,
+      a: pair.a, b: pair.b });
+    const withNote = upsertMath3DProjectNote(saved, note);
+    const imported = parseProjectPackage(exportProjectPackage(withNote, resources));
+    expect(inspectProjectSavedMeshComparisonNote(imported.project, imported.project.notes![0]!, item => imported.resources.bytes(item)).status).toBe("current");
+    expect(inspectProjectSavedMeshComparisonNote(withNote, note, () => null).status).toBe("missing");
+    expect(inspectProjectSavedMeshComparisonNote({ ...withNote, savedMeshComparisons: [{ ...pair, metricPath: "faceCount" }] }, note, read).status).toBe("stale");
+    const corrupt = (item: Parameters<typeof resources.bytes>[0]) => { const bytes = read(item); if (!bytes) return null; const copy = bytes.slice(); copy[0] ^= 1; return copy; };
+    expect(inspectProjectSavedMeshComparisonNote(withNote, note, corrupt).status).toBe("missing");
   });
 });
 
