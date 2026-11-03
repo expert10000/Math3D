@@ -284,6 +284,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A03 implementation update (2026-11-03):** The [A03 acceptance record](evidence/sage-a03-dependency-freshness-2026-11-03.md) covers derived freshness for the Project algebra registry. A change from `R = QQ[x,y]` to `R = GF(5)[x,y]` makes objects pinned to the old definition stale, including transitive descendants, while preserving their exact historical records. A label-only revision does not invalidate mathematical dependents. Status and causes are reproducible after independent `.math3d` import; clearing staleness requires explicit new descendant revisions. The next gate is **SAGE-A04**: bounded Sage reconstruction from validated object definitions.
 
+**A04 implementation update (2026-11-03):** The [A04 acceptance record](evidence/sage-a04-bounded-reconstruction-2026-11-03.md) covers a versioned object snapshot, deterministic parent-before-child reconstruction, structured result validation, and one bounded Docker Sage operation registered with the shared execution broker. Live Sage 9.5 in WSL verifies the same worker constructor code and script entry point; Docker HTTP execution remains unverified on this PC because Docker Desktop is unavailable. Local WSL and private gateway app routes do not advertise this new operation. The next gate is **SAGE-A05**: richer parent-domain and coercion metadata with explicit mathematical compatibility errors.
+
 ---
 
 ## 3. P0 — Algebra object registry

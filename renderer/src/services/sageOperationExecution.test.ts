@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { buildSageAlgebraReconstructionInput, createAlgebraObjectRecord, createMath3DProject,
+  createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
-import { SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
+import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
 import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
 import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
 
 const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
-  engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_SYMBOLIC_OPERATIONS,
+  engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_OPERATIONS,
 });
 const runSageJob = (
   request: Parameters<ReturnType<typeof createSageExecutionRegistry>["run"]>[0],
@@ -16,9 +18,20 @@ const operations = Object.keys(SAGE_JOB_OPERATIONS) as BrokeredSageOperation[];
 const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.matrix.eigen_exact", "sage.matrix.charpoly", "sage.groebner.compute",
   "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
+  "sage.algebra.reconstruct",
 ]);
+const algebraParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-a04-broker" });
+  const id = createProjectAlgebraObjectId(project.identity.id, "Q");
+  project = upsertMath3DProjectAlgebraObject(project, createAlgebraObjectRecord({ id, label: "Q", revision: 1,
+    definition: { kind: "rational-field" } }));
+  return JSON.parse(JSON.stringify(buildSageAlgebraReconstructionInput(project, { objectId: id, revision: 1 }))) as Record<string, unknown>;
+};
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
-  operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
+  operation === "sage.algebra.reconstruct" ? algebraParams()
+    : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }
     : operation === "sage.numberTheory.modInverse" ? { a: "3", modulus: "11" }
@@ -139,6 +152,18 @@ describe("Sage scientific execution contract", () => {
     expect(broker).toMatchObject({ ok: true, backend: { backendId: "sage-private-gateway" } });
     expect(response.result.value).toBe("6");
     expect(calls).toMatchObject([{ operation: "sage.numberTheory.gcd", backend: "private" }]);
+  });
+
+  it("advertises typed algebra reconstruction only on Docker and rejects code-bearing payloads", async () => {
+    const registry = createSageExecutionRegistry({ health });
+    expect((await registry.probeBackend("docker")).operations.map((item) => item.operationType)).toContain("algebra.reconstruct");
+    expect((await registry.probeBackend("local")).operations.map((item) => item.operationType)).not.toContain("algebra.reconstruct");
+    expect((await registry.probeBackend("private")).operations.map((item) => item.operationType)).not.toContain("algebra.reconstruct");
+    const params = algebraParams();
+    expect(() => registry.run({ operation: "sage.algebra.reconstruct", backend: "local", params })).toThrow(/Invalid Sage/);
+    expect(() => registry.run({ operation: "sage.algebra.reconstruct", backend: "private", params })).toThrow(/Invalid Sage/);
+    expect(() => registry.run({ operation: "sage.algebra.reconstruct", backend: "docker",
+      params: { ...params, code: "print(1)" } })).toThrow(/envelope/);
   });
 
   it("cancels independent jobs through one shared service", async () => {

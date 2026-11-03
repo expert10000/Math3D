@@ -36,6 +36,7 @@ export type Math3DWorkerOperationId =
   | "matrix.eigen.exact"
   | "matrix.charpoly"
   | "algebra.groebner"
+  | "algebra.reconstruct"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -303,6 +304,14 @@ const definitions = [
   {
     id: "algebra.groebner",
     title: "Gröbner basis",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "algebra.reconstruct",
+    title: "Validated algebra object reconstruction",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],

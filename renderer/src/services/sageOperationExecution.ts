@@ -2,6 +2,7 @@ import {
   createScientificJobRequest,
   createStableDocumentId,
   structuralHash,
+  parseSageAlgebraReconstructionInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -36,6 +37,7 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.groebner.compute": { type: "algebra.groebner", label: "Gröbner basis", cancelled: "Sage Gröbner job cancelled." },
   "sage.numberTheory.gcd": { type: "number-theory.gcd", label: "greatest common divisor", cancelled: "Sage number theory job cancelled." },
   "sage.numberTheory.modInverse": { type: "number-theory.mod-inverse", label: "modular inverse", cancelled: "Sage number theory job cancelled." },
+  "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
 } as const;
 export type BrokeredSageOperation = keyof typeof SAGE_JOB_OPERATIONS;
 export const isBrokeredSageOperation = (operation: string): operation is BrokeredSageOperation =>
@@ -96,6 +98,8 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       matrix.every((row) => Array.isArray(row) && row.length === matrix.length &&
         row.every((item) => (typeof item === "string" && item.trim().length > 0) ||
           (typeof item === "number" && Number.isFinite(item))))
+    : request.operation === "sage.algebra.reconstruct"
+      ? request.backend === "docker" && !!parseSageAlgebraReconstructionInput(params)
     : request.operation === "sage.groebner.compute"
       ? request.backend === "docker" && Array.isArray(params.polynomials) &&
         params.polynomials.length > 0 && params.polynomials.length <= 12 &&

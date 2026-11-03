@@ -5,7 +5,7 @@ Dockerized SageMath symbolic/exact backend for Math3D.
 MATH3D's Symbolic Mathematics panel has an explicit **Local WSL / Docker service** selector.
 Simplify, Factor, Expand, Solve, Gradient, Hessian, Singularities, polynomial factorization,
 and exact roots support both choices. Local WSL is the default for those nine operations and uses the bounded desktop
-worker or the same-machine web proxy. Matrix, Groebner, and number-theory operations
+worker or the same-machine web proxy. Matrix, Groebner, number-theory, and bounded algebra-object reconstruction operations
 currently use Docker. The Docker polynomial roots endpoint works over the rationals;
 choose Local WSL for algebraic root certificates. Switching backends does not start or
 install either runtime automatically.
@@ -76,6 +76,15 @@ service on `127.0.0.1:8767` without intercepting its requests.
 - `POST /run`
 
 `POST /run` accepts only predefined operations:
+
+`sage.algebra.reconstruct` accepts a versioned `math3d.sage-algebra-reconstruction` snapshot of A01 object records in parent-before-child order. The worker checks each exact definition hash and parent revision before constructing `ZZ`, `QQ`, `Z/nZ`, canonical finite fields, or polynomial rings. The request is limited to 32 KiB and 32 objects; finite-field cardinality is capped at 65,536 and polynomial rings at eight variables. It returns structured exact metadata, not a serialized Sage object. No user-provided Sage or Python source is evaluated. Local WSL and the private gateway do not advertise this operation yet.
+
+On a machine with Sage installed, the constructor and script entry point can be checked with:
+
+```bash
+cd services/sage-worker
+sage -python -m unittest service.test_algebra_reconstruction -v
+```
 
 ```json
 {

@@ -13,6 +13,7 @@ type SageOperation =
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
   | "sage.groebner.compute"
+  | "sage.algebra.reconstruct"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"

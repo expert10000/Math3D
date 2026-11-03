@@ -14,9 +14,10 @@ export type SageOperation =
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"
-  | "sage.complex.analyze";
+  | "sage.complex.analyze"
+  | "sage.algebra.reconstruct";
 
-export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze">;
+export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" | "sage.algebra.reconstruct">;
 
 export type SageHealthResponse = {
   status: string;
@@ -66,6 +67,7 @@ export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
 
 export const SAGE_OPERATIONS: SageOperation[] = [
   ...SAGE_SYMBOLIC_OPERATIONS,
+  "sage.algebra.reconstruct",
   "sage.topology.integer_homology",
   "sage.complex.analyze",
 ];
