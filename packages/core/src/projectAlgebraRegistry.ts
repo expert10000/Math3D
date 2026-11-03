@@ -1,5 +1,6 @@
-import { parseAlgebraObjectRecord, type AlgebraObjectRecord } from "./algebraObjects";
+import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectRef } from "./algebraObjects";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
+import type { Math3DProject } from "./math3dProject";
 
 export const MAX_PROJECT_ALGEBRA_OBJECTS = 128;
 export const MAX_ALGEBRA_REVISIONS_PER_OBJECT = 32;
@@ -9,6 +10,22 @@ export type ProjectAlgebraObjectEntry = Readonly<{
   id: StableDocumentId;
   revisions: readonly AlgebraObjectRecord[];
   archived: boolean;
+}>;
+
+export type ProjectAlgebraStaleCause = Readonly<{
+  objectId: StableDocumentId;
+  pinnedRevision: number;
+  currentRevision: number;
+}>;
+
+export type ProjectAlgebraObjectFreshness = Readonly<{
+  objectId: StableDocumentId;
+  revision: number;
+  archived: boolean;
+  status: "fresh" | "stale";
+  causes: readonly ProjectAlgebraStaleCause[];
+  directDependencies: readonly AlgebraObjectRef[];
+  directDependents: readonly StableDocumentId[];
 }>;
 
 export const createProjectAlgebraObjectId = (projectId: StableDocumentId, stableKey: CanonicalJsonValue): StableDocumentId => {
@@ -68,4 +85,53 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
   };
   for (const entry of entries) for (const record of entry.revisions) visit(record);
   return Object.freeze(entries.sort((a, b) => a.id.localeCompare(b.id)));
+};
+
+/** Freshness is derived from saved revision hashes; historical definitions are never rewritten. */
+export const inspectProjectAlgebraFreshness = (project: Pick<Math3DProject, "algebraObjects">): readonly ProjectAlgebraObjectFreshness[] => {
+  if (project.algebraObjects === undefined) return Object.freeze([]);
+  const entries = validateProjectAlgebraRegistry(project.algebraObjects);
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const dependents = new Map<StableDocumentId, Set<StableDocumentId>>();
+  for (const entry of entries) {
+    const latest = entry.revisions[entry.revisions.length - 1];
+    for (const ref of latest.dependencies) {
+      const children = dependents.get(ref.objectId) ?? new Set<StableDocumentId>();
+      children.add(entry.id);
+      dependents.set(ref.objectId, children);
+    }
+  }
+  const memo = new Map<string, readonly ProjectAlgebraStaleCause[]>();
+  const causesFor = (record: AlgebraObjectRecord): readonly ProjectAlgebraStaleCause[] => {
+    const key = `${record.id}@${record.revision}`;
+    const cached = memo.get(key);
+    if (cached) return cached;
+    const causes = new Map<string, ProjectAlgebraStaleCause>();
+    for (const ref of record.dependencies) {
+      // validateProjectAlgebraRegistry has already resolved every exact revision and ruled out cycles.
+      const history = byId.get(ref.objectId)!;
+      const pinned = history.revisions[ref.revision - 1];
+      const current = history.revisions[history.revisions.length - 1];
+      if (pinned.contentHash !== current.contentHash) {
+        const cause = { objectId: ref.objectId, pinnedRevision: ref.revision, currentRevision: current.revision };
+        causes.set(`${cause.objectId}@${cause.pinnedRevision}:${cause.currentRevision}`, cause);
+      } else {
+        for (const cause of causesFor(pinned)) {
+          causes.set(`${cause.objectId}@${cause.pinnedRevision}:${cause.currentRevision}`, cause);
+        }
+      }
+    }
+    const result = Object.freeze([...causes.values()].sort((a, b) => a.objectId.localeCompare(b.objectId)
+      || a.pinnedRevision - b.pinnedRevision || a.currentRevision - b.currentRevision).map((cause) => Object.freeze(cause)));
+    memo.set(key, result);
+    return result;
+  };
+  return Object.freeze(entries.map((entry) => {
+    const latest = entry.revisions[entry.revisions.length - 1];
+    const causes = causesFor(latest);
+    return Object.freeze({ objectId: entry.id, revision: latest.revision, archived: entry.archived,
+      status: causes.length ? "stale" as const : "fresh" as const, causes,
+      directDependencies: latest.dependencies,
+      directDependents: Object.freeze([...(dependents.get(entry.id) ?? [])].sort()) });
+  }));
 };

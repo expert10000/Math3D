@@ -282,6 +282,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A02 implementation update (2026-11-03):** The [A02 acceptance record](evidence/sage-a02-project-registry-2026-11-03.md) covers Project-owned algebra object histories and the `.math3d` file transfer path. `Q` and `R = QQ[x,y]` survive independent import with the same identity, definitions and pinned parent revision. Duplicate IDs/revisions, missing parents and dependency cycles are rejected. Rename and fork produce explicit histories; archive/recover preserves references. The next gate is **SAGE-A03**: dependency freshness when a parent definition advances. The Structures UI remains A06.
 
+**A03 implementation update (2026-11-03):** The [A03 acceptance record](evidence/sage-a03-dependency-freshness-2026-11-03.md) covers derived freshness for the Project algebra registry. A change from `R = QQ[x,y]` to `R = GF(5)[x,y]` makes objects pinned to the old definition stale, including transitive descendants, while preserving their exact historical records. A label-only revision does not invalidate mathematical dependents. Status and causes are reproducible after independent `.math3d` import; clearing staleness requires explicit new descendant revisions. The next gate is **SAGE-A04**: bounded Sage reconstruction from validated object definitions.
+
 ---
 
 ## 3. P0 — Algebra object registry
