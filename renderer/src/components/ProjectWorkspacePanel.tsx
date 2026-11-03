@@ -102,6 +102,7 @@ type Props = {
   onViewProjectDetail?: () => void;
   noteRequest?: { id: string; token: number } | null;
   resultRequest?: { id: string; token: number } | null;
+  pairRequest?: { id: string; token: number } | null;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
@@ -116,7 +117,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -194,6 +195,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [meshResultTrendOpen, setMeshResultTrendOpen] = useState(false);
   const [meshTrendComparison, setMeshTrendComparison] = useState<SavedMeshTrendComparison | null>(null);
   const [savedMeshComparison, setSavedMeshComparison] = useState<ProjectSavedMeshComparison | null>(null);
+  useEffect(() => {
+    if (!open || !pairRequest || !project) return;
+    const pair = project.savedMeshComparisons?.find(item => item.id === pairRequest.id);
+    if (!pair) return;
+    setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true);
+  }, [open, pairRequest?.token, project?.identity.id]);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const savedMeshReview = useMemo(() => project ? buildSavedMeshComparisonReview(project, comparisonResource) : [], [project, comparisonResource]);
