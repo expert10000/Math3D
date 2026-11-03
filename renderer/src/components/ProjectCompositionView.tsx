@@ -180,9 +180,9 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
 };
 
 export const ProjectCompositionView: React.FC<{ project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
-  initialCompositionId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
+  initialCompositionId?: string; initialProbeNoteId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
   onSaveObservation: (composition: ProjectComposition, title: string, body: string, probe?: LinkedCoordinateProbe) => Promise<boolean> }> =
-  ({ project, readResource, onClose, initialCompositionId, onSave, onSaveObservation }) => {
+  ({ project, readResource, onClose, initialCompositionId, initialProbeNoteId, onSave, onSaveObservation }) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKeyDown, true);
@@ -229,6 +229,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     setPalette([choice.members[0].color, choice.members[1].color]); setOpacity([choice.members[0].opacity, choice.members[1].opacity]);
   };
   useEffect(() => { if (initialCompositionId) chooseSaved(initialCompositionId); }, [initialCompositionId]);
+  useEffect(() => { if (initialProbeNoteId) { setPick(null); setSavedProbeId(initialProbeNoteId); } }, [initialProbeNoteId]);
   const composition = useMemo((): ProjectComposition | null => {
     if (!firstId || !secondId || firstId === secondId && (mode !== "side-by-side" || generation[0] === generation[1]) ||
       mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
@@ -275,7 +276,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     const probe = resolveSavedCoordinateProbe(resolved.members, note.anchor);
     return probe ? [{ note, probe }] : [];
   }) : [];
-  const savedProbe = savedProbes.find(item => item.note.identity.id === savedProbeId) ?? savedProbes.at(-1);
+  const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
   const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
