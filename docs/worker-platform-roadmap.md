@@ -558,9 +558,20 @@ forwards cancellation, and returns typed failures. Desktop main and the local
 web proxy hold the credential; the renderer selects this backend through the
 same `ExecutionService` registry and Compute diagnostics. The Compose gateway
 binds only to loopback, and its Sage worker has no host port. The existing
-local Docker route remains selectable. Broader remote resources, per-user
-authorization, hosted web sessions, rollback, and release manifests remain
-open in this phase.
+local Docker route remains selectable. Broader remote resources, identity
+provider integration, durable distributed quotas, rollback, and release
+manifests remain open in this phase.
+
+The hosted Sage web session slice now exchanges deployment-assigned per-user
+access keys for HTTP-only session cookies through the loopback web proxy behind
+an HTTPS reverse proxy. Capability discovery, GCD, modular inverse, typed
+failures, cancellation, and Compute diagnostics still use the shared
+`ExecutionService`; each user has a separate rate and concurrency quota and
+can cancel only their own job. Two independent browser sessions and the
+unchanged desktop route are covered by live tests. The Sage worker remains on
+its internal Docker network without a published port. Identity-provider
+integration, durable distributed quotas, remote resource transport, and
+release rollback remain open.
 
 ## Conformance and quality gates
 

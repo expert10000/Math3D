@@ -19,6 +19,17 @@ const localSageUnavailableMessage =
   "Local SageMath web proxy is unavailable. Start MATH3D with its web proxy and install SageMath in WSL Ubuntu.";
 const privateSageUnavailableMessage =
   "Private Sage gateway is unavailable. Configure its URL and credential in the desktop or web server runtime.";
+export type SageWebSession = { authenticated: boolean; mode?: "local"; userId?: string;
+  expiresAt?: number; limits?: { maxConcurrent: number; maxRequestsPerMinute: number } };
+export const checkSageWebSession = () => requestJson<SageWebSession>(
+  "GET", "/session", undefined, privateSageBaseUrl, privateSageUnavailableMessage,
+);
+export const connectSageWebSession = (accessKey: string) => requestJson<SageWebSession>(
+  "POST", "/session", { accessKey }, privateSageBaseUrl, privateSageUnavailableMessage,
+);
+export const disconnectSageWebSession = () => requestJson<SageWebSession>(
+  "POST", "/logout", {}, privateSageBaseUrl, privateSageUnavailableMessage,
+);
 export const isLocalSageOperation = (operation: string) =>
   operation === "sage.polynomial.factor" || operation === "sage.polynomial.roots_exact" ||
   operation === "sage.symbolic.simplify" || operation === "sage.symbolic.factor" ||
