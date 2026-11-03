@@ -39,9 +39,16 @@ export const inspectProjectDocumentDelete = (project: Math3DProject, id: string)
     !(relation.target.type === "result" && ownedResultIds.includes(relation.target.resultId)) &&
     (references(relation.parameters, id) || ownedResultIds.some((resultId) => references(relation, resultId)))).map((relation) => relation.relationId);
   const constructionReferences = current.workspace.constructions.some((construction) => references(construction, id) || ownedResultIds.some((resultId) => references(construction, resultId)));
+  const dependentDerivedFieldIds = current.workspace.derivedFields?.filter(document => {
+    let source = document.input.documentId;
+    const byId = new Map(current.workspace.derivedFields?.map(item => [item.identity.id, item]));
+    while (byId.has(source)) source = byId.get(source)!.input.documentId;
+    return source === id;
+  }).map(document => document.identity.id) ?? [];
   return { id, ownedResultIds, dependentDocumentIds: [...dependentDocumentIds].sort(), dependentResultIds: [...dependentResultIds].sort(),
     dependentArtifactIds: [...dependentArtifactIds].sort(), dependentRelationIds, constructionReferences,
-    canDelete: !dependentDocumentIds.size && !dependentResultIds.size && !dependentArtifactIds.size && !dependentRelationIds.length && !constructionReferences };
+    dependentDerivedFieldIds,
+    canDelete: !dependentDocumentIds.size && !dependentResultIds.size && !dependentArtifactIds.size && !dependentRelationIds.length && !constructionReferences && !dependentDerivedFieldIds.length };
 };
 /** Delete only an isolated document and its owned results; retain external artifact bytes/manifests. */
 export const deleteProjectDocument = (project: Math3DProject, id: string): Math3DProject => {

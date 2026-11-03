@@ -12,6 +12,7 @@ import { adoptMixedWorkspaceProject, canonicalJsonStringify, createMixedWorkspac
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
   PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY,
+  PROJECT_DERIVED_FIELDS_CAPABILITY,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
@@ -40,6 +41,8 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
   const requiredCapabilities = new Set<string>();
   if (canonical.workspace.scientificSelections?.length)
     requiredCapabilities.add(PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY);
+  if (canonical.workspace.derivedFields?.length)
+    requiredCapabilities.add(PROJECT_DERIVED_FIELDS_CAPABILITY);
   for (const document of resolved.values()) {
     if (document.format === "math3d.graph2d-document") {
       document.requiredCapabilities.forEach((capability) => requiredCapabilities.add(capability));
@@ -135,6 +138,10 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
     undefined : [...new Map([...(retained.scientificSelections ?? []), ...(live.scientificSelections ?? [])]
       .map(selection => [selection.identity.kind === "authored" ? selection.identity.id : "", selection])).values()];
   const selectionFields = scientificSelections === undefined ? {} : { scientificSelections };
+  const derivedFields = retained.derivedFields === undefined && live.derivedFields === undefined ?
+    undefined : [...new Map([...(retained.derivedFields ?? []), ...(live.derivedFields ?? [])]
+      .map(document => [document.identity.id, document])).values()];
+  const derivedFieldsField = derivedFields === undefined ? {} : { derivedFields };
   const quantum = retained.entries.filter((entry) => entry.module === "quantum");
   const combined = quantum.length ? createMixedWorkspaceDocument({ ...live,
     entries: [...live.entries.filter((entry) => entry.module !== "quantum"), ...quantum],
@@ -148,11 +155,11 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
     // Explicit Project deletion uses deleteProjectDocument instead.
     const liveIds = new Set(combined.entries.map((entry) => entry.expected.id));
     const missing = retained.entries.filter((entry) => !liveIds.has(entry.expected.id));
-    if (!missing.length) return createMixedWorkspaceDocument({ ...combined, ...selectionFields });
+    if (!missing.length) return createMixedWorkspaceDocument({ ...combined, ...selectionFields, ...derivedFieldsField });
     const missingIds = new Set<string>(missing.map((entry) => entry.expected.id));
     const merge = <T>(saved: readonly T[], current: readonly T[], key: (item: T) => string): T[] =>
       [...new Map([...saved, ...current].map((item) => [key(item), item])).values()];
-    return createMixedWorkspaceDocument({ ...combined, ...selectionFields,
+    return createMixedWorkspaceDocument({ ...combined, ...selectionFields, ...derivedFieldsField,
       entries: [...combined.entries, ...missing],
       activeDocumentIds: [...new Set([...combined.activeDocumentIds, ...retained.activeDocumentIds.filter((id) => missingIds.has(id))])],
       results: merge(retained.results, combined.results, (result) => result.resultId),
@@ -163,6 +170,6 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
   }
   const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(combined));
   const entries = new Map([...retained.entries, ...combined.entries].map((entry) => [entry.expected.id, entry]));
-  return createMixedWorkspaceDocument({ ...merged, ...selectionFields,
+  return createMixedWorkspaceDocument({ ...merged, ...selectionFields, ...derivedFieldsField,
     constructions: live.constructions, entries: merged.entries.map((entry) => entries.get(entry.expected.id)!) });
 };

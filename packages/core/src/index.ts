@@ -126,6 +126,8 @@ export * from "./scientificJobs";
 export * from "./scientificSelection";
 export * from "./scientificSelectionLegacy";
 export * from "./projectScientificSelections";
+export * from "./derivedFieldDocument";
+export * from "./projectDerivedFields";
 export * from "./scientificSceneManifest";
 export * from "./scientificDatasetCoordinates";
 export * from "./scientificDatasetLink";
