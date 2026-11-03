@@ -1,6 +1,6 @@
 # Desktop Mesh comparison starter acceptance — 2026-11-03
 
-This gate used a Windows Electron development build from remote `main` commit `5660e0bed58d122366c32ed7a1c4fc69fc5b9dbb`. Each of the three new starters was opened through **Projects → Starter projects**, checked in its saved-result trend, saved to the library, and exported with verified source resources. Each exported Project was then imported into its own fresh Electron profile, opened, and checked again. The imported library copy passed the same check after an app restart.
+This gate used a Windows Electron development build. The isolated worktree started at remote `main` commit `5660e0bed58d122366c32ed7a1c4fc69fc5b9dbb`, then merged upstream Project and Sage changes through `674e9cf6ff7003cba125049683dbd57ca9f3aef8`. The final evidence and checks came from the merged source. Each of the three new starters was opened through **Projects → Starter projects**, checked in its saved-result trend, saved to the library, and exported with verified source resources. Each exported Project was then imported into its own fresh Electron profile, opened, and checked again. The imported library copy passed the same check after an app restart.
 
 | Starter and metric | Recorded values by Mesh revision | Acceptance result |
 | --- | --- | --- |
@@ -8,16 +8,16 @@ This gate used a Windows Electron development build from remote `main` commit `5
 | Saved Mesh Curvature Study · `mean.avg` | 1.0155928333600361, 0.7812252971861098, 0.6009425454669528 | All three discrete-curvature results verified. Their ratios follow the expected inverse scale law for successive 1.3× Mesh scaling, within Float32/numerical tolerance. These are sampled Mesh estimates, not analytic sphere curvature certificates. |
 | Mesh Trend With Missing Result · `metrics.triangleArea.avg` | 0.5, **not recorded**, 2.53125 m² | The middle retained generation has no result ID or value. The chart shows two points, the table states why the middle result is missing, and transfer/restart do not fill the gap. |
 
-The Electron acceptance checked each visible value against the saved `summary` in its exported Project package, confirmed the expected number of `saved-mesh-analysis` results and nonempty source-resource payload, and compared the complete trend rows, including source hashes, after independent import and restart. A visual check found that full-precision curvature axis labels overlapped the plot. The axis now uses short labels beside the plot while the table and exported values retain full precision. Existing four starter UI tests and four model tests passed alongside the new transfer journey. The transfer journey passed again after the label fix. `npm run build:core` and `npm run typecheck:noemit` passed.
+The Electron acceptance checked each visible value against the saved `summary` in its exported Project package, confirmed the expected number of `saved-mesh-analysis` results and nonempty source-resource payload, and compared the complete trend rows, including source hashes, after independent import and restart. A visual check found that full-precision curvature axis labels overlapped the plot. The axis now uses short labels beside the plot while the table and exported values retain full precision. After the upstream merge, six selected Electron flows and 13 focused model tests passed. `npm run build:core` and `npm run typecheck:noemit` passed.
 
 ## Portable evidence
 
 | Exported Project | SHA-256 |
 | --- | --- |
-| [Retained Mesh Generation Study](mesh-subdivision-study.json) | `411ed2eba90fc063459d0c4cc115d2902957064ccae08a4636ce478f52a77f7f` |
-| [Saved Mesh Curvature Study](mesh-curvature-study.json) | `8bd727c5f8a48a0f77e7b1417596882e2a298a31e372b793186ce00051c381e5` |
-| [Mesh Trend With Missing Result](mesh-trend-gap-study.json) | `eaa5992e9aa2a7616567679a502d6650073ee4b4bb2470d618916cffae397673` |
-| [Structured observations](mesh-starter-observation.json) | `b06429967974d9194760fab6b470406780b2b1a32d44c3f0862651da64e504d0` |
+| [Retained Mesh Generation Study](mesh-subdivision-study.json) | `bde1b73da2bb5ce848c6f6896ac77f09084b3adb9532f1e9bdf671a7f9e35252` |
+| [Saved Mesh Curvature Study](mesh-curvature-study.json) | `a9cfb804276f478d9133fa6514244d80afaeeaa807e0cc99b6e73b9e6b3fbb8d` |
+| [Mesh Trend With Missing Result](mesh-trend-gap-study.json) | `4dc4c879fac1a8d0e830e521ebf6622f4d30c1da51380850e3378e684001594a` |
+| [Structured observations](mesh-starter-observation.json) | `11ba5a132c3138fda967245a374ad04eb5f04ccfb27e662fe65f7f75ff5cf9a8` |
 
 The reopened screenshots show [retained generations](mesh-subdivision-study-reopened.png), [curvature](mesh-curvature-study-reopened.png), and the [unrecorded middle revision](mesh-trend-gap-study-reopened.png).
 
