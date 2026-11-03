@@ -14,6 +14,6 @@ Duplicate IDs, duplicate or conflicting revisions, and missing parent revisions 
 
 ## Verification
 
-- Project registry, A01 schema, Project transfer, resources, library, resume and Notes tests — 64 passed across seven test files.
+- Project registry, A01 schema, Project transfer, resources, library, resume, Notes and the newly merged Mesh comparison starter tests — 70 passed across eight test files.
 - `npm run typecheck:noemit` — repository TypeScript gate passed.
 - `npm run build:core` — desktop core and renderer build passed.
