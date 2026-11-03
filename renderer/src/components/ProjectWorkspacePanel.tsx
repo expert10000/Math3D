@@ -38,6 +38,7 @@ import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
 import { ProjectCoordinateObservationReviewIndex } from "./ProjectCoordinateObservationReviewIndex";
 import { buildProjectCoordinateObservationReview } from "../projects/projectCoordinateObservationReview";
+import { createProjectCoordinateObservationReviewSnapshot, projectCoordinateObservationReviewHtml } from "../projects/projectCoordinateObservationReviewReport";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -1513,7 +1514,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           {!!coordinateReview.length && <ProjectCoordinateObservationReviewIndex rows={coordinateReview} onOpen={id => {
             const note = project.notes?.find(item => item.identity.id === id);
             if (note) openNoteTarget(note);
-          }} />}
+          }} onExport={() => { try {
+            const snapshot = createProjectCoordinateObservationReviewSnapshot(project, comparisonResource);
+            downloadStudyBlob(new Blob([projectCoordinateObservationReviewHtml(snapshot)], { type: "text/html" }),
+              "math3d-coordinate-observation-review.html");
+            setMessage("Coordinate observation review exported with exact source statuses.");
+          } catch (error) { setMessage(`Coordinate review export failed: ${(error as Error).message}`); } }} />}
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
