@@ -15,12 +15,12 @@ export function ProjectSavedMeshComparisonReviewIndex({ rows, busy, onOpenPair, 
       <small>A {row.pair.a.resultId} · {row.pair.a.sourceHash}<br />B {row.pair.b.resultId} · {row.pair.b.sourceHash}</small>
       <p data-testid={`project-mesh-review-status-${row.pair.id}`} role={row.status === "verified" ? "status" : "alert"}
         style={{ margin: "5px 0" }}>{row.status === "verified" ? "Verified" : "Unavailable"} · {row.reason}</p>
-      <div>{row.verifiedObservationIds.length} verified / {row.observationCount} saved observations</div>
+      <div>{row.verifiedObservations.length} verified / {row.observationCount} saved observations</div>
       <button type="button" data-testid={`project-open-pinned-mesh-${row.pair.id}`} disabled={busy || row.status !== "verified"}
         onClick={() => onOpenPair(row.pair.id)}>Open saved pair</button>
-      {onOpenNote && row.verifiedObservationIds.map(id => <button type="button" key={id}
-        data-testid={`project-mesh-review-note-${id}`} disabled={busy || row.status !== "verified"}
-        onClick={() => onOpenNote(id)}>Open verified Note {id.slice(-10)}</button>)}
+      {onOpenNote && row.verifiedObservations.map(note => <button type="button" key={note.id}
+        data-testid={`project-mesh-review-note-${note.id}`} disabled={busy || row.status !== "verified"}
+        onClick={() => onOpenNote(note.id)}>Open Note: {note.title}</button>)}
     </article>)}
   </section>;
 }

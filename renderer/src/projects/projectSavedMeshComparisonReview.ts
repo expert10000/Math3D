@@ -8,7 +8,7 @@ export type SavedMeshComparisonReviewRow = {
   status: "verified" | "unavailable";
   reason: string;
   observationCount: number;
-  verifiedObservationIds: readonly string[];
+  verifiedObservations: readonly { id: string; title: string }[];
 };
 
 /** A bounded read-only index over the Project's saved references (at most 32). */
@@ -17,13 +17,13 @@ export function buildSavedMeshComparisonReview(project: Math3DProject, readResou
     const linked = (project.notes ?? []).filter(note => note.anchor?.kind === "saved-mesh-comparison" && note.anchor.comparisonId === pair.id);
     try {
       inspectSavedMeshPinnedComparison(project, pair, readResource);
-      const verifiedObservationIds = linked.filter(note => inspectProjectSavedMeshComparisonNote(project, note, readResource).status === "current")
-        .map(note => note.identity.id);
+      const verifiedObservations = linked.filter(note => inspectProjectSavedMeshComparisonNote(project, note, readResource).status === "current")
+        .map(note => ({ id: note.identity.id, title: note.title }));
       return { pair, status: "verified" as const, reason: "Both exact saved results and Mesh sidecars verify.",
-        observationCount: linked.length, verifiedObservationIds };
+        observationCount: linked.length, verifiedObservations };
     } catch (error) {
       return { pair, status: "unavailable" as const, reason: (error as Error).message,
-        observationCount: linked.length, verifiedObservationIds: [] };
+        observationCount: linked.length, verifiedObservations: [] };
     }
   });
 }
