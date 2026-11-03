@@ -3,6 +3,7 @@ import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraO
   type Math3DProject } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
+import SageObjectOperations from "./SageObjectOperations";
 import { describeStructure, resolveStructureSelection, selectedStructure,
   structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
@@ -116,5 +117,6 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onOpen
     testId="cas-algebra-workspace" structures={{ projectId: project?.identity.id ?? null,
       projectTitle: project?.metadata.title ?? null,
       selectionKey: selection ? `${selection.objectId}@${selection.revision}` : null,
-      explorer, dossier, inspector }} />;
+      explorer, dossier, inspector, operations: <SageObjectOperations project={project}
+        target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} /> }} />;
 }

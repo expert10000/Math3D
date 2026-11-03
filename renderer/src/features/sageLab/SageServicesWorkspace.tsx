@@ -13,6 +13,7 @@ export type SageStructuresSlot = {
   explorer: ReactNode;
   dossier: ReactNode;
   inspector: ReactNode;
+  operations?: ReactNode;
 };
 
 export type SageServicesWorkspaceProps = {
@@ -71,8 +72,10 @@ export default function SageServicesWorkspace({ context, title, description, tes
           <button type="button" style={button} aria-pressed={leftTab === "operations"} onClick={() => setLeftTab("operations")}>Operations</button>
           <button type="button" style={button} disabled title="Recipes are planned after the object builder" aria-label="Recipes (planned)" >Recipes</button>
         </nav> : <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Services</h2>}
-        {leftTab === "structures" && structures ? structures.explorer :
-          <ScientificServicesPanel context={context} onResult={(result) => { onResult(result); setRightTab("results"); }} onOpenRuntimes={onOpenComputeRuntimes} />}
+        {leftTab === "structures" && structures ? structures.explorer : <>
+          {structures?.operations}
+          <ScientificServicesPanel context={context} onResult={(result) => { onResult(result); setRightTab("results"); }} onOpenRuntimes={onOpenComputeRuntimes} />
+        </>}
       </section>
       {structures && <section aria-label="CAS / Algebra structure dossier" className="sage-workspace-card" data-testid="cas-structure-dossier">
         {structures.dossier}

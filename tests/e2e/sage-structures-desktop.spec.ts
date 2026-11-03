@@ -83,6 +83,25 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await cas.screenshot({ path: "test-results/sage-a07-builder-preview.png", animations: "disabled" });
     await cas.getByRole("button", { name: "Create and save" }).click();
     await expect(cas.getByTestId("cas-structure-inspector")).toContainText("49");
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    const objectOperations = cas.getByTestId("cas-object-operations");
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.algebra.reconstruct")).toBeVisible();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.gcd")).toHaveCount(0);
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.modInverse")).toHaveCount(0);
+    await cas.getByRole("button", { name: "Structures", exact: true }).click();
+    await cas.getByRole("button", { name: /Z12 @1/ }).click();
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.modInverse")).toBeVisible();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.factor")).toHaveCount(0);
+    await cas.getByRole("button", { name: "Structures", exact: true }).click();
+    await cas.getByRole("button", { name: /R @1/ }).click();
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.factor")).toBeVisible();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.groebner.compute")).toBeVisible();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.roots_exact")).toHaveCount(0);
+    await cas.screenshot({ path: "test-results/sage-b01-operations.png", animations: "disabled" });
+    await cas.getByRole("button", { name: "Structures", exact: true }).click();
+    await cas.getByRole("button", { name: /F49 @1/ }).click();
     await cas.screenshot({ path: "test-results/sage-a07-ring-field-builder.png", animations: "disabled" });
     const saved = await ctx.page.evaluate(() => {
       const project = JSON.parse(localStorage.getItem("math3d.project.v1")!);
@@ -180,6 +199,9 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await expect(cas.getByTestId("cas-builder-preview")).toContainText("Rational Field");
     expect(requests).toEqual(["sage.algebra.reconstruct"]);
     await cas.getByRole("button", { name: "Create and save" }).click();
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    await expect(cas.getByTestId("cas-object-operation-sage.algebra.reconstruct")).toContainText("docker route ready");
+    await cas.getByRole("button", { name: "Structures", exact: true }).click();
     mismatch = true;
     await cas.getByRole("button", { name: "+ New structure" }).click();
     await form.getByLabel("Name").fill("Q2");
