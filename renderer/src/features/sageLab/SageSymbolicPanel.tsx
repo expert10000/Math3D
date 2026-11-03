@@ -58,7 +58,9 @@ const SageSymbolicPanel: React.FC<{
   onOpenRuntimes?: () => void;
 }> = ({ compact = false, sourceExpression, sourceProvenance, sourceLabel = "Use current surface F(x,y,z)", sourceVariables = "x,y,z",
   operations = SCIENTIFIC_OPERATION_CATALOG, onResult, onOpenRuntimes }) => {
-  const [backend, setBackend] = useState<"local" | "docker">("local");
+  const [backend, setBackend] = useState<"local" | "docker">(
+    isLocalSageOperation(operations[0]?.id ?? "sage.symbolic.simplify") ? "local" : "docker"
+  );
   const [operation, setOperation] = useState<SageSymbolicOperation>(operations[0]?.id ?? "sage.symbolic.simplify");
   const [expression, setExpression] = useState(DEFAULT_EXPRESSION);
   const [coefficientsText, setCoefficientsText] = useState("-1, 0, 1");

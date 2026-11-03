@@ -327,6 +327,7 @@ import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel"
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import SageConsoleDock from "./features/sageLab/SageConsoleDock";
 import CASAlgebraWorkspace from "./features/sageLab/CASAlgebraWorkspace";
+import NumberTheoryWorkspace from "./features/sageLab/NumberTheoryWorkspace";
 import { graphSageSource } from "./features/sageLab/graphSageSource";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
@@ -41871,6 +41872,8 @@ const App: React.FC = () => {
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
   const [casWorkspaceOpen, setCasWorkspaceOpen] = useState(false);
   const [casAnalysisRecord, setCasAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
+  const [numberTheoryWorkspaceOpen, setNumberTheoryWorkspaceOpen] = useState(false);
+  const [numberTheoryAnalysisRecord, setNumberTheoryAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [sageConsoleOpen, setSageConsoleOpen] = useState(false);
   const [computeCenterInitialTab, setComputeCenterInitialTab] = useState<"overview" | "runtimes">("overview");
 
@@ -76918,7 +76921,7 @@ case "mobius":
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
-    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas";
+    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas" | "number_theory";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -76983,6 +76986,12 @@ case "mobius":
       onSelect: () => setCasWorkspaceOpen(true),
     },
     {
+      id: "number_theory",
+      label: "Number Theory",
+      active: numberTheoryWorkspaceOpen,
+      onSelect: () => setNumberTheoryWorkspaceOpen(true),
+    },
+    {
       id: "volume",
       label: "Volume",
       active: mode === "surfaces" && datasetKind === "volume",
@@ -77020,7 +77029,8 @@ case "mobius":
     { id: "present", label: "Present" },
     { id: "inspect", label: "Inspect" },
   ] as const;
-  const activeSectionLabel = sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
+  const activeSectionLabel = casWorkspaceOpen ? "CAS / Algebra" : numberTheoryWorkspaceOpen ? "Number Theory" :
+    sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
   const headerSurfacesFamilyLabel =
     datasetKind === "volume"
@@ -80550,7 +80560,8 @@ case "mobius":
                   </div>
                   <div style={topNavSegmentStyle}>
                     {sectionNavEntries.map((entry) => {
-                      const active = entry.id === "cas" ? casWorkspaceOpen : !casWorkspaceOpen && entry.active;
+                      const active = entry.id === "cas" ? casWorkspaceOpen : entry.id === "number_theory"
+                        ? numberTheoryWorkspaceOpen : !casWorkspaceOpen && !numberTheoryWorkspaceOpen && entry.active;
                       const disabled = !!entry.disabled;
                       return (
                         <button
@@ -80560,8 +80571,10 @@ case "mobius":
                           aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
                           aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={() => {
-                            if (entry.id === "cas") { setProjectsOpen(false); setCasWorkspaceOpen(true); return; }
+                            if (entry.id === "cas") { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true); return; }
+                            if (entry.id === "number_theory") { setProjectsOpen(false); setCasWorkspaceOpen(false); setNumberTheoryWorkspaceOpen(true); return; }
                             setCasWorkspaceOpen(false);
+                            setNumberTheoryWorkspaceOpen(false);
                             if (entry.id !== "projects") setProjectsOpen(false);
                             if (entry.id === "surfaces") {
                               openNormalSurfacesWorkspace(); return;
@@ -111314,6 +111327,14 @@ case "mobius":
         onOpenConsole={() => setSageConsoleOpen(true)}
         onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
         onClose={() => setCasWorkspaceOpen(false)} />}
+      {numberTheoryWorkspaceOpen && <NumberTheoryWorkspace record={numberTheoryAnalysisRecord}
+        onResult={(record) => setNumberTheoryAnalysisRecord({ ...record, source: {
+          module: "number_theory", id: "sage-input:number-theory", revision: 0,
+          expression: record.expression, fingerprint: hashValue(record.request.params) } })}
+        onSaveWorkbook={(record) => { setNumberTheoryWorkspaceOpen(false); openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
+        onOpenWorkbook={() => { setNumberTheoryWorkspaceOpen(false); openNormalSurfacesWorkspace(); setActiveStageId("compute"); setRightPanelTab("workbook"); }}
+        onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
+        onClose={() => setNumberTheoryWorkspaceOpen(false)} />}
       {sageConsoleOpen && <SageConsoleDock onClose={() => setSageConsoleOpen(false)} onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }} />}
       {preferencesOpen && (
         <div

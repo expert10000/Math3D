@@ -1,6 +1,63 @@
 import { expect, test } from "@playwright/test";
 import { graphEditor, openGraphType, saveGraphEditor } from "../e2e/helpers/graphAuthoring";
 
+test("web Number Theory uses shared Sage operations, cancellation, Inspector, and runtimes", async ({ page }) => {
+  const requests: Array<{ operation: string; backend: string; params: Record<string, unknown> }> = [];
+  await page.route("http://127.0.0.1:8767/**", async (route) => {
+    const headers = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-allow-headers": "content-type" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (route.request().url().endsWith("/health")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", available: true, status: "ok",
+        operations: ["sage.numberTheory.gcd", "sage.numberTheory.modInverse"] }) });
+    if (route.request().url().endsWith("/cancel")) return route.fulfill({ status: 200, contentType: "application/json", headers,
+      body: JSON.stringify({ ok: true }) });
+    const request = route.request().postDataJSON() as typeof requests[number];
+    requests.push(request);
+    if (requests.length === 1) await new Promise((resolve) => setTimeout(resolve, 5000));
+    try {
+      await route.fulfill({ status: 200, contentType: "application/json", headers,
+        body: JSON.stringify({ engine: "sagemath", engineVersion: "10.6", operation: request.operation,
+          success: true, result: { value: request.operation === "sage.numberTheory.gcd" ? "6" : "4" },
+          latex: request.operation === "sage.numberTheory.gcd" ? "6" : "4", warnings: [] }) });
+    } catch { /* Cancellation may close the request before the delayed response. */ }
+  });
+  await page.goto("/");
+  await page.getByTestId("workspace-nav-number_theory").click();
+  const workspace = page.getByTestId("number-theory-workspace");
+  const services = workspace.getByTestId("scientific-services-number_theory");
+  await expect(services.getByLabel("Services preset")).toHaveValue("Number Theory");
+  await expect(services.getByLabel("SageMath backend")).toHaveValue("docker");
+  await expect(services).toContainText("Backend available for this operation");
+  await services.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  await services.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(services).toContainText("Sage number theory job cancelled.");
+  await services.getByRole("button", { name: "Run", exact: true }).click();
+  const result = workspace.getByTestId("sage-analysis-result");
+  await expect(result).toContainText("Greatest common divisor");
+  await expect(result.getByTestId("sage-result-kind-expression")).toContainText("6");
+  await expect(result).toContainText("Version: 10.6");
+  await services.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
+  await services.getByRole("button", { name: "Run", exact: true }).click();
+  await expect(result).toContainText("Modular inverse");
+  await expect(result.getByTestId("sage-result-kind-expression")).toContainText("4");
+  expect(requests[1]).toMatchObject({ operation: "sage.numberTheory.gcd", backend: "docker",
+    params: { values: ["84", "30"] } });
+  expect(requests[2]).toMatchObject({ operation: "sage.numberTheory.modInverse", backend: "docker",
+    params: { a: "3", modulus: "11" } });
+  await workspace.getByRole("button", { name: "Runtimes", exact: true }).click();
+  await expect(workspace.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+  await workspace.getByRole("button", { name: "Open Compute → Runtimes" }).last().click();
+  const compute = page.getByTestId("compute-center");
+  await expect(compute.getByRole("button", { name: "Runtimes", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await compute.getByRole("button", { name: "Overview" }).click();
+  await expect(compute.getByRole("region", { name: "Broker jobs" })).toContainText("cancelled");
+  await compute.getByRole("button", { name: "Close", exact: true }).click();
+  await workspace.getByRole("button", { name: "Results", exact: true }).click();
+  await result.getByRole("button", { name: "Save to Workbook" }).click();
+  await expect(page.getByTestId("workbook-sage-evidence")).toContainText("number_theory");
+});
+
 test("web Graph Services uses shared Sage discovery, jobs, cancellation, and Inspector", async ({ page }) => {
   const requests: Array<{ operation: string; backend: string; params: { expression?: string } }> = [];
   await page.route("http://127.0.0.1:8767/**", async (route) => {
