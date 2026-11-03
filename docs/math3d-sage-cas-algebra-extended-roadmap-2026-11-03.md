@@ -292,6 +292,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A07 implementation update (2026-11-03):** The [A07 acceptance record](evidence/sage-a07-ring-field-builder-2026-11-03.md) adds the full schema-v1 Ring and Field Builder in the CAS main area for `ZZ`, `QQ`, `Z/nZ`, canonical `GF(p^n)` and polynomial rings. Validation and an exact domain preview precede Project save; the builder invokes bounded Sage reconstruction when the Docker capability is available and states when it is unavailable. The dossier and Inspector show characteristic, field status, cardinality and zero divisors, with pinned polynomial parent metadata. The next gate is **SAGE-A08**: live capability reporting and cross-runtime fixtures on Sage 9.5 WSL and Sage 10.10 Docker when available. Quotient rings, number fields and p-adic fields remain later schema and UI slices in the broader P0 roadmap.
 
+**A08 implementation update (2026-11-04):** The [A08 acceptance record](evidence/sage-a08-runtime-fixtures-2026-11-04.md) connects the Builder and Runtimes Inspector to route-filtered Sage capability probes and distinguishes unavailable, unadvertised and supported reconstruction. Seven versioned algebra fixtures compare exact mathematical signatures, IDs and definition hashes across Sage runtimes. All seven pass on real Sage 9.5 WSL; Docker is offline on this PC, so the real Sage 10.10 HTTP comparison remains pending and can be required with `--require-docker` once its pinned worker starts. A controlled HTTP test checks that the comparison detects mismatches. The next implementation gate is **SAGE-B01**: a typed operation registry based on object kind, parent domain and advertised runtime support.
+
 ---
 
 ## 3. P0 — Algebra object registry

@@ -227,7 +227,7 @@ export class SageExecutionRegistry {
         status: error instanceof Error ? error.message : "SageMath state check failed." };
     }
     const operations: ScientificOperationCapability[] = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
-      .filter(([operation]) => health.operations.includes(operation) && (backend === "docker" ||
+      .filter(([operation]) => health.available && health.operations.includes(operation) && (backend === "docker" ||
         (backend === "private" && operation.startsWith("sage.numberTheory.")) ||
         (backend === "local" && isLocalSageOperation(operation))))
       .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const,

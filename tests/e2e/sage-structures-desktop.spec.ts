@@ -118,11 +118,12 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
   test.setTimeout(120_000);
   const requests: string[] = [];
   let mismatch = false;
+  let advertiseReconstruction = true;
   const server = createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/health") {
       res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.10", available: true,
-        status: "ok", operations: ["sage.algebra.reconstruct"] }));
+        status: "ok", operations: advertiseReconstruction ? ["sage.algebra.reconstruct"] : ["sage.symbolic.simplify"] }));
       return;
     }
     let body = "";
@@ -169,6 +170,8 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await ctx.page.getByTestId("workspace-nav-cas").click();
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
     await cas.getByRole("button", { name: "+ New structure" }).click();
+    await expect(cas.getByTestId("cas-algebra-runtime-docker")).toContainText("advertises bounded algebra reconstruction");
+    await expect(cas.getByTestId("cas-algebra-runtime-local")).toContainText("Local WSL SageMath");
     const form = cas.getByTestId("cas-new-structure-form");
     await form.getByLabel("Name").fill("Q");
     await form.getByRole("button", { name: "Validate & preview" }).click();
@@ -183,6 +186,12 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await form.getByRole("button", { name: "Validate & preview" }).click();
     await expect(cas.getByRole("alert")).toContainText("Invalid or mismatched Sage algebra reconstruction result");
     await expect(cas.getByRole("button", { name: "Create and save" })).toHaveCount(0);
+    advertiseReconstruction = false;
+    await cas.getByRole("button", { name: "Refresh runtimes" }).click();
+    await expect(cas.getByTestId("cas-algebra-runtime-docker")).toContainText("does not advertise sage.algebra.reconstruct");
+    await form.getByRole("button", { name: "Validate & preview" }).click();
+    await expect(cas.getByTestId("cas-builder-preview")).toContainText("Sage constructor not checked");
+    await expect(cas.getByTestId("cas-builder-preview")).toContainText("does not advertise sage.algebra.reconstruct");
     const savedCount = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).algebraObjects.length);
     expect(savedCount).toBe(1);
   } finally {

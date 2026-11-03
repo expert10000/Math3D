@@ -52,6 +52,8 @@ test("desktop CAS reuses Sage Services, Inspector, runtime discovery, and truste
 
     await cas.getByRole("button", { name: "Runtimes", exact: true }).click();
     await expect(cas.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+    await expect(cas.getByTestId("sage-runtime-algebra-docker")).toContainText("does not advertise sage.algebra.reconstruct");
+    await expect(cas.getByTestId("sage-runtime-algebra-local")).toContainText("Local WSL SageMath");
     await expect(cas.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB");
     await cas.getByRole("button", { name: "Open Compute → Runtimes" }).last().click();
     await expect(page.getByTestId("compute-center").getByRole("button", { name: "Runtimes", exact: true })).toHaveAttribute("aria-pressed", "true");

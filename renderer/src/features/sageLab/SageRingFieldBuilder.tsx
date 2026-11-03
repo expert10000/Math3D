@@ -1,9 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { inspectProjectAlgebraFreshness, upsertMath3DProjectAlgebraObject,
   type AlgebraObjectRecord, type AlgebraObjectRef, type Math3DProject,
   type SageAlgebraReconstructionResult } from "@math3d/core";
 import { runSageAlgebraReconstruction } from "../../services/sageAlgebraReconstruction";
-import { sageExecutionRegistry } from "../../services/sageOperationExecution";
+import { sageExecutionRegistry, type SageRuntimeProbe } from "../../services/sageOperationExecution";
+import { describeAlgebraRuntime } from "./sageAlgebraRuntime";
 import { createStructureStarter, describeStructure, structureDisplay,
   type StructureDraft, type StructureStarterKind, type StructureSummary } from "./sageStructuresModel";
 
@@ -38,6 +39,18 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [runtimeProbes, setRuntimeProbes] = useState<Partial<Record<"local" | "docker", SageRuntimeProbe>>>({});
+  const [checkingRuntimes, setCheckingRuntimes] = useState(false);
+  const refreshRuntimes = async () => {
+    setCheckingRuntimes(true);
+    try {
+      const [local, docker] = await Promise.all([
+        sageExecutionRegistry.probeBackend("local"), sageExecutionRegistry.probeBackend("docker"),
+      ]);
+      setRuntimeProbes({ local, docker });
+    } finally { setCheckingRuntimes(false); }
+  };
+  useEffect(() => { void refreshRuntimes(); }, []);
   const freshness = inspectProjectAlgebraFreshness(project);
   const parentOptions = (project.algebraObjects ?? []).filter((entry) => !entry.archived &&
     freshness.find((item) => item.objectId === entry.id)?.status === "fresh")
@@ -60,15 +73,17 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
       const summary = describeStructure(record, candidate);
       let sage: SageAlgebraReconstructionResult | null = null;
       let sageVersion: string | null = null;
-      let message = "Validated locally. The Sage constructor was not checked because the Docker Sage runtime is unavailable.";
+      let message = "Validated locally.";
       const probe = await sageExecutionRegistry.probeBackend("docker");
-      if (probe.health.available && probe.health.operations.includes("sage.algebra.reconstruct")) {
+      setRuntimeProbes((current) => ({ ...current, docker: probe }));
+      const capability = describeAlgebraRuntime(probe);
+      if (capability.supported) {
         const outcome = await runSageAlgebraReconstruction(candidate, { objectId: record.id, revision: 1 }).promise;
         if (!outcome.response.success || !outcome.result) throw new Error(outcome.response.error ?? "Sage could not construct this structure.");
         sage = outcome.result;
         sageVersion = outcome.response.engineVersion ?? probe.health.engineVersion ?? null;
         message = "Exact Sage constructor succeeded.";
-      }
+      } else message = `Validated locally. Sage constructor not checked. ${capability.detail}${capability.next ? ` Next: ${capability.next}` : ""}`;
       setPreview({ signature, record, summary, sage, sageVersion, message });
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
@@ -86,6 +101,14 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
     <div><div style={{ fontSize: 11, color: "#64748b" }}>Structures · Ring and Field Builder</div>
       <h2 style={{ margin: "3px 0" }}>New exact structure</h2>
       <div style={{ fontSize: 12 }}>Define a Project object, validate it, and inspect its exact parent facts before saving.</div></div>
+    <section aria-label="Algebra runtime capabilities" data-testid="cas-algebra-runtime-capabilities" style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: 10, display: "grid", gap: 5, fontSize: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>Constructor preview runtimes</strong>
+        <button type="button" style={action} disabled={checkingRuntimes || busy} onClick={() => { void refreshRuntimes(); }}>Refresh runtimes</button></div>
+      {(["local", "docker"] as const).map((backend) => <div key={backend} data-testid={`cas-algebra-runtime-${backend}`} role="status">
+        {runtimeProbes[backend] ? describeAlgebraRuntime(runtimeProbes[backend]).detail
+          : checkingRuntimes ? `Checking ${backend === "local" ? "Local WSL" : "Docker"}…` : "Runtime not checked."}
+      </div>)}
+    </section>
     <form onSubmit={(event) => { void validate(event); }} className="sage-structure-grid" data-testid="cas-new-structure-form">
       <label>Type<select value={kind} onChange={(event) => setKind(event.target.value as StructureStarterKind)}>
         {kinds.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}

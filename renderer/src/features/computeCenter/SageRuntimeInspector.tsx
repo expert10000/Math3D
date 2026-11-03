@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { SAGE_CONSOLE_OPERATION, sageExecutionRegistry, type SageBackend, type SageRuntimeProbe } from "../../services/sageOperationExecution";
 import { checkSageWebSession, connectSageWebSession, disconnectSageWebSession,
   type SageWebSession } from "../../integrations/sage/sageClient";
+import { describeAlgebraRuntime } from "../sageLab/sageAlgebraRuntime";
 
 type ProbeState = { probe?: SageRuntimeProbe; error?: string; checkedAt?: number; checking: boolean };
 
@@ -105,6 +106,9 @@ export default function SageRuntimeInspector() {
             <div><strong>Route:</strong> {probe.backendId} · {probe.transport}</div>
             <div><strong>Reported status:</strong> {probe.health.status}</div>
             <div><strong>Operations:</strong> {probe.operations.length} available through this route</div>
+            <div data-testid={`sage-runtime-algebra-${id}`} role="status">
+              <strong>Algebra reconstruction:</strong> {describeAlgebraRuntime(probe).detail}
+            </div>
             <div data-testid={`sage-runtime-limits-${id}`}>
               <strong>Service operation limits:</strong> input {formatBytes(probe.limits.maxInputBytes)} · output {formatBytes(probe.limits.maxOutputBytes)} · memory {formatBytes(probe.limits.maxMemoryBytes)} · work {probe.limits.maxWorkUnits.toLocaleString()} units
             </div>
