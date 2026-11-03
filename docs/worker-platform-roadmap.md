@@ -518,6 +518,8 @@ The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) 
 
 The [desktop Graph Sage acceptance record](evidence/graph-sage-desktop-2026-11-03.md) verifies a real Local WSL exact factorization from a selected Graph function, current-to-stale Workbook source handling after an edit, bundle and Markdown export, and independent `.math3d` import with unavailable-source status. It also records a Graph preview viewport crash found during the gate and its passing regression check. A forced cold WSL distribution start remains unverified; the recorded first-run time is from a fresh Electron profile and worker.
 
+The [desktop Number Theory Workbook acceptance record](evidence/number-theory-workbook-2026-11-03/README.md) verifies real SageMath 10.10 Docker GCD and modular inverse results, a non-invertible case with its failed response, Workbook save, `.math3d` and Markdown export, and independent import into a fresh Electron profile. Failed results now show their outcome and error in Workbook and Markdown; freeform inputs use an `Input` label in saved text. This gate covers the local Docker service, not the hosted gateway.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate
