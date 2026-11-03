@@ -18,6 +18,7 @@ import { canonicalJsonByteLength, matchesScientificSourceGeneration, type Scient
 import type { ValidationResult } from "./validation";
 import { isScientificSceneLibraryReference, scientificSceneLibraryKey,
   type ScientificSceneLibraryReference } from "./scientificSceneLibrary";
+import { normalizeScientificSelection, type ScientificSelection } from "./scientificSelection";
 
 export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
@@ -53,6 +54,7 @@ export type MixedWorkspaceDocument = Readonly<{
   relations: readonly DocumentRelation[];
   committedSelection: ViewerCommittedSelection | null;
   constructions: readonly MixedConstructionSource[];
+  scientificSelections?: readonly ScientificSelection[];
   scientificScenes?: readonly ScientificSceneLibraryReference[];
 }>;
 export type MixedWorkspaceReplayAdapter = (entry: MixedWorkspaceEntry) => KernelWorkspaceDocument;
@@ -87,7 +89,7 @@ const identityEquals = (left: DocumentIdentity, right: DocumentIdentity): boolea
 
 export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResult<MixedWorkspaceDocument> => {
   const errors: string[] = [];
-  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes"]) ||
+  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections"]) ||
       value.format !== MIXED_WORKSPACE_FORMAT || value.schemaVersion !== MIXED_WORKSPACE_SCHEMA_VERSION) return { ok: false, errors: ["Invalid mixed workspace envelope."] };
   if (!Array.isArray(value.entries) || value.entries.length > 512) errors.push("Invalid mixed workspace entries.");
   const entries: MixedWorkspaceEntry[] = [];
@@ -111,6 +113,27 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
   if (new Set(entries.map(entryKey)).size !== entries.length) errors.push("Duplicate module document entry.");
   const expectedById = new Map<string, DocumentIdentity>(entries.map((entry) => [entry.expected.id, entry.expected]));
   if (expectedById.size !== entries.length) errors.push("Document IDs must be unique across modules.");
+  const scientificSelections: ScientificSelection[] = [];
+  if (value.scientificSelections !== undefined) {
+    if (!Array.isArray(value.scientificSelections) || value.scientificSelections.length > 256)
+      errors.push("Invalid Project scientific selections.");
+    else for (const candidate of value.scientificSelections) {
+      const normalized = normalizeScientificSelection(candidate);
+      if (!normalized.ok || normalized.value.identity.kind !== "authored") {
+        errors.push("Invalid Project scientific selection."); continue;
+      }
+      const from = normalized.value.identity.migratedFrom;
+      if (from && !expectedById.has(from.ownerDocumentId))
+        errors.push("Migrated scientific selection owner is outside the workspace.");
+      scientificSelections.push(normalized.value);
+    }
+    if (new Set(scientificSelections.map(item => item.identity.kind === "authored" ? item.identity.id : "")).size !== scientificSelections.length)
+      errors.push("Duplicate Project scientific selection IDs.");
+    const origins = scientificSelections.flatMap(item => item.identity.kind === "authored" &&
+      item.identity.migratedFrom ? [canonicalJsonStringify(item.identity.migratedFrom)] : []);
+    if (new Set(origins).size !== origins.length)
+      errors.push("Duplicate migrated scientific selection origins.");
+  }
   if (!Array.isArray(value.activeDocumentIds) || value.activeDocumentIds.some((id: unknown) => typeof id !== "string" || !expectedById.has(id)) ||
       new Set(value.activeDocumentIds).size !== value.activeDocumentIds.length) errors.push("Invalid active document references.");
   const results: AnalysisResultEnvelope[] = [];
@@ -173,7 +196,9 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
   try { if (canonicalJsonByteLength(value) > MAX_MIXED_WORKSPACE_BYTES) errors.push("Mixed workspace exceeds the compact format limit."); }
   catch (error) { errors.push(String((error as Error).message ?? error)); }
   if (errors.length) return { ok: false, errors };
-  return { ok: true, value: jsonClone({ ...value, entries, results, artifacts, relations, committedSelection: selection, constructions }) as unknown as MixedWorkspaceDocument };
+  return { ok: true, value: jsonClone({ ...value, entries, results, artifacts, relations,
+    committedSelection: selection, constructions,
+    ...(value.scientificSelections === undefined ? {} : { scientificSelections }) }) as unknown as MixedWorkspaceDocument };
 };
 
 export const createMixedWorkspaceDocument = (input: Omit<MixedWorkspaceDocument, "format" | "schemaVersion">): MixedWorkspaceDocument => {

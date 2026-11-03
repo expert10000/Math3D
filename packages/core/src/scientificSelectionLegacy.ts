@@ -6,6 +6,7 @@ import { normalizeScientificSelection, type ScientificSelection,
 import { parseVectorField3DDocument, type VectorField3DDocument,
   type VectorField3DOverlayRegion } from "./vectorField3DDocument";
 import type { StableDocumentId } from "./documentIdentity";
+import type { KernelWorkspaceDocument } from "./mixedWorkspace";
 
 type Axis = 0 | 1 | 2;
 const remainingAxes = (normalAxis: Axis): readonly [Axis, Axis] =>
@@ -128,25 +129,31 @@ const fromGraphProfile = (owner: StableDocumentId, object: Graph2DPointSeriesObj
 
 /** Read-only projection. It never changes a Project, grants a legacy selection an authored ID,
  * or infers a source checkpoint from the enclosing document's current identity. */
-export const readScientificSelectionsFromProject = (project: Math3DProject): readonly ScientificSelection[] => {
+export const readScientificSelectionsFromProject = (project: Math3DProject,
+  resolved?: ReadonlyMap<string, KernelWorkspaceDocument>): readonly ScientificSelection[] => {
   const checked = normalizeMath3DProject(project);
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
   const selections: ScientificSelection[] = [];
   for (const entry of checked.value.workspace.entries) {
-    if ((entry.module === "vector3d" || entry.module === "graph2d") && entry.replay !== null)
+    const checkpoint = entry.replay === null ? entry.checkpoint : resolved?.get(entry.expected.id);
+    if ((entry.module === "vector3d" || entry.module === "graph2d") && !checkpoint)
       throw new TypeError(`Replay ${entry.module} workspace entries before reading scientific selections.`);
+    if (checkpoint && (checkpoint.identity.id !== entry.expected.id ||
+        checkpoint.identity.revision !== entry.expected.revision ||
+        checkpoint.identity.structuralHash !== entry.expected.structuralHash))
+      throw new TypeError("Replayed scientific selection owner differs from the expected Project generation.");
     if (entry.module === "vector3d") {
-      if (entry.checkpoint.format !== "math3d.vector-field3d-document")
+      if (checkpoint?.format !== "math3d.vector-field3d-document")
         throw new TypeError("Vector workspace entry has the wrong checkpoint format.");
-      selections.push(...fromVectorWorkspace(entry.checkpoint));
+      selections.push(...fromVectorWorkspace(checkpoint));
     }
     if (entry.module === "graph2d") {
-      if (entry.checkpoint.format !== "math3d.graph2d-document")
+      if (checkpoint?.format !== "math3d.graph2d-document")
         throw new TypeError("Graph workspace entry has the wrong checkpoint format.");
-      for (const object of entry.checkpoint.source.objects) {
-      if (object.kind !== "point-series") continue;
-      const selection = fromGraphProfile(entry.checkpoint.identity.id, object);
-      if (selection) selections.push(selection);
+      for (const object of checkpoint.source.objects) {
+        if (object.kind !== "point-series") continue;
+        const selection = fromGraphProfile(checkpoint.identity.id, object);
+        if (selection) selections.push(selection);
       }
     }
   }

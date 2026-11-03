@@ -2,6 +2,7 @@ import { canonicalJsonStringify, structuralHash } from "./documentIdentity";
 import { createMixedWorkspaceDocument, parseMixedWorkspaceDocument, MAX_MIXED_WORKSPACE_BYTES, type MixedWorkspaceDocument } from "./mixedWorkspace";
 import { PROJECT_HANDOFF_FORMAT, type ProjectHandoffManifest } from "./projectHandoff";
 import type { Graph2DDocument } from "./graph2dDocument";
+import { PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY } from "./projectScientificSelections";
 
 /** Version 2 of the existing handoff envelope carries checkpointed Graph workspaces. */
 export type WorkspaceProjectHandoff = Readonly<{
@@ -30,7 +31,11 @@ export const graph2DCompanionCheckpoint = (project: MixedWorkspaceDocument): Mix
     relations: project.relations.filter((relation) => relation.sources.every((source) => ids.has(source.documentId)) &&
       relation.target.type === "document" && ids.has(relation.target.generation.documentId)),
     committedSelection: project.committedSelection && ids.has(project.committedSelection.source.documentId) ? project.committedSelection : null,
-    constructions: [] });
+    constructions: [],
+    ...(project.scientificSelections === undefined ? {} : { scientificSelections:
+      project.scientificSelections.filter(selection => selection.identity.kind === "authored" &&
+        (selection.identity.migratedFrom ? ids.has(selection.identity.migratedFrom.ownerDocumentId) :
+          selection.source?.kind === "document" && ids.has(selection.source.documentId))) }) });
 };
 
 /** Preserve imported companion/result descriptors as the live Graph is edited by desktop. */
@@ -43,6 +48,9 @@ export const mergeGraph2DHandoffCheckpoint = (retained: MixedWorkspaceDocument |
     results: merge(retained.results, live.results, (result) => result.resultId),
     artifacts: merge(retained.artifacts, live.artifacts, (artifact) => artifact.handle.artifactId),
     relations: merge(retained.relations, live.relations, (relation) => relation.relationId),
+    ...(retained.scientificSelections === undefined && live.scientificSelections === undefined ? {} :
+      { scientificSelections: merge(retained.scientificSelections ?? [], live.scientificSelections ?? [],
+        selection => selection.identity.kind === "authored" ? selection.identity.id : "") }),
     committedSelection: live.committedSelection });
 };
 const graph = (project: MixedWorkspaceDocument): Graph2DDocument => {
@@ -53,6 +61,7 @@ const graph = (project: MixedWorkspaceDocument): Graph2DDocument => {
 };
 const capabilities = (project: MixedWorkspaceDocument): string[] => [...new Set([
   ...project.entries.map((entry) => `workspace.${entry.module}.v1`), ...graph(project).requiredCapabilities,
+  ...(project.scientificSelections?.length ? [PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY] : []),
 ])].sort();
 
 export const createWorkspaceProjectHandoff = (project: MixedWorkspaceDocument, options: {

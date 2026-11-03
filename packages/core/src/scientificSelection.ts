@@ -7,10 +7,12 @@ export const SCIENTIFIC_SELECTION_SCHEMA_VERSION = 1 as const;
 export const SCIENTIFIC_SELECTION_MAX_BYTES = 4096;
 
 /** A legacy slot is an address in a saved document, not a newly minted selection ID. */
+export type ScientificLegacySelectionSlot = Readonly<{ kind: "legacy-slot";
+  ownerDocumentId: StableDocumentId; path: string; objectId?: string }>;
 export type ScientificSelectionIdentity =
-  | Readonly<{ kind: "authored"; id: string }>
-  | Readonly<{ kind: "legacy-slot"; ownerDocumentId: StableDocumentId;
-      path: string; objectId?: string }>;
+  | Readonly<{ kind: "authored"; id: StableDocumentId;
+      migratedFrom?: ScientificLegacySelectionSlot }>
+  | ScientificLegacySelectionSlot;
 export type ScientificSelectionSource =
   | Readonly<{ kind: "document"; documentId: StableDocumentId;
       /** Null means the selection itself did not save a source-generation pin. */
@@ -55,6 +57,11 @@ const axis = (value: unknown, count: number): value is number =>
 const bounds = (value: unknown): value is readonly [readonly [number, number], readonly [number, number]] =>
   Array.isArray(value) && value.length === 2 && value.every(pair =>
     Array.isArray(pair) && pair.length === 2 && finite(pair[0]) && finite(pair[1]) && pair[0] < pair[1]);
+const legacySlot = (value: unknown): value is ScientificLegacySelectionSlot =>
+  record(value) && value.kind === "legacy-slot" &&
+  exact(value, ["kind", "ownerDocumentId", "path"], ["objectId"]) &&
+  isStableDocumentId(value.ownerDocumentId) && label(value.path, 512) &&
+  (value.objectId === undefined || label(value.objectId, 80));
 
 export const normalizeScientificSelection = (value: unknown): ValidationResult<ScientificSelection> => {
   if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "role", "source", "frame", "geometry"]) ||
@@ -62,11 +69,11 @@ export const normalizeScientificSelection = (value: unknown): ValidationResult<S
       !["probe", "view", "analysis"].includes(String(value.role)))
     return { ok: false, errors: ["Invalid scientific selection envelope."] };
   const identity = value.identity;
-  if (!record(identity) || !(identity.kind === "authored" && exact(identity, ["kind", "id"]) &&
-        label(identity.id, 80) && /^[A-Za-z][A-Za-z0-9_-]*$/.test(identity.id) ||
-      identity.kind === "legacy-slot" && exact(identity, ["kind", "ownerDocumentId", "path"], ["objectId"]) &&
-        isStableDocumentId(identity.ownerDocumentId) && label(identity.path, 512) &&
-        (identity.objectId === undefined || label(identity.objectId, 80))))
+  if (!record(identity) || !(identity.kind === "authored" &&
+      exact(identity, ["kind", "id"], ["migratedFrom"]) &&
+      isStableDocumentId(identity.id) && identity.id.startsWith("math3d:scientific-selection:") &&
+      (identity.migratedFrom === undefined || legacySlot(identity.migratedFrom)) ||
+      legacySlot(identity)))
     return { ok: false, errors: ["Invalid scientific selection identity."] };
   const source = value.source;
   if (source !== null && (!record(source) || !(source.kind === "document" &&

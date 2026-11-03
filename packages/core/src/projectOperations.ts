@@ -50,6 +50,10 @@ export const deleteProjectDocument = (project: Math3DProject, id: string): Math3
   const results = new Set(impact.ownedResultIds);
   const workspace = createMixedWorkspaceDocument({ ...current.workspace,
     entries: current.workspace.entries.filter((entry) => entry.expected.id !== id),
+    ...(current.workspace.scientificSelections === undefined ? {} : { scientificSelections:
+      current.workspace.scientificSelections.filter((selection) =>
+        selection.identity.kind !== "authored" ||
+        selection.identity.migratedFrom?.ownerDocumentId !== id) }),
     activeDocumentIds: current.workspace.activeDocumentIds.filter((entry) => entry !== id),
     results: current.workspace.results.filter((result) => !results.has(result.resultId)),
     relations: current.workspace.relations.filter((relation) => !relation.sources.some((source) => source.documentId === id) &&

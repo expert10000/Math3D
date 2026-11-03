@@ -41,5 +41,6 @@ export const buildProjectExplorer = (project: Math3DProject, resolved?: Readonly
     groups: PROJECT_EXPLORER_MODULES.map((module) => ({ module, title: PROJECT_MODULE_LABELS[module], documents: documents.filter((document) => document.module === module) })),
     analysis: workspace.results.map((result) => ({ id: result.resultId, title: result.provenance.operation.type,
       authority: result.status, sourceDocumentId: result.provenance.source.documentId, sourceRevision: result.provenance.source.revision })),
+    selections: workspace.scientificSelections ?? [],
   };
 };

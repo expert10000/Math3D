@@ -11,6 +11,7 @@ import type { VolumeReplayBundle } from "../volume/volumeDocumentAdapter";
 import { adoptMixedWorkspaceProject, canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
   parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
+  PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY,
   type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
@@ -37,6 +38,8 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
   for (const artifact of canonical.workspace.artifacts) add({ id: artifact.handle.artifactId, kind: `analysis-${artifact.handle.kind}`,
     checksum: artifact.contentHash, byteLength: artifact.byteLength, requiredForSource: false });
   const requiredCapabilities = new Set<string>();
+  if (canonical.workspace.scientificSelections?.length)
+    requiredCapabilities.add(PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY);
   for (const document of resolved.values()) {
     if (document.format === "math3d.graph2d-document") {
       document.requiredCapabilities.forEach((capability) => requiredCapabilities.add(capability));
@@ -128,11 +131,16 @@ export const exportProjectCheckpointFile = (project: Math3DProject): string =>
   exportProjectFile(replaceMath3DProjectWorkspace(project, projectCheckpoint(project.workspace)));
 /** Retain imported analysis/companions while live source commands advance their own identities and replay. */
 export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live: MixedWorkspaceDocument): MixedWorkspaceDocument => {
+  const scientificSelections = retained.scientificSelections === undefined && live.scientificSelections === undefined ?
+    undefined : [...new Map([...(retained.scientificSelections ?? []), ...(live.scientificSelections ?? [])]
+      .map(selection => [selection.identity.kind === "authored" ? selection.identity.id : "", selection])).values()];
+  const selectionFields = scientificSelections === undefined ? {} : { scientificSelections };
   const quantum = retained.entries.filter((entry) => entry.module === "quantum");
   const combined = quantum.length ? createMixedWorkspaceDocument({ ...live,
     entries: [...live.entries.filter((entry) => entry.module !== "quantum"), ...quantum],
     activeDocumentIds: [...new Set([...live.activeDocumentIds.filter((id) => live.entries.some((entry) => entry.module !== "quantum" && entry.expected.id === id)),
-      ...retained.activeDocumentIds.filter((id) => quantum.some((entry) => entry.expected.id === id))])] }) : live;
+      ...retained.activeDocumentIds.filter((id) => quantum.some((entry) => entry.expected.id === id))])] }) :
+    createMixedWorkspaceDocument({ ...live });
   const previousGraphs = retained.entries.filter((entry) => entry.module === "graph2d"), liveGraphs = combined.entries.filter((entry) => entry.module === "graph2d");
   if (previousGraphs.length !== 1 || liveGraphs.length !== 1 || previousGraphs[0]!.expected.id !== liveGraphs[0]!.expected.id) {
     // A Project may be visible while its editor module has not loaded. The live
@@ -140,11 +148,11 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
     // Explicit Project deletion uses deleteProjectDocument instead.
     const liveIds = new Set(combined.entries.map((entry) => entry.expected.id));
     const missing = retained.entries.filter((entry) => !liveIds.has(entry.expected.id));
-    if (!missing.length) return combined;
+    if (!missing.length) return createMixedWorkspaceDocument({ ...combined, ...selectionFields });
     const missingIds = new Set<string>(missing.map((entry) => entry.expected.id));
     const merge = <T>(saved: readonly T[], current: readonly T[], key: (item: T) => string): T[] =>
       [...new Map([...saved, ...current].map((item) => [key(item), item])).values()];
-    return createMixedWorkspaceDocument({ ...combined,
+    return createMixedWorkspaceDocument({ ...combined, ...selectionFields,
       entries: [...combined.entries, ...missing],
       activeDocumentIds: [...new Set([...combined.activeDocumentIds, ...retained.activeDocumentIds.filter((id) => missingIds.has(id))])],
       results: merge(retained.results, combined.results, (result) => result.resultId),
@@ -155,5 +163,6 @@ export const mergeProjectLiveWorkspace = (retained: MixedWorkspaceDocument, live
   }
   const merged = mergeGraph2DHandoffCheckpoint(projectCheckpoint(retained), projectCheckpoint(combined));
   const entries = new Map([...retained.entries, ...combined.entries].map((entry) => [entry.expected.id, entry]));
-  return createMixedWorkspaceDocument({ ...merged, constructions: live.constructions, entries: merged.entries.map((entry) => entries.get(entry.expected.id)!) });
+  return createMixedWorkspaceDocument({ ...merged, ...selectionFields,
+    constructions: live.constructions, entries: merged.entries.map((entry) => entries.get(entry.expected.id)!) });
 };

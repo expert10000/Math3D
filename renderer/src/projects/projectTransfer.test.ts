@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { analyzeGraph2DDerivative, createGraph2DWorkspaceProject, createMath3DProject, createMixedWorkspaceDocument, createVolumeDocument, getGraph2DPresetCatalog,
-  instantiateGraph2DPreset, parseMath3DProject, promoteGraph2DToCurve, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash } from "@math3d/core";
+  instantiateGraph2DPreset, migrateProjectScientificSelections, parseMath3DProject, promoteGraph2DToCurve, serializeMath3DProject, serializeMixedWorkspaceDocument, structuralHash } from "@math3d/core";
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { VolumeDocumentAdapter } from "../volume/volumeDocumentAdapter";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
@@ -18,6 +19,17 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ06 project transfer and compatibility", () => {
+  it("retains GF-02 selections while a live editor has only part of the Project loaded", () => {
+    const fixtureUrl = new URL("../../../tests/fixtures/scientific-selection/gf01-legacy-project.math3d", import.meta.url);
+    const project = migrateProjectScientificSelections(parseMath3DProject(readFileSync(fixtureUrl, "utf8")));
+    const graph = project.workspace.entries.find(entry => entry.module === "graph2d")!;
+    const { scientificSelections: _selections, ...workspace } = project.workspace;
+    const live = createMixedWorkspaceDocument({ ...workspace, entries: [graph],
+      activeDocumentIds: [graph.expected.id] });
+    const merged = mergeProjectLiveWorkspace(project.workspace, live);
+    expect(merged.scientificSelections).toEqual(project.workspace.scientificSelections);
+    expect(merged.entries).toEqual(project.workspace.entries);
+  });
   it("exports and previews exact IDs, source hashes, results and lineage without mutation", () => {
     const { project } = fixture(), bytes = serializeMath3DProject(project), exported = exportProjectFile(project), preview = previewProjectImport(exported);
     expect(preview.project).toEqual(project); expect(preview.canOpenWorkspace).toBe(true);
