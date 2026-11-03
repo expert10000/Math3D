@@ -5,6 +5,7 @@ import type { Workbook, WorkbookBlock } from "./workbookModel";
 import { assessWorkbookClaim } from "./workbookClaims";
 import { inspectWorkbookComparisonReference } from "./workbookComparisonReference";
 import { inspectWorkbookSavedMeshTrendReference } from "./workbookSavedMeshTrendReference";
+import { inspectWorkbookSavedMeshComparisonReference } from "./workbookSavedMeshComparisonReference";
 import { workbookSageCodeRunStatus } from "./workbookSageCode";
 
 export type WorkbookFreshnessStatus = "current" | "stale" | "missing" | "failed";
@@ -24,7 +25,7 @@ const priority: Record<WorkbookFreshnessStatus, number> = { current: 0, stale: 1
 export function workbookNeedsProjectInspection(workbook: Workbook): boolean {
   return !!workbook.dependencies?.some((edge) => edge.source.kind === "project" || edge.source.kind === "note") ||
     workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference ||
-      !!block.visualize?.comparison || !!block.visualize?.savedMeshTrend || block.claim?.evidence.some(item => item.kind === "result")));
+      !!block.visualize?.comparison || !!block.visualize?.savedMeshTrend || !!block.visualize?.savedMeshComparison || block.claim?.evidence.some(item => item.kind === "result")));
 }
 
 /** Derives affected blocks without changing runs or scheduling work. */
@@ -53,6 +54,8 @@ export function resolveWorkbookFreshness(
       ? inspectWorkbookComparisonReference(project, block.visualize.comparison) : null;
     const savedMeshTrend = block.type === "visualize" && block.visualize?.savedMeshTrend
       ? inspectWorkbookSavedMeshTrendReference(project, block.visualize.savedMeshTrend) : null;
+    const savedMeshComparison = block.type === "visualize" && block.visualize?.savedMeshComparison
+      ? inspectWorkbookSavedMeshComparisonReference(project, block.visualize.savedMeshComparison) : null;
     const sageCodeStatus = block.type === "sage-code" ? workbookSageCodeRunStatus(workbook, block) : null;
     const base = block.enabled === false || intrinsicComputeStatus[id] === "disabled"
       ? { status: "missing" as const, reason: "Block is disabled.", path: [id], blockedBySource: false }
@@ -71,6 +74,9 @@ export function resolveWorkbookFreshness(
         : savedMeshTrend && savedMeshTrend !== "current"
           ? { status: savedMeshTrend === "stale" ? "stale" as const : "missing" as const,
             reason: `Saved Mesh trend is ${savedMeshTrend}; reopen or relink its exact results.`, path: [id], blockedBySource: true }
+        : savedMeshComparison && savedMeshComparison !== "current"
+          ? { status: savedMeshComparison === "stale" ? "stale" as const : "missing" as const,
+            reason: `Saved Mesh comparison is ${savedMeshComparison}; reopen or relink its exact results.`, path: [id], blockedBySource: true }
         : intrinsicComputeStatus[id] === "stale"
           ? { status: "stale" as const, reason: "Compute inputs or parameters changed.", path: [id], blockedBySource: false }
           : { status: "current" as const, reason: "Sources match.", path: [id], blockedBySource: false };

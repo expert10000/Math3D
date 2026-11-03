@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, structuralHash, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
@@ -7,6 +7,8 @@ import { captureProjectResources, exportProjectPackage, parseProjectPackage } fr
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "./projectSavedMeshResultTrend";
 import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 import { createSavedMeshPinnedComparison, inspectSavedMeshPinnedComparison } from "./projectSavedMeshPinnedComparison";
+import { createWorkbookSavedMeshComparisonReference, inspectWorkbookSavedMeshComparisonReference,
+  normalizeWorkbookSavedMeshComparisonReference, createDefaultWorkbook, validateWorkbookDependencies } from "@math3d/workbook";
 
 const mesh = () => ({ label: "Trend square", source: { kind: "import" as const, format: "obj" as const, filename: "square.obj",
   math3dCoordinateFrame: { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m", axes: ["x", "y", "z"], handedness: "right" } },
@@ -153,5 +155,29 @@ describe("PC18 durable pinned Mesh comparisons", () => {
     const missing = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace,
       results: project.workspace.results.filter(item => item.resultId !== middle.resultId) }), { stableKey: "pc18-missing" });
     expect(() => inspectSavedMeshPinnedComparison({ ...missing, savedMeshComparisons: [reference] }, reference, read)).toThrow();
+  });
+});
+
+describe("PC19 Workbook pinned Mesh reference contract", () => {
+  it("links only a saved pair and retains both exact result and source hashes", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "faceCount", read);
+    const selection = { study, a: resolveSavedMeshTrendPoint(project, study, first.resultId, read),
+      b: resolveSavedMeshTrendPoint(project, study, middle.resultId, read) };
+    const pinned = createSavedMeshPinnedComparison(project, selection, read, "pair-pc19", "PC19 pair");
+    expect(() => createWorkbookSavedMeshComparisonReference(project, pinned)).toThrow(/Save/);
+    const saved = upsertMath3DProjectSavedMeshComparison(project, pinned);
+    const reference = createWorkbookSavedMeshComparisonReference(saved, pinned);
+    expect(reference.a.resultHash).toBe(selection.a.resultHash);
+    expect(reference.b.sourceHash).toBe(selection.b.sourceHash);
+    expect(inspectWorkbookSavedMeshComparisonReference(saved, reference)).toBe("current");
+    const workbook = createDefaultWorkbook(() => crypto.randomUUID());
+    workbook.stages[2]!.blocks[0]!.visualize = { live: false, savedMeshComparison: reference };
+    validateWorkbookDependencies(workbook);
+    expect(JSON.parse(JSON.stringify(workbook)).stages[2].blocks[0].visualize.savedMeshComparison).toEqual(reference);
+    expect(() => normalizeWorkbookSavedMeshComparisonReference({ ...reference, b: reference.a })).toThrow();
+    expect(inspectWorkbookSavedMeshComparisonReference(saved, { ...reference, comparisonHash: structuralHash("changed") })).toBe("stale");
+    expect(inspectWorkbookSavedMeshComparisonReference(project, reference)).toBe("missing");
   });
 });

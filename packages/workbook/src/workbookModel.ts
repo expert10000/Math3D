@@ -332,6 +332,7 @@ export type WorkbookBlock = {
     live: boolean;
     comparison?: import("./workbookComparisonReference").WorkbookComparisonReference;
     savedMeshTrend?: import("./workbookSavedMeshTrendReference").WorkbookSavedMeshTrendReference;
+    savedMeshComparison?: import("./workbookSavedMeshComparisonReference").WorkbookSavedMeshComparisonReference;
     snapshot?: WorkbookViewSnapshot | null;
     snapshotA?: WorkbookViewSnapshot | null;
     snapshotB?: WorkbookViewSnapshot | null;

@@ -11,4 +11,5 @@ export * from "./workbookClaims";
 export * from "./workbookSnapshotProvenance";
 export * from "./workbookComparisonReference";
 export * from "./workbookSavedMeshTrendReference";
+export * from "./workbookSavedMeshComparisonReference";
 export * from "./workbookSageEvidence";
