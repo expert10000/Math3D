@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SAGE_CONSOLE_OPERATION, sageExecutionRegistry, type SageBackend, type SageRuntimeProbe } from "../../services/sageOperationExecution";
+import { checkSageWebSession, connectSageWebSession, disconnectSageWebSession,
+  type SageWebSession } from "../../integrations/sage/sageClient";
 
 type ProbeState = { probe?: SageRuntimeProbe; error?: string; checkedAt?: number; checking: boolean };
 
@@ -20,6 +22,10 @@ export default function SageRuntimeInspector() {
     local: { checking: false }, docker: { checking: false }, private: { checking: false },
   });
   const started = useRef(false);
+  const [webSession, setWebSession] = useState<SageWebSession | null>(null);
+  const [accessKey, setAccessKey] = useState("");
+  const [sessionBusy, setSessionBusy] = useState(false);
+  const [sessionError, setSessionError] = useState("");
 
   const check = async (backend: SageBackend) => {
     setProbes((current) => ({ ...current, [backend]: { ...current[backend], checking: true } }));
@@ -40,11 +46,46 @@ export default function SageRuntimeInspector() {
     void Promise.all(RUNTIMES.map(({ id }) => check(id)));
   }, []);
 
+  useEffect(() => {
+    if (window.appRuntime) return;
+    void checkSageWebSession().then(setWebSession).catch(() => undefined);
+  }, []);
+
+  const connectSession = async () => {
+    setSessionBusy(true); setSessionError("");
+    try {
+      setWebSession(await connectSageWebSession(accessKey));
+      setAccessKey("");
+      await check("private");
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "Sage web session authorization failed.");
+    } finally { setSessionBusy(false); }
+  };
+  const disconnectSession = async () => {
+    setSessionBusy(true); setSessionError("");
+    try { setWebSession(await disconnectSageWebSession()); await check("private"); }
+    catch (error) { setSessionError(error instanceof Error ? error.message : "Could not disconnect the Sage web session."); }
+    finally { setSessionBusy(false); }
+  };
+
   return <section aria-label="SageMath runtimes" data-testid="sage-runtime-inspector" style={{ display: "grid", gap: 9 }}>
     <div>
       <strong style={{ fontSize: 14 }}>SageMath backends</strong>
       <div style={{ color: "#64748b", fontSize: 11 }}>Availability and limits come from the same capability probes used to route Sage jobs. Refresh a backend after changing its setup.</div>
     </div>
+    {webSession && webSession.mode !== "local" && <div data-testid="sage-web-session" style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: 10, background: "#fff", display: "grid", gap: 6, fontSize: 11 }}>
+      <strong>Hosted Sage web session</strong>
+      {webSession.authenticated ? <>
+        <div>Connected as {webSession.userId} · expires {new Date(webSession.expiresAt ?? 0).toLocaleString()}</div>
+        {webSession.limits && <div>Per-user quota: {webSession.limits.maxConcurrent} concurrent · {webSession.limits.maxRequestsPerMinute} requests/min</div>}
+        <button type="button" disabled={sessionBusy} onClick={() => void disconnectSession()} style={{ justifySelf: "start" }}>Disconnect Sage session</button>
+      </> : <>
+        <div>Enter your assigned access key to use the private Sage gateway in this browser.</div>
+        <label>Access key <input type="password" autoComplete="off" value={accessKey} onChange={(event) => setAccessKey(event.target.value)} /></label>
+        <button type="button" disabled={sessionBusy || !accessKey} onClick={() => void connectSession()} style={{ justifySelf: "start" }}>Connect Sage session</button>
+      </>}
+      {sessionError && <div role="alert" style={{ color: "#b42318" }}>{sessionError}</div>}
+    </div>}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 9 }}>
       {RUNTIMES.map(({ id, label, environment, action }) => {
         const state = probes[id];

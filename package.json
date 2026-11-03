@@ -110,6 +110,8 @@
     "test:sage:live-desktop": "playwright test --config playwright.sage-live-desktop.config.ts",
     "test:sage:gateway:unit": "node --test services/sage-gateway/server.test.cjs",
     "test:sage:gateway:live": "playwright test --config playwright.sage-gateway.config.ts",
+    "test:sage:hosted:unit": "node --test apps/web/server/sage-private-sessions.test.cjs",
+    "test:sage:hosted:live": "playwright test --config playwright.sage-hosted.config.ts",
     "test:projects:fixtures": "node scripts/projects-freeze-fixtures.mjs",
     "test:projects:web": "playwright test --config playwright.projects.config.ts",
     "test:projects:acceptance": "npm run test:projects:contracts && npm run typecheck:noemit && npm --prefix apps/mobile run typecheck && npm run build:core && npm run build:web && npm run test:projects:desktop && npm run test:projects:web && npm run check:kernel:boundaries",

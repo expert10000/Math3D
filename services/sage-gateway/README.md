@@ -69,3 +69,36 @@ remain future gates.
 
 The [acceptance record](../../docs/evidence/sage-private-gateway-2026-11-03.md)
 includes the deployed port-binding check and live desktop/web results.
+
+## Hosted web sessions
+
+The web proxy can authorize separate browser users while keeping the gateway
+credential on the server. Run the proxy on loopback behind an HTTPS reverse
+proxy. Route `/api/sage-private/*` from the same public origin as the web app
+to the proxy. Configure these variables in the web proxy process:
+
+```text
+MATH3D_SAGE_WEB_AUTH_MODE=hosted
+MATH3D_SAGE_WEB_ORIGIN=https://math.example.org
+MATH3D_SAGE_WEB_SESSION_SECRET=<random secret of at least 32 characters>
+MATH3D_SAGE_WEB_USERS_JSON=[{"id":"ada","accessKey":"<unique random key of at least 32 characters>"}]
+MATH3D_SAGE_GATEWAY_URL=https://<private gateway hostname>
+MATH3D_SAGE_GATEWAY_TOKEN=<gateway bearer credential>
+```
+
+The web proxy's listening host must remain loopback. The HTTPS reverse proxy
+must terminate TLS and should forward only the intended same-origin routes.
+Each user enters their assigned access key in **Compute → Runtimes**. The
+proxy exchanges it for an eight-hour HTTP-only, Secure, SameSite=Strict cookie;
+the key is cleared from the UI after exchange. Each user is limited to one
+concurrent Sage job and ten run requests per minute. The proxy binds cancel to
+the user who started the job. Invalid or expired sessions, quota failures, and
+cross-session cancellations return typed errors. The gateway's global quotas
+continue to apply. This deployment uses one web proxy process for its in-memory
+quota and cancellation state; distributed quota storage and identity-provider
+integration are later operational gates.
+
+Run `npm run test:sage:hosted:unit` and, with the gateway and Docker route
+running, `npm run test:sage:hosted:live`. The hosted test uses two independent
+browser contexts and test-only access keys. The desktop route keeps its own
+gateway credential in Electron main and needs no hosted web session.
