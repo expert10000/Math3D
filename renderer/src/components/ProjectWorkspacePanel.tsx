@@ -190,6 +190,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  useEffect(() => {
+    const refreshExternalSave = () => {
+      try {
+        const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+        if (!raw || !project) return;
+        const saved = parseMath3DProject(raw);
+        if (saved.identity.id !== project.identity.id) return;
+        setProject(saved);
+        loadedProject.current = saved;
+      } catch { /* Keep the current Project draft if the saved copy is unavailable. */ }
+    };
+    window.addEventListener("math3d:project-saved-externally", refreshExternalSave);
+    return () => window.removeEventListener("math3d:project-saved-externally", refreshExternalSave);
+  }, [project?.identity.id]);
   const [compositionOpen, setCompositionOpen] = useState(false);
   const [meshResultComparisonOpen, setMeshResultComparisonOpen] = useState(false);
   const [meshResultTrendOpen, setMeshResultTrendOpen] = useState(false);

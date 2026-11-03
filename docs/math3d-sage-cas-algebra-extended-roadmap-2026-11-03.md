@@ -288,6 +288,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A05 implementation update (2026-11-03):** The [A05 acceptance record](evidence/sage-a05-domain-coercion-2026-11-03.md) adds bounded inspection of two pinned Project revisions through the shared Sage broker. It returns exact parent descriptors, coefficient-domain references and directional coercion-map identities, with a typed `NO_CANONICAL_COERCION` result when Sage has no map. Live Sage 9.5 verifies `ZZ → QQ`, `QQ ↛ ZZ`, and incompatible `QQ[x,y]`/`GF(5)[x,y]` parents. The Structures UI remains **SAGE-A06**.
 
+**A06 implementation update (2026-11-03):** The [A06 acceptance record](evidence/sage-a06-structures-ui-2026-11-03.md) adds a Project-scoped **Structures** tab beside the existing **Operations** flow, a saved object explorer, revision selector, dossier and Structure inspector. A small starter form creates validated `ZZ`, `QQ` and polynomial-ring records; the complete Ring and Field Builder remains **SAGE-A07**. An independent Electron restart reselected `R = Q[x,y]` with the same object ID and definition hash, and saving again through Projects retained both algebra objects. Recipes remain planned work.
+
 ---
 
 ## 3. P0 — Algebra object registry

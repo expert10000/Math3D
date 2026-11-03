@@ -7,7 +7,7 @@ import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./comp
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
-import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, type ProjectScientificSceneReference } from "@math3d/core";
+import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject, type ProjectScientificSceneReference } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -125,7 +125,7 @@ import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisIns
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
-import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
+import { PROJECT_STORAGE_KEY, projectPayloadKey, saveLibraryProject } from "./projects/projectLibrary";
 import { saveSavedMeshComparisonObservation } from "./projects/saveSavedMeshComparisonObservation";
 import { projectNoteRenderedBody } from "./projects/projectNoteValues";
 import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
@@ -111363,7 +111363,20 @@ case "mobius":
         </div>
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
-      {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord}
+      {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onCreateStructure={(record) => {
+          const current = projectForNotePins;
+          if (!current) throw new TypeError("Open and save a Project before adding structures.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Save or reopen it in Projects before adding structures.");
+          const next = upsertMath3DProjectAlgebraObject(current, record);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onOpenProjects={() => { setCasWorkspaceOpen(false); setProjectsOpen(true); }}
         onResult={(record) => setCasAnalysisRecord({ ...record, source: { module: "cas", id: "sage-input:cas", revision: 0,
           expression: record.expression, fingerprint: hashValue(record.request.params) } })}
         onSaveWorkbook={(record) => { setCasWorkspaceOpen(false); openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}

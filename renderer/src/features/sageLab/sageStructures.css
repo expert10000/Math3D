@@ -1,0 +1,19 @@
+.sage-workspace-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; padding: 0 20px 20px; align-items: start; }
+.sage-workspace-grid-structures { grid-template-columns: minmax(240px, 300px) minmax(320px, 1fr) minmax(280px, 360px); }
+.sage-workspace-card { min-width: 0; padding: 14px; border: 1px solid #dbe2ea; border-radius: 10px; background: #fff; }
+.sage-workspace-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.sage-workspace-tabs button { white-space: nowrap; }
+.sage-workspace-tabs button[aria-pressed="true"] { background: #e7f1ff !important; border-color: #4e87ca !important; }
+.sage-workspace-tabs button:disabled { opacity: .55; cursor: not-allowed; }
+.sage-structure-list { display: grid; gap: 6px; max-height: min(45vh, 480px); overflow: auto; }
+.sage-structure-list button { width: 100%; text-align: left; background: #fff; border: 1px solid #dbe2ea; border-radius: 7px; padding: 8px; color: #172b4d; cursor: pointer; }
+.sage-structure-list button strong { font-size: 14px; }
+.sage-structure-list button[aria-current="true"] { border-color: #3b75bd; background: #eaf3ff; }
+.sage-structure-grid { display: grid; gap: 8px; }
+.sage-structure-grid label { display: grid; gap: 3px; font-size: 12px; }
+.sage-structure-grid input, .sage-structure-grid select { min-width: 0; width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid #b9cce3; border-radius: 6px; }
+.sage-structure-facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; font-size: 12px; overflow-wrap: anywhere; }
+.sage-structure-facts dt { color: #5d6f84; }
+.sage-structure-facts dd { margin: 0; }
+@media (max-width: 1050px) { .sage-workspace-grid-structures { grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.4fr); } .sage-workspace-grid-structures > section:last-child { grid-column: 1 / -1; } }
+@media (max-width: 650px) { .sage-workspace-grid-structures { grid-template-columns: minmax(0, 1fr); } .sage-workspace-grid-structures > section:last-child { grid-column: auto; } }
