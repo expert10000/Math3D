@@ -87,6 +87,7 @@ export * from "./viewerProvenance";
 export * from "./mixedWorkspace";
 export * from "./scientificSceneLibrary";
 export * from "./math3dProject";
+export * from "./projectAlgebraRegistry";
 export * from "./projectComposition";
 export * from "./retainedMeshGenerations";
 export * from "./quantumSceneDocument";

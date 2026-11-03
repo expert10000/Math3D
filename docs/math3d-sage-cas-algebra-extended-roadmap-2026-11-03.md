@@ -280,6 +280,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A01 implementation update (2026-11-03):** The [A01 acceptance record](evidence/sage-a01-schema-2026-11-03.md) covers the first schema-v1 slice in `@math3d/core`: integer and rational base domains, modular rings, canonical finite fields and polynomial rings. It validates exact revisioned parent references, computes the definition hash using the existing canonical SHA-256 contract, and rejects malformed or tampered JSON. This is a contract layer; object registry persistence, dangling-reference resolution, staleness and Sage reconstruction remain A02–A04. The next implementation gate is **SAGE-A02**, a project-scoped registry that saves and reopens records with stable IDs and explicit revision history.
 
+**A02 implementation update (2026-11-03):** The [A02 acceptance record](evidence/sage-a02-project-registry-2026-11-03.md) covers Project-owned algebra object histories and the `.math3d` file transfer path. `Q` and `R = QQ[x,y]` survive independent import with the same identity, definitions and pinned parent revision. Duplicate IDs/revisions, missing parents and dependency cycles are rejected. Rename and fork produce explicit histories; archive/recover preserves references. The next gate is **SAGE-A03**: dependency freshness when a parent definition advances. The Structures UI remains A06.
+
 ---
 
 ## 3. P0 — Algebra object registry
