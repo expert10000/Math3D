@@ -1,4 +1,4 @@
-import { sameProjectCoordinateFrame, type ProjectCoordinateFrameRead } from "@math3d/core";
+import { sameProjectCoordinateFrame, type ProjectCoordinateFrameRead, type ProjectNoteAnchor } from "@math3d/core";
 
 export type CoordinateProbeMember = Readonly<{
   id: string;
@@ -47,4 +47,21 @@ export const resolveLinkedCoordinateProbe = (
     target: { id: target.id, revision: target.revision, hash: target.hash, slot: target.slot! },
     point: { ...pick.point }, frame: frame.frame, unit: frame.unit, axes: frame.axes, handedness: frame.handedness,
   };
+};
+
+/** Reconstructs a saved Note's marker only from its two currently verified generations. */
+export const resolveSavedCoordinateProbe = (members: readonly CoordinateProbeMember[],
+  anchor: Extract<ProjectNoteAnchor, { kind: "comparison" }>): LinkedCoordinateProbe | null => {
+  const stored = anchor.coordinateProbe;
+  if (!stored || members.length !== 2 || anchor.members.some((identity, index) =>
+    members[index]?.id !== identity.id || members[index]?.revision !== identity.revision ||
+    members[index]?.hash !== identity.structuralHash)) return null;
+  const slot = stored.sourceSlot === "A" ? 0 : 1;
+  const source = members[slot]!;
+  const linked = resolveLinkedCoordinateProbe(members, { memberId: source.id, revision: source.revision, hash: source.hash,
+    point: { x: stored.point[0], y: stored.point[1], z: stored.point[2] } });
+  if (!linked || linked.source.slot !== slot || !sameProjectCoordinateFrame(stored.coordinateFrame,
+    { format: "math3d.coordinate-frame/v1", frame: linked.frame, unit: linked.unit, axes: linked.axes,
+      handedness: linked.handedness })) return null;
+  return linked;
 };

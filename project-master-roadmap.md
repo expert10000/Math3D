@@ -1406,6 +1406,7 @@ budgets must be explicit before members can be combined.
 | PC22 | `feat(projects): export saved Mesh comparison review` | Export a versioned HTML review of all saved pairs, exact hashes, qualified stored values and verified Notes; list stale evidence as unavailable without its values or Note text. |
 | PC23 | `feat(workbook): present saved Mesh comparison reviews` | Link selected saved pairs and Notes by exact IDs and hashes in one Workbook Visualize block; recheck every row, export a qualified review and navigate back to verified pairs. |
 | PC24 | `feat(projects): link declared coordinates across saved comparison panes` | Record the picked source generation and coordinate; mark that coordinate in the other Mesh/Geometry pane only when verified frame, axes, handedness and units match. Keep element picks source-local. |
+| PC25 | `feat(notes): retain saved coordinate observations` | Save a picked Mesh/Geometry coordinate as a Note bound to the exact comparison, source generations, frame and unit; show its marker only while both sources and sidecars verify. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1511,6 +1512,14 @@ created from a fresh pick after reopening; missing declarations, mismatched unit
 changed sources and unavailable generations do not produce a linked marker.
 PC03 remains **Partial** for legacy sources without coordinate metadata; PC05
 remains **Partial** for unretained history and unsupported comparison families.
+PC25 is complete for saved coordinate observations on the bounded Mesh/Geometry
+pair. A new starter supplies matching declared metre coordinates and a saved
+comparison. Notes retain the picked source slot, coordinate, frame and unit
+with both exact source generations. Reopening and portable export recheck the
+sources and Mesh sidecar; missing or changed evidence suppresses the marker and
+qualified Note content. This records a shared coordinate, not a corresponding
+element or measured value. PC03 remains **Partial** for undeclared legacy
+frames, and PC05 remains **Partial** for generations never retained.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

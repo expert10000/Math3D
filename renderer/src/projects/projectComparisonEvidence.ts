@@ -1,5 +1,6 @@
 import { inspectProjectNoteAnchor, qualifyProjectOverlayCoordinates, structuralHash, type Math3DProject, type ProjectComposition } from "@math3d/core";
 import { verifyProjectCompositionEvidenceSources } from "./projectCompositionEvidenceSource";
+import { resolveSavedCoordinateProbe } from "./projectLinkedCoordinateProbe";
 import type { ProjectResourceReader } from "./projectResources";
 
 export type ComparisonEvidenceSelection = Readonly<{
@@ -34,8 +35,15 @@ export function createProjectComparisonEvidence(project: Math3DProject, composit
       comparison: () => ({ hash: compositionHash, members: [composition.members[0].expected, composition.members[1].expected],
         alignment, available: true }) });
     if (state.status !== "current") throw new TypeError(`Comparison observation is ${state.status}; reopen or repair its exact source before export.`);
+    const probe = note.anchor?.kind === "comparison" && note.anchor.coordinateProbe ?
+      resolveSavedCoordinateProbe(resolved.map((member, slot) => ({ ...member, slot: slot as 0 | 1 })), note.anchor) : null;
+    if (note.anchor?.kind === "comparison" && note.anchor.coordinateProbe && !probe)
+      throw new TypeError("Saved coordinate observation no longer verifies against both source frames.");
     return { noteId: note.identity.id, noteRevision: note.identity.revision, noteHash: note.identity.structuralHash,
-      title: note.title, body: note.body };
+      title: note.title, body: note.body,
+      ...(probe ? { coordinateProbe: { sourceId: probe.source.id, sourceRevision: probe.source.revision,
+        sourceHash: probe.source.hash, point: probe.point, frame: probe.frame, unit: probe.unit,
+        axes: probe.axes, handedness: probe.handedness } } : {}) };
   });
   return {
     schemaVersion: 1 as const, projectId: project.identity.id, compositionId: composition.id, compositionHash,
@@ -58,6 +66,7 @@ export function projectComparisonEvidenceHtml(evidence: ProjectComparisonEvidenc
     throw new TypeError("All comparison view captures must be present and bounded.");
   const members = evidence.members.map(member => `<tr><th>${member.slot}</th><td>${esc(member.title)}<br>${esc(member.documentId)}</td><td>r${member.revision} · ${esc(member.generation)}<br><code>${esc(member.structuralHash)}</code></td><td>${esc(member.unit ?? "not recorded")}</td></tr>`).join("");
   const selected = evidence.selection ? `<p>Selected ${esc(evidence.selection.memberId)} · r${evidence.selection.revision} · <code>${esc(evidence.selection.hash)}</code><br>Local xyz: ${esc(JSON.stringify(evidence.selection.point))}${evidence.selection.uv ? `<br>Source-defined chart (u,v): ${esc(JSON.stringify(evidence.selection.uv))}` : ""}${evidence.selection.meshKey ? `<br>Display mesh: ${esc(evidence.selection.meshKey)}` : ""}${evidence.selection.faceIndex !== undefined ? `<br>Display face: ${esc(evidence.selection.faceIndex)}` : ""}<br>${esc(evidence.selection.coordinateMeaning)}</p>` : "<p>No sample selected.</p>";
-  const observations = evidence.observations.map(note => `<article><h3>${esc(note.title)}</h3><p>${esc(note.body)}</p><small>Note ${esc(note.noteId)} · r${note.noteRevision} · <code>${esc(note.noteHash)}</code></small></article>`).join("");
+  const observations = evidence.observations.map(note => `<article><h3>${esc(note.title)}</h3><p>${esc(note.body)}</p>${note.coordinateProbe ?
+    `<p>Shared coordinate from ${esc(note.coordinateProbe.sourceId)} r${note.coordinateProbe.sourceRevision} · <code>${esc(note.coordinateProbe.sourceHash)}</code><br>${esc(JSON.stringify(note.coordinateProbe.point))} ${esc(note.coordinateProbe.unit)} · ${esc(note.coordinateProbe.frame)}. No target element or measured value is inferred.</p>` : ""}<small>Note ${esc(note.noteId)} · r${note.noteRevision} · <code>${esc(note.noteHash)}</code></small></article>`).join("");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><title>${esc(evidence.title)} · comparison evidence</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:1100px;margin:auto;padding:24px;color:#172033}table{width:100%;border-collapse:collapse}th,td{border:1px solid #94a3b8;padding:8px;text-align:left;overflow-wrap:anywhere}code{overflow-wrap:anywhere}figure{margin:16px 0}img{max-width:100%;border:1px solid #94a3b8}section{break-inside:avoid}@media print{body{padding:0}}</style></head><body><main><h1>${esc(evidence.title)}</h1><p>Saved Project comparison · ${esc(evidence.mode)} · alignment: <strong>${esc(evidence.alignment)}</strong>${evidence.alignmentFrame ? ` · ${esc(evidence.alignmentFrame)} / ${esc(evidence.alignmentUnit)}` : ""}</p><p>Project <code>${esc(evidence.projectId)}</code><br>Composition <code>${esc(evidence.compositionId)}</code> · <code>${esc(evidence.compositionHash)}</code></p><section><h2>Exact saved sources</h2><table><thead><tr><th>Slot</th><th>Document</th><th>Generation and hash</th><th>Unit</th></tr></thead><tbody>${members}</tbody></table></section><section><h2>Captured views</h2>${views.map((image, index) => `<figure><img src="${image}" alt="${evidence.mode === "overlay" ? "Overlay" : index === 0 ? "A" : "B"} comparison view"><figcaption>${evidence.mode === "overlay" ? "Overlay" : index === 0 ? "A" : "B"} · saved-source view at export</figcaption></figure>`).join("")}</section><section><h2>Selected viewer value</h2>${selected}</section><section><h2>Saved observations</h2><p>Observations are authored Notes, not independent scientific measurements.</p>${observations || "<p>No observations saved.</p>"}</section><p>${esc(evidence.qualification)}</p><details><summary>Machine-readable evidence</summary><pre>${esc(JSON.stringify(evidence, null, 2))}</pre></details></main></body></html>`;
 }
