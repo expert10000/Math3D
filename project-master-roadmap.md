@@ -23,6 +23,8 @@ adds authored observations tied to both exact results, Mesh generations, and
 the selected metric; checked reports and portable import refuse changed evidence.
 PC21 indexes every saved Mesh pair with verification and observation status,
 including a three-pair starter for reviewing direct pair and Note navigation.
+PC22 exports a checked, versioned review of those pairs, including values and
+authored Note text only when the exact saved evidence verifies.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -1401,6 +1403,7 @@ budgets must be explicit before members can be combined.
 | PC19 | `feat(workbook): present saved Mesh comparisons` | Link a saved PC18 pair by exact comparison, result and source hashes; show stored values and qualified differences in a Workbook; refuse changed evidence on report and portable export. |
 | PC20 | `feat(notes): record observations on saved Mesh comparisons` | Bind authored Notes to one exact saved pair, both result and Mesh hashes, and the selected metric; show and export them only while evidence verifies. |
 | PC21 | `feat(projects): review saved Mesh comparisons` | List every saved pair with its exact metric, source revisions, verification status and observation count; open verified pairs and Notes directly, leaving stale evidence visible as unavailable. |
+| PC22 | `feat(projects): export saved Mesh comparison review` | Export a versioned HTML review of all saved pairs, exact hashes, qualified stored values and verified Notes; list stale evidence as unavailable without its values or Note text. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1480,6 +1483,13 @@ Unavailable pairs remain listed with reasons. A three-pair starter includes two
 authored observations. Restart, portable import, changed references and tampered
 sidecars are covered; the index does not run Mesh analysis. PC03 and PC05 remain
 **Partial** for legacy coordinate declarations and unretained generations.
+PC22 is complete for a versioned, self-contained HTML report exported from
+that Project review index. It names every exact pair and linked Note reference,
+but includes scalar values and authored Note text only while their saved
+results, anchors and source sidecars verify. Missing or changed evidence remains
+visible as unavailable. Export, restart, portable import and tamper checks use
+the three-pair starter. No Mesh analysis runs. PC03 and PC05 remain **Partial**
+for legacy coordinate declarations and unretained generations.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

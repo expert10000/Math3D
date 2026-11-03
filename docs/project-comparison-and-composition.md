@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC21)
+# Project comparison and composition (PC01–PC22)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -440,6 +440,27 @@ running Mesh analysis when the review view opens. Acceptance covers several
 pairs, Electron reopening, portable export/import, missing and changed
 references, and tampered resource bytes. PC03 remains **Partial** for legacy
 sources without coordinate metadata; PC05 remains **Partial** for generations
+that were never retained.
+
+## PC22 · Export a saved comparison review
+
+Status: **Complete for the bounded saved Mesh pair index**. In an open Project,
+choose **Compare saved documents → Saved comparison review → Export review
+HTML**. The downloaded report is a versioned `mesh-comparison-review/v1`
+snapshot of the current Project. It references each exact pair, its selected
+metric, both result and Mesh source hashes and revisions, and each linked Note
+ID and hash. Verified pairs include only stored, unit-qualified A and B scalar
+values and their difference; verified authored observations include their text.
+Missing or changed evidence remains listed as **Unavailable** with values and
+Note text withheld. The report includes its machine-readable snapshot and
+labels observations as authored interpretation.
+
+The **Saved Mesh Comparison Review** starter supplies three pairs and two Notes
+for trying the export. Acceptance covers HTML export in Electron, reopening
+after restart, portable Project import, changed references, missing sidecars,
+tampered source bytes, and stale Note anchors. Export reads saved evidence;
+it does not calculate Mesh results. PC03 remains **Partial** for legacy sources
+without coordinate metadata, and PC05 remains **Partial** for generations
 that were never retained.
 
 ### Ready-to-use Mesh comparison starter
