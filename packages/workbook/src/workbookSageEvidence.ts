@@ -12,10 +12,10 @@ export type WorkbookSageEvidence = {
   request: {
     operation: string;
     params: Record<string, unknown>;
-    backend: "local" | "docker";
+    backend: "local" | "docker" | "private";
     jobId?: string;
   };
-  engine: { name: "SageMath"; backend: "local" | "docker"; version: string };
+  engine: { name: "SageMath"; backend: "local" | "docker" | "private"; version: string };
   response: {
     engine: string;
     operation: string;
@@ -25,6 +25,7 @@ export type WorkbookSageEvidence = {
     warnings: string[];
     elapsedMs?: number;
     error?: string;
+    errorCode?: string;
     engineVersion?: string;
   };
   diagnostics: string[];
