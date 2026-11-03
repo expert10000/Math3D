@@ -290,6 +290,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A06 implementation update (2026-11-03):** The [A06 acceptance record](evidence/sage-a06-structures-ui-2026-11-03.md) adds a Project-scoped **Structures** tab beside the existing **Operations** flow, a saved object explorer, revision selector, dossier and Structure inspector. A small starter form creates validated `ZZ`, `QQ` and polynomial-ring records; the complete Ring and Field Builder remains **SAGE-A07**. An independent Electron restart reselected `R = Q[x,y]` with the same object ID and definition hash, and saving again through Projects retained both algebra objects. Recipes remain planned work.
 
+**A07 implementation update (2026-11-03):** The [A07 acceptance record](evidence/sage-a07-ring-field-builder-2026-11-03.md) adds the full schema-v1 Ring and Field Builder in the CAS main area for `ZZ`, `QQ`, `Z/nZ`, canonical `GF(p^n)` and polynomial rings. Validation and an exact domain preview precede Project save; the builder invokes bounded Sage reconstruction when the Docker capability is available and states when it is unavailable. The dossier and Inspector show characteristic, field status, cardinality and zero divisors, with pinned polynomial parent metadata. The next gate is **SAGE-A08**: live capability reporting and cross-runtime fixtures on Sage 9.5 WSL and Sage 10.10 Docker when available. Quotient rings, number fields and p-adic fields remain later schema and UI slices in the broader P0 roadmap.
+
 ---
 
 ## 3. P0 — Algebra object registry

@@ -79,6 +79,20 @@ class AlgebraReconstructionTests(unittest.TestCase):
         self.assertEqual(mod_result["result"]["characteristic"], "12")
         self.assertFalse(mod_result["result"]["isField"])
 
+    def test_prime_modular_ring_and_extension_field(self):
+        prime = object_record(F, "F13", {"kind": "modular-ring", "modulus": "13"})
+        prime_result = run_payload(request([prime], F))
+        self.assertTrue(prime_result["success"])
+        self.assertTrue(prime_result["result"]["isField"])
+        self.assertEqual(prime_result["result"]["characteristic"], "13")
+        extension = object_record(F, "F49", {"kind": "finite-field", "characteristic": 7,
+            "degree": 2, "generator": "a", "construction": "canonical"})
+        extension_result = run_payload(request([extension], F))
+        self.assertTrue(extension_result["success"])
+        self.assertTrue(extension_result["result"]["isField"])
+        self.assertEqual(extension_result["result"]["characteristic"], "7")
+        self.assertIn("7^2", extension_result["result"]["text"])
+
     def test_worker_script_mode_used_by_docker_adapter(self):
         q = object_record(Q, "Q", {"kind": "rational-field"})
         with tempfile.TemporaryDirectory() as directory:
