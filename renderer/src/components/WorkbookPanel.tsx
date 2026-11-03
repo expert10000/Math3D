@@ -7,6 +7,7 @@ import { createWorkbookComparisonReference } from "@math3d/workbook";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock, WorkbookSavedMeshTrendEditor } from "./WorkbookSavedMeshTrendBlock";
 import { WorkbookSavedMeshComparisonBlock, WorkbookSavedMeshComparisonEditor } from "./WorkbookSavedMeshComparisonBlock";
+import { WorkbookSavedMeshReviewBlock, WorkbookSavedMeshReviewEditor } from "./WorkbookSavedMeshReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -74,6 +75,7 @@ type WorkbookPanelProps = {
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
   onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
+  onOpenSavedMeshComparison?: (comparisonId: string) => void;
   onSaveMeshComparisonObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
   onOpenNote: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
@@ -522,6 +524,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onOpenNotebookDocument,
   onOpenProjects,
   onOpenSavedMeshResult,
+  onOpenSavedMeshComparison,
   onSaveMeshComparisonObservation,
   onOpenNote,
   onRemoveBlock,
@@ -1558,7 +1561,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         readComparisonResource={readComparisonResource}
         onSaveMeshComparisonObservation={onSaveMeshComparisonObservation}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult} onEditBlock={(stageId, blockId) => {
+        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult}
+        onOpenSavedMeshComparison={onOpenSavedMeshComparison} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
       <div style={{ marginBottom: 10 }}>
@@ -1930,6 +1934,12 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 {block.visualize?.savedMeshComparison && <WorkbookSavedMeshComparisonBlock project={dependencyProject}
                   reference={block.visualize.savedMeshComparison} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult}
                   onSaveObservation={onSaveMeshComparisonObservation} />}
+                <WorkbookSavedMeshReviewEditor project={dependencyProject} reference={block.visualize?.savedMeshReview}
+                  readOnly={readOnly} onChange={savedMeshReview => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), savedMeshReview } })} />
+                {block.visualize?.savedMeshReview && <WorkbookSavedMeshReviewBlock project={dependencyProject}
+                  reference={block.visualize.savedMeshReview} readResource={readComparisonResource}
+                  onOpenPair={onOpenSavedMeshComparison} onOpenNote={onOpenNote} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

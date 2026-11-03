@@ -76919,6 +76919,7 @@ case "mobius":
   }, [projectsOpen]);
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
   const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
+  const [projectMeshComparisonRequest, setProjectMeshComparisonRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
   const activeNotebookProjectResourcesRef = useRef<VerifiedProjectResources | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
@@ -77742,7 +77743,7 @@ case "mobius":
     if (!activeWorkbook || !selected.length) throw new TypeError("Select a Workbook and report blocks first.");
     const book = activeWorkbook, context = getNotebookContext(), project = context?.project ?? null;
     const hasSavedMeshComparison = book.stages.some(stage => stage.blocks.some(block =>
-      selected.includes(block.id) && !!block.visualize?.savedMeshComparison));
+      selected.includes(block.id) && (!!block.visualize?.savedMeshComparison || !!block.visualize?.savedMeshReview)));
     const exactSavedProject = hasSavedMeshComparison ? parseMath3DProject(localStorage.getItem(PROJECT_STORAGE_KEY)!) : null;
     if (exactSavedProject && exactSavedProject.identity.id !== project?.identity.id)
       throw new TypeError("The Workbook's saved Project is not active.");
@@ -80249,6 +80250,7 @@ case "mobius":
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
         resultRequest={projectResultRequest}
+        pairRequest={projectMeshComparisonRequest}
         regionResultStatuses={vectorField3DRegionStatuses}
         onCurrentProjectChange={(project, resources) => { activeNotebookProjectRef.current = project; activeNotebookProjectResourcesRef.current = resources ?? null; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
@@ -80444,11 +80446,19 @@ case "mobius":
           setMode("geometry"); setGeometryMode("workbook"); setGeometryWorkbookUiMode("full"); setRightPanelTab("workbook");
         }}
         onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
-        onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+        onOpenNote={(id) => {
+          setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+          setProjectsOpen(true);
+        }}
         onOpenSavedMeshResult={target => {
           if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
           setProjectMiddleContent(null);
           setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
+          setProjectsOpen(true);
+        }}
+        onOpenSavedMeshComparison={id => {
+          setProjectMiddleContent(null);
+          setProjectMeshComparisonRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
           setProjectsOpen(true);
         }}
         onOpenProjects={() => setProjectsOpen(true)} />}
@@ -90502,7 +90512,14 @@ case "mobius":
                         setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
                         setProjectsOpen(true);
                       }}
-                      onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+                      onOpenSavedMeshComparison={id => {
+                        setProjectMeshComparisonRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
+                      onOpenNote={(id) => {
+                        setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
                       onOpenNotebookDocument={(id, module) => {
                         if (navigateRestoredDocument(id, module)) return;
                         setActiveGraph2DTargetId(null);

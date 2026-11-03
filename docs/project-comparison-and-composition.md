@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC22)
+# Project comparison and composition (PC01–PC23)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -462,6 +462,24 @@ tampered source bytes, and stale Note anchors. Export reads saved evidence;
 it does not calculate Mesh results. PC03 remains **Partial** for legacy sources
 without coordinate metadata, and PC05 remains **Partial** for generations
 that were never retained.
+
+## PC23 · Show a saved comparison review in a Workbook
+
+Open **Projects → Starter projects → Saved Mesh Comparison Review → Open** and
+save a Project copy. Open **Surfaces → Workbook → 3 Visualize**. Under **Saved
+comparison review**, choose the saved pairs and select **Link selected saved
+pairs**. Open **Show embedded comparison review** to inspect the stored A/B
+values and authored observations, or use **Open saved pair** to return to its
+Project A/B inspector. Save the active Workbook from Projects to retain the
+review, then reopen it from that Project after restart.
+
+The Workbook keeps exact pair and Note IDs and hashes. Each row rechecks both
+saved Mesh results and source sidecars. Missing or changed pairs stay visible
+as **Unavailable**, with values and Note text withheld. **Export review status
+HTML** and Workbook publication report the same qualified evidence. The
+portable Workbook publication rechecks source bytes on import. This view does
+not rerun Mesh analysis. PC03 remains **Partial** for legacy coordinate
+declarations; PC05 remains **Partial** for generations never retained.
 
 ### Ready-to-use Mesh comparison starter
 
