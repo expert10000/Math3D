@@ -6,8 +6,27 @@ import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./proje
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { retainedMeshGenerationDocuments } from "@math3d/core";
 import { buildSavedMeshComparisonReview } from "./projectSavedMeshComparisonReview";
+import { resolveProjectCompositionMember } from "../components/ProjectCompositionView";
+import { resolveLinkedCoordinateProbe } from "./projectLinkedCoordinateProbe";
 
 describe("Saved Mesh comparison starter", () => {
+  it("opens a portable Mesh/Geometry pair and links picks from both exact sources", () => {
+    const { project, resources } = instantiateMeshComparisonStarter("coordinate-pair", "mesh-geometry-probe");
+    const imported = parseProjectPackage(exportProjectPackage(project, resources));
+    const reopened = parseMath3DProject(serializeMath3DProject(imported.project));
+    const composition = reopened.compositions![0]!;
+    const members = composition.members.map((member, slot) => ({ ...resolveProjectCompositionMember(reopened, member,
+      item => imported.resources.bytes(item)), slot: slot as 0 | 1 }));
+    expect(reopened.workspace.entries.map(entry => entry.module)).toEqual(["mesh", "geometry"]);
+    expect(members.map(member => member.coordinates.value?.unit)).toEqual(["m", "m"]);
+    for (const source of members) {
+      const probe = resolveLinkedCoordinateProbe(members, { memberId: source.id, revision: source.revision, hash: source.hash,
+        meshKey: source.meshes[0]!.id, point: { x: 0.25, y: 0.25, z: 0 } });
+      expect(probe?.source.id).toBe(source.id);
+      expect(probe?.target.id).toBe(members.find(member => member !== source)!.id);
+      expect(probe?.unit).toBe("m");
+    }
+  });
   it("provides a portable three-pair review with two verified authored Notes", () => {
     const { project, resources } = instantiateMeshComparisonStarter("review-test", "mesh-comparison-review");
     expect(project.savedMeshComparisons).toHaveLength(3);

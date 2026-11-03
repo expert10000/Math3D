@@ -11,6 +11,7 @@ const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => 
     item.id === "mesh-subdivision-study" ? "In Projects → Compare saved documents, choose two generations of the same Mesh; its saved quality trend is also available." :
     item.id === "mesh-curvature-study" ? "Open Saved Mesh analysis results → View saved result trend, then select a recorded mean or Gaussian curvature scalar." :
     item.id === "mesh-trend-gap-study" ? "Open the saved quality trend to inspect the explicitly unrecorded middle generation." :
+    item.id === "mesh-geometry-probe" ? "Open Compare saved documents → Mesh / Geometry · shared metres, then pick either source and save a coordinate observation." :
     "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
@@ -32,6 +33,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "mesh-subdivision-study": ["Mesh", "Analysis"],
   "mesh-curvature-study": ["Mesh", "Analysis"],
   "mesh-trend-gap-study": ["Mesh", "Analysis"],
+  "mesh-geometry-probe": ["Mesh", "Geometry", "Notes"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
