@@ -12,8 +12,8 @@ The focused tests reject unsupported object kinds, unknown definition fields, ma
 
 ## Verification and boundary
 
-- `npm --prefix renderer test -- src/core/algebraObjects.test.ts` — passed.
-- `npm run typecheck:noemit` — run for the repository TypeScript projects.
-- `npm run build:core` — passed.
+- `npm --prefix renderer test -- src/core/algebraObjects.test.ts src/services/sageOperationExecution.test.ts` — 60 tests passed across the A01 contract and the existing Sage execution path.
+- `npm run typecheck:noemit` — passed for the repository TypeScript projects after correcting the saved Mesh comparison note-target branch.
+- `npm run build:core` — passed on the merged A01 and private Sage gateway tree.
 
 A01 validates one record's syntax and internal consistency. It does not resolve parent IDs against a saved project, prove a finite-field construction's runtime behavior, mark descendants stale, or reconstruct Sage objects. Those are A02–A04 gates. The CAS / Algebra and Number Theory UI flows are unchanged.
