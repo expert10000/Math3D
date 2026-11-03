@@ -36,6 +36,8 @@ import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComp
 import { createSavedMeshComparisonReviewSnapshot, savedMeshComparisonReviewHtml } from "../projects/projectSavedMeshComparisonReviewReport";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
+import { ProjectCoordinateObservationReviewIndex } from "./ProjectCoordinateObservationReviewIndex";
+import { buildProjectCoordinateObservationReview } from "../projects/projectCoordinateObservationReview";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -231,6 +233,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader, resourceVersion]);
   const savedMeshReview = useMemo(() => project ? buildSavedMeshComparisonReview(project, comparisonResource) : [], [project, comparisonResource]);
+  const coordinateReview = useMemo(() => project ? buildProjectCoordinateObservationReview(project, comparisonResource) : [], [project, comparisonResource]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
@@ -1504,6 +1507,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   "math3d-saved-mesh-comparison-review.html");
                 setMessage("Saved Mesh comparison review exported with checked statuses and available observations.");
               } catch (error) { setMessage(`Review export failed: ${(error as Error).message}`); } }} />}</div>
+          {!!coordinateReview.length && <ProjectCoordinateObservationReviewIndex rows={coordinateReview} onOpen={id => openProjectNotes(id)} />}
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
