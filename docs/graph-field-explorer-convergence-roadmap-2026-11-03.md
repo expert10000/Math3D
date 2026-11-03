@@ -4,6 +4,8 @@
 **Status:** proposed implementation sequence, reconciled with the repository
 **Scope:** Graphs, Scientific Field Explorer, shared Project and scientific runtime contracts
 
+**Implementation checkpoint:** [GF-01 ScientificSelection contract and legacy Project inventory](graph-field-gf01-scientific-selection-contract.md) is implemented as a read-only projection with a Project save/reopen fixture. GF-02 authoring and persistence remain open.
+
 This roadmap adapts the external *MATH3D Graph + Field Explorer — Development Roadmap* dated 2026-11-03. That proposal is design input, not an implementation record or a command to build all 36 proposed tickets. The existing [Graph2D roadmap](math3d-graph2d-desktop-mobile-roadmap.md) owns Graph release and platform gates; the [Scientific Field Explorer roadmap](scientific-field-explorer-roadmap.md) owns SCI milestones and their detailed numerical contracts. This document owns the **cross-module gaps and their order**. Existing IDs keep their meaning; `GF-` IDs below identify new integration slices rather than renumbering G2D, GRA, or SCI work.
 
 ## 1. Decision and current baseline
