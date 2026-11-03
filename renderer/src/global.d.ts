@@ -530,15 +530,17 @@ declare global {
   type SageHealthResponse = {
     status: string;
     engine: string;
+    engineVersion?: string;
     available: boolean;
     operations: SageOperation[];
+    limits?: { maxInputBytes: number; maxConcurrent: number; maxRequestsPerMinute: number; timeoutMs: number };
   };
 
   type SageRunRequest = {
     operation: SageOperation;
     params: Record<string, unknown>;
     jobId?: string;
-    backend?: "local" | "docker";
+    backend?: "local" | "docker" | "private";
   };
 
   type SageRunResponse = {
@@ -548,6 +550,7 @@ declare global {
     latex: string;
     result: Record<string, unknown>;
     warnings: string[];
+    errorCode?: string;
     elapsedMs?: number;
     error?: string;
   };
@@ -836,7 +839,7 @@ declare global {
       solve: (matrix: number[][], rhs: number[]) => Promise<OctaveSolveResponse>;
     };
     sageService?: {
-      health: (scope?: "local" | "docker") => Promise<SageHealthResponse>;
+      health: (scope?: "local" | "docker" | "private") => Promise<SageHealthResponse>;
       getStatus: () => Promise<SageHealthResponse>;
       run: (req: SageRunRequest) => Promise<SageRunResponse>;
       cancel: (jobId: string) => Promise<{ ok: boolean }>;

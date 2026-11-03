@@ -12,7 +12,7 @@ export type MeshImportFormat = "stl" | "obj" | "ply" | "gltf" | "glb";
 export type SurfaceMeshSource =
   | { kind: "import"; format?: MeshImportFormat; filename?: string }
   | { kind: "bakedFromImplicit" }
-  | { kind: "sageResult"; operation: string; backend: "local" | "docker"; engineVersion: string; jobId: string;
+  | { kind: "sageResult"; operation: string; backend: "local" | "docker" | "private"; engineVersion: string; jobId: string;
       sourceId: string; sourceRevision: number; sourceFingerprint: string; inputExpression: string;
       resultExpression: string; warnings: string[]; createdAt: number }
   | { kind: "bakedFromExplicit" }

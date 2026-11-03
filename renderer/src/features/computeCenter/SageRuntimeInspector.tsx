@@ -8,6 +8,8 @@ const RUNTIMES: readonly { id: SageBackend; label: string; environment: string; 
     action: "Install SageMath in WSL Ubuntu, then run wsl -d Ubuntu --exec /usr/bin/sage --version." },
   { id: "docker", label: "Docker", environment: "SageMath container service",
     action: "Start the service with docker compose -f services/sage-worker/docker-compose.yml up --build, then check its URL." },
+  { id: "private", label: "Private gateway", environment: "Authenticated server-side Sage route",
+    action: "Configure MATH3D_SAGE_GATEWAY_URL and MATH3D_SAGE_GATEWAY_TOKEN in the desktop or web server runtime." },
 ];
 
 const formatBytes = (bytes: number) => bytes >= 1024 ** 2
@@ -15,7 +17,7 @@ const formatBytes = (bytes: number) => bytes >= 1024 ** 2
 
 export default function SageRuntimeInspector() {
   const [probes, setProbes] = useState<Record<SageBackend, ProbeState>>({
-    local: { checking: false }, docker: { checking: false },
+    local: { checking: false }, docker: { checking: false }, private: { checking: false },
   });
   const started = useRef(false);
 
@@ -65,6 +67,9 @@ export default function SageRuntimeInspector() {
             <div data-testid={`sage-runtime-limits-${id}`}>
               <strong>Service operation limits:</strong> input {formatBytes(probe.limits.maxInputBytes)} · output {formatBytes(probe.limits.maxOutputBytes)} · memory {formatBytes(probe.limits.maxMemoryBytes)} · work {probe.limits.maxWorkUnits.toLocaleString()} units
             </div>
+            {id === "private" && probe.health.limits && <div data-testid="sage-runtime-quota-private">
+              <strong>Gateway quotas:</strong> {probe.health.limits.maxConcurrent} concurrent · {probe.health.limits.maxRequestsPerMinute} requests/min · {Math.round(probe.health.limits.timeoutMs / 1000)} s timeout
+            </div>}
             {consoleCapability && <div data-testid="sage-runtime-console-limits">
               <strong>Trusted Console limits:</strong> input {formatBytes(consoleCapability.maxInputBytes)} · output {formatBytes(consoleCapability.maxOutputBytes)} · memory {formatBytes(consoleCapability.maxMemoryBytes)} · 20 s execution
             </div>}

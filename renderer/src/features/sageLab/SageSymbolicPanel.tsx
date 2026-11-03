@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { isLocalSageOperation } from "../../integrations/sage/sageClient";
-import { isBrokeredSageOperation, sageExecutionRegistry, SAGE_JOB_OPERATIONS, type SageOperationHandle } from "../../services/sageOperationExecution";
+import { isBrokeredSageOperation, sageBackendId, sageExecutionRegistry, SAGE_JOB_OPERATIONS, type SageBackend, type SageOperationHandle } from "../../services/sageOperationExecution";
 import {
   type SageSymbolicOperation,
   type SageRunResponse,
@@ -13,7 +13,7 @@ export type SymbolicResultRecord = {
   response: SageRunResponse;
   expression: string;
   variables: string[];
-  backend: "local" | "docker";
+  backend: SageBackend;
   request: SageRunRequest;
   source?: WorkbookSageEvidence["source"];
   sourceExpression?: string;
@@ -58,7 +58,7 @@ const SageSymbolicPanel: React.FC<{
   onOpenRuntimes?: () => void;
 }> = ({ compact = false, sourceExpression, sourceProvenance, sourceLabel = "Use current surface F(x,y,z)", sourceVariables = "x,y,z",
   operations = SCIENTIFIC_OPERATION_CATALOG, onResult, onOpenRuntimes }) => {
-  const [backend, setBackend] = useState<"local" | "docker">(
+  const [backend, setBackend] = useState<SageBackend>(
     isLocalSageOperation(operations[0]?.id ?? "sage.symbolic.simplify") ? "local" : "docker"
   );
   const [operation, setOperation] = useState<SageSymbolicOperation>(operations[0]?.id ?? "sage.symbolic.simplify");
@@ -91,7 +91,7 @@ const SageSymbolicPanel: React.FC<{
     setCapability("Checking backend capability…");
     void sageExecutionRegistry.discoverBackends().then((snapshots) => {
       if (!active) return;
-      const snapshot = snapshots.find((item) => item.backendId === (backend === "local" ? "sage-local-wsl" : "sage-docker"));
+      const snapshot = snapshots.find((item) => item.backendId === sageBackendId(backend));
       const operationType = isBrokeredSageOperation(operation) ? SAGE_JOB_OPERATIONS[operation].type : null;
       setCapability(snapshot?.availability === "available" && snapshot.operations.some((item) => item.operationType === operationType)
         ? "Backend available for this operation"
@@ -215,14 +215,16 @@ const SageSymbolicPanel: React.FC<{
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>Engine</span>
           <select aria-label="SageMath backend" value={backend} disabled={busy !== "none"} onChange={(event) => {
-            setBackend(event.target.value as "local" | "docker");
+            setBackend(event.target.value as SageBackend);
             setResponse(null);
             setError(null);
           }}>
             <option value="local" disabled={!localCapable}>Local WSL</option>
             <option value="docker">Docker service</option>
+            <option value="private" disabled={!gcdOperation && !inverseOperation}>Private gateway</option>
           </select>
-          <span>{localSage ? "Bounded local worker · Sage startup may take about a minute; 75-second WSL run limit" : "Separate Docker service"}</span>
+          <span>{localSage ? "Bounded local worker · Sage startup may take about a minute; 75-second WSL run limit"
+            : backend === "private" ? "Authenticated private gateway · server-side credential · bounded Number Theory jobs" : "Separate Docker service"}</span>
           <span role="status">{capability}</span>
         </div>
 
@@ -249,7 +251,9 @@ const SageSymbolicPanel: React.FC<{
             const next = event.target.value as SageSymbolicOperation;
             setOperation(next);
             if (["sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"].includes(next)) setVariablesText("x,y,z");
-            if (!isLocalSageOperation(next)) setBackend("docker");
+            if (backend === "private") {
+              if (!next.startsWith("sage.numberTheory.")) setBackend(isLocalSageOperation(next) ? "local" : "docker");
+            } else if (!isLocalSageOperation(next)) setBackend("docker");
             setError(null);
             setResponse(null);
           }} style={fieldStyle}>
@@ -333,7 +337,7 @@ const SageSymbolicPanel: React.FC<{
             </summary>
             <div><strong>Success:</strong> {response.success ? "yes" : "no"}</div>
             <div><strong>Engine:</strong> {response.engine}</div>
-            <div><strong>Backend:</strong> {backend === "local" ? "Local WSL" : "Docker service"}</div>
+            <div><strong>Backend:</strong> {backend === "local" ? "Local WSL" : backend === "docker" ? "Docker service" : "Private gateway"}</div>
             {response.elapsedMs != null && <div><strong>Elapsed:</strong> {response.elapsedMs}ms</div>}
             {(response.operation === "sage.polynomial.factor" || response.operation === "sage.polynomial.roots_exact") && <>
               {localSage && <div><strong>Exact reconstruction:</strong> {response.result.verified === true ? "verified" : "not verified"}</div>}

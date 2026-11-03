@@ -49,11 +49,15 @@ export type SageOperationHandle = {
 
 type Runner = (request: SageRunRequest) => Promise<SageRunResponse>;
 type Canceller = (jobId: string) => Promise<unknown> | unknown;
-export type SageBackend = "local" | "docker";
+export type SageBackend = "local" | "docker" | "private";
 type Backend = SageBackend;
 type HealthChecker = (backend: Backend) => Promise<SageHealthResponse>;
 const SAGE_LIMITS = { maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
   maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000 } as const;
+const PRIVATE_SAGE_LIMITS = { maxInputBytes: 8 * 1024, maxOutputBytes: 256 * 1024,
+  maxMemoryBytes: 1024 * 1024 * 1024, maxWorkUnits: 1 } as const;
+export const sageBackendId = (backend: SageBackend) => backend === "local" ? "sage-local-wsl"
+  : backend === "docker" ? "sage-docker" : "sage-private-gateway";
 export const SAGE_CONSOLE_OPERATION = "sage.console.execute";
 export const SAGE_CONSOLE_LIMITS = { maxInputBytes: 16 * 1024, maxOutputBytes: 64 * 1024,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024, maxWorkUnits: 1 } as const;
@@ -64,7 +68,7 @@ export type SageRuntimeProbe = Readonly<{
   backendVersion: string;
   transport: "worker" | "remote";
   health: SageHealthResponse;
-  limits: typeof SAGE_LIMITS;
+  limits: typeof SAGE_LIMITS | typeof PRIVATE_SAGE_LIMITS;
   operations: readonly ScientificOperationCapability[];
 }>;
 
@@ -98,13 +102,14 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
         params.polynomials.every((item) => typeof item === "string" && item.trim().length > 0) &&
         stringVariables && Array.isArray(variables) && variables.length > 0 && variables.length <= 8
     : request.operation === "sage.numberTheory.gcd"
-      ? request.backend === "docker" && Array.isArray(params.values) && params.values.length >= 2 &&
+      ? request.backend !== "local" && Array.isArray(params.values) && params.values.length >= 2 && params.values.length <= 32 &&
         params.values.every((item) => typeof item === "string" && /^-?[0-9]{1,128}$/.test(item))
     : request.operation === "sage.numberTheory.modInverse"
-      ? request.backend === "docker" &&
+      ? request.backend !== "local" &&
         typeof params.a === "string" && /^-?[0-9]{1,128}$/.test(params.a) &&
         typeof params.modulus === "string" && /^[0-9]{1,128}$/.test(params.modulus) &&
         BigInt(params.modulus) > 1n
+    : request.backend === "private" ? false
     : polynomial
     ? request.backend === "local"
       ? Array.isArray(params.coefficients) && params.coefficients.every((item) => typeof item === "string")
@@ -153,7 +158,9 @@ export class SageExecutionRegistry {
             const response = await this.#run({ ...body, jobId: input.jobId });
             if (this.#activeJobs.has(input.jobId)) this.#responses.set(input.jobId, response);
             context.checkpoint();
-            if (!response.success) throw new Error(response.error ?? `SageMath ${definition.label} failed.`);
+            if (!response.success) throw new Error(response.errorCode
+              ? `${response.errorCode}: ${response.error ?? `SageMath ${definition.label} failed.`}`
+              : response.error ?? `SageMath ${definition.label} failed.`);
             return JSON.parse(JSON.stringify(response)) as CanonicalJsonValue;
           },
         })), {
@@ -173,7 +180,7 @@ export class SageExecutionRegistry {
     });
     service.subscribe(recordScientificJobEvent);
     const makeBackend = (scope: Backend): ScientificExecutionBackend => ({
-      backendId: scope === "local" ? "sage-local-wsl" : "sage-docker",
+      backendId: sageBackendId(scope),
       backendVersion: "1", transport: scope === "local" ? "worker" : "remote",
       priority: 100, supportsCancellation: true,
       discover: async () => {
@@ -194,7 +201,7 @@ export class SageExecutionRegistry {
         }
       },
     });
-    this.#broker = createScientificExecutionBroker({ resolveSource, backends: [makeBackend("local"), makeBackend("docker")] });
+    this.#broker = createScientificExecutionBroker({ resolveSource, backends: [makeBackend("local"), makeBackend("docker"), makeBackend("private")] });
     this.#execution = createExecutionService(this.#broker);
     if (options.registerDiscovery) registerBrokerDiscovery("sage", () => this.#broker.discoverCapabilities());
   }
@@ -212,16 +219,19 @@ export class SageExecutionRegistry {
         status: error instanceof Error ? error.message : "SageMath state check failed." };
     }
     const operations: ScientificOperationCapability[] = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
-      .filter(([operation]) => health.operations.includes(operation) && (backend === "docker" || isLocalSageOperation(operation)))
-      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const, ...SAGE_LIMITS }))
+      .filter(([operation]) => health.operations.includes(operation) && (backend === "docker" ||
+        (backend === "private" && operation.startsWith("sage.numberTheory.")) ||
+        (backend === "local" && isLocalSageOperation(operation))))
+      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const,
+        ...(backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS) }))
       .sort((left, right) => left.operationType.localeCompare(right.operationType));
     if (backend === "local" && health.available && this.#consoleAvailable()) {
       operations.push({ operationType: SAGE_CONSOLE_OPERATION, retrySafety: "never", ...SAGE_CONSOLE_LIMITS });
     }
     return {
-      backend, backendId: backend === "local" ? "sage-local-wsl" : "sage-docker",
+      backend, backendId: sageBackendId(backend),
       backendVersion: "1", transport: backend === "local" ? "worker" : "remote",
-      health, limits: SAGE_LIMITS, operations,
+      health, limits: backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS, operations,
     };
   }
 
@@ -235,11 +245,12 @@ export class SageExecutionRegistry {
       documentId: createStableDocumentId("sage-operation", { jobId, payload } as CanonicalJsonValue),
       revision: 1, structuralHash: structuralHash(payload), generation: 1,
     };
-    const backendId = request.backend === "local" ? "sage-local-wsl" : "sage-docker";
+    const backendId = sageBackendId(request.backend);
     const job = createScientificJobRequest({
       jobId, source,
       operation: { type: definition.type, payload: payload as CanonicalJsonValue },
-      limits: { deadlineAt: Date.now() + (request.backend === "local" ? 180_000 : 40_000), ...SAGE_LIMITS },
+      limits: { deadlineAt: Date.now() + (request.backend === "local" ? 180_000 : 40_000),
+        ...(request.backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS) },
     });
     this.#activeJobs.add(jobId);
     this.#sources.set(source.documentId, source);
@@ -251,6 +262,8 @@ export class SageExecutionRegistry {
         engine: "sagemath", operation: request.operation, success: false, latex: "", result: {}, warnings: [],
         error: outcome.ok ? "SageMath returned no response." : outcome.code === "cancelled"
           ? definition.cancelled : outcome.message,
+        ...(!outcome.ok && /^([a-z][a-z0-9_]+): /.test(outcome.message)
+          ? { errorCode: /^([a-z][a-z0-9_]+): /.exec(outcome.message)![1] } : {}),
       };
       return { broker: outcome, response: outcome.ok ? response ?? failed : response?.success === false ? response : failed };
     }).finally(() => {

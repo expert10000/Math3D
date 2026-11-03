@@ -360,9 +360,9 @@ thread settings, and container inputs; carry license notices in release output.
 Sage is optional and is not bundled in the normal Electron installer. The
 current desktop and same-machine web path uses a bounded local WSL worker for
 the supported symbolic and polynomial operations; the Docker service remains
-an explicit alternative. A private, authenticated container gateway with a
-warm, bounded pool is the hosted target, not a claim about the current local
-implementation. Sage is never selected for import, rendering, picking,
+an explicit alternative. A private, authenticated container gateway now routes
+the two Number Theory operations in the first Phase 6 slice. A broader hosted
+pool and federation remain open. Sage is never selected for import, rendering, picking,
 normals, or routine mesh work. A legal/distribution review and resource quotas
 are prerequisites to enabling it for any hosted deployment.
 
@@ -483,8 +483,10 @@ Freeform Sage inputs that are not linked to a saved scene source remain explicit
 unlinked; they are not silently marked current. Hosted gateway and code-cell
 provenance are separate future work.
 
-The bounded WSL worker and optional Docker service are local delivery slices.
-They do not complete the hosted gateway. Surface and Geometry Sage operations
+The bounded WSL worker and optional Docker service remain local delivery slices.
+The Phase 6 private gateway now accepts GCD and modular inverse through an
+authenticated, quota-limited route; it does not complete the hosted federation
+or resource-transport plan. Surface and Geometry Sage operations
 now use one shared operation registry and `ExecutionService`, with backend
 capabilities discovered from the WSL and Docker health contracts. The shared
 broker handles execution, cancellation, and Compute diagnostics; the Sage
@@ -512,9 +514,9 @@ Workbook or an optional docked console.
 | P2 | Add a Sage Console bottom dock | Advanced users | Implemented for the trusted Local WSL desktop runtime. The dock shows session state, limits, cancellation, output, and SHA-256 input provenance through the shared `ExecutionService` and Compute job flow. Trust is explicit and session scoped; web and public Docker routes do not accept code. Private runtime support remains open. |
 | P2 | Add persistent Sage code cells | Workbook | Implemented as Sage code blocks with saved inputs, output history, exact dependency snapshots, and source freshness in Block, Document, and export views. Each cell uses the shared `ExecutionService` and requires explicit session trust for Local WSL; web and hosted routes cannot execute cell code. Private runtime support remains open. |
 | P3 | Add a dedicated CAS/Algebra workspace | Global module | Implemented as a peer scientific workspace with the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Exact jobs retain freeform input provenance when saved to Workbook. The Console opens from CAS but code execution still requires explicit trust in the Local WSL desktop runtime; web code execution remains unavailable. Desktop and web flows are covered. |
-| P3 | Add a dedicated Number Theory workspace | Global module | Implemented for exact GCD and modular inverse through the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Docker is selected by default because these bounded operations are not registered in Local WSL. Results retain freeform input provenance in Workbook; desktop and web flows cover execution, cancellation, diagnostics, and runtime access. |
+| P3 | Add a dedicated Number Theory workspace | Global module | Implemented for exact GCD and modular inverse through the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Docker is selected by default because these bounded operations are not registered in Local WSL; the authenticated Private gateway is also selectable when configured. Results retain freeform input provenance in Workbook; desktop and web flows cover execution, cancellation, diagnostics, and runtime access. |
 
-The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in this gate used a local test service; a live Docker deployment remains a separate runtime check.
+The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in that earlier gate used a local test service. The later [live Docker Number Theory gate](../services/sage-worker/README.md) ran GCD and modular inverse through SageMath 10.10 on desktop and web, with no mocked `/run` responses.
 
 The [desktop Graph Sage acceptance record](evidence/graph-sage-desktop-2026-11-03.md) verifies a real Local WSL exact factorization from a selected Graph function, current-to-stale Workbook source handling after an edit, bundle and Markdown export, and independent `.math3d` import with unavailable-source status. It also records a Graph preview viewport crash found during the gate and its passing regression check. A forced cold WSL distribution start remains unverified; the recorded first-run time is from a fresh Electron profile and worker.
 
@@ -548,6 +550,17 @@ the requested exactness.
 Acceptance: an environment matrix proves browser, desktop, web, mobile, local
 native, and remote capability states with no direct public access to math
 workers.
+
+The first Phase 6 Sage slice is implemented in [`services/sage-gateway`](../services/sage-gateway/README.md):
+an authenticated gateway advertises only GCD and modular inverse, enforces
+input, output, concurrency, rate, time, container memory, and process limits,
+forwards cancellation, and returns typed failures. Desktop main and the local
+web proxy hold the credential; the renderer selects this backend through the
+same `ExecutionService` registry and Compute diagnostics. The Compose gateway
+binds only to loopback, and its Sage worker has no host port. The existing
+local Docker route remains selectable. Broader remote resources, per-user
+authorization, hosted web sessions, rollback, and release manifests remain
+open in this phase.
 
 ## Conformance and quality gates
 

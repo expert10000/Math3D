@@ -24,13 +24,14 @@ export type SageHealthResponse = {
   engineVersion?: string;
   available: boolean;
   operations: SageOperation[];
+  limits?: { maxInputBytes: number; maxConcurrent: number; maxRequestsPerMinute: number; timeoutMs: number };
 };
 
 export type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
   jobId?: string;
-  backend?: "local" | "docker";
+  backend?: "local" | "docker" | "private";
 };
 
 export type SageRunResponse = {
@@ -43,6 +44,7 @@ export type SageRunResponse = {
   warnings: string[];
   elapsedMs?: number;
   error?: string;
+  errorCode?: string;
 };
 
 export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
@@ -96,6 +98,7 @@ export const normalizeSageHealth = (payload: unknown): SageHealthResponse => {
     ...(typeof data.engineVersion === "string" && data.engineVersion.trim() ? { engineVersion: data.engineVersion } : {}),
     available: data.available,
     operations,
+    ...(data.limits && typeof data.limits === "object" ? { limits: data.limits } : {}),
   };
 };
 
@@ -126,5 +129,6 @@ export const normalizeSageRunResponse = (payload: unknown): SageRunResponse => {
       ? Math.max(0, Math.round(data.elapsedMs))
       : undefined,
     error: typeof data.error === "string" && data.error ? data.error : undefined,
+    errorCode: typeof data.errorCode === "string" && data.errorCode ? data.errorCode : undefined,
   };
 };

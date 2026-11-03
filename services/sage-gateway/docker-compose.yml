@@ -1,0 +1,29 @@
+services:
+  sage-worker:
+    build:
+      context: ../sage-worker
+      dockerfile: Dockerfile
+    expose:
+      - "8767"
+    mem_limit: 1g
+    pids_limit: 128
+    networks:
+      - private-sage
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - sage-worker
+    environment:
+      SAGE_GATEWAY_WORKER_URL: http://sage-worker:8767
+      MATH3D_SAGE_GATEWAY_TOKEN: ${MATH3D_SAGE_GATEWAY_TOKEN:?Set a private gateway token of at least 32 characters}
+    ports:
+      - "127.0.0.1:8770:8770"
+    networks:
+      - private-sage
+      - gateway-ingress
+networks:
+  private-sage:
+    internal: true
+  gateway-ingress:

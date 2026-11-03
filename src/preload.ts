@@ -678,7 +678,7 @@ contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
 });
 
 contextBridge.exposeInMainWorld("sageService", {
-  health: (scope?: "local" | "docker"): Promise<unknown> =>
+  health: (scope?: "local" | "docker" | "private"): Promise<unknown> =>
     ipcRenderer.invoke("sage:health", scope),
   getStatus: (): Promise<unknown> =>
     ipcRenderer.invoke("sage:health"),

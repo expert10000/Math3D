@@ -30,6 +30,15 @@ const WORKER_CAPABILITIES = Object.freeze([
 ]);
 const MOBILE_PAIR_TOKEN = String(process.env.MATH3D_MOBILE_PAIR_TOKEN || "").trim();
 const MOBILE_PAIR_EXPIRES_AT = Number(process.env.MATH3D_MOBILE_PAIR_EXPIRES_AT || 0);
+const SAGE_PRIVATE_URL = String(process.env.MATH3D_SAGE_GATEWAY_URL || "http://127.0.0.1:8770").replace(/\/+$/, "");
+const SAGE_PRIVATE_TOKEN = String(process.env.MATH3D_SAGE_GATEWAY_TOKEN || "");
+const SAGE_PRIVATE_URL_SAFE = (() => {
+  try {
+    const url = new URL(SAGE_PRIVATE_URL);
+    return !url.username && !url.password && (url.protocol === "https:" ||
+      (url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)));
+  } catch { return false; }
+})();
 
 function secureTokenMatches(received, expected) {
   const receivedBytes = Buffer.from(String(received || ""), "utf8");
@@ -1076,6 +1085,32 @@ async function executeComputeJob(job) {
 }
 
 async function handleRoute(req, res, pathname) {
+  if (pathname.startsWith("/api/sage-private/")) {
+    if (!isLoopbackRequest(req)) return json(res, 403, { code: "forbidden", error: "Private Sage proxy accepts only same-machine requests." });
+    if (!["/api/sage-private/health", "/api/sage-private/run", "/api/sage-private/cancel"].includes(pathname))
+      return json(res, 404, { code: "not_found", error: "Unknown private Sage route." });
+    if (!SAGE_PRIVATE_TOKEN) return json(res, req.method === "GET" ? 200 : 503,
+      req.method === "GET" ? { engine: "sagemath", available: false, status: "Private gateway credential is not configured in the web server.", operations: [] }
+        : { code: "gateway_not_configured", error: "Private gateway credential is not configured in the web server." });
+    if (!SAGE_PRIVATE_URL_SAFE) return json(res, req.method === "GET" ? 200 : 503,
+      req.method === "GET" ? { engine: "sagemath", available: false, status: "Private gateway requires HTTPS outside this machine.", operations: [] }
+        : { code: "gateway_insecure_url", error: "Private gateway requires HTTPS outside this machine." });
+    const suffix = pathname.slice("/api/sage-private".length);
+    try {
+      const body = req.method === "POST" ? await readJsonBody(req, 8192) : undefined;
+      const upstream = await fetch(`${SAGE_PRIVATE_URL}${suffix}`, { method: req.method,
+        headers: { authorization: `Bearer ${SAGE_PRIVATE_TOKEN}`, "content-type": "application/json" },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(25000) });
+      const payload = await upstream.json();
+      if (suffix === "/health" && !upstream.ok) return json(res, 200, { engine: "sagemath", available: false,
+        status: `${payload.code || "gateway_error"}: ${payload.error || "Private gateway discovery failed."}`, operations: [] });
+      return json(res, upstream.status, payload);
+    } catch {
+      return json(res, suffix === "/health" ? 200 : 502, suffix === "/health"
+        ? { engine: "sagemath", available: false, status: "Private Sage gateway is unreachable.", operations: [] }
+        : { code: "gateway_unavailable", error: "Private Sage gateway is unreachable." });
+    }
+  }
   if (pathname.startsWith("/api/sage/")) {
     await handleSageRoute(req, res, pathname);
     return;
@@ -1421,7 +1456,7 @@ async function handleRoute(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${HOST}:${PORT}`);
   if (req.method === "OPTIONS") {
-    if (url.pathname.startsWith("/api/sage/")) {
+    if (url.pathname.startsWith("/api/sage/") || url.pathname.startsWith("/api/sage-private/")) {
       if (!isLoopbackRequest(req)) {
         json(res, 403, { ok: false, error: "Local Sage operations accept only same-machine requests." });
         return;

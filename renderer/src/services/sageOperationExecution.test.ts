@@ -89,7 +89,7 @@ describe("Sage scientific execution contract", () => {
   it("shares capability discovery and execution across Surface and Geometry", async () => {
     const calls: unknown[] = [];
     const registry = createSageExecutionRegistry({
-      health: async (backend) => ({ engine: "sagemath", status: backend === "docker" ? "ok" : "WSL unavailable",
+      health: async (backend) => ({ engine: "sagemath", status: backend === "docker" ? "ok" : backend === "private" ? "Gateway unavailable" : "WSL unavailable",
         available: backend === "docker", operations: ["sage.symbolic.simplify"] }),
       run: async (request) => {
         calls.push(request);
@@ -98,7 +98,7 @@ describe("Sage scientific execution contract", () => {
       },
     });
     const snapshots = await registry.discoverBackends();
-    expect(snapshots).toHaveLength(2);
+    expect(snapshots).toHaveLength(3);
     expect(snapshots.find((item) => item.backendId === "sage-local-wsl")).toMatchObject({
       availability: "unavailable", unavailableReason: "WSL unavailable",
     });
@@ -118,6 +118,27 @@ describe("Sage scientific execution contract", () => {
     expect(getComputeJobs().find((job) => job.jobId === unavailable.jobId)).toMatchObject({
       status: "failed", backendId: "sage-local-wsl",
     });
+  });
+
+  it("discovers only bounded Number Theory on the private gateway and routes through the same broker", async () => {
+    const calls: unknown[] = [];
+    const registry = createSageExecutionRegistry({
+      health: async (backend) => ({ engine: "sagemath", engineVersion: "10.10", status: "ok", available: backend === "private",
+        operations: SAGE_SYMBOLIC_OPERATIONS }),
+      run: async (request) => { calls.push(request); return { engine: "sagemath", engineVersion: "10.10",
+        operation: request.operation, success: true, result: { value: "6" }, latex: "6", warnings: [] }; },
+    });
+    const probe = await registry.probeBackend("private");
+    expect(probe.backendId).toBe("sage-private-gateway");
+    expect(probe.limits.maxInputBytes).toBe(8 * 1024);
+    expect(probe.operations.map((item) => item.operationType)).toEqual(["number-theory.gcd", "number-theory.mod-inverse"]);
+    expect(() => registry.run({ operation: "sage.symbolic.simplify", backend: "private",
+      params: { expression: "x", variables: ["x"] } })).toThrow();
+    const handle = registry.run({ operation: "sage.numberTheory.gcd", backend: "private", params: { values: ["84", "30"] } });
+    const { broker, response } = await handle.promise;
+    expect(broker).toMatchObject({ ok: true, backend: { backendId: "sage-private-gateway" } });
+    expect(response.result.value).toBe("6");
+    expect(calls).toMatchObject([{ operation: "sage.numberTheory.gcd", backend: "private" }]);
   });
 
   it("cancels independent jobs through one shared service", async () => {
