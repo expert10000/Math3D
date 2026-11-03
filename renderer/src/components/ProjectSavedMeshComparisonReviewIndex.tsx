@@ -1,13 +1,15 @@
 import React from "react";
 import type { SavedMeshComparisonReviewRow } from "../projects/projectSavedMeshComparisonReview";
 
-export function ProjectSavedMeshComparisonReviewIndex({ rows, busy, onOpenPair, onOpenNote }: {
+export function ProjectSavedMeshComparisonReviewIndex({ rows, busy, onOpenPair, onOpenNote, onExport }: {
   rows: readonly SavedMeshComparisonReviewRow[]; busy: boolean;
-  onOpenPair: (id: string) => void; onOpenNote?: (id: string) => void;
+  onOpenPair: (id: string) => void; onOpenNote?: (id: string) => void; onExport: () => void;
 }) {
   return <section data-testid="project-saved-mesh-comparisons" style={{ display: "grid", gap: 8, marginTop: 10 }}>
     <strong>Saved comparison review ({rows.length})</strong>
     <p style={{ margin: 0 }}>Exact saved pairs remain listed when evidence is unavailable. Values and Notes open only after verification.</p>
+    <button type="button" data-testid="project-mesh-review-export" disabled={busy}
+      onClick={onExport}>Export review HTML</button>
     {rows.map(row => <article key={row.pair.id} data-testid={`project-mesh-review-${row.pair.id}`}
       style={{ border: "1px solid #94a3b8", borderRadius: 7, padding: 8, overflowWrap: "anywhere" }}>
       <strong>{row.pair.title}</strong>

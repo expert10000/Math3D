@@ -32,6 +32,8 @@ import type { SavedMeshTrendComparison } from "../projects/projectSavedMeshTrend
 import { createSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
 import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "../projects/projectSavedMeshComparisonNotes";
 import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComparisonReview";
+import { createSavedMeshComparisonReviewSnapshot, savedMeshComparisonReviewHtml } from "../projects/projectSavedMeshComparisonReviewReport";
+import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
@@ -1459,7 +1461,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             {!!savedMeshReview.length && <ProjectSavedMeshComparisonReviewIndex rows={savedMeshReview} busy={busy}
               onOpenPair={id => { const pair = project.savedMeshComparisons?.find(item => item.id === id);
                 if (!pair) return; setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true); }}
-              onOpenNote={id => openProjectNotes(id)} />}</div>
+              onOpenNote={id => openProjectNotes(id)}
+              onExport={() => { try {
+                const snapshot = createSavedMeshComparisonReviewSnapshot(project, comparisonResource);
+                downloadStudyBlob(new Blob([savedMeshComparisonReviewHtml(snapshot)], { type: "text/html" }),
+                  "math3d-saved-mesh-comparison-review.html");
+                setMessage("Saved Mesh comparison review exported with checked statuses and available observations.");
+              } catch (error) { setMessage(`Review export failed: ${(error as Error).message}`); } }} />}</div>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
