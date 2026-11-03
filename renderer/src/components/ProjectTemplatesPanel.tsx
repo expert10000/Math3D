@@ -7,6 +7,7 @@ export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
 const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item,
   steps: [item.id === "ripple-wave-study" ? "Open Surface first, then choose Graph, Mesh or Geometry from the Project tree. Find its Workbook citations and Notes in Project details → Documents." :
     item.id === "mesh-comparison-study" ? "In Projects, open Saved Mesh analysis results → View saved result trend. Pin two points to compare their recorded values." :
+    item.id === "mesh-comparison-review" ? "In Projects, open Compare saved documents → Saved comparison review. Inspect three verified pairs and open either authored Note." :
     item.id === "mesh-subdivision-study" ? "In Projects → Compare saved documents, choose two generations of the same Mesh; its saved quality trend is also available." :
     item.id === "mesh-curvature-study" ? "Open Saved Mesh analysis results → View saved result trend, then select a recorded mean or Gaussian curvature scalar." :
     item.id === "mesh-trend-gap-study" ? "Open the saved quality trend to inspect the explicitly unrecorded middle generation." :
@@ -27,6 +28,7 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "curve-construction-notebook": ["Curve", "Surface", "Workbook", "Notes"],
   "ripple-wave-study": ["Graph", "Surface", "Mesh", "Geometry", "Workbook", "Notes"],
   "mesh-comparison-study": ["Mesh", "Analysis"],
+  "mesh-comparison-review": ["Mesh", "Analysis", "Notes"],
   "mesh-subdivision-study": ["Mesh", "Analysis"],
   "mesh-curvature-study": ["Mesh", "Analysis"],
   "mesh-trend-gap-study": ["Mesh", "Analysis"],

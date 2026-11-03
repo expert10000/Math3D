@@ -1458,7 +1458,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button>
             {!!savedMeshReview.length && <ProjectSavedMeshComparisonReviewIndex rows={savedMeshReview} busy={busy}
               onOpenPair={id => { const pair = project.savedMeshComparisons?.find(item => item.id === id);
-                if (!pair) return; setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true); }} />}</div>
+                if (!pair) return; setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true); }}
+              onOpenNote={id => openProjectNotes(id)} />}</div>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
