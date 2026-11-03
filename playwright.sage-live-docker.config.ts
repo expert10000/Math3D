@@ -13,10 +13,20 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     actionTimeout: 30_000,
   },
-  webServer: {
-    command: "node renderer/node_modules/vite/bin/vite.js renderer --host 127.0.0.1 --port 5183 --strictPort",
-    url: "http://127.0.0.1:5183/",
-    timeout: 30_000,
-    reuseExistingServer: false,
-  },
+  webServer: [
+    {
+      command: "node apps/web/server/worker-proxy.cjs",
+      url: "http://127.0.0.1:8793/api/sage/health",
+      timeout: 30_000,
+      reuseExistingServer: false,
+      env: { MATH3D_WEB_WORKER_PROXY_PORT: "8793" },
+    },
+    {
+      command: "node renderer/node_modules/vite/bin/vite.js renderer --host 127.0.0.1 --port 5183 --strictPort",
+      url: "http://127.0.0.1:5183/",
+      timeout: 30_000,
+      reuseExistingServer: false,
+      env: { MATH3D_WEB_WORKER_PROXY_TARGET: "http://127.0.0.1:8793" },
+    },
+  ],
 });

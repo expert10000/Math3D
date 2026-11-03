@@ -38,4 +38,14 @@ describe("Scientific Services contextual operation catalog", () => {
     expect(graph[0]).toBe(scientificOperationsFor("surface")[0]);
     expect(scientificOperationsFor("graphs", "Number Theory")).toEqual([]);
   });
+
+  it("offers the existing GCD and modular inverse contracts in Number Theory", () => {
+    const numberTheory = scientificOperationsFor("number_theory");
+    expect(numberTheory.map((entry) => entry.id)).toEqual([
+      "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
+    ]);
+    expect(scientificOperationsFor("number_theory", "Number Theory")).toEqual(numberTheory);
+    expect(numberTheory[0]).toBe(scientificOperationsFor("cas", "Number Theory")[0]);
+    expect(scientificOperationsFor("number_theory", "Basic")).toEqual([]);
+  });
 });

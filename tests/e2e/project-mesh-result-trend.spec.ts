@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { freezeControls, projectFreezeFixture } from "./helpers/projectFreeze";
 
-test("PC14 shows exact saved Mesh points, exports, and reopens after restart", async () => {
+test("PC14–18 reopens exact Mesh trend points and a saved pinned A/B report", async () => {
   test.setTimeout(240_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -48,6 +48,11 @@ test("PC14 shows exact saved Mesh points, exports, and reopens after restart", a
     await comparison.getByTestId("project-mesh-result-return").click();
     await expect(comparison).toHaveCount(0);
     await expect(view.getByTestId("project-mesh-trend-pin-status")).toContainText(middle.resultId);
+    await view.getByTestId("project-mesh-trend-compare").click();
+    await comparison.getByTestId("project-mesh-pinned-title").fill("Quality generations A/B");
+    await comparison.getByTestId("project-mesh-pinned-save").click();
+    await expect(comparison.getByRole("status")).toContainText("saved to this Project");
+    await comparison.getByTestId("project-mesh-result-return").click();
     await view.getByTestId(`project-mesh-trend-point-${middle.resultId}`).locator("circle").click();
     await view.getByTestId("project-mesh-trend-open-result").click();
     await expect(view).toHaveCount(0);
@@ -73,6 +78,18 @@ test("PC14 shows exact saved Mesh points, exports, and reopens after restart", a
     expect(html).toContain("Gaps are not estimated or connected");
     await view.getByRole("button", { name: "Close" }).click();
     await page.reload(); await controls.reopen(saved.identity.id);
+    const pinned = controls.panel.getByTestId("project-saved-mesh-comparisons");
+    await expect(pinned).toContainText("Quality generations A/B");
+    await pinned.getByRole("button", { name: /Quality generations A\/B/ }).click();
+    await expect(comparison.getByTestId("project-mesh-pinned-reference")).toContainText("faceCount");
+    await expect(comparison.getByTestId("project-mesh-result-0")).toHaveValue(middle.resultId);
+    await expect(comparison.getByTestId("project-mesh-result-1")).toHaveValue(results[2].resultId);
+    const pinnedReport = test.info().outputPath("pc18-pinned-mesh-comparison.html");
+    await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), pinnedReport);
+    await comparison.getByTestId("project-mesh-result-export").click();
+    await expect.poll(() => { try { return readFileSync(pinnedReport).length > 0; } catch { return false; } }, { timeout: 30_000 }).toBe(true);
+    expect(readFileSync(pinnedReport, "utf8")).toContain(middle.provenance.source.structuralHash);
+    await comparison.getByTestId("project-mesh-result-return").click();
     await page.getByTestId("project-explorer-panel").getByTestId("project-open-mesh-result-trend").click();
     await view.getByTestId("project-mesh-trend-anchor").selectOption(results[0].resultId);
     await view.getByTestId("project-mesh-trend-metric").selectOption("faceCount");

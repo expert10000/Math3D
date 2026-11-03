@@ -1,6 +1,6 @@
 import { SAGE_SYMBOLIC_OPERATIONS, type SageSymbolicOperation } from "../../integrations/sage/sageSchemas";
 
-export type ScientificServiceContext = "surface" | "geometry" | "graphs" | "cas";
+export type ScientificServiceContext = "surface" | "geometry" | "graphs" | "cas" | "number_theory";
 export type ScientificServicePreset = "All" | "Basic" | "Symbolic" | "Numerical" | "Algebraic Geometry" | "Number Theory";
 
 export const SCIENTIFIC_SERVICE_PRESETS: readonly ScientificServicePreset[] = [
@@ -18,6 +18,7 @@ export type ScientificOperationEntry = {
 const BOTH: readonly ScientificServiceContext[] = ["surface", "geometry", "cas"];
 const SURFACE: readonly ScientificServiceContext[] = ["surface", "cas"];
 const GRAPH_SYMBOLIC: readonly ScientificServiceContext[] = ["surface", "geometry", "graphs", "cas"];
+const NUMBER_THEORY: readonly ScientificServiceContext[] = ["surface", "geometry", "cas", "number_theory"];
 
 // This is a UI catalog. The Sage schema and worker still validate the executable contract.
 export const SCIENTIFIC_OPERATION_CATALOG: readonly ScientificOperationEntry[] = [
@@ -33,8 +34,8 @@ export const SCIENTIFIC_OPERATION_CATALOG: readonly ScientificOperationEntry[] =
   { id: "sage.polynomial.roots_exact", label: "Exact algebraic roots", engine: "SageMath", presets: ["Symbolic", "Algebraic Geometry"], contexts: GRAPH_SYMBOLIC },
   { id: "sage.polynomial.factor", label: "Exact polynomial factor", engine: "SageMath", presets: ["Symbolic", "Algebraic Geometry"], contexts: GRAPH_SYMBOLIC },
   { id: "sage.groebner.compute", label: "Groebner basis", engine: "SageMath", presets: ["Algebraic Geometry"], contexts: BOTH },
-  { id: "sage.numberTheory.gcd", label: "GCD", engine: "SageMath", presets: ["Number Theory"], contexts: BOTH },
-  { id: "sage.numberTheory.modInverse", label: "Mod inverse", engine: "SageMath", presets: ["Number Theory"], contexts: BOTH },
+  { id: "sage.numberTheory.gcd", label: "GCD", engine: "SageMath", presets: ["Number Theory"], contexts: NUMBER_THEORY },
+  { id: "sage.numberTheory.modInverse", label: "Mod inverse", engine: "SageMath", presets: ["Number Theory"], contexts: NUMBER_THEORY },
 ];
 
 export const scientificOperationsFor = (

@@ -3,7 +3,7 @@ export type WorkbookSageEvidence = {
   kind: "sage-result/v1";
   savedAt: number;
   source: {
-    module: "surface" | "geometry" | "graphs" | "cas";
+    module: "surface" | "geometry" | "graphs" | "cas" | "number_theory";
     id: string;
     revision: number;
     expression: string;
