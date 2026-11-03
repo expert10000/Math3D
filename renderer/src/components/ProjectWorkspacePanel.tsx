@@ -8,6 +8,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
+  migrateProjectScientificSelections,
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
@@ -507,8 +508,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }
     const workspace = capturedWorkspace ?? capture();
     verifyMixedWorkspaceReplay(workspace);
-    return base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
+    const next = base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
+    return migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
   };
   const refresh = () => {
     setAnalysisError(null);
@@ -682,6 +684,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const capturedWorkspace = managed ? undefined : capture();
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(capturedWorkspace), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      next = migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
       if (!managed && noteDrafts.length) next = bindProjectNoteDrafts(next, noteDrafts);
       await verifyProjectQuantumSceneDocuments(next, onVerifyQuantumSceneDocument);
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
