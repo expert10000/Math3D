@@ -15,7 +15,7 @@ async function savedResourceCount(page: LaunchedSurfaceApp["page"], id: string):
   }), id);
 }
 
-test("PC25 saves a Mesh/Geometry coordinate Note and reopens its exact marker after restart", async () => {
+test("PC25–26 saves and reviews several exact coordinate Notes after restart", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -52,6 +52,24 @@ test("PC25 saves a Mesh/Geometry coordinate Note and reopens its exact marker af
     const note = saved.notes.find((item: { title: string }) => item.title === "Shared metre coordinate");
     expect(note.anchor.coordinateProbe).toMatchObject({ format: "math3d.comparison-coordinate-probe/v1",
       sourceSlot: "B", coordinateFrame: { frame: "local", unit: "m" } });
+    for (const [title, picked, other, direction, count] of [
+      ["Mesh position", target, source, "A to B", 2],
+      ["Second sphere position", source, target, "B to A", 3],
+    ] as const) {
+      await view.getByLabel("Comparison observation title").fill(title);
+      await view.getByLabel("Comparison observation body").fill(`Review ${title} without asserting a matching element.`);
+      const pickedCanvas = picked.locator("canvas").first();
+      const box = await pickedCanvas.boundingBox();
+      if (!box) throw new Error("Comparison canvas is unavailable.");
+      for (const [x, y] of [[0.5, 0.5], [0.45, 0.48], [0.55, 0.55]]) {
+        await pickedCanvas.click({ position: { x: box.width * x, y: box.height * y } });
+        if ((await view.getByTestId("project-composition-probe-status").textContent())?.includes(`Linked coordinate from ${direction}`)) break;
+      }
+      await expect(other.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
+      await view.getByTestId("project-comparison-save-coordinate").click();
+      await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).notes.length as number)).toBe(count);
+    }
+    expect((await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).notes.length)) as number).toBe(3);
     const sourceCanvas = await canvas.elementHandle();
     const targetCanvas = await target.locator("canvas").first().elementHandle();
     await view.getByRole("button", { name: "Close" }).click();
@@ -62,15 +80,24 @@ test("PC25 saves a Mesh/Geometry coordinate Note and reopens its exact marker af
     await page.reload();
     expect(await savedResourceCount(page, projectId)).toBeGreaterThan(0);
     await page.getByTestId("projects-toggle").click();
-    await panel.getByTestId("project-open-composition").click();
-    await view.getByLabel("Saved composition").selectOption(note.anchor.compositionId);
+    const review = panel.getByTestId("project-coordinate-observation-review");
+    await expect(review.locator("li")).toHaveCount(3);
+    await review.getByTestId(`project-coordinate-review-${note.identity.id}`).getByRole("button", { name: "Open saved marker" }).click();
+    await expect(view.getByLabel("Saved composition")).toHaveValue(note.anchor.compositionId);
     await expect(target.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
-    await expect(view.getByTestId("project-composition-probe-status")).toContainText("Saved coordinate");
+    await expect(view.getByTestId("project-composition-probe-status")).toContainText("Saved coordinate from B to A");
     await expect(view.getByTestId("project-comparison-observations")).toContainText("Shared metre coordinate");
     const path = test.info().outputPath("pc25-coordinate-comparison.html");
     await ctx.app.evaluate(({ session }, targetPath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(targetPath)), path);
     await view.getByTestId("project-comparison-export-evidence").click();
     await expect.poll(() => { try { return readFileSync(path, "utf8").includes("No target element or measured value is inferred."); }
+      catch { return false; } }).toBe(true);
+    await view.getByRole("button", { name: "Close" }).click();
+    const reviewPath = test.info().outputPath("pc26-coordinate-review.html");
+    await ctx.app.evaluate(({ session }, targetPath) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(targetPath)), reviewPath);
+    await review.getByTestId("project-coordinate-review-export").click();
+    await expect.poll(() => { try { const html = readFileSync(reviewPath, "utf8");
+      return html.includes("Shared metre coordinate") && html.includes("Mesh position") && html.includes("Second sphere position"); }
       catch { return false; } }).toBe(true);
   } finally { await closeSurfaceApp(ctx); }
 });

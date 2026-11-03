@@ -19,6 +19,8 @@ import type { ValidationResult } from "./validation";
 import { isScientificSceneLibraryReference, scientificSceneLibraryKey,
   type ScientificSceneLibraryReference } from "./scientificSceneLibrary";
 import { normalizeScientificSelection, type ScientificSelection } from "./scientificSelection";
+import { normalizeDerivedFieldDocument, vectorFieldDerivedShape,
+  type DerivedFieldDocument } from "./derivedFieldDocument";
 
 export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
@@ -55,6 +57,7 @@ export type MixedWorkspaceDocument = Readonly<{
   committedSelection: ViewerCommittedSelection | null;
   constructions: readonly MixedConstructionSource[];
   scientificSelections?: readonly ScientificSelection[];
+  derivedFields?: readonly DerivedFieldDocument[];
   scientificScenes?: readonly ScientificSceneLibraryReference[];
 }>;
 export type MixedWorkspaceReplayAdapter = (entry: MixedWorkspaceEntry) => KernelWorkspaceDocument;
@@ -89,7 +92,7 @@ const identityEquals = (left: DocumentIdentity, right: DocumentIdentity): boolea
 
 export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResult<MixedWorkspaceDocument> => {
   const errors: string[] = [];
-  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections"]) ||
+  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections", "derivedFields"]) ||
       value.format !== MIXED_WORKSPACE_FORMAT || value.schemaVersion !== MIXED_WORKSPACE_SCHEMA_VERSION) return { ok: false, errors: ["Invalid mixed workspace envelope."] };
   if (!Array.isArray(value.entries) || value.entries.length > 512) errors.push("Invalid mixed workspace entries.");
   const entries: MixedWorkspaceEntry[] = [];
@@ -113,6 +116,50 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
   if (new Set(entries.map(entryKey)).size !== entries.length) errors.push("Duplicate module document entry.");
   const expectedById = new Map<string, DocumentIdentity>(entries.map((entry) => [entry.expected.id, entry.expected]));
   if (expectedById.size !== entries.length) errors.push("Document IDs must be unique across modules.");
+  const derivedFields: DerivedFieldDocument[] = [];
+  if (value.derivedFields !== undefined) {
+    if (!Array.isArray(value.derivedFields) || value.derivedFields.length > 64)
+      errors.push("Invalid Project derived fields.");
+    else for (const candidate of value.derivedFields) {
+      const checked = normalizeDerivedFieldDocument(candidate);
+      if (!checked.ok) errors.push(...checked.errors);
+      else derivedFields.push(checked.value);
+    }
+    const byId = new Map<string, DerivedFieldDocument>(derivedFields.map(document =>
+      [document.identity.id, document]));
+    if (byId.size !== derivedFields.length) errors.push("Duplicate Project derived field IDs.");
+    for (const document of derivedFields) {
+      const input = document.input;
+      if (input.kind === "vector3d") {
+        const entry = entries.find(item => item.module === "vector3d" && item.expected.id === input.documentId);
+        if (!entry) errors.push("Derived field vector source is outside the workspace.");
+        else if (entry.replay === null && entry.checkpoint.format === "math3d.vector-field3d-document" &&
+            entry.expected.revision === input.revision &&
+            entry.expected.structuralHash === input.structuralHash &&
+            canonicalJsonStringify(input.shape) !== canonicalJsonStringify(vectorFieldDerivedShape(entry.checkpoint)))
+          errors.push("Derived field input shape disagrees with its vector source.");
+      } else {
+        const parent = byId.get(input.documentId);
+        if (!parent) errors.push("Derived field input is outside the Project collection.");
+        else if (parent.identity.revision === input.revision &&
+            parent.identity.structuralHash === input.structuralHash &&
+            canonicalJsonStringify(input.shape) !== canonicalJsonStringify(parent.output))
+          errors.push("Derived field input shape disagrees with its parent.");
+      }
+    }
+    const depth = (id: string, visiting: Set<string>): number => {
+      if (visiting.has(id)) throw new TypeError("Derived field dependency cycle.");
+      const document = byId.get(id);
+      if (!document || document.input.kind !== "derived") return 1;
+      visiting.add(id);
+      const result = 1 + depth(document.input.documentId, visiting);
+      visiting.delete(id);
+      return result;
+    };
+    try { if (derivedFields.some(document => depth(document.identity.id, new Set()) > 8))
+      errors.push("Derived field chain exceeds eight operations."); }
+    catch (error) { errors.push((error as Error).message); }
+  }
   const scientificSelections: ScientificSelection[] = [];
   if (value.scientificSelections !== undefined) {
     if (!Array.isArray(value.scientificSelections) || value.scientificSelections.length > 256)
@@ -198,6 +245,7 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
   if (errors.length) return { ok: false, errors };
   return { ok: true, value: jsonClone({ ...value, entries, results, artifacts, relations,
     committedSelection: selection, constructions,
+    ...(value.derivedFields === undefined ? {} : { derivedFields }),
     ...(value.scientificSelections === undefined ? {} : { scientificSelections }) }) as unknown as MixedWorkspaceDocument };
 };
 

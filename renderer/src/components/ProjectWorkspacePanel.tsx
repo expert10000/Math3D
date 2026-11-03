@@ -36,6 +36,9 @@ import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComp
 import { createSavedMeshComparisonReviewSnapshot, savedMeshComparisonReviewHtml } from "../projects/projectSavedMeshComparisonReviewReport";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
+import { ProjectCoordinateObservationReviewIndex } from "./ProjectCoordinateObservationReviewIndex";
+import { buildProjectCoordinateObservationReview } from "../projects/projectCoordinateObservationReview";
+import { createProjectCoordinateObservationReviewSnapshot, projectCoordinateObservationReviewHtml } from "../projects/projectCoordinateObservationReviewReport";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -229,8 +232,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true);
   }, [open, pairRequest?.token, project?.identity.id]);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
+  const [comparisonInitialProbeId, setComparisonInitialProbeId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader, resourceVersion]);
   const savedMeshReview = useMemo(() => project ? buildSavedMeshComparisonReview(project, comparisonResource) : [], [project, comparisonResource]);
+  const coordinateReview = useMemo(() => project ? buildProjectCoordinateObservationReview(project, comparisonResource) : [], [project, comparisonResource]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
@@ -614,7 +619,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setNotesMessage("The exact saved comparison or one of its sources is unavailable. Reopen or relink the Project.");
         return;
       }
-      setComparisonInitialId(anchor.compositionId); setCompositionOpen(true); setNotesOpen(false); onOpenChange(true);
+      setComparisonInitialId(anchor.compositionId);
+      setComparisonInitialProbeId(anchor.coordinateProbe ? note.identity.id : undefined);
+      setCompositionOpen(true); setNotesOpen(false); onOpenChange(true);
       return;
     }
     if (anchor.kind === "saved-mesh-comparison") {
@@ -1488,7 +1495,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2 &&
             !project.workspace.entries.some(entry => ["mesh", "geometry", "surface"].includes(entry.module) && !!entry.replay &&
               (entry.checkpoint.identity.revision !== entry.expected.revision || entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash))}
-            onClick={() => { setComparisonInitialId(undefined); setCompositionOpen(true); }}>Open comparison</button>
+            onClick={() => { setComparisonInitialId(undefined); setComparisonInitialProbeId(undefined); setCompositionOpen(true); }}>Open comparison</button>
           <div style={{ marginTop: 12 }}><strong>Saved Mesh analysis results</strong><p>Compare exact stored quality or curvature summaries. {comparableSavedMeshResults(project).length} eligible results.</p>
             <button type="button" data-testid="project-open-mesh-result-comparison" disabled={busy || comparableSavedMeshResults(project).length < 2}
               onClick={() => { setMeshTrendComparison(null); setSavedMeshComparison(null); setMeshResultComparisonOpen(true); }}>Compare saved results</button>{" "}
@@ -1504,6 +1511,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   "math3d-saved-mesh-comparison-review.html");
                 setMessage("Saved Mesh comparison review exported with checked statuses and available observations.");
               } catch (error) { setMessage(`Review export failed: ${(error as Error).message}`); } }} />}</div>
+          {!!coordinateReview.length && <ProjectCoordinateObservationReviewIndex rows={coordinateReview} onOpen={id => {
+            const note = project.notes?.find(item => item.identity.id === id);
+            if (note) openNoteTarget(note);
+          }} onExport={() => { try {
+            const snapshot = createProjectCoordinateObservationReviewSnapshot(project, comparisonResource);
+            downloadStudyBlob(new Blob([projectCoordinateObservationReviewHtml(snapshot)], { type: "text/html" }),
+              "math3d-coordinate-observation-review.html");
+            setMessage("Coordinate observation review exported with exact source statuses.");
+          } catch (error) { setMessage(`Coordinate review export failed: ${(error as Error).message}`); } }} />}
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
@@ -1858,7 +1874,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
-      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} initialCompositionId={comparisonInitialId} onClose={() => setCompositionOpen(false)}
+      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} initialCompositionId={comparisonInitialId} initialProbeNoteId={comparisonInitialProbeId} onClose={() => setCompositionOpen(false)}
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
             const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);

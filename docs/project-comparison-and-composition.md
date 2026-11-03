@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC25)
+# Project comparison and composition (PC01–PC26)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -45,6 +45,23 @@ sidecar, frame or unit makes the Note unavailable and suppresses its marker.
 The Note describes a shared coordinate; it does not identify a matching face,
 vertex or measured value in the other source. PC03 and PC05 remain **Partial**
 for legacy undeclared frames and generations that were never retained.
+
+## PC26 coordinate observation review
+
+In a saved Project, open **Projects → Compare saved documents → Saved coordinate
+observations**. The list shows every PC25 Note with its saved comparison,
+source generations and hashes, recorded frame and unit, and current or
+unavailable status. **Open saved marker** rechecks the exact Note and both
+sources, then opens its comparison with that Note's marker selected. It never
+substitutes the newest marker for the chosen Note.
+
+**Export coordinate review** writes one HTML report for the Project. Verified
+rows include the authored text and shared coordinate; unavailable rows retain
+their identities and refusal reason but withhold coordinate and observation
+text. Portable Project import retains the Notes and Mesh sidecars. On restart,
+the list loads saved resources before offering a verified marker. Closing the
+comparison releases its viewers. No target vertex, face or measured value is
+inferred. PC03 and PC05 retain their **Partial** boundaries.
 
 | Starter | Saved comparison | What to check |
 | --- | --- | --- |
