@@ -515,6 +515,8 @@ Workbook or an optional docked console.
 
 The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in this gate used a local test service; a live Docker deployment remains a separate runtime check.
 
+The [desktop Graph Sage acceptance record](evidence/graph-sage-desktop-2026-11-03.md) verifies a real Local WSL exact factorization from a selected Graph function, current-to-stale Workbook source handling after an edit, bundle and Markdown export, and independent `.math3d` import with unavailable-source status. It also records a Graph preview viewport crash found during the gate and its passing regression check. A forced cold WSL distribution start remains unverified; the recorded first-run time is from a fresh Electron profile and worker.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate

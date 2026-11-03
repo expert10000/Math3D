@@ -1,0 +1,13 @@
+{
+  "runtime": "SageMath 9.5 Local WSL",
+  "firstRunMs": 3105,
+  "operation": "sage.symbolic.factor",
+  "source": {
+    "module": "graphs",
+    "id": "math3d:graph2d:244ce6279c5f63bd6c02c7b4381aa08d:function_1",
+    "revision": 0,
+    "expression": "x^2 - 1",
+    "fingerprint": "sha256:2945bb5c0b268820e88554442bce2e0ff5e08c0b323e20988fb062c14658dc4d"
+  },
+  "result": "(x + 1)*(x - 1)"
+}

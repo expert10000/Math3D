@@ -11,7 +11,10 @@ const format = (value: number) => Number(value.toPrecision(4)).toString();
 
 const padded = (min: number, max: number): readonly [number, number] => {
   const span = max - min;
-  const pad = span > 0 ? span * .1 : Math.max(1, Math.abs(min) * .1);
+  // Sampling a constant expression can produce values that differ only by floating-point noise.
+  // Treat that as a flat curve so its preview viewport has a useful, valid height.
+  const scale = Math.max(1, Math.abs(min), Math.abs(max));
+  const pad = span > scale * 1e-9 ? span * .1 : Math.max(1, scale * .1);
   return [min - pad, max + pad];
 };
 
