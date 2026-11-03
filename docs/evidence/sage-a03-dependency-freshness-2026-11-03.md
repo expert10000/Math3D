@@ -14,5 +14,6 @@ Other checks cover label-only revisions, archive state, explicit `S@2` and `T@2`
 
 ## Verification
 
-- A03, A02 and A01 focused tests — passing.
-- Repository TypeScript check and `build:core` — final gates for this change.
+- A03, A02 and A01, Project transfer and Sage execution tests — 117 passed across ten files on the merged tree.
+- `build:core` — passed on the merged tree.
+- `npm run typecheck:noemit` — repository TypeScript gate.
