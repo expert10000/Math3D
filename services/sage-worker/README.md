@@ -79,6 +79,8 @@ service on `127.0.0.1:8767` without intercepting its requests.
 
 `sage.algebra.reconstruct` accepts a versioned `math3d.sage-algebra-reconstruction` snapshot of A01 object records in parent-before-child order. The worker checks each exact definition hash and parent revision before constructing `ZZ`, `QQ`, `Z/nZ`, canonical finite fields, or polynomial rings. The request is limited to 32 KiB and 32 objects; finite-field cardinality is capped at 65,536 and polynomial rings at eight variables. It returns structured exact metadata, not a serialized Sage object. No user-provided Sage or Python source is evaluated. Local WSL and the private gateway do not advertise this operation yet.
 
+`sage.algebra.inspectDomains` accepts two validated reconstruction snapshots from the same Project, up to 60 KiB combined. It returns each pinned parent descriptor (kind, characteristic, field/commutativity/exactness, coefficient-domain reference, variables and monomial order) and checks Sage's canonical coercion in both directions. A canonical map has a deterministic reference tied to both object revisions and definition hashes. A missing map returns `NO_CANONICAL_COERCION` with source and target characteristics; an indeterminate Sage check returns `COERCION_CHECK_FAILED`. It does not assume that abstractly isomorphic parents can be coerced. This operation is currently Docker-only in the application.
+
 On a machine with Sage installed, the constructor and script entry point can be checked with:
 
 ```bash

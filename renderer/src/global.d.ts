@@ -526,7 +526,8 @@ declare global {
     | "sage.numberTheory.modInverse"
     | "sage.topology.integer_homology"
     | "sage.complex.analyze"
-    | "sage.algebra.reconstruct";
+    | "sage.algebra.reconstruct"
+    | "sage.algebra.inspectDomains";
 
   type SageHealthResponse = {
     status: string;

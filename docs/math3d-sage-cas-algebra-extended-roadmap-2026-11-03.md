@@ -286,6 +286,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **A04 implementation update (2026-11-03):** The [A04 acceptance record](evidence/sage-a04-bounded-reconstruction-2026-11-03.md) covers a versioned object snapshot, deterministic parent-before-child reconstruction, structured result validation, and one bounded Docker Sage operation registered with the shared execution broker. Live Sage 9.5 in WSL verifies the same worker constructor code and script entry point; Docker HTTP execution remains unverified on this PC because Docker Desktop is unavailable. Local WSL and private gateway app routes do not advertise this new operation. The next gate is **SAGE-A05**: richer parent-domain and coercion metadata with explicit mathematical compatibility errors.
 
+**A05 implementation update (2026-11-03):** The [A05 acceptance record](evidence/sage-a05-domain-coercion-2026-11-03.md) adds bounded inspection of two pinned Project revisions through the shared Sage broker. It returns exact parent descriptors, coefficient-domain references and directional coercion-map identities, with a typed `NO_CANONICAL_COERCION` result when Sage has no map. Live Sage 9.5 verifies `ZZ → QQ`, `QQ ↛ ZZ`, and incompatible `QQ[x,y]`/`GF(5)[x,y]` parents. The Structures UI remains **SAGE-A06**.
+
 ---
 
 ## 3. P0 — Algebra object registry

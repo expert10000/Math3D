@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from .sage_runner import run_payload
+from .algebra_reconstruction import _coercion
 
 
 PROJECT = "math3d:project:" + "a" * 32
@@ -29,6 +30,13 @@ def request(objects, target):
     return {"operation": "sage.algebra.reconstruct", "params": {
         "format": "math3d.sage-algebra-reconstruction", "schemaVersion": 1, "projectId": PROJECT,
         "target": {"objectId": target, "revision": 1}, "objects": objects}}
+
+
+def domain_request(left_objects, left_target, right_objects, right_target):
+    return {"operation": "sage.algebra.inspectDomains", "params": {
+        "format": "math3d.sage-algebra-domain-inspection", "schemaVersion": 1, "projectId": PROJECT,
+        "left": request(left_objects, left_target)["params"],
+        "right": request(right_objects, right_target)["params"]}}
 
 
 class AlgebraReconstructionTests(unittest.TestCase):
@@ -97,6 +105,75 @@ class AlgebraReconstructionTests(unittest.TestCase):
             "variables": ["x;quit()"], "monomialOrder": "lex"}, [bad_parent])
         with self.assertRaisesRegex(ValueError, "variables"):
             run_payload(request([q, bad_ring], R))
+
+    def test_directional_canonical_coercion_and_map_identity(self):
+        z = object_record(Z, "Z", {"kind": "integer-ring"})
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        result = run_payload(domain_request([z], Z, [q], Q))
+        self.assertTrue(result["success"])
+        data = result["result"]
+        self.assertEqual(data["left"]["characteristic"], "0")
+        self.assertTrue(data["right"]["isField"])
+        self.assertTrue(data["right"]["isExact"])
+        self.assertEqual(data["leftToRight"]["status"], "canonical")
+        self.assertTrue(data["leftToRight"]["mapId"].startswith("sha256:"))
+        self.assertEqual(data["leftToRight"]["sourceHash"], z["contentHash"])
+        self.assertEqual(data["rightToLeft"]["status"], "incompatible")
+        self.assertEqual(data["rightToLeft"]["error"]["code"], "NO_CANONICAL_COERCION")
+        self.assertEqual(data["rightToLeft"]["error"]["targetCharacteristic"], "0")
+        again = run_payload(domain_request([z], Z, [q], Q))
+        self.assertEqual(data["leftToRight"]["mapId"], again["result"]["leftToRight"]["mapId"])
+
+    def test_incompatible_polynomial_parents_and_pinned_base(self):
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        f = object_record(F, "F5", {"kind": "finite-field", "characteristic": 5,
+            "degree": 1, "generator": "a", "construction": "canonical"})
+        q_ref, f_ref = {"objectId": Q, "revision": 1}, {"objectId": F, "revision": 1}
+        rq = object_record(R, "RQ", {"kind": "polynomial-ring", "coefficientDomain": q_ref,
+            "variables": ["x", "y"], "monomialOrder": "degrevlex"}, [q_ref])
+        rf = object_record(Z, "RF", {"kind": "polynomial-ring", "coefficientDomain": f_ref,
+            "variables": ["x", "y"], "monomialOrder": "degrevlex"}, [f_ref])
+        result = run_payload(domain_request([q, rq], R, [f, rf], Z))
+        self.assertTrue(result["success"])
+        data = result["result"]
+        self.assertEqual(data["left"]["coefficientDomain"], q_ref)
+        self.assertEqual(data["right"]["coefficientDomain"], f_ref)
+        self.assertEqual(data["left"]["variables"], ["x", "y"])
+        self.assertEqual(data["left"]["monomialOrder"], "degrevlex")
+        self.assertEqual(data["leftToRight"]["status"], "incompatible")
+        self.assertEqual(data["rightToLeft"]["status"], "incompatible")
+        self.assertEqual(data["leftToRight"]["error"]["sourceCharacteristic"], "0")
+        self.assertEqual(data["leftToRight"]["error"]["targetCharacteristic"], "5")
+
+    def test_domain_snapshot_rejects_mismatched_project_and_code(self):
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        wrong_project = domain_request([q], Q, [q], Q)
+        wrong_project["params"]["right"]["projectId"] = "math3d:project:" + "f" * 32
+        with self.assertRaisesRegex(ValueError, "same Project"):
+            run_payload(wrong_project)
+        code = domain_request([q], Q, [q], Q)
+        code["params"]["left"]["objects"][0] = {**q, "python": "__import__('os')"}
+        with self.assertRaisesRegex(ValueError, "exactly"):
+            run_payload(code)
+        conflicting = domain_request([q], Q, [object_record(Q, "Q", {"kind": "integer-ring"})], Q)
+        with self.assertRaisesRegex(ValueError, "Conflicting Sage algebra definition"):
+            run_payload(conflicting)
+
+    def test_indeterminate_coercion_is_not_mislabeled_incompatible(self):
+        from sage.all import ZZ
+
+        class FailingParent:
+            def coerce_map_from(self, _source):
+                raise ValueError("internal Sage diagnostic")
+
+            def characteristic(self):
+                return ZZ(0)
+
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        result = _coercion(q, ZZ, q, FailingParent())
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error"]["code"], "COERCION_CHECK_FAILED")
+        self.assertNotIn("internal Sage diagnostic", result["error"]["message"])
 
 
 if __name__ == "__main__":

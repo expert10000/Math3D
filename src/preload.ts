@@ -420,7 +420,8 @@ export type SageOperation =
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"
   | "sage.complex.analyze"
-  | "sage.algebra.reconstruct";
+  | "sage.algebra.reconstruct"
+  | "sage.algebra.inspectDomains";
 
 export type SageRunRequest = {
   operation: SageOperation;

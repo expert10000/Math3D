@@ -37,6 +37,7 @@ export type Math3DWorkerOperationId =
   | "matrix.charpoly"
   | "algebra.groebner"
   | "algebra.reconstruct"
+  | "algebra.domains.inspect"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -312,6 +313,14 @@ const definitions = [
   {
     id: "algebra.reconstruct",
     title: "Validated algebra object reconstruction",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "algebra.domains.inspect",
+    title: "Algebra parent domains and canonical coercions",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],

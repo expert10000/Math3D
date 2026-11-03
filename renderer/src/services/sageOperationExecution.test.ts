@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSageAlgebraReconstructionInput, createAlgebraObjectRecord, createMath3DProject,
+import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
@@ -19,18 +19,22 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.matrix.eigen_exact", "sage.matrix.charpoly", "sage.groebner.compute",
   "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
   "sage.algebra.reconstruct",
+  "sage.algebra.inspectDomains",
 ]);
-const algebraParams = () => {
+const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
     relations: [], committedSelection: null, constructions: [] });
   let project = createMath3DProject(workspace, { stableKey: "sage-a04-broker" });
   const id = createProjectAlgebraObjectId(project.identity.id, "Q");
   project = upsertMath3DProjectAlgebraObject(project, createAlgebraObjectRecord({ id, label: "Q", revision: 1,
     definition: { kind: "rational-field" } }));
-  return JSON.parse(JSON.stringify(buildSageAlgebraReconstructionInput(project, { objectId: id, revision: 1 }))) as Record<string, unknown>;
+  const ref = { objectId: id, revision: 1 };
+  return JSON.parse(JSON.stringify(domains ? buildSageAlgebraDomainInput(project, ref, ref)
+    : buildSageAlgebraReconstructionInput(project, ref))) as Record<string, unknown>;
 };
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
   operation === "sage.algebra.reconstruct" ? algebraParams()
+    : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
     : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }

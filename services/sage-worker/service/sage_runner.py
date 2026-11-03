@@ -9,9 +9,9 @@ from pathlib import Path
 from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
 from sage.env import SAGE_VERSION
 if __package__:
-    from .algebra_reconstruction import reconstruct_algebra
+    from .algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
 else:
-    from algebra_reconstruction import reconstruct_algebra
+    from algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
 
 
 ENGINE = "sagemath"
@@ -509,6 +509,7 @@ def _complex_analysis(operation, params):
 
 OPERATIONS = {
     "sage.algebra.reconstruct": lambda op, params: _success(op, reconstruct_algebra(params)),
+    "sage.algebra.inspectDomains": lambda op, params: _success(op, inspect_algebra_domains(params)),
     "sage.symbolic.simplify": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.simplify_full()),
     "sage.symbolic.factor": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.factor()),
     "sage.symbolic.expand": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.expand()),

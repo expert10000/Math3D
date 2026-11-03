@@ -14,6 +14,7 @@ type SageOperation =
   | "sage.polynomial.factor"
   | "sage.groebner.compute"
   | "sage.algebra.reconstruct"
+  | "sage.algebra.inspectDomains"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"

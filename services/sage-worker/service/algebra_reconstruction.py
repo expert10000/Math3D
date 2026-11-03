@@ -9,6 +9,8 @@ from sage.all import GF, QQ, ZZ, Integers, PolynomialRing, latex
 
 FORMAT = "math3d.sage-algebra-reconstruction"
 RESULT_FORMAT = "math3d.sage-algebra-reconstruction-result"
+DOMAIN_FORMAT = "math3d.sage-algebra-domain-inspection"
+DOMAIN_RESULT_FORMAT = "math3d.sage-algebra-domain-inspection-result"
 ALGEBRA_ID = re.compile(r"math3d:algebra:[0-9a-f]{32}\Z")
 PROJECT_ID = re.compile(r"math3d:project:[0-9a-f]{32}\Z")
 IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}\Z")
@@ -137,8 +139,7 @@ def _validated_objects(params):
     return target, records
 
 
-def reconstruct_algebra(params):
-    target, records = _validated_objects(params)
+def _build_algebra(records):
     built = {}
     for item in records:
         definition = item["definition"]
@@ -157,6 +158,12 @@ def reconstruct_algebra(params):
             variables = definition["variables"]
             value = PolynomialRing(base, variables, order=definition["monomialOrder"])
         built[(item["id"], item["revision"])] = value
+    return built
+
+
+def reconstruct_algebra(params):
+    target, records = _validated_objects(params)
+    built = _build_algebra(records)
     record = records[-1]
     value = built[target]
     result = {
@@ -169,3 +176,77 @@ def reconstruct_algebra(params):
         result["baseRing"] = str(value.base_ring())
         result["variables"] = list(value.variable_names())
     return result
+
+
+def _domain_descriptor(record, value):
+    definition = record["definition"]
+    polynomial = record["kind"] == "polynomial-ring"
+    return {
+        "ref": {"objectId": record["id"], "revision": record["revision"]},
+        "definitionHash": record["contentHash"], "kind": record["kind"],
+        "text": str(value), "characteristic": str(value.characteristic()),
+        "isField": bool(value.is_field()), "isCommutative": bool(value.is_commutative()),
+        "isExact": bool(value.is_exact()),
+        "coefficientDomain": definition["coefficientDomain"] if polynomial else None,
+        "variables": list(value.variable_names()) if polynomial else [],
+        "monomialOrder": definition["monomialOrder"] if polynomial else None,
+    }
+
+
+def _coercion(source_record, source, target_record, target):
+    source_ref = {"objectId": source_record["id"], "revision": source_record["revision"]}
+    target_ref = {"objectId": target_record["id"], "revision": target_record["revision"]}
+    result = {"source": source_ref, "target": target_ref,
+        "sourceHash": source_record["contentHash"], "targetHash": target_record["contentHash"]}
+    try:
+        canonical = target.coerce_map_from(source) is not None
+    except (TypeError, ValueError, NotImplementedError):
+        result.update({"status": "failed", "mapId": None, "error": {
+            "code": "COERCION_CHECK_FAILED",
+            "message": "Sage could not determine whether a canonical coercion exists for these parents.",
+            "sourceCharacteristic": str(source.characteristic()),
+            "targetCharacteristic": str(target.characteristic()),
+        }})
+        return result
+    if canonical:
+        identity = {"schemaVersion": 1,
+            "source": {**source_ref, "definitionHash": source_record["contentHash"]},
+            "target": {**target_ref, "definitionHash": target_record["contentHash"]}}
+        result.update({"status": "canonical", "mapId": "sha256:" + hashlib.sha256(json.dumps(
+            identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest(),
+            "error": None})
+    else:
+        result.update({"status": "incompatible", "mapId": None, "error": {
+            "code": "NO_CANONICAL_COERCION",
+            "message": "No canonical coercion exists from the source parent to the target parent. "
+                "Choose an explicit conversion or a compatible parent.",
+            "sourceCharacteristic": str(source.characteristic()),
+            "targetCharacteristic": str(target.characteristic()),
+        }})
+    return result
+
+
+def inspect_algebra_domains(params):
+    if len(json.dumps(params, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > 60 * 1024:
+        raise ValueError("Sage algebra domain inspection exceeds 60 KiB.")
+    _fields(params, ("format", "schemaVersion", "projectId", "left", "right"), "params")
+    if params["format"] != DOMAIN_FORMAT or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
+        raise ValueError("Unsupported Sage algebra domain inspection format.")
+    if type(params["projectId"]) is not str or not PROJECT_ID.fullmatch(params["projectId"]):
+        raise ValueError("Sage algebra domain inspection requires a Project ID.")
+    left_key, left_records = _validated_objects(params["left"])
+    right_key, right_records = _validated_objects(params["right"])
+    if params["left"]["projectId"] != params["projectId"] or params["right"]["projectId"] != params["projectId"]:
+        raise ValueError("Sage algebra domains must belong to the same Project.")
+    left_revisions = {(item["id"], item["revision"]): item for item in left_records}
+    for item in right_records:
+        existing = left_revisions.get((item["id"], item["revision"]))
+        if existing is not None and existing != item:
+            raise ValueError("Conflicting Sage algebra definition for one revision across domain snapshots.")
+    left = _build_algebra(left_records)[left_key]
+    right = _build_algebra(right_records)[right_key]
+    left_record, right_record = left_records[-1], right_records[-1]
+    return {"format": DOMAIN_RESULT_FORMAT, "schemaVersion": 1,
+        "left": _domain_descriptor(left_record, left), "right": _domain_descriptor(right_record, right),
+        "leftToRight": _coercion(left_record, left, right_record, right),
+        "rightToLeft": _coercion(right_record, right, left_record, left)}
