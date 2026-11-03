@@ -33,6 +33,7 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
   const selected = available.find(row => row.resultId === selectedId) ?? available[0] ?? null;
   const xMin = Math.min(...available.map(row => row.revision)), xMax = Math.max(...available.map(row => row.revision));
   const yMin = Math.min(...available.map(row => row.value!)), yMax = Math.max(...available.map(row => row.value!));
+  const axisValue = (value: number) => Number(value.toPrecision(4)).toString();
   const xAt = (revision: number) => 70 + (xMax === xMin ? 0.5 : (revision - xMin) / (xMax - xMin)) * 680;
   const yAt = (value: number) => 215 - (yMax === yMin ? 0.5 : (value - yMin) / (yMax - yMin)) * 170;
   const exportTrend = () => {
@@ -70,7 +71,7 @@ export function ProjectSavedMeshResultTrendView({ project, readResource, onClose
           <path d="M70 30V215H750" stroke="#64748b" fill="none" strokeWidth="2" />
           <text x="70" y="248" fontSize="14" fill="#334155">Mesh source revision →</text>
           <text x="12" y="26" fontSize="13" fill="#334155">{study.unit ?? "unit"}</text>
-          <text x="28" y="45" fontSize="12" fill="#334155">{yMax}</text><text x="28" y="215" fontSize="12" fill="#334155">{yMin}</text>
+          <text x="64" y="45" textAnchor="end" fontSize="12" fill="#334155">{axisValue(yMax)}</text><text x="64" y="215" textAnchor="end" fontSize="12" fill="#334155">{axisValue(yMin)}</text>
           {available.map(row => <g key={row.resultId} role="button" tabIndex={0} data-testid={`project-mesh-trend-point-${row.resultId}`}
             aria-label={`Mesh revision ${row.revision}, stored value ${row.value} ${row.unit}, result ${row.resultId}`}
             onClick={() => setSelectedId(row.resultId)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(row.resultId); } }}>

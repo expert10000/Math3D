@@ -391,3 +391,9 @@ All four starters preserve their source sidecars in a portable Project. Their
 saved measurements are produced when the starter copy is created; comparison
 and trend views only inspect those recorded results. Save the Project to retain
 your own copy.
+
+The [desktop acceptance record](evidence/mesh-starters-desktop-2026-11-03/README.md)
+verifies the three additional starters' numeric trend values and the unrecorded
+middle generation. Each Project was saved, exported with source resources,
+imported into a separate fresh Electron profile, and reopened after an app
+restart with the same values, statuses, result IDs, and source hashes.
