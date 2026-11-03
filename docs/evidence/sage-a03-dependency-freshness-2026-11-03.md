@@ -16,4 +16,4 @@ Other checks cover label-only revisions, archive state, explicit `S@2` and `T@2`
 
 - A03, A02 and A01, Project transfer and Sage execution tests — 117 passed across ten files on the merged tree.
 - `build:core` — passed on the merged tree.
-- `npm run typecheck:noemit` — repository TypeScript gate.
+- `npm run typecheck:noemit` — passed on the merged tree.
