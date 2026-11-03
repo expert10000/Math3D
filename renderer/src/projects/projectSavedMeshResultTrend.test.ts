@@ -9,6 +9,10 @@ import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./proje
 import { createSavedMeshPinnedComparison, inspectSavedMeshPinnedComparison } from "./projectSavedMeshPinnedComparison";
 import { createWorkbookSavedMeshComparisonReference, inspectWorkbookSavedMeshComparisonReference,
   normalizeWorkbookSavedMeshComparisonReference, createDefaultWorkbook, validateWorkbookDependencies } from "@math3d/workbook";
+import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
+import { inspectWorkbookSavedMeshComparison, resolveWorkbookSavedMeshComparisonTarget } from "./projectSavedMeshWorkbookComparison";
+import { createPortableNotebookPublication, inspectPortableNotebookPublication, notebookPublicationManifest,
+  notebookPublicationManifestHtml, notebookPublicationMarkdown } from "../workbook/notebookPublication";
 
 const mesh = () => ({ label: "Trend square", source: { kind: "import" as const, format: "obj" as const, filename: "square.obj",
   math3dCoordinateFrame: { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m", axes: ["x", "y", "z"], handedness: "right" } },
@@ -179,5 +183,61 @@ describe("PC19 Workbook pinned Mesh reference contract", () => {
     expect(() => normalizeWorkbookSavedMeshComparisonReference({ ...reference, b: reference.a })).toThrow();
     expect(inspectWorkbookSavedMeshComparisonReference(saved, { ...reference, comparisonHash: structuralHash("changed") })).toBe("stale");
     expect(inspectWorkbookSavedMeshComparisonReference(project, reference)).toBe("missing");
+  });
+  it("reopens and publishes the same checked A/B values after Project and Workbook import", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "metrics.triangleArea.avg", read);
+    const pinned = createSavedMeshPinnedComparison(project, { study,
+      a: resolveSavedMeshTrendPoint(project, study, first.resultId, read),
+      b: resolveSavedMeshTrendPoint(project, study, middle.resultId, read) }, read, "pc19-report", "PC19 report");
+    const saved = upsertMath3DProjectSavedMeshComparison(project, pinned);
+    const reference = createWorkbookSavedMeshComparisonReference(saved, pinned);
+    let n = 0; const workbook = createDefaultWorkbook(() => `pc19-${++n}`);
+    workbook.stages[2]!.blocks[0]!.visualize = { live: false, savedMeshComparison: reference };
+    const bound = prepareProjectWorkbook(saved, workbook, "pc19");
+    expect(readProjectWorkbook(bound.bytes, bound.reference).stages[2]!.blocks[0]!.visualize?.savedMeshComparison).toEqual(reference);
+    const imported = parseProjectPackage(exportProjectPackage(saved, resources));
+    const checked = inspectWorkbookSavedMeshComparison(imported.project, reference, item => imported.resources.bytes(item));
+    expect(checked.status).toBe("current");
+    expect(checked.evidence?.metrics.find(metric => metric.path === reference.metricPath)?.difference).toBe(1.5);
+    expect(resolveWorkbookSavedMeshComparisonTarget(imported.project, reference, "a", item => imported.resources.bytes(item)).resultId).toBe(first.resultId);
+    expect(resolveWorkbookSavedMeshComparisonTarget(imported.project, reference, "b", item => imported.resources.bytes(item)).resultId).toBe(middle.resultId);
+    const manifest = notebookPublicationManifest([workbook], imported.project, undefined, undefined, item => imported.resources.bytes(item));
+    expect(manifest.blocks.find(block => block.savedMeshComparison)?.savedMeshComparison?.reference).toEqual(reference);
+    const html = notebookPublicationManifestHtml(manifest), markdown = notebookPublicationMarkdown(manifest);
+    expect(html).toContain("data-saved-mesh-comparison");
+    expect(html).toContain("1.5");
+    for (const result of [first, middle]) {
+      expect(html).toContain(result.resultId);
+      expect(markdown).toContain(result.provenance.source.structuralHash);
+    }
+    const portable = createPortableNotebookPublication(saved, [workbook], resources, undefined, read);
+    expect(inspectPortableNotebookPublication(portable).project.identity.id).toBe(saved.identity.id);
+  });
+  it("refuses missing, changed and tampered source evidence in Workbook and export", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "faceCount", read);
+    const pinned = createSavedMeshPinnedComparison(project, { study,
+      a: resolveSavedMeshTrendPoint(project, study, first.resultId, read),
+      b: resolveSavedMeshTrendPoint(project, study, middle.resultId, read) }, read, "pc19-refusal", "PC19 refusal");
+    const saved = upsertMath3DProjectSavedMeshComparison(project, pinned);
+    const reference = createWorkbookSavedMeshComparisonReference(saved, pinned);
+    let n = 0; const workbook = createDefaultWorkbook(() => `pc19-refusal-${++n}`);
+    workbook.stages[2]!.blocks[0]!.visualize = { live: false, savedMeshComparison: reference };
+    expect(inspectWorkbookSavedMeshComparison(saved, reference, () => null).status).not.toBe("current");
+    expect(() => notebookPublicationManifest([workbook], saved, undefined, undefined, () => null)).toThrow(/comparison/);
+    const corrupt = (item: Parameters<typeof resources.bytes>[0]) => { const bytes = read(item); if (!bytes) return null;
+      const copy = bytes.slice(); copy[0] ^= 1; return copy; };
+    expect(inspectWorkbookSavedMeshComparison(saved, reference, corrupt).status).not.toBe("current");
+    expect(() => notebookPublicationManifest([workbook], saved, undefined, undefined, corrupt)).toThrow(/comparison/);
+    const changed = { ...saved, savedMeshComparisons: [] };
+    expect(inspectWorkbookSavedMeshComparison(changed, reference, read).status).not.toBe("current");
+    expect(() => notebookPublicationManifest([workbook], changed, undefined, undefined, read)).toThrow(/comparison/);
+    const changedResult = { ...saved, workspace: createMixedWorkspaceDocument({ ...saved.workspace,
+      results: saved.workspace.results.map(result => result.resultId === middle.resultId ?
+        { ...result, summary: { ...result.summary, faceCount: 999 } } : result) }) };
+    expect(inspectWorkbookSavedMeshComparison(changedResult, reference, read).status).not.toBe("current");
   });
 });

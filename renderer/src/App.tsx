@@ -8,7 +8,7 @@ import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, type ProjectScientificSceneReference } from "@math3d/core";
-import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
+import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
 import { curveEditorSeed, curveSourceFromEditor, surfaceEditorSeed, surfaceSourceFromEditor, nativeDocumentEditable } from "./projects/nativeProjectRestore";
@@ -76919,6 +76919,7 @@ case "mobius":
   const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
   const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
+  const activeNotebookProjectResourcesRef = useRef<VerifiedProjectResources | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
     id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas" | "number_theory";
@@ -77705,6 +77706,9 @@ case "mobius":
   const readComparisonResource = (item: ProjectResourceRequirement): Uint8Array | null => {
     const restored = restoredProjectRef.current?.resources?.bytes(item);
     if (restored) return restored;
+    const saved = activeNotebookProjectRef.current && activeNotebookProjectResourcesRef.current?.verifiedFor(activeNotebookProjectRef.current)
+      ? activeNotebookProjectResourcesRef.current.bytes(item) : null;
+    if (saved) return saved;
     if (item.kind === "mesh-buffers") {
       const reference = item.reference as import("@math3d/core").MeshResourceReference;
       for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
@@ -77736,11 +77740,19 @@ case "mobius":
   const exportNotebookPublication = async (kind: PublicationKind, selected: string[]) => {
     if (!activeWorkbook || !selected.length) throw new TypeError("Select a Workbook and report blocks first.");
     const book = activeWorkbook, context = getNotebookContext(), project = context?.project ?? null;
+    const hasSavedMeshComparison = book.stages.some(stage => stage.blocks.some(block =>
+      selected.includes(block.id) && !!block.visualize?.savedMeshComparison));
+    const exactSavedProject = hasSavedMeshComparison ? parseMath3DProject(localStorage.getItem(PROJECT_STORAGE_KEY)!) : null;
+    if (exactSavedProject && exactSavedProject.identity.id !== project?.identity.id)
+      throw new TypeError("The Workbook's saved Project is not active.");
+    const exactResources = exactSavedProject ? await loadProjectResources(exactSavedProject) : null;
+    const reportProject = exactSavedProject ?? project;
+    const reportReader: ProjectResourceReader = exactResources ? item => exactResources.bytes(item) : readComparisonResource;
     const base = sanitizeFileBase(book.title, "workbook");
     if (kind === "markdown") {
-      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact, readComparisonResource), base + ".report.md", "text/markdown"); return;
+      downloadTextFile(buildWorkbooksMarkdown([book], book.id, reportProject, selected, context?.readArtifact, reportReader), base + ".report.md", "text/markdown"); return;
     }
-    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact, readComparisonResource);
+    const html = buildWorkbooksReportHtml([book], book.id, reportProject, selected, context?.readArtifact, reportReader);
     if (kind === "pdf") {
       const opened = window.open("", "_blank");
       if (!opened) { downloadTextFile(html, base + ".report.html", "text/html"); return; }
@@ -77749,9 +77761,10 @@ case "mobius":
     if (kind === "html") { downloadTextFile(html, base + ".report.html", "text/html"); return; }
     if (!context?.live || !project) throw new TypeError("Open and save a named Project before making a portable report.");
     const saved = parseMath3DProject(localStorage.getItem(PROJECT_STORAGE_KEY)!);
-    const resources = await loadProjectResources(saved);
+    const resources = exactResources ?? await loadProjectResources(saved);
     if (canonicalJsonStringify(getNotebookContext()?.project) !== canonicalJsonStringify(project) || workbookExecutionRef.current.workbook?.id !== book.id || JSON.stringify(workbookExecutionRef.current.workbook) !== JSON.stringify(book)) throw new TypeError("Source or Workbook changed during publication; export again.");
-    const payload = createPortableNotebookPublication(project, [book], resources, context.readArtifact, item => {
+    const payload = createPortableNotebookPublication(reportProject!, [book], resources, context.readArtifact, item => {
+      if (exactResources) return exactResources.bytes(item);
       const stored = restoredProjectRef.current?.resources?.bytes(item); if (stored) return stored;
       if (item.kind === "mesh-buffers") for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
         const bytes = adapter?.resources.bytes(item.reference as import("@math3d/core").MeshResourceReference); if (bytes) return bytes;
@@ -80234,7 +80247,7 @@ case "mobius":
         noteRequest={projectNoteRequest}
         resultRequest={projectResultRequest}
         regionResultStatuses={vectorField3DRegionStatuses}
-        onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
+        onCurrentProjectChange={(project, resources) => { activeNotebookProjectRef.current = project; activeNotebookProjectResourcesRef.current = resources ?? null; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
         onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}

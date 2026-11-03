@@ -1393,6 +1393,7 @@ budgets must be explicit before members can be combined.
 | PC16 | `feat(projects): open exact saved Mesh trend results` | Reverify a selected Projects or Workbook trend point, inspect its saved result and show its exact retained Mesh generation when available. |
 | PC17 | `feat(projects): compare pinned saved Mesh trend points` | Pin two exact points in Projects or Workbook, reverify both results and sidecars, and open the existing compatible A/B inspector with return to the trend. |
 | PC18 | `feat(projects): retain pinned saved Mesh comparisons` | Save two exact result and Mesh source hashes in the Project, reopen the pinned A/B pair after restart, and refuse missing or changed evidence on view and export. |
+| PC19 | `feat(workbook): present saved Mesh comparisons` | Link a saved PC18 pair by exact comparison, result and source hashes; show stored values and qualified differences in a Workbook; refuse changed evidence on report and portable export. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1453,6 +1454,12 @@ two result IDs and hashes, exact Mesh generations and source hashes, plus the
 chosen metric. Projects reopens it after restart; display and HTML export
 reverify both sidecars and refuse changed or missing evidence. No Mesh analysis
 is rerun. PC03 and PC05 remain **Partial** under the same legacy-source limits.
+PC19 is complete for a saved PC18 pair linked to a Workbook Visualize block.
+Its reference retains the Project comparison hash and both exact result and
+Mesh source hashes. Embedded inspection, result navigation, HTML report,
+portable publication and import verify the underlying saved evidence; missing
+or changed sidecars are refused. The Workbook does not run Mesh analysis.
+PC03 and PC05 remain **Partial** for their existing legacy-source limits.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

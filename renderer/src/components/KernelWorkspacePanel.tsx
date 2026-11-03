@@ -27,7 +27,7 @@ export type KernelWorkspacePanelProps = {
   projectNavigation?: { canBack: boolean; canForward: boolean; back: () => void; forward: () => void; recent: readonly { id: string; module: KernelWorkspaceModule }[] };
   projectsOpen: boolean;
   onProjectsOpenChange: (open: boolean) => void;
-  onCurrentProjectChange?: (project: Math3DProject) => void;
+  onCurrentProjectChange?: (project: Math3DProject, resources?: VerifiedProjectResources) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
   onImportScientificScene?: () => void;

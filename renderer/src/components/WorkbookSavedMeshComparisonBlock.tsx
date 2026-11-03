@@ -1,8 +1,11 @@
-import React, { useState } from "react";
-import type { Math3DProject } from "@math3d/core";
+import React, { useEffect, useState } from "react";
+import { parseMath3DProject, type Math3DProject } from "@math3d/core";
 import { createWorkbookSavedMeshComparisonReference, inspectWorkbookSavedMeshComparisonReference,
   type WorkbookSavedMeshComparisonReference } from "@math3d/workbook";
 import type { ProjectResourceReader } from "../projects/projectResources";
+import { loadProjectResources } from "../projects/projectResourceArchive";
+import type { VerifiedProjectResources } from "../projects/projectResources";
+import { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 import { inspectWorkbookSavedMeshComparison, resolveWorkbookSavedMeshComparisonTarget } from "../projects/projectSavedMeshWorkbookComparison";
 import { savedMeshResultComparisonHtml } from "../projects/projectSavedMeshResultComparison";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
@@ -41,32 +44,53 @@ export const WorkbookSavedMeshComparisonBlock: React.FC<{
   readResource?: ProjectResourceReader; onOpenResult?: (target: SavedMeshTrendTarget) => void;
 }> = ({ project, reference, readResource, onOpenResult }) => {
   const [open, setOpen] = useState(false), [message, setMessage] = useState("");
-  let status: ReturnType<typeof inspectWorkbookSavedMeshComparisonReference>;
-  try { status = inspectWorkbookSavedMeshComparisonReference(project, reference); }
-  catch { return <p role="alert">Invalid saved Mesh comparison reference.</p>; }
-  const inspected = open ? inspectWorkbookSavedMeshComparison(project, reference, readResource) : null;
+  const [archive, setArchive] = useState<VerifiedProjectResources | null>(null);
+  const savedProject = (() => {
+    try {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      const saved = raw ? parseMath3DProject(raw) : null;
+      return saved?.identity.id === project?.identity.id ? saved : project;
+    } catch { return project; }
+  })();
+  let status: ReturnType<typeof inspectWorkbookSavedMeshComparisonReference> | "invalid";
+  try { status = inspectWorkbookSavedMeshComparisonReference(savedProject, reference); }
+  catch { status = "invalid"; }
+  const archived = savedProject && archive?.verifiedFor(savedProject) ? archive : null;
+  const checkedReader: ProjectResourceReader | undefined = archived ? item => archived.bytes(item) : readResource;
+  const inspected = open ? inspectWorkbookSavedMeshComparison(savedProject, reference, checkedReader) : null;
+  useEffect(() => {
+    if (!open || !savedProject || status !== "current") return;
+    const initial = inspectWorkbookSavedMeshComparison(savedProject, reference, readResource);
+    if (initial.status === "current" || !/source bytes are missing|resource bytes are unavailable/i.test(initial.reason)) return;
+    let cancelled = false;
+    void loadProjectResources(savedProject).then(resources => {
+      if (!cancelled) setArchive(resources);
+    }).catch(error => { if (!cancelled) setMessage(`Comparison unavailable: ${(error as Error).message}`); });
+    return () => { cancelled = true; };
+  }, [open, savedProject?.identity.id, savedProject?.identity.structuralHash, reference.comparisonHash, status]);
   const evidence = inspected?.status === "current" ? inspected.evidence : null;
   const selected = evidence?.metrics.find(metric => metric.path === reference.metricPath);
   const navigate = (slot: "a" | "b") => {
     try {
-      if (!project || !readResource || !onOpenResult) throw new TypeError("The saved Project or result navigation is unavailable.");
-      onOpenResult(resolveWorkbookSavedMeshComparisonTarget(project, reference, slot, readResource));
+      if (!savedProject || !checkedReader || !onOpenResult) throw new TypeError("The saved Project or result navigation is unavailable.");
+      onOpenResult(resolveWorkbookSavedMeshComparisonTarget(savedProject, reference, slot, checkedReader));
     } catch (error) { setMessage(`Opening refused: ${(error as Error).message}`); }
   };
   const exportHtml = () => {
     try {
-      const checked = inspectWorkbookSavedMeshComparison(project, reference, readResource);
+      const checked = inspectWorkbookSavedMeshComparison(savedProject, reference, checkedReader);
       if (checked.status !== "current" || !checked.evidence) throw new TypeError(checked.reason);
       downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked.evidence)], { type: "text/html" }), "math3d-workbook-saved-mesh-comparison.html");
       setMessage("Verified saved Mesh comparison report downloaded.");
     } catch (error) { setMessage(`Export refused: ${(error as Error).message}`); }
   };
+  if (status === "invalid") return <p role="alert">Invalid saved Mesh comparison reference.</p>;
   return <section data-testid="workbook-saved-mesh-comparison" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 10, minWidth: 0, overflowWrap: "anywhere" }}>
     <strong>Saved Mesh comparison · {project?.savedMeshComparisons?.find(item => item.id === reference.comparisonId)?.title ?? reference.comparisonId}</strong>
     <p role={status === "current" ? "status" : "alert"}>{status === "current" ? "Exact saved pair linked; open to verify both Mesh sidecars." :
       `Comparison ${status}: the saved pair or one of its results changed or is unavailable.`}</p>
     <small>Project {reference.projectId} · comparison {reference.comparisonHash} · metric {reference.metricPath}</small>
-    {status === "current" && <details onToggle={event => { setOpen(event.currentTarget.open); setMessage(""); }}>
+    {status === "current" && <details onToggle={event => { setOpen(event.currentTarget.open); if (!event.currentTarget.open) setArchive(null); setMessage(""); }}>
       <summary>Show embedded saved Mesh comparison</summary>
       {open && inspected?.status !== "current" && <p role="alert">Comparison unavailable: {inspected?.reason}</p>}
       {evidence && <div data-testid="workbook-saved-mesh-comparison-evidence" style={{ display: "grid", gap: 8, paddingTop: 8 }}>

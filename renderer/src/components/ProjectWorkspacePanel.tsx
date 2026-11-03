@@ -81,7 +81,7 @@ type Props = {
   projectNavigation?: { canBack: boolean; canForward: boolean; back: () => void; forward: () => void; recent: readonly { id: string; module: KernelWorkspaceModule }[] };
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCurrentProjectChange?: (project: Math3DProject) => void;
+  onCurrentProjectChange?: (project: Math3DProject, resources?: VerifiedProjectResources) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
   onImportScientificScene?: () => void;
@@ -452,7 +452,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
     if (!keepManagement) { setIncoming(null); importSequence.current++; }
-    if (!savedPreview) { loadedProject.current = next; onCurrentProjectChange?.(next); }
+    if (!savedPreview) { loadedProject.current = next; onCurrentProjectChange?.(next, resourceSession.current ?? undefined); }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -660,7 +660,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       resourceSession.current = resources; resourceSessionId.current = next.identity.id;
       if (managed) setManagedBytes(serializeMath3DProject(next));
       setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
-      if (!managed) { setHasOpenProject(true); loadedProject.current = next; onCurrentProjectChange?.(next); }
+      if (!managed) { setHasOpenProject(true); loadedProject.current = next; onCurrentProjectChange?.(next, resources); }
       if (!managed) { setNotesProject(next); setNoteDrafts([]); }
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
@@ -767,7 +767,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         throw new Error("Open and save this Project before adding a Workbook.");
       const source = captureActiveWorkbook?.();
       if (!source) throw new Error("Select a Workbook first.");
-      const base = liveProject();
+      // Attaching a Workbook must not import unrelated live module editors into
+      // the saved Project. The Workbook reference belongs to this exact Project.
+      const base = saved;
       const prepared = prepareProjectWorkbook(base, source, crypto.randomUUID());
       const next = upsertMath3DProjectWorkbook(base, prepared.reference);
       const previous = await loadProjectResources(saved);

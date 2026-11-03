@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC18)
+# Project comparison and composition (PC01–PC19)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -378,6 +378,24 @@ envelopes and their exact Mesh generations and sidecars. Missing, changed, or
 tampered evidence refuses the view or export. A portable Project package must
 include the required sidecars. PC03 and PC05 remain **Partial** for legacy
 coordinates and history that was never retained.
+
+## PC19 · Present a saved Mesh comparison in a Workbook
+
+Status: **Complete for a compatible PC18 pair in one saved Project**. First save
+the pair in **Projects → Compare saved documents → View saved result trend →
+Compare pinned results → Save pinned comparison**. Then open a Workbook and
+choose **3 Visualize → Saved Mesh A/B comparison**. Select the named pair and
+save the Workbook in Projects to retain the reference. **Show embedded saved
+Mesh comparison** displays the stored A and B scalar values, qualified
+differences, exact result/source hashes, and links to each Project result.
+
+The Workbook keeps the Project comparison ID, comparison hash, selected metric,
+and both exact result and Mesh generation hashes. It owns no Mesh data and runs
+no analysis. Opening the embedded view and exporting its HTML report reverify
+the saved results and sidecars. Workbook publication and portable import also
+refuse a missing, changed, or tampered source. Closing the embedded view releases
+its display; the Project retains the pair. PC03 and PC05 remain **Partial** for
+legacy coordinate metadata and Mesh generations that were never retained.
 
 ### Ready-to-use Mesh comparison starter
 
