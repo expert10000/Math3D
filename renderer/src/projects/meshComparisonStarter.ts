@@ -1,16 +1,25 @@
-import { createMath3DProject, createMixedWorkspaceDocument, updateMath3DProjectMetadata } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, updateMath3DProjectMetadata,
+  upsertMath3DProjectNote, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./savedMeshAnalysis";
 import { subdivideWithRetainedMeshCheckpoint, transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 import { captureProjectResources } from "./projectResources";
+import { buildSavedMeshResultTrend } from "./projectSavedMeshResultTrend";
+import { resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
+import { createSavedMeshPinnedComparison } from "./projectSavedMeshPinnedComparison";
+import { createProjectSavedMeshComparisonNote } from "./projectSavedMeshComparisonNotes";
 
-export type MeshComparisonStarterId = "mesh-comparison-study" | "mesh-subdivision-study" |
+export type MeshComparisonStarterId = "mesh-comparison-study" | "mesh-comparison-review" | "mesh-subdivision-study" |
   "mesh-curvature-study" | "mesh-trend-gap-study";
 
 const descriptions: Record<MeshComparisonStarterId, { title: string; description: string; document: string }> = {
   "mesh-comparison-study": {
     title: "Saved Mesh Comparison Study", document: "Scaled comparison square",
     description: "Compare three retained Mesh generations and their exact saved quality results. The square is scaled twice; triangle area changes while source units remain metres.",
+  },
+  "mesh-comparison-review": {
+    title: "Saved Mesh Comparison Review", document: "Three-generation review square",
+    description: "Review three exact saved A/B pairs across one square Mesh's retained generations. Two authored Notes are attached to verified pairs; the third pair has no Note.",
   },
   "mesh-subdivision-study": {
     title: "Retained Mesh Generation Study", document: "Subdivided octahedron",
@@ -57,7 +66,7 @@ function sphereMesh() {
 
 function starterMesh(id: MeshComparisonStarterId) {
   if (id === "mesh-curvature-study") return sphereMesh();
-  if (id === "mesh-comparison-study" || id === "mesh-trend-gap-study") return MeshDocumentAdapter.fromMesh({
+  if (id === "mesh-comparison-study" || id === "mesh-comparison-review" || id === "mesh-trend-gap-study") return MeshDocumentAdapter.fromMesh({
     label: "Comparison square", source: source("built-in-comparison-square.obj"),
     positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]),
     indices: Uint32Array.from([0, 1, 2, 1, 3, 2]),
@@ -97,5 +106,25 @@ export function instantiateMeshComparisonStarter(token: string, id: MeshComparis
   });
   const resources = captureProjectResources(project, item => item.kind === "mesh-buffers" ?
     adapter.resources.bytes(item.reference as never) : null);
+  if (id === "mesh-comparison-review") {
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const metric = "metrics.triangleArea.avg";
+    const study = buildSavedMeshResultTrend(project, results[0]!.resultId, metric, read);
+    for (const [index, aIndex, bIndex, observation] of [
+      [1, 0, 1, "The first saved scaling raises the recorded mean triangle area from 0.5 to 1.125 m²."],
+      [2, 1, 2, "The second saved scaling raises the recorded mean triangle area from 1.125 to 2.53125 m²."],
+      [3, 0, 2, ""],
+    ] as const) {
+      const pair = createSavedMeshPinnedComparison(project, { study,
+        a: resolveSavedMeshTrendPoint(project, study, results[aIndex]!.resultId, read),
+        b: resolveSavedMeshTrendPoint(project, study, results[bIndex]!.resultId, read) }, read,
+        `review-pair-${index}`, `Saved review pair ${index}`);
+      project = upsertMath3DProjectSavedMeshComparison(project, pair);
+      if (observation) project = upsertMath3DProjectNote(project,
+        createProjectSavedMeshComparisonNote(project, pair, read, `Review observation ${index}`,
+          observation, Date.now(), [id, token, "observation", index]));
+    }
+    return { project, resources: captureProjectResources(project, read) };
+  }
   return { project, resources };
 }

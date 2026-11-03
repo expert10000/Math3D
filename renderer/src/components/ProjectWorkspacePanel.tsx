@@ -31,6 +31,8 @@ import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultCo
 import type { SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
 import { createSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
 import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "../projects/projectSavedMeshComparisonNotes";
+import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComparisonReview";
+import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -192,6 +194,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [savedMeshComparison, setSavedMeshComparison] = useState<ProjectSavedMeshComparison | null>(null);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
+  const savedMeshReview = useMemo(() => project ? buildSavedMeshComparisonReview(project, comparisonResource) : [], [project, comparisonResource]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
@@ -1453,13 +1456,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               onClick={() => { setMeshTrendComparison(null); setSavedMeshComparison(null); setMeshResultComparisonOpen(true); }}>Compare saved results</button>{" "}
             <button type="button" data-testid="project-open-mesh-result-trend" disabled={busy || comparableSavedMeshResults(project).length < 1}
               onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button>
-            {!!project.savedMeshComparisons?.length && <div data-testid="project-saved-mesh-comparisons" style={{ display: "grid", gap: 6, marginTop: 10 }}>
-              <strong>Saved pinned comparisons ({project.savedMeshComparisons.length})</strong>
-              {project.savedMeshComparisons.map(item => <button type="button" key={item.id} data-testid={`project-open-pinned-mesh-${item.id}`}
-                disabled={busy} onClick={() => { setMeshTrendComparison(null); setSavedMeshComparison(item); setMeshResultComparisonOpen(true); }}>
-                {item.title} · {item.metricPath} · r{item.a.revision} / r{item.b.revision}
-              </button>)}
-            </div>}</div>
+            {!!savedMeshReview.length && <ProjectSavedMeshComparisonReviewIndex rows={savedMeshReview} busy={busy}
+              onOpenPair={id => { const pair = project.savedMeshComparisons?.find(item => item.id === id);
+                if (!pair) return; setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true); }}
+              onOpenNote={id => openProjectNotes(id)} />}</div>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}

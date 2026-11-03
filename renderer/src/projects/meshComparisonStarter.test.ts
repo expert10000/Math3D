@@ -5,8 +5,41 @@ import { buildSavedMeshResultTrend } from "./projectSavedMeshResultTrend";
 import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { retainedMeshGenerationDocuments } from "@math3d/core";
+import { buildSavedMeshComparisonReview } from "./projectSavedMeshComparisonReview";
 
 describe("Saved Mesh comparison starter", () => {
+  it("provides a portable three-pair review with two verified authored Notes", () => {
+    const { project, resources } = instantiateMeshComparisonStarter("review-test", "mesh-comparison-review");
+    expect(project.savedMeshComparisons).toHaveLength(3);
+    expect(project.notes).toHaveLength(2);
+    const imported = parseProjectPackage(exportProjectPackage(project, resources));
+    const reopened = parseMath3DProject(serializeMath3DProject(imported.project));
+    const rows = buildSavedMeshComparisonReview(reopened, item => imported.resources.bytes(item));
+    expect(rows.map(row => row.status)).toEqual(["verified", "verified", "verified"]);
+    expect(rows.map(row => row.observationCount)).toEqual([1, 1, 0]);
+    expect(rows.map(row => row.verifiedObservations.length)).toEqual([1, 1, 0]);
+    expect(rows.map(row => [row.pair.a.revision, row.pair.b.revision])).toEqual([[1, 2], [2, 3], [1, 3]]);
+    expect(rows[0]!.pair.metricPath).toBe("metrics.triangleArea.avg");
+  });
+  it("keeps missing, changed and tampered pair evidence visible as unavailable", () => {
+    const { project, resources } = instantiateMeshComparisonStarter("review-refusal", "mesh-comparison-review");
+    expect(buildSavedMeshComparisonReview(project, () => null).every(row => row.status === "unavailable")).toBe(true);
+    const changed = { ...project, savedMeshComparisons: project.savedMeshComparisons!.map((pair, index) => index ? pair : { ...pair, metricPath: "unrecorded.metric" }) };
+    const changedRows = buildSavedMeshComparisonReview(changed, item => resources.bytes(item));
+    expect(changedRows[0]!.status).toBe("unavailable");
+    expect(changedRows[1]!.status).toBe("verified");
+    const staleNote = { ...project, notes: project.notes!.map((note, index) => index ? note :
+      { ...note, anchor: { ...note.anchor!, comparisonHash: "0".repeat(64) } }) } as typeof project;
+    const noteRows = buildSavedMeshComparisonReview(staleNote, item => resources.bytes(item));
+    expect(noteRows[0]).toMatchObject({ status: "verified", observationCount: 1, verifiedObservations: [] });
+    expect(noteRows[1]!.verifiedObservations).toHaveLength(1);
+    const tampered = buildSavedMeshComparisonReview(project, item => {
+      const bytes = resources.bytes(item); if (!bytes) return null;
+      const copy = bytes.slice(); copy[0] ^= 1; return copy;
+    });
+    expect(tampered.every(row => row.status === "unavailable")).toBe(true);
+    expect(tampered.every(row => row.verifiedObservations.length === 0)).toBe(true);
+  });
   it("opens as a portable, exact three-generation trend with a valid A/B difference", () => {
     const { project, resources } = instantiateMeshComparisonStarter("mesh-comparison-test");
     const imported = parseProjectPackage(exportProjectPackage(project, resources));

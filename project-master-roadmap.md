@@ -21,6 +21,8 @@ Mesh A/B inspector, with source-local refusal for incompatible evidence.
 PC18–PC19 retain the exact pair in Projects and display it in Workbook. PC20
 adds authored observations tied to both exact results, Mesh generations, and
 the selected metric; checked reports and portable import refuse changed evidence.
+PC21 indexes every saved Mesh pair with verification and observation status,
+including a three-pair starter for reviewing direct pair and Note navigation.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -1398,6 +1400,7 @@ budgets must be explicit before members can be combined.
 | PC18 | `feat(projects): retain pinned saved Mesh comparisons` | Save two exact result and Mesh source hashes in the Project, reopen the pinned A/B pair after restart, and refuse missing or changed evidence on view and export. |
 | PC19 | `feat(workbook): present saved Mesh comparisons` | Link a saved PC18 pair by exact comparison, result and source hashes; show stored values and qualified differences in a Workbook; refuse changed evidence on report and portable export. |
 | PC20 | `feat(notes): record observations on saved Mesh comparisons` | Bind authored Notes to one exact saved pair, both result and Mesh hashes, and the selected metric; show and export them only while evidence verifies. |
+| PC21 | `feat(projects): review saved Mesh comparisons` | List every saved pair with its exact metric, source revisions, verification status and observation count; open verified pairs and Notes directly, leaving stale evidence visible as unavailable. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1470,6 +1473,13 @@ before showing Note text. HTML and portable Workbook reports include current
 observations and refuse stale or missing linked evidence; restart and tamper
 checks cover the saved Project. No Mesh analysis runs. PC03 and PC05 remain
 **Partial** for legacy coordinate declarations and generations never retained.
+PC21 is complete for the saved Mesh comparison review index in Projects. It
+lists exact A/B revisions, metric, result IDs and source hashes for every saved
+pair, and rechecks both pair and Note evidence before enabling direct navigation.
+Unavailable pairs remain listed with reasons. A three-pair starter includes two
+authored observations. Restart, portable import, changed references and tampered
+sidecars are covered; the index does not run Mesh analysis. PC03 and PC05 remain
+**Partial** for legacy coordinate declarations and unretained generations.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

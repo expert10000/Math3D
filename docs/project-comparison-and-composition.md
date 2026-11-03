@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC20)
+# Project comparison and composition (PC01–PC21)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -419,6 +419,28 @@ Acceptance covers Project and Workbook saving, restart, HTML export, portable
 publication/import, missing sources, changed comparison references, and
 tampered sidecars. PC03 remains **Partial** for legacy sources without coordinate
 metadata. PC05 remains **Partial** for generations that were never retained.
+
+## PC21 · Saved comparison review index
+
+Status: **Complete for saved PC18 Mesh pairs**. Open **Projects → Compare saved
+documents → Saved comparison review** to see every saved pair in the current
+Project. Each row names its metric and both result IDs, exact Mesh revisions,
+and source hashes. The row shows a fresh verification status and the count of
+authored observations, including how many Notes still verify. **Open saved pair**
+opens the existing A/B inspector; a Note button opens that verified observation
+in Project Notes. Missing, changed, or tampered evidence keeps its row visible
+as **Unavailable**, with the reason; unavailable pairs cannot open, and stale
+Notes do not expose their authored text from this index.
+
+The **Saved Mesh Comparison Review** starter contains three exact pairs from
+three retained Mesh generations. Two pairs carry authored observations; one
+has none. Open it under **Projects → Starter projects**, then save a Project
+copy. This preset exercises the index and direct Note navigation without
+running Mesh analysis when the review view opens. Acceptance covers several
+pairs, Electron reopening, portable export/import, missing and changed
+references, and tampered resource bytes. PC03 remains **Partial** for legacy
+sources without coordinate metadata; PC05 remains **Partial** for generations
+that were never retained.
 
 ### Ready-to-use Mesh comparison starter
 
