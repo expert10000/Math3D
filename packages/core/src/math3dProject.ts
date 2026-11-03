@@ -30,6 +30,12 @@ export type ProjectScientificSceneReference = Readonly<{
   directory: string;
   sceneFingerprint: string;
 }>;
+/** PC18 stores references only; result and Mesh bytes remain in their Project owners. */
+export type ProjectSavedMeshComparison = Readonly<{
+  id: string; title: string; metricPath: string;
+  a: Readonly<{ resultId: string; resultHash: StructuralHash; meshId: StableDocumentId; revision: number; sourceHash: StructuralHash }>;
+  b: Readonly<{ resultId: string; resultHash: StructuralHash; meshId: StableDocumentId; revision: number; sourceHash: StructuralHash }>;
+}>;
 
 /** Named container for the mixed workspace, saved Workbooks, and Project Notes. */
 export type Math3DProject = Readonly<{
@@ -44,12 +50,23 @@ export type Math3DProject = Readonly<{
   quantumScenes?: readonly ProjectQuantumSceneReference[];
   scientificScenes?: readonly ProjectScientificSceneReference[];
   compositions?: readonly ProjectComposition[];
+  savedMeshComparisons?: readonly ProjectSavedMeshComparison[];
 }>;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).sort().join("|") === [...keys].sort().join("|");
 const validTitle = (value: unknown): value is string => typeof value === "string" && value.trim() === value && value.length >= 1 && value.length <= 160;
-const projectContent = (workspace: MixedWorkspaceDocument, workbooks?: readonly ProjectWorkbookReference[], notes?: readonly ProjectNote[], quantumScenes?: readonly ProjectQuantumSceneReference[], scientificScenes?: readonly ProjectScientificSceneReference[], compositions?: readonly ProjectComposition[]) =>
-  workbooks?.length || notes?.length || quantumScenes?.length || scientificScenes?.length || compositions?.length ? { workspace, ...(workbooks?.length ? { workbooks } : {}), ...(notes?.length ? { notes } : {}), ...(quantumScenes?.length ? { quantumScenes } : {}), ...(scientificScenes?.length ? { scientificScenes } : {}), ...(compositions?.length ? { compositions } : {}) } : workspace;
+const projectContent = (workspace: MixedWorkspaceDocument, workbooks?: readonly ProjectWorkbookReference[], notes?: readonly ProjectNote[], quantumScenes?: readonly ProjectQuantumSceneReference[], scientificScenes?: readonly ProjectScientificSceneReference[], compositions?: readonly ProjectComposition[], savedMeshComparisons?: readonly ProjectSavedMeshComparison[]) =>
+  workbooks?.length || notes?.length || quantumScenes?.length || scientificScenes?.length || compositions?.length || savedMeshComparisons?.length ? { workspace, ...(workbooks?.length ? { workbooks } : {}), ...(notes?.length ? { notes } : {}), ...(quantumScenes?.length ? { quantumScenes } : {}), ...(scientificScenes?.length ? { scientificScenes } : {}), ...(compositions?.length ? { compositions } : {}), ...(savedMeshComparisons?.length ? { savedMeshComparisons } : {}) } : workspace;
+const validSavedMeshComparison = (value: unknown): value is ProjectSavedMeshComparison => {
+  const target = (item: unknown) => record(item) && exact(item, ["resultId", "resultHash", "meshId", "revision", "sourceHash"]) &&
+    typeof item.resultId === "string" && item.resultId.length > 0 && item.resultId.length <= 256 &&
+    isStructuralHash(item.resultHash) && isStableDocumentId(item.meshId) && item.meshId.startsWith("math3d:mesh:") &&
+    Number.isSafeInteger(item.revision) && (item.revision as number) >= 1 && isStructuralHash(item.sourceHash);
+  return record(value) && exact(value, ["id", "title", "metricPath", "a", "b"]) &&
+    typeof value.id === "string" && /^[a-zA-Z0-9_-]{1,80}$/.test(value.id) && validTitle(value.title) &&
+    typeof value.metricPath === "string" && /^[a-zA-Z0-9_.]{1,160}$/.test(value.metricPath) &&
+    target(value.a) && target(value.b) && (value.a as Record<string, unknown>).resultId !== (value.b as Record<string, unknown>).resultId;
+};
 const validQuantumSceneReference = (value: unknown): value is ProjectQuantumSceneReference =>
   record(value) && exact(value, ["format", "title", "directory", "sceneFingerprint"]) &&
   ["quantum-scene/v1", "quantum-scene/v2"].includes(String(value.format)) && validTitle(value.title) &&
@@ -71,7 +88,7 @@ const validWorkbookReference = (value: unknown): value is ProjectWorkbookReferen
 export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DProject> => {
   try {
     if (canonicalJsonByteLength(value) > MAX_MATH3D_PROJECT_BYTES) return { ok: false, errors: ["Project exceeds its size limit."] };
-    if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace", ...(value.workbooks === undefined ? [] : ["workbooks"]), ...(value.notes === undefined ? [] : ["notes"]), ...(value.quantumScenes === undefined ? [] : ["quantumScenes"]), ...(value.scientificScenes === undefined ? [] : ["scientificScenes"]), ...(value.compositions === undefined ? [] : ["compositions"])]) ||
+    if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "metadata", "workspace", ...(value.workbooks === undefined ? [] : ["workbooks"]), ...(value.notes === undefined ? [] : ["notes"]), ...(value.quantumScenes === undefined ? [] : ["quantumScenes"]), ...(value.scientificScenes === undefined ? [] : ["scientificScenes"]), ...(value.compositions === undefined ? [] : ["compositions"]), ...(value.savedMeshComparisons === undefined ? [] : ["savedMeshComparisons"])]) ||
       value.format !== MATH3D_PROJECT_FORMAT || value.schemaVersion !== MATH3D_PROJECT_SCHEMA_VERSION) {
       return { ok: false, errors: ["Invalid or unsupported Math3D project envelope."] };
     }
@@ -104,6 +121,9 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
     if (value.compositions !== undefined && (!Array.isArray(value.compositions) || value.compositions.length < 1 || value.compositions.length > 32 ||
       !value.compositions.every(validProjectComposition) || new Set(value.compositions.map((item: ProjectComposition) => item.id)).size !== value.compositions.length))
       return { ok: false, errors: ["Invalid Project document compositions."] };
+    if (value.savedMeshComparisons !== undefined && (!Array.isArray(value.savedMeshComparisons) || value.savedMeshComparisons.length < 1 || value.savedMeshComparisons.length > 32 ||
+      !value.savedMeshComparisons.every(validSavedMeshComparison) || new Set(value.savedMeshComparisons.map((item: ProjectSavedMeshComparison) => item.id)).size !== value.savedMeshComparisons.length))
+      return { ok: false, errors: ["Invalid saved Mesh comparisons."] };
     for (const entry of workspace.value.entries.filter((item) => item.module === "quantum")) {
       const checkpoint = entry.checkpoint;
       if (entry.replay !== null || checkpoint.format !== "math3d.quantum-scene-document")
@@ -121,7 +141,7 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
         return { ok: false, errors: ["Invalid project document titles or archive flags."] };
       }
     }
-    if (structuralHash(projectContent(workspace.value, value.workbooks as ProjectWorkbookReference[] | undefined, value.notes as ProjectNote[] | undefined, value.quantumScenes as ProjectQuantumSceneReference[] | undefined, value.scientificScenes as ProjectScientificSceneReference[] | undefined, value.compositions as ProjectComposition[] | undefined)) !== value.identity.structuralHash)
+    if (structuralHash(projectContent(workspace.value, value.workbooks as ProjectWorkbookReference[] | undefined, value.notes as ProjectNote[] | undefined, value.quantumScenes as ProjectQuantumSceneReference[] | undefined, value.scientificScenes as ProjectScientificSceneReference[] | undefined, value.compositions as ProjectComposition[] | undefined, value.savedMeshComparisons as ProjectSavedMeshComparison[] | undefined)) !== value.identity.structuralHash)
       return { ok: false, errors: ["Project content hash does not match its workspace and external references."] };
     return { ok: true, value: JSON.parse(canonicalJsonStringify({ ...value, workspace: workspace.value })) as Math3DProject };
   } catch (error) { return { ok: false, errors: [String((error as Error).message ?? error)] }; }
@@ -140,7 +160,7 @@ export const createMath3DProject = (workspace: MixedWorkspaceDocument, options: 
 /** Project revision describes all persisted workspace content, not a domain source generation. */
 export const replaceMath3DProjectWorkspace = (project: Math3DProject, workspace: MixedWorkspaceDocument): Math3DProject => {
   const current = requireProject(project);
-  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, current.compositions)), workspace });
+  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons)), workspace });
 };
 export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: ProjectWorkbookReference): Math3DProject => {
   const current = requireProject(project);
@@ -148,7 +168,7 @@ export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: P
   const workbooks = [...(current.workbooks ?? []).filter((item) => item.id !== reference.id), reference].sort((a, b) => a.id.localeCompare(b.id));
   if (canonicalJsonStringify(workbooks) === canonicalJsonStringify(current.workbooks ?? [])) return current;
   return requireProject({ ...current, workbooks,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, workbooks, current.notes, current.quantumScenes, current.scientificScenes, current.compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, workbooks, current.notes, current.quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons)) });
 };
 export const upsertMath3DProjectNote = (project: Math3DProject, note: ProjectNote): Math3DProject => {
   const current = requireProject(project), checked = normalizeProjectNote(note);
@@ -157,7 +177,7 @@ export const upsertMath3DProjectNote = (project: Math3DProject, note: ProjectNot
     .sort((a, b) => a.identity.id.localeCompare(b.identity.id));
   if (canonicalJsonStringify(notes) === canonicalJsonStringify(current.notes ?? [])) return current;
   return requireProject({ ...current, notes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, notes, current.quantumScenes, current.scientificScenes, current.compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, notes, current.quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons)) });
 };
 export const upsertMath3DProjectQuantumScene = (project: Math3DProject, reference: ProjectQuantumSceneReference): Math3DProject => {
   const current = requireProject(project);
@@ -166,7 +186,7 @@ export const upsertMath3DProjectQuantumScene = (project: Math3DProject, referenc
     .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
   if (canonicalJsonStringify(quantumScenes) === canonicalJsonStringify(current.quantumScenes ?? [])) return current;
   return requireProject({ ...current, quantumScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes, current.compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons)) });
 };
 /** Replace only the location of an already linked scene. Callers must independently verify the picked bundle. */
 export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerprint: string, directory: string): Math3DProject => {
@@ -181,7 +201,7 @@ export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerpr
     ? { ...current.workspace, entries: current.workspace.entries.map((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint
       ? { ...entry, checkpoint: relocateQuantumSceneDocument(entry.checkpoint, directory) } : entry) } : current.workspace;
   return requireProject({ ...current, workspace, quantumScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes, current.compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons)) });
 };
 export const upsertMath3DProjectScientificScene = (project: Math3DProject, reference: ProjectScientificSceneReference): Math3DProject => {
   const current = requireProject(project);
@@ -190,7 +210,7 @@ export const upsertMath3DProjectScientificScene = (project: Math3DProject, refer
     .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
   if (canonicalJsonStringify(scientificScenes) === canonicalJsonStringify(current.scientificScenes ?? [])) return current;
   return requireProject({ ...current, scientificScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, scientificScenes, current.compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, scientificScenes, current.compositions, current.savedMeshComparisons)) });
 };
 /** The caller verifies the replacement bundle before changing the saved location. */
 export const relinkMath3DProjectScientificScene = (project: Math3DProject, fingerprint: string, directory: string): Math3DProject => {
@@ -202,7 +222,7 @@ export const relinkMath3DProjectScientificScene = (project: Math3DProject, finge
   if (linked.directory === directory) return current;
   const scientificScenes = current.scientificScenes!.map((item) => item.sceneFingerprint === fingerprint ? replacement : item);
   return requireProject({ ...current, scientificScenes,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, scientificScenes, current.compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, scientificScenes, current.compositions, current.savedMeshComparisons)) });
 };
 /** Save only the view recipe; member documents and binary resources remain in their owners. */
 export const upsertMath3DProjectComposition = (project: Math3DProject, composition: ProjectComposition): Math3DProject => {
@@ -212,7 +232,7 @@ export const upsertMath3DProjectComposition = (project: Math3DProject, compositi
     .sort((a, b) => a.id.localeCompare(b.id));
   if (canonicalJsonStringify(compositions) === canonicalJsonStringify(current.compositions ?? [])) return current;
   return requireProject({ ...current, compositions,
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, compositions, current.savedMeshComparisons)) });
 };
 export const removeMath3DProjectComposition = (project: Math3DProject, id: string): Math3DProject => {
   const current = requireProject(project);
@@ -220,7 +240,16 @@ export const removeMath3DProjectComposition = (project: Math3DProject, id: strin
   if (compositions.length === (current.compositions?.length ?? 0)) return current;
   const { compositions: _removed, ...rest } = current;
   return requireProject({ ...rest, ...(compositions.length ? { compositions } : {}),
-    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, compositions)) });
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, compositions, current.savedMeshComparisons)) });
+};
+export const upsertMath3DProjectSavedMeshComparison = (project: Math3DProject, comparison: ProjectSavedMeshComparison): Math3DProject => {
+  const current = requireProject(project);
+  if (!validSavedMeshComparison(comparison)) throw new TypeError("Invalid saved Mesh comparison.");
+  const savedMeshComparisons = [...(current.savedMeshComparisons ?? []).filter(item => item.id !== comparison.id), comparison]
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (canonicalJsonStringify(savedMeshComparisons) === canonicalJsonStringify(current.savedMeshComparisons ?? [])) return current;
+  return requireProject({ ...current, savedMeshComparisons,
+    identity: advanceDocumentIdentity(current.identity, projectContent(current.workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, current.compositions, savedMeshComparisons)) });
 };
 export const updateMath3DProjectMetadata = (project: Math3DProject, metadata: Math3DProject["metadata"]): Math3DProject =>
   requireProject({ ...requireProject(project), metadata });

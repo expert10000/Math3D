@@ -7,7 +7,8 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
-  upsertMath3DProjectComposition, inspectProjectCompositionAvailability, type ProjectComposition,
+  upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
+  type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -28,6 +29,7 @@ const ProjectSavedMeshResultTrendView = React.lazy(() => import("./ProjectSavedM
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import type { SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
+import { createSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -186,6 +188,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [meshResultComparisonOpen, setMeshResultComparisonOpen] = useState(false);
   const [meshResultTrendOpen, setMeshResultTrendOpen] = useState(false);
   const [meshTrendComparison, setMeshTrendComparison] = useState<SavedMeshTrendComparison | null>(null);
+  const [savedMeshComparison, setSavedMeshComparison] = useState<ProjectSavedMeshComparison | null>(null);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
   const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
@@ -1434,9 +1437,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             onClick={() => { setComparisonInitialId(undefined); setCompositionOpen(true); }}>Open comparison</button>
           <div style={{ marginTop: 12 }}><strong>Saved Mesh analysis results</strong><p>Compare exact stored quality or curvature summaries. {comparableSavedMeshResults(project).length} eligible results.</p>
             <button type="button" data-testid="project-open-mesh-result-comparison" disabled={busy || comparableSavedMeshResults(project).length < 2}
-              onClick={() => { setMeshTrendComparison(null); setMeshResultComparisonOpen(true); }}>Compare saved results</button>{" "}
+              onClick={() => { setMeshTrendComparison(null); setSavedMeshComparison(null); setMeshResultComparisonOpen(true); }}>Compare saved results</button>{" "}
             <button type="button" data-testid="project-open-mesh-result-trend" disabled={busy || comparableSavedMeshResults(project).length < 1}
-              onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button></div>
+              onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button>
+            {!!project.savedMeshComparisons?.length && <div data-testid="project-saved-mesh-comparisons" style={{ display: "grid", gap: 6, marginTop: 10 }}>
+              <strong>Saved pinned comparisons ({project.savedMeshComparisons.length})</strong>
+              {project.savedMeshComparisons.map(item => <button type="button" key={item.id} data-testid={`project-open-pinned-mesh-${item.id}`}
+                disabled={busy} onClick={() => { setMeshTrendComparison(null); setSavedMeshComparison(item); setMeshResultComparisonOpen(true); }}>
+                {item.title} · {item.metricPath} · r{item.a.revision} / r{item.b.revision}
+              </button>)}
+            </div>}</div>
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
@@ -1810,13 +1820,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           return ok;
         }} /></React.Suspense>}
       {meshResultComparisonOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh results…</p>}><ProjectSavedMeshResultComparisonView project={project} readResource={comparisonResource}
-        trendSelection={meshTrendComparison} onReturnToTrend={meshTrendComparison ? () => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); } : undefined}
-        onClose={() => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); }} /></React.Suspense>}
+        trendSelection={meshTrendComparison} savedReference={savedMeshComparison}
+        onSavePinned={meshTrendComparison ? async (selection, title) => commitNotes(saved => {
+          if (saved.identity.id !== selection.study.projectId) throw new Error("The Project changed. Reopen the trend.");
+          const pairId = `mesh-${structuralHash([selection.a.resultId, selection.b.resultId, selection.study.metricPath]).slice(7, 39)}`;
+          const reference = createSavedMeshPinnedComparison(saved, selection, comparisonResource, pairId, title);
+          return upsertMath3DProjectSavedMeshComparison(saved, reference);
+        }, `Saved pinned Mesh comparison “${title.trim()}”.`) : undefined}
+        onReturnToTrend={meshTrendComparison ? () => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); } : undefined}
+        onClose={() => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); setSavedMeshComparison(null); }} /></React.Suspense>}
       {meshResultTrendOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh trend…</p>}><ProjectSavedMeshResultTrendView project={project} readResource={comparisonResource}
         comparisonOpen={meshResultComparisonOpen && !!meshTrendComparison}
         onClose={() => setMeshResultTrendOpen(false)}
         onCompare={selection => { if (selection.study.projectId !== project.identity.id) throw new TypeError("The Project changed. Reopen the saved trend.");
-          setMeshTrendComparison(selection); setMeshResultComparisonOpen(true); }}
+          setSavedMeshComparison(null); setMeshTrendComparison(selection); setMeshResultComparisonOpen(true); }}
         onOpenResult={target => {
           if (target.projectId !== project.identity.id) throw new TypeError("The Project changed. Reopen the saved trend.");
           setMeshResultTrendOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(true);

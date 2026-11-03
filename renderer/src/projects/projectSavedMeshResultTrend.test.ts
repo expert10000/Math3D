@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "./projectSavedMeshResultTrend";
 import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
+import { createSavedMeshPinnedComparison, inspectSavedMeshPinnedComparison } from "./projectSavedMeshPinnedComparison";
 
 const mesh = () => ({ label: "Trend square", source: { kind: "import" as const, format: "obj" as const, filename: "square.obj",
   math3dCoordinateFrame: { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m", axes: ["x", "y", "z"], handedness: "right" } },
@@ -118,5 +119,39 @@ describe("PC17 pinned saved trend comparisons", () => {
       const bytes = resources.bytes(item); if (!bytes) return null;
       const changed = bytes.slice(); changed[0] ^= 1; return changed;
     })).toThrow();
+  });
+});
+
+describe("PC18 durable pinned Mesh comparisons", () => {
+  const saved = () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "metrics.triangleArea.avg", read);
+    const selection = { study, a: resolveSavedMeshTrendPoint(project, study, first.resultId, read),
+      b: resolveSavedMeshTrendPoint(project, study, middle.resultId, read) };
+    const reference = createSavedMeshPinnedComparison(project, selection, read, "saved-pair", "First versus middle");
+    return { project: upsertMath3DProjectSavedMeshComparison(project, reference), resources, reference, first, middle, read };
+  };
+  it("reopens the exact pair after serialization and portable import", () => {
+    const { project, resources, reference, first, middle } = saved();
+    const reopened = parseMath3DProject(serializeMath3DProject(project));
+    const imported = parseProjectPackage(exportProjectPackage(reopened, resources));
+    const pair = imported.project.savedMeshComparisons?.[0];
+    expect(pair).toEqual(reference);
+    const evidence = inspectSavedMeshPinnedComparison(imported.project, pair!, item => imported.resources.bytes(item));
+    expect(evidence.a.resultId).toBe(first.resultId);
+    expect(evidence.b.resultId).toBe(middle.resultId);
+    expect(evidence.metrics.find(item => item.path === reference.metricPath)?.difference).toBe(1.5);
+  });
+  it("refuses missing, changed, or tampered exact evidence", () => {
+    const { project, resources, reference, middle, read } = saved();
+    expect(() => inspectSavedMeshPinnedComparison(project, reference, () => null)).toThrow();
+    expect(() => inspectSavedMeshPinnedComparison(project, reference, item => {
+      const bytes = resources.bytes(item); if (!bytes) return null; const changed = bytes.slice(); changed[0] ^= 1; return changed;
+    })).toThrow();
+    expect(() => inspectSavedMeshPinnedComparison(project, { ...reference, b: { ...reference.b, sourceHash: reference.a.sourceHash } }, read)).toThrow();
+    const missing = createMath3DProject(createMixedWorkspaceDocument({ ...project.workspace,
+      results: project.workspace.results.filter(item => item.resultId !== middle.resultId) }), { stableKey: "pc18-missing" });
+    expect(() => inspectSavedMeshPinnedComparison({ ...missing, savedMeshComparisons: [reference] }, reference, read)).toThrow();
   });
 });

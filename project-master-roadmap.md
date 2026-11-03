@@ -1392,6 +1392,7 @@ budgets must be explicit before members can be combined.
 | PC15 | `feat(workbook): retain saved Mesh analysis trends` | Link exact saved Mesh result sets into Visualize blocks; verify Project resources on open and export, preserving recorded gaps without recalculation. |
 | PC16 | `feat(projects): open exact saved Mesh trend results` | Reverify a selected Projects or Workbook trend point, inspect its saved result and show its exact retained Mesh generation when available. |
 | PC17 | `feat(projects): compare pinned saved Mesh trend points` | Pin two exact points in Projects or Workbook, reverify both results and sidecars, and open the existing compatible A/B inspector with return to the trend. |
+| PC18 | `feat(projects): retain pinned saved Mesh comparisons` | Save two exact result and Mesh source hashes in the Project, reopen the pinned A/B pair after restart, and refuse missing or changed evidence on view and export. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1447,6 +1448,11 @@ PC17 is complete for two verified points in one saved Mesh trend. The PC13
 inspector supplies stored values and only method- and unit-qualified B − A
 differences; return navigation preserves the trend UI. Missing or changed
 result and Mesh bytes refuse comparison. PC03 and PC05 remain **Partial**.
+PC18 is complete for a compatible saved trend pair: the Project retains the
+two result IDs and hashes, exact Mesh generations and source hashes, plus the
+chosen metric. Projects reopens it after restart; display and HTML export
+reverify both sidecars and refuse changed or missing evidence. No Mesh analysis
+is rerun. PC03 and PC05 remain **Partial** under the same legacy-source limits.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

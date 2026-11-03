@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC17)
+# Project comparison and composition (PC01–PC18)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -362,6 +362,22 @@ restart requires reopening the saved Project and checked Workbook resources;
 pins are temporary UI choices and are made again after reopening. No Mesh
 analysis or interpolation runs on this path. PC03 and PC05 remain **Partial**
 for legacy coordinate metadata and unretained history.
+
+## PC18 · Save a pinned Mesh A/B comparison
+
+Status: **Complete for two compatible, verified points in one saved Mesh trend**.
+In **Projects → Compare saved documents → View saved result trend**, pin A and B,
+then choose **Compare pinned results → Save pinned comparison**. Give the pair
+a name. It appears under **Saved pinned comparisons** in the same Project and
+reopens after restart. The Project stores only the exact result IDs and hashes,
+Mesh IDs, revisions, source hashes, and selected metric. It does not copy or
+recompute the result or Mesh arrays.
+
+Opening the saved pair and exporting its HTML report reverify both result
+envelopes and their exact Mesh generations and sidecars. Missing, changed, or
+tampered evidence refuses the view or export. A portable Project package must
+include the required sidecars. PC03 and PC05 remain **Partial** for legacy
+coordinates and history that was never retained.
 
 ### Ready-to-use Mesh comparison starter
 
