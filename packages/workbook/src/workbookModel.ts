@@ -333,6 +333,7 @@ export type WorkbookBlock = {
     comparison?: import("./workbookComparisonReference").WorkbookComparisonReference;
     savedMeshTrend?: import("./workbookSavedMeshTrendReference").WorkbookSavedMeshTrendReference;
     savedMeshComparison?: import("./workbookSavedMeshComparisonReference").WorkbookSavedMeshComparisonReference;
+    savedMeshReview?: import("./workbookSavedMeshReviewReference").WorkbookSavedMeshReviewReference;
     snapshot?: WorkbookViewSnapshot | null;
     snapshotA?: WorkbookViewSnapshot | null;
     snapshotB?: WorkbookViewSnapshot | null;
