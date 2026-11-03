@@ -122,7 +122,7 @@ export function instantiateMeshComparisonStarter(token: string, id: MeshComparis
       project = upsertMath3DProjectSavedMeshComparison(project, pair);
       if (observation) project = upsertMath3DProjectNote(project,
         createProjectSavedMeshComparisonNote(project, pair, read, `Review observation ${index}`,
-          observation, Date.now(), [id, token, "observation", index]));
+          observation, Date.now(), JSON.stringify([id, token, "observation", index])));
     }
     return { project, resources: captureProjectResources(project, read) };
   }
