@@ -102,6 +102,7 @@ export const ProjectResearchLinks: React.FC<Props> = ({ project, titles, workboo
     const anchor = note.anchor;
     if (!anchor) return <span>Project Note without a target</span>;
     if (anchor.kind === "comparison") return <span>Comparison {anchor.compositionId} · A {titles.get(anchor.members[0].id) ?? anchor.members[0].id} r{anchor.members[0].revision} · B {titles.get(anchor.members[1].id) ?? anchor.members[1].id} r{anchor.members[1].revision} · {anchor.alignment}</span>;
+    if (anchor.kind === "saved-mesh-comparison") return <span>Saved Mesh comparison {anchor.comparisonId} · {anchor.metricPath} · A {anchor.a.resultId} r{anchor.a.revision} · B {anchor.b.resultId} r{anchor.b.revision}</span>;
     if (anchor.kind === "workbook-block") {
       const loaded = research.workbooks.find(item => item.reference.id === anchor.workbookId);
       const stage = loaded?.workbook?.stages.find(item => item.blocks.some(block => block.id === anchor.blockId));
