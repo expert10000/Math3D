@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC23)
+# Project comparison and composition (PC01–PC24)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -12,6 +12,21 @@ In Math3D choose **Projects → Starter projects** and open one of these built-i
 Projects. Each creates an independent saved copy; **New copy** creates another.
 Then open **Compare saved documents** in the Project navigator and choose the
 named entry under **Saved composition**.
+
+## PC24 linked coordinate probe
+
+Open **Coordinate Overlay Verification → Compare saved documents → Verified A/B
+overlay**, then set **View** to **Side by side**. Click the A box or B sphere.
+When both source documents declare the same 3D frame, axes, handedness and unit,
+the other pane shows a yellow marker at the picked coordinate. Its label gives
+the exact picked source ID, revision and hash. Only the coordinate is shared;
+face and vertex IDs remain local to the picked source. The marker is a transient
+view aid and is recreated from a fresh pick after reopening the comparison.
+
+Choose the undeclared D source or mismatched C source to see the link refused.
+Changed or missing source evidence also prevents the marker. PC03 remains
+Partial for legacy coordinate metadata, and PC05 remains Partial for history
+that was never retained and comparison families without a linked adapter.
 
 | Starter | Saved comparison | What to check |
 | --- | --- | --- |
