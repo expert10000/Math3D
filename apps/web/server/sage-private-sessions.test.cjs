@@ -2,13 +2,17 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { mkdtempSync, rmSync } = require("node:fs");
+const { tmpdir } = require("node:os");
+const { join } = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { createSagePrivateSessions } = require("./sage-private-sessions.cjs");
 
 const usersJson = JSON.stringify([
   { id: "ada", accessKey: "ada-access-key-000000000000000000000000" },
   { id: "noether", accessKey: "noether-access-key-00000000000000000" },
 ]);
-const create = (now = Date.now) => createSagePrivateSessions({ usersJson,
+const create = (now = Date.now, stateFile) => createSagePrivateSessions({ usersJson, stateFile,
   secret: "session-secret-000000000000000000000000", origin: "https://math.example.test", now,
   limits: { maxConcurrent: 1, maxRequestsPerMinute: 2 } });
 const request = (cookie, origin = "https://math.example.test") => ({ headers: { cookie, origin } });
@@ -61,4 +65,39 @@ test("hosted configuration rejects insecure origins and weak credentials", () =>
   assert.throws(() => createSagePrivateSessions({ usersJson, secret: "short", origin: "https://math.example.test" }), /SECRET/);
   assert.throws(() => createSagePrivateSessions({ usersJson, secret: "session-secret-000000000000000000000000",
     origin: "http://math.example.test" }), /ORIGIN/);
+});
+
+test("rate quota, active lease, and revoked session survive proxy restart", () => {
+  const directory = mkdtempSync(join(tmpdir(), "math3d-sage-policy-"));
+  try {
+    const stateFile = join(directory, "policy.json");
+    let time = 1000;
+    const clock = () => time;
+    let sessions = create(clock, stateFile);
+    const login = sessions.login("ada-access-key-000000000000000000000000", "ip");
+    const cookie = login.cookie.split(";")[0];
+    sessions.acquire("ada", "job-a");
+    sessions = create(clock, stateFile);
+    assert.equal(sessions.readSession(request(cookie)).userId, "ada");
+    assert.equal(sessions.acquire("ada", "job-b").code, "user_concurrency_limited");
+    assert.equal(sessions.ownsJob("ada", "job-a"), true);
+    time += 26000;
+    const next = sessions.acquire("ada", "job-b");
+    assert.equal(typeof next.release, "function");
+    next.release();
+    sessions = create(clock, stateFile);
+    assert.equal(sessions.acquire("ada", "job-c").code, "user_rate_limited");
+    sessions.logout(sessions.readSession(request(cookie)));
+    sessions = create(clock, stateFile);
+    assert.equal(sessions.readSession(request(cookie)), null);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("hosted web proxy refuses a direct non-loopback listener", () => {
+  const result = spawnSync(process.execPath, [join(__dirname, "worker-proxy.cjs")], {
+    env: { ...process.env, MATH3D_SAGE_WEB_AUTH_MODE: "hosted",
+      MATH3D_WEB_WORKER_PROXY_HOST: "0.0.0.0" }, encoding: "utf8", timeout: 5000,
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /must bind to loopback/);
 });

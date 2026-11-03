@@ -37,3 +37,6 @@ This gate uses one loopback web proxy behind an HTTPS reverse proxy. Per-user
 quotas and revoked sessions live in that process. Identity-provider
 integration, durable shared quota storage, and production edge deployment
 verification remain open.
+
+The later [HTTPS edge restart gate](sage-https-edge-2026-11-03.md) found the
+restart gap and added a required durable policy file for a single proxy.

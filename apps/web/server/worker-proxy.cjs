@@ -36,10 +36,13 @@ const SAGE_PRIVATE_TOKEN = String(process.env.MATH3D_SAGE_GATEWAY_TOKEN || "");
 const SAGE_HOSTED_MODE = process.env.MATH3D_SAGE_WEB_AUTH_MODE === "hosted";
 if (SAGE_HOSTED_MODE && !["127.0.0.1", "localhost", "::1"].includes(HOST))
   throw new Error("Hosted Sage web proxy must bind to loopback behind an HTTPS reverse proxy.");
+if (SAGE_HOSTED_MODE && !process.env.MATH3D_SAGE_WEB_STATE_FILE)
+  throw new Error("MATH3D_SAGE_WEB_STATE_FILE is required for restart-safe hosted Sage quotas and revocations.");
 const sagePrivateSessions = SAGE_HOSTED_MODE ? createSagePrivateSessions({
   usersJson: process.env.MATH3D_SAGE_WEB_USERS_JSON,
   secret: process.env.MATH3D_SAGE_WEB_SESSION_SECRET,
   origin: process.env.MATH3D_SAGE_WEB_ORIGIN,
+  stateFile: process.env.MATH3D_SAGE_WEB_STATE_FILE,
 }) : null;
 const SAGE_PRIVATE_URL_SAFE = (() => {
   try {
@@ -1109,7 +1112,9 @@ async function handleRoute(req, res, pathname) {
       let body;
       try { body = await readJsonBody(req, 1024); }
       catch { return json(res, 400, { code: "invalid_input", error: "A valid access key request is required." }); }
-      const result = sagePrivateSessions.login(body?.accessKey, req.socket.remoteAddress || "unknown");
+      let result;
+      try { result = sagePrivateSessions.login(body?.accessKey, req.socket.remoteAddress || "unknown"); }
+      catch { return json(res, 503, { code: "policy_store_unavailable", error: "Sage web session policy state is unavailable." }); }
       if (result.code) return json(res, result.status, { code: result.code, error: "Sage web session authorization failed." });
       res.setHeader("Set-Cookie", result.cookie);
       return json(res, 200, { authenticated: true, userId: result.userId, expiresAt: result.expiresAt,
@@ -1117,7 +1122,8 @@ async function handleRoute(req, res, pathname) {
     }
     if (pathname === "/api/sage-private/logout" && req.method === "POST") {
       if (!sagePrivateSessions) return json(res, 404, { code: "hosted_mode_disabled", error: "Hosted Sage sessions are not enabled." });
-      res.setHeader("Set-Cookie", sagePrivateSessions.logout(sagePrivateSessions.readSession(req)));
+      try { res.setHeader("Set-Cookie", sagePrivateSessions.logout(sagePrivateSessions.readSession(req))); }
+      catch { return json(res, 503, { code: "policy_store_unavailable", error: "Sage web session policy state is unavailable." }); }
       return json(res, 200, { authenticated: false });
     }
     const session = sagePrivateSessions?.readSession(req);
@@ -1137,7 +1143,8 @@ async function handleRoute(req, res, pathname) {
     try {
       const body = req.method === "POST" ? await readJsonBody(req, 8192) : undefined;
       if (session && suffix === "/run") {
-        lease = sagePrivateSessions.acquire(session.userId, body?.jobId);
+        try { lease = sagePrivateSessions.acquire(session.userId, body?.jobId); }
+        catch { return json(res, 503, { code: "policy_store_unavailable", error: "Sage web quota state is unavailable." }); }
         if (lease.code) return json(res, lease.status, { code: lease.code,
           error: lease.code === "user_rate_limited" ? "Your Sage request quota is exhausted."
             : lease.code === "user_concurrency_limited" ? "Your Sage concurrent-job limit is reached."
@@ -1157,7 +1164,8 @@ async function handleRoute(req, res, pathname) {
         ? { engine: "sagemath", available: false, status: "Private Sage gateway is unreachable.", operations: [] }
         : { code: "gateway_unavailable", error: "Private Sage gateway is unreachable." });
     } finally {
-      lease?.release?.();
+      try { lease?.release?.(); }
+      catch { appendDiagnosticsLog("error", "sage-web-policy-store", { code: "POLICY_STORE_UNAVAILABLE" }); }
     }
   }
   if (pathname.startsWith("/api/sage/")) {

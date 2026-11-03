@@ -1,12 +1,14 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const COOKIE = "math3d_sage_session";
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const LIMITS = Object.freeze({ maxConcurrent: 1, maxRequestsPerMinute: 10 });
 
-function createSagePrivateSessions({ usersJson, secret, origin, limits = LIMITS, now = Date.now } = {}) {
+function createSagePrivateSessions({ usersJson, secret, origin, stateFile, limits = LIMITS, now = Date.now } = {}) {
   if (typeof secret !== "string" || secret.length < 32)
     throw new Error("MATH3D_SAGE_WEB_SESSION_SECRET must contain at least 32 characters.");
   if (typeof origin !== "string") throw new Error("MATH3D_SAGE_WEB_ORIGIN is required.");
@@ -29,6 +31,45 @@ function createSagePrivateSessions({ usersJson, secret, origin, limits = LIMITS,
   const jobs = new Map();
   const revoked = new Map();
   const loginAttempts = new Map();
+  if (stateFile) {
+    if (!path.isAbsolute(stateFile)) throw new Error("MATH3D_SAGE_WEB_STATE_FILE must be an absolute path.");
+    try {
+      const stored = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      if (stored.version !== 1 || !Array.isArray(stored.usage) || !Array.isArray(stored.jobs) ||
+          !Array.isArray(stored.revoked) || !Array.isArray(stored.loginAttempts))
+        throw new Error("Invalid Sage web policy state.");
+      for (const [id, recent] of stored.usage) {
+        if (users.some((entry) => entry.id === id) && Array.isArray(recent) &&
+            recent.every(Number.isSafeInteger)) usage.set(id, { recent });
+      }
+      for (const [id, job] of stored.jobs) {
+        if (typeof id === "string" && users.some((entry) => entry.id === job?.userId) &&
+            Number.isSafeInteger(job.expiresAt) && job.expiresAt > now()) jobs.set(id, job);
+      }
+      for (const [nonce, expiry] of stored.revoked) {
+        if (typeof nonce === "string" && Number.isSafeInteger(expiry) && expiry > now()) revoked.set(nonce, expiry);
+      }
+      for (const [address, attempts] of stored.loginAttempts) {
+        if (typeof address === "string" && Array.isArray(attempts) &&
+            attempts.every(Number.isSafeInteger)) loginAttempts.set(address, attempts);
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  const persist = () => {
+    if (!stateFile) return;
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
+    const temporary = `${stateFile}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+    try {
+      fs.writeFileSync(temporary, JSON.stringify({ version: 1,
+        usage: [...usage].map(([id, state]) => [id, state.recent]), jobs: [...jobs],
+        revoked: [...revoked], loginAttempts: [...loginAttempts] }), { mode: 0o600 });
+      fs.renameSync(temporary, stateFile);
+    } finally {
+      try { fs.unlinkSync(temporary); } catch { /* already renamed */ }
+    }
+  };
   const sign = (value) => crypto.createHmac("sha256", key).update(value).digest("base64url");
   const equal = (left, right) => {
     const a = Buffer.from(String(left || ""));
@@ -64,6 +105,7 @@ function createSagePrivateSessions({ usersJson, secret, origin, limits = LIMITS,
     if (attempts.length >= 10) return { code: "login_rate_limited", status: 429 };
     attempts.push(time);
     loginAttempts.set(address, attempts);
+    persist();
     const user = users.find((entry) => equal(accessKey, entry.accessKey));
     if (!user) return { code: "invalid_credentials", status: 401 };
     const session = { userId: user.id, expiresAt: time + SESSION_MS, nonce: crypto.randomBytes(16).toString("hex") };
@@ -74,26 +116,28 @@ function createSagePrivateSessions({ usersJson, secret, origin, limits = LIMITS,
   const logout = (session) => {
     if (session) revoked.set(session.nonce, session.expiresAt);
     for (const [nonce, expiry] of revoked) if (expiry <= now()) revoked.delete(nonce);
+    persist();
     return cookie("", 0);
   };
   const acquire = (userId, jobId) => {
     if (!/^[a-zA-Z0-9-]{1,128}$/.test(jobId || "")) return { code: "invalid_input", status: 400 };
+    for (const [id, job] of jobs) if (job.expiresAt <= now()) jobs.delete(id);
     if (jobs.has(jobId)) return { code: "job_conflict", status: 409 };
-    const state = usage.get(userId) || { recent: [], active: 0 };
+    const state = usage.get(userId) || { recent: [] };
     const time = now();
     while (state.recent.length && state.recent[0] <= time - 60000) state.recent.shift();
     if (state.recent.length >= limits.maxRequestsPerMinute)
       return { code: "user_rate_limited", status: 429, retryAfterMs: 60000 - (time - state.recent[0]) };
-    if (state.active >= limits.maxConcurrent)
+    if ([...jobs.values()].filter((job) => job.userId === userId).length >= limits.maxConcurrent)
       return { code: "user_concurrency_limited", status: 429, retryAfterMs: 1000 };
     state.recent.push(time);
-    state.active++;
     usage.set(userId, state);
-    jobs.set(jobId, userId);
-    return { release: () => { if (jobs.get(jobId) === userId) { jobs.delete(jobId); state.active--; } } };
+    jobs.set(jobId, { userId, expiresAt: time + 25000 });
+    persist();
+    return { release: () => { if (jobs.get(jobId)?.userId === userId) { jobs.delete(jobId); persist(); } } };
   };
   return { login, logout, readSession, originAllowed, acquire,
-    ownsJob: (userId, jobId) => jobs.get(jobId) === userId,
+    ownsJob: (userId, jobId) => jobs.get(jobId)?.userId === userId && jobs.get(jobId).expiresAt > now(),
     status: (session) => ({ authenticated: true, userId: session.userId,
       expiresAt: session.expiresAt, limits }) };
 }
