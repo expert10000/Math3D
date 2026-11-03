@@ -1404,6 +1404,7 @@ budgets must be explicit before members can be combined.
 | PC20 | `feat(notes): record observations on saved Mesh comparisons` | Bind authored Notes to one exact saved pair, both result and Mesh hashes, and the selected metric; show and export them only while evidence verifies. |
 | PC21 | `feat(projects): review saved Mesh comparisons` | List every saved pair with its exact metric, source revisions, verification status and observation count; open verified pairs and Notes directly, leaving stale evidence visible as unavailable. |
 | PC22 | `feat(projects): export saved Mesh comparison review` | Export a versioned HTML review of all saved pairs, exact hashes, qualified stored values and verified Notes; list stale evidence as unavailable without its values or Note text. |
+| PC23 | `feat(workbook): present saved Mesh comparison reviews` | Link selected saved pairs and Notes by exact IDs and hashes in one Workbook Visualize block; recheck every row, export a qualified review and navigate back to verified pairs. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1490,6 +1491,15 @@ results, anchors and source sidecars verify. Missing or changed evidence remains
 visible as unavailable. Export, restart, portable import and tamper checks use
 the three-pair starter. No Mesh analysis runs. PC03 and PC05 remain **Partial**
 for legacy coordinate declarations and unretained generations.
+PC23 is complete for bounded multi-pair Workbook reviews. A Visualize block
+retains selected saved pair IDs, exact pair/result/source hashes and the linked
+Note IDs, revisions and hashes. Opening the block rechecks Project resources;
+each unavailable pair remains visible without scalar values or Note text.
+Workbook HTML/Markdown and portable publications include the qualified rows,
+and verified pairs navigate to the saved Project A/B inspector. The three-pair
+starter, restart, portable import, tampered source and changed Note tests cover
+the path. No Mesh analysis runs. PC03 and PC05 remain **Partial** for legacy
+coordinate declarations and generations never retained.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

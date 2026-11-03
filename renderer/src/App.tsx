@@ -80446,7 +80446,10 @@ case "mobius":
           setMode("geometry"); setGeometryMode("workbook"); setGeometryWorkbookUiMode("full"); setRightPanelTab("workbook");
         }}
         onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
-        onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+        onOpenNote={(id) => {
+          setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+          setProjectsOpen(true);
+        }}
         onOpenSavedMeshResult={target => {
           if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
           setProjectMiddleContent(null);
@@ -90513,7 +90516,10 @@ case "mobius":
                         setProjectMeshComparisonRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
                         setProjectsOpen(true);
                       }}
-                      onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+                      onOpenNote={(id) => {
+                        setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
                       onOpenNotebookDocument={(id, module) => {
                         if (navigateRestoredDocument(id, module)) return;
                         setActiveGraph2DTargetId(null);
