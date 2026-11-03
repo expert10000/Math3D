@@ -559,7 +559,7 @@ web proxy hold the credential; the renderer selects this backend through the
 same `ExecutionService` registry and Compute diagnostics. The Compose gateway
 binds only to loopback, and its Sage worker has no host port. The existing
 local Docker route remains selectable. Broader remote resources, identity
-provider integration, durable distributed quotas, rollback, and release
+provider integration, distributed quotas, rollback, and release
 manifests remain open in this phase.
 
 The hosted Sage web session slice now exchanges deployment-assigned per-user
@@ -570,8 +570,16 @@ failures, cancellation, and Compute diagnostics still use the shared
 can cancel only their own job. Two independent browser sessions and the
 unchanged desktop route are covered by live tests. The Sage worker remains on
 its internal Docker network without a published port. Identity-provider
-integration, durable distributed quotas, remote resource transport, and
+integration, multi-replica shared quota storage, remote resource transport, and
 release rollback remain open.
+
+The [local HTTPS edge gate](evidence/sage-https-edge-2026-11-03.md) exposed
+that in-memory rate counters reset when the web proxy restarted while signed
+sessions stayed valid. The web proxy now requires an access-restricted durable
+policy file in hosted mode and retains rate counters, active job leases, login
+attempts, and revoked sessions across a restart. This is sufficient for one
+proxy process. Multi-replica enforcement still requires a shared transactional
+store; the disposable local TLS edge does not replace a production edge audit.
 
 ## Conformance and quality gates
 

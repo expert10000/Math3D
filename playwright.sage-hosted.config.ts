@@ -1,4 +1,10 @@
 import { defineConfig } from "@playwright/test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const policyDir = mkdtempSync(join(tmpdir(), "math3d-sage-hosted-"));
+process.on("exit", () => rmSync(policyDir, { recursive: true, force: true }));
 
 export default defineConfig({
   testDir: "./tests/sage-gateway",
@@ -17,6 +23,7 @@ export default defineConfig({
         MATH3D_SAGE_GATEWAY_TOKEN: process.env.MATH3D_SAGE_GATEWAY_TOKEN || "",
         MATH3D_SAGE_WEB_AUTH_MODE: "hosted",
         MATH3D_SAGE_WEB_ORIGIN: "http://127.0.0.1:5186",
+        MATH3D_SAGE_WEB_STATE_FILE: join(policyDir, "policy.json"),
         MATH3D_SAGE_WEB_SESSION_SECRET: "test-session-secret-000000000000000000000",
         MATH3D_SAGE_WEB_USERS_JSON: JSON.stringify([
           { id: "ada", accessKey: "test-ada-access-key-000000000000000000" },

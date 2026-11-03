@@ -82,6 +82,7 @@ MATH3D_SAGE_WEB_AUTH_MODE=hosted
 MATH3D_SAGE_WEB_ORIGIN=https://math.example.org
 MATH3D_SAGE_WEB_SESSION_SECRET=<random secret of at least 32 characters>
 MATH3D_SAGE_WEB_USERS_JSON=[{"id":"ada","accessKey":"<unique random key of at least 32 characters>"}]
+MATH3D_SAGE_WEB_STATE_FILE=<absolute path to a durable, access-restricted policy JSON file>
 MATH3D_SAGE_GATEWAY_URL=https://<private gateway hostname>
 MATH3D_SAGE_GATEWAY_TOKEN=<gateway bearer credential>
 ```
@@ -94,11 +95,20 @@ the key is cleared from the UI after exchange. Each user is limited to one
 concurrent Sage job and ten run requests per minute. The proxy binds cancel to
 the user who started the job. Invalid or expired sessions, quota failures, and
 cross-session cancellations return typed errors. The gateway's global quotas
-continue to apply. This deployment uses one web proxy process for its in-memory
-quota and cancellation state; distributed quota storage and identity-provider
-integration are later operational gates.
+continue to apply. The policy file stores rate counters, active job leases,
+login attempts, and revoked session nonces across a proxy restart; it contains
+no access keys or gateway credential. Use a persistent volume, restrict file
+access to the proxy account, and keep one proxy process per policy file.
+Distributed quota storage and identity-provider integration are later gates.
 
 Run `npm run test:sage:hosted:unit` and, with the gateway and Docker route
 running, `npm run test:sage:hosted:live`. The hosted test uses two independent
 browser contexts and test-only access keys. The desktop route keeps its own
 gateway credential in Electron main and needs no hosted web session.
+
+`npm run test:sage:edge:live` builds the production web bundle and runs the
+local HTTPS edge gate. It needs OpenSSL to create a short-lived test certificate.
+The test exercises two browser sessions, typed errors, cancellation, diagnostics,
+expiry, quotas and revocation across a proxy restart. The reverse proxy and
+certificate in this test are disposable; verify the actual deployment edge
+separately before public access.
