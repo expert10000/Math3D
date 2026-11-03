@@ -6,11 +6,14 @@ import { comparableSavedMeshResults, compareSavedMeshResults, savedMeshResultCom
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 import { compareSavedMeshTrendPoints, type SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
 import { inspectSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
+import { checkedProjectSavedMeshComparisonObservations } from "../projects/projectSavedMeshComparisonNotes";
+import { SavedMeshComparisonObservations } from "./SavedMeshComparisonObservations";
 
-export function ProjectSavedMeshResultComparisonView({ project, readResource, onClose, trendSelection, savedReference, onReturnToTrend, onSavePinned }: {
+export function ProjectSavedMeshResultComparisonView({ project, readResource, onClose, trendSelection, savedReference, onReturnToTrend, onSavePinned, onSaveObservation }: {
   project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
   trendSelection?: SavedMeshTrendComparison | null; savedReference?: ProjectSavedMeshComparison | null;
   onReturnToTrend?: () => void; onSavePinned?: (selection: SavedMeshTrendComparison, title: string) => Promise<boolean>;
+  onSaveObservation?: (pair: ProjectSavedMeshComparison, title: string, body: string) => Promise<boolean>;
 }) {
   const choices = useMemo(() => comparableSavedMeshResults(project), [project]);
   const [aId, setAId] = useState(savedReference?.a.resultId ?? trendSelection?.a.resultId ?? choices[0]?.resultId ?? ""),
@@ -36,7 +39,8 @@ export function ProjectSavedMeshResultComparisonView({ project, readResource, on
     try {
       const checked = savedReference ? inspectSavedMeshPinnedComparison(project, savedReference, readResource) : trendSelection ? compareSavedMeshTrendPoints(project, trendSelection, readResource) :
         compareSavedMeshResults(project, aId, bId, readResource);
-      downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked)], { type: "text/html" }), "math3d-saved-mesh-results-comparison.html");
+      const observations = savedReference ? checkedProjectSavedMeshComparisonObservations(project, savedReference, readResource) : [];
+      downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked, observations)], { type: "text/html" }), "math3d-saved-mesh-results-comparison.html");
       setMessage("Verified stored-result report downloaded.");
     } catch (failure) { setMessage(`Export refused: ${(failure as Error).message}`); }
   };
@@ -66,6 +70,7 @@ export function ProjectSavedMeshResultComparisonView({ project, readResource, on
         <h3>Stored scalar metrics</h3><div style={{ overflowX: "auto" }}><table style={{ width: "100%" }}><thead><tr><th>Metric</th><th>A</th><th>B</th><th>Unit</th><th>B − A</th></tr></thead><tbody>{evidence.metrics.map(metric => <tr key={metric.path}><th>{metric.path}</th><td>{metric.a}</td><td>{metric.b}</td><td>{metric.unit ?? "unqualified"}</td><td>{metric.difference ?? metric.reason}</td></tr>)}</tbody></table></div>
         <p>{evidence.qualification}</p>
         <button type="button" data-testid="project-mesh-result-export" onClick={exportEvidence}>Export checked HTML report</button>
+        {savedReference && <SavedMeshComparisonObservations project={project} pair={savedReference} readResource={readResource} onSave={onSaveObservation} />}
         {trendSelection && onSavePinned && !savedReference && <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <label>Comparison name <input data-testid="project-mesh-pinned-title" value={pinnedTitle} maxLength={160} onChange={event => setPinnedTitle(event.target.value)} /></label>
           <button type="button" data-testid="project-mesh-pinned-save" disabled={!pinnedTitle.trim()} onClick={() => { void onSavePinned(trendSelection, pinnedTitle).then(ok => {

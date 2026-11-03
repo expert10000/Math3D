@@ -74,6 +74,7 @@ type WorkbookPanelProps = {
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
   onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
+  onSaveMeshComparisonObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
   onOpenNote: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
@@ -521,6 +522,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onOpenNotebookDocument,
   onOpenProjects,
   onOpenSavedMeshResult,
+  onSaveMeshComparisonObservation,
   onOpenNote,
   onRemoveBlock,
   onMoveBlock,
@@ -1554,6 +1556,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
         project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         readComparisonResource={readComparisonResource}
+        onSaveMeshComparisonObservation={onSaveMeshComparisonObservation}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
         onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
@@ -1925,7 +1928,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   onChange={savedMeshComparison => onUpdateBlock(activeStageId, block.id,
                     { visualize: { ...(block.visualize ?? { live: true }), savedMeshComparison } })} />
                 {block.visualize?.savedMeshComparison && <WorkbookSavedMeshComparisonBlock project={dependencyProject}
-                  reference={block.visualize.savedMeshComparison} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
+                  reference={block.visualize.savedMeshComparison} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult}
+                  onSaveObservation={onSaveMeshComparisonObservation} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

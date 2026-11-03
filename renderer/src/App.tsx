@@ -126,6 +126,7 @@ import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
 import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
+import { saveSavedMeshComparisonObservation } from "./projects/saveSavedMeshComparisonObservation";
 import { projectNoteRenderedBody } from "./projects/projectNoteValues";
 import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
 import { readNotebookProjectContext, type NotebookProjectContext } from "./workbook/notebookProjectContext";
@@ -90482,6 +90483,17 @@ case "mobius":
                       workbooks={workbooks}
                       resolveSageSource={currentSageWorkbookSource}
                       readComparisonResource={readComparisonResource}
+                      onSaveMeshComparisonObservation={async (comparisonId, comparisonHash, title, body) => {
+                        try {
+                          const projectId = activeNotebookProjectRef.current?.identity.id;
+                          if (!projectId) throw new TypeError("Open the saved Project first.");
+                          const saved = await saveSavedMeshComparisonObservation(localStorage, projectId, comparisonId, comparisonHash, title, body);
+                          activeNotebookProjectRef.current = saved.project;
+                          activeNotebookProjectResourcesRef.current = saved.resources;
+                          setNotebookProjectVersion(version => version + 1);
+                          return true;
+                        } catch (error) { console.warn("Saved Mesh comparison observation refused:", error); return false; }
+                      }}
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}

@@ -30,6 +30,7 @@ import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import type { SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
 import { createSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
+import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "../projects/projectSavedMeshComparisonNotes";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
@@ -574,6 +575,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         return;
       }
       setComparisonInitialId(anchor.compositionId); setCompositionOpen(true); setNotesOpen(false); onOpenChange(true);
+      return;
+    }
+    if (anchor.kind === "saved-mesh-comparison") {
+      const current = project?.identity.id === note.projectId ? project : notesProject;
+      if (!current || inspectProjectSavedMeshComparisonNote(current, note, comparisonResource).status !== "current") {
+        setNotesMessage("The exact saved Mesh comparison or one of its sources is unavailable."); return;
+      }
+      const pair = current.savedMeshComparisons?.find(item => item.id === anchor.comparisonId);
+      if (!pair) return;
+      setSavedMeshComparison(pair); setMeshTrendComparison(null); setMeshResultComparisonOpen(true); setNotesOpen(false); onOpenChange(true);
       return;
     }
     if (anchor.kind === "workbook-block") {
@@ -1823,6 +1834,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         }} /></React.Suspense>}
       {meshResultComparisonOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh results…</p>}><ProjectSavedMeshResultComparisonView project={project} readResource={comparisonResource}
         trendSelection={meshTrendComparison} savedReference={savedMeshComparison}
+        onSaveObservation={async (pair, title, body) => commitNotes(saved => {
+          if (saved.identity.id !== project.identity.id) throw new Error("The Project changed. Reopen the comparison.");
+          const exact = saved.savedMeshComparisons?.find(item => item.id === pair.id);
+          if (!exact || structuralHash(exact) !== structuralHash(pair)) throw new Error("The saved comparison changed.");
+          const note = createProjectSavedMeshComparisonNote(saved, exact, comparisonResource, title, body, Date.now(),
+            `mesh-comparison-${exact.id}-${Date.now()}`);
+          return upsertMath3DProjectNote(saved, note);
+        }, `Saved Mesh comparison observation “${title.trim()}”.`)}
         onSavePinned={meshTrendComparison ? async (selection, title) => commitNotes(saved => {
           if (saved.identity.id !== selection.study.projectId) throw new Error("The Project changed. Reopen the trend.");
           const pairId = `mesh-${structuralHash([selection.a.resultId, selection.b.resultId, selection.study.metricPath]).slice(7, 39)}`;

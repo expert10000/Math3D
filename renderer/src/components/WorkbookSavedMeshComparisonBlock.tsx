@@ -8,6 +8,8 @@ import type { VerifiedProjectResources } from "../projects/projectResources";
 import { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
 import { inspectWorkbookSavedMeshComparison, resolveWorkbookSavedMeshComparisonTarget } from "../projects/projectSavedMeshWorkbookComparison";
 import { savedMeshResultComparisonHtml } from "../projects/projectSavedMeshResultComparison";
+import { checkedProjectSavedMeshComparisonObservations } from "../projects/projectSavedMeshComparisonNotes";
+import { SavedMeshComparisonObservations } from "./SavedMeshComparisonObservations";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { downloadStudyBlob } from "../projects/studyComparisonExport";
 
@@ -42,7 +44,8 @@ export const WorkbookSavedMeshComparisonEditor: React.FC<{
 export const WorkbookSavedMeshComparisonBlock: React.FC<{
   project: Math3DProject | null; reference: WorkbookSavedMeshComparisonReference;
   readResource?: ProjectResourceReader; onOpenResult?: (target: SavedMeshTrendTarget) => void;
-}> = ({ project, reference, readResource, onOpenResult }) => {
+  onSaveObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
+}> = ({ project, reference, readResource, onOpenResult, onSaveObservation }) => {
   const [open, setOpen] = useState(false), [message, setMessage] = useState("");
   const [archive, setArchive] = useState<VerifiedProjectResources | null>(null);
   const savedProject = (() => {
@@ -80,7 +83,10 @@ export const WorkbookSavedMeshComparisonBlock: React.FC<{
     try {
       const checked = inspectWorkbookSavedMeshComparison(savedProject, reference, checkedReader);
       if (checked.status !== "current" || !checked.evidence) throw new TypeError(checked.reason);
-      downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked.evidence)], { type: "text/html" }), "math3d-workbook-saved-mesh-comparison.html");
+      const pair = savedProject?.savedMeshComparisons?.find(item => item.id === reference.comparisonId);
+      if (!pair || !checkedReader) throw new TypeError("Saved comparison evidence is unavailable.");
+      const observations = checkedProjectSavedMeshComparisonObservations(savedProject!, pair, checkedReader);
+      downloadStudyBlob(new Blob([savedMeshResultComparisonHtml(checked.evidence, observations)], { type: "text/html" }), "math3d-workbook-saved-mesh-comparison.html");
       setMessage("Verified saved Mesh comparison report downloaded.");
     } catch (error) { setMessage(`Export refused: ${(error as Error).message}`); }
   };
@@ -106,6 +112,9 @@ export const WorkbookSavedMeshComparisonBlock: React.FC<{
         </div>; })}
         <p>{evidence.qualification}</p>
         <button type="button" data-testid="workbook-saved-mesh-comparison-export" onClick={exportHtml}>Export checked HTML report</button>
+        {savedProject && checkedReader && savedProject.savedMeshComparisons?.find(item => item.id === reference.comparisonId) &&
+          <SavedMeshComparisonObservations project={savedProject} pair={savedProject.savedMeshComparisons.find(item => item.id === reference.comparisonId)!}
+            readResource={checkedReader} onSave={onSaveObservation ? async (pair, title, body) => onSaveObservation(pair.id, reference.comparisonHash, title, body) : undefined} />}
       </div>}
     </details>}
     {message && <p role={message.includes("refused") ? "alert" : "status"}>{message}</p>}
