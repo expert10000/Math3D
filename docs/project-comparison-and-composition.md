@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC24)
+# Project comparison and composition (PC01–PC25)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -28,8 +28,27 @@ Changed or missing source evidence also prevents the marker. PC03 remains
 Partial for legacy coordinate metadata, and PC05 remains Partial for history
 that was never retained and comparison families without a linked adapter.
 
+## PC25 saved coordinate observations
+
+Open **Projects → Starter projects → Mesh and Geometry Coordinate Probe → Open**,
+save the Project, then choose **Compare saved documents → Mesh / Geometry ·
+shared metres**. Pick either the Mesh or Geometry source. The other pane marks
+the same declared coordinate. Enter a title and body, then choose **Save
+coordinate observation**. The Note retains the exact comparison and source
+generations, the picked source slot, coordinate, frame and unit. Close and
+reopen the comparison to show the saved marker; open the Note from the comparison
+or Project Notes to inspect its evidence.
+
+Portable Project export retains the Note and source sidecar. Comparison HTML
+labels the coordinate and its exact source evidence. A changed or missing source,
+sidecar, frame or unit makes the Note unavailable and suppresses its marker.
+The Note describes a shared coordinate; it does not identify a matching face,
+vertex or measured value in the other source. PC03 and PC05 remain **Partial**
+for legacy undeclared frames and generations that were never retained.
+
 | Starter | Saved comparison | What to check |
 | --- | --- | --- |
+| **Mesh and Geometry Coordinate Probe** | **Mesh / Geometry · shared metres** | A saved Mesh and Geometry sphere declare the same local xyz frame in metres. Pick either pane, save a coordinate observation, then reopen it after restart. |
 | **Coordinate Overlay Verification** | **Verified A/B overlay** | The two source-declared `laboratory xyz` / `mm` frames, axes and handedness match; the banner identifies a source-declared match. |
 | Same starter | **Unverified A/D overlay** | D has no coordinate declaration, so the banner says the alignment is an operator assertion. |
 | Same starter | Choose **C · mismatched cm box** as source B while in Overlay mode | The viewer refuses the `mm`/`cm` mismatch instead of drawing it as aligned. |

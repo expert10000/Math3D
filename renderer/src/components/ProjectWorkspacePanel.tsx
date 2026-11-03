@@ -134,6 +134,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => document.removeEventListener("input", edited, true);
   }, []);
   const resourceSessionId = useRef<string | null>(null);
+  const [resourceVersion, setResourceVersion] = useState(0);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
@@ -191,6 +192,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
   useEffect(() => {
+    if (!project || resourceSessionId.current === project.identity.id) return;
+    let cancelled = false;
+    void loadProjectResources(project).then(resources => {
+      if (cancelled || resourceSessionId.current === project.identity.id) return;
+      resourceSession.current = resources;
+      resourceSessionId.current = project.identity.id;
+      setResourceVersion(version => version + 1);
+    }).catch(() => { /* Exact source checks in each view report unavailable resources. */ });
+    return () => { cancelled = true; };
+  }, [project?.identity.id]);
+  useEffect(() => {
     const refreshExternalSave = () => {
       try {
         const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
@@ -216,7 +228,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true);
   }, [open, pairRequest?.token, project?.identity.id]);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
-  const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
+  const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader, resourceVersion]);
   const savedMeshReview = useMemo(() => project ? buildSavedMeshComparisonReview(project, comparisonResource) : [], [project, comparisonResource]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);

@@ -40,7 +40,8 @@ export function resolveProjectComparisonNoteTarget(project: Math3DProject, compo
   if (!saved) return null;
   let alignment = fallbackAlignment, available = false;
   try {
-    const evidence = createProjectComparisonEvidence(project, saved, readResource);
+    // Note inspection verifies the pair independently of other authored Notes.
+    const evidence = createProjectComparisonEvidence({ ...project, notes: [] }, saved, readResource);
     alignment = evidence.alignment;
     available = true;
   } catch { /* The Note stays visible; its exact target is unavailable. */ }
