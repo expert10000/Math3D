@@ -7,7 +7,7 @@ import { inspectWorkbookComparisonReference, normalizeWorkbookSavedMeshTrendRefe
 import { createProjectComparisonEvidence } from "../projects/projectComparisonEvidence";
 import { inspectWorkbookSavedMeshTrend } from "../projects/projectSavedMeshWorkbookTrend";
 import { inspectWorkbookSavedMeshComparison } from "../projects/projectSavedMeshWorkbookComparison";
-import { checkedProjectSavedMeshComparisonObservations } from "../projects/projectSavedMeshComparisonNotes";
+import { checkedProjectSavedMeshComparisonObservations, inspectProjectSavedMeshComparisonNote } from "../projects/projectSavedMeshComparisonNotes";
 
 export const notebookPublicationManifest = (books: readonly Workbook[], project: Math3DProject | null, reader?: NotebookArtifactReader, selected?: readonly string[], sourceReader?: ProjectResourceReader) => {
   const citations = new Map<string, NotebookReference>();
@@ -48,8 +48,12 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
     const notes = (book.dependencies ?? []).filter(edge => edge.targetBlockId === block.id && edge.source.kind === "note").map(edge => {
       if (edge.source.kind !== "note") throw new Error("Expected Note source");
       const ref = edge.source, note = ref.projectId === project?.identity.id ? project.notes?.find(note => note.identity.id === ref.noteId) : undefined;
-      return { reference: ref, status: note ? note.identity.structuralHash === ref.hash && note.identity.revision === ref.revision ? "current" : "stale" : "missing",
-        renderedBody: note ? projectNoteRenderedBody(note, project!.workspace) : null };
+      const identityCurrent = !!note && note.identity.structuralHash === ref.hash && note.identity.revision === ref.revision;
+      const anchorStatus = note?.anchor?.kind === "saved-mesh-comparison" ? project && sourceReader ?
+        inspectProjectSavedMeshComparisonNote(project, note, sourceReader).status : "missing" : "current";
+      const status = !note ? "missing" : !identityCurrent ? "stale" : anchorStatus;
+      return { reference: ref, status,
+        renderedBody: status === "current" && note ? projectNoteRenderedBody(note, project!.workspace) : null };
     });
     return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison, savedMeshTrend, savedMeshComparison };
   })));

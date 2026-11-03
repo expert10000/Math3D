@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC19)
+# Project comparison and composition (PC01–PC20)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -396,6 +396,29 @@ the saved results and sidecars. Workbook publication and portable import also
 refuse a missing, changed, or tampered source. Closing the embedded view releases
 its display; the Project retains the pair. PC03 and PC05 remain **Partial** for
 legacy coordinate metadata and Mesh generations that were never retained.
+
+## PC20 · Observations on saved Mesh comparisons
+
+Status: **Complete for a verified saved PC18 Mesh pair**. Open **Projects →
+Compare saved documents → Saved pinned comparisons**, choose the pair, and use
+**Save observation**. The same action appears in **Workbook → 3 Visualize →
+Saved Mesh A/B comparison → Show embedded saved Mesh comparison**. The Note
+anchors to the Project comparison ID and hash, its selected metric, both exact
+result IDs and hashes, and both Mesh source revisions and hashes. It records
+authored interpretation; no Mesh analysis is run.
+
+Only Notes whose pair, results, and sidecars still verify display their text in
+the comparison and Workbook. The Project Notes list marks unavailable anchors
+and hides their text until evidence verifies. The checked HTML report and
+Workbook publication include current observations with their Note IDs and
+hashes, explicitly labeled as authored observations. Export refuses a stale or
+missing linked Note or source; portable import rechecks the same references.
+The Project package retains the Notes without copying Mesh bytes into them.
+
+Acceptance covers Project and Workbook saving, restart, HTML export, portable
+publication/import, missing sources, changed comparison references, and
+tampered sidecars. PC03 remains **Partial** for legacy sources without coordinate
+metadata. PC05 remains **Partial** for generations that were never retained.
 
 ### Ready-to-use Mesh comparison starter
 

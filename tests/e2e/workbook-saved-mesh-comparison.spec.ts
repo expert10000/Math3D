@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState, type LaunchedSurfaceApp } from "./helpers/surfaceAppHarness";
 import { freezeControls } from "./helpers/projectFreeze";
 
-test("PC19 presents an exact saved Mesh pair in a durable Workbook", async () => {
+test("PC19–20 presents and annotates an exact saved Mesh pair in Projects and Workbook", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -32,6 +32,13 @@ test("PC19 presents an exact saved Mesh pair in a durable Workbook", async () =>
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const pair = saved.savedMeshComparisons?.find((item: { title: string }) => item.title === "Starter generations A/B");
     expect(pair).toBeTruthy();
+    await panel.getByTestId(`project-open-pinned-mesh-${pair.id}`).click();
+    const savedPair = page.getByTestId("project-mesh-result-comparison");
+    await savedPair.getByTestId("saved-mesh-observation-title").fill("Project interpretation");
+    await savedPair.getByTestId("saved-mesh-observation-body").fill("The stored mean area differs between retained generations.");
+    await savedPair.getByTestId("saved-mesh-observation-save").click();
+    await expect(savedPair.getByTestId("saved-mesh-comparison-observation")).toContainText("Project interpretation");
+    await savedPair.getByTestId("project-mesh-result-return").click();
     await controls.hide();
     await page.getByRole("button", { name: "Surfaces", exact: true }).first().click();
     await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
@@ -43,11 +50,16 @@ test("PC19 presents an exact saved Mesh pair in a durable Workbook", async () =>
     const evidence = embedded.getByTestId("workbook-saved-mesh-comparison-evidence");
     await expect(evidence).toContainText("2.03125");
     await expect(evidence).toContainText(pair.a.resultHash);
+    await evidence.getByTestId("saved-mesh-observation-title").fill("Workbook interpretation");
+    await evidence.getByTestId("saved-mesh-observation-body").fill("The exact A/B pair supports this authored observation.");
+    await evidence.getByTestId("saved-mesh-observation-save").click();
+    await expect(evidence.getByTestId("saved-mesh-comparison-observation")).toHaveCount(2);
     const report = test.info().outputPath("pc19-workbook-saved-mesh-comparison.html");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), report);
     await embedded.getByTestId("workbook-saved-mesh-comparison-export").click();
     await expect.poll(() => { try { return readFileSync(report).length > 0; } catch { return false; } }, { timeout: 30_000 }).toBe(true);
     expect(readFileSync(report, "utf8")).toContain(pair.b.sourceHash);
+    expect(readFileSync(report, "utf8")).toContain("Workbook interpretation");
     await embedded.getByText("Show embedded saved Mesh comparison").click();
     await expect(evidence).toHaveCount(0);
     await controls.show();
@@ -70,11 +82,13 @@ test("PC19 presents an exact saved Mesh pair in a durable Workbook", async () =>
     await expect(reopened).toContainText("Exact saved pair linked");
     await reopened.getByText("Show embedded saved Mesh comparison").click();
     await expect(reopened.getByTestId("workbook-saved-mesh-comparison-evidence")).toContainText(pair.b.resultId);
+    await expect(reopened.getByTestId("saved-mesh-comparison-observation")).toHaveCount(2);
     const publication = page.getByTestId("workbook-publication").first();
     await publication.locator("summary").click();
     const reopenedReport = test.info().outputPath("pc19-reopened-workbook.html");
     await ctx.app.evaluate(({ session }, path) => session.defaultSession.once("will-download", (_event, item) => item.setSavePath(path)), reopenedReport);
     await publication.getByRole("button", { name: "Export selected HTML" }).click();
     await expect.poll(() => { try { return readFileSync(reopenedReport, "utf8").includes(pair.b.resultHash); } catch { return false; } }, { timeout: 30_000 }).toBe(true);
+    expect(readFileSync(reopenedReport, "utf8")).toContain("Workbook interpretation");
   } finally { await closeSurfaceApp(ctx); }
 });

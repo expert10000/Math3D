@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, structuralHash, upsertMath3DProjectNote, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, parseMath3DProject, serializeMath3DProject, sha256Checksum, structuralHash, upsertMath3DProjectNote, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh } from "./savedMeshAnalysis";
 import { transformWithRetainedMeshSnapshot } from "./retainedMeshGeneration";
@@ -7,7 +7,8 @@ import { captureProjectResources, exportProjectPackage, parseProjectPackage } fr
 import { buildSavedMeshResultTrend, savedMeshResultTrendHtml, savedMeshTrendMetricChoices } from "./projectSavedMeshResultTrend";
 import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 import { createSavedMeshPinnedComparison, inspectSavedMeshPinnedComparison } from "./projectSavedMeshPinnedComparison";
-import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "./projectSavedMeshComparisonNotes";
+import { checkedProjectSavedMeshComparisonObservations, createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "./projectSavedMeshComparisonNotes";
+import { savedMeshResultComparisonHtml } from "./projectSavedMeshResultComparison";
 import { createWorkbookSavedMeshComparisonReference, inspectWorkbookSavedMeshComparisonReference,
   normalizeWorkbookSavedMeshComparisonReference, createDefaultWorkbook, validateWorkbookDependencies } from "@math3d/workbook";
 import { prepareProjectWorkbook, readProjectWorkbook } from "./projectWorkbookBinding";
@@ -95,6 +96,47 @@ describe("PC20 exact saved Mesh comparison Note", () => {
     expect(inspectProjectSavedMeshComparisonNote({ ...withNote, savedMeshComparisons: [{ ...pair, metricPath: "faceCount" }] }, note, read).status).toBe("stale");
     const corrupt = (item: Parameters<typeof resources.bytes>[0]) => { const bytes = read(item); if (!bytes) return null; const copy = bytes.slice(); copy[0] ^= 1; return copy; };
     expect(inspectProjectSavedMeshComparisonNote(withNote, note, corrupt).status).toBe("missing");
+  });
+  it("includes verified observations in HTML and portable Workbook reports, refusing changed evidence", () => {
+    const { project, resources, first, middle } = fixture();
+    const read = (item: Parameters<typeof resources.bytes>[0]) => resources.bytes(item);
+    const study = buildSavedMeshResultTrend(project, first.resultId, "metrics.triangleArea.avg", read);
+    const pair = createSavedMeshPinnedComparison(project, { study,
+      a: resolveSavedMeshTrendPoint(project, study, first.resultId, read),
+      b: resolveSavedMeshTrendPoint(project, study, middle.resultId, read) }, read, "pc20-export", "PC20 export");
+    const saved = upsertMath3DProjectSavedMeshComparison(project, pair);
+    const note = createProjectSavedMeshComparisonNote(saved, pair, read, "Observed <area>", "A and B differ.", 100, "pc20-export-note");
+    const withNote = upsertMath3DProjectNote(saved, note);
+    const reference = createWorkbookSavedMeshComparisonReference(withNote, pair);
+    const workbook = createDefaultWorkbook(() => crypto.randomUUID());
+    workbook.stages[2]!.blocks[0]!.visualize = { live: false, savedMeshComparison: reference };
+    const observations = checkedProjectSavedMeshComparisonObservations(withNote, pair, read);
+    expect(observations).toHaveLength(1);
+    const evidence = inspectSavedMeshPinnedComparison(withNote, pair, read);
+    const html = savedMeshResultComparisonHtml(evidence, observations);
+    expect(html).toContain("Observed &lt;area&gt;");
+    expect(html).toContain(note.identity.structuralHash);
+    const manifest = notebookPublicationManifest([workbook], withNote, undefined, undefined, read);
+    expect(manifest.blocks.find(block => block.savedMeshComparison)?.savedMeshComparison?.observations).toEqual(observations);
+    expect(notebookPublicationManifestHtml(manifest)).toContain("Observed &lt;area&gt;");
+    expect(notebookPublicationMarkdown(manifest)).toContain(note.identity.structuralHash);
+    const portable = createPortableNotebookPublication(withNote, [workbook], resources, undefined, read);
+    expect(inspectPortableNotebookPublication(portable).project.notes?.[0]?.body).toBe(note.body);
+    const forged = JSON.parse(JSON.stringify(portable)) as typeof portable;
+    forged.manifest.blocks.find(block => block.savedMeshComparison)!.savedMeshComparison!.observations[0]!.body = "forged interpretation";
+    forged.manifestChecksum = sha256Checksum(new TextEncoder().encode(JSON.stringify(forged.manifest)));
+    expect(() => inspectPortableNotebookPublication(forged)).toThrow(/comparison/);
+    const imported = parseProjectPackage(exportProjectPackage(withNote, resources));
+    expect(checkedProjectSavedMeshComparisonObservations(imported.project, pair, item => imported.resources.bytes(item))).toHaveLength(1);
+    const missing = () => null;
+    expect(() => checkedProjectSavedMeshComparisonObservations(withNote, pair, missing)).toThrow(/unavailable|missing/i);
+    const tampered = (item: Parameters<typeof resources.bytes>[0]) => {
+      const bytes = read(item); if (!bytes) return null; const changed = bytes.slice(); changed[0] ^= 1; return changed;
+    };
+    expect(() => notebookPublicationManifest([workbook], withNote, undefined, undefined, tampered)).toThrow();
+    const changed = { ...withNote, savedMeshComparisons: [{ ...pair, metricPath: "faceCount" }] };
+    expect(() => checkedProjectSavedMeshComparisonObservations(changed, pair, read)).toThrow();
+    expect(() => notebookPublicationManifest([workbook], changed, undefined, undefined, read)).toThrow();
   });
 });
 

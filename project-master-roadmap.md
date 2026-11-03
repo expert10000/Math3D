@@ -18,6 +18,9 @@ PC16 opens an exact verified trend point in the saved Project result inspector
 and previews its checked Mesh generation, including retained revisions.
 PC17 compares two pinned verified trend points through the existing saved
 Mesh A/B inspector, with source-local refusal for incompatible evidence.
+PC18–PC19 retain the exact pair in Projects and display it in Workbook. PC20
+adds authored observations tied to both exact results, Mesh generations, and
+the selected metric; checked reports and portable import refuse changed evidence.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -1394,6 +1397,7 @@ budgets must be explicit before members can be combined.
 | PC17 | `feat(projects): compare pinned saved Mesh trend points` | Pin two exact points in Projects or Workbook, reverify both results and sidecars, and open the existing compatible A/B inspector with return to the trend. |
 | PC18 | `feat(projects): retain pinned saved Mesh comparisons` | Save two exact result and Mesh source hashes in the Project, reopen the pinned A/B pair after restart, and refuse missing or changed evidence on view and export. |
 | PC19 | `feat(workbook): present saved Mesh comparisons` | Link a saved PC18 pair by exact comparison, result and source hashes; show stored values and qualified differences in a Workbook; refuse changed evidence on report and portable export. |
+| PC20 | `feat(notes): record observations on saved Mesh comparisons` | Bind authored Notes to one exact saved pair, both result and Mesh hashes, and the selected metric; show and export them only while evidence verifies. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1460,6 +1464,12 @@ Mesh source hashes. Embedded inspection, result navigation, HTML report,
 portable publication and import verify the underlying saved evidence; missing
 or changed sidecars are refused. The Workbook does not run Mesh analysis.
 PC03 and PC05 remain **Partial** for their existing legacy-source limits.
+PC20 is complete for authored observations on a saved PC18 pair in Projects and
+Workbook. Both views reverify the exact pair, result envelopes and Mesh sidecars
+before showing Note text. HTML and portable Workbook reports include current
+observations and refuse stale or missing linked evidence; restart and tamper
+checks cover the saved Project. No Mesh analysis runs. PC03 and PC05 remain
+**Partial** for legacy coordinate declarations and generations never retained.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
