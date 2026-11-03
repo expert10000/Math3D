@@ -378,3 +378,16 @@ choose **View saved result trend**. Set **Stored scalar metric** to
 then select the last dot and **Pin selected as B**. **Compare pinned results**
 shows the checked 2.03125 m² B − A difference; **Return to trend** keeps the
 plot. **Compare saved results** opens the same A/B inspector directly.
+
+Three more starters are available in **Projects → Starter projects**:
+
+| Starter | Saved evidence | First action |
+| --- | --- | --- |
+| **Retained Mesh Generation Study** | An octahedron, one retained subdivision, one retained transform, and quality results for all three revisions. | **Compare saved documents** and choose two generations of the same Mesh. |
+| **Saved Mesh Curvature Study** | A closed triangulated sphere at three scales, with a discrete-curvature result saved at each revision. | **View saved result trend** and choose `mean.avg` or another recorded scalar. |
+| **Mesh Trend With Missing Result** | Three retained square-Mesh revisions, with quality results only at the first and last. | **View saved result trend** to see the middle revision marked **not recorded**. |
+
+All four starters preserve their source sidecars in a portable Project. Their
+saved measurements are produced when the starter copy is created; comparison
+and trend views only inspect those recorded results. Save the Project to retain
+your own copy.

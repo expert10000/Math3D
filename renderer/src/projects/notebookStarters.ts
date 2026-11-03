@@ -14,6 +14,9 @@ export const NOTEBOOK_STARTERS = [
   { id: "curve-construction-notebook", title: "Curve Construction Investigation", description: "Follow a measured Curve into revolution and extrusion Surfaces with exact source references." },
   { id: "ripple-wave-study", title: "Ripple Wave Study", description: "A Graph wave profile, its native Surface, a saved Mesh snapshot, Geometry sample markers and a research Workbook with exact source links." },
   { id: "mesh-comparison-study", title: "Saved Mesh Comparison Study", description: "Three retained Mesh generations with recorded quality results, ready for A/B comparison and a verified trend." },
+  { id: "mesh-subdivision-study", title: "Retained Mesh Generation Study", description: "An octahedron before subdivision, after subdivision, and after a transform, with exact source sidecars." },
+  { id: "mesh-curvature-study", title: "Saved Mesh Curvature Study", description: "Three saved discrete-curvature results from a closed triangulated sphere at different scales." },
+  { id: "mesh-trend-gap-study", title: "Mesh Trend With Missing Result", description: "A three-generation Mesh trend whose middle generation has no saved quality result." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
 
@@ -154,7 +157,9 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
   };
   const recipe = NOTEBOOK_STARTERS.find(item => item.id === id);
   if (!recipe) throw new TypeError("Unknown Notebook starter.");
-  if (id === "mesh-comparison-study") return instantiateMeshComparisonStarter(token);
+  if (id === "mesh-comparison-study" || id === "mesh-subdivision-study" ||
+      id === "mesh-curvature-study" || id === "mesh-trend-gap-study")
+    return instantiateMeshComparisonStarter(token, id);
   if (id === "ripple-wave-study") return instantiateRippleWaveStarter(token);
   if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);
   let project = instantiateMath3DProjectTemplate("catenary-study", token);
