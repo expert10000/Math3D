@@ -1853,10 +1853,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           }, `Saved composition “${composition.title}”.`);
           if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");
           return ok;
-        }} onSaveObservation={async (composition, title, body) => {
+        }} onSaveObservation={async (composition, title, body, probe) => {
           const ok = await commitNotes(saved => {
             if (saved.identity.id !== project.identity.id) throw new Error("The open Project changed. Reopen this comparison.");
-            const note = createProjectComparisonNote(saved, composition, comparisonResource, title, body, Date.now(), crypto.randomUUID());
+            const note = createProjectComparisonNote(saved, composition, comparisonResource, title, body, Date.now(), crypto.randomUUID(), probe);
             return upsertMath3DProjectNote(saved, note);
           }, `Saved comparison observation “${title.trim()}”.`);
           return ok;
