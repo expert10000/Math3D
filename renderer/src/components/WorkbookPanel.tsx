@@ -6,6 +6,7 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { createWorkbookComparisonReference } from "@math3d/workbook";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock, WorkbookSavedMeshTrendEditor } from "./WorkbookSavedMeshTrendBlock";
+import { WorkbookSavedMeshComparisonBlock, WorkbookSavedMeshComparisonEditor } from "./WorkbookSavedMeshComparisonBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -1919,6 +1920,12 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     { visualize: { ...(block.visualize ?? { live: true }), savedMeshTrend } })} />
                 {block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={dependencyProject}
                   reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
+                <WorkbookSavedMeshComparisonEditor project={dependencyProject} reference={block.visualize?.savedMeshComparison}
+                  readResource={readComparisonResource} readOnly={readOnly}
+                  onChange={savedMeshComparison => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), savedMeshComparison } })} />
+                {block.visualize?.savedMeshComparison && <WorkbookSavedMeshComparisonBlock project={dependencyProject}
+                  reference={block.visualize.savedMeshComparison} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
