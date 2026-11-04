@@ -231,6 +231,67 @@ def _matrix_linear_dossier(operation, params):
     return _success(operation, result, latex(rref))
 
 
+def _integer_matrix_forms(operation, params):
+    if set(params) != {"format", "schemaVersion", "matrix"} or \
+            params.get("format") != "math3d.sage-integer-matrix-forms" or \
+            type(params.get("schemaVersion")) is not int or params.get("schemaVersion") != 1:
+        raise SageRequestError("Integer matrix forms require the versioned exact ZZ matrix schema.")
+    rows = params["matrix"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 6 or \
+            not isinstance(rows[0], list) or not 1 <= len(rows[0]) <= 6 or \
+            any(not isinstance(row, list) or len(row) != len(rows[0]) for row in rows):
+        raise SageRequestError("Integer matrix forms require a rectangular 1 to 6 by 1 to 6 matrix.")
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,17})$")
+    if any(not isinstance(entry, str) or not canonical.fullmatch(entry) for row in rows for entry in row):
+        raise SageRequestError("Integer matrix entries must be canonical signed decimals of at most 18 digits.")
+    mat = matrix(ZZ, [[ZZ(entry) for entry in row] for row in rows])
+    smith_raw = mat.smith_form()
+    if isinstance(smith_raw, tuple) and len(smith_raw) == 3:
+        smith, left, right = smith_raw
+        if left.det() not in (1, -1) or right.det() not in (1, -1) or left * mat * right != smith:
+            raise SageRequestError("Sage Smith transformations failed the unimodular identity check.")
+        smith_transform = {"status": "verified", "left": [[str(x) for x in row] for row in left.rows()],
+            "right": [[str(x) for x in row] for row in right.rows()]}
+    else:
+        smith = smith_raw
+        smith_transform = {"status": "unavailable", "reason": "Sage did not return Smith transformation matrices."}
+    if smith.nrows() != mat.nrows() or smith.ncols() != mat.ncols():
+        raise SageRequestError("Sage Smith form has an unexpected shape.")
+    diagonal = [smith[i, i] for i in range(min(mat.nrows(), mat.ncols()))]
+    nonzero = [entry for entry in diagonal if entry != 0]
+    if any(entry < 0 for entry in diagonal) or any(nonzero[i + 1] % nonzero[i] != 0
+            for i in range(len(nonzero) - 1)) or len(nonzero) != mat.rank():
+        raise SageRequestError("Sage Smith form violates nonnegative invariant-factor divisibility or rank.")
+    if any(smith[i, j] != 0 for i in range(mat.nrows()) for j in range(mat.ncols()) if i != j):
+        raise SageRequestError("Sage Smith form is not diagonal.")
+    try:
+        hermite_raw = mat.hermite_form(transformation=True)
+    except (TypeError, NotImplementedError):
+        hermite_raw = mat.hermite_form()
+    if isinstance(hermite_raw, tuple) and len(hermite_raw) == 2:
+        hermite, hermite_left = hermite_raw
+        if hermite_left.det() not in (1, -1) or hermite_left * mat != hermite:
+            raise SageRequestError("Sage Hermite transformation failed the unimodular identity check.")
+        hermite_transform = {"status": "verified", "left": [[str(x) for x in row] for row in hermite_left.rows()]}
+    else:
+        hermite = hermite_raw
+        hermite_transform = {"status": "unavailable", "reason": "Sage did not return a Hermite row transformation."}
+    if hermite.nrows() != mat.nrows() or hermite.ncols() != mat.ncols():
+        raise SageRequestError("Sage Hermite form has an unexpected shape.")
+    result = {
+        "format": "math3d.sage-integer-matrix-forms-result", "schemaVersion": 1,
+        "coefficientDomain": "ZZ", "sourceMatrix": rows,
+        "inputShape": [mat.nrows(), mat.ncols()], "rank": len(nonzero),
+        "smith": {"form": [[str(x) for x in row] for row in smith.rows()],
+            "diagonal": [str(x) for x in diagonal], "transformations": smith_transform},
+        "hermite": {"form": [[str(x) for x in row] for row in hermite.rows()],
+            "transformation": hermite_transform},
+        "cokernel": {"freeRank": mat.nrows() - len(nonzero),
+            "torsionOrders": [str(x) for x in nonzero if x > 1]},
+    }
+    return _success(operation, result, latex(smith))
+
+
 def _polynomial_factor(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     poly = ring(_validate_expression(params.get("polynomial") or params.get("expression")))
@@ -623,6 +684,7 @@ OPERATIONS = {
     "sage.matrix.eigen_exact": _matrix_eigen_exact,
     "sage.matrix.charpoly": _matrix_charpoly,
     "sage.matrix.linear_dossier": _matrix_linear_dossier,
+    "sage.matrix.integer_forms": _integer_matrix_forms,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
     "sage.polynomial.dossier": _polynomial_dossier,

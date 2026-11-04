@@ -9,6 +9,7 @@ export type SageOperation =
   | "sage.matrix.eigen_exact"
   | "sage.matrix.charpoly"
   | "sage.matrix.linear_dossier"
+  | "sage.matrix.integer_forms"
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
   | "sage.polynomial.dossier"
@@ -21,7 +22,8 @@ export type SageOperation =
   | "sage.algebra.inspectDomains";
 
 export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" |
-  "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" | "sage.matrix.linear_dossier">;
+  "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
+  "sage.matrix.linear_dossier" | "sage.matrix.integer_forms">;
 
 export type SageHealthResponse = {
   status: string;
@@ -73,6 +75,7 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   ...SAGE_SYMBOLIC_OPERATIONS,
   "sage.polynomial.dossier",
   "sage.matrix.linear_dossier",
+  "sage.matrix.integer_forms",
   "sage.algebra.reconstruct",
   "sage.algebra.inspectDomains",
   "sage.topology.integer_homology",

@@ -5,6 +5,7 @@ import {
   parseSageAlgebraReconstructionInput,
   parseSageAlgebraDomainInput,
   parseSageMatrixDossierInput,
+  parseSageIntegerMatrixFormsInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -38,6 +39,7 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.matrix.eigen_exact": { type: "matrix.eigen.exact", label: "exact eigenvalues", cancelled: "Sage matrix job cancelled." },
   "sage.matrix.charpoly": { type: "matrix.charpoly", label: "characteristic polynomial", cancelled: "Sage matrix job cancelled." },
   "sage.matrix.linear_dossier": { type: "matrix.linear-dossier", label: "QQ matrix analysis", cancelled: "Sage matrix dossier cancelled." },
+  "sage.matrix.integer_forms": { type: "matrix.integer-forms", label: "Smith and Hermite forms", cancelled: "Sage integer matrix job cancelled." },
   "sage.groebner.compute": { type: "algebra.groebner", label: "Gröbner basis", cancelled: "Sage Gröbner job cancelled." },
   "sage.numberTheory.gcd": { type: "number-theory.gcd", label: "greatest common divisor", cancelled: "Sage number theory job cancelled." },
   "sage.numberTheory.modInverse": { type: "number-theory.mod-inverse", label: "modular inverse", cancelled: "Sage number theory job cancelled." },
@@ -110,6 +112,8 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       ? request.backend === "docker" && !!parseSageAlgebraDomainInput(params)
     : request.operation === "sage.matrix.linear_dossier"
       ? request.backend === "docker" && !!parseSageMatrixDossierInput(params)
+    : request.operation === "sage.matrix.integer_forms"
+      ? request.backend === "docker" && !!parseSageIntegerMatrixFormsInput(params)
     : request.operation === "sage.groebner.compute"
       ? request.backend === "docker" && Array.isArray(params.polynomials) &&
         params.polynomials.length > 0 && params.polynomials.length <= 12 &&

@@ -123,6 +123,7 @@ Result shape:
 - `sage.matrix.eigen_exact`
 - `sage.matrix.charpoly`
 - `sage.matrix.linear_dossier` (bounded exact `QQ` RREF, kernel and image bases, and square-matrix minimal polynomial)
+- `sage.matrix.integer_forms` (bounded exact `ZZ` Smith and row-Hermite forms, with verified transformations when available)
 - `sage.polynomial.roots_exact`
 - `sage.polynomial.factor`
 - `sage.polynomial.dossier` (bounded exact `QQ[x]` analysis: factorization, square-free decomposition, derivative, discriminant and rational roots)

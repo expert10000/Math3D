@@ -11,6 +11,7 @@ type SageOperation =
   | "sage.matrix.eigen_exact"
   | "sage.matrix.charpoly"
   | "sage.matrix.linear_dossier"
+  | "sage.matrix.integer_forms"
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
   | "sage.polynomial.dossier"

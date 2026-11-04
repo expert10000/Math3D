@@ -7,11 +7,13 @@ import { buildSageAlgebraDomainInput, parseSageAlgebraDomainInput, parseSageAlge
   type SageAlgebraDomainResult } from "./sageAlgebraDomains";
 import { parsePolynomialDossierResult, type PolynomialDossierResult } from "./polynomialDossier";
 import { parseSageMatrixDossierInput, parseSageMatrixDossierResult, type SageMatrixDossierResult } from "./sageMatrixDossier";
+import { parseSageIntegerMatrixFormsInput, parseSageIntegerMatrixFormsResult,
+  type SageIntegerMatrixFormsResult } from "./sageIntegerMatrixForms";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
   "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
-  "sage.matrix.linear_dossier";
+  "sage.matrix.linear_dossier" | "sage.matrix.integer_forms";
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
   "sage.algebra.reconstruct": Readonly<Record<string, never>>;
@@ -23,9 +25,10 @@ export type AlgebraOperationArguments = {
   "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
+  "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
-  SageMatrixDossierResult |
+  SageMatrixDossierResult | SageIntegerMatrixFormsResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -64,6 +67,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
   definition("sage.matrix.linear_dossier", "Exact QQ matrix analysis", "matrix", ["rational-field"], "any", "matrix.linear-dossier",
     ["docker"], "math3d.sage-matrix-dossier/v1", "math3d.sage-matrix-dossier-result/v1"),
+  definition("sage.matrix.integer_forms", "Smith and Hermite forms over ZZ", "matrix", ["integer-ring"], "any", "matrix.integer-forms",
+    ["docker"], "math3d.sage-integer-matrix-forms/v1", "math3d.sage-integer-matrix-forms-result/v1"),
 ]);
 const byId = new Map(ALGEBRA_OPERATION_REGISTRY.map((item) => [item.id, item]));
 if (byId.size !== ALGEBRA_OPERATION_REGISTRY.length) throw new Error("Duplicate algebra operation ID.");
@@ -166,6 +171,10 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
     if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
     params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
       matrix: input.matrix }) as unknown as Record<string, unknown>;
+  } else if (id === "sage.matrix.integer_forms") {
+    if (!exact(input, ["matrix"])) throw new TypeError("Smith and Hermite analysis requires one exact ZZ matrix.");
+    params = parseSageIntegerMatrixFormsInput({ format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,
+      matrix: input.matrix }) as unknown as Record<string, unknown>;
   } else {
     const variables = record.definition.kind === "polynomial-ring" ? record.definition.variables : [];
     if (id === "sage.groebner.compute") {
@@ -203,6 +212,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     parseSageAlgebraDomainInput(request.params));
   if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
     parseSageMatrixDossierInput(request.params));
+  if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,
+    parseSageIntegerMatrixFormsInput(request.params));
   if (!object(value)) throw new TypeError("Invalid algebra operation result object.");
   if (request.operation === "sage.numberTheory.gcd") {
     if (!exact(value, ["value"]) || !decimal(value.value)) throw new TypeError("Invalid exact GCD result.");

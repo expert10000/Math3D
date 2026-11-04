@@ -41,6 +41,9 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await form.getByRole("button", { name: "Validate & preview" }).click();
     await expect(cas.getByTestId("cas-builder-preview")).toContainText("ZZ");
     await cas.getByRole("button", { name: "Create and save" }).click();
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    await expect(cas.getByTestId("cas-object-operation-sage.matrix.integer_forms")).toBeVisible();
+    await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: "+ New structure" }).click();
     await form.getByLabel("Name").fill("Q");
     await form.getByRole("button", { name: "Validate & preview" }).click();
@@ -49,6 +52,7 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await expect(cas.getByTestId("cas-selected-structure")).toContainText("Rational field QQ");
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await expect(cas.getByTestId("cas-object-operation-sage.matrix.linear_dossier")).toBeVisible();
+    await expect(cas.getByTestId("cas-object-operation-sage.matrix.integer_forms")).toHaveCount(0);
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: "+ New structure" }).click();
     await form.getByLabel("Type").selectOption("polynomial-ring");

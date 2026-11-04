@@ -300,6 +300,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B03 implementation update (2026-11-04):** The [B03 acceptance record](evidence/sage-b03-exact-matrix-2026-11-04.md) adds a bounded, versioned exact `QQ` matrix dossier to the worker, typed registry and broker. A selected rational-field object admits 1–8 by 1–8 canonical rational matrices. Results include RREF, pivots, rank, right-kernel and image bases, and minimal/characteristic polynomials for square matrices. The core parser verifies exact kernel and image witnesses. SageMath 9.5 WSL checked singular, rectangular, Jordan, rational-entry and zero matrices; the shared fixture also passes TypeScript validation. Docker HTTP execution awaits an available Docker service. The next gate is **SAGE-B04**, Smith and Hermite workflows.
 
+**B04 implementation update (2026-11-04):** The [B04 acceptance record](evidence/sage-b04-smith-hermite-2026-11-04.md) adds bounded Smith and row-Hermite workflows over a selected `ZZ` object. A versioned result contains Smith diagonal and form, Hermite form, rank and the correctly ranked cokernel. The worker and core verify supplied unimodular transformations and exact identities, while an unavailable status makes missing transformations explicit. SageMath 9.5 WSL and TypeScript share the `(2,6,0)` fixture; rectangular and nontrivial transform cases also pass. Docker HTTP execution awaits an available Docker service. The next gate is **SAGE-B05**, contextual object-linked run controls and saved evidence.
+
 ---
 
 ## 3. P0 — Algebra object registry

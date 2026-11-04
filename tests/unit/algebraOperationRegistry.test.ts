@@ -38,7 +38,7 @@ describe("SAGE-B01 typed object operation registry", () => {
       variables: ["t"], monomialOrder: "lex" });
     [project, ft] = add(project, "Ft", { kind: "polynomial-ring", coefficientDomain: ref(f49),
       variables: ["t"], monomialOrder: "lex" });
-    expect(eligible(project, ref(z))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains", "sage.numberTheory.gcd"]);
+    expect(eligible(project, ref(z))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains", "sage.numberTheory.gcd", "sage.matrix.integer_forms"]);
     expect(eligible(project, ref(z12))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains", "sage.numberTheory.modInverse"]);
     expect(eligible(project, ref(q))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains", "sage.matrix.linear_dossier"]);
     expect(eligible(project, ref(rxy))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains", "sage.polynomial.factor", "sage.groebner.compute"]);

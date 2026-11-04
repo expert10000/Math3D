@@ -38,6 +38,7 @@ export type Math3DWorkerOperationId =
   | "matrix.eigen.exact"
   | "matrix.charpoly"
   | "matrix.linear-dossier"
+  | "matrix.integer-forms"
   | "algebra.groebner"
   | "algebra.reconstruct"
   | "algebra.domains.inspect"
@@ -324,6 +325,14 @@ const definitions = [
   {
     id: "matrix.linear-dossier",
     title: "Exact QQ matrix RREF, kernel, image and minimal polynomial",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "matrix.integer-forms",
+    title: "Exact Smith and Hermite forms over ZZ",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],
