@@ -1946,6 +1946,18 @@ const SURFACE_MESH_TOPOLOGY_SESSION_KEY = "math3d.mesh.topologySession.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY = "math3d.mesh.topologySession.skippedRestore.v1";
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY = "math3d.mesh.topologySavedPresets.v1";
 const SURFACE_ANALYSIS_WORKSPACE_KEY = "math3d.surfaceAnalysis.workspace.v1";
+const SURFACE_SAGE_SOURCE_KEY = "math3d.surface.sageSource.v1";
+const readSageSurfaceSelection = (): { id: SurfaceId; expression: string } | null => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SURFACE_SAGE_SOURCE_KEY) ?? "null");
+    if (!value || typeof value !== "object") return null;
+    const saved = value as Record<string, unknown>;
+    if (saved.schemaVersion !== 1 || typeof saved.id !== "string" || typeof saved.expression !== "string" ||
+        saved.expression.length > 16_384 ||
+        (saved.id !== "implicit_custom" && !IMPLICIT_EXPR_PRESETS.some((item) => item.id === saved.id))) return null;
+    return { id: saved.id as SurfaceId, expression: saved.expression };
+  } catch { return null; }
+};
 const CURVE_ANALYSIS_WORKSPACE_KEY = "math3d.curveAnalysis.workspace.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
 const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
@@ -40854,7 +40866,7 @@ const App: React.FC = () => {
   }, [complexMapShowSphere, complexMapSphereStackParams, complexMapSphereLines]);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
-  const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
+  const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>(() => readSageSurfaceSelection()?.id ?? "sphere");
   const [graphSurfaceId, setGraphSurfaceId] = useState<SurfaceId>("graph_saddle");
 
   // Parametric surface selector
@@ -40960,7 +40972,11 @@ const App: React.FC = () => {
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
-  const [implicitExpr, setImplicitExpr] = useState("x*x + y*y + z*z - 1"); // f=0
+  const [implicitExpr, setImplicitExpr] = useState(() => readSageSurfaceSelection()?.expression ?? "x*x + y*y + z*z - 1"); // f=0
+  useEffect(() => {
+    try { localStorage.setItem(SURFACE_SAGE_SOURCE_KEY, JSON.stringify({ schemaVersion: 1, id: implicitSurfaceId, expression: implicitExpr })); }
+    catch { /* The live equation still works when local persistence is unavailable. */ }
+  }, [implicitSurfaceId, implicitExpr]);
   const [cgalTargetEdge, setCgalTargetEdge] = useState(0.1);
   const [cgalAutoTargetEdge, setCgalAutoTargetEdge] = useState(false);
   const [cgalPadFrac, setCgalPadFrac] = useState(0.05);
@@ -44705,15 +44721,13 @@ const App: React.FC = () => {
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   const [symbolicAnalysisRecord, setSymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [geometrySymbolicAnalysisRecord, setGeometrySymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
-  const sageSourceSessionId = useRef(makeId()).current;
   const [symbolicActionStatus, setSymbolicActionStatus] = useState<string | null>(null);
   const [geometrySageActionStatus, setGeometrySageActionStatus] = useState<string | null>(null);
   const [surfaceSageVectorArtifact, setSurfaceSageVectorArtifact] = useState<SageVectorArtifact | null>(null);
   const [surfaceSageScalarPreview, setSurfaceSageScalarPreview] = useState<SageScalarPreview | null>(null);
   const [surfaceSageCommittedGeometry, setSurfaceSageCommittedGeometry] = useState<SageViewerProvenance | null>(null);
   const currentSageWorkbookSource = useCallback((saved: WorkbookSageEvidence["source"]): WorkbookSageEvidence["source"] | null => {
-    if (saved.module === "surface" && saved.id === `surface:active-implicit:${sageSourceSessionId}`) {
-      if (surfaceViewerKind !== "implicit") return null;
+    if (saved.module === "surface" && saved.id === "surface:active-implicit") {
       return { module: "surface", id: saved.id,
         revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
         expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) };
@@ -44733,7 +44747,7 @@ const App: React.FC = () => {
     }
     return null;
   }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeImplicitExpr, geometryDatasetMeshObjects,
-    geometryObjectRevisionById, geometryObjects, graph2dDocument, sageSourceSessionId, surfaceViewerKind]);
+    geometryObjectRevisionById, geometryObjects, graph2dDocument]);
   const sageInspectorSourceStatus = useCallback((record: SymbolicResultRecord): SageSourceStatus => {
     const source = record.source;
     if (!source || source.id.startsWith("sage-input:")) return "unlinked";
@@ -79876,7 +79890,7 @@ case "mobius":
       text: [
         `${evidence.source.id.startsWith("sage-input:") ? "Input" : "Source: F"} = ${record.expression}`,
         `Operation: ${response.operation}`,
-        `Engine: SageMath ${evidence.engine.version} (${record.backend === "local" ? "Local WSL" : "Docker"})`,
+        `Engine: SageMath ${evidence.engine.version} (${record.backend === "local" ? "Local WSL" : record.backend === "docker" ? "Docker" : "Private gateway"})`,
         `Source revision: ${evidence.source.revision}`,
         `Status: ${response.success ? "Exact" : "Failed"}`,
         `Result: ${typeof response.result.text === "string" ? response.result.text : JSON.stringify(response.result)}`,
@@ -86560,7 +86574,7 @@ case "mobius":
                     onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
                     onResult={(record) => {
                       setSymbolicAnalysisRecord({ ...record, source: record.sourceExpression === activeImplicitExpr
-                        ? { module: "surface", id: `surface:active-implicit:${sageSourceSessionId}`,
+                        ? { module: "surface", id: "surface:active-implicit",
                           revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
                           expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) }
                         : { module: "surface", id: "sage-input:surface", revision: 0,

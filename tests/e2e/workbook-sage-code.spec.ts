@@ -26,6 +26,11 @@ test("Workbook Sage cell saves code, output and dependency freshness under local
     await expect(cell.getByTestId("workbook-sage-code-output")).toContainText("1024");
     await expect(cell.getByTestId("workbook-sage-code-output")).toContainText("Dependencies: 1 saved");
     await expect(cell.getByTestId("workbook-sage-code-output")).toContainText(/Source SHA-256: [0-9a-f]{64}/);
+    const evidence = cell.getByTestId("workbook-sage-evidence");
+    await expect(evidence).toContainText("Source current");
+    await evidence.getByText("Exact request, response, and diagnostics").click();
+    await expect(evidence).toContainText('"operation": "sage.console.execute"');
+    await expect(evidence).toContainText('"code": "2^10"');
     await page.getByTestId("top-sage-console-button").click();
     await expect(page.getByTestId("sage-console-trust")).not.toBeChecked();
     await page.getByRole("button", { name: "Close Sage Console" }).click();
@@ -36,9 +41,11 @@ test("Workbook Sage cell saves code, output and dependency freshness under local
     const reopened = page.locator('[data-testid^="workbook-sage-code-"]').first();
     await expect(reopened.getByTestId("workbook-sage-code-input")).toHaveValue("2^10");
     await expect(reopened.getByTestId("workbook-sage-code-output")).toContainText("1024");
+    await expect(reopened.getByTestId("workbook-sage-evidence")).toContainText("Source current");
     await expect(reopened.getByTestId("workbook-sage-code-trust")).not.toBeChecked();
     await reopened.getByTestId("workbook-sage-code-input").fill("2^11");
     await expect(reopened.getByTestId("workbook-sage-code-freshness")).toContainText("stale");
+    await expect(reopened.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
     await expect(reopened.getByTestId("workbook-sage-code-output")).toContainText("1024");
     await reopened.getByTestId("workbook-sage-code-input").fill("2^10");
     await expect(reopened.getByTestId("workbook-sage-code-freshness")).toContainText("current");
@@ -61,6 +68,7 @@ test("Workbook Sage cell saves code, output and dependency freshness under local
     await page.getByRole("button", { name: "2 Compute" }).click();
     const linked = page.locator('[data-testid^="workbook-sage-code-"]').first();
     await expect(linked.getByTestId("workbook-sage-code-freshness")).toContainText("stale");
+    await expect(linked.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
     await expect(linked).toContainText("Source unavailable or changed");
     await expect(linked.getByTestId("workbook-sage-code-run")).toBeDisabled();
   } finally {

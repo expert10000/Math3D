@@ -150,7 +150,7 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await page.getByRole("button", { name: "Workbook", exact: true }).first().click();
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
     await page.reload();
-    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source unavailable — verify before reuse");
+    await expect(page.getByTestId("workbook-sage-evidence")).toContainText("Source changed — rerun required");
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText("SageMath 10.6");
     await page.getByTestId("workbook-sage-evidence").getByText("Exact request, response, and diagnostics").click();
     await expect(page.getByTestId("workbook-sage-evidence")).toContainText('"backend": "docker"');

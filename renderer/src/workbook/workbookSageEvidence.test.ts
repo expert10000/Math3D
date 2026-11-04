@@ -36,4 +36,24 @@ describe("durable Sage Workbook evidence", () => {
     expect(resolveWorkbookSageFreshness(source, { ...source, revision: 8 })).toBe("stale");
     expect(resolveWorkbookSageFreshness(source, null)).toBe("source-unavailable");
   });
+
+  it("retains hosted backend, exact request, version, and failure diagnostics after reopen", () => {
+    const hosted: WorkbookSageEvidence = {
+      ...evidence,
+      source: { module: "number_theory", id: "sage-input:unlinked", revision: 0,
+        expression: "inverse_mod(2, 4)", fingerprint: "source-private" },
+      request: { operation: "sage.numberTheory.modInverse", params: { integer: "2", modulus: "4" },
+        backend: "private", jobId: "private-job-1" },
+      engine: { name: "SageMath", backend: "private", version: "10.10" },
+      response: { engine: "sagemath", engineVersion: "10.10", operation: "sage.numberTheory.modInverse",
+        success: false, latex: "", result: { diagnostics: ["not invertible"] },
+        warnings: [], error: "inverse does not exist", errorCode: "operation_failed" },
+      diagnostics: ["not invertible", "inverse does not exist"],
+    };
+    const reopened = JSON.parse(JSON.stringify({ id: "hosted-result", type: "text", sageEvidence: hosted })) as WorkbookBlock;
+    expect(reopened.sageEvidence).toEqual(hosted);
+    expect(reopened.sageEvidence?.request).toEqual(hosted.request);
+    expect(reopened.sageEvidence?.engine).toEqual(hosted.engine);
+    expect(reopened.sageEvidence?.diagnostics).toEqual(hosted.diagnostics);
+  });
 });

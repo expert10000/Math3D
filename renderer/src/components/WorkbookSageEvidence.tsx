@@ -1,11 +1,12 @@
 import React from "react";
-import { resolveWorkbookSageFreshness, type WorkbookSageEvidence } from "@math3d/workbook";
+import { resolveWorkbookSageFreshness, type WorkbookSageEvidence, type WorkbookSageFreshness } from "@math3d/workbook";
 
 export const WorkbookSageEvidenceView: React.FC<{
   evidence: WorkbookSageEvidence;
   currentSource: WorkbookSageEvidence["source"] | null;
-}> = ({ evidence, currentSource }) => {
-  const freshness = resolveWorkbookSageFreshness(evidence.source, currentSource);
+  freshnessOverride?: WorkbookSageFreshness;
+}> = ({ evidence, currentSource, freshnessOverride }) => {
+  const freshness = freshnessOverride ?? resolveWorkbookSageFreshness(evidence.source, currentSource);
   return <section data-testid="workbook-sage-evidence" style={{ border: "1px solid #b9d6ea", borderRadius: 7, padding: 9, fontSize: 11, display: "grid", gap: 5 }}>
     <strong>{evidence.source.id.startsWith("sage-input:") ? "Freeform input saved with this result" : freshness === "current" ? "Source current" : freshness === "stale" ? "Source changed — rerun required" : "Source unavailable — verify before reuse"}</strong>
     <span>Source: {evidence.source.module} / {evidence.source.id} / revision {evidence.source.revision}</span>
