@@ -20,6 +20,8 @@ type SageOperation =
   | "sage.ideal.eliminate"
   | "sage.ideal.membership"
   | "sage.ideal.quotientDimension"
+  | "sage.ideal.syzygies"
+  | "sage.ideal.hilbertSeries"
   | "sage.algebra.reconstruct"
   | "sage.algebra.inspectDomains"
   | "sage.numberTheory.gcd"

@@ -24,6 +24,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
+  "sage.ideal.syzygies", "sage.ideal.hilbertSeries",
 ]);
 const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],

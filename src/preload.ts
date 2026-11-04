@@ -423,6 +423,8 @@ export type SageOperation =
   | "sage.ideal.eliminate"
   | "sage.ideal.membership"
   | "sage.ideal.quotientDimension"
+  | "sage.ideal.syzygies"
+  | "sage.ideal.hilbertSeries"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"

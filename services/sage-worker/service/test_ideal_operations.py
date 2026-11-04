@@ -2,7 +2,7 @@
 
 import unittest
 
-from .sage_runner import run_payload
+from .sage_runner import OPERATIONS, run_payload
 
 
 BASE = {"format": "math3d.sage-ideal-operation", "schemaVersion": 1,
@@ -17,6 +17,30 @@ def compute(operation, **extra):
 
 
 class IdealOperationTests(unittest.TestCase):
+    def test_c05_capabilities_and_exact_advanced_results(self):
+        self.assertIn("sage.ideal.syzygies", OPERATIONS)
+        self.assertIn("sage.ideal.hilbertSeries", OPERATIONS)
+        graded = {**BASE, "monomialOrder": "degrevlex", "generators": ["x", "y"]}
+        syzygies = run_payload({"operation": "sage.ideal.syzygies", "params": graded})["result"]
+        self.assertEqual(syzygies["syzygies"], [["-y", "x"]])
+        self.assertEqual(syzygies["generatorCount"], 2)
+        hilbert = run_payload({"operation": "sage.ideal.hilbertSeries", "params": {
+            **graded, "target": {"objectId": "math3d:algebra:quotient", "revision": 1}}})["result"]
+        self.assertEqual((hilbert["series"], hilbert["numerator"], hilbert["dimension"], hilbert["grading"]),
+            ("1", "t^2 - 2*t + 1", 0, "standard"))
+
+    def test_c05_rejects_unsupported_grading_and_budget(self):
+        graded = {**BASE, "monomialOrder": "degrevlex", "generators": ["x", "y"]}
+        for operation, extra in [
+            ("sage.ideal.hilbertSeries", {"monomialOrder": "lex"}),
+            ("sage.ideal.hilbertSeries", {"generators": ["x+1", "y"]}),
+            ("sage.ideal.hilbertSeries", {"variables": ["x", "y", "z"]}),
+            ("sage.ideal.syzygies", {"generators": ["x", "y", "x+y", "x-y"]}),
+            ("sage.ideal.syzygies", {"code": "print(1)"}),
+        ]:
+            with self.subTest(operation=operation, extra=extra), self.assertRaises(ValueError):
+                run_payload({"operation": operation, "params": {**graded, **extra}})
+
     def test_groebner_and_elimination_goldens(self):
         basis = compute("sage.ideal.groebner")
         self.assertEqual(basis["basis"], ["x - 1", "y - 1"])

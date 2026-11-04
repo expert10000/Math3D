@@ -23,12 +23,15 @@ export type SageOperation =
   | "sage.ideal.groebner"
   | "sage.ideal.eliminate"
   | "sage.ideal.membership"
-  | "sage.ideal.quotientDimension";
+  | "sage.ideal.quotientDimension"
+  | "sage.ideal.syzygies"
+  | "sage.ideal.hilbertSeries";
 
 export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" |
   "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" |
-  "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension">;
+  "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension" |
+  "sage.ideal.syzygies" | "sage.ideal.hilbertSeries">;
 
 export type SageHealthResponse = {
   status: string;
@@ -87,6 +90,8 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.ideal.eliminate",
   "sage.ideal.membership",
   "sage.ideal.quotientDimension",
+  "sage.ideal.syzygies",
+  "sage.ideal.hilbertSeries",
   "sage.topology.integer_homology",
   "sage.complex.analyze",
 ];

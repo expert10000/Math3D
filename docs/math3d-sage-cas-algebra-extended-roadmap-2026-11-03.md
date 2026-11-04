@@ -314,6 +314,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **C02–C04 implementation update (2026-11-04):** The [saved ideal workflow acceptance record](evidence/sage-c02-c04-ideal-workflows-2026-11-04.md) adds bounded Gröbner and elimination operations and a saved ideal recipe graph; typed membership with a normal form and positive/negative evidence; and a versioned quotient ring pinned to its ideal and ambient ring with a dimension query. Exact fixtures pass on local Sage 9.5. A desktop controlled-worker gate exports the Project and independently reopens its quotient and saved evidence in a fresh profile. The next feature gate is **SAGE-C05**, capability-gated syzygy and Hilbert operations. The live B08 Docker Sage 10.10 comparison remains open.
 
+**C05 implementation update (2026-11-04):** The [C05 acceptance record](evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md) adds runtime-advertised generator syzygies and standard graded quotient Hilbert series, pinned Project evidence, and explicit unsupported reasons for absent capabilities, unproven homogeneity, lex order and advanced input bounds. Exact local Sage 9.5 fixtures pass. The next feature gate is **SAGE-C06**, operation budgets and cost warnings. The live B08 Docker Sage 10.10 comparison remains open.
+
 ---
 
 ## 3. P0 — Algebra object registry
