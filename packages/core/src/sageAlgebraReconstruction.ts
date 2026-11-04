@@ -59,6 +59,7 @@ export const parseSageAlgebraReconstructionInput = (value: unknown): SageAlgebra
   const objects = value.objects.map(parseAlgebraObjectRecord);
   for (const object of objects) {
     const definition = object.definition;
+    if (definition.kind === "ideal") throw new TypeError("Ideal objects require a separate bounded Sage operation.");
     if (definition.kind === "modular-ring" && definition.modulus.length > 128) {
       throw new TypeError("Sage algebra modulus exceeds the 128-digit reconstruction limit.");
     }

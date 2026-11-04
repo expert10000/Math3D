@@ -3,6 +3,7 @@ import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraO
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
+import SageIdealBuilder from "./SageIdealBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
@@ -39,7 +40,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
-  const [creating, setCreating] = useState(false);
+  const [builder, setBuilder] = useState<"ring" | "ideal" | null>(null);
 
   useEffect(() => {
     setSelection((current) => resolveStructureSelection(project,
@@ -75,13 +76,18 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const freshness = project ? inspectProjectAlgebraFreshness(project) : [];
   const status = chosen ? freshness.find((item) => item.objectId === chosen.entry.id) : null;
   const parent = chosen?.record.definition.kind === "polynomial-ring"
-    ? selectedStructure(project, chosen.record.definition.coefficientDomain)?.record : null;
-  const summary = chosen && project ? describeStructure(chosen.record, project) : null;
+    ? selectedStructure(project, chosen.record.definition.coefficientDomain)?.record
+    : chosen?.record.definition.kind === "ideal"
+      ? selectedStructure(project, chosen.record.definition.ambientRing)?.record : null;
+  const summary = chosen && project && chosen.record.kind !== "ideal" ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
-      <button type="button" style={action} disabled={!project} onClick={() => setCreating((value) => !value)}>+ New structure</button>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ring")}>+ New structure</button>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ideal")}>+ New ideal</button>
+      </div>
     </div>
     {!project && <div role="status" style={{ fontSize: 12 }}>Open or create a Project to save algebra structures.
       <div style={{ marginTop: 8 }}><button type="button" style={action} onClick={onOpenProjects}>Open Projects</button></div>
@@ -102,8 +108,10 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     </div>}
   </div>;
 
-  const dossier = creating && project ? <SageRingFieldBuilder key={project.identity.id} project={project}
-    onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setCreating(false); }} onCancel={() => setCreating(false)} />
+  const dossier = builder === "ring" && project ? <SageRingFieldBuilder key={project.identity.id} project={project}
+    onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : builder === "ideal" && project ? <SageIdealBuilder key={project.identity.id} project={project}
+      onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : chosen && project ? <div data-testid="cas-selected-structure" style={{ display: "grid", gap: 14 }}>
     <div><div style={{ fontSize: 11, color: "#64748b" }}>Structure dossier</div>
       <h2 style={{ margin: "3px 0", fontSize: 21 }}>{chosen.record.label}</h2>
@@ -115,12 +123,14 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       </select>
     </label>
     <dl className="sage-structure-facts">
-      <dt>Kind</dt><dd>{kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
+      <dt>Kind</dt><dd>{chosen.record.kind === "ideal" ? "Polynomial ideal" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
       <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>Coefficient domain</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "ideal" ? "Ambient ring" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
+        <dt>Validation</dt><dd>Bounded exact polynomial syntax; Sage computation pending</dd></>}
       {chosen.record.definition.kind === "polynomial-ring" && <>
         <dt>Variables</dt><dd>{chosen.record.definition.variables.join(", ")}</dd>
         <dt>Monomial order</dt><dd>{chosen.record.definition.monomialOrder}</dd></>}
@@ -136,6 +146,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     <dt>Revision</dt><dd>{chosen.record.revision}</dd>
     <dt>Definition hash</dt><dd>{chosen.record.contentHash}</dd>
     <dt>Parent revisions</dt><dd>{chosen.record.dependencies.length ? chosen.record.dependencies.map((ref) => `${ref.objectId}@${ref.revision}`).join(", ") : "None"}</dd>
+    {chosen.record.definition.kind === "ideal" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd></>}
     <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
     {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
@@ -155,12 +167,12 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,
       } : undefined,
-      operations: <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
+      operations: chosen?.record.kind === "ideal" ? <div role="status">Ideal operations begin with SAGE-C02.</div> : <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
         onInspectEvidence={inspectEvidence} onSaveEvidence={async (evidence) => {
           await onSaveEvidence(evidence);
           inspectEvidence(evidence.id);
         }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} />,
-      recipes: <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
+      recipes: chosen?.record.kind === "ideal" ? <div role="status">Ideal recipes begin with SAGE-C02.</div> : <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
         revision: chosen.record.revision } : null} onSaveRecipe={onSaveRecipe}
         onAppendEvidence={onAppendRecipeEvidence} onInspectEvidence={inspectEvidence} /> }} />;
 }

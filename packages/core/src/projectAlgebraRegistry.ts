@@ -1,4 +1,5 @@
 import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectRef } from "./algebraObjects";
+import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 
@@ -77,6 +78,18 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       const parent = byId.get(ref.objectId)?.revisions[ref.revision - 1];
       if (!parent || parent.revision !== ref.revision) {
         throw new TypeError(`Missing algebra parent ${ref.objectId}@${ref.revision} for ${key}.`);
+      }
+      if (record.definition.kind === "ideal") {
+        if (parent.definition.kind !== "polynomial-ring")
+          throw new TypeError(`Ideal ${key} requires a polynomial ambient ring.`);
+        const coefficient = byId.get(parent.definition.coefficientDomain.objectId)
+          ?.revisions[parent.definition.coefficientDomain.revision - 1];
+        if (coefficient?.kind !== "rational-field")
+          throw new TypeError(`Ideal ${key} requires a polynomial ambient ring directly over QQ.`);
+        if (parent.definition.variables.length > 8)
+          throw new TypeError(`Ideal ${key} supports at most eight ambient variables.`);
+        for (const generator of record.definition.generators)
+          parseIdealGenerator(generator, parent.definition.variables);
       }
       visit(parent);
     }

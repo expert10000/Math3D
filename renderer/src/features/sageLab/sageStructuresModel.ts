@@ -1,4 +1,4 @@
-import { createAlgebraObjectRecord, createProjectAlgebraObjectId, inspectProjectAlgebraFreshness,
+import { createAlgebraObjectRecord, createProjectAlgebraObjectId, inspectProjectAlgebraFreshness, parseIdealGenerator,
   buildSageAlgebraReconstructionInput, upsertMath3DProjectAlgebraObject,
   type AlgebraObjectDefinition, type AlgebraObjectRecord, type AlgebraObjectRef,
   type Math3DProject, type ProjectAlgebraObjectEntry } from "@math3d/core";
@@ -56,6 +56,10 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
   if (definition.kind === "rational-field") return "QQ";
   if (definition.kind === "modular-ring") return `Z/${definition.modulus}Z`;
   if (definition.kind === "finite-field") return `GF(${definition.characteristic}${definition.degree > 1 ? `^${definition.degree}` : ""})`;
+  if (definition.kind === "ideal") {
+    const ambient = selectedStructure(project, definition.ambientRing)?.record;
+    return `⟨${definition.generators.join(", ")}⟩ ⊂ ${ambient?.label ?? definition.ambientRing.objectId}`;
+  }
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   return `${parent ? parent.label : definition.coefficientDomain.objectId}[${definition.variables.join(",")}]`;
 };
@@ -86,6 +90,7 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
   if (definition.kind === "finite-field") return { presentation, characteristic: String(definition.characteristic),
     field: "yes", exact: true, cardinality: String(BigInt(definition.characteristic) ** BigInt(definition.degree)),
     zeroDivisors: "no", coefficientDomain: null };
+  if (definition.kind === "ideal") throw new TypeError("An ideal is not a coefficient domain.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   if (!parent) throw new TypeError("The polynomial coefficient domain is missing from the Project.");
   const base = describeStructure(parent, project);
@@ -132,5 +137,31 @@ export const createStructureStarter = (project: Math3DProject, draft: StructureD
     label, revision: 1, definition });
   const candidate = upsertMath3DProjectAlgebraObject(project, record);
   buildSageAlgebraReconstructionInput(candidate, { objectId: record.id, revision: 1 });
+  return record;
+};
+
+/** C01 saves syntax-checked generators in a pinned, current QQ polynomial ring. */
+export const createIdealStarter = (project: Math3DProject, label: string, ambientRing: AlgebraObjectRef,
+  generatorLines: string, stableKey: string): AlgebraObjectRecord => {
+  const name = label.trim();
+  if (!name || name.length > 120 || project.algebraObjects?.some((entry) => !entry.archived &&
+      entry.revisions.at(-1)?.label.toLocaleLowerCase() === name.toLocaleLowerCase()))
+    throw new TypeError("Choose a unique ideal name of 1–120 characters in this Project.");
+  const ambient = selectedStructure(project, ambientRing);
+  if (!ambient || ambient.entry.archived ||
+      ambient.record.revision !== ambient.entry.revisions.length ||
+      inspectProjectAlgebraFreshness(project).find((item) => item.objectId === ambient.entry.id)?.status !== "fresh")
+    throw new TypeError("Select a current, fresh polynomial ambient ring.");
+  const ring = ambient.record.definition;
+  if (ring.kind !== "polynomial-ring") throw new TypeError("Select a polynomial ambient ring.");
+  const coefficient = selectedStructure(project, ring.coefficientDomain)?.record;
+  if (coefficient?.kind !== "rational-field")
+    throw new TypeError("C01 ideals require a polynomial ambient ring directly over QQ.");
+  const lines = generatorLines.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+  if (!lines.length || lines.length > 8) throw new TypeError("Enter 1 to 8 generators, one per line.");
+  const generators = lines.map((item) => parseIdealGenerator(item, ring.variables));
+  const record = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, stableKey),
+    label: name, revision: 1, definition: { kind: "ideal", ambientRing, generators } });
+  upsertMath3DProjectAlgebraObject(project, record);
   return record;
 };

@@ -6,16 +6,18 @@ import {
   type StableDocumentId,
   type StructuralHash,
 } from "./documentIdentity";
+import { parseIdealGenerator } from "./algebraIdealGenerators";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
-/** A01 supports declarative base domains and polynomial rings. Later kinds need their own validated definitions. */
+/** Declarative exact domains, polynomial rings and bounded ideals. */
 export type AlgebraObjectDefinition =
   | Readonly<{ kind: "integer-ring" }>
   | Readonly<{ kind: "rational-field" }>
   | Readonly<{ kind: "modular-ring"; modulus: string }>
   | Readonly<{ kind: "finite-field"; characteristic: number; degree: number; generator: string; construction: "canonical" }>
-  | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>;
+  | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
+  | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>;
 
 export type AlgebraObjectKind = AlgebraObjectDefinition["kind"];
 export type AlgebraMonomialOrder = "lex" | "deglex" | "degrevlex";
@@ -135,13 +137,24 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       }
       return { kind: definition.kind, coefficientDomain, variables, monomialOrder: definition.monomialOrder };
     }
+    case "ideal": {
+      requireKeys(definition, ["kind", "ambientRing", "generators"], "definition");
+      const ambientRing = requireRef(definition.ambientRing, "definition.ambientRing");
+      if (!Array.isArray(definition.generators) || definition.generators.length < 1 || definition.generators.length > 8)
+        throw new TypeError("definition.generators must contain 1 to 8 exact polynomials.");
+      const generators = definition.generators.map((value: unknown) => parseIdealGenerator(value));
+      if (new Set(generators).size !== generators.length)
+        throw new TypeError("definition.generators must be distinct.");
+      return { kind: "ideal", ambientRing, generators };
+    }
     default:
       throw new TypeError(`Unsupported algebra object kind '${String(definition.kind)}'.`);
   }
 };
 
 const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraObjectRef[] =>
-  definition.kind === "polynomial-ring" ? [definition.coefficientDomain] : [];
+  definition.kind === "polynomial-ring" ? [definition.coefficientDomain]
+    : definition.kind === "ideal" ? [definition.ambientRing] : [];
 
 const definitionHash = (definition: AlgebraObjectDefinition): StructuralHash =>
   structuralHash({ schemaVersion: ALGEBRA_OBJECT_SCHEMA_VERSION, definition });
