@@ -53,7 +53,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
     extrema: analysis.candidates.filter(isExtremum).length,
     inflection: analysis.candidates.filter(item => item.kind === "inflection").length,
   }), [analysis]);
-  const validForSave = (item: Graph2DCriticalPoint) => !readOnlyPreview && item.kind !== "inflection" && item.confidence === "numerical" &&
+  const validForSave = (item: Graph2DCriticalPoint) => !readOnlyPreview && item.confidence === "numerical" &&
     !isGraph2DCriticalCandidateAlreadySaved(document, item) && isGraph2DCriticalPointCurrent(item, document);
   const available = GRAPH2D_MAX_CONSTRUCTIONS - (document.source.constructions?.objects.length ?? 0);
   const canSave = (items: readonly Graph2DCriticalPoint[]) => !!onConstructionBatchCommit && analysis.status === "complete" &&
@@ -77,6 +77,7 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
   };
   const batchZeros = analysis.candidates.filter(item => item.kind === "zero" && validForSave(item));
   const batchExtrema = analysis.candidates.filter(item => isExtremum(item) && validForSave(item));
+  const batchInflections = analysis.candidates.filter(item => item.kind === "inflection" && validForSave(item));
   return <section className="graph2d-critical-points" data-testid="graph2d-critical-points"
     data-source-hash={document.identity.structuralHash} aria-label="Zeros extrema and inflections">
     <h3>{readOnlyPreview ? "Transient frame analysis" : "Numerical analysis"}</h3>
@@ -124,10 +125,11 @@ export function Graph2DCriticalResultsPanel({ analysis, document, analysisBudget
       extraActions={readOnlyPreview ? undefined : <>
         <button type="button" disabled={!canSave(batchZeros)} onClick={() => save(batchZeros)}>Save all validated zeros ({batchZeros.length})</button>
         <button type="button" disabled={!canSave(batchExtrema)} onClick={() => save(batchExtrema)}>Save all validated extrema ({batchExtrema.length})</button>
+        <button type="button" disabled={!canSave(batchInflections)} onClick={() => save(batchInflections)}>Save all validated inflections ({batchInflections.length})</button>
       </>}
       emptyText={analysis.status === "incomplete" ? "No candidates found in the scanned portion." :
         "No candidates found in the scanned interval."} />
-    {!readOnlyPreview && <small>{available} of {GRAPH2D_MAX_CONSTRUCTIONS} construction slots available. Only validated numerical zeros and extrema from a finished bounded scan can be saved. Location error is estimated, not certified.</small>}
+    {!readOnlyPreview && <small>{available} of {GRAPH2D_MAX_CONSTRUCTIONS} construction slots available. Only validated numerical zeros, extrema and inflections from a finished bounded scan can be saved. Location error is estimated, not certified.</small>}
     {actionError && <p role="alert">{actionError}</p>}
     {analysis.diagnostics.length > 0 && <details className="graph2d-inspector-more"><summary>Analysis diagnostics</summary>
       <ul>{analysis.diagnostics.map(entry => <li key={entry.code}>{entry.message} ({entry.count})</li>)}</ul>
