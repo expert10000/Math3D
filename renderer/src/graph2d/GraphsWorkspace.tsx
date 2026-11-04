@@ -289,7 +289,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       const existing = document.source.objects.find(item => item.kind === "point-series" &&
         item.projectProfileOrigin?.projectId === project.identity.id &&
         item.projectProfileOrigin.profileId === profileId);
-      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null }); return; }
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null }); return true; }
       const selection = findProjectProfileSelection(project, profileId);
       if (!selection) throw new Error("Save a matching physical line selection in this Project first.");
       const result = derivedProfiles.read(profileId) ?? await derivedProfiles.compute(profileId);
@@ -307,7 +307,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
           lineWidth: 2, lineStyle: "solid", visible: true },
       } });
-    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+      return true;
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); return false; }
   };
   const profileCards = derivedProfiles.records.map(record =>
     <div key={record.profileId}><DerivedProfileProvenanceCard view="graphs" provenance={record}
@@ -3821,6 +3822,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           derivedProfiles={derivedProfiles.records.filter(record => record.source.documentId ===
             (vectorField3DDocument ?? savedVectorField3D)?.identity.id)}
           onComputeDerivedProfile={derivedProfiles.compute} derivedProfileBusyId={derivedProfiles.busyId}
+          onOpenDerivedProfileInGraphs={async id => {
+            if (await openProjectProfile(id)) setVectorField3DOpen(false);
+          }}
           derivedProfileProgress={derivedProfiles.progress} derivedProfileError={derivedProfiles.error}
           linkedRegionFocus={linkedRegionFocus?.focus ?? null}
           onFocusRegionInGraphs={focusExplorerRegionInGraphs}

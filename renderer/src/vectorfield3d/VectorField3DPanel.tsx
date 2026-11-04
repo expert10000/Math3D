@@ -135,12 +135,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
   onReturnToVectorLayer, overlayFields = [], derivedProfiles = [], onComputeDerivedProfile,
+  onOpenDerivedProfileInGraphs,
   derivedProfileBusyId, derivedProfileProgress, derivedProfileError }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   project?: Math3DProject | null;
   focusSelectionRequest?: { id: string; token: number } | null;
   derivedProfiles?: readonly DerivedProfileProvenance[];
   onComputeDerivedProfile?: (id: string) => Promise<unknown>;
+  onOpenDerivedProfileInGraphs?: (id: string) => Promise<void>;
   derivedProfileBusyId?: string | null;
   derivedProfileProgress?: string;
   derivedProfileError?: string;
@@ -2304,6 +2306,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       busy={derivedProfileBusyId === record.profileId}
       progress={derivedProfileBusyId === record.profileId ? derivedProfileProgress : undefined}
       error={derivedProfileError} />)}
+    {derivedProfiles.map(record => <button key={`graph:${record.profileId}`} type="button"
+      data-testid="gf07-open-profile-from-explorer"
+      disabled={!onOpenDerivedProfileInGraphs || !["current", "not-computed"].includes(record.reason ?? "current")}
+      onClick={() => void onOpenDerivedProfileInGraphs?.(record.profileId)}>
+      Open {record.title} in Graphs</button>)}
     </div>
     <p data-gf06-section="layer">Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>

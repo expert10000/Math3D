@@ -33,12 +33,12 @@ test("GF-07 opens a saved profile in Graphs and locates its physical line in Exp
       await page.getByRole("button", { name: "Scientific Field Explorer" }).click();
     }
     await expect(explorer).toBeVisible();
-    await explorer.getByRole("button", { name: "Back to Graphs" }).click();
+    await explorer.getByTestId("gf07-open-profile-from-explorer").click();
+    await expect(explorer).toBeHidden();
     const rightToggle = page.getByRole("button", { name: "Right", exact: true });
     if (await rightToggle.getAttribute("aria-pressed") === "true") await rightToggle.click();
     const compactInspector = page.locator(".graph2d-compact-panels > details:has(> summary:text-is('Inspector'))");
     if (await compactInspector.isVisible()) await compactInspector.locator(":scope > summary").click();
-    await compactInspector.getByTestId("gf07-open-profile-in-graphs").click();
     const inspector = compactInspector.getByTestId("gf07-graph-profile-status");
     await expect(inspector).toContainText(profileId);
     await expect(inspector).toContainText(selection.identity.id);
