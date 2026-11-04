@@ -3699,6 +3699,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           linkedRegionFocus?.token ?? 0}`}
           mount={viewerRef.current?.closest<HTMLElement>(".graph2d-workspace") ?? undefined}
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
+          project={project}
           derivedProfiles={derivedProfiles.records.filter(record => record.source.documentId ===
             (vectorField3DDocument ?? savedVectorField3D)?.identity.id)}
           onComputeDerivedProfile={derivedProfiles.compute} derivedProfileBusyId={derivedProfiles.busyId}

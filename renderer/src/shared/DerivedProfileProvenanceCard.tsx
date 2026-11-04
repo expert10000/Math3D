@@ -15,7 +15,7 @@ export function DerivedProfileProvenanceCard({ provenance, view, onCompute, busy
   onCompute?: () => void; busy?: boolean; progress?: string; error?: string }) {
   const { source, operations, plane, line } = provenance;
   return <section aria-label={`${view === "graphs" ? "Graphs" : "Explorer"} derived profile provenance`}
-    data-testid={`${view}-derived-profile-provenance`}>
+    data-testid={`${view}-derived-profile-provenance`} data-profile-id={provenance.profileId} tabIndex={-1}>
     <h4>{provenance.title}</h4>
     <p><strong>Status:</strong> {provenance.status === "current" ? "Current" : "Values withheld"}</p>
     {provenance.reason && <p role="status">{reasonText[provenance.reason]}</p>}
