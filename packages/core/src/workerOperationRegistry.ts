@@ -24,6 +24,8 @@ export type Math3DWorkerOperationId =
   | "volume.distance-field"
   | "volume.streamlines"
   | "curve.analyze"
+  | "field.derived-profile"
+  | "graph2d.parameter-study"
   | "symbolic.simplify"
   | "symbolic.solve"
   | "symbolic.factor"
@@ -32,10 +34,21 @@ export type Math3DWorkerOperationId =
   | "symbolic.gradient"
   | "symbolic.hessian"
   | "polynomial.factor"
+  | "polynomial.dossier"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
+  | "matrix.linear-dossier"
+  | "matrix.integer-forms"
   | "algebra.groebner"
+  | "algebra.reconstruct"
+  | "algebra.domains.inspect"
+  | "ideal.groebner"
+  | "ideal.eliminate"
+  | "ideal.membership"
+  | "ideal.quotient-dimension"
+  | "ideal.syzygies"
+  | "ideal.hilbert-series"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -213,6 +226,22 @@ const definitions = [
     legacyRequestKinds: [],
   },
   {
+    id: "field.derived-profile",
+    title: "Derived field line profile",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "graph2d.parameter-study",
+    title: "Graph parameter study",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
+  },
+  {
     id: "symbolic.simplify",
     title: "Symbolic simplification",
     canonicalOwner: "sage",
@@ -277,6 +306,14 @@ const definitions = [
     legacyRequestKinds: [],
   },
   {
+    id: "polynomial.dossier",
+    title: "Exact polynomial dossier over QQ",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
     id: "polynomial.roots.exact",
     title: "Exact polynomial roots",
     canonicalOwner: "sage",
@@ -301,12 +338,74 @@ const definitions = [
     legacyRequestKinds: [],
   },
   {
+    id: "matrix.linear-dossier",
+    title: "Exact QQ matrix RREF, kernel, image and minimal polynomial",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "matrix.integer-forms",
+    title: "Exact Smith and Hermite forms over ZZ",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
     id: "algebra.groebner",
     title: "Gröbner basis",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
+  },
+  {
+    id: "algebra.reconstruct",
+    title: "Validated algebra object reconstruction",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "algebra.domains.inspect",
+    title: "Algebra parent domains and canonical coercions",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.groebner",
+    title: "Saved ideal Gröbner basis",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.eliminate",
+    title: "Saved ideal elimination",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.membership",
+    title: "Saved ideal membership and normal form",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.quotient-dimension",
+    title: "Pinned quotient ring dimension",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.syzygies",
+    title: "Saved ideal generator syzygies",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.hilbert-series",
+    title: "Graded quotient Hilbert series",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
     id: "number-theory.gcd",

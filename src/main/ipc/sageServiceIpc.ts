@@ -10,9 +10,20 @@ type SageOperation =
   | "sage.symbolic.solve"
   | "sage.matrix.eigen_exact"
   | "sage.matrix.charpoly"
+  | "sage.matrix.linear_dossier"
+  | "sage.matrix.integer_forms"
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
+  | "sage.polynomial.dossier"
   | "sage.groebner.compute"
+  | "sage.ideal.groebner"
+  | "sage.ideal.eliminate"
+  | "sage.ideal.membership"
+  | "sage.ideal.quotientDimension"
+  | "sage.ideal.syzygies"
+  | "sage.ideal.hilbertSeries"
+  | "sage.algebra.reconstruct"
+  | "sage.algebra.inspectDomains"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"
@@ -22,30 +33,42 @@ type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
   jobId?: string;
-  backend?: "local" | "docker";
+  backend?: "local" | "docker" | "private";
 };
 
 const baseUrl = String(process.env.MATH3D_SAGE_SERVICE_URL || "http://127.0.0.1:8767").replace(/\/+$/, "");
+const gatewayUrl = String(process.env.MATH3D_SAGE_GATEWAY_URL || "http://127.0.0.1:8770").replace(/\/+$/, "");
+const gatewayToken = String(process.env.MATH3D_SAGE_GATEWAY_TOKEN || "");
+const gatewayUrlIsSafe = (() => {
+  try {
+    const url = new URL(gatewayUrl);
+    return !url.username && !url.password && (url.protocol === "https:" ||
+      (url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)));
+  } catch { return false; }
+})();
 const serviceUnavailableMessage =
   "SageMath Docker service is unreachable. Start it with: docker compose -f services/sage-worker/docker-compose.yml up --build";
 const dockerJobs = new Map<string, AbortController>();
+const privateJobs = new Map<string, AbortController>();
 const trustedConsoleScopes = new Map<number, Set<string>>();
 const observedConsoleSenders = new Set<number>();
 const consoleJobOwners = new Map<string, { senderId: number; scope: string }>();
 const validConsoleScope = (scope: unknown): scope is string =>
   typeof scope === "string" && /^(console|workbook:[a-zA-Z0-9-]{1,128}:[a-zA-Z0-9-]{1,128})$/.test(scope);
 
-async function requestJson(path: string, init?: RequestInit, signal?: AbortSignal): Promise<unknown> {
+async function requestJson(path: string, init?: RequestInit, signal?: AbortSignal,
+  endpoint = baseUrl, credential?: string): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), endpoint === gatewayUrl ? 25_000 : 15_000);
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) controller.abort();
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(`${endpoint}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
+        ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
         ...(init?.headers || {}),
       },
       signal: controller.signal,
@@ -54,14 +77,15 @@ async function requestJson(path: string, init?: RequestInit, signal?: AbortSigna
     if (!response.ok) {
       const detail = typeof (payload as any)?.detail === "string" ? (payload as any).detail : null;
       const error = typeof (payload as any)?.error === "string" ? (payload as any).error : detail || `HTTP ${response.status}`;
-      throw new Error(error);
+      const code = typeof (payload as any)?.code === "string" ? `${(payload as any).code}: ` : "";
+      throw new Error(`${code}${error}`);
     }
     return payload;
   } catch (error) {
-    if (signal?.aborted) throw new Error("Sage Docker job cancelled.");
+    if (signal?.aborted) throw new Error("Sage job cancelled.");
     const message = error instanceof Error && error.message ? error.message : serviceUnavailableMessage;
     if (/failed to fetch|networkerror|abort|econnrefused/i.test(message)) {
-      throw new Error(serviceUnavailableMessage);
+      throw new Error(endpoint === gatewayUrl ? "Private Sage gateway is unreachable." : serviceUnavailableMessage);
     }
     throw new Error(message);
   } finally {
@@ -110,22 +134,46 @@ export function registerSageServiceIpc(): void {
   ipcMain.handle("sage:console:cancel", (event, jobId: string) => ({
     ok: typeof jobId === "string" && consoleJobOwners.get(jobId)?.senderId === event.sender.id && cancelSageConsoleJob(jobId),
   }));
-  ipcMain.handle("sage:health", async (_evt, scope?: "local" | "docker") =>
-    scope === "local" ? checkLocalSageHealth() : requestJson("/health", { method: "GET" }));
+  ipcMain.handle("sage:health", async (_evt, scope?: "local" | "docker" | "private") => {
+    if (scope === "local") return checkLocalSageHealth();
+    if (scope !== "private") return requestJson("/health", { method: "GET" });
+    if (!gatewayToken || !gatewayUrlIsSafe) return { engine: "sagemath", available: false,
+      status: !gatewayToken ? "Private gateway credential is not configured in the desktop runtime."
+        : "Private gateway requires HTTPS outside this machine.", operations: [] };
+    try { return await requestJson("/health", { method: "GET" }, undefined, gatewayUrl, gatewayToken); }
+    catch (error) { return { engine: "sagemath", available: false,
+      status: error instanceof Error ? error.message : "Private Sage gateway discovery failed.", operations: [] }; }
+  });
   ipcMain.handle("sage:run", async (_evt, req: SageRunRequest) => {
-    if (req?.backend != null && req.backend !== "local" && req.backend !== "docker") {
-      throw new Error("Select Local WSL or Docker SageMath.");
+    if (req?.backend != null && req.backend !== "local" && req.backend !== "docker" && req.backend !== "private") {
+      throw new Error("Select Local WSL, Docker, or Private gateway SageMath.");
     }
     if (req?.backend === "local" && req.operation !== "sage.polynomial.factor" &&
         req.operation !== "sage.polynomial.roots_exact" &&
         !LOCAL_SYMBOLIC_OPERATIONS.includes(req.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
       throw new Error("This operation is not available on the local WSL backend. Select Docker SageMath.");
     }
-    if (req?.backend !== "docker" && (req?.operation === "sage.polynomial.factor" || req?.operation === "sage.polynomial.roots_exact")) {
+    if (req?.backend !== "docker" && req?.backend !== "private" &&
+        (req?.operation === "sage.polynomial.factor" || req?.operation === "sage.polynomial.roots_exact")) {
       return runSagePolynomialJob(req.operation, req.params || {}, req.jobId);
     }
-    if (req?.backend !== "docker" && LOCAL_SYMBOLIC_OPERATIONS.includes(req?.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
+    if (req?.backend !== "docker" && req?.backend !== "private" &&
+        LOCAL_SYMBOLIC_OPERATIONS.includes(req?.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number])) {
       return runSageSymbolicJob(req.operation as typeof LOCAL_SYMBOLIC_OPERATIONS[number], req.params || {}, req.jobId);
+    }
+    if (req?.backend === "private") {
+      if (req.operation !== "sage.numberTheory.gcd" && req.operation !== "sage.numberTheory.modInverse")
+        throw new Error("The private Sage gateway accepts only GCD and modular inverse.");
+      if (!gatewayToken) throw new Error("Private gateway credential is not configured in the desktop runtime.");
+      if (!gatewayUrlIsSafe) throw new Error("Private gateway requires HTTPS outside this machine.");
+      const jobId = req.jobId;
+      if (!jobId || privateJobs.has(jobId)) throw new Error("Private Sage job ID is missing or already running.");
+      const controller = new AbortController();
+      privateJobs.set(jobId, controller);
+      try { return await requestJson("/run", { method: "POST",
+        body: JSON.stringify({ operation: req.operation, params: req.params || {}, jobId }) },
+        controller.signal, gatewayUrl, gatewayToken); }
+      finally { privateJobs.delete(jobId); }
     }
     const jobId = typeof req?.jobId === "string" ? req.jobId : undefined;
     if (jobId && dockerJobs.has(jobId)) throw new Error("Sage Docker job ID is already running.");
@@ -146,6 +194,13 @@ export function registerSageServiceIpc(): void {
   });
   ipcMain.handle("sage:cancel", async (_evt, jobId: string) => {
     if (typeof jobId !== "string") return { ok: false };
+    const privateJob = privateJobs.get(jobId);
+    if (privateJob) {
+      try { await requestJson("/cancel", { method: "POST", body: JSON.stringify({ jobId }) },
+        undefined, gatewayUrl, gatewayToken); }
+      finally { privateJob.abort(); }
+      return { ok: true };
+    }
     const dockerJob = dockerJobs.get(jobId);
     if (dockerJob) {
       try {

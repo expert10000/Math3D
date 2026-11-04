@@ -1,0 +1,49 @@
+.field-explorer-project-hierarchy { margin-bottom: 14px; padding: 10px;
+  border: 1px solid var(--border); border-radius: 8px; }
+.field-explorer-project-hierarchy h4 { margin: 0 0 8px; }
+.field-explorer-project-hierarchy > details { border-top: 1px solid var(--border); padding: 6px 0; }
+.field-explorer-project-hierarchy summary { cursor: pointer; font-weight: 600; }
+.field-explorer-project-hierarchy ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
+.field-explorer-project-hierarchy li { min-width: 0; padding: 7px; border: 1px solid var(--border);
+  border-radius: 6px; overflow-wrap: anywhere; }
+.field-explorer-project-hierarchy li[aria-current="true"] { border-color: var(--accent); }
+.field-explorer-project-hierarchy li > strong,
+.field-explorer-project-hierarchy li > small,
+.field-explorer-project-hierarchy li > code,
+.field-explorer-project-hierarchy li > a,
+.field-explorer-project-hierarchy li > button,
+.field-explorer-project-hierarchy li details > code,
+.field-explorer-project-hierarchy li details > small { display: block; margin: 3px 0; }
+.field-explorer-project-hierarchy code { font-size: 11px; overflow-wrap: anywhere; }
+.field-explorer-inspector-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px; margin-bottom: 8px; }
+.field-explorer-inspector-nav button[aria-pressed="true"] { border-color: var(--accent);
+  background: var(--panel); font-weight: 700; }
+.field-explorer-inspector-title { margin: 8px 0; }
+.scientific-field-explorer-inspector[data-active-section="layer"] > [data-gf06-section]:not([data-gf06-section="layer"]),
+.scientific-field-explorer-inspector[data-active-section="probe"] > [data-gf06-section]:not([data-gf06-section="probe"]),
+.scientific-field-explorer-inspector[data-active-section="analyze"] > [data-gf06-section]:not([data-gf06-section="analyze"]),
+.scientific-field-explorer-inspector[data-active-section="provenance"] > [data-gf06-section]:not([data-gf06-section="provenance"]) { display: none; }
+.field-explorer-profile-provenance > section { padding: 8px; border: 1px solid var(--border);
+  border-radius: 7px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.field-explorer-profile-provenance dl { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr);
+  gap: 4px 8px; }
+.field-explorer-profile-provenance dt { font-weight: 600; }
+.field-explorer-profile-provenance dd { margin: 0; overflow-wrap: anywhere; }
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-controls > .field-explorer-project-hierarchy,
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector > .field-explorer-inspector-nav,
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector > .field-explorer-inspector-title,
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector > .field-explorer-inspector-heading,
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector[data-active-section="provenance"] > [data-gf06-section="provenance"] { display: block !important; }
+.scientific-field-explorer[data-field-layer] .scientific-field-explorer-inspector > .field-explorer-inspector-nav { display: grid !important; }
+@media (max-width: 960px) {
+  .scientific-field-explorer .scientific-field-explorer-content { grid-template-rows: auto minmax(280px, 40vh)
+    minmax(320px, 45vh) minmax(320px, 50vh); }
+  .scientific-field-explorer .scientific-field-explorer-controls { grid-column: 1; grid-row: 2; max-height: 40vh; }
+  .scientific-field-explorer .scientific-field-explorer-inspector { grid-column: 1; grid-row: 3; }
+  .scientific-field-explorer .scientific-field-explorer-viewer { grid-column: 1; grid-row: 4; }
+  .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-content {
+    grid-template-rows: auto minmax(320px, 45vh) minmax(320px, 55vh); }
+  .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-inspector { grid-row: 2; }
+  .scientific-field-explorer[data-layout="viewer-focus"] .scientific-field-explorer-viewer { grid-row: 3; }
+}

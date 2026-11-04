@@ -8,15 +8,30 @@ export type SageOperation =
   | "sage.symbolic.singularities"
   | "sage.matrix.eigen_exact"
   | "sage.matrix.charpoly"
+  | "sage.matrix.linear_dossier"
+  | "sage.matrix.integer_forms"
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
+  | "sage.polynomial.dossier"
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"
-  | "sage.complex.analyze";
+  | "sage.complex.analyze"
+  | "sage.algebra.reconstruct"
+  | "sage.algebra.inspectDomains"
+  | "sage.ideal.groebner"
+  | "sage.ideal.eliminate"
+  | "sage.ideal.membership"
+  | "sage.ideal.quotientDimension"
+  | "sage.ideal.syzygies"
+  | "sage.ideal.hilbertSeries";
 
-export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze">;
+export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" |
+  "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
+  "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" |
+  "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension" |
+  "sage.ideal.syzygies" | "sage.ideal.hilbertSeries">;
 
 export type SageHealthResponse = {
   status: string;
@@ -24,13 +39,14 @@ export type SageHealthResponse = {
   engineVersion?: string;
   available: boolean;
   operations: SageOperation[];
+  limits?: { maxInputBytes: number; maxConcurrent: number; maxRequestsPerMinute: number; timeoutMs: number };
 };
 
 export type SageRunRequest = {
   operation: SageOperation;
   params: Record<string, unknown>;
   jobId?: string;
-  backend?: "local" | "docker";
+  backend?: "local" | "docker" | "private";
 };
 
 export type SageRunResponse = {
@@ -43,6 +59,7 @@ export type SageRunResponse = {
   warnings: string[];
   elapsedMs?: number;
   error?: string;
+  errorCode?: string;
 };
 
 export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
@@ -64,6 +81,17 @@ export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
 
 export const SAGE_OPERATIONS: SageOperation[] = [
   ...SAGE_SYMBOLIC_OPERATIONS,
+  "sage.polynomial.dossier",
+  "sage.matrix.linear_dossier",
+  "sage.matrix.integer_forms",
+  "sage.algebra.reconstruct",
+  "sage.algebra.inspectDomains",
+  "sage.ideal.groebner",
+  "sage.ideal.eliminate",
+  "sage.ideal.membership",
+  "sage.ideal.quotientDimension",
+  "sage.ideal.syzygies",
+  "sage.ideal.hilbertSeries",
   "sage.topology.integer_homology",
   "sage.complex.analyze",
 ];
@@ -96,6 +124,7 @@ export const normalizeSageHealth = (payload: unknown): SageHealthResponse => {
     ...(typeof data.engineVersion === "string" && data.engineVersion.trim() ? { engineVersion: data.engineVersion } : {}),
     available: data.available,
     operations,
+    ...(data.limits && typeof data.limits === "object" ? { limits: data.limits } : {}),
   };
 };
 
@@ -126,5 +155,6 @@ export const normalizeSageRunResponse = (payload: unknown): SageRunResponse => {
       ? Math.max(0, Math.round(data.elapsedMs))
       : undefined,
     error: typeof data.error === "string" && data.error ? data.error : undefined,
+    errorCode: typeof data.errorCode === "string" && data.errorCode ? data.errorCode : undefined,
   };
 };

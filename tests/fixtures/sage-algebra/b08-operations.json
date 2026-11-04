@@ -1,0 +1,86 @@
+{
+  "format": "math3d.sage-algebra-operation-goldens",
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "polynomial_split",
+      "request": {"operation": "sage.polynomial.dossier", "params": {"polynomial": "x^2-1", "variables": ["x"]}},
+      "expected": {"polynomial": "x^2 - 1", "degree": 2, "derivative": "2*x", "derivativeGcd": "1", "squareFree": true, "discriminant": "4", "rationalRoots": [{"value": "-1", "multiplicity": 1}, {"value": "1", "multiplicity": 1}], "factorization": {"unit": "1", "factors": [{"polynomial": "x + 1", "multiplicity": 1}, {"polynomial": "x - 1", "multiplicity": 1}]}}
+    },
+    {
+      "name": "polynomial_repeated",
+      "request": {"operation": "sage.polynomial.dossier", "params": {"polynomial": "(x-1)^2", "variables": ["x"]}},
+      "expected": {"polynomial": "x^2 - 2*x + 1", "degree": 2, "derivativeGcd": "x - 1", "squareFree": false, "discriminant": "0", "rationalRoots": [{"value": "1", "multiplicity": 2}], "squareFreeDecomposition": {"unit": "1", "factors": [{"polynomial": "x - 1", "multiplicity": 2}]}}
+    },
+    {
+      "name": "polynomial_irreducible_over_qq",
+      "request": {"operation": "sage.polynomial.dossier", "params": {"polynomial": "x^2+1", "variables": ["x"]}},
+      "expected": {"polynomial": "x^2 + 1", "degree": 2, "irreducibleOverQQ": true, "discriminant": "-4", "rationalRoots": []}
+    },
+    {
+      "name": "qq_matrix_singular",
+      "request": {"operation": "sage.matrix.linear_dossier", "params": {"format": "math3d.sage-matrix-dossier", "schemaVersion": 1, "matrix": [["1", "2"], ["2", "4"]]}},
+      "expected": {"rank": 1, "reducedRowEchelonForm": [["1", "2"], ["0", "0"]], "pivotColumns": [0], "kernelBasis": [["-2", "1"]], "imageBasis": [["1", "2"]], "minimalPolynomial": "t^2 - 5*t", "characteristicPolynomial": "t^2 - 5*t"}
+    },
+    {
+      "name": "qq_matrix_rectangular",
+      "request": {"operation": "sage.matrix.linear_dossier", "params": {"format": "math3d.sage-matrix-dossier", "schemaVersion": 1, "matrix": [["1", "2", "3"], ["2", "4", "6"]]}},
+      "expected": {"inputShape": [2, 3], "rank": 1, "reducedRowEchelonForm": [["1", "2", "3"], ["0", "0", "0"]], "kernelBasis": [["-2", "1", "0"], ["-3", "0", "1"]], "imageBasis": [["1", "2"]], "minimalPolynomial": null}
+    },
+    {
+      "name": "qq_matrix_jordan",
+      "request": {"operation": "sage.matrix.linear_dossier", "params": {"format": "math3d.sage-matrix-dossier", "schemaVersion": 1, "matrix": [["1", "1"], ["0", "1"]]}},
+      "expected": {"rank": 2, "kernelBasis": [], "minimalPolynomial": "t^2 - 2*t + 1", "characteristicPolynomial": "t^2 - 2*t + 1"}
+    },
+    {
+      "name": "zz_smith_hermite_diagonal",
+      "request": {"operation": "sage.matrix.integer_forms", "params": {"format": "math3d.sage-integer-matrix-forms", "schemaVersion": 1, "matrix": [["2", "0", "0"], ["0", "6", "0"], ["0", "0", "0"]]}},
+      "expected": {"rank": 2, "smith": {"diagonal": ["2", "6", "0"]}, "hermite": {"form": [["2", "0", "0"], ["0", "6", "0"], ["0", "0", "0"]]}, "cokernel": {"freeRank": 1, "torsionOrders": ["2", "6"]}}
+    },
+    {
+      "name": "zz_smith_hermite_nondiagonal",
+      "request": {"operation": "sage.matrix.integer_forms", "params": {"format": "math3d.sage-integer-matrix-forms", "schemaVersion": 1, "matrix": [["2", "4"], ["4", "10"]]}},
+      "expected": {"rank": 2, "smith": {"diagonal": ["2", "2"]}, "cokernel": {"freeRank": 0, "torsionOrders": ["2", "2"]}}
+    },
+    {
+      "name": "zz_smith_hermite_tall",
+      "request": {"operation": "sage.matrix.integer_forms", "params": {"format": "math3d.sage-integer-matrix-forms", "schemaVersion": 1, "matrix": [["2"], ["4"], ["6"]]}},
+      "expected": {"inputShape": [3, 1], "rank": 1, "smith": {"diagonal": ["2"]}, "cokernel": {"freeRank": 2, "torsionOrders": ["2"]}}
+    },
+    {
+      "name": "reject_zero_polynomial",
+      "request": {"operation": "sage.polynomial.dossier", "params": {"polynomial": "0", "variables": ["x"]}},
+      "errorContains": "nonzero polynomial"
+    },
+    {
+      "name": "reject_polynomial_foreign_variable",
+      "request": {"operation": "sage.polynomial.dossier", "params": {"polynomial": "y+1", "variables": ["x"]}},
+      "errorContains": "outside the selected ring"
+    },
+    {
+      "name": "reject_polynomial_degree_budget",
+      "request": {"operation": "sage.polynomial.dossier", "params": {"polynomial": "x^17+1", "variables": ["x"]}},
+      "errorContains": "oversized or unsupported exponent"
+    },
+    {
+      "name": "reject_qq_matrix_noncanonical_fraction",
+      "request": {"operation": "sage.matrix.linear_dossier", "params": {"format": "math3d.sage-matrix-dossier", "schemaVersion": 1, "matrix": [["2/4"]]}},
+      "errorContains": "reduced canonical QQ fractions"
+    },
+    {
+      "name": "reject_qq_matrix_ragged",
+      "request": {"operation": "sage.matrix.linear_dossier", "params": {"format": "math3d.sage-matrix-dossier", "schemaVersion": 1, "matrix": [["1"], ["1", "2"]]}},
+      "errorContains": "rectangular matrix"
+    },
+    {
+      "name": "reject_zz_matrix_fraction",
+      "request": {"operation": "sage.matrix.integer_forms", "params": {"format": "math3d.sage-integer-matrix-forms", "schemaVersion": 1, "matrix": [["1/2"]]}},
+      "errorContains": "canonical signed decimals"
+    },
+    {
+      "name": "reject_zz_matrix_dimension_budget",
+      "request": {"operation": "sage.matrix.integer_forms", "params": {"format": "math3d.sage-integer-matrix-forms", "schemaVersion": 1, "matrix": [["1"], ["1"], ["1"], ["1"], ["1"], ["1"], ["1"]]}},
+      "errorContains": "1 to 6 by 1 to 6"
+    }
+  ]
+}

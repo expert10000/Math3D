@@ -1,5 +1,44 @@
 import { expect, test } from "@playwright/test";
 
+test("web Number Theory runs GCD and modular inverse through live Docker", async ({ page, request }) => {
+  const healthResponse = await request.get("http://127.0.0.1:8767/health");
+  expect(healthResponse.ok(), "Start the SageMath Docker service before this opt-in test.").toBe(true);
+  const health = await healthResponse.json() as { engineVersion: string; operations: string[] };
+  expect(health.operations).toEqual(expect.arrayContaining([
+    "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
+  ]));
+
+  await page.goto("/");
+  await page.getByTestId("workspace-nav-number_theory").click();
+  const workspace = page.getByTestId("number-theory-workspace");
+  const services = workspace.getByTestId("scientific-services-number_theory");
+  await expect(services.getByLabel("SageMath backend")).toHaveValue("docker");
+  await expect(services).toContainText("Backend available for this operation");
+  const result = workspace.getByTestId("sage-analysis-result");
+  for (const item of [
+    { operation: "sage.numberTheory.gcd", label: "Greatest common divisor", value: "6" },
+    { operation: "sage.numberTheory.modInverse", label: "Modular inverse", value: "4" },
+  ]) {
+    await services.getByLabel("Operation").selectOption(item.operation);
+    await services.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(result).toContainText(item.label);
+    await expect(result.getByTestId("sage-result-kind-expression")).toContainText(item.value);
+    await expect(result).toContainText("SageMath (Docker)");
+    await expect(result).toContainText(`Version: ${health.engineVersion}`);
+  }
+  await workspace.getByRole("button", { name: "Runtimes", exact: true }).click();
+  await expect(workspace.getByTestId("sage-runtime-version-docker"))
+    .toContainText(`SageMath ${health.engineVersion}`);
+  await workspace.getByRole("button", { name: "Open Compute → Runtimes" }).last().click();
+  const compute = page.getByTestId("compute-center");
+  await compute.getByRole("button", { name: "Overview" }).click();
+  const jobs = compute.getByRole("region", { name: "Broker jobs" });
+  for (const label of ["Greatest common divisor", "Modular inverse"]) {
+    await expect(jobs.getByText(label, { exact: true }).last().locator("../.."))
+      .toContainText("complete");
+  }
+});
+
 test("browser Sage Docker cancel reaches the live service", async ({ page }) => {
   await page.goto("/");
   const outcome = await page.evaluate(async () => {

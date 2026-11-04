@@ -4,6 +4,7 @@ import { parseMath3DProject, serializeMath3DProject, replaceMath3DProjectWorkspa
 import { createMixedWorkspaceDocument, type KernelWorkspaceDocument } from "./mixedWorkspace";
 import { buildProjectExplorer } from "./projectExplorer";
 import { viewerSourceFromDocument } from "./viewerProvenance";
+import { linkQuantumSceneDocuments, type QuantumSceneDocument } from "./quantumSceneDocument";
 
 const requireProject = (project: Math3DProject) => parseMath3DProject(serializeMath3DProject(project));
 const requireEntry = (project: Math3DProject, id: string) => {
@@ -39,17 +40,32 @@ export const inspectProjectDocumentDelete = (project: Math3DProject, id: string)
     !(relation.target.type === "result" && ownedResultIds.includes(relation.target.resultId)) &&
     (references(relation.parameters, id) || ownedResultIds.some((resultId) => references(relation, resultId)))).map((relation) => relation.relationId);
   const constructionReferences = current.workspace.constructions.some((construction) => references(construction, id) || ownedResultIds.some((resultId) => references(construction, resultId)));
+  const dependentDerivedFieldIds = current.workspace.derivedFields?.filter(document => {
+    let source = document.input.documentId;
+    const byId = new Map(current.workspace.derivedFields?.map(item => [item.identity.id, item]));
+    while (byId.has(source)) source = byId.get(source)!.input.documentId;
+    return source === id;
+  }).map(document => document.identity.id) ?? [];
   return { id, ownedResultIds, dependentDocumentIds: [...dependentDocumentIds].sort(), dependentResultIds: [...dependentResultIds].sort(),
     dependentArtifactIds: [...dependentArtifactIds].sort(), dependentRelationIds, constructionReferences,
-    canDelete: !dependentDocumentIds.size && !dependentResultIds.size && !dependentArtifactIds.size && !dependentRelationIds.length && !constructionReferences };
+    dependentDerivedFieldIds,
+    canDelete: !dependentDocumentIds.size && !dependentResultIds.size && !dependentArtifactIds.size && !dependentRelationIds.length && !constructionReferences && !dependentDerivedFieldIds.length };
 };
 /** Delete only an isolated document and its owned results; retain external artifact bytes/manifests. */
 export const deleteProjectDocument = (project: Math3DProject, id: string): Math3DProject => {
   const current = requireProject(project), impact = inspectProjectDocumentDelete(current, id);
   if (!impact.canDelete) throw new TypeError("Delete blocked: dependent documents, results, artifacts or construction references remain.");
   const results = new Set(impact.ownedResultIds);
+  const retainedEntries = current.workspace.entries.filter(entry => entry.expected.id !== id);
+  const linked = new Map(linkQuantumSceneDocuments(retainedEntries.filter(entry => entry.module === "quantum")
+    .map(entry => entry.checkpoint as QuantumSceneDocument)).map(document => [document.source.sceneFingerprint, document]));
   const workspace = createMixedWorkspaceDocument({ ...current.workspace,
-    entries: current.workspace.entries.filter((entry) => entry.expected.id !== id),
+    entries: retainedEntries.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
+      ? { ...entry, checkpoint: linked.get(entry.checkpoint.source.sceneFingerprint)! } : entry),
+    ...(current.workspace.scientificSelections === undefined ? {} : { scientificSelections:
+      current.workspace.scientificSelections.filter((selection) =>
+        selection.identity.kind !== "authored" ||
+        selection.identity.migratedFrom?.ownerDocumentId !== id) }),
     activeDocumentIds: current.workspace.activeDocumentIds.filter((entry) => entry !== id),
     results: current.workspace.results.filter((result) => !results.has(result.resultId)),
     relations: current.workspace.relations.filter((relation) => !relation.sources.some((source) => source.documentId === id) &&

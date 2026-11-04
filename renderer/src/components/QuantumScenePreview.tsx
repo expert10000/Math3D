@@ -2,9 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
-import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
-import { QuantumFieldSurface } from "./QuantumFieldSurface";
-import { QuantumFieldVolume } from "./QuantumFieldVolume";
+import type { QuantumField } from "./QuantumFieldSlice";
+import { QuantumViewHost, negotiateQuantumView, type QuantumSceneCapabilities, type QuantumViewRequest } from "./quantumViewHandlers";
 import { RiceMeleConvergenceProfile } from "./RiceMeleConvergenceProfile";
 import { buildQuantumPrimitiveMeshes, type QuantumPrimitive } from "./quantumPrimitiveMeshes";
 import { buildQuantumVectorGlyphMeshes, type VectorGlyphDisplay } from "./quantumVectorGlyphs";
@@ -150,7 +149,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
   const sshSummary = sshPair ? reviewedSshPair(sshPair.chain, sshPair.bands) : null;
   const count = (document.geometry.points?.length ?? 0) + (document.geometry.segments?.length ?? 0) +
     (document.geometry.triangles?.length ?? 0);
-  const [view, setView] = useState<"geometry" | "slice" | "surface" | "volume">(scene.fields?.length && count === 0 ? "slice" : "geometry");
+  const [view, setView] = useState<QuantumViewRequest>(scene.fields?.length && count === 0 ? "slice" : "geometry");
   useEffect(() => { setView(scene.fields?.length && count === 0 ? "slice" : "geometry"); }, [opened.reference.sceneFingerprint]);
   const [locateStatus, setLocateStatus] = useState("");
   const [locating, setLocating] = useState(false);
@@ -174,13 +173,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
       if (locateGeneration.current === current) setLocateStatus(`Source reveal refused: ${String((error as Error)?.message ?? error)}`);
     } finally { if (locateGeneration.current === current) setLocating(false); }
   };
-  const openSourceRun = async () => {
+  const openSourceRun = async (mode: "open" | "fork" = "open") => {
     const current = ++runGeneration.current;
     setOpeningRun(true); setRunStatus("");
     try {
-      const result = await window.quantumScenes!.openSourceRun(opened.reference.sceneFingerprint);
+      const result = await (mode === "fork" ? window.quantumScenes!.forkSourceRun : window.quantumScenes!.openSourceRun)(opened.reference.sceneFingerprint);
       if (runGeneration.current === current) setRunStatus(result.ok
-        ? `Theory Lab launch requested for ${result.runId}; Lab will verify the exact saved result before opening it.`
+        ? `Theory Lab ${mode === "fork" ? "fork request" : "launch"} sent for ${result.runId}; Lab will verify the exact saved result before ${mode === "fork" ? "offering a new run" : "opening it"}.`
         : result.canceled ? "Theory Lab selection canceled." : `Source run unavailable: ${result.error}`);
     } catch (error) {
       if (runGeneration.current === current) setRunStatus(`Source run unavailable: ${String((error as Error)?.message ?? error)}`);
@@ -438,6 +437,14 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     if (mesh.quantityId) selectTopologySample(mesh.quantityId, sampleIndex);
     else if (scene.bands?.objects.includes(mesh.sourceObjectId)) selectBandSample(mesh.sourceObjectId, sampleIndex);
   };
+  const viewCapabilities: QuantumSceneCapabilities = {
+    fields: scene.fields ?? [],
+    hasGeometry: Boolean(count || scene.lattice || supercell || reciprocalView || vectorMeshes.length),
+    hasBands: Boolean(scene.bands),
+    hasLattice: Boolean(scene.lattice),
+    hasTrajectory: scene.objects.some(object => object.kind === "trajectory" || object.kind === "polyline"),
+  };
+  const availableView = (request: QuantumViewRequest) => Boolean(negotiateQuantumView(request, viewCapabilities));
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
       style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 20 }}>
@@ -462,19 +469,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               }}>Reciprocal space</button>
             </div>}
             {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
-              {count > 0 && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
-              <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>
-              <button type="button" onClick={() => setView("volume")} aria-pressed={view === "volume"}>Volume</button>
-              {scene.fields?.some(field => field.kind === "complex-field") &&
-                <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
+              {availableView("geometry") && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
+              {availableView("slice") && <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>}
+              {availableView("volume") && <button type="button" onClick={() => setView("volume")} aria-pressed={view === "volume"}>Volume</button>}
+              {availableView("surface") && <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
             </div>}
             <div style={{ minHeight: 0, flex: 1, position: "relative" }}>
-            {view === "volume" && scene.fields?.length ? <QuantumFieldVolume fingerprint={opened.reference.sceneFingerprint} fields={scene.fields} /> :
-              view === "slice" && scene.fields?.length ? <QuantumFieldSlice fingerprint={opened.reference.sceneFingerprint}
-              fields={scene.fields} axes={scene.coordinates.axes} units={scene.coordinates.units} /> :
-              view === "surface" && scene.fields?.length ? <QuantumFieldSurface fingerprint={opened.reference.sceneFingerprint}
-                resultSha256={scene.provenance.resultSha256} fields={scene.fields} camera={camera} /> :
-              count > 0 || scene.lattice || supercell || reciprocalView || vectorMeshes.length ? <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
+            <QuantumViewHost request={view} capabilities={viewCapabilities} context={{
+              fingerprint: opened.reference.sceneFingerprint, resultSha256: scene.provenance.resultSha256,
+              fields: scene.fields ?? [], axes: scene.coordinates.axes, units: scene.coordinates.units, camera,
+              geometry: <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
               pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
               onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++; topologyGeneration.current++;
@@ -484,7 +488,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
                 setPickedBandSample(null); setPickedPrimitive(null); }}
               inspectSelectionMeshKey={pickedPrimitive?.objectId ?? pickedBandSample?.objectId ?? pickedVectorSample?.objectId}
               cameraOverride={!supercell && geometrySpace === "source" && camera ? { position: camera.position, target: camera.target, up: camera.up } : null} />
-              : <p style={{ padding: 20 }}>This scene has no mapped geometry. Its field datasets are listed in the inspector.</p>}
+            }} />
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
@@ -708,9 +712,11 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
                 onClick={() => void openSourceRun()}>
                 {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}
               </button>
+              <button type="button" data-testid="quantum-fork-source-run" disabled={openingRun}
+                onClick={() => void openSourceRun("fork")}>Fork as new Theory Lab run…</button>
               {runStatus && <p role="status" data-testid="quantum-source-run-status">{runStatus}</p>}
             </>}
-            <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there; it does not call a worker from Math3D.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>
+            <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there. A pinned example may not have that run in your Lab profile; its scene remains available for read-only inspection. Math3D does not call a worker.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
             {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
               {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>

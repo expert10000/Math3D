@@ -16,7 +16,7 @@ export const ScientificServicesPanel: React.FC<{
   onResult: (record: SymbolicResultRecord) => void;
   onOpenRuntimes?: () => void;
 }> = ({ context, sourceExpression, sourceProvenance, sourceLabel, sourceVariables, onResult, onOpenRuntimes }) => {
-  const [preset, setPreset] = useState<ScientificServicePreset>("All");
+  const [preset, setPreset] = useState<ScientificServicePreset>(context === "number_theory" ? "Number Theory" : "All");
   const operations = scientificOperationsFor(context, preset);
 
   return <section data-testid={`scientific-services-${context}`} style={{ display: "grid", gap: 8 }}>
@@ -28,7 +28,7 @@ export const ScientificServicesPanel: React.FC<{
       </select>
     </label>
     <div style={{ color: "#667085", fontSize: 11 }}>
-      {context === "surface" ? "Surface" : context === "geometry" ? "Geometry" : context === "graphs" ? "Graphs" : "CAS / Algebra"} operations use the same SageMath request and result contract.
+      {context === "surface" ? "Surface" : context === "geometry" ? "Geometry" : context === "graphs" ? "Graphs" : context === "number_theory" ? "Number Theory" : "CAS / Algebra"} operations use the same SageMath request and result contract.
       Inspect completed results in Inspector → Analysis.
     </div>
     {operations.length

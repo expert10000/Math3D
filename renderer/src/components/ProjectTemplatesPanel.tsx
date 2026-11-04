@@ -7,6 +7,11 @@ export type ProjectStarterId = Math3DProjectTemplateId | NotebookStarterId;
 const starters = [...MATH3D_PROJECT_TEMPLATES, ...NOTEBOOK_STARTERS.map(item => ({ ...item,
   steps: [item.id === "ripple-wave-study" ? "Open Surface first, then choose Graph, Mesh or Geometry from the Project tree. Find its Workbook citations and Notes in Project details → Documents." :
     item.id === "mesh-comparison-study" ? "In Projects, open Saved Mesh analysis results → View saved result trend. Pin two points to compare their recorded values." :
+    item.id === "mesh-comparison-review" ? "In Projects, open Compare saved documents → Saved comparison review. Inspect three verified pairs and open either authored Note." :
+    item.id === "mesh-subdivision-study" ? "In Projects → Compare saved documents, choose two generations of the same Mesh; its saved quality trend is also available." :
+    item.id === "mesh-curvature-study" ? "Open Saved Mesh analysis results → View saved result trend, then select a recorded mean or Gaussian curvature scalar." :
+    item.id === "mesh-trend-gap-study" ? "Open the saved quality trend to inspect the explicitly unrecorded middle generation." :
+    item.id === "mesh-geometry-probe" ? "Open Compare saved documents → Mesh / Geometry · shared metres, then pick either source and save a coordinate observation." :
     "Find its Workbook and Notes in Projects → Contents."] }))];
 
 export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]> = {
@@ -24,6 +29,11 @@ export const PROJECT_STARTER_MODULES: Record<ProjectStarterId, readonly string[]
   "curve-construction-notebook": ["Curve", "Surface", "Workbook", "Notes"],
   "ripple-wave-study": ["Graph", "Surface", "Mesh", "Geometry", "Workbook", "Notes"],
   "mesh-comparison-study": ["Mesh", "Analysis"],
+  "mesh-comparison-review": ["Mesh", "Analysis", "Notes"],
+  "mesh-subdivision-study": ["Mesh", "Analysis"],
+  "mesh-curvature-study": ["Mesh", "Analysis"],
+  "mesh-trend-gap-study": ["Mesh", "Analysis"],
+  "mesh-geometry-probe": ["Mesh", "Geometry", "Notes"],
 };
 
 export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <svg viewBox="0 0 320 152" aria-hidden="true" focusable="false">
@@ -37,7 +47,7 @@ export const StarterArtwork: React.FC<{ id: ProjectStarterId }> = ({ id }) => <s
     <path d="M63 90H248M81 60H258M156 30L109 120M212 30L174 120M45 120L156 30M109 120L212 30M174 120L268 30" fill="none" stroke="#93b5dc" strokeWidth="1.5" />
     <path d="M45 120L126 90L175 60L268 30" fill="none" stroke="#d97706" strokeWidth="5" strokeLinejoin="round" />
     {[ [45,120], [126,90], [175,60], [268,30] ].map(([x,y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="6" fill="#d97706" stroke="#fff" strokeWidth="2" />)}</>}
-  {id === "mesh-comparison-study" && <><path d="M42 105L89 64L132 105L89 145ZM111 85L162 36L213 85L162 134ZM190 66L248 12L304 66L248 122Z" fill="#dbeafe" stroke="#3976d7" strokeWidth="2" />
+  {id.startsWith("mesh-") && <><path d="M42 105L89 64L132 105L89 145ZM111 85L162 36L213 85L162 134ZM190 66L248 12L304 66L248 122Z" fill="#dbeafe" stroke="#3976d7" strokeWidth="2" />
     <path d="M50 111L103 57L151 90L230 44L294 24" fill="none" stroke="#d97706" strokeWidth="4" />
     {[[50,111],[103,57],[151,90],[230,44],[294,24]].map(([x,y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="5" fill="#d97706" stroke="#fff" strokeWidth="2" />)}</>}
   {id === "ripple-wave-study" && <><path d="M25 76C50 25 74 25 99 76S148 127 173 76S222 25 247 76S271 127 296 76V112C271 163 247 163 222 112S173 61 148 112S99 163 74 112S50 61 25 112Z" fill="#dbeafe" stroke="#80abd9" strokeWidth="2" />

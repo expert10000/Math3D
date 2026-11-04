@@ -1,0 +1,21 @@
+{
+  "format": "math3d.sage-integer-matrix-forms-result",
+  "schemaVersion": 1,
+  "coefficientDomain": "ZZ",
+  "sourceMatrix": [["2", "0", "0"], ["0", "6", "0"], ["0", "0", "0"]],
+  "inputShape": [3, 3],
+  "rank": 2,
+  "smith": {
+    "form": [["2", "0", "0"], ["0", "6", "0"], ["0", "0", "0"]],
+    "diagonal": ["2", "6", "0"],
+    "transformations": { "status": "verified",
+      "left": [["1", "0", "0"], ["0", "1", "0"], ["0", "0", "1"]],
+      "right": [["1", "0", "0"], ["0", "1", "0"], ["0", "0", "1"]] }
+  },
+  "hermite": {
+    "form": [["2", "0", "0"], ["0", "6", "0"], ["0", "0", "0"]],
+    "transformation": { "status": "verified",
+      "left": [["1", "0", "0"], ["0", "1", "0"], ["0", "0", "1"]] }
+  },
+  "cokernel": { "freeRank": 1, "torsionOrders": ["2", "6"] }
+}

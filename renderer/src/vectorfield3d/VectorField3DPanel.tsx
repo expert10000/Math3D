@@ -15,6 +15,7 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
   type AnalysisResultEnvelope,
+  type ScientificSelection,
   type VectorField3DEquilibriumSearch,
   type VectorField3DIsosurface,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
@@ -41,7 +42,9 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   type Graph2DScientificVolume,
   inspectGraph2DFieldReference, verifyGraph2DScientificVolume,
   type VectorField3DVerifiedTile } from "@math3d/core";
+import type { DerivedProfileProvenance } from "@math3d/core";
 import type { VectorField3DCameraState } from "@math3d/core";
+import type { Math3DProject } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
 import { seedPlaneNormalAxis, type SeedPlane3D } from "./fieldSeedPlacement3D";
 import { captureSeedEdit, restoreSeedEdit, seedGroupStyle,
@@ -82,6 +85,16 @@ import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
   type VectorDerivedRegionVerificationSession } from "./linkedVectorDerivedRegionGraphs";
 import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
+import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
+import { FieldExplorerProjectHierarchy } from "./FieldExplorerProjectHierarchy";
+import { VectorField3DLineIntegralPanel } from "./VectorField3DLineIntegralPanel";
+import { VectorField3DRegionIntegralPanel } from "./VectorField3DRegionIntegralPanel";
+import { VectorField3DTrajectoryPromotionPanel } from "./VectorField3DTrajectoryPromotionPanel";
+import { VectorField3DLICPanel } from "./VectorField3DLICPanel";
+import { VectorField3DDerivedOperationsPanel } from "./VectorField3DDerivedOperationsPanel";
+import { VectorField3DDerivedIsosurfacePanel } from "./VectorField3DDerivedIsosurfacePanel";
+import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfacePanel";
+import "./fieldExplorerHierarchy.css";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -116,7 +129,8 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
   { stableKey: crypto.randomUUID(), title: "3D vector field" });
 }
 
-export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocument, onClose, mount,
+export function VectorField3DPanel({ initialDocument, savedDocument, project, focusSelectionRequest,
+  onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
@@ -125,11 +139,25 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
+  onSaveLineIntegralSelection, onSaveLineIntegralResult,
+  onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
+  onSaveTrajectorySeeds, onPromoteTrajectoryCurve,
+  onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
-  onReturnToVectorLayer, overlayFields = [] }: {
+  onReturnToVectorLayer, overlayFields = [], derivedProfiles = [], onComputeDerivedProfile,
+  onOpenDerivedProfileInGraphs,
+  derivedProfileBusyId, derivedProfileProgress, derivedProfileError }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
+  project?: Math3DProject | null;
+  focusSelectionRequest?: { id: string; token: number } | null;
+  derivedProfiles?: readonly DerivedProfileProvenance[];
+  onComputeDerivedProfile?: (id: string) => Promise<unknown>;
+  onOpenDerivedProfileInGraphs?: (id: string) => Promise<void>;
+  derivedProfileBusyId?: string | null;
+  derivedProfileProgress?: string;
+  derivedProfileError?: string;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
@@ -165,6 +193,15 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   savedRegionResults?: readonly AnalysisResultEnvelope[];
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onSaveRegionResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onSaveLineIntegralSelection?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
+  onSaveLineIntegralResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onSaveRegionIntegralSelection?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
+  onSaveRegionIntegralResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onSaveTrajectorySeeds?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
+  onPromoteTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
+  onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
+    options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
+  onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
     surface: VectorField3DIsosurface) => void;
@@ -184,6 +221,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   onReturnToVectorLayer?: () => void;
 }) {
   const [libraryQuery, setLibraryQuery] = useState("");
+  const [inspectorSection, setInspectorSection] = useState<"all" | "layer" | "probe" | "analyze" | "provenance">("all");
   const matchingLibraryEntries = libraryEntries.filter(entry =>
     [entry.title, entry.sceneTitle, entry.datasetId, entry.kind, entry.unit,
       entry.sourceStatus, entry.reason].some(value => value?.toLowerCase().includes(libraryQuery.trim().toLowerCase())));
@@ -200,6 +238,19 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
     return () => { cancelRequested.current = true; cancelRunRef.current?.(); probeEpoch.current++;
       previewEpoch.current++; previous?.focus(); };
   }, []);
+  useEffect(() => {
+    if (!focusSelectionRequest) return;
+    const frame = requestAnimationFrame(() => {
+      const target = [...(dialogRef.current?.querySelectorAll<HTMLDetailsElement>(
+        "[data-selection-id]") ?? [])].find(item => item.dataset.selectionId === focusSelectionRequest.id);
+      if (!target) return;
+      target.open = true;
+      const summary = target.querySelector<HTMLElement>("summary");
+      summary?.scrollIntoView({ block: "nearest" });
+      summary?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusSelectionRequest]);
   const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
@@ -1926,11 +1977,42 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       onClick={() => setLayout("quad")}>Quad views</button>
     {multiView && <button type="button" disabled={busy} onClick={() => setLayout("three-pane")}>Single view</button>}
     {" "}<button type="button" aria-controls="field-equilibria" onClick={() => {
-      equilibriaButtonRef.current?.scrollIntoView({ block: "center" });
-      equilibriaButtonRef.current?.focus({ preventScroll: true });
+      setInspectorSection("analyze");
+      requestAnimationFrame(() => {
+        equilibriaButtonRef.current?.scrollIntoView({ block: "center" });
+        equilibriaButtonRef.current?.focus({ preventScroll: true });
+      });
     }}>Equilibria</button>
     {" "}<button type="button" onClick={onClose}>Back to Graphs</button></div></header>
     <div className="scientific-field-explorer-controls" aria-label="Field controls">
+    <FieldExplorerProjectHierarchy project={project}
+      activeSourceId={fieldLayer?.identity.id ?? document.identity.id}
+      activeSourceTitle={fieldLayer?.metadata.title ?? document.metadata.title} profiles={derivedProfiles}
+      onOpenSourceControls={fieldLayer ? onOpenFieldDetails : undefined}
+      onInspectProfile={id => {
+        setInspectorSection("provenance");
+        requestAnimationFrame(() => {
+          const card = [...(dialogRef.current?.querySelectorAll<HTMLElement>(
+            '[data-testid="explorer-derived-profile-provenance"]') ?? [])]
+            .find(item => item.dataset.profileId === id);
+          card?.scrollIntoView({ block: "nearest" });
+          card?.focus({ preventScroll: true });
+        });
+      }} />
+    {!fieldLayer && <VectorField3DLineIntegralPanel document={document} project={project}
+      onSaveSelection={onSaveLineIntegralSelection} onSaveResult={onSaveLineIntegralResult} />}
+    {!fieldLayer && <VectorField3DRegionIntegralPanel document={document} project={project}
+      onSaveSelection={onSaveRegionIntegralSelection} onSaveResult={onSaveRegionIntegralResult} />}
+    {!fieldLayer && <VectorField3DTrajectoryPromotionPanel document={document} project={project}
+      onSaveSeeds={(next, selection) => { onSaveTrajectorySeeds?.(next, selection); setDocument(next); }}
+      onPromoteCurve={onPromoteTrajectoryCurve} />}
+    {!fieldLayer && <VectorField3DLICPanel document={document} slice={visibleRegionSlice ?? slice} />}
+    {!fieldLayer && <VectorField3DDerivedOperationsPanel document={document} project={project}
+      onAppend={onAppendDerivedOperation} />}
+    {!fieldLayer && <VectorField3DDerivedIsosurfacePanel document={document} project={project}
+      onPromote={onPromoteDerivedIsosurface} />}
+    {!fieldLayer && <VectorField3DMultiIsosurfacePanel document={document}
+      onPromote={onPromoteIsosurface} />}
     <section className="scientific-field-explorer-library" aria-label="Dataset library"
       data-testid="scientific-field-explorer-library">
       <h4>Dataset library</h4>
@@ -1979,7 +2061,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       </li>)}</ul> : <p>{libraryEntries.length ? "No datasets match your search." :
         "Open a scientific scene or save a field in the Project to add it here."}</p>}
     </section>
-    <fieldset className="vector-field3d-form" disabled={busy || overlayReading}>
+    <fieldset id="field-explorer-source-controls" className="vector-field3d-form" disabled={busy || overlayReading}>
     {document.source.field.kind === "expressions" ?
       <div role="group" aria-label="Vector components" className="vector-field3d-controls">
         {(["P(x,y,z)", "Q(x,y,z)", "R(x,y,z)"] as const).map((label, index) => <label key={label}>
@@ -2230,8 +2312,19 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       probe={workspace.probe} disabled={busy}
       onBusyChange={setLineBusy} onAddGraphLine={onAddGraphLine} isGraphLineImported={isGraphLineImported} />
     </div>
-    <div className="scientific-field-explorer-inspector" aria-label="Field status and actions">
-    {fieldLayer && <section className="scientific-explorer-field-inspector">
+    <div className="scientific-field-explorer-inspector" aria-label="Field status and actions"
+      data-active-section={inspectorSection}>
+    <h4 className="field-explorer-inspector-heading">Inspector</h4>
+    <nav className="field-explorer-inspector-nav" aria-label="Inspector sections">
+      {(["all", "layer", "probe", "analyze", "provenance"] as const).map(section =>
+        <button key={section} type="button" aria-pressed={inspectorSection === section}
+          onClick={() => setInspectorSection(section)}>{section === "all" ? "Overview" :
+            section[0]!.toUpperCase() + section.slice(1)}</button>)}
+    </nav>
+    <h5 className="field-explorer-inspector-title" aria-live="polite">
+      {inspectorSection === "all" ? "Overview" :
+        inspectorSection[0]!.toUpperCase() + inspectorSection.slice(1)}</h5>
+    {fieldLayer && <section className="scientific-explorer-field-inspector" data-gf06-section="layer">
       <h4>{fieldLayer.metadata.title}</h4>
       <p>{fieldLayer.source.paired ? "Complex pair" : "Scalar field"} ·
         {" "}{fieldLayer.source.reference.shape.join(" × ")} source grid ·
@@ -2241,10 +2334,22 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <p>Displayed samples are verified again on each opening.</p>
       <button type="button" onClick={onOpenFieldDetails}>Open field controls</button>
     </section>}
-    <h4>Inspector</h4>
-    <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
+    <div data-gf06-section="provenance" className="field-explorer-profile-provenance">
+    {derivedProfiles.map(record => <DerivedProfileProvenanceCard key={record.profileId}
+      view="explorer" provenance={record}
+      onCompute={onComputeDerivedProfile ? () => void onComputeDerivedProfile(record.profileId) : undefined}
+      busy={derivedProfileBusyId === record.profileId}
+      progress={derivedProfileBusyId === record.profileId ? derivedProfileProgress : undefined}
+      error={derivedProfileError} />)}
+    {derivedProfiles.map(record => <button key={`graph:${record.profileId}`} type="button"
+      data-testid="gf07-open-profile-from-explorer"
+      disabled={!onOpenDerivedProfileInGraphs || !["current", "not-computed"].includes(record.reason ?? "current")}
+      onClick={() => void onOpenDerivedProfileInGraphs?.(record.profileId)}>
+      Open {record.title} in Graphs</button>)}
+    </div>
+    <p data-gf06-section="layer">Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
-    {sliceControlAxis !== undefined && <section aria-label="Rectangle actions"
+    {sliceControlAxis !== undefined && <section aria-label="Rectangle actions" data-gf06-section="analyze"
       className="scientific-explorer-region-actions"
       data-testid="scientific-inspector-region-actions">
       <h5>Rectangle actions</h5>
@@ -2264,7 +2369,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           <button type="button" data-testid="scientific-inspector-preview-slice"
             disabled={busy || lineBusy} onClick={() => void (multiView ?
               previewLinkedViews() : previewSlice())}>{multiView ?
-              "Preview all views" : "Preview slice"}</button>
+              "Preview all views for rectangle" : "Prepare slice for rectangle"}</button>
         </> :
         !inspectorRegion ? <>
           <p>Select two corners on the slice to create a physical rectangle.</p>
@@ -2298,13 +2403,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
             inspectorSubrectangle.error}</p>}
         </>}
     </section>}
-    <nav aria-label="Field layers" className="vector-field3d-layers">
+    <nav aria-label="Field layers" className="vector-field3d-layers" data-gf06-section="layer">
       {([ ["arrows", "3D arrows"], ["trajectories", "Trajectories"],
         ["xy", "XY slice"], ["xz", "XZ slice"], ["yz", "YZ slice"] ] as const).map(([layer, label]) =>
         <button type="button" key={layer} disabled={busy} aria-pressed={workspace.selectedLayer === layer}
           onClick={() => selectLayer(layer)}>{label}</button>)}
     </nav>
-    {sliceControlAxis !== undefined && <section aria-label="Slice controls"
+    {sliceControlAxis !== undefined && <section aria-label="Slice controls" data-gf06-section="layer"
       className="scientific-explorer-slice-workflow">
       <h5>{normalAxis === undefined ? "XY" : workspace.selectedLayer.toUpperCase()} slice</h5>
       <label>Fixed {document.source.axes[sliceControlAxis].label} ({document.source.axes[sliceControlAxis].unit})
@@ -2337,7 +2442,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           '.scientific-field-explorer-viewer .vector-field3d-line-profile')?.scrollIntoView(
             { behavior: "smooth", block: "nearest" })}>Show line profile through point</button>}
     </section>}
-    <section aria-label="Linked probe controls" className="scientific-explorer-linked-probe-actions">
+    <section aria-label="Linked probe controls" className="scientific-explorer-linked-probe-actions" data-gf06-section="probe">
       <h5>Linked probe</h5>
       <label><input type="checkbox" aria-label="Link slice planes to probe"
         checked={workspace.viewsLinked} disabled={busy || lineBusy}
@@ -2348,7 +2453,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           '[aria-label="Linked field probe"]')?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           Edit probe coordinates</button>}
     </section>
-    <section aria-label="Cross-layer physical probe"
+    <section aria-label="Cross-layer physical probe" data-gf06-section="probe"
       className="vector-field3d-probe scientific-explorer-linked-inspector"
       data-testid="scientific-explorer-cross-layer-probe">
       <h5>Cross-layer physical probe</h5>
@@ -2376,17 +2481,18 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           scalarStatus={scalarOverlayStatus} complexStatus={complexOverlayStatus} />}
       </>}
     </section>
-    <LinkedRegionBoundsEditor region={workspace.overlayRegion}
+    <div data-gf06-section="analyze"><LinkedRegionBoundsEditor region={workspace.overlayRegion}
       axes={document.source.axes} onChange={setOverlayRegion} />
+    </div>
     {workspace.overlayRegion?.visible && scalarOverlay?.visible && complexOverlay?.visible &&
-      !visibleRegionSlice && <section aria-label="Combined field rectangle inspection"
+      !visibleRegionSlice && <section aria-label="Combined field rectangle inspection" data-gf06-section="analyze"
         className="vector-field3d-probe">
         <CombinedOverlayRegionReadout document={document} region={workspace.overlayRegion}
           scalarVolume={linkedProfileScalarVolume}
           complexVolumes={linkedRegionComplexVolumes} vectorStatus={linkedVectorStatus}
           scalarStatus={scalarOverlayStatus} complexStatus={complexOverlayStatus} />
       </section>}
-    <section aria-label="Display clipping box" className="vector-field3d-view-controls">
+    <section aria-label="Display clipping box" className="vector-field3d-view-controls" data-gf06-section="layer">
       <h5>Display clipping box</h5>
       <p>Hide samples outside these bounds. Field values, probes and saved source data stay unchanged.</p>
       <div className="vector-field3d-clip-grid">{([0, 1, 2] as const).map(axis =>
@@ -2412,7 +2518,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         <option value="yz">Orthographic YZ (look along x)</option>
       </select></label>
     </section>
-    <section aria-label="Linked field probe" className="vector-field3d-probe">
+    <section aria-label="Linked field probe" className="vector-field3d-probe" data-gf06-section="probe">
       <h5>Linked physical-point probe</h5>
       <p>{workspace.viewsLinked ? "A selected point moves all three slice planes to its physical coordinates." :
         "Slice planes keep independent fixed coordinates; selecting a point still updates the probe."}</p>
@@ -2459,7 +2565,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {!probeArtifact && <p role="status">Probe values require a fresh source verification.</p>}
       </>}
     </section>
-    <section aria-label="Field calculus at probe" className="vector-field3d-probe">
+    <section aria-label="Field calculus at probe" className="vector-field3d-probe" data-gf06-section="analyze">
       <h5>Field calculus at probe</h5>
       <button type="button" disabled={!workspace.probe || busy || lineBusy}
         onClick={() => void analyzeDifferential()}>Analyze field calculus</button>
@@ -2537,7 +2643,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {differential.diagnostics.map((message, index) => <p key={index}>{message}</p>)}
       </div>}
     </section>
-    <section aria-label="Speed isosurface" className="vector-field3d-probe">
+    <section aria-label="Speed isosurface" className="vector-field3d-probe" data-gf06-section="analyze">
       <h5>Speed isosurface · bounded extraction</h5>
       <p>Extract |F| within the physical clipping box above. The saved level and clip can be
         regenerated after Project reopen; source values are verified again.</p>
@@ -2592,7 +2698,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
           Add source-linked Mesh to Project</button>}
       </div>}
     </section>
-    <section id="field-equilibria" aria-label="Field equilibria" className="vector-field3d-probe">
+    <section id="field-equilibria" aria-label="Field equilibria" className="vector-field3d-probe" data-gf06-section="analyze">
       <h5>Equilibria · bounded search</h5>
       <p>Searches a 5×5×5 seed grid and saved seeds. Results are local candidates, never a complete count.</p>
       <button ref={equilibriaButtonRef} type="button" disabled={busy || lineBusy}
@@ -2651,7 +2757,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         </li>)}</ul>
       </details>}
     </section>
-    {normalAxis !== undefined && <section aria-label="Slice appearance and verification">
+    {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">
       <h5>Slice appearance and verification</h5>
       <section aria-label="Scalar overlay" data-testid="scientific-scalar-overlay-controls">
         <h6>Scalar heatmap + vector arrows</h6>
@@ -2738,6 +2844,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {" "}{slice.channel} {slice.min.toPrecision(4)}–{slice.max.toPrecision(4)} {slice.unit}.
         {slice.method && ` ${slice.method}; ${slice.boundarySamples} boundary stencils with reduced accuracy.`}</p>}
     </section>}
+    <div data-gf06-section="provenance" className="field-explorer-source-provenance">
     <p>{datasetLink ? "Manifest-pinned dataset link" : "Expression field"} ·
       {datasetLink ? ` ${datasetLink.shape.join(" × ")} samples` : " bounded authored domain"}</p>
     {datasetLink && <p role="status" aria-live="polite" data-testid="vector-field3d-source-verification">
@@ -2753,6 +2860,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
         {component.name}: <code>{component.resourceSha256}</code></li>)}</ul>
       <p>Axes: {datasetLink.axes.map(axis => `${axis.name} (${axis.unit})`).join(" · ")}</p>
     </details>}
+    {fieldLayer && <p>Field layer {fieldLayer.identity.id} · revision {fieldLayer.identity.revision} ·
+      {" "}source {fieldLayer.source.reference.sceneId} / {fieldLayer.source.reference.datasetId}.</p>}
+    </div>
     <div><button type="button" disabled={busy || lineBusy} onClick={() => void (multiView ?
       previewLinkedViews() : render())}>{busy ? "Verifying…" :
         multiView ? "Preview all views" : "Verify & render arrows"}</button>

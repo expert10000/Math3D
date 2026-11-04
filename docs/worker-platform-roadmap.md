@@ -360,9 +360,9 @@ thread settings, and container inputs; carry license notices in release output.
 Sage is optional and is not bundled in the normal Electron installer. The
 current desktop and same-machine web path uses a bounded local WSL worker for
 the supported symbolic and polynomial operations; the Docker service remains
-an explicit alternative. A private, authenticated container gateway with a
-warm, bounded pool is the hosted target, not a claim about the current local
-implementation. Sage is never selected for import, rendering, picking,
+an explicit alternative. A private, authenticated container gateway now routes
+the two Number Theory operations in the first Phase 6 slice. A broader hosted
+pool and federation remain open. Sage is never selected for import, rendering, picking,
 normals, or routine mesh work. A legal/distribution review and resource quotas
 are prerequisites to enabling it for any hosted deployment.
 
@@ -483,8 +483,10 @@ Freeform Sage inputs that are not linked to a saved scene source remain explicit
 unlinked; they are not silently marked current. Hosted gateway and code-cell
 provenance are separate future work.
 
-The bounded WSL worker and optional Docker service are local delivery slices.
-They do not complete the hosted gateway. Surface and Geometry Sage operations
+The bounded WSL worker and optional Docker service remain local delivery slices.
+The Phase 6 private gateway now accepts GCD and modular inverse through an
+authenticated, quota-limited route; it does not complete the hosted federation
+or resource-transport plan. Surface and Geometry Sage operations
 now use one shared operation registry and `ExecutionService`, with backend
 capabilities discovered from the WSL and Docker health contracts. The shared
 broker handles execution, cancellation, and Compute diagnostics; the Sage
@@ -504,23 +506,34 @@ Workbook or an optional docked console.
 
 | Priority | UI change | Scope | Current state / acceptance |
 | --- | --- | --- | --- |
-| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Implemented for Surface, Geometry, Graphs, and CAS Sage operations. The shared panel filters contextual operations and invokes one `ExecutionService` registry with no per-run broker or direct feature-side transport path. Extend the same contract to other modules. |
+| P0 | Refactor Services into a shared panel backed by a contextual operation registry | All modules | Implemented for Surface, Geometry, Graphs, CAS, and Number Theory Sage operations. The shared panel filters contextual operations and invokes one `ExecutionService` registry with no per-run broker or direct feature-side transport path. Extend the same contract to other modules. |
 | P0 | Move Docker/WSL configuration and diagnostics into `Compute → Runtimes` | Global | Sage Local WSL and Docker now show availability, reported SageMath version, environment, route, operation limits, and actionable probe errors from the shared registry. Services links directly to this view. Broader runtime profile controls remain in the Compute engine manager. |
-| P0 | Add SageMath engine with WSL backend | Services | Surface, Geometry, Graphs, and CAS share the bounded Local WSL and Docker adapters, capability reporting, execution, cancellation, and Compute diagnostics. Broader module registration remains open. |
-| P1 | Add operation-specific result cards and artifact actions | Inspector | Shared Surface, Geometry, Graphs, and CAS Sage cards render expression, vector, matrix, solution set, and error results with backend, SageMath version, warnings, source revision, and freshness. Typed actions allow gradient previews and commits for usable vectors in Surface and Geometry, scalar geometry for usable expressions, and Workbook evidence for every result, including errors. Graph expressions retain object source freshness in Inspector and Workbook. Desktop and web flows cover the shared path. |
+| P0 | Add SageMath engine with WSL backend | Services | Surface, Geometry, Graphs, CAS, and Number Theory share the bounded Sage execution registry, capability reporting, cancellation, and Compute diagnostics. Number Theory currently uses Docker; Local WSL does not advertise GCD or modular inverse. Broader module registration remains open. |
+| P1 | Add operation-specific result cards and artifact actions | Inspector | Shared Surface, Geometry, Graphs, CAS, and Number Theory Sage cards render expression, vector, matrix, solution set, and error results with backend, SageMath version, warnings, source revision, and freshness. Typed actions allow gradient previews and commits for usable vectors in Surface and Geometry, scalar geometry for usable expressions, and Workbook evidence for every result, including errors. Graph expressions retain object source freshness in Inspector and Workbook. Desktop and web flows cover the shared path. |
 | P1 | Visualize a result as an overlay or save it as an object | Viewer | Surface and Geometry now offer explicit preview, discard, and commit actions for Sage gradient overlays and scalar geometry. Surface commits replace the active implicit expression; Geometry commits create a mesh object with serialized Sage source metadata. Commits also save exact Workbook evidence. Linked source changes invalidate live previews and overlays. Gradient overlays remain session-scoped; extend persistent overlay adapters to later modules as needed. |
 | P2 | Add a Sage Console bottom dock | Advanced users | Implemented for the trusted Local WSL desktop runtime. The dock shows session state, limits, cancellation, output, and SHA-256 input provenance through the shared `ExecutionService` and Compute job flow. Trust is explicit and session scoped; web and public Docker routes do not accept code. Private runtime support remains open. |
 | P2 | Add persistent Sage code cells | Workbook | Implemented as Sage code blocks with saved inputs, output history, exact dependency snapshots, and source freshness in Block, Document, and export views. Each cell uses the shared `ExecutionService` and requires explicit session trust for Local WSL; web and hosted routes cannot execute cell code. Private runtime support remains open. |
 | P3 | Add a dedicated CAS/Algebra workspace | Global module | Implemented as a peer scientific workspace with the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Exact jobs retain freeform input provenance when saved to Workbook. The Console opens from CAS but code execution still requires explicit trust in the Local WSL desktop runtime; web code execution remains unavailable. Desktop and web flows are covered. |
+| P3 | Add a dedicated Number Theory workspace | Global module | Implemented for exact GCD and modular inverse through the shared Sage Services catalog, Inspector result cards, and Compute runtime discovery. Docker is selected by default because these bounded operations are not registered in Local WSL; the authenticated Private gateway is also selectable when configured. Results retain freeform input provenance in Workbook; desktop and web flows cover execution, cancellation, diagnostics, and runtime access. |
 
-The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in this gate used a local test service; a live Docker deployment remains a separate runtime check.
+The [desktop CAS acceptance record](evidence/cas-algebra-desktop-2026-11-02.md) verifies a real SageMath 9.5 Local WSL calculation, Workbook save/export and independent file reopen, source freshness through shared Surface Services, Console trust, and the absent-Docker capability message. The Docker success path in that earlier gate used a local test service. The later [live Docker Number Theory gate](../services/sage-worker/README.md) ran GCD and modular inverse through SageMath 10.10 on desktop and web, with no mocked `/run` responses.
+
+The [desktop Graph Sage acceptance record](evidence/graph-sage-desktop-2026-11-03.md) verifies a real Local WSL exact factorization from a selected Graph function, current-to-stale Workbook source handling after an edit, bundle and Markdown export, and independent `.math3d` import with unavailable-source status. It also records a Graph preview viewport crash found during the gate and its passing regression check. A forced cold WSL distribution start remains unverified; the recorded first-run time is from a fresh Electron profile and worker.
+
+The [desktop Number Theory Workbook acceptance record](evidence/number-theory-workbook-2026-11-03/README.md) verifies real SageMath 10.10 Docker GCD and modular inverse results, a non-invertible case with its failed response, Workbook save, `.math3d` and Markdown export, and independent import into a fresh Electron profile. Failed results now show their outcome and error in Workbook and Markdown; freeform inputs use an `Input` label in saved text. This gate covers the local Docker service, not the hosted gateway.
+
+The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap-2026-11-03.md) preserves the full proposed object-centric scope and maps **Structures / Operations / Recipes** into the existing CAS / Algebra UI. [SAGE-A01](evidence/sage-a01-schema-2026-11-03.md) supplies versioned algebra object contracts; [SAGE-A02](evidence/sage-a02-project-registry-2026-11-03.md) saves and independently reopens their revision histories in a Project; [SAGE-A03](evidence/sage-a03-dependency-freshness-2026-11-03.md) derives direct and transitive stale status; [SAGE-A04](evidence/sage-a04-bounded-reconstruction-2026-11-03.md) adds bounded Sage reconstruction; [SAGE-A05](evidence/sage-a05-domain-coercion-2026-11-03.md) adds pinned parent descriptors and directional coercion-map checks; [SAGE-A06](evidence/sage-a06-structures-ui-2026-11-03.md) adds the Project Structures explorer and object dossier in CAS; [SAGE-A07](evidence/sage-a07-ring-field-builder-2026-11-03.md) adds the five-kind Ring and Field Builder with validation, exact preview and saved domain facts; [SAGE-A08](evidence/sage-a08-runtime-fixtures-2026-11-04.md) adds route-level runtime capability reporting and a seven-case Sage 9.5/10.10 fixture matrix; [SAGE-B01](evidence/sage-b01-typed-operation-registry-2026-11-04.md) adds typed bounded operations filtered by saved object kind, parent domain, freshness and runtime; [SAGE-B02](evidence/sage-b02-polynomial-dossier-2026-11-04.md) adds a versioned exact `QQ[x]` polynomial dossier recipe; [SAGE-B03](evidence/sage-b03-exact-matrix-2026-11-04.md) adds a bounded exact `QQ` matrix dossier with RREF, kernel, image and minimal polynomial; [SAGE-B04](evidence/sage-b04-smith-hermite-2026-11-04.md) adds verified Smith and Hermite workflows over `ZZ` with cokernel invariants; [SAGE-B05](evidence/sage-b05-contextual-evidence-2026-11-04.md) adds contextual broker runs and validated Project evidence pinned to the selected object revision; [SAGE-B06](evidence/sage-b06-dossier-inspector-2026-11-04.md) adds structured saved-result, structure, verification and execution views in the CAS Inspector; [SAGE-B07](evidence/sage-b07-recipe-dag-2026-11-04.md) adds Project recipe graphs, typed stage dependencies and partial-failure evidence retention. The real Docker 10.10 comparison remains pending while its service is unavailable on this PC. [SAGE-B08](evidence/sage-b08-operation-goldens-2026-11-04.md) adds 16 exact polynomial and matrix result/rejection cases with a reusable Sage 9.5/10.10 comparison gate. Local Sage 9.5 passes; [SAGE-C01](evidence/sage-c01-ideal-objects-2026-11-04.md) adds Project ideal objects pinned to an ambient QQ polynomial ring, a bounded generator builder and an Inspector, with independent Project reopen. The next feature gate is `SAGE-C02`: Gröbner and elimination recipes. The current freeform Services and Workbook paths remain available.
+
+[SAGE-C02–C04](evidence/sage-c02-c04-ideal-workflows-2026-11-04.md) now adds bounded Gröbner and elimination recipes for saved ideals, typed membership with positive and negative normal forms, and versioned quotient rings with pinned dimension evidence. Exact local Sage 9.5 fixtures and a fresh-profile desktop Project reopen pass. The next feature gate is **SAGE-C05**; the real B08 Docker Sage 10.10 comparison remains open.
+
+[SAGE-C05](evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md) adds runtime-advertised ideal syzygies and standard graded quotient Hilbert series with pinned Project evidence. Unsupported grading, homogeneity, size and runtime cases have explicit reasons. The next feature gate is **SAGE-C06**; B08's live Docker Sage 10.10 comparison remains open.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate
-workers, routes, result schemas, or runtime installations. The forthcoming
-Number Theory module should register its Sage operations through the same
-contract used by Surface, Geometry, and Graph.
+workers, routes, result schemas, or runtime installations. Number Theory now
+registers GCD and modular inverse through the same contract used by Surface,
+Geometry, and Graph.
 
 Delivery gates: first prove one shared Services operation in two modules with
 the same request/result envelope and cancellation; then move runtime setup and
@@ -541,6 +554,36 @@ the requested exactness.
 Acceptance: an environment matrix proves browser, desktop, web, mobile, local
 native, and remote capability states with no direct public access to math
 workers.
+
+The first Phase 6 Sage slice is implemented in [`services/sage-gateway`](../services/sage-gateway/README.md):
+an authenticated gateway advertises only GCD and modular inverse, enforces
+input, output, concurrency, rate, time, container memory, and process limits,
+forwards cancellation, and returns typed failures. Desktop main and the local
+web proxy hold the credential; the renderer selects this backend through the
+same `ExecutionService` registry and Compute diagnostics. The Compose gateway
+binds only to loopback, and its Sage worker has no host port. The existing
+local Docker route remains selectable. Broader remote resources, identity
+provider integration, distributed quotas, rollback, and release
+manifests remain open in this phase.
+
+The hosted Sage web session slice now exchanges deployment-assigned per-user
+access keys for HTTP-only session cookies through the loopback web proxy behind
+an HTTPS reverse proxy. Capability discovery, GCD, modular inverse, typed
+failures, cancellation, and Compute diagnostics still use the shared
+`ExecutionService`; each user has a separate rate and concurrency quota and
+can cancel only their own job. Two independent browser sessions and the
+unchanged desktop route are covered by live tests. The Sage worker remains on
+its internal Docker network without a published port. Identity-provider
+integration, multi-replica shared quota storage, remote resource transport, and
+release rollback remain open.
+
+The [local HTTPS edge gate](evidence/sage-https-edge-2026-11-03.md) exposed
+that in-memory rate counters reset when the web proxy restarted while signed
+sessions stayed valid. The web proxy now requires an access-restricted durable
+policy file in hosted mode and retains rate counters, active job leases, login
+attempts, and revoked sessions across a restart. This is sufficient for one
+proxy process. Multi-replica enforcement still requires a shared transactional
+store; the disposable local TLS edge does not replace a production edge audit.
 
 ## Conformance and quality gates
 

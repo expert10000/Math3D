@@ -5,17 +5,19 @@ import type { Workbook } from "@math3d/workbook";
 import type { NoteCaptureKind, ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { projectNoteSourceResolver } from "../projects/projectNoteTargets";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
-import { resolveProjectComparisonNoteTarget } from "../projects/projectComparisonNotes";
+import { inspectProjectComparisonNote, resolveProjectComparisonNoteTarget } from "../projects/projectComparisonNotes";
+import { resolveProjectSavedMeshComparisonNoteTarget } from "../projects/projectSavedMeshComparisonNotes";
 import type { ProjectResourceReader } from "../projects/projectResources";
 import { ProjectNoteLiveValues, type NoteValuePatch } from "./ProjectNoteLiveValues";
 
 type Filter = "all" | "scene" | "object" | "result" | "workbook" | "comparison";
 const category = (anchor: ProjectNote["anchor"]): Exclude<Filter, "all"> | "global" =>
-  anchor?.kind === "comparison" ? "comparison" : anchor?.kind === "document" ? "scene" : anchor?.kind === "object-local" || anchor?.kind === "subentity" || anchor?.kind === "entity-selection" || anchor?.kind === "graph-selection" ? "object" :
+  anchor?.kind === "comparison" || anchor?.kind === "saved-mesh-comparison" ? "comparison" : anchor?.kind === "document" ? "scene" : anchor?.kind === "object-local" || anchor?.kind === "subentity" || anchor?.kind === "entity-selection" || anchor?.kind === "graph-selection" ? "object" :
     anchor?.kind === "result" ? "result" : anchor?.kind === "workbook-block" ? "workbook" : "global";
 
 const anchorLabel = (anchor: ProjectNote["anchor"]) => !anchor ? "Unanchored" :
   anchor.kind === "comparison" ? `Comparison ${anchor.compositionId} · A r${anchor.members[0].revision} · B r${anchor.members[1].revision} · ${anchor.alignment}` :
+    anchor.kind === "saved-mesh-comparison" ? `Saved Mesh comparison ${anchor.comparisonId} · ${anchor.metricPath}` :
     anchor.kind === "workbook-block" ? `Workbook block ${anchor.blockId}` : anchor.kind === "result" ? `Result ${anchor.resultId}` :
     anchor.kind === "graph-selection" ? `Graph ${anchor.objectId}${anchor.probe ? ` · probe (${anchor.probe.x}, ${anchor.probe.y})` : ""}` :
     "objectId" in anchor ? `${anchor.objectId}${"entityId" in anchor ? ` · ${anchor.entityKind} ${anchor.entityId}` : ""}` : `Document ${anchor.source.documentId}`;
@@ -36,20 +38,26 @@ const SavedNote: React.FC<{ note: ProjectNote; status: string; busy: boolean; ta
       <button type="button" disabled={busy || !title.trim() || !body.trim()} onClick={() => { void onSave(note, title, body).then((saved) => { if (saved) setEditing(false); }); }}>Save changes</button>
       <button type="button" onClick={() => { setTitle(note.title); setBody(note.body); setEditing(false); }}>Cancel</button>
     </> : <>
-      <strong>{note.title}</strong><p data-testid="note-rendered-body" style={{ whiteSpace: "pre-wrap", margin: "5px 0" }}>{projectNoteRenderedBody(note, workspace)}</p>
+      <strong>{note.title}</strong>{(note.anchor?.kind === "saved-mesh-comparison" || note.anchor?.kind === "comparison" && !!note.anchor.coordinateProbe) && !status.startsWith("current") ?
+        <p role="alert">Observation text unavailable until its exact comparison evidence verifies.</p> :
+        <p data-testid="note-rendered-body" style={{ whiteSpace: "pre-wrap", margin: "5px 0" }}>{projectNoteRenderedBody(note, workspace)}</p>}
       <ProjectNoteLiveValues note={note} workspace={workspace} busy={busy} onChange={onChangeValues} />
       {note.anchor?.kind === "comparison" && <small style={{ display: "block", overflowWrap: "anywhere" }}>
         A: {note.anchor.members[0].id} · {note.anchor.members[0].structuralHash}<br />
         B: {note.anchor.members[1].id} · {note.anchor.members[1].structuralHash}
       </small>}
-      <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit</button>
-      {note.anchor && <button type="button" disabled={busy} onClick={() => onOpen(note)} style={{ marginLeft: 5 }}>Open target</button>}
+      {note.anchor?.kind === "saved-mesh-comparison" && <small style={{ display: "block", overflowWrap: "anywhere" }}>
+        A: {note.anchor.a.resultId} · {note.anchor.a.resultHash}<br />
+        B: {note.anchor.b.resultId} · {note.anchor.b.resultHash}
+      </small>}
+      <button type="button" disabled={busy || ((note.anchor?.kind === "saved-mesh-comparison" || note.anchor?.kind === "comparison" && !!note.anchor.coordinateProbe) && !status.startsWith("current"))} onClick={() => setEditing(true)}>Edit</button>
+      {note.anchor && <button type="button" disabled={busy || ((note.anchor.kind === "saved-mesh-comparison" || note.anchor.kind === "comparison" && !!note.anchor.coordinateProbe) && !status.startsWith("current"))} onClick={() => onOpen(note)} style={{ marginLeft: 5 }}>Open target</button>}
       <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
         <select aria-label={`Workbook block for ${note.title}`} value={targetKey} onChange={(event) => setTargetKey(event.target.value)} style={{ minWidth: 0, flex: 1 }}>
           <option value="">Choose Project Workbook block</option>
           {targets.map((target) => <option key={`${target.workbookId}:${target.blockId}`} value={`${target.workbookId}:${target.blockId}`}>{target.label}</option>)}
         </select>
-        <button type="button" disabled={busy || !targets.some((target) => `${target.workbookId}:${target.blockId}` === targetKey)}
+        <button type="button" disabled={busy || ((note.anchor?.kind === "saved-mesh-comparison" || note.anchor?.kind === "comparison" && !!note.anchor.coordinateProbe) && !status.startsWith("current")) || !targets.some((target) => `${target.workbookId}:${target.blockId}` === targetKey)}
           onClick={() => { const target = targets.find((item) => `${item.workbookId}:${item.blockId}` === targetKey); if (target) void onSendToWorkbook(note, target.workbookId, target.blockId); }}>
           Send to Workbook
         </button>
@@ -96,8 +104,13 @@ export const ProjectNotesPanel: React.FC<{
   const resolver = useMemo(() => project && workspace ? projectNoteSourceResolver(project.identity.id, workspace) : null, [project?.identity.id, workspace]);
   const status = (note: ProjectNote): string => {
     if (!resolver) return "Source unavailable";
+    if (note.anchor?.kind === "comparison" && note.anchor.coordinateProbe && project && readResource) {
+      const checked = inspectProjectComparisonNote(project, note, readResource);
+      return `${checked.status === "missing" ? "Detached" : checked.status}${checked.reason ? ` — ${checked.reason}` : ""}`;
+    }
     const state = inspectProjectNoteAnchor(note, { ...resolver, comparison: id => project && readResource ?
       resolveProjectComparisonNoteTarget(project, id, readResource, note.anchor?.kind === "comparison" ? note.anchor.alignment : "not applicable") : null,
+      savedMeshComparison: id => project && readResource ? resolveProjectSavedMeshComparisonNoteTarget(project, id, readResource) : null,
       workbookBlock: (workbookId, blockId) => {
       const target = workbooks.find((item) => item.workbook.id === workbookId);
       const block = target?.workbook.stages.flatMap((stage) => stage.blocks).find((item) => item.id === blockId);

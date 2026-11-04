@@ -1,0 +1,312 @@
+{
+  "format": "math3d.sage-algebra-runtime-fixtures",
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "ZZ",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "kind": "integer-ring",
+              "label": "Z",
+              "revision": 1,
+              "definition": {
+                "kind": "integer-ring"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:5c8ca9e5c9ea3140592a1a56aca04c02cd4de39871c63d3a7bb3ce3d1c52a2d0"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "integer-ring",
+        "characteristic": "0",
+        "isField": false
+      }
+    },
+    {
+      "name": "QQ",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:cccccccccccccccccccccccccccccccc",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:cccccccccccccccccccccccccccccccc",
+              "kind": "rational-field",
+              "label": "Q",
+              "revision": 1,
+              "definition": {
+                "kind": "rational-field"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:7c62f0965f23bdc4651f275c5e259aa3a17c2672a0d27b4f3cdfe136d5c165ef"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "rational-field",
+        "characteristic": "0",
+        "isField": true
+      }
+    },
+    {
+      "name": "Z/12Z",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:dddddddddddddddddddddddddddddddd",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:dddddddddddddddddddddddddddddddd",
+              "kind": "modular-ring",
+              "label": "Z12",
+              "revision": 1,
+              "definition": {
+                "kind": "modular-ring",
+                "modulus": "12"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:e1ef0cae8602577df090ab81d977385583b4397cfe29bc8c882344f386070180"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "modular-ring",
+        "characteristic": "12",
+        "isField": false
+      }
+    },
+    {
+      "name": "Z/13Z",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "kind": "modular-ring",
+              "label": "F13",
+              "revision": 1,
+              "definition": {
+                "kind": "modular-ring",
+                "modulus": "13"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:bae89220f442293debbe200586d6c2154022f0d721aaa98b0898d51e0f50e6f8"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "modular-ring",
+        "characteristic": "13",
+        "isField": true
+      }
+    },
+    {
+      "name": "GF(7^2)",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:ffffffffffffffffffffffffffffffff",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:ffffffffffffffffffffffffffffffff",
+              "kind": "finite-field",
+              "label": "F49",
+              "revision": 1,
+              "definition": {
+                "kind": "finite-field",
+                "characteristic": 7,
+                "degree": 2,
+                "generator": "a",
+                "construction": "canonical"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:94a1021557fa24e0f0e5624aa66f922508c7d615cfac7f1c717163c25cb1972f"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "finite-field",
+        "characteristic": "7",
+        "isField": true
+      }
+    },
+    {
+      "name": "QQ[x,y]",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:11111111111111111111111111111111",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:cccccccccccccccccccccccccccccccc",
+              "kind": "rational-field",
+              "label": "Q",
+              "revision": 1,
+              "definition": {
+                "kind": "rational-field"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:7c62f0965f23bdc4651f275c5e259aa3a17c2672a0d27b4f3cdfe136d5c165ef"
+            },
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:11111111111111111111111111111111",
+              "kind": "polynomial-ring",
+              "label": "Qxy",
+              "revision": 1,
+              "definition": {
+                "kind": "polynomial-ring",
+                "coefficientDomain": {
+                  "objectId": "math3d:algebra:cccccccccccccccccccccccccccccccc",
+                  "revision": 1
+                },
+                "variables": [
+                  "x",
+                  "y"
+                ],
+                "monomialOrder": "degrevlex"
+              },
+              "dependencies": [
+                {
+                  "objectId": "math3d:algebra:cccccccccccccccccccccccccccccccc",
+                  "revision": 1
+                }
+              ],
+              "contentHash": "sha256:b7268ad588b5f6652af0dccef8811e59beb1f91dcfc9ec6269547b1f177cb5d6"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "polynomial-ring",
+        "characteristic": "0",
+        "isField": false,
+        "variables": [
+          "x",
+          "y"
+        ]
+      }
+    },
+    {
+      "name": "GF(7^2)[t]",
+      "request": {
+        "operation": "sage.algebra.reconstruct",
+        "params": {
+          "format": "math3d.sage-algebra-reconstruction",
+          "schemaVersion": 1,
+          "projectId": "math3d:project:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "objectId": "math3d:algebra:22222222222222222222222222222222",
+            "revision": 1
+          },
+          "objects": [
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:ffffffffffffffffffffffffffffffff",
+              "kind": "finite-field",
+              "label": "F49",
+              "revision": 1,
+              "definition": {
+                "kind": "finite-field",
+                "characteristic": 7,
+                "degree": 2,
+                "generator": "a",
+                "construction": "canonical"
+              },
+              "dependencies": [],
+              "contentHash": "sha256:94a1021557fa24e0f0e5624aa66f922508c7d615cfac7f1c717163c25cb1972f"
+            },
+            {
+              "schemaVersion": 1,
+              "id": "math3d:algebra:22222222222222222222222222222222",
+              "kind": "polynomial-ring",
+              "label": "F49t",
+              "revision": 1,
+              "definition": {
+                "kind": "polynomial-ring",
+                "coefficientDomain": {
+                  "objectId": "math3d:algebra:ffffffffffffffffffffffffffffffff",
+                  "revision": 1
+                },
+                "variables": [
+                  "t"
+                ],
+                "monomialOrder": "lex"
+              },
+              "dependencies": [
+                {
+                  "objectId": "math3d:algebra:ffffffffffffffffffffffffffffffff",
+                  "revision": 1
+                }
+              ],
+              "contentHash": "sha256:185d12a5734b13cc5ae66c30bac9a23b308fcb27b1334e7781e38d30abc2f012"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "kind": "polynomial-ring",
+        "characteristic": "7",
+        "isField": false,
+        "variables": [
+          "t"
+        ]
+      }
+    }
+  ]
+}

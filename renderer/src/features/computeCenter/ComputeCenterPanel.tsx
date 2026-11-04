@@ -64,7 +64,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
       window.computeEngines?.getStatus() ?? Promise.resolve(null),
       discoverScientificBackends(),
     ]);
-    setCgal(healthResult.status === "fulfilled" ? healthResult.value : { ok: false, error: "Health check failed" });
+    setCgal(healthResult.status === "fulfilled" ? healthResult.value : { ok: false, error: "State check failed" });
     if (engineResult.status === "fulfilled") setEngines(engineResult.value);
     if (brokerResult.status === "fulfilled") setBrokerBackends(brokerResult.value);
     setError(engineResult.status === "rejected" ? "Compute engine status could not be read." : null);
@@ -89,7 +89,7 @@ export default function ComputeCenterPanel({ onClose, initialTab = "overview" }:
     { name: "Web Worker", ok: typeof Worker !== "undefined", detail: typeof Worker !== "undefined" ? "Browser worker available" : "Unavailable" },
     { name: "Python", ok: python ? python.available : null, detail: python?.statusMessage ?? "Checking…" },
     { name: "VTK", ok: !vtkBridge ? false : python ? python.available : null, detail: !vtkBridge ? "Bridge unavailable" : python?.available ? "Bridge and Python worker ready" : "Waiting for Python worker" },
-    { name: "CGAL", ok: cgal?.ok ?? null, detail: cgal ? cgal.ok ? "Health check passed" : cgal.error ?? "Unavailable" : "Checking…" },
+    { name: "CGAL", ok: cgal?.ok ?? null, detail: cgal ? cgal.ok ? "State check passed" : cgal.error ?? "Unavailable" : "Checking…" },
     { name: "Sage Docker", ok: sage ? sage.healthy : null, detail: sage ? sage.statusText : "Checking…" },
   ];
   const activeBrokerJobs = jobs.filter((job) => job.status === "routing" || job.status === "running").length;

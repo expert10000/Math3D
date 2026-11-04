@@ -8,6 +8,10 @@ from pathlib import Path
 
 from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
 from sage.env import SAGE_VERSION
+if __package__:
+    from .algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
+else:
+    from algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
 
 
 ENGINE = "sagemath"
@@ -184,6 +188,110 @@ def _matrix_charpoly(operation, params):
     return _success(operation, {"inputShape": [mat.nrows(), mat.ncols()], "text": str(poly)}, latex(poly))
 
 
+def _matrix_linear_dossier(operation, params):
+    if set(params) != {"format", "schemaVersion", "matrix"} or \
+            params.get("format") != "math3d.sage-matrix-dossier" or type(params.get("schemaVersion")) is not int or \
+            params.get("schemaVersion") != 1:
+        raise SageRequestError("Matrix dossier requires the versioned exact QQ matrix schema.")
+    rows = params["matrix"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_MATRIX_DIM or \
+            not isinstance(rows[0], list) or not 1 <= len(rows[0]) <= MAX_MATRIX_DIM or \
+            any(not isinstance(row, list) or len(row) != len(rows[0]) for row in rows):
+        raise SageRequestError("Matrix dossier requires a rectangular matrix with 1 to 8 rows and columns.")
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,63})(?:/[1-9][0-9]{0,63})?$")
+    if any(not isinstance(entry, str) or not canonical.fullmatch(entry) or str(QQ(entry)) != entry
+            for row in rows for entry in row):
+        raise SageRequestError("Matrix dossier entries must be reduced canonical QQ fractions of at most 64 digits.")
+    mat = matrix(QQ, [[QQ(entry) for entry in row] for row in rows])
+    rref = mat.echelon_form()
+    pivots = list(rref.pivots())
+    free = [column for column in range(mat.ncols()) if column not in pivots]
+    kernel = []
+    for column in free:
+        vector = [QQ(0)] * mat.ncols()
+        vector[column] = QQ(1)
+        for pivot_row, pivot_column in enumerate(pivots):
+            vector[pivot_column] = -rref[pivot_row, column]
+        kernel.append([str(entry) for entry in vector])
+    result = {
+        "format": "math3d.sage-matrix-dossier-result",
+        "schemaVersion": 1,
+        "coefficientDomain": "QQ",
+        "sourceMatrix": rows,
+        "inputShape": [mat.nrows(), mat.ncols()],
+        "rank": len(pivots),
+        "reducedRowEchelonForm": [[str(rref[row, column]) for column in range(mat.ncols())]
+            for row in range(mat.nrows())],
+        "pivotColumns": pivots,
+        "kernelBasis": kernel,
+        "imageBasis": [[str(entry) for entry in mat.column(column)] for column in pivots],
+        "minimalPolynomial": str(mat.minimal_polynomial("t")) if mat.is_square() else None,
+        "characteristicPolynomial": str(mat.charpoly("t")) if mat.is_square() else None,
+    }
+    return _success(operation, result, latex(rref))
+
+
+def _integer_matrix_forms(operation, params):
+    if set(params) != {"format", "schemaVersion", "matrix"} or \
+            params.get("format") != "math3d.sage-integer-matrix-forms" or \
+            type(params.get("schemaVersion")) is not int or params.get("schemaVersion") != 1:
+        raise SageRequestError("Integer matrix forms require the versioned exact ZZ matrix schema.")
+    rows = params["matrix"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 6 or \
+            not isinstance(rows[0], list) or not 1 <= len(rows[0]) <= 6 or \
+            any(not isinstance(row, list) or len(row) != len(rows[0]) for row in rows):
+        raise SageRequestError("Integer matrix forms require a rectangular 1 to 6 by 1 to 6 matrix.")
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,17})$")
+    if any(not isinstance(entry, str) or not canonical.fullmatch(entry) for row in rows for entry in row):
+        raise SageRequestError("Integer matrix entries must be canonical signed decimals of at most 18 digits.")
+    mat = matrix(ZZ, [[ZZ(entry) for entry in row] for row in rows])
+    smith_raw = mat.smith_form()
+    if isinstance(smith_raw, tuple) and len(smith_raw) == 3:
+        smith, left, right = smith_raw
+        if left.det() not in (1, -1) or right.det() not in (1, -1) or left * mat * right != smith:
+            raise SageRequestError("Sage Smith transformations failed the unimodular identity check.")
+        smith_transform = {"status": "verified", "left": [[str(x) for x in row] for row in left.rows()],
+            "right": [[str(x) for x in row] for row in right.rows()]}
+    else:
+        smith = smith_raw
+        smith_transform = {"status": "unavailable", "reason": "Sage did not return Smith transformation matrices."}
+    if smith.nrows() != mat.nrows() or smith.ncols() != mat.ncols():
+        raise SageRequestError("Sage Smith form has an unexpected shape.")
+    diagonal = [smith[i, i] for i in range(min(mat.nrows(), mat.ncols()))]
+    nonzero = [entry for entry in diagonal if entry != 0]
+    if any(entry < 0 for entry in diagonal) or any(nonzero[i + 1] % nonzero[i] != 0
+            for i in range(len(nonzero) - 1)) or len(nonzero) != mat.rank():
+        raise SageRequestError("Sage Smith form violates nonnegative invariant-factor divisibility or rank.")
+    if any(smith[i, j] != 0 for i in range(mat.nrows()) for j in range(mat.ncols()) if i != j):
+        raise SageRequestError("Sage Smith form is not diagonal.")
+    try:
+        hermite_raw = mat.hermite_form(transformation=True)
+    except (TypeError, NotImplementedError):
+        hermite_raw = mat.hermite_form()
+    if isinstance(hermite_raw, tuple) and len(hermite_raw) == 2:
+        hermite, hermite_left = hermite_raw
+        if hermite_left.det() not in (1, -1) or hermite_left * mat != hermite:
+            raise SageRequestError("Sage Hermite transformation failed the unimodular identity check.")
+        hermite_transform = {"status": "verified", "left": [[str(x) for x in row] for row in hermite_left.rows()]}
+    else:
+        hermite = hermite_raw
+        hermite_transform = {"status": "unavailable", "reason": "Sage did not return a Hermite row transformation."}
+    if hermite.nrows() != mat.nrows() or hermite.ncols() != mat.ncols():
+        raise SageRequestError("Sage Hermite form has an unexpected shape.")
+    result = {
+        "format": "math3d.sage-integer-matrix-forms-result", "schemaVersion": 1,
+        "coefficientDomain": "ZZ", "sourceMatrix": rows,
+        "inputShape": [mat.nrows(), mat.ncols()], "rank": len(nonzero),
+        "smith": {"form": [[str(x) for x in row] for row in smith.rows()],
+            "diagonal": [str(x) for x in diagonal], "transformations": smith_transform},
+        "hermite": {"form": [[str(x) for x in row] for row in hermite.rows()],
+            "transformation": hermite_transform},
+        "cokernel": {"freeRank": mat.nrows() - len(nonzero),
+            "torsionOrders": [str(x) for x in nonzero if x > 1]},
+    }
+    return _success(operation, result, latex(smith))
+
+
 def _polynomial_factor(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     poly = ring(_validate_expression(params.get("polynomial") or params.get("expression")))
@@ -202,6 +310,66 @@ def _polynomial_roots_exact(operation, params):
     )
 
 
+def _polynomial_dossier(operation, params):
+    if set(params) != {"polynomial", "variables"}:
+        raise SageRequestError("Polynomial dossier requires exactly polynomial and variables.")
+    variables = params["variables"]
+    if not isinstance(variables, list) or len(variables) != 1 or not isinstance(variables[0], str):
+        raise SageRequestError("Polynomial dossier requires one saved QQ polynomial variable.")
+    variable = _validate_name(variables[0])
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", variable):
+        raise SageRequestError("Polynomial dossier variable must match the saved algebra object schema.")
+    expression = _validate_expression(params["polynomial"])
+    if not re.fullmatch(r"[A-Za-z0-9_+\-*/^()\s]+", expression):
+        raise SageRequestError("Polynomial dossier contains unsupported syntax.")
+    if any(token != variable for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", expression)):
+        raise SageRequestError("Polynomial dossier uses a variable outside the selected ring.")
+    if any(len(token) > 18 for token in re.findall(r"[0-9]+", expression)) or any(
+        int(power) > 16 for power in re.findall(r"\^\s*([0-9]+)", expression)
+    ) or "**" in expression or re.search(r"\^\s*(?:[^0-9\s]|[0-9]+\s*\^)", expression):
+        raise SageRequestError("Polynomial dossier has an oversized or unsupported exponent or coefficient.")
+    ring = PolynomialRing(QQ, variable)
+    try:
+        poly = ring(expression)
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        raise SageRequestError("Polynomial dossier input is not a QQ polynomial.") from exc
+    if poly.is_zero():
+        raise SageRequestError("Polynomial dossier requires a nonzero polynomial.")
+    if poly.degree() > 16 or any(abs(coefficient.numerator()).nbits() > 256 or
+        coefficient.denominator().nbits() > 256 for coefficient in poly.list()):
+        raise SageRequestError("Polynomial dossier exceeds the degree or coefficient budget.")
+    factorization = poly.factor()
+    square_free = poly.squarefree_decomposition()
+    content = gcd(poly.list())
+    derivative = poly.derivative()
+    result = {
+        "schemaVersion": 1,
+        "coefficientDomain": "QQ",
+        "variable": variable,
+        "sourcePolynomial": expression,
+        "polynomial": str(poly),
+        "degree": int(poly.degree()),
+        "leadingCoefficient": str(poly.leading_coefficient()),
+        "constantCoefficient": str(poly[0]),
+        "content": str(content),
+        "primitivePart": str(poly / content),
+        "derivative": str(derivative),
+        "derivativeGcd": str(gcd(poly, derivative)),
+        "squareFree": bool(poly.is_squarefree()),
+        "squareFreeDecomposition": {"unit": str(square_free.unit()), "factors": [
+            {"polynomial": str(part), "multiplicity": int(multiplicity)}
+            for part, multiplicity in sorted(square_free, key=lambda item: str(item[0]))]},
+        "factorization": {"unit": str(factorization.unit()), "factors": [
+            {"polynomial": str(part), "multiplicity": int(multiplicity)}
+            for part, multiplicity in sorted(factorization, key=lambda item: str(item[0]))]},
+        "irreducibleOverQQ": bool(poly.degree() > 0 and poly.is_irreducible()),
+        "discriminant": str(poly.discriminant()) if poly.degree() >= 2 else None,
+        "rationalRoots": [{"value": str(root), "multiplicity": int(multiplicity)}
+            for root, multiplicity in sorted(poly.roots(ring=QQ), key=lambda item: item[0])],
+    }
+    return _success(operation, result, latex(poly))
+
+
 def _groebner_compute(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     raw_polys = params.get("polynomials")
@@ -212,6 +380,92 @@ def _groebner_compute(operation, params):
     polys = [ring(_validate_expression(item)) for item in raw_polys]
     basis = ring.ideal(polys).groebner_basis()
     return _success(operation, {"basis": [str(item) for item in basis]}, latex(basis))
+
+
+def _ideal_operation(operation, params):
+    common = {"format", "schemaVersion", "target", "targetHash", "ideal", "idealHash",
+        "ambientRing", "ambientHash", "variables", "monomialOrder", "generators"}
+    extra = {"sage.ideal.groebner": set(), "sage.ideal.eliminate": {"eliminate"},
+        "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set(),
+        "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set()}[operation]
+    _require_exact_fields(params, common | extra, "ideal request")
+    if params["format"] != "math3d.sage-ideal-operation" or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
+        raise SageRequestError("Ideal request requires the versioned exact schema.")
+    variables = params["variables"]
+    if not isinstance(variables, list) or not 1 <= len(variables) <= 3 or \
+            any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", item) for item in variables) or \
+            len(set(variables)) != len(variables):
+        raise SageRequestError("Ideal operations require one to three distinct ambient variables.")
+    order = params["monomialOrder"]
+    if order not in ("lex", "deglex", "degrevlex"):
+        raise SageRequestError("Unsupported ideal monomial order.")
+    generators = params["generators"]
+    if not isinstance(generators, list) or not 1 <= len(generators) <= 6 or len(set(generators)) != len(generators):
+        raise SageRequestError("Ideal operations require one to six distinct generators.")
+    if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries") and \
+            (len(variables) > 2 or len(generators) > 3):
+        raise SageRequestError("Advanced ideal operations require at most two variables and three generators.")
+    ring = PolynomialRing(QQ, variables, order=order)
+    def polynomial(source):
+        if not isinstance(source, str) or len(source) > 128 or "**" in source or \
+                not re.fullmatch(r"[A-Za-z0-9_()+*^/\-]+", source) or \
+                any(token not in variables for token in re.findall(r"[A-Za-z][A-Za-z0-9_]*", source)) or \
+                any(len(number) > 18 for number in re.findall(r"[0-9]+", source)) or \
+                any(int(power) > 16 for power in re.findall(r"\^([0-9]+)", source)):
+            raise SageRequestError("Invalid or unbounded polynomial in the pinned ideal ring.")
+        try:
+            value = ring(source)
+        except (TypeError, ValueError, ArithmeticError) as error:
+            raise SageRequestError("Polynomial does not belong to the pinned ideal ring.") from error
+        if value.total_degree() > 16 or len(value.monomials()) > 128:
+            raise SageRequestError("Ideal polynomial degree or term budget exceeded.")
+        return value
+    polys = [polynomial(item) for item in generators]
+    ideal = ring.ideal(polys)
+    shared = {"format": "math3d.sage-ideal-result", "schemaVersion": 1,
+        "target": params["target"], "targetHash": params["targetHash"], "idealHash": params["idealHash"]}
+    if operation == "sage.ideal.syzygies":
+        module = ideal.syzygy_module()
+        rows = [[str(value) for value in row] for row in module.rows()]
+        if module.ncols() != len(polys) or any(sum(row[index] * polys[index]
+                for index in range(len(polys))) != 0 for row in module.rows()):
+            raise SageRequestError("Sage syzygy rows do not annihilate the pinned generators.")
+        result = {**shared, "syzygies": rows, "generatorCount": len(polys)}
+    elif operation == "sage.ideal.hilbertSeries":
+        if order == "lex" or not ideal.is_homogeneous():
+            raise SageRequestError("Hilbert series requires a graded monomial order and a homogeneous ideal.")
+        result = {**shared, "series": str(ideal.hilbert_series()),
+            "numerator": str(ideal.hilbert_numerator()), "dimension": int(ideal.dimension()),
+            "grading": "standard"}
+    elif operation == "sage.ideal.quotientDimension":
+        quotient = ring.quotient(ideal)
+        result = {**shared, "dimension": int(ideal.dimension()), "quotientPresentation": str(quotient)}
+    elif operation == "sage.ideal.eliminate":
+        eliminate = params["eliminate"]
+        if not isinstance(eliminate, list) or not 0 < len(eliminate) < len(variables) or \
+                len(set(eliminate)) != len(eliminate) or any(item not in variables for item in eliminate):
+            raise SageRequestError("Eliminate a proper nonempty subset of ambient variables.")
+        basis = ideal.elimination_ideal([ring(item) for item in eliminate]).groebner_basis()
+        result = {**shared, "basis": [str(item) for item in basis], "eliminate": eliminate}
+    else:
+        basis = ideal.groebner_basis()
+        result = {**shared, "basis": [str(item) for item in basis]}
+        if operation == "sage.ideal.membership":
+            source = params["polynomial"]
+            normal = ideal.reduce(polynomial(source))
+            result.update(polynomial=source, member=bool(normal == 0), normalForm=str(normal))
+    if "basis" in result and (len(result["basis"]) > 128 or any(len(item) > 1024 for item in result["basis"])):
+        raise SageRequestError("Ideal basis exceeds the bounded output budget.")
+    if "normalForm" in result and len(result["normalForm"]) > 1024:
+        raise SageRequestError("Ideal normal form exceeds the bounded output budget.")
+    if "syzygies" in result and (len(result["syzygies"]) > 128 or
+            any(len(entry) > 1024 for row in result["syzygies"] for entry in row)):
+        raise SageRequestError("Syzygy output exceeds the bounded result budget.")
+    if "series" in result and (len(result["series"]) > 1024 or len(result["numerator"]) > 1024):
+        raise SageRequestError("Hilbert output exceeds the bounded result budget.")
+    if len(str(result)) > 65536:
+        raise SageRequestError("Ideal result exceeds the bounded output budget.")
+    return _success(operation, result)
 
 
 def _number_theory_gcd(operation, params):
@@ -503,7 +757,19 @@ def _complex_analysis(operation, params):
 
 
 
+def _ideal_capability_available(method):
+    try:
+        probe_ring = PolynomialRing(QQ, ["x", "y"], order="degrevlex")
+        x, y = probe_ring.gens()
+        getattr(probe_ring.ideal([x, y]), method)()
+        return True
+    except Exception:
+        return False
+
+
 OPERATIONS = {
+    "sage.algebra.reconstruct": lambda op, params: _success(op, reconstruct_algebra(params)),
+    "sage.algebra.inspectDomains": lambda op, params: _success(op, inspect_algebra_domains(params)),
     "sage.symbolic.simplify": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.simplify_full()),
     "sage.symbolic.factor": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.factor()),
     "sage.symbolic.expand": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.expand()),
@@ -513,14 +779,26 @@ OPERATIONS = {
     "sage.symbolic.singularities": _surface_calculus,
     "sage.matrix.eigen_exact": _matrix_eigen_exact,
     "sage.matrix.charpoly": _matrix_charpoly,
+    "sage.matrix.linear_dossier": _matrix_linear_dossier,
+    "sage.matrix.integer_forms": _integer_matrix_forms,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
+    "sage.polynomial.dossier": _polynomial_dossier,
     "sage.groebner.compute": _groebner_compute,
+    "sage.ideal.groebner": _ideal_operation,
+    "sage.ideal.eliminate": _ideal_operation,
+    "sage.ideal.membership": _ideal_operation,
+    "sage.ideal.quotientDimension": _ideal_operation,
     "sage.numberTheory.gcd": _number_theory_gcd,
     "sage.numberTheory.modInverse": _number_theory_mod_inverse,
     "sage.topology.integer_homology": _topology_integer_homology,
     "sage.complex.analyze": _complex_analysis,
 }
+if _ideal_capability_available("syzygy_module"):
+    OPERATIONS["sage.ideal.syzygies"] = _ideal_operation
+if _ideal_capability_available("is_homogeneous") and _ideal_capability_available("hilbert_series") and \
+        _ideal_capability_available("hilbert_numerator"):
+    OPERATIONS["sage.ideal.hilbertSeries"] = _ideal_operation
 
 
 def run_payload(payload):

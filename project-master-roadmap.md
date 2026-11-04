@@ -18,6 +18,13 @@ PC16 opens an exact verified trend point in the saved Project result inspector
 and previews its checked Mesh generation, including retained revisions.
 PC17 compares two pinned verified trend points through the existing saved
 Mesh A/B inspector, with source-local refusal for incompatible evidence.
+PC18–PC19 retain the exact pair in Projects and display it in Workbook. PC20
+adds authored observations tied to both exact results, Mesh generations, and
+the selected metric; checked reports and portable import refuse changed evidence.
+PC21 indexes every saved Mesh pair with verification and observation status,
+including a three-pair starter for reviewing direct pair and Note navigation.
+PC22 exports a checked, versioned review of those pairs, including values and
+authored Note text only when the exact saved evidence verifies.
 
 **PC01–PC05 bounded implementation — October 20:** a saved Project can now
 retain two checked, non-owning document references and open them side by side.
@@ -1392,6 +1399,18 @@ budgets must be explicit before members can be combined.
 | PC15 | `feat(workbook): retain saved Mesh analysis trends` | Link exact saved Mesh result sets into Visualize blocks; verify Project resources on open and export, preserving recorded gaps without recalculation. |
 | PC16 | `feat(projects): open exact saved Mesh trend results` | Reverify a selected Projects or Workbook trend point, inspect its saved result and show its exact retained Mesh generation when available. |
 | PC17 | `feat(projects): compare pinned saved Mesh trend points` | Pin two exact points in Projects or Workbook, reverify both results and sidecars, and open the existing compatible A/B inspector with return to the trend. |
+| PC18 | `feat(projects): retain pinned saved Mesh comparisons` | Save two exact result and Mesh source hashes in the Project, reopen the pinned A/B pair after restart, and refuse missing or changed evidence on view and export. |
+| PC19 | `feat(workbook): present saved Mesh comparisons` | Link a saved PC18 pair by exact comparison, result and source hashes; show stored values and qualified differences in a Workbook; refuse changed evidence on report and portable export. |
+| PC20 | `feat(notes): record observations on saved Mesh comparisons` | Bind authored Notes to one exact saved pair, both result and Mesh hashes, and the selected metric; show and export them only while evidence verifies. |
+| PC21 | `feat(projects): review saved Mesh comparisons` | List every saved pair with its exact metric, source revisions, verification status and observation count; open verified pairs and Notes directly, leaving stale evidence visible as unavailable. |
+| PC22 | `feat(projects): export saved Mesh comparison review` | Export a versioned HTML review of all saved pairs, exact hashes, qualified stored values and verified Notes; list stale evidence as unavailable without its values or Note text. |
+| PC23 | `feat(workbook): present saved Mesh comparison reviews` | Link selected saved pairs and Notes by exact IDs and hashes in one Workbook Visualize block; recheck every row, export a qualified review and navigate back to verified pairs. |
+| PC24 | `feat(projects): link declared coordinates across saved comparison panes` | Record the picked source generation and coordinate; mark that coordinate in the other Mesh/Geometry pane only when verified frame, axes, handedness and units match. Keep element picks source-local. |
+| PC25 | `feat(notes): retain saved coordinate observations` | Save a picked Mesh/Geometry coordinate as a Note bound to the exact comparison, source generations, frame and unit; show its marker only while both sources and sidecars verify. |
+| PC26 | `feat(projects): review saved coordinate observations` | Index exact coordinate Notes and verification status, open each at its own saved marker, and export a qualified multi-Note review with unavailable evidence withheld. |
+| PC27 | `feat(workbook): present saved coordinate observation reviews` | Link selected PC26 Notes by exact IDs and hashes in a Visualize block, reverify each marker and source byte, and retain qualified HTML and portable reports. |
+| PC28 | `test(projects): accept coordinate review across desktop and browser` | Reopen a portable PC27 review in the browser, refuse changed Note and source bytes, check unavailable Workbook and HTML rows, and verify marker navigation and viewer cleanup on both delivery surfaces. |
+| PC29 | `test(projects): qualify the saved comparison release path` | Exercise retained Mesh generations, saved result trends and A/B pairs, Workbook and coordinate reviews in one portable Project across Electron and browser; check restart, HTML export, changed or missing evidence, and viewer cleanup. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1447,6 +1466,107 @@ PC17 is complete for two verified points in one saved Mesh trend. The PC13
 inspector supplies stored values and only method- and unit-qualified B − A
 differences; return navigation preserves the trend UI. Missing or changed
 result and Mesh bytes refuse comparison. PC03 and PC05 remain **Partial**.
+PC18 is complete for a compatible saved trend pair: the Project retains the
+two result IDs and hashes, exact Mesh generations and source hashes, plus the
+chosen metric. Projects reopens it after restart; display and HTML export
+reverify both sidecars and refuse changed or missing evidence. No Mesh analysis
+is rerun. PC03 and PC05 remain **Partial** under the same legacy-source limits.
+PC19 is complete for a saved PC18 pair linked to a Workbook Visualize block.
+Its reference retains the Project comparison hash and both exact result and
+Mesh source hashes. Embedded inspection, result navigation, HTML report,
+portable publication and import verify the underlying saved evidence; missing
+or changed sidecars are refused. The Workbook does not run Mesh analysis.
+PC03 and PC05 remain **Partial** for their existing legacy-source limits.
+PC20 is complete for authored observations on a saved PC18 pair in Projects and
+Workbook. Both views reverify the exact pair, result envelopes and Mesh sidecars
+before showing Note text. HTML and portable Workbook reports include current
+observations and refuse stale or missing linked evidence; restart and tamper
+checks cover the saved Project. No Mesh analysis runs. PC03 and PC05 remain
+**Partial** for legacy coordinate declarations and generations never retained.
+PC21 is complete for the saved Mesh comparison review index in Projects. It
+lists exact A/B revisions, metric, result IDs and source hashes for every saved
+pair, and rechecks both pair and Note evidence before enabling direct navigation.
+Unavailable pairs remain listed with reasons. A three-pair starter includes two
+authored observations. Restart, portable import, changed references and tampered
+sidecars are covered; the index does not run Mesh analysis. PC03 and PC05 remain
+**Partial** for legacy coordinate declarations and unretained generations.
+PC22 is complete for a versioned, self-contained HTML report exported from
+that Project review index. It names every exact pair and linked Note reference,
+but includes scalar values and authored Note text only while their saved
+results, anchors and source sidecars verify. Missing or changed evidence remains
+visible as unavailable. Export, restart, portable import and tamper checks use
+the three-pair starter. No Mesh analysis runs. PC03 and PC05 remain **Partial**
+for legacy coordinate declarations and unretained generations.
+PC23 is complete for bounded multi-pair Workbook reviews. A Visualize block
+retains selected saved pair IDs, exact pair/result/source hashes and the linked
+Note IDs, revisions and hashes. Opening the block rechecks Project resources;
+each unavailable pair remains visible without scalar values or Note text.
+Workbook HTML/Markdown and portable publications include the qualified rows,
+and verified pairs navigate to the saved Project A/B inspector. The three-pair
+starter, restart, portable import, tampered source and changed Note tests cover
+the path. No Mesh analysis runs. PC03 and PC05 remain **Partial** for legacy
+coordinate declarations and generations never retained.
+
+PC24 is complete for bounded side-by-side Mesh/Geometry comparisons with two
+visible, replay-verified sources and matching source-declared coordinate frames.
+A mesh or Geometry pick records its exact source ID, revision, hash, element and coordinate;
+the other pane shows only a marker at that coordinate. No vertex, face or
+scientific value is inferred in the target. The marker is transient and is
+created from a fresh pick after reopening; missing declarations, mismatched units/frames,
+changed sources and unavailable generations do not produce a linked marker.
+PC03 remains **Partial** for legacy sources without coordinate metadata; PC05
+remains **Partial** for unretained history and unsupported comparison families.
+PC25 is complete for saved coordinate observations on the bounded Mesh/Geometry
+pair. A new starter supplies matching declared metre coordinates and a saved
+comparison. Notes retain the picked source slot, coordinate, frame and unit
+with both exact source generations. Reopening and portable export recheck the
+sources and Mesh sidecar; missing or changed evidence suppresses the marker and
+qualified Note content. This records a shared coordinate, not a corresponding
+element or measured value. PC03 remains **Partial** for undeclared legacy
+frames, and PC05 remains **Partial** for generations never retained.
+PC26 is complete for a Project review of several PC25 Notes. The list records
+the exact comparison, source hashes, frame, unit and verification status;
+opening a verified row selects that Note's marker. HTML export rechecks every
+row and withholds authored coordinates and text when a source is missing or
+changed. Portable import, restart, source tampering and viewer cleanup have
+focused acceptance checks. PC03 and PC05 remain **Partial** for legacy
+undeclared frames and unretained generations.
+PC27 is complete for selected PC26 Notes in a Workbook Visualize block. The
+reference pins each Note revision and hash and its comparison hash. Opening
+or exporting rechecks both source generations and sidecars; unavailable rows
+retain their IDs but withhold the coordinate and Note text. Verified markers
+open the existing saved comparison viewer. Restart, portable publication,
+tampering, and viewer cleanup have focused acceptance checks. PC03 and PC05
+remain **Partial** for undeclared legacy frames and unretained generations.
+PC28 is complete for the bounded coordinate review path. Browser acceptance
+imports a portable Mesh/Geometry Project, saves and reopens its Workbook in
+both configured locales, exports verified HTML, navigates to the exact saved
+marker, and checks viewer detach. Changed Note or Mesh sidecar bytes are
+rejected on portable import. Focused evidence tests show missing Notes,
+missing resources, and altered source bytes as unavailable Workbook and
+publication rows with coordinates and authored text withheld. Electron
+acceptance creates and reopens a saved coordinate review, exports HTML,
+navigates to its marker, and checks WebGL viewer release. This qualifies the
+current Mesh/Geometry adapter; it does not create metadata for legacy sources
+or recover generations that were never retained. PC03 and PC05 remain
+**Partial** under those existing limits.
+PC29 is complete for the supported saved-comparison adapters, using one
+portable Project fixture with three retained Mesh quality results, three
+saved A/B pairs, a Mesh/Geometry comparison and an authored coordinate Note.
+The Electron and browser flows import, save, restart, open an exact retained
+Mesh generation, inspect the result trend and a compatible A/B pair, reopen
+the Workbook coordinate review, export HTML, navigate to its exact marker,
+and release the comparison viewer. The browser gate runs in both en-US/UTC
+and pl-PL/Auckland. Unit acceptance checks missing and altered Mesh sidecars,
+withholds unverified values and authored Note text from Workbook HTML, and
+rejects changed Note or sidecar bytes on portable import. The browser gate
+also refuses both changed portable inputs. Run `npm run test:projects:pc29`;
+the 2026-11-04 gate passed (3 unit, 1 Electron, 4 browser checks; no failures),
+the [acceptance record](docs/project-comparison-and-composition.md#pc29--comparison-release-acceptance)
+names the exact covered paths. PC29 does not add a new comparison adapter.
+PC03 remains **Partial** for legacy sources without declared coordinate
+frames. PC05 remains **Partial** for generations never explicitly retained
+and unsupported cross-model selection mapping.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

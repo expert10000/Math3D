@@ -24,6 +24,12 @@ inventory only; it does not alter M3D-Q statuses or the `quantum-scene/v1|v2`
 import boundary. The first generic proof must cover one existing quantum bundle
 and one non-quantum fixture before any Python provider work.
 
+For the reviewed, proposed next phase spanning Theory Lab results, Math3D
+Projects and native field tools, see the
+[2026-11-04 integration candidate](quantum-math3d-integration-roadmap-2026-11-04.md).
+Its `QI-01`–`QI-40` labels describe future deltas; they do not revise the
+completed or bounded `M3D-Q01`–`M3D-Q10` status above.
+
 **Type:** interoperability and scientific-visualization program
 
 **Executable sequence:** `M3D-Q01` through `M3D-Q10`

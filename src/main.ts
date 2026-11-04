@@ -10,6 +10,7 @@ import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { registerSageServiceIpc } from "./main/ipc/sageServiceIpc";
 import { registerComputeEngineManagerIpc } from "./main/ipc/computeEngineManagerIpc";
 import { quantumSceneLaunchDirectory, registerQuantumSceneIpc } from "./main/ipc/quantumSceneIpc";
+import { quantumStudyLaunchArguments } from "./main/quantumScene/studyHandoff";
 import { registerScientificSceneIpc } from "./main/ipc/scientificSceneIpc";
 import { registerWorkspaceFileIpc } from "./main/ipc/workspaceFileIpc";
 import { registerProjectThumbnailIpc } from "./main/ipc/projectThumbnailIpc";
@@ -1012,12 +1013,17 @@ app.whenReady().then(async () => {
   registerComputeEngineManagerIpc();
   let launchQuantumScene: string | null = null;
   let launchQuantumSceneError: string | null = null;
-  try { launchQuantumScene = quantumSceneLaunchDirectory(process.argv); }
+  let launchQuantumStudy: ReturnType<typeof quantumStudyLaunchArguments> = null;
+  try {
+    launchQuantumScene = quantumSceneLaunchDirectory(process.argv);
+    launchQuantumStudy = quantumStudyLaunchArguments(process.argv);
+    if (launchQuantumScene && launchQuantumStudy) throw new Error("Choose one quantum launch target");
+  }
   catch (error) {
     launchQuantumSceneError = error instanceof Error ? error.message : String(error);
     console.error("Quantum scene launch refused:", launchQuantumSceneError);
   }
-  registerQuantumSceneIpc(launchQuantumScene, launchQuantumSceneError);
+  registerQuantumSceneIpc(launchQuantumScene, launchQuantumSceneError, launchQuantumStudy);
   registerScientificSceneIpc();
   registerWorkspaceFileIpc();
   registerProjectThumbnailIpc();

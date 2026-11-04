@@ -14,7 +14,7 @@ export type GeometryContinuityResult = { classification: GeometryContinuityClass
 export type GeometryValidityResult = {
   topology: GeometryNativeTopology;
   exactGeometry: { valid: boolean; issues: GeometryValidityIssue[]; continuity: GeometryContinuityResult | null };
-  displayMeshHealth: { available: boolean; exactBrepValidity: false; label: "Tessellated display mesh health"; notes: string[] };
+  displayMeshHealth: { available: boolean; exactBrepValidity: false; label: "Tessellated display mesh state"; notes: string[] };
   counts: Record<GeometryNativeEntityKind, number>;
   sourceRevision: number;
   conventions: { validity: string; meshSeparation: string };
@@ -123,9 +123,9 @@ export const analyzeGeometryValidity = (args: { definition: GeometryAnalyticSurf
   return {
     topology,
     exactGeometry: { valid: !issues.some((issue) => issue.severity === "error"), issues, continuity: args.continuityWith ? evaluateSurfaceBoundaryContinuity({ a: definition, b: args.continuityWith, tolerance }) : null },
-    displayMeshHealth: { available: Boolean(args.meshHealthNotes), exactBrepValidity: false, label: "Tessellated display mesh health", notes: args.meshHealthNotes ?? ["No display-mesh snapshot was supplied."] },
+    displayMeshHealth: { available: Boolean(args.meshHealthNotes), exactBrepValidity: false, label: "Tessellated display mesh state", notes: args.meshHealthNotes ?? ["No display-mesh snapshot was supplied."] },
     counts,
     sourceRevision: definition.revision,
-    conventions: { validity: "Exact Geometry issues refer to semantic analytic entities, parameter domains, and trims.", meshSeparation: "Triangle-mesh health is informative display diagnostics only and is never exact B-rep validity." },
+    conventions: { validity: "Exact Geometry issues refer to semantic analytic entities, parameter domains, and trims.", meshSeparation: "Triangle-mesh state is informative display diagnostics only and is never exact B-rep validity." },
   };
 };

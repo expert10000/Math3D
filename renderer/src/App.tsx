@@ -7,8 +7,9 @@ import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./comp
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
-import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, type ProjectScientificSceneReference } from "@math3d/core";
-import { VerifiedProjectResources, type ProjectResourceRequirement } from "./projects/projectResources";
+import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
+  addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, type ProjectScientificSceneReference } from "@math3d/core";
+import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
 import { curveEditorSeed, curveSourceFromEditor, surfaceEditorSeed, surfaceSourceFromEditor, nativeDocumentEditable } from "./projects/nativeProjectRestore";
@@ -38,6 +39,7 @@ import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
 import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
   reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
+import { promoteDerivedScalarIsosurfaceMesh } from "./projects/derivedScalarIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
@@ -125,7 +127,8 @@ import { GeometryAnalysisInspectorPanel } from "./components/GeometryAnalysisIns
 import { KernelWorkspacePanel } from "./components/KernelWorkspacePanel";
 import { ProjectWorkbookMiddleView } from "./components/ProjectWorkbookMiddleView";
 import { ProjectDetailMiddleView } from "./components/ProjectDetailMiddleView";
-import { PROJECT_STORAGE_KEY } from "./projects/projectLibrary";
+import { PROJECT_STORAGE_KEY, projectPayloadKey, saveLibraryProject } from "./projects/projectLibrary";
+import { saveSavedMeshComparisonObservation } from "./projects/saveSavedMeshComparisonObservation";
 import { projectNoteRenderedBody } from "./projects/projectNoteValues";
 import { WorkbookSnapshotRecord } from "./components/WorkbookSnapshotRecord";
 import { readNotebookProjectContext, type NotebookProjectContext } from "./workbook/notebookProjectContext";
@@ -327,6 +330,7 @@ import TheoryLabInstallationPanel from "./components/TheoryLabInstallationPanel"
 import ComputeCenterPanel from "./features/computeCenter/ComputeCenterPanel";
 import SageConsoleDock from "./features/sageLab/SageConsoleDock";
 import CASAlgebraWorkspace from "./features/sageLab/CASAlgebraWorkspace";
+import NumberTheoryWorkspace from "./features/sageLab/NumberTheoryWorkspace";
 import { graphSageSource } from "./features/sageLab/graphSageSource";
 import { useResponsiveLayout } from "./hooks/useResponsiveLayout";
 
@@ -801,6 +805,13 @@ import {
   createEmptyGraph2DDocument,
   applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
+  replaceMath3DProjectWorkspace,
+  upsertProjectScientificSelection,
+  upsertProjectLineIntegralResult,
+  upsertProjectRegionResult,
+  upsertProjectTrajectorySeedRecipe,
+  upsertProjectTrajectoryCurve,
+  appendProjectDerivedField,
   createVolumeDocument,
   createViewerProvenanceEvidence,
   canonicalJsonByteLength,
@@ -41871,6 +41882,8 @@ const App: React.FC = () => {
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
   const [casWorkspaceOpen, setCasWorkspaceOpen] = useState(false);
   const [casAnalysisRecord, setCasAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
+  const [numberTheoryWorkspaceOpen, setNumberTheoryWorkspaceOpen] = useState(false);
+  const [numberTheoryAnalysisRecord, setNumberTheoryAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [sageConsoleOpen, setSageConsoleOpen] = useState(false);
   const [computeCenterInitialTab, setComputeCenterInitialTab] = useState<"overview" | "runtimes">("overview");
 
@@ -73059,7 +73072,7 @@ case "mobius":
       vertexCount,
       faceCount,
       bounds,
-      stateLabel: activeHasIssues ? "Active mesh needs review" : meshWorkspaceGeometryEntries.length ? "Linked meshes unverified" : "Active mesh healthy",
+      stateLabel: activeHasIssues ? "Active mesh needs review" : meshWorkspaceGeometryEntries.length ? "Linked meshes unverified" : "Active mesh clean",
     };
   }, [
     meshGeometryRoundTripSource?.objectId,
@@ -76913,12 +76926,14 @@ case "mobius":
     setGeometryViewerControlsOpen(previous.controlsOpen);
     setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: previous.layout }));
   }, [projectsOpen]);
-  const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
+  const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number; openTarget?: boolean } | null>(null);
   const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
+  const [projectMeshComparisonRequest, setProjectMeshComparisonRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
+  const activeNotebookProjectResourcesRef = useRef<VerifiedProjectResources | null>(null);
   const [notebookProjectVersion, setNotebookProjectVersion] = useState(0);
   const sectionNavEntries: Array<{
-    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas";
+    id: "projects" | "surfaces" | "mesh" | "volume" | "curves" | "graphs" | "topology" | "geometry" | "complex_analysis" | "cas" | "number_theory";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -76983,6 +76998,12 @@ case "mobius":
       onSelect: () => setCasWorkspaceOpen(true),
     },
     {
+      id: "number_theory",
+      label: "Number Theory",
+      active: numberTheoryWorkspaceOpen,
+      onSelect: () => setNumberTheoryWorkspaceOpen(true),
+    },
+    {
       id: "volume",
       label: "Volume",
       active: mode === "surfaces" && datasetKind === "volume",
@@ -77020,7 +77041,8 @@ case "mobius":
     { id: "present", label: "Present" },
     { id: "inspect", label: "Inspect" },
   ] as const;
-  const activeSectionLabel = sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
+  const activeSectionLabel = casWorkspaceOpen ? "CAS / Algebra" : numberTheoryWorkspaceOpen ? "Number Theory" :
+    sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
   const headerSurfacesFamilyLabel =
     datasetKind === "volume"
@@ -77695,6 +77717,9 @@ case "mobius":
   const readComparisonResource = (item: ProjectResourceRequirement): Uint8Array | null => {
     const restored = restoredProjectRef.current?.resources?.bytes(item);
     if (restored) return restored;
+    const saved = activeNotebookProjectRef.current && activeNotebookProjectResourcesRef.current?.verifiedFor(activeNotebookProjectRef.current)
+      ? activeNotebookProjectResourcesRef.current.bytes(item) : null;
+    if (saved) return saved;
     if (item.kind === "mesh-buffers") {
       const reference = item.reference as import("@math3d/core").MeshResourceReference;
       for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
@@ -77726,11 +77751,19 @@ case "mobius":
   const exportNotebookPublication = async (kind: PublicationKind, selected: string[]) => {
     if (!activeWorkbook || !selected.length) throw new TypeError("Select a Workbook and report blocks first.");
     const book = activeWorkbook, context = getNotebookContext(), project = context?.project ?? null;
+    const hasSavedMeshComparison = book.stages.some(stage => stage.blocks.some(block =>
+      selected.includes(block.id) && (!!block.visualize?.savedMeshComparison || !!block.visualize?.savedMeshReview)));
+    const exactSavedProject = hasSavedMeshComparison ? parseMath3DProject(localStorage.getItem(PROJECT_STORAGE_KEY)!) : null;
+    if (exactSavedProject && exactSavedProject.identity.id !== project?.identity.id)
+      throw new TypeError("The Workbook's saved Project is not active.");
+    const exactResources = exactSavedProject ? await loadProjectResources(exactSavedProject) : null;
+    const reportProject = exactSavedProject ?? project;
+    const reportReader: ProjectResourceReader = exactResources ? item => exactResources.bytes(item) : readComparisonResource;
     const base = sanitizeFileBase(book.title, "workbook");
     if (kind === "markdown") {
-      downloadTextFile(buildWorkbooksMarkdown([book], book.id, project, selected, context?.readArtifact, readComparisonResource), base + ".report.md", "text/markdown"); return;
+      downloadTextFile(buildWorkbooksMarkdown([book], book.id, reportProject, selected, context?.readArtifact, reportReader), base + ".report.md", "text/markdown"); return;
     }
-    const html = buildWorkbooksReportHtml([book], book.id, project, selected, context?.readArtifact, readComparisonResource);
+    const html = buildWorkbooksReportHtml([book], book.id, reportProject, selected, context?.readArtifact, reportReader);
     if (kind === "pdf") {
       const opened = window.open("", "_blank");
       if (!opened) { downloadTextFile(html, base + ".report.html", "text/html"); return; }
@@ -77739,9 +77772,10 @@ case "mobius":
     if (kind === "html") { downloadTextFile(html, base + ".report.html", "text/html"); return; }
     if (!context?.live || !project) throw new TypeError("Open and save a named Project before making a portable report.");
     const saved = parseMath3DProject(localStorage.getItem(PROJECT_STORAGE_KEY)!);
-    const resources = await loadProjectResources(saved);
+    const resources = exactResources ?? await loadProjectResources(saved);
     if (canonicalJsonStringify(getNotebookContext()?.project) !== canonicalJsonStringify(project) || workbookExecutionRef.current.workbook?.id !== book.id || JSON.stringify(workbookExecutionRef.current.workbook) !== JSON.stringify(book)) throw new TypeError("Source or Workbook changed during publication; export again.");
-    const payload = createPortableNotebookPublication(project, [book], resources, context.readArtifact, item => {
+    const payload = createPortableNotebookPublication(reportProject!, [book], resources, context.readArtifact, item => {
+      if (exactResources) return exactResources.bytes(item);
       const stored = restoredProjectRef.current?.resources?.bytes(item); if (stored) return stored;
       if (item.kind === "mesh-buffers") for (const adapter of [meshDocumentAdapterRef.current, ...restoredProjectRef.current?.meshes.values() ?? []]) {
         const bytes = adapter?.resources.bytes(item.reference as import("@math3d/core").MeshResourceReference); if (bytes) return bytes;
@@ -79811,11 +79845,13 @@ case "mobius":
       id: makeId(), type: "text", title: `SageMath ${response.operation.replace("sage.symbolic.", "")}`,
       sageEvidence: evidence,
       text: [
-        `Source: F = ${record.expression}`,
+        `${evidence.source.id.startsWith("sage-input:") ? "Input" : "Source: F"} = ${record.expression}`,
         `Operation: ${response.operation}`,
         `Engine: SageMath ${evidence.engine.version} (${record.backend === "local" ? "Local WSL" : "Docker"})`,
         `Source revision: ${evidence.source.revision}`,
+        `Status: ${response.success ? "Exact" : "Failed"}`,
         `Result: ${typeof response.result.text === "string" ? response.result.text : JSON.stringify(response.result)}`,
+        response.error ? `Error: ${response.error}` : "",
         response.latex ? `LaTeX: $${response.latex}$` : "",
         `Input hash: ${String(response.result.inputHash ?? "not reported")}`,
       ].filter(Boolean).join("\n\n"),
@@ -80223,8 +80259,9 @@ case "mobius":
         onProjectsOpenChange={setProjectsOpen}
         noteRequest={projectNoteRequest}
         resultRequest={projectResultRequest}
+        pairRequest={projectMeshComparisonRequest}
         regionResultStatuses={vectorField3DRegionStatuses}
-        onCurrentProjectChange={(project) => { activeNotebookProjectRef.current = project; setNotebookProjectVersion((version) => version + 1); }}
+        onCurrentProjectChange={(project, resources) => { activeNotebookProjectRef.current = project; activeNotebookProjectResourcesRef.current = resources ?? null; setNotebookProjectVersion((version) => version + 1); }}
         verifiedQuantumScene={verifiedQuantumSceneTitle && quantumSceneReference ? { format: verifiedQuantumSceneFormat, title: verifiedQuantumSceneTitle, ...quantumSceneReference } : null}
         onImportQuantumScene={() => handleMenuCommand("file:open-quantum-scene")}
         onImportScientificScene={() => handleMenuCommand("file:open-scientific-scene")}
@@ -80418,11 +80455,19 @@ case "mobius":
           setMode("geometry"); setGeometryMode("workbook"); setGeometryWorkbookUiMode("full"); setRightPanelTab("workbook");
         }}
         onOpenDocument={(id, module) => { navigateRestoredDocument(id, module); }}
-        onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+        onOpenNote={(id) => {
+          setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+          setProjectsOpen(true);
+        }}
         onOpenSavedMeshResult={target => {
           if (activeNotebookProjectRef.current?.identity.id !== target.projectId) throw new TypeError("The linked Project changed. Reopen the saved Workbook trend.");
           setProjectMiddleContent(null);
           setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
+          setProjectsOpen(true);
+        }}
+        onOpenSavedMeshComparison={id => {
+          setProjectMiddleContent(null);
+          setProjectMeshComparisonRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
           setProjectsOpen(true);
         }}
         onOpenProjects={() => setProjectsOpen(true)} />}
@@ -80550,7 +80595,8 @@ case "mobius":
                   </div>
                   <div style={topNavSegmentStyle}>
                     {sectionNavEntries.map((entry) => {
-                      const active = entry.id === "cas" ? casWorkspaceOpen : !casWorkspaceOpen && entry.active;
+                      const active = entry.id === "cas" ? casWorkspaceOpen : entry.id === "number_theory"
+                        ? numberTheoryWorkspaceOpen : !casWorkspaceOpen && !numberTheoryWorkspaceOpen && entry.active;
                       const disabled = !!entry.disabled;
                       return (
                         <button
@@ -80560,8 +80606,10 @@ case "mobius":
                           aria-expanded={entry.id === "projects" ? projectsOpen : undefined}
                           aria-controls={entry.id === "projects" ? "project-explorer-panel" : undefined}
                           onClick={() => {
-                            if (entry.id === "cas") { setProjectsOpen(false); setCasWorkspaceOpen(true); return; }
+                            if (entry.id === "cas") { setProjectsOpen(false); setNumberTheoryWorkspaceOpen(false); setCasWorkspaceOpen(true); return; }
+                            if (entry.id === "number_theory") { setProjectsOpen(false); setCasWorkspaceOpen(false); setNumberTheoryWorkspaceOpen(true); return; }
                             setCasWorkspaceOpen(false);
+                            setNumberTheoryWorkspaceOpen(false);
                             if (entry.id !== "projects") setProjectsOpen(false);
                             if (entry.id === "surfaces") {
                               openNormalSurfacesWorkspace(); return;
@@ -90454,6 +90502,17 @@ case "mobius":
                       workbooks={workbooks}
                       resolveSageSource={currentSageWorkbookSource}
                       readComparisonResource={readComparisonResource}
+                      onSaveMeshComparisonObservation={async (comparisonId, comparisonHash, title, body) => {
+                        try {
+                          const projectId = activeNotebookProjectRef.current?.identity.id;
+                          if (!projectId) throw new TypeError("Open the saved Project first.");
+                          const saved = await saveSavedMeshComparisonObservation(localStorage, projectId, comparisonId, comparisonHash, title, body);
+                          activeNotebookProjectRef.current = saved.project;
+                          activeNotebookProjectResourcesRef.current = saved.resources;
+                          setNotebookProjectVersion(version => version + 1);
+                          return true;
+                        } catch (error) { console.warn("Saved Mesh comparison observation refused:", error); return false; }
+                      }}
                       getNotebookProject={getNotebookContext}
                       onExportPublication={exportNotebookPublication}
                       onOpenProjects={() => setProjectsOpen(true)}
@@ -90462,7 +90521,18 @@ case "mobius":
                         setProjectResultRequest(previous => ({ id: target.resultId, token: (previous?.token ?? 0) + 1 }));
                         setProjectsOpen(true);
                       }}
-                      onOpenNote={(id) => setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }))}
+                      onOpenSavedMeshComparison={id => {
+                        setProjectMeshComparisonRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
+                      onOpenNote={(id) => {
+                        setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
+                      onOpenCoordinateNote={(id) => {
+                        setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1, openTarget: true }));
+                        setProjectsOpen(true);
+                      }}
                       onOpenNotebookDocument={(id, module) => {
                         if (navigateRestoredDocument(id, module)) return;
                         setActiveGraph2DTargetId(null);
@@ -90576,7 +90646,7 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} analysisRequest={projectGraphAnalysisRequest}
+          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} project={activeNotebookProjectRef.current} analysisRequest={projectGraphAnalysisRequest}
             onSaveSageResult={(record) => { openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
             onOpenSageRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}
@@ -90615,6 +90685,83 @@ case "mobius":
                     { kind: "vector-derived", vector: "source-current",
                       divergence: "source-current", curlMagnitude: "source-current" } :
                     "source-current" }));
+            }}
+            onSaveVectorField3DLineIntegralSelection={(field, selection) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const entries = active.workspace.entries.map(entry =>
+                entry.expected.id === field.identity.id ?
+                  { ...entry, checkpoint: field, expected: field.identity, replay: null } : entry);
+              if (!entries.some(entry => entry.expected.id === field.identity.id))
+                entries.push({ module: "vector3d", checkpoint: field,
+                  expected: field.identity, replay: null });
+              const updated = upsertProjectScientificSelection(replaceMath3DProjectWorkspace(active,
+                createMixedWorkspaceDocument({ ...active.workspace, entries })), selection);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DLineIntegralResult={(field, result) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectLineIntegralResult(active, result);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DRegionIntegralSelection={(field, selection) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const entries = active.workspace.entries.map(entry =>
+                entry.expected.id === field.identity.id ?
+                  { ...entry, checkpoint: field, expected: field.identity, replay: null } : entry);
+              if (!entries.some(entry => entry.expected.id === field.identity.id))
+                entries.push({ module: "vector3d", checkpoint: field,
+                  expected: field.identity, replay: null });
+              const updated = upsertProjectScientificSelection(replaceMath3DProjectWorkspace(active,
+                createMixedWorkspaceDocument({ ...active.workspace, entries })), selection);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DRegionIntegralResult={(field, result) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectRegionResult(active, result);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTrajectorySeeds={(field, selection) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTrajectorySeedRecipe(active, field, selection);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
+            }}
+            onPromoteVectorField3DTrajectoryCurve={promotion => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTrajectoryCurve(active, promotion);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onAppendVectorField3DDerivedOperation={(inputId, operation, options) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = appendProjectDerivedField(active, inputId, operation, options,
+                source => source.source.field.kind === "expressions");
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onPromoteVectorField3DDerivedIsosurface={surface => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const next = promoteDerivedScalarIsosurfaceMesh(active.workspace, active, surface);
+              const updated = replaceMath3DProjectWorkspace(active, next.workspace);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              restored.meshes.set(next.adapter.document().identity.id, next.adapter);
+              meshDocumentAdapterRef.current = next.adapter;
+              setMeshKernelDocument(next.adapter.document());
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(next.adapter.document().identity.id, "mesh");
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
@@ -101280,7 +101427,7 @@ case "mobius":
                                   </div>
                                   <div data-testid="geometry-validity-analysis-controls" style={{ display: "grid", gap: 5, borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
                                     <div style={{ fontSize: 10.5, fontWeight: 700 }}>Topology, continuity and validity</div>
-                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Inspect semantic bodies through vertices, parameter/trim validity, and display-mesh health as separate evidence.</div>
+                                    <div style={{ fontSize: 9.5, color: "#667085" }}>Inspect semantic bodies through vertices, parameter/trim validity, and display-mesh state as separate evidence.</div>
                                     <button type="button" data-testid="geometry-run-validity-analysis" onClick={handleRunGeometryValidityAnalysis} style={{ fontSize: 11 }}>Run exact Geometry diagnostics</button>
                                   </div>
                                   <details data-testid="geometry-measure-group" open style={{ borderTop: "1px solid #e2e8f0", paddingTop: 7 }}>
@@ -111306,7 +111453,55 @@ case "mobius":
         </div>
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
-      {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord}
+      {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onSaveRecipe={(recipe) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== recipe.projectId) throw new TypeError("Open the matching Project before saving an algebra recipe.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the recipe.");
+          const next = upsertMath3DProjectAlgebraRecipe(current, recipe);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onAppendRecipeEvidence={(base, evidence) => {
+          const savedBytes = localStorage.getItem(projectPayloadKey(base.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== base.identity.structuralHash)
+            throw new TypeError("The saved Project changed during the recipe. Completed evidence was retained; reopen before rerunning.");
+          const next = addMath3DProjectAlgebraEvidence(base, evidence);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          return next;
+        }}
+        onSaveEvidence={(evidence) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== evidence.projectId) throw new TypeError("Open the matching Project before saving Sage evidence.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed during the Sage operation. Reopen it and run again.");
+          const next = addMath3DProjectAlgebraEvidence(current, evidence);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onCreateStructure={(record) => {
+          const current = projectForNotePins;
+          if (!current) throw new TypeError("Open and save a Project before adding structures.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Save or reopen it in Projects before adding structures.");
+          const next = upsertMath3DProjectAlgebraObject(current, record);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onOpenProjects={() => { setCasWorkspaceOpen(false); setProjectsOpen(true); }}
         onResult={(record) => setCasAnalysisRecord({ ...record, source: { module: "cas", id: "sage-input:cas", revision: 0,
           expression: record.expression, fingerprint: hashValue(record.request.params) } })}
         onSaveWorkbook={(record) => { setCasWorkspaceOpen(false); openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
@@ -111314,6 +111509,14 @@ case "mobius":
         onOpenConsole={() => setSageConsoleOpen(true)}
         onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
         onClose={() => setCasWorkspaceOpen(false)} />}
+      {numberTheoryWorkspaceOpen && <NumberTheoryWorkspace record={numberTheoryAnalysisRecord}
+        onResult={(record) => setNumberTheoryAnalysisRecord({ ...record, source: {
+          module: "number_theory", id: "sage-input:number-theory", revision: 0,
+          expression: record.expression, fingerprint: hashValue(record.request.params) } })}
+        onSaveWorkbook={(record) => { setNumberTheoryWorkspaceOpen(false); openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
+        onOpenWorkbook={() => { setNumberTheoryWorkspaceOpen(false); openNormalSurfacesWorkspace(); setActiveStageId("compute"); setRightPanelTab("workbook"); }}
+        onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
+        onClose={() => setNumberTheoryWorkspaceOpen(false)} />}
       {sageConsoleOpen && <SageConsoleDock onClose={() => setSageConsoleOpen(false)} onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }} />}
       {preferencesOpen && (
         <div

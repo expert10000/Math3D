@@ -1,0 +1,14 @@
+{
+  "format": "math3d.sage-matrix-dossier-result",
+  "schemaVersion": 1,
+  "coefficientDomain": "QQ",
+  "sourceMatrix": [["1", "2"], ["2", "4"]],
+  "inputShape": [2, 2],
+  "rank": 1,
+  "reducedRowEchelonForm": [["1", "2"], ["0", "0"]],
+  "pivotColumns": [0],
+  "kernelBasis": [["-2", "1"]],
+  "imageBasis": [["1", "2"]],
+  "minimalPolynomial": "t^2 - 5*t",
+  "characteristicPolynomial": "t^2 - 5*t"
+}

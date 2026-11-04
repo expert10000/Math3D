@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC17)
+# Project comparison and composition (PC01–PC29)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -13,8 +13,93 @@ Projects. Each creates an independent saved copy; **New copy** creates another.
 Then open **Compare saved documents** in the Project navigator and choose the
 named entry under **Saved composition**.
 
+## PC24 linked coordinate probe
+
+Open **Coordinate Overlay Verification → Compare saved documents → Verified A/B
+overlay**, then set **View** to **Side by side**. Click the A box or B sphere.
+When both source documents declare the same 3D frame, axes, handedness and unit,
+the other pane shows a yellow marker at the picked coordinate. Its label gives
+the exact picked source ID, revision and hash. Only the coordinate is shared;
+face and vertex IDs remain local to the picked source. The marker is a transient
+view aid and is recreated from a fresh pick after reopening the comparison.
+
+Choose the undeclared D source or mismatched C source to see the link refused.
+Changed or missing source evidence also prevents the marker. PC03 remains
+Partial for legacy coordinate metadata, and PC05 remains Partial for history
+that was never retained and comparison families without a linked adapter.
+
+## PC25 saved coordinate observations
+
+Open **Projects → Starter projects → Mesh and Geometry Coordinate Probe → Open**,
+save the Project, then choose **Compare saved documents → Mesh / Geometry ·
+shared metres**. Pick either the Mesh or Geometry source. The other pane marks
+the same declared coordinate. Enter a title and body, then choose **Save
+coordinate observation**. The Note retains the exact comparison and source
+generations, the picked source slot, coordinate, frame and unit. Close and
+reopen the comparison to show the saved marker; open the Note from the comparison
+or Project Notes to inspect its evidence.
+
+Portable Project export retains the Note and source sidecar. Comparison HTML
+labels the coordinate and its exact source evidence. A changed or missing source,
+sidecar, frame or unit makes the Note unavailable and suppresses its marker.
+The Note describes a shared coordinate; it does not identify a matching face,
+vertex or measured value in the other source. PC03 and PC05 remain **Partial**
+for legacy undeclared frames and generations that were never retained.
+
+## PC26 coordinate observation review
+
+In a saved Project, open **Projects → Compare saved documents → Saved coordinate
+observations**. The list shows every PC25 Note with its saved comparison,
+source generations and hashes, recorded frame and unit, and current or
+unavailable status. **Open saved marker** rechecks the exact Note and both
+sources, then opens its comparison with that Note's marker selected. It never
+substitutes the newest marker for the chosen Note.
+
+**Export coordinate review** writes one HTML report for the Project. Verified
+rows include the authored text and shared coordinate; unavailable rows retain
+their identities and refusal reason but withhold coordinate and observation
+text. Portable Project import retains the Notes and Mesh sidecars. On restart,
+the list loads saved resources before offering a verified marker. Closing the
+comparison releases its viewers. No target vertex, face or measured value is
+inferred. PC03 and PC05 retain their **Partial** boundaries.
+
+## PC27 Workbook coordinate review
+
+Save coordinate observations first. Open the Project's Workbook and choose
+**Workbook → Visualize → Saved coordinate review**. Select the exact Notes,
+then **Link selected coordinate Notes** and save the Workbook from Projects.
+After restart, open the Workbook and choose **Show embedded coordinate review**.
+Each verified row shows its shared-coordinate marker, frame, unit, Note ID and
+hash. **Open saved marker** opens that Note in its saved comparison. Closing
+the comparison releases its viewer. **Export coordinate review HTML** and the
+Workbook publication include exact, rechecked evidence; missing or changed
+sources remain unavailable rows without their coordinate or Note text. The
+portable Project package retains the linked Note and source resources.
+
+This is a saved-evidence view. It does not calculate a matching element or
+measured value. PC03 and PC05 remain **Partial** for undeclared legacy frames
+and generations that were never retained.
+
+## PC28 desktop and browser acceptance
+
+The PC27 Workbook review now has a browser acceptance path: import the
+portable Project package, save the Project, reopen it after a reload, choose
+the saved Workbook, then select **Visualize → Show embedded coordinate
+review**. **Export coordinate review HTML** includes only verified Note text
+and coordinates. **Open saved marker** navigates to the exact saved comparison;
+closing it releases the viewer. The same reopen, export, marker, and cleanup
+path is checked in the desktop app.
+
+Portable packages with changed Note or Mesh sidecar bytes are refused. If a
+saved review later loses its Note or source bytes, its Workbook and published
+HTML row remain unavailable and withhold the coordinate and authored text.
+The acceptance covers the bounded Mesh/Geometry adapter. PC03 remains
+**Partial** for sources without declared coordinate frames, and PC05 remains
+**Partial** for generations that were never retained.
+
 | Starter | Saved comparison | What to check |
 | --- | --- | --- |
+| **Mesh and Geometry Coordinate Probe** | **Mesh / Geometry · shared metres** | A saved Mesh and Geometry sphere declare the same local xyz frame in metres. Pick either pane, save a coordinate observation, then reopen it after restart. |
 | **Coordinate Overlay Verification** | **Verified A/B overlay** | The two source-declared `laboratory xyz` / `mm` frames, axes and handedness match; the banner identifies a source-declared match. |
 | Same starter | **Unverified A/D overlay** | D has no coordinate declaration, so the banner says the alignment is an operator assertion. |
 | Same starter | Choose **C · mismatched cm box** as source B while in Overlay mode | The viewer refuses the `mm`/`cm` mismatch instead of drawing it as aligned. |
@@ -363,6 +448,124 @@ pins are temporary UI choices and are made again after reopening. No Mesh
 analysis or interpolation runs on this path. PC03 and PC05 remain **Partial**
 for legacy coordinate metadata and unretained history.
 
+## PC18 · Save a pinned Mesh A/B comparison
+
+Status: **Complete for two compatible, verified points in one saved Mesh trend**.
+In **Projects → Compare saved documents → View saved result trend**, pin A and B,
+then choose **Compare pinned results → Save pinned comparison**. Give the pair
+a name. It appears under **Saved pinned comparisons** in the same Project and
+reopens after restart. The Project stores only the exact result IDs and hashes,
+Mesh IDs, revisions, source hashes, and selected metric. It does not copy or
+recompute the result or Mesh arrays.
+
+Opening the saved pair and exporting its HTML report reverify both result
+envelopes and their exact Mesh generations and sidecars. Missing, changed, or
+tampered evidence refuses the view or export. A portable Project package must
+include the required sidecars. PC03 and PC05 remain **Partial** for legacy
+coordinates and history that was never retained.
+
+## PC19 · Present a saved Mesh comparison in a Workbook
+
+Status: **Complete for a compatible PC18 pair in one saved Project**. First save
+the pair in **Projects → Compare saved documents → View saved result trend →
+Compare pinned results → Save pinned comparison**. Then open a Workbook and
+choose **3 Visualize → Saved Mesh A/B comparison**. Select the named pair and
+save the Workbook in Projects to retain the reference. **Show embedded saved
+Mesh comparison** displays the stored A and B scalar values, qualified
+differences, exact result/source hashes, and links to each Project result.
+
+The Workbook keeps the Project comparison ID, comparison hash, selected metric,
+and both exact result and Mesh generation hashes. It owns no Mesh data and runs
+no analysis. Opening the embedded view and exporting its HTML report reverify
+the saved results and sidecars. Workbook publication and portable import also
+refuse a missing, changed, or tampered source. Closing the embedded view releases
+its display; the Project retains the pair. PC03 and PC05 remain **Partial** for
+legacy coordinate metadata and Mesh generations that were never retained.
+
+## PC20 · Observations on saved Mesh comparisons
+
+Status: **Complete for a verified saved PC18 Mesh pair**. Open **Projects →
+Compare saved documents → Saved pinned comparisons**, choose the pair, and use
+**Save observation**. The same action appears in **Workbook → 3 Visualize →
+Saved Mesh A/B comparison → Show embedded saved Mesh comparison**. The Note
+anchors to the Project comparison ID and hash, its selected metric, both exact
+result IDs and hashes, and both Mesh source revisions and hashes. It records
+authored interpretation; no Mesh analysis is run.
+
+Only Notes whose pair, results, and sidecars still verify display their text in
+the comparison and Workbook. The Project Notes list marks unavailable anchors
+and hides their text until evidence verifies. The checked HTML report and
+Workbook publication include current observations with their Note IDs and
+hashes, explicitly labeled as authored observations. Export refuses a stale or
+missing linked Note or source; portable import rechecks the same references.
+The Project package retains the Notes without copying Mesh bytes into them.
+
+Acceptance covers Project and Workbook saving, restart, HTML export, portable
+publication/import, missing sources, changed comparison references, and
+tampered sidecars. PC03 remains **Partial** for legacy sources without coordinate
+metadata. PC05 remains **Partial** for generations that were never retained.
+
+## PC21 · Saved comparison review index
+
+Status: **Complete for saved PC18 Mesh pairs**. Open **Projects → Compare saved
+documents → Saved comparison review** to see every saved pair in the current
+Project. Each row names its metric and both result IDs, exact Mesh revisions,
+and source hashes. The row shows a fresh verification status and the count of
+authored observations, including how many Notes still verify. **Open saved pair**
+opens the existing A/B inspector; a Note button opens that verified observation
+in Project Notes. Missing, changed, or tampered evidence keeps its row visible
+as **Unavailable**, with the reason; unavailable pairs cannot open, and stale
+Notes do not expose their authored text from this index.
+
+The **Saved Mesh Comparison Review** starter contains three exact pairs from
+three retained Mesh generations. Two pairs carry authored observations; one
+has none. Open it under **Projects → Starter projects**, then save a Project
+copy. This preset exercises the index and direct Note navigation without
+running Mesh analysis when the review view opens. Acceptance covers several
+pairs, Electron reopening, portable export/import, missing and changed
+references, and tampered resource bytes. PC03 remains **Partial** for legacy
+sources without coordinate metadata; PC05 remains **Partial** for generations
+that were never retained.
+
+## PC22 · Export a saved comparison review
+
+Status: **Complete for the bounded saved Mesh pair index**. In an open Project,
+choose **Compare saved documents → Saved comparison review → Export review
+HTML**. The downloaded report is a versioned `mesh-comparison-review/v1`
+snapshot of the current Project. It references each exact pair, its selected
+metric, both result and Mesh source hashes and revisions, and each linked Note
+ID and hash. Verified pairs include only stored, unit-qualified A and B scalar
+values and their difference; verified authored observations include their text.
+Missing or changed evidence remains listed as **Unavailable** with values and
+Note text withheld. The report includes its machine-readable snapshot and
+labels observations as authored interpretation.
+
+The **Saved Mesh Comparison Review** starter supplies three pairs and two Notes
+for trying the export. Acceptance covers HTML export in Electron, reopening
+after restart, portable Project import, changed references, missing sidecars,
+tampered source bytes, and stale Note anchors. Export reads saved evidence;
+it does not calculate Mesh results. PC03 remains **Partial** for legacy sources
+without coordinate metadata, and PC05 remains **Partial** for generations
+that were never retained.
+
+## PC23 · Show a saved comparison review in a Workbook
+
+Open **Projects → Starter projects → Saved Mesh Comparison Review → Open** and
+save a Project copy. Open **Surfaces → Workbook → 3 Visualize**. Under **Saved
+comparison review**, choose the saved pairs and select **Link selected saved
+pairs**. Open **Show embedded comparison review** to inspect the stored A/B
+values and authored observations, or use **Open saved pair** to return to its
+Project A/B inspector. Save the active Workbook from Projects to retain the
+review, then reopen it from that Project after restart.
+
+The Workbook keeps exact pair and Note IDs and hashes. Each row rechecks both
+saved Mesh results and source sidecars. Missing or changed pairs stay visible
+as **Unavailable**, with values and Note text withheld. **Export review status
+HTML** and Workbook publication report the same qualified evidence. The
+portable Workbook publication rechecks source bytes on import. This view does
+not rerun Mesh analysis. PC03 remains **Partial** for legacy coordinate
+declarations; PC05 remains **Partial** for generations never retained.
+
 ### Ready-to-use Mesh comparison starter
 
 Open **Projects → Starter projects → Saved Mesh Comparison Study → Open**.
@@ -378,3 +581,54 @@ choose **View saved result trend**. Set **Stored scalar metric** to
 then select the last dot and **Pin selected as B**. **Compare pinned results**
 shows the checked 2.03125 m² B − A difference; **Return to trend** keeps the
 plot. **Compare saved results** opens the same A/B inspector directly.
+
+Three more starters are available in **Projects → Starter projects**:
+
+| Starter | Saved evidence | First action |
+| --- | --- | --- |
+| **Retained Mesh Generation Study** | An octahedron, one retained subdivision, one retained transform, and quality results for all three revisions. | **Compare saved documents** and choose two generations of the same Mesh. |
+| **Saved Mesh Curvature Study** | A closed triangulated sphere at three scales, with a discrete-curvature result saved at each revision. | **View saved result trend** and choose `mean.avg` or another recorded scalar. |
+| **Mesh Trend With Missing Result** | Three retained square-Mesh revisions, with quality results only at the first and last. | **View saved result trend** to see the middle revision marked **not recorded**. |
+
+All four starters preserve their source sidecars in a portable Project. Their
+saved measurements are produced when the starter copy is created; comparison
+and trend views only inspect those recorded results. Save the Project to retain
+your own copy.
+
+The [desktop acceptance record](evidence/mesh-starters-desktop-2026-11-03/README.md)
+verifies the three additional starters' numeric trend values and the unrecorded
+middle generation. Each Project was saved, exported with source resources,
+imported into a separate fresh Electron profile, and reopened after an app
+restart with the same values, statuses, result IDs, and source hashes.
+
+## PC29 · Comparison release acceptance
+
+Status: **Complete for the supported Mesh and Mesh/Geometry comparison paths**.
+Run `npm run test:projects:pc29` from the repository root. Its single portable
+Project fixture contains three retained Mesh quality results, three saved A/B
+pairs, a saved Mesh/Geometry composition, an authored coordinate Note, and a
+Workbook with saved pair and coordinate reviews. The fixture retains resource
+sidecars; its values are recorded evidence, not calculated by the review views.
+The complete gate passed on 2026-11-04: three unit checks, one Electron check,
+and four browser checks across two locales, with no test failures.
+
+The Electron test imports and saves this Project, restarts the UI, opens a
+retained Mesh generation from a selected trend point, checks a compatible
+saved A/B pair and exports its HTML, then opens the Workbook coordinate review
+and its exact marker. It checks that the viewer and WebGL context release on
+close. The browser test repeats the import, restart, generation, trend, A/B,
+Workbook review, HTML export, marker and viewer cleanup in en-US/UTC and
+pl-PL/Auckland. A second browser case refuses portable packages with changed
+Note or Mesh sidecar bytes.
+
+The focused unit gate verifies the same fixture's three trend points and pair
+rows, and checks missing or altered source sidecars: unavailable rows remain
+visible while stored scalar values and authored Note text are withheld from
+Workbook HTML. Portable import also rejects changed Note and sidecar bytes.
+The gate checks saved evidence and navigation; it does not rerun Mesh analysis
+or infer a matching element from a linked coordinate.
+
+PC03 remains **Partial** for legacy sources without frame metadata. PC05
+remains **Partial** for generations never retained and comparison families
+without a supported selection adapter. The acceptance covers development
+Electron and browser builds; it does not qualify a packaged installer.

@@ -53,7 +53,7 @@ export const SageSymbolicAnalysisCard: React.FC<{
     style={{ border: "1px solid #b9d6ea", borderRadius: 10, background: "#f4faff", padding: 12, marginBottom: 12, display: "grid", gap: 9, fontSize: 12 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
       <strong style={{ fontSize: 14 }}>Symbolic result · {labelFor(response.operation)}</strong>
-      <span style={{ color: response.success ? "#17603c" : "#b42318" }}>{response.success ? "Exact" : "Failed"} · SageMath ({backend === "local" ? "Local WSL" : "Docker"})</span>
+      <span style={{ color: response.success ? "#17603c" : "#b42318" }}>{response.success ? "Exact" : "Failed"} · SageMath ({backend === "local" ? "Local WSL" : backend === "docker" ? "Docker" : "Private gateway"})</span>
     </div>
     <div><strong>Version:</strong> {response.engineVersion ?? "Not reported"} · <strong>Source:</strong> <span role="status">{sourceLabel}</span>
       {record.source && !record.source.id.startsWith("sage-input:") && <> · <strong>Revision:</strong> {record.source.revision}</>}
@@ -61,7 +61,8 @@ export const SageSymbolicAnalysisCard: React.FC<{
     <div style={{ color: "#526477", overflowWrap: "anywhere" }}>Input = <code>{expression}</code></div>
     {sourceStatus === "stale" && <div style={{ color: "#9a3412" }}>Run the operation again before using the result.</div>}
     <div data-testid={`sage-result-kind-${kind}`} style={{ display: "grid", gap: 6, overflowWrap: "anywhere" }}>
-      {kind === "error" ? <div role="alert" style={{ color: "#b42318" }}>{response.error ?? "SageMath operation failed."}</div> : <>
+      {kind === "error" ? <div role="alert" style={{ color: "#b42318" }}>
+        {response.errorCode && <strong>{response.errorCode}: </strong>}{response.error ?? "SageMath operation failed."}</div> : <>
         {math && <div style={{ overflowX: "auto" }} dangerouslySetInnerHTML={{ __html: math }} />}
         {kind === "expression" && <code style={{ whiteSpace: "pre-wrap" }}>{text}</code>}
         {kind === "vector" && <div>Components: <code>{list(response.result.components).map(String).join(" ; ") || text}</code></div>}
@@ -85,7 +86,7 @@ export const SageSymbolicAnalysisCard: React.FC<{
     {response.warnings.length > 0 && <div role="status" style={{ color: "#9a3412" }}><strong>Warnings:</strong> {response.warnings.join(" · ")}</div>}
     {diagnostics.length > 0 && <details><summary>Diagnostics ({diagnostics.length})</summary><ul>{diagnostics.map((entry, index) => <li key={index}>{entry}</li>)}</ul></details>}
     {viewerProvenance && <div data-testid="sage-viewer-provenance" style={{ color: "#334155" }}>
-      Viewer artifact · SageMath {viewerProvenance.engineVersion} ({viewerProvenance.backend === "local" ? "Local WSL" : "Docker"}) ·
+      Viewer artifact · SageMath {viewerProvenance.engineVersion} ({viewerProvenance.backend === "local" ? "Local WSL" : viewerProvenance.backend === "docker" ? "Docker" : "Private gateway"}) ·
       source {viewerProvenance.sourceId} r{viewerProvenance.sourceRevision} · job {viewerProvenance.jobId}
     </div>}
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

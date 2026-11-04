@@ -39,7 +39,8 @@ import {
   type Graph2DPhasePortraitArtifact,
   type Graph2DTimeOdeArtifact,
   type Graph2DConstructionAction,
-  graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
+  graph2DConstructionFromCandidate, graph2DIntegralConstructionFromAnalysis,
+  graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   graph2DConstructionActionsFromIntersectionCandidates,
   type Graph2DIntegralMode,
   type Graph2DPolarMeasurement,
@@ -63,6 +64,10 @@ import {
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
   projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions,
+  type Math3DProject,
+  createProjectProfileGraphOrigin, findProjectProfileSelection, projectProfileGraphRows,
+  projectProfileGraphStatus,
+  graph2DParameterStudyStatus,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -86,6 +91,9 @@ import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResult
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
+import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
+import { useDerivedProfileProvenance } from "./useDerivedProfileProvenance";
+import { Graph2DParameterStudyPanel } from "./Graph2DParameterStudyPanel";
 import type { LinkedExplorerProbe } from "../vectorfield3d/linkedFieldProbe";
 import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedScientificExplorerEntries,
   type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
@@ -204,6 +212,7 @@ function readGraph2DLeftPalette(): Graph2DLeftPalette {
 type Props = {
   dockLayout: WorkspaceDockLayout;
   document: Graph2DDocument;
+  project?: Math3DProject | null;
   analysisRequest?: { documentId: string; token: number } | null;
   status?: "ready" | "loading" | "error";
   errorMessage?: string;
@@ -239,6 +248,21 @@ type Props = {
   vectorField3DRegionStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onSaveVectorField3DRegionResult?: (document: VectorField3DDocument,
     result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DLineIntegralSelection?: (document: VectorField3DDocument,
+    selection: import("@math3d/core").ScientificSelection) => void;
+  onSaveVectorField3DLineIntegralResult?: (document: VectorField3DDocument,
+    result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DRegionIntegralSelection?: (document: VectorField3DDocument,
+    selection: import("@math3d/core").ScientificSelection) => void;
+  onSaveVectorField3DRegionIntegralResult?: (document: VectorField3DDocument,
+    result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DTrajectorySeeds?: (document: VectorField3DDocument,
+    selection: import("@math3d/core").ScientificSelection) => void;
+  onPromoteVectorField3DTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
+  onAppendVectorField3DDerivedOperation?: (inputId: string,
+    operation: import("@math3d/core").DerivedFieldOperation,
+    options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
+  onPromoteVectorField3DDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
     surface: import("@math3d/core").VectorField3DIsosurface) => void;
@@ -256,7 +280,7 @@ type Props = {
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
-export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
+export function GraphsWorkspace({ dockLayout, document, project, analysisRequest, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
@@ -264,12 +288,63 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   savedVectorField3DPointResults, onSaveVectorField3DPointResult,
   savedVectorField3DRegionResults, vectorField3DRegionStatuses,
   onSaveVectorField3DRegionResult, onOpenVectorField3DProjectResults,
+  onSaveVectorField3DLineIntegralSelection, onSaveVectorField3DLineIntegralResult,
+  onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
+  onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
+  onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
   openScientificFieldRequest, onSaveScientificField,
   savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D,
   onSaveSageResult, onOpenSageRuntimes }: Props) {
+  const derivedProfiles = useDerivedProfileProvenance(project);
+  const projectProfileRef = useRef(project);
+  projectProfileRef.current = project;
+  const [profileActionError, setProfileActionError] = useState("");
+  const [selectionFocus, setSelectionFocus] = useState<{ id: string; token: number } | null>(null);
+  const verifiedProfileSource = (source: VectorField3DDocument) => source.source.field.kind === "expressions";
+  const openProjectProfile = async (profileId: string) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit) throw new Error("Open a saved Project and Graph editor first.");
+      const existing = document.source.objects.find(item => item.kind === "point-series" &&
+        item.projectProfileOrigin?.projectId === project.identity.id &&
+        item.projectProfileOrigin.profileId === profileId);
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null }); return true; }
+      const selection = findProjectProfileSelection(project, profileId);
+      if (!selection) throw new Error("Save a matching physical line selection in this Project first.");
+      const result = derivedProfiles.read(profileId) ?? await derivedProfiles.compute(profileId);
+      if (!result) throw new Error("The verified profile did not produce a current result.");
+      if (projectProfileRef.current?.identity.structuralHash !== project.identity.structuralHash)
+        throw new Error("The Project changed while the profile was computing.");
+      const origin = createProjectProfileGraphOrigin(project, profileId, result, verifiedProfileSource);
+      const profile = project.workspace.derivedFields?.find(item => item.identity.id === profileId);
+      const count = document.source.objects.filter(item => item.kind === "point-series" &&
+        item.projectProfileOrigin).length;
+      onAuthoringCommit({ type: "create-point-series", draft: {
+        label: profile?.metadata.title ?? "Derived profile", table: pointTableStore.publish(projectProfileGraphRows(result)),
+        mode: "line", domain: { min: result.axis.min, max: result.axis.max,
+          includeMin: true, includeMax: true }, projectProfileOrigin: origin,
+        style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
+          lineWidth: 2, lineStyle: "solid", visible: true },
+      } });
+      return true;
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); return false; }
+  };
+  const profileCards = derivedProfiles.records.map(record =>
+    <div key={record.profileId}><DerivedProfileProvenanceCard view="graphs" provenance={record}
+      onCompute={() => void derivedProfiles.compute(record.profileId)}
+      busy={derivedProfiles.busyId === record.profileId}
+      progress={derivedProfiles.busyId === record.profileId ? derivedProfiles.progress : undefined}
+      error={derivedProfiles.error || undefined} />
+      <button type="button" data-testid="gf07-open-profile-in-graphs"
+        disabled={!onAuthoringCommit || !findProjectProfileSelection(project!, record.profileId) ||
+          !["current", "not-computed"].includes(record.reason ?? "current")}
+        onClick={() => void openProjectProfile(record.profileId)}>Open profile in Graphs</button>
+    </div>);
+  const studyPanel = <Graph2DParameterStudyPanel document={document}
+    onAuthoringCommit={onAuthoringCommit} onSelectionCommit={onSelectionCommit} />;
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [leftSection, setLeftSection] = useState<"objects" | "services">("objects");
   const [sageRecord, setSageRecord] = useState<SymbolicResultRecord | null>(null);
@@ -1153,6 +1228,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   const wheelHandlerRef = useRef<(event: globalThis.WheelEvent) => void>(() => {});
   const [hoverSelection, setHoverSelection] = useState<Graph2DSelection | null>(null);
   const [areaDraft, setAreaDraft] = useState({ min: "-1", max: "1", mode: "signed" as Graph2DIntegralMode });
+  const [areaSaveError, setAreaSaveError] = useState("");
   const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
     mode: Graph2DIntegralMode } | null>(null);
   const [arcRequest, setArcRequest] = useState<{ objectId: string; min: number; max: number } | null>(null);
@@ -1328,16 +1404,29 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
     linkedVerificationQueue.current = linkedVerificationQueue.current.then(verifyPairs, verifyPairs);
     return () => { active = false; };
   }, [document]);
+  const projectProfileStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.projectProfileOrigin ? [[object.id,
+      projectProfileGraphStatus(project, object.projectProfileOrigin, verifiedProfileSource)]] : [])),
+    [document, project]);
+  const parameterStudyStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.parameterStudyOrigin ? [[object.id,
+      graph2DParameterStudyStatus(document, object.parameterStudyOrigin,
+        pointTableStore.resolve(object.table))]] : [])), [document]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null || phaseSeedPreview !== null,
     separatePhaseAnalysis: true,
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
       object.kind === "point-series" ? [[object.table.id,
+        object.projectProfileOrigin && (projectProfileStates[object.id]?.status !== "current" ||
+          (() => { const rows = pointTableStore.resolve(object.table);
+            return !rows || structuralHash(rows) !== object.projectProfileOrigin.rowsSha256; })()) ||
+        object.parameterStudyOrigin && parameterStudyStates[object.id]?.status !== "current" ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
           linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
-  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification]);
+  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
+    projectProfileStates, parameterStudyStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1555,6 +1644,72 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const selectedProjectProfile = selectedObject?.kind === "point-series" ?
+    selectedObject.projectProfileOrigin : undefined;
+  const selectedProjectProfileState = selectedProjectProfile && selectedObject ?
+    projectProfileStates[selectedObject.id] : null;
+  const selectedProjectProfileRowsReady = selectedProjectProfile && selectedObject?.kind === "point-series" ?
+    (() => { const rows = pointTableStore.resolve(selectedObject.table);
+      return !!rows && structuralHash(rows) === selectedProjectProfile.rowsSha256; })() : true;
+  const refreshProjectProfile = async () => {
+    if (!project || !selectedProjectProfile || selectedObject?.kind !== "point-series" ||
+        !onAuthoringCommit) return;
+    try {
+      setProfileActionError("");
+      const result = await derivedProfiles.compute(selectedProjectProfile.profileId);
+      if (!result) throw new Error("The verified profile did not produce a current result.");
+      if (projectProfileRef.current?.identity.structuralHash !== project.identity.structuralHash)
+        throw new Error("The Project changed while the profile was computing.");
+      const origin = createProjectProfileGraphOrigin(project, selectedProjectProfile.profileId,
+        result, verifiedProfileSource);
+      const display = document.display.objects.find(item => item.objectId === selectedObject.id)!;
+      onAuthoringCommit({ type: "edit-point-series", objectId: selectedObject.id, draft: {
+        label: selectedObject.label, table: pointTableStore.publish(projectProfileGraphRows(result)),
+        mode: "line", domain: { min: result.axis.min, max: result.axis.max,
+          includeMin: true, includeMax: true }, projectProfileOrigin: origin,
+        style: { color: display.color, lineWidth: display.lineWidth,
+          lineStyle: display.lineStyle, visible: display.visible },
+      } });
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const locateProjectProfileSelection = () => {
+    if (!project || !selectedProjectProfile) return;
+    const source = project.workspace.entries.find(entry => entry.module === "vector3d" &&
+      entry.expected.id === selectedProjectProfile.source.documentId);
+    if (!source || source.checkpoint.format !== "math3d.vector-field3d-document") return;
+    setVectorField3DDocument(source.checkpoint);
+    setExplorerFieldLayer(null);
+    setSelectionFocus(previous => ({ id: selectedProjectProfile.selection.id,
+      token: (previous?.token ?? 0) + 1 }));
+    setVectorField3DOpen(true);
+  };
+  const profileGraphInspector = selectedProjectProfile && <section aria-label="Saved Project profile"
+    data-testid="gf07-graph-profile-status">
+    <h3>Project profile · {selectedProjectProfileState?.status === "current" &&
+      selectedProjectProfileRowsReady ? "current" : "values withheld"}</h3>
+    {selectedProjectProfileState?.reason && <p role="status">Values withheld: {
+      selectedProjectProfileState.reason.replaceAll("-", " ")}. Reverify the source and recipe before refreshing.</p>}
+    {!selectedProjectProfileRowsReady && <p role="status">Values withheld: saved profile samples are missing or changed. Refresh the verified profile.</p>}
+    <dl><dt>Source</dt><dd>{selectedProjectProfile.source.documentId} · revision {
+      selectedProjectProfile.source.revision} · {selectedProjectProfile.source.structuralHash}</dd>
+      <dt>Recipe</dt><dd>{selectedProjectProfile.recipe.map(item =>
+        `${item.documentId} r${item.revision} ${item.structuralHash}`).join(" → ")}</dd>
+      <dt>Selection</dt><dd>{selectedProjectProfile.selection.id} · {
+        selectedProjectProfile.selection.structuralHash}</dd>
+      <dt>Method</dt><dd>{selectedProjectProfile.method}</dd>
+      <dt>Physical axis</dt><dd>{selectedProjectProfile.axis.name} {
+        selectedProjectProfile.axis.min}…{selectedProjectProfile.axis.max} {
+        selectedProjectProfile.axis.unit} · {selectedProjectProfile.unit}</dd></dl>
+    <button type="button" data-testid="gf07-locate-selection" onClick={locateProjectProfileSelection}
+      disabled={!project?.workspace.entries.some(item => item.module === "vector3d" &&
+        item.expected.id === selectedProjectProfile.source.documentId)}>
+      Locate selection in Field Explorer</button>
+    <button type="button" data-testid="gf07-refresh-profile" onClick={() => void refreshProjectProfile()}
+      disabled={!onAuthoringCommit || derivedProfiles.busyId !== null ||
+        !derivedProfiles.records.some(record => record.profileId === selectedProjectProfile.profileId &&
+          (record.status === "current" || record.reason === "not-computed") &&
+          !!project && !!findProjectProfileSelection(project, record.profileId))}>Refresh profile row</button>
+  </section>;
   const selectedSageExpression = selectedObject?.kind === "explicit-cartesian"
     ? selectedObject.expression.source : undefined;
   const selectedSageSource = selectedObject?.kind === "explicit-cartesian"
@@ -1574,10 +1729,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   };
   const selectedLinkedVectorField = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin ?
     parseVectorField3DDocument(selectedObject.linkedOrigin.vectorDocumentJson).source.field : null;
-  const selectedLinkedReady = selectedObject?.kind !== "point-series" || !selectedObject.linkedOrigin ||
+  const selectedLinkedReady = selectedObject?.kind !== "point-series" ||
+    (!selectedObject.projectProfileOrigin || projectProfileStates[selectedObject.id]?.status === "current" &&
+      (() => { const rows = pointTableStore.resolve(selectedObject.table);
+        return !!rows && structuralHash(rows) === selectedObject.projectProfileOrigin.rowsSha256; })()) &&
+    (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
-      linkedVerified(selectedObject.linkedOrigin);
+      linkedVerified(selectedObject.linkedOrigin)) &&
+    (!selectedObject.parameterStudyOrigin || parameterStudyStates[selectedObject.id]?.status === "current");
   const selectedRegionOrigin = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin &&
     "region" in selectedObject.linkedOrigin &&
     !isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
@@ -2917,6 +3077,17 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
         {area.skippedCells > 0 && <p>{area.skippedCells} undefined or unresolved cells skipped; partial area {area.partialValue.toPrecision(7)}.</p>}
         {area.publication.diagnostics.filter(entry => entry.code === "evaluation-limit")
           .map(entry => <p key={entry.code} role="status">{entry.message}</p>)}
+        <button type="button" data-testid="gf08-save-integral"
+          disabled={!onConstructionCommit || area.status !== "complete" ||
+            (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS ||
+            document.source.constructions?.objects.some(item => item.kind === "definite-integral" &&
+              item.inputs[0]?.objectId === area.objectId && item.anchor.mode === area.mode &&
+              item.anchor.interval.min === area.interval.min && item.anchor.interval.max === area.interval.max)}
+          onClick={() => { try { onConstructionCommit?.({ type: "create",
+            object: graph2DIntegralConstructionFromAnalysis(document, area, areaAnalysisBudget) });
+            setAreaSaveError(""); } catch (cause) { setAreaSaveError(String((cause as Error).message ?? cause)); } }}>
+          Save definite integral</button>
+        {areaSaveError && <p role="alert">{areaSaveError}</p>}
       </div>}
     </section>
     <section className="graph2d-arc-length" data-testid="graph2d-arc-length" aria-label="Arc length">
@@ -3688,6 +3859,15 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           linkedRegionFocus?.token ?? 0}`}
           mount={viewerRef.current?.closest<HTMLElement>(".graph2d-workspace") ?? undefined}
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
+          project={project}
+          focusSelectionRequest={selectionFocus}
+          derivedProfiles={derivedProfiles.records.filter(record => record.source.documentId ===
+            (vectorField3DDocument ?? savedVectorField3D)?.identity.id)}
+          onComputeDerivedProfile={derivedProfiles.compute} derivedProfileBusyId={derivedProfiles.busyId}
+          onOpenDerivedProfileInGraphs={async id => {
+            if (await openProjectProfile(id)) setVectorField3DOpen(false);
+          }}
+          derivedProfileProgress={derivedProfiles.progress} derivedProfileError={derivedProfiles.error}
           linkedRegionFocus={linkedRegionFocus?.focus ?? null}
           onFocusRegionInGraphs={focusExplorerRegionInGraphs}
           onFocusSubrectangleInGraphs={focusExplorerSubrectangleInGraphs}
@@ -3700,6 +3880,14 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           savedRegionResults={savedVectorField3DRegionResults}
           regionResultStatuses={vectorField3DRegionStatuses}
           onSaveRegionResult={onSaveVectorField3DRegionResult}
+          onSaveLineIntegralSelection={onSaveVectorField3DLineIntegralSelection}
+          onSaveLineIntegralResult={onSaveVectorField3DLineIntegralResult}
+          onSaveRegionIntegralSelection={onSaveVectorField3DRegionIntegralSelection}
+          onSaveRegionIntegralResult={onSaveVectorField3DRegionIntegralResult}
+          onSaveTrajectorySeeds={onSaveVectorField3DTrajectorySeeds}
+          onPromoteTrajectoryCurve={onPromoteVectorField3DTrajectoryCurve}
+          onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
+          onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
           onOpenProjectResults={onOpenVectorField3DProjectResults}
           onPromoteIsosurface={onPromoteVectorField3DIsosurface}
           isGraphLineImported={(selection, vectorDocument) => {
@@ -4117,7 +4305,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{savedFields}</details>}
+            {inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+            {profileCards}{studyPanel}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
@@ -4169,7 +4358,8 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{savedFields}
+        </details>}{inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+        {profileCards}{studyPanel}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}

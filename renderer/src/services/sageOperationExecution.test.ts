@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, createAlgebraObjectRecord, createMath3DProject,
+  createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
-import { SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
+import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
 import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
 import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
 
 const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
-  engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_SYMBOLIC_OPERATIONS,
+  engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_OPERATIONS,
 });
 const runSageJob = (
   request: Parameters<ReturnType<typeof createSageExecutionRegistry>["run"]>[0],
@@ -16,9 +18,40 @@ const operations = Object.keys(SAGE_JOB_OPERATIONS) as BrokeredSageOperation[];
 const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.matrix.eigen_exact", "sage.matrix.charpoly", "sage.groebner.compute",
   "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
+  "sage.algebra.reconstruct",
+  "sage.algebra.inspectDomains",
+  "sage.polynomial.dossier",
+  "sage.matrix.linear_dossier",
+  "sage.matrix.integer_forms",
+  "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
+  "sage.ideal.syzygies", "sage.ideal.hilbertSeries",
 ]);
+const algebraParams = (domains = false) => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-a04-broker" });
+  const id = createProjectAlgebraObjectId(project.identity.id, "Q");
+  project = upsertMath3DProjectAlgebraObject(project, createAlgebraObjectRecord({ id, label: "Q", revision: 1,
+    definition: { kind: "rational-field" } }));
+  const ref = { objectId: id, revision: 1 };
+  return JSON.parse(JSON.stringify(domains ? buildSageAlgebraDomainInput(project, ref, ref)
+    : buildSageAlgebraReconstructionInput(project, ref))) as Record<string, unknown>;
+};
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
-  operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
+  operation === "sage.algebra.reconstruct" ? algebraParams()
+    : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
+    : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
+      matrix: [["1", "2"], ["2", "4"]] }
+    : operation === "sage.matrix.integer_forms" ? { format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,
+      matrix: [["2", "0"], ["0", "6"]] }
+    : operation.startsWith("sage.ideal.") ? { format: "math3d.sage-ideal-operation", schemaVersion: 1,
+      target: { objectId: "math3d:algebra:fixture", revision: 1 }, targetHash: "sha256:fixture",
+      ideal: { objectId: "math3d:algebra:ideal", revision: 1 }, idealHash: "sha256:fixture",
+      ambientRing: { objectId: "math3d:algebra:ring", revision: 1 }, ambientHash: "sha256:fixture",
+      variables: ["x", "y"], monomialOrder: "lex", generators: ["x*y-1", "y-1"],
+      ...(operation === "sage.ideal.eliminate" ? { eliminate: ["x"] } : {}),
+      ...(operation === "sage.ideal.membership" ? { polynomial: "x-1" } : {}) }
+    : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }
     : operation === "sage.numberTheory.modInverse" ? { a: "3", modulus: "11" }
@@ -89,7 +122,7 @@ describe("Sage scientific execution contract", () => {
   it("shares capability discovery and execution across Surface and Geometry", async () => {
     const calls: unknown[] = [];
     const registry = createSageExecutionRegistry({
-      health: async (backend) => ({ engine: "sagemath", status: backend === "docker" ? "ok" : "WSL unavailable",
+      health: async (backend) => ({ engine: "sagemath", status: backend === "docker" ? "ok" : backend === "private" ? "Gateway unavailable" : "WSL unavailable",
         available: backend === "docker", operations: ["sage.symbolic.simplify"] }),
       run: async (request) => {
         calls.push(request);
@@ -98,7 +131,7 @@ describe("Sage scientific execution contract", () => {
       },
     });
     const snapshots = await registry.discoverBackends();
-    expect(snapshots).toHaveLength(2);
+    expect(snapshots).toHaveLength(3);
     expect(snapshots.find((item) => item.backendId === "sage-local-wsl")).toMatchObject({
       availability: "unavailable", unavailableReason: "WSL unavailable",
     });
@@ -118,6 +151,39 @@ describe("Sage scientific execution contract", () => {
     expect(getComputeJobs().find((job) => job.jobId === unavailable.jobId)).toMatchObject({
       status: "failed", backendId: "sage-local-wsl",
     });
+  });
+
+  it("discovers only bounded Number Theory on the private gateway and routes through the same broker", async () => {
+    const calls: unknown[] = [];
+    const registry = createSageExecutionRegistry({
+      health: async (backend) => ({ engine: "sagemath", engineVersion: "10.10", status: "ok", available: backend === "private",
+        operations: SAGE_SYMBOLIC_OPERATIONS }),
+      run: async (request) => { calls.push(request); return { engine: "sagemath", engineVersion: "10.10",
+        operation: request.operation, success: true, result: { value: "6" }, latex: "6", warnings: [] }; },
+    });
+    const probe = await registry.probeBackend("private");
+    expect(probe.backendId).toBe("sage-private-gateway");
+    expect(probe.limits.maxInputBytes).toBe(8 * 1024);
+    expect(probe.operations.map((item) => item.operationType)).toEqual(["number-theory.gcd", "number-theory.mod-inverse"]);
+    expect(() => registry.run({ operation: "sage.symbolic.simplify", backend: "private",
+      params: { expression: "x", variables: ["x"] } })).toThrow();
+    const handle = registry.run({ operation: "sage.numberTheory.gcd", backend: "private", params: { values: ["84", "30"] } });
+    const { broker, response } = await handle.promise;
+    expect(broker).toMatchObject({ ok: true, backend: { backendId: "sage-private-gateway" } });
+    expect(response.result.value).toBe("6");
+    expect(calls).toMatchObject([{ operation: "sage.numberTheory.gcd", backend: "private" }]);
+  });
+
+  it("advertises typed algebra reconstruction only on Docker and rejects code-bearing payloads", async () => {
+    const registry = createSageExecutionRegistry({ health });
+    expect((await registry.probeBackend("docker")).operations.map((item) => item.operationType)).toContain("algebra.reconstruct");
+    expect((await registry.probeBackend("local")).operations.map((item) => item.operationType)).not.toContain("algebra.reconstruct");
+    expect((await registry.probeBackend("private")).operations.map((item) => item.operationType)).not.toContain("algebra.reconstruct");
+    const params = algebraParams();
+    expect(() => registry.run({ operation: "sage.algebra.reconstruct", backend: "local", params })).toThrow(/Invalid Sage/);
+    expect(() => registry.run({ operation: "sage.algebra.reconstruct", backend: "private", params })).toThrow(/Invalid Sage/);
+    expect(() => registry.run({ operation: "sage.algebra.reconstruct", backend: "docker",
+      params: { ...params, code: "print(1)" } })).toThrow(/envelope/);
   });
 
   it("cancels independent jobs through one shared service", async () => {
@@ -169,6 +235,14 @@ describe("Sage scientific execution contract", () => {
       });
     }
   }
+
+  it("advertises the B02 dossier only on Docker and rejects a multivariate recipe", async () => {
+    const registry = createSageExecutionRegistry({ health });
+    expect((await registry.probeBackend("docker")).operations.map((item) => item.operationType)).toContain("polynomial.dossier");
+    expect((await registry.probeBackend("local")).operations.map((item) => item.operationType)).not.toContain("polynomial.dossier");
+    expect(() => registry.run({ operation: "sage.polynomial.dossier", backend: "docker",
+      params: { polynomial: "x+y", variables: ["x", "y"] } })).toThrow(/polynomial dossier parameters/);
+  });
 
   it("preserves exact-roots rejection diagnostics as a failed Compute job", async () => {
     const operation = "sage.polynomial.roots_exact";

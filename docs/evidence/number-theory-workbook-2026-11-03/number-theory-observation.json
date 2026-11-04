@@ -1,0 +1,103 @@
+{
+  "runtime": "SageMath 10.10 Docker",
+  "operations": [
+    "sage.numberTheory.gcd",
+    "sage.numberTheory.modInverse",
+    "sage.numberTheory.modInverse"
+  ],
+  "results": [
+    {
+      "source": {
+        "module": "number_theory",
+        "id": "sage-input:number-theory",
+        "revision": 0,
+        "expression": "84, 30",
+        "fingerprint": "a8e77356"
+      },
+      "request": {
+        "operation": "sage.numberTheory.gcd",
+        "params": {
+          "values": [
+            "84",
+            "30"
+          ]
+        },
+        "backend": "docker",
+        "jobId": "33e90d66-605f-4ec0-8d3c-74bbdddab196"
+      },
+      "response": {
+        "engine": "sagemath",
+        "engineVersion": "10.10",
+        "operation": "sage.numberTheory.gcd",
+        "success": true,
+        "latex": "6",
+        "result": {
+          "value": "6"
+        },
+        "warnings": [],
+        "elapsedMs": 0
+      }
+    },
+    {
+      "source": {
+        "module": "number_theory",
+        "id": "sage-input:number-theory",
+        "revision": 0,
+        "expression": "3 mod 11",
+        "fingerprint": "f83255b6"
+      },
+      "request": {
+        "operation": "sage.numberTheory.modInverse",
+        "params": {
+          "a": "3",
+          "modulus": "11"
+        },
+        "backend": "docker",
+        "jobId": "9cc8fe16-c1c6-43db-a579-70d88e7646d6"
+      },
+      "response": {
+        "engine": "sagemath",
+        "engineVersion": "10.10",
+        "operation": "sage.numberTheory.modInverse",
+        "success": true,
+        "latex": "4",
+        "result": {
+          "value": "4",
+          "modulus": "11"
+        },
+        "warnings": [],
+        "elapsedMs": 0
+      }
+    },
+    {
+      "source": {
+        "module": "number_theory",
+        "id": "sage-input:number-theory",
+        "revision": 0,
+        "expression": "2 mod 4",
+        "fingerprint": "dc9caaf1"
+      },
+      "request": {
+        "operation": "sage.numberTheory.modInverse",
+        "params": {
+          "a": "2",
+          "modulus": "4"
+        },
+        "backend": "docker",
+        "jobId": "025e7c9f-3dcb-4622-bd9f-600b976112fd"
+      },
+      "response": {
+        "engine": "sagemath",
+        "engineVersion": "10.10",
+        "operation": "sage.numberTheory.modInverse",
+        "success": false,
+        "latex": "",
+        "result": {},
+        "warnings": [],
+        "elapsedMs": 0,
+        "error": "inverse of Mod(2, 4) does not exist"
+      }
+    }
+  ],
+  "independentImport": true
+}

@@ -18,6 +18,7 @@ import type { CameraSyncState, OverlayPointSet, OverlayPolylineGroup } from "./S
 import { type ComparisonEvidenceSelection } from "../projects/projectComparisonEvidence";
 import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceExport";
 import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
+import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedCoordinateProbe } from "../projects/projectLinkedCoordinateProbe";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -140,15 +141,25 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
 export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; onPick: (pick: Pick) => void; height?: number;
   captureToken?: number; onCaptureThumbnail?: (dataUrl: string | null) => void;
   linkedUV?: { u: number; v: number } | null; linkedToken?: number;
+  coordinateProbe?: LinkedCoordinateProbe | null;
   onCameraSync?: (state: CameraSyncState) => void; cameraOverride?: CameraSyncState | null; cameraOverrideToken?: number }> =
-  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, onCameraSync, cameraOverride, cameraOverrideToken }) => {
+  ({ members, label, onPick, height = 520, captureToken, onCaptureThumbnail, linkedUV, linkedToken, coordinateProbe, onCameraSync, cameraOverride, cameraOverrideToken }) => {
   const meshes = useMemo(() => members.flatMap(member => member.meshes), [members]);
-  const points = useMemo(() => members.flatMap(member => member.points), [members]);
+  const points = useMemo(() => [...members.flatMap(member => member.points),
+    ...(coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : [])],
+    [members, coordinateProbe]);
   const lines = useMemo(() => members.flatMap(member => member.lines), [members]);
   return <section aria-label={label} style={{ minWidth: 0, height, position: "relative", border: "1px solid #cbd5e1", borderRadius: 8, overflow: "hidden" }}>
     <div style={{ position: "absolute", zIndex: 30, top: 58, left: 10, background: "#fff", padding: "4px 8px", borderRadius: 4, maxWidth: "min(80%, 450px)" }}>
       <strong>{label}</strong><br /><small>{members.map(member => `${member.generation} r${member.revision} · ${member.hash.slice(0, 20)}… · ${member.param?.unit ?? member.coordinates.value?.unit ?? "unit not recorded"}`).join(" / ")}</small>
     </div>
+    {coordinateProbe && <div data-testid="project-composition-linked-coordinate" style={{ position: "absolute", zIndex: 30, left: 10, bottom: 10,
+      background: "#fff", padding: "5px 8px", borderRadius: 4, maxWidth: "min(80%, 480px)" }}>
+      <strong>Linked coordinate · {coordinateProbe.frame}</strong><br />
+      <small>From {coordinateProbe.source.slot === 0 ? "A" : "B"} · {coordinateProbe.source.id} r{coordinateProbe.source.revision} · {coordinateProbe.source.hash.slice(0, 16)}…<br />
+        ({coordinateProbe.point.x.toPrecision(5)}, {coordinateProbe.point.y.toPrecision(5)}, {coordinateProbe.point.z.toPrecision(5)}) {coordinateProbe.unit}.
+        Coordinate marker only; no target element or value inferred.</small>
+    </div>}
     {members.length === 1 && members[0]!.param ? <ParamSurfaceViewer surfaceId="custom" documentBinding={members[0]!.param.binding}
       customX={members[0]!.param.x} customY={members[0]!.param.y} customZ={members[0]!.param.z} paramDomain={members[0]!.param.domain}
       paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
@@ -169,9 +180,9 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
 };
 
 export const ProjectCompositionView: React.FC<{ project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
-  initialCompositionId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
-  onSaveObservation: (composition: ProjectComposition, title: string, body: string) => Promise<boolean> }> =
-  ({ project, readResource, onClose, initialCompositionId, onSave, onSaveObservation }) => {
+  initialCompositionId?: string; initialProbeNoteId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
+  onSaveObservation: (composition: ProjectComposition, title: string, body: string, probe?: LinkedCoordinateProbe) => Promise<boolean> }> =
+  ({ project, readResource, onClose, initialCompositionId, initialProbeNoteId, onSave, onSaveObservation }) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKeyDown, true);
@@ -195,6 +206,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const [observationTitle, setObservationTitle] = useState("Comparison observation");
   const [observationBody, setObservationBody] = useState("");
   const [observationBusy, setObservationBusy] = useState(false);
+  const [savedProbeId, setSavedProbeId] = useState("");
   const [linked, setLinked] = useState<{ uv: { u: number; v: number }; token: number } | null>(null);
   const [cameraMode, setCameraMode] = useState<"independent" | "linked">("independent");
   const [cameraLeader, setCameraLeader] = useState<0 | 1>(0);
@@ -202,7 +214,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const onLeaderCamera = useCallback((state: CameraSyncState) =>
     setCameraPose(previous => ({ state, token: (previous?.token ?? 0) + 1 })), []);
   const chooseSaved = (id: string) => {
-    setSavedId(id); setPick(null); setLinked(null); setCameraPose(null); setMessage("");
+    setSavedId(id); setPick(null); setLinked(null); setSavedProbeId(""); setCameraPose(null); setMessage("");
     const choice = project.compositions?.find(item => item.id === id);
     if (!choice) { setCameraMode("independent"); return; }
     setFirstId(choice.members[0].documentId); setSecondId(choice.members[1].documentId); setMode(choice.mode);
@@ -217,6 +229,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     setPalette([choice.members[0].color, choice.members[1].color]); setOpacity([choice.members[0].opacity, choice.members[1].opacity]);
   };
   useEffect(() => { if (initialCompositionId) chooseSaved(initialCompositionId); }, [initialCompositionId]);
+  useEffect(() => { if (initialProbeNoteId) { setPick(null); setSavedProbeId(initialProbeNoteId); } }, [initialProbeNoteId]);
   const composition = useMemo((): ProjectComposition | null => {
     if (!firstId || !secondId || firstId === secondId && (mode !== "side-by-side" || generation[0] === generation[1]) ||
       mode === "overlay" && (!frame.trim() || !unit.trim())) return null;
@@ -256,6 +269,15 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   }, [composition, project, readResource]);
   const report = useComparisonEvidenceExport(project, composition, readResource, pick);
   const linkable = mode === "side-by-side" && compatibleCompositionParameterChart(resolved.members);
+  const coordinateProbe = mode === "side-by-side" && !resolved.error ? resolveLinkedCoordinateProbe(resolved.members, pick) : null;
+  const savedProbes = saved && mode === "side-by-side" && !resolved.error ? (project.notes ?? []).flatMap(note => {
+    if (note.anchor?.kind !== "comparison" || note.anchor.compositionId !== saved.id || !note.anchor.coordinateProbe ||
+      inspectProjectComparisonNote(project, note, readResource).status !== "current") return [];
+    const probe = resolveSavedCoordinateProbe(resolved.members, note.anchor);
+    return probe ? [{ note, probe }] : [];
+  }) : [];
+  const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
+  const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
@@ -321,6 +343,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
           label={`${index === 0 ? "A" : "B"}: ${titleOf(project, member.documentId)} · r${member.expected.revision}`} onPick={onPick}
           captureToken={report.captureToken} onCaptureThumbnail={report.onCapture(index)}
           linkedUV={linkable ? linked?.uv : null} linkedToken={linked?.token}
+          coordinateProbe={displayedProbe?.target.slot === index ? displayedProbe : null}
           onCameraSync={cameraLinked && index === cameraLeader ? onLeaderCamera : undefined}
           cameraOverride={cameraLinked && index !== cameraLeader ? cameraPose?.state : null}
           cameraOverrideToken={cameraLinked && index !== cameraLeader ? cameraPose?.token : undefined} />)}
@@ -353,12 +376,26 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
           if (ok) { setObservationBody(""); setMessage("Observation saved with both exact source generations."); }
           else setMessage("Observation could not be saved; reopen the Project and check both sources.");
         }).finally(() => setObservationBusy(false)); }}>Save observation</button>
+      <button data-testid="project-comparison-save-coordinate" style={{ marginLeft: 6 }}
+        disabled={!saved || !coordinateProbe || observationBusy || !observationTitle.trim() || !observationBody.trim()}
+        onClick={() => { if (!composition || !coordinateProbe) return; setObservationBusy(true);
+          void onSaveObservation(composition, observationTitle, observationBody, coordinateProbe).then(ok => {
+            if (ok) { setObservationBody(""); setPick(null); setMessage("Coordinate observation saved with both exact source generations."); }
+            else setMessage("Coordinate observation could not be saved; recheck both sources.");
+          }).finally(() => setObservationBusy(false)); }}>Save coordinate observation</button>
+      <small style={{ display: "block" }}>Pick a Mesh or Geometry surface first. The Note records its coordinate and declared frame, not a matching element or measured value in the other source.</small>
       {(project.notes ?? []).filter(note => note.anchor?.kind === "comparison" && note.anchor.compositionId === saved.id).map(note => {
         const anchor = note.anchor!;
         if (anchor.kind !== "comparison") return null;
         const state = inspectProjectComparisonNote(project, note, readResource);
         return <article key={note.identity.id} style={{ borderTop: "1px solid #cbd5e1", marginTop: 8, paddingTop: 8 }}>
-          <strong>{note.title}</strong> · {state.status}<p style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{note.body}</p>
+          <strong>{note.title}</strong> · {state.status}
+          {anchor.coordinateProbe && state.status !== "current" ? <p role="alert">Saved coordinate unavailable until both exact sources verify.</p> :
+            <p style={{ whiteSpace: "pre-wrap", margin: "4px 0" }}>{note.body}</p>}
+          {anchor.coordinateProbe && state.status === "current" && <><small>Shared coordinate from {anchor.coordinateProbe.sourceSlot}:
+            {` (${anchor.coordinateProbe.point.join(", ")}) ${anchor.coordinateProbe.coordinateFrame.unit}`} · {anchor.coordinateProbe.coordinateFrame.frame}.
+            No target element inferred.</small><br /><button type="button" onClick={() => { setPick(null); setSavedProbeId(note.identity.id); }}>
+            Show saved coordinate</button></>}
           <small>Alignment: {anchor.alignment}; composition {anchor.compositionId} · {anchor.compositionHash}<br />
             A: {anchor.members[0].id} r{anchor.members[0].revision} · {anchor.members[0].structuralHash}<br />
             B: {anchor.members[1].id} r{anchor.members[1].revision} · {anchor.members[1].structuralHash}</small>
@@ -371,7 +408,11 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       {saved && <span style={{ marginLeft: 16 }}>Saved source status: {inspectProjectCompositionAvailability(saved, project.workspace).join(" / ")}</span>}
       {mode === "side-by-side" && (linkable ? <p>Linked selection uses the same stored parameter ‘u,v’ in both generations, not an inferred physical-point match.
         {linked && ` Selected u=${linked.uv.u.toPrecision(5)}, v=${linked.uv.v.toPrecision(5)}.`}</p> :
-        <p>Linked selection unavailable: these panes do not share a verified parameter chart. Each selection remains source-specific.</p>)}
+        displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
+          {` (${displayedProbe.point.x.toPrecision(5)}, ${displayedProbe.point.y.toPrecision(5)}, ${displayedProbe.point.z.toPrecision(5)}) ${displayedProbe.unit}`}
+          {` in ${displayedProbe.frame}.`} Source: {displayedProbe.source.id} r{displayedProbe.source.revision} · {displayedProbe.source.hash}.
+          Mesh and Geometry element picks remain source-local; the other pane shows a coordinate marker only.</p> :
+        <p data-testid="project-composition-probe-status">Linked coordinate unavailable until a Mesh or Geometry is picked in two visible sources with matching declared frames, axes, handedness, and units. Element picks remain source-local.</p>)}
       {message && <p role="status">{message}</p>}
     </footer>
   </div>, document.body);

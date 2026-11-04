@@ -1,0 +1,57 @@
+{
+  "docker": {
+    "cases": {},
+    "reason": "<urlopen error [Errno 111] Connection refused>",
+    "status": "unavailable",
+    "version": null
+  },
+  "fixtureCount": 7,
+  "local": {
+    "cases": {
+      "GF(7^2)": {
+        "characteristic": "7",
+        "isField": true,
+        "kind": "finite-field"
+      },
+      "GF(7^2)[t]": {
+        "characteristic": "7",
+        "isField": false,
+        "kind": "polynomial-ring",
+        "variables": [
+          "t"
+        ]
+      },
+      "QQ": {
+        "characteristic": "0",
+        "isField": true,
+        "kind": "rational-field"
+      },
+      "QQ[x,y]": {
+        "characteristic": "0",
+        "isField": false,
+        "kind": "polynomial-ring",
+        "variables": [
+          "x",
+          "y"
+        ]
+      },
+      "Z/12Z": {
+        "characteristic": "12",
+        "isField": false,
+        "kind": "modular-ring"
+      },
+      "Z/13Z": {
+        "characteristic": "13",
+        "isField": true,
+        "kind": "modular-ring"
+      },
+      "ZZ": {
+        "characteristic": "0",
+        "isField": false,
+        "kind": "integer-ring"
+      }
+    },
+    "status": "passed",
+    "version": "9.5"
+  }
+}

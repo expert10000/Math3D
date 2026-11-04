@@ -2,6 +2,10 @@ import {
   createScientificJobRequest,
   createStableDocumentId,
   structuralHash,
+  parseSageAlgebraReconstructionInput,
+  parseSageAlgebraDomainInput,
+  parseSageMatrixDossierInput,
+  parseSageIntegerMatrixFormsInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -24,6 +28,7 @@ import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } f
 export const SAGE_JOB_OPERATIONS = {
   "sage.symbolic.simplify": { type: "symbolic.simplify", label: "simplification", cancelled: "Sage symbolic job cancelled." },
   "sage.polynomial.factor": { type: "polynomial.factor", label: "polynomial factorization", cancelled: "Sage factorization cancelled." },
+  "sage.polynomial.dossier": { type: "polynomial.dossier", label: "polynomial dossier", cancelled: "Sage dossier cancelled." },
   "sage.polynomial.roots_exact": { type: "polynomial.roots.exact", label: "exact polynomial roots", cancelled: "Sage root calculation cancelled." },
   "sage.symbolic.gradient": { type: "symbolic.gradient", label: "gradient", cancelled: "Sage symbolic job cancelled." },
   "sage.symbolic.hessian": { type: "symbolic.hessian", label: "Hessian", cancelled: "Sage symbolic job cancelled." },
@@ -33,9 +38,19 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.symbolic.singularities": { type: "symbolic.singularities", label: "singularity analysis", cancelled: "Sage symbolic job cancelled." },
   "sage.matrix.eigen_exact": { type: "matrix.eigen.exact", label: "exact eigenvalues", cancelled: "Sage matrix job cancelled." },
   "sage.matrix.charpoly": { type: "matrix.charpoly", label: "characteristic polynomial", cancelled: "Sage matrix job cancelled." },
+  "sage.matrix.linear_dossier": { type: "matrix.linear-dossier", label: "QQ matrix analysis", cancelled: "Sage matrix dossier cancelled." },
+  "sage.matrix.integer_forms": { type: "matrix.integer-forms", label: "Smith and Hermite forms", cancelled: "Sage integer matrix job cancelled." },
   "sage.groebner.compute": { type: "algebra.groebner", label: "Gröbner basis", cancelled: "Sage Gröbner job cancelled." },
   "sage.numberTheory.gcd": { type: "number-theory.gcd", label: "greatest common divisor", cancelled: "Sage number theory job cancelled." },
   "sage.numberTheory.modInverse": { type: "number-theory.mod-inverse", label: "modular inverse", cancelled: "Sage number theory job cancelled." },
+  "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
+  "sage.algebra.inspectDomains": { type: "algebra.domains.inspect", label: "algebra parent inspection", cancelled: "Sage algebra domain inspection cancelled." },
+  "sage.ideal.groebner": { type: "ideal.groebner", label: "saved ideal Gröbner basis", cancelled: "Sage ideal job cancelled." },
+  "sage.ideal.eliminate": { type: "ideal.eliminate", label: "elimination ideal", cancelled: "Sage ideal job cancelled." },
+  "sage.ideal.membership": { type: "ideal.membership", label: "ideal membership", cancelled: "Sage ideal job cancelled." },
+  "sage.ideal.quotientDimension": { type: "ideal.quotient-dimension", label: "quotient dimension", cancelled: "Sage quotient job cancelled." },
+  "sage.ideal.syzygies": { type: "ideal.syzygies", label: "generator syzygies", cancelled: "Sage syzygy job cancelled." },
+  "sage.ideal.hilbertSeries": { type: "ideal.hilbert-series", label: "quotient Hilbert series", cancelled: "Sage Hilbert job cancelled." },
 } as const;
 export type BrokeredSageOperation = keyof typeof SAGE_JOB_OPERATIONS;
 export const isBrokeredSageOperation = (operation: string): operation is BrokeredSageOperation =>
@@ -49,11 +64,15 @@ export type SageOperationHandle = {
 
 type Runner = (request: SageRunRequest) => Promise<SageRunResponse>;
 type Canceller = (jobId: string) => Promise<unknown> | unknown;
-export type SageBackend = "local" | "docker";
+export type SageBackend = "local" | "docker" | "private";
 type Backend = SageBackend;
 type HealthChecker = (backend: Backend) => Promise<SageHealthResponse>;
 const SAGE_LIMITS = { maxInputBytes: 64 * 1024, maxOutputBytes: 256 * 1024,
   maxMemoryBytes: 512 * 1024 * 1024, maxWorkUnits: 1_000 } as const;
+const PRIVATE_SAGE_LIMITS = { maxInputBytes: 8 * 1024, maxOutputBytes: 256 * 1024,
+  maxMemoryBytes: 1024 * 1024 * 1024, maxWorkUnits: 1 } as const;
+export const sageBackendId = (backend: SageBackend) => backend === "local" ? "sage-local-wsl"
+  : backend === "docker" ? "sage-docker" : "sage-private-gateway";
 export const SAGE_CONSOLE_OPERATION = "sage.console.execute";
 export const SAGE_CONSOLE_LIMITS = { maxInputBytes: 16 * 1024, maxOutputBytes: 64 * 1024,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024, maxWorkUnits: 1 } as const;
@@ -64,7 +83,7 @@ export type SageRuntimeProbe = Readonly<{
   backendVersion: string;
   transport: "worker" | "remote";
   health: SageHealthResponse;
-  limits: typeof SAGE_LIMITS;
+  limits: typeof SAGE_LIMITS | typeof PRIVATE_SAGE_LIMITS;
   operations: readonly ScientificOperationCapability[];
 }>;
 
@@ -81,34 +100,51 @@ export type SageExecutionRegistryOptions = {
 const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOperation; backend: Backend }): void => {
   const definition = SAGE_JOB_OPERATIONS[request.operation];
   const params = request.params;
-  const polynomial = request.operation === "sage.polynomial.factor" || request.operation === "sage.polynomial.roots_exact";
+  const polynomial = request.operation === "sage.polynomial.factor" || request.operation === "sage.polynomial.roots_exact" ||
+    request.operation === "sage.polynomial.dossier";
   const matrix = params.matrix;
   const variables = params.variables;
   const stringVariables = Array.isArray(params.variables) &&
     params.variables.every((item) => typeof item === "string");
-  const validParams = request.operation.startsWith("sage.matrix.")
+  const validParams = request.operation.startsWith("sage.ideal.")
+    ? request.backend === "docker" && params.format === "math3d.sage-ideal-operation" &&
+      params.schemaVersion === 1 && Array.isArray(params.variables) && params.variables.length >= 1 &&
+      params.variables.length <= 3 && Array.isArray(params.generators) && params.generators.length >= 1 &&
+      params.generators.length <= 6 && typeof params.targetHash === "string" &&
+      typeof params.idealHash === "string" && typeof params.ambientHash === "string"
+    : request.operation.startsWith("sage.matrix.")
     ? request.backend === "docker" && Array.isArray(matrix) &&
       matrix.length > 0 && matrix.length <= 8 &&
       matrix.every((row) => Array.isArray(row) && row.length === matrix.length &&
         row.every((item) => (typeof item === "string" && item.trim().length > 0) ||
           (typeof item === "number" && Number.isFinite(item))))
+    : request.operation === "sage.algebra.reconstruct"
+      ? request.backend === "docker" && !!parseSageAlgebraReconstructionInput(params)
+    : request.operation === "sage.algebra.inspectDomains"
+      ? request.backend === "docker" && !!parseSageAlgebraDomainInput(params)
+    : request.operation === "sage.matrix.linear_dossier"
+      ? request.backend === "docker" && !!parseSageMatrixDossierInput(params)
+    : request.operation === "sage.matrix.integer_forms"
+      ? request.backend === "docker" && !!parseSageIntegerMatrixFormsInput(params)
     : request.operation === "sage.groebner.compute"
       ? request.backend === "docker" && Array.isArray(params.polynomials) &&
         params.polynomials.length > 0 && params.polynomials.length <= 12 &&
         params.polynomials.every((item) => typeof item === "string" && item.trim().length > 0) &&
         stringVariables && Array.isArray(variables) && variables.length > 0 && variables.length <= 8
     : request.operation === "sage.numberTheory.gcd"
-      ? request.backend === "docker" && Array.isArray(params.values) && params.values.length >= 2 &&
+      ? request.backend !== "local" && Array.isArray(params.values) && params.values.length >= 2 && params.values.length <= 32 &&
         params.values.every((item) => typeof item === "string" && /^-?[0-9]{1,128}$/.test(item))
     : request.operation === "sage.numberTheory.modInverse"
-      ? request.backend === "docker" &&
+      ? request.backend !== "local" &&
         typeof params.a === "string" && /^-?[0-9]{1,128}$/.test(params.a) &&
         typeof params.modulus === "string" && /^[0-9]{1,128}$/.test(params.modulus) &&
         BigInt(params.modulus) > 1n
+    : request.backend === "private" ? false
     : polynomial
-    ? request.backend === "local"
+    ? request.operation !== "sage.polynomial.dossier" && request.backend === "local"
       ? Array.isArray(params.coefficients) && params.coefficients.every((item) => typeof item === "string")
-      : typeof params.polynomial === "string" && stringVariables
+      : request.backend === "docker" && typeof params.polynomial === "string" && stringVariables &&
+        (request.operation !== "sage.polynomial.dossier" || (Array.isArray(variables) && variables.length === 1))
     : typeof params.expression === "string" && stringVariables;
   if (!validParams) {
     throw new TypeError(`Invalid Sage ${definition.label} parameters.`);
@@ -153,7 +189,9 @@ export class SageExecutionRegistry {
             const response = await this.#run({ ...body, jobId: input.jobId });
             if (this.#activeJobs.has(input.jobId)) this.#responses.set(input.jobId, response);
             context.checkpoint();
-            if (!response.success) throw new Error(response.error ?? `SageMath ${definition.label} failed.`);
+            if (!response.success) throw new Error(response.errorCode
+              ? `${response.errorCode}: ${response.error ?? `SageMath ${definition.label} failed.`}`
+              : response.error ?? `SageMath ${definition.label} failed.`);
             return JSON.parse(JSON.stringify(response)) as CanonicalJsonValue;
           },
         })), {
@@ -173,7 +211,7 @@ export class SageExecutionRegistry {
     });
     service.subscribe(recordScientificJobEvent);
     const makeBackend = (scope: Backend): ScientificExecutionBackend => ({
-      backendId: scope === "local" ? "sage-local-wsl" : "sage-docker",
+      backendId: sageBackendId(scope),
       backendVersion: "1", transport: scope === "local" ? "worker" : "remote",
       priority: 100, supportsCancellation: true,
       discover: async () => {
@@ -194,7 +232,7 @@ export class SageExecutionRegistry {
         }
       },
     });
-    this.#broker = createScientificExecutionBroker({ resolveSource, backends: [makeBackend("local"), makeBackend("docker")] });
+    this.#broker = createScientificExecutionBroker({ resolveSource, backends: [makeBackend("local"), makeBackend("docker"), makeBackend("private")] });
     this.#execution = createExecutionService(this.#broker);
     if (options.registerDiscovery) registerBrokerDiscovery("sage", () => this.#broker.discoverCapabilities());
   }
@@ -209,19 +247,22 @@ export class SageExecutionRegistry {
       health = await this.#health(backend);
     } catch (error) {
       health = { engine: "sagemath", available: false, operations: [],
-        status: error instanceof Error ? error.message : "SageMath health check failed." };
+        status: error instanceof Error ? error.message : "SageMath state check failed." };
     }
     const operations: ScientificOperationCapability[] = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
-      .filter(([operation]) => health.operations.includes(operation) && (backend === "docker" || isLocalSageOperation(operation)))
-      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const, ...SAGE_LIMITS }))
+      .filter(([operation]) => health.available && health.operations.includes(operation) && (backend === "docker" ||
+        (backend === "private" && operation.startsWith("sage.numberTheory.")) ||
+        (backend === "local" && isLocalSageOperation(operation))))
+      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const,
+        ...(backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS) }))
       .sort((left, right) => left.operationType.localeCompare(right.operationType));
     if (backend === "local" && health.available && this.#consoleAvailable()) {
       operations.push({ operationType: SAGE_CONSOLE_OPERATION, retrySafety: "never", ...SAGE_CONSOLE_LIMITS });
     }
     return {
-      backend, backendId: backend === "local" ? "sage-local-wsl" : "sage-docker",
+      backend, backendId: sageBackendId(backend),
       backendVersion: "1", transport: backend === "local" ? "worker" : "remote",
-      health, limits: SAGE_LIMITS, operations,
+      health, limits: backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS, operations,
     };
   }
 
@@ -235,11 +276,12 @@ export class SageExecutionRegistry {
       documentId: createStableDocumentId("sage-operation", { jobId, payload } as CanonicalJsonValue),
       revision: 1, structuralHash: structuralHash(payload), generation: 1,
     };
-    const backendId = request.backend === "local" ? "sage-local-wsl" : "sage-docker";
+    const backendId = sageBackendId(request.backend);
     const job = createScientificJobRequest({
       jobId, source,
       operation: { type: definition.type, payload: payload as CanonicalJsonValue },
-      limits: { deadlineAt: Date.now() + 40_000, ...SAGE_LIMITS },
+      limits: { deadlineAt: Date.now() + (request.backend === "local" ? 180_000 : 40_000),
+        ...(request.backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS) },
     });
     this.#activeJobs.add(jobId);
     this.#sources.set(source.documentId, source);
@@ -251,6 +293,8 @@ export class SageExecutionRegistry {
         engine: "sagemath", operation: request.operation, success: false, latex: "", result: {}, warnings: [],
         error: outcome.ok ? "SageMath returned no response." : outcome.code === "cancelled"
           ? definition.cancelled : outcome.message,
+        ...(!outcome.ok && /^([a-z][a-z0-9_]+): /.test(outcome.message)
+          ? { errorCode: /^([a-z][a-z0-9_]+): /.exec(outcome.message)![1] } : {}),
       };
       return { broker: outcome, response: outcome.ok ? response ?? failed : response?.success === false ? response : failed };
     }).finally(() => {
@@ -280,7 +324,8 @@ export class SageExecutionRegistry {
     };
     const job = createScientificJobRequest({
       jobId, source, operation: { type: SAGE_CONSOLE_OPERATION, payload },
-      limits: { deadlineAt: Date.now() + 20_000, ...SAGE_CONSOLE_LIMITS },
+      // WSL discovery and Sage imports can each take tens of seconds on a cold start.
+      limits: { deadlineAt: Date.now() + 180_000, ...SAGE_CONSOLE_LIMITS },
     });
     this.#activeJobs.add(jobId);
     this.#consoleJobs.add(jobId);

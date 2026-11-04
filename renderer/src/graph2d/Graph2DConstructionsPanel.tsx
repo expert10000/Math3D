@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { graph2DConstructionHierarchy, graph2DClearConstructionActions, graph2DDerivedConstructionFromPoint, graph2DCurvatureConstructionFromPoint, graph2DOsculatingCircleConstructionFromPoint, graph2DPointConstructionFromProbe,
-  graph2DPointDifferentialReadout, GRAPH2D_MAX_CONSTRUCTIONS, type Graph2DConstructionAction, type Graph2DConstructionArtifact,
+  graph2DPointDifferentialReadout, GRAPH2D_MAX_CONSTRUCTIONS, GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS,
+  type Graph2DConstructionAction, type Graph2DConstructionArtifact,
   type Graph2DConstructionObject, type Graph2DResolvedConstruction,
-  type Graph2DDocument, type Graph2DPointOnCurveConstruction } from "@math3d/core";
+  type Graph2DDocument, type Graph2DPointOnCurveConstruction,
+  type Graph2DIntegralConstruction } from "@math3d/core";
 
 function PointCard({ document, object, resolved, onAction, onFitConstruction, children }: { document: Graph2DDocument;
   object: Graph2DPointOnCurveConstruction; resolved?: Graph2DResolvedConstruction;
@@ -53,9 +55,62 @@ function PointCard({ document, object, resolved, onAction, onFitConstruction, ch
   </li>;
 }
 
+function IntegralCard({ document, object, resolved, onAction }: { document: Graph2DDocument;
+  object: Graph2DIntegralConstruction; resolved?: Graph2DResolvedConstruction;
+  onAction: (action: Graph2DConstructionAction) => void }) {
+  const [draft, setDraft] = useState(() => ({ min: String(object.anchor.interval.min),
+    max: String(object.anchor.interval.max), mode: object.anchor.mode,
+    tolerance: String(object.anchor.tolerance), budget: String(object.anchor.maxEvaluations) }));
+  const [error, setError] = useState("");
+  useEffect(() => setDraft({ min: String(object.anchor.interval.min),
+    max: String(object.anchor.interval.max), mode: object.anchor.mode,
+    tolerance: String(object.anchor.tolerance), budget: String(object.anchor.maxEvaluations) }), [object.anchor]);
+  const sourceLabel = document.source.objects.find(item => item.id === object.inputs[0]?.objectId)?.label ??
+    object.inputs[0]?.objectId;
+  return <li className="graph2d-construction-card" data-construction-id={object.id}
+    data-testid="gf08-integral-construction">
+    <header><strong>{object.label}</strong><small>on {sourceLabel} · {resolved?.state ?? "pending"} · numerical</small></header>
+    {resolved?.integral && <p data-testid="gf08-saved-integral-value">{resolved.integral.mode} integral = {
+      resolved.integral.value.toPrecision(9)} · Adaptive Simpson · {resolved.integral.evaluations} evaluations ·
+      estimated error {resolved.integral.errorEstimate?.toExponential(2) ?? "unavailable"} (not certified)</p>}
+    {resolved?.reason && <p role="status">{resolved.reason}</p>}
+    <form onSubmit={event => { event.preventDefault();
+      const min = Number(draft.min), max = Number(draft.max), tolerance = Number(draft.tolerance),
+        maxEvaluations = Number(draft.budget);
+      if (draft.min.trim() === "" || draft.max.trim() === "" || draft.tolerance.trim() === "" ||
+          draft.budget.trim() === "" || !Number.isFinite(min) || !Number.isFinite(max) || min >= max ||
+          !Number.isFinite(tolerance) || tolerance <= 0 || tolerance > 0.1 ||
+          !Number.isSafeInteger(maxEvaluations) || maxEvaluations < 1 ||
+          maxEvaluations > GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) {
+        setError(`Enter increasing finite bounds, tolerance in (0, 0.1], and a budget from 1 to ${GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS}.`); return;
+      }
+      try { onAction({ type: "update", object: { ...object,
+        anchor: { interval: { min, max }, mode: draft.mode, tolerance, maxEvaluations } } });
+        setError(""); } catch (cause) { setError(String((cause as Error).message ?? cause)); }
+    }}>
+      <label>From x <input type="number" step="any" value={draft.min}
+        onChange={event => setDraft({ ...draft, min: event.target.value })} /></label>
+      <label>To x <input type="number" step="any" value={draft.max}
+        onChange={event => setDraft({ ...draft, max: event.target.value })} /></label>
+      <label>Measure <select value={draft.mode}
+        onChange={event => setDraft({ ...draft, mode: event.target.value as "signed" | "absolute" })}>
+        <option value="signed">Signed</option><option value="absolute">Absolute</option></select></label>
+      <label>Tolerance <input type="number" step="any" value={draft.tolerance}
+        onChange={event => setDraft({ ...draft, tolerance: event.target.value })} /></label>
+      <label>Evaluation budget <input type="number" step="1" value={draft.budget}
+        onChange={event => setDraft({ ...draft, budget: event.target.value })} /></label>
+      <button type="submit">Update integral</button>
+    </form>
+    {error && <p role="alert">{error}</p>}
+    <button type="button" onClick={() => onAction({ type: "delete", objectId: object.id })}>Delete integral</button>
+  </li>;
+}
+
 function ConstructionCard({ document, object, resolved, onAction, onFitConstruction }: {
   document: Graph2DDocument; object: Graph2DConstructionObject; resolved?: Graph2DResolvedConstruction;
   onAction: (action: Graph2DConstructionAction) => void; onFitConstruction?: (id: string) => void }) {
+  if (object.kind === "definite-integral") return <IntegralCard document={document} object={object}
+    resolved={resolved} onAction={onAction} />;
   return <li className="graph2d-construction-card" data-construction-id={object.id}>
     <strong>{object.label}</strong> <small>{object.kind} · {resolved?.state ?? "pending"} · {resolved?.confidence ?? "pending"}</small>
     {object.inputs.length > 1 && <small>Sources: {object.inputs.map(input =>
@@ -64,7 +119,7 @@ function ConstructionCard({ document, object, resolved, onAction, onFitConstruct
       <p data-testid="graph2d-saved-curvature">κ = {resolved.measurement.value.toPrecision(8)} · {resolved.measurement.method} · {resolved.measurement.convention} · no certified error bound</p>}
     {object.kind === "osculating-circle" && resolved?.circle &&
       <p data-testid="graph2d-saved-osculating-circle">Center ({resolved.circle.center.x.toPrecision(8)}, {resolved.circle.center.y.toPrecision(8)}) · radius {resolved.circle.radius.toPrecision(8)} · approximate · no certified error bound. The dashed circle and center marker may overlap the source curve; use Fit to inspect them.</p>}
-    {object.anchor && "interval" in object.anchor && <small>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</small>}
+    {object.anchor && "seedX" in object.anchor && <small>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</small>}
     {resolved?.reason && <p>{resolved.reason}</p>}
     <div className="graph2d-construction-footer"><button type="button" disabled={!onFitConstruction || !resolved?.point}
       onClick={() => onFitConstruction?.(object.id)}>Fit construction</button>

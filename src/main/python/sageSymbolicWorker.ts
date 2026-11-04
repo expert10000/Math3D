@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { localSageDistro, resolveLocalSageExecutable } from "./localSageRuntime";
 
 export const LOCAL_SYMBOLIC_OPERATIONS = [
   "sage.symbolic.simplify", "sage.symbolic.factor", "sage.symbolic.expand", "sage.symbolic.solve",
@@ -109,7 +110,8 @@ else:
     if operation not in ("sage.symbolic.gradient", "sage.symbolic.hessian", "sage.symbolic.singularities"):
         result = {"text": str(value)}
 from sage.env import SAGE_VERSION
-print(json.dumps({"schemaVersion": 1, "jobId": request["jobId"], "operation": operation,
+
+print(json.dumps({"schemaVersion": int(1), "jobId": request["jobId"], "operation": operation,
     "status": "succeeded", "result": result, "latex": str(latex(value)),
     "engineVersion": str(SAGE_VERSION)}, separators=(",", ":")))
 `;
@@ -119,8 +121,11 @@ const activeJobs = new Map<string, ActiveJob>();
 
 export async function checkLocalSageHealth(): Promise<Record<string, unknown>> {
   const operations = [...LOCAL_SYMBOLIC_OPERATIONS, "sage.polynomial.factor", "sage.polynomial.roots_exact"];
+  let executable: string;
+  try { executable = await resolveLocalSageExecutable(); }
+  catch (error) { return { engine: "sagemath", available: false, status: error instanceof Error ? error.message : "SageMath was not found in WSL.", operations }; }
   return new Promise((resolve) => {
-    const child = spawn("wsl.exe", ["-d", "Ubuntu", "--exec", "/usr/bin/sage", "--version"],
+    const child = spawn("wsl.exe", ["-d", localSageDistro(), "--exec", executable, "--version"],
       { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let output = "";
     let settled = false;
@@ -128,10 +133,10 @@ export async function checkLocalSageHealth(): Promise<Record<string, unknown>> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      const engineVersion = available ? output.match(/SageMath version\s+([^\s,]+)/i)?.[1] : undefined;
+      const engineVersion = available ? output.trim().match(/^(?:SageMath version\s+)?(\d+\.\d+(?:\.\d+)?)/i)?.[1] : undefined;
       resolve({ engine: "sagemath", engineVersion, available, status, operations });
     };
-    const timer = setTimeout(() => { child.kill(); finish(false, "Local SageMath check exceeded 12 seconds."); }, 12_000);
+    const timer = setTimeout(() => { child.kill(); finish(false, "Local SageMath check exceeded 90 seconds."); }, 90_000);
     child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString("utf8").slice(0, 256); });
     child.once("error", () => finish(false, "SageMath is unavailable in WSL Ubuntu."));
     child.once("close", (code) => finish(code === 0, code === 0
@@ -167,16 +172,18 @@ export async function runSageSymbolicJob(
   const parameters = { expression: params.expression, variables: params.variables };
   const inputHash = createHash("sha256").update(JSON.stringify(parameters)).digest("hex");
   const started = Date.now();
+  const executable = await resolveLocalSageExecutable();
+  if (activeJobs.size > 0) throw new Error("A local Sage symbolic job is already running.");
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const child = spawn("wsl.exe", [
-      "-d", "Ubuntu", "--exec", "/usr/bin/timeout", "--kill-after=1s", "20s",
-      "/usr/bin/prlimit", "--as=4294967296", "--cpu=18", "--",
-      "/usr/bin/sage", "-python", "-c", SAGE_SYMBOLIC_SCRIPT,
+      "-d", localSageDistro(), "--exec", "/usr/bin/timeout", "--kill-after=1s", "75s",
+      "/usr/bin/prlimit", "--as=4294967296", "--cpu=45", "--",
+      executable, "-c", SAGE_SYMBOLIC_SCRIPT,
     ], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     const job: ActiveJob = { child, cancelled: false };
     activeJobs.set(jobId, job);
     let stdout = ""; let stderr = ""; let settled = false; let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 25_000);
+    const timer = setTimeout(() => { timedOut = true; child.kill(); }, 100_000);
     const finish = (error?: Error, result?: Record<string, unknown>) => {
       if (settled) return;
       settled = true; clearTimeout(timer); activeJobs.delete(jobId);
@@ -193,10 +200,10 @@ export async function runSageSymbolicJob(
     child.once("error", (error) => finish(error));
     child.once("close", (code) => {
       if (job.cancelled) return finish(new Error("Sage symbolic job cancelled."));
-      if (timedOut || code === 124) return finish(new Error("Sage symbolic job exceeded the 20-second limit."));
+      if (timedOut || code === 124) return finish(new Error("Sage symbolic job exceeded the 75-second WSL limit."));
       if (code !== 0) {
         const rejected = stderr.match(/(?:ValueError|SyntaxError): ([^\r\n]+)/);
-        return finish(new Error(rejected ? rejected[1] : `Sage worker exited with code ${code}.`));
+        return finish(new Error(rejected ? rejected[1] : `Sage worker exited with code ${code}: ${stderr.trim().slice(-1500)}`));
       }
       try {
         const reply = JSON.parse(stdout.trim()) as Record<string, unknown>;

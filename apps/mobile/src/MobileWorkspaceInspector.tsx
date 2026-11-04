@@ -548,7 +548,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
           {inspectorSection === "analyze" && (
             <>
               <Text style={styles.panelTitle}>Analyze</Text>
-              {!selectedSurface && <Text style={styles.itemMeta}>Select an object to inspect its geometry, topology, and mesh health.</Text>}
+              {!selectedSurface && <Text style={styles.itemMeta}>Select an object to inspect its geometry, topology, and mesh state.</Text>}
               {contextualLearnExample?.learnTopic && (
                 <View testID="mobile-contextual-learn-card" style={styles.subPanel}>
                   <Text style={styles.subPanelTitle}>Learn · {contextualLearnExample.learnTopic.title}</Text>
@@ -622,7 +622,7 @@ export const MobileWorkspaceInspector: React.FC<{ model: MobileAppController; vi
                     <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Manifold / closed</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.manifold ? "Yes" : "No"} / {selectedSurfaceAnalysis.closed ? "Yes" : "No"}</Text></View>
                   </View>
                   <View style={styles.subPanel}>
-                    <Text style={styles.subPanelTitle}>Mesh health · {selectedSurfaceAnalysis.healthy ? "Good" : "Issues found"}</Text>
+                    <Text style={styles.subPanelTitle}>Mesh state · {selectedSurfaceAnalysis.healthy ? "Good" : "Issues found"}</Text>
                     <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Degenerate triangles</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.degenerateTriangleCount}</Text></View>
                     <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Nonmanifold edges</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.nonManifoldEdgeCount}</Text></View>
                     <View style={styles.inspectorSettingRow}><Text style={styles.itemTitle}>Orientation mismatches</Text><Text style={styles.itemMeta}>{selectedSurfaceAnalysis.orientationMismatchEdgeCount}</Text></View>

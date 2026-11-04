@@ -99,7 +99,7 @@ class NativeCgalWorker {
           throw new Error("Native CGAL protocol/capability mismatch");
         }
         const health = await this.exchange(1, `health-${generation}`, undefined, undefined, 5000);
-        if (health.message !== "healthy") throw new Error("Native CGAL health check failed");
+        if (health.message !== "healthy") throw new Error("Native CGAL state check failed");
         mainDebugLog("[native-cgal] ready", { executable: this.executable, version: version.message });
       } catch (error) {
         if (this.child === child) this.fail(error instanceof Error ? error : new Error(String(error)));

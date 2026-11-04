@@ -8,15 +8,26 @@ import {
   type ScientificSourceGeneration,
 } from "./scientificJobs";
 import type { ValidationResult } from "./validation";
+import type { ProjectCoordinateFrame } from "./projectComposition";
 import { normalizeProjectNoteValueBindings, normalizeProjectNoteValueSnapshot, type ProjectNoteValueBinding, type ProjectNoteValueSnapshot } from "./projectNoteValues";
 
 export const PROJECT_NOTE_SCHEMA_VERSION = 1 as const;
 export const MAX_PROJECT_NOTE_BYTES = 16 * 1024;
 export type ProjectNoteKind = "text" | "callout" | "pinned" | "result";
 export type NotePoint3 = readonly [number, number, number];
+export type ProjectComparisonCoordinateProbe = Readonly<{
+  format: "math3d.comparison-coordinate-probe/v1";
+  sourceSlot: "A" | "B";
+  point: NotePoint3;
+  coordinateFrame: ProjectCoordinateFrame;
+}>;
 export type ProjectNoteAnchor =
   | Readonly<{ kind: "comparison"; compositionId: string; compositionHash: StructuralHash;
-      members: readonly [DocumentIdentity, DocumentIdentity]; alignment: "source-declared match" | "operator assertion" | "not applicable" }>
+      members: readonly [DocumentIdentity, DocumentIdentity]; alignment: "source-declared match" | "operator assertion" | "not applicable";
+      coordinateProbe?: ProjectComparisonCoordinateProbe }>
+  | Readonly<{ kind: "saved-mesh-comparison"; comparisonId: string; comparisonHash: StructuralHash; metricPath: string;
+      a: Readonly<{ resultId: string; resultHash: StructuralHash; meshId: StableDocumentId; revision: number; sourceHash: StructuralHash }>;
+      b: Readonly<{ resultId: string; resultHash: StructuralHash; meshId: StableDocumentId; revision: number; sourceHash: StructuralHash }> }>
   | Readonly<{ kind: "document"; source: ScientificSourceGeneration }>
   | Readonly<{ kind: "object-local"; source: ScientificSourceGeneration; objectId: string; localPosition: NotePoint3; shapeHash: StructuralHash }>
   | Readonly<{ kind: "subentity"; source: ScientificSourceGeneration; objectId: string; entityKind: "face" | "edge" | "vertex"; entityId: string; topologyHash: StructuralHash; barycentric?: NotePoint3 }>
@@ -51,6 +62,9 @@ export type ProjectNoteAnchorResolver = Readonly<{
   source: (documentId: StableDocumentId) => ScientificSourceGeneration | null;
   comparison?: (compositionId: string) => Readonly<{ hash: StructuralHash; members: readonly [DocumentIdentity, DocumentIdentity];
     alignment: "source-declared match" | "operator assertion" | "not applicable"; available: boolean }> | null;
+  savedMeshComparison?: (comparisonId: string) => Readonly<{ hash: StructuralHash; metricPath: string;
+    a: Extract<ProjectNoteAnchor, { kind: "saved-mesh-comparison" }>["a"];
+    b: Extract<ProjectNoteAnchor, { kind: "saved-mesh-comparison" }>["b"]; available: boolean }> | null;
   objectShape?: (documentId: StableDocumentId, objectId: string) => StructuralHash | null;
   subentityTopology?: (documentId: StableDocumentId, objectId: string, entityKind: "face" | "edge" | "vertex", entityId: string) => StructuralHash | null;
   result?: (resultId: string) => Readonly<{ source: ScientificSourceGeneration; hash: StructuralHash }> | null;
@@ -73,11 +87,33 @@ const point = (value: unknown): value is NotePoint3 =>
 export const normalizeProjectNoteAnchor = (value: unknown): ProjectNoteAnchor | null => {
   if (!record(value)) return null;
   if (value.kind === "comparison") {
-    if (!exact(value, ["kind", "compositionId", "compositionHash", "members", "alignment"]) ||
+    if (!exact(value, ["kind", "compositionId", "compositionHash", "members", "alignment",
+      ...(value.coordinateProbe === undefined ? [] : ["coordinateProbe"])]) ||
       !id(value.compositionId) || value.compositionId.length > 120 || !isStructuralHash(value.compositionHash) ||
       !Array.isArray(value.members) || value.members.length !== 2 ||
       !value.members.every((member: unknown) => isDocumentIdentity(member)) ||
       !["source-declared match", "operator assertion", "not applicable"].includes(String(value.alignment))) return null;
+    if (value.coordinateProbe !== undefined) {
+      const probe = value.coordinateProbe;
+      if (!record(probe) || !exact(probe, ["format", "sourceSlot", "point", "coordinateFrame"]) ||
+        probe.format !== "math3d.comparison-coordinate-probe/v1" || !["A", "B"].includes(String(probe.sourceSlot)) ||
+        !point(probe.point) || !record(probe.coordinateFrame) ||
+        !exact(probe.coordinateFrame, ["format", "frame", "unit", "axes", "handedness"]) ||
+        probe.coordinateFrame.format !== "math3d.coordinate-frame/v1" ||
+        !id(probe.coordinateFrame.frame) || probe.coordinateFrame.frame.length > 80 ||
+        !id(probe.coordinateFrame.unit) || probe.coordinateFrame.unit.length > 40 ||
+        !Array.isArray(probe.coordinateFrame.axes) || probe.coordinateFrame.axes.length !== 3 ||
+        !probe.coordinateFrame.axes.every((axis: unknown) => id(axis) && axis.length <= 32) ||
+        new Set(probe.coordinateFrame.axes).size !== 3 ||
+        !["right", "left"].includes(String(probe.coordinateFrame.handedness))) return null;
+    }
+  } else if (value.kind === "saved-mesh-comparison") {
+    const side = (candidate: unknown) => record(candidate) && exact(candidate, ["resultId", "resultHash", "meshId", "revision", "sourceHash"]) &&
+      id(candidate.resultId) && isStructuralHash(candidate.resultHash) && isStableDocumentId(candidate.meshId) &&
+      positive(candidate.revision) && isStructuralHash(candidate.sourceHash);
+    if (!exact(value, ["kind", "comparisonId", "comparisonHash", "metricPath", "a", "b"]) ||
+      !id(value.comparisonId) || value.comparisonId.length > 120 || !isStructuralHash(value.comparisonHash) ||
+      !id(value.metricPath) || !side(value.a) || !side(value.b)) return null;
   } else if (value.kind === "workbook-block") {
     if (!exact(value, ["kind", "workbookId", "workbookRevision", "blockId", "blockHash"]) ||
       !isStableDocumentId(value.workbookId) || !value.workbookId.startsWith("math3d:workbook:") ||
@@ -206,6 +242,16 @@ export const inspectProjectNoteAnchor = (candidate: unknown, resolver: ProjectNo
       return { status: "stale", reason: "Saved comparison or a referenced source generation changed." };
     return current.available ? { status: "current", reason: "Both exact comparison sources are available." } :
       { status: "missing", reason: "An exact comparison source or resource is unavailable." };
+  }
+  if (anchor.kind === "saved-mesh-comparison") {
+    const current = resolver.savedMeshComparison?.(anchor.comparisonId);
+    if (!current) return { status: "missing", reason: "Saved Mesh comparison is unavailable." };
+    if (current.hash !== anchor.comparisonHash || current.metricPath !== anchor.metricPath ||
+      canonicalJsonStringify(current.a) !== canonicalJsonStringify(anchor.a) ||
+      canonicalJsonStringify(current.b) !== canonicalJsonStringify(anchor.b))
+      return { status: "stale", reason: "Saved Mesh comparison, result, or source generation changed." };
+    return current.available ? { status: "current", reason: "Both exact saved Mesh results and source sidecars are available." } :
+      { status: "missing", reason: "A saved Mesh result or exact source sidecar is unavailable." };
   }
   if (anchor.kind === "workbook-block") {
     const block = resolver.workbookBlock?.(anchor.workbookId, anchor.blockId);

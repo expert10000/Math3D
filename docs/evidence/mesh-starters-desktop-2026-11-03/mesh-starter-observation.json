@@ -1,0 +1,89 @@
+{
+  "scope": "Windows Electron; fresh-profile transfer and cold app restart",
+  "starters": [
+    {
+      "id": "mesh-subdivision-study",
+      "title": "Retained Mesh Generation Study",
+      "projectId": "math3d:project:883da04fd586bd2eff1d7c44f096b724",
+      "rows": [
+        {
+          "revision": "r1 · retained",
+          "value": 8,
+          "status": "available",
+          "result": "saved-mesh-analysis:7cb40091a91f2761b412e1ce5ef111624e8d82362fc298fcebd845a33820c72e",
+          "sourceHash": "sha256:761be0441860b4f1a74b4892e0848c2d3b4c455940df4f5ecafb274a2fc08578"
+        },
+        {
+          "revision": "r2 · retained",
+          "value": 32,
+          "status": "available",
+          "result": "saved-mesh-analysis:be8924fe66066c496e5415cc9fa0e4b8c618229e8b48c653667c5bd2b05a60f5",
+          "sourceHash": "sha256:2c1100e69d7036eecfd389f6372ee85b3d608964aa0b21dcd833b1f3451b3c60"
+        },
+        {
+          "revision": "r3 · current",
+          "value": 32,
+          "status": "available",
+          "result": "saved-mesh-analysis:46b91529f4f1cae8802195559168de9f5aea98e3512a10c706100ddb5af09010",
+          "sourceHash": "sha256:090d7b77573530aadb3d2ceddffc2c2395a9480133e208edc16f4101edb40b72"
+        }
+      ]
+    },
+    {
+      "id": "mesh-curvature-study",
+      "title": "Saved Mesh Curvature Study",
+      "projectId": "math3d:project:60fb3705638bdeb3e7da727a1aa9d7f2",
+      "rows": [
+        {
+          "revision": "r1 · retained",
+          "value": 1.0155928333600361,
+          "status": "available",
+          "result": "saved-mesh-analysis:57767bdb710110ee2cadafd527ea8e71adfbf75d67219f8cf73b7ff4cabd8593",
+          "sourceHash": "sha256:d8a0cd009d1b3d4c77ee58d48d3cfe888d27e3cbda0f9bdf548c38a16a094fb5"
+        },
+        {
+          "revision": "r2 · retained",
+          "value": 0.7812252971861098,
+          "status": "available",
+          "result": "saved-mesh-analysis:9f04a0772ae9c249f4e7aac9c871b168da8656c18978167e93f2b7efd7b0669f",
+          "sourceHash": "sha256:12702da519a79fb8d7421e95cf85504b7050fb06b43646dd4c26e7bcc70ca6c8"
+        },
+        {
+          "revision": "r3 · current",
+          "value": 0.6009425454669528,
+          "status": "available",
+          "result": "saved-mesh-analysis:2b837ffe51082c445de2c9b031fe0f1f856c3ec111dd1ee7ba198b978cf4a66d",
+          "sourceHash": "sha256:1281c99cad88d032af3839e3e2781a1e7dadb2e7b6c128c932e008720a7bb5f7"
+        }
+      ]
+    },
+    {
+      "id": "mesh-trend-gap-study",
+      "title": "Mesh Trend With Missing Result",
+      "projectId": "math3d:project:9e675968016099b93a3625c6d98d7f82",
+      "rows": [
+        {
+          "revision": "r1 · retained",
+          "value": 0.5,
+          "status": "available",
+          "result": "saved-mesh-analysis:339f3aac80915716e671985d71dbf79e0c13a7729bb2be9cd82e4972e42b6561",
+          "sourceHash": "sha256:074b7bc5364dc9ba1922d05035264649757c0b6d024d0378d137b5179113bfe0"
+        },
+        {
+          "revision": "r2 · retained",
+          "value": null,
+          "status": "not recorded",
+          "result": "No saved result",
+          "sourceHash": "sha256:f0578145cad65b6b5c0b5663e3c0dd95100fa78a48f237027a0aedafd0314d97"
+        },
+        {
+          "revision": "r3 · current",
+          "value": 2.53125,
+          "status": "available",
+          "result": "saved-mesh-analysis:5c7b2744ad14837c12bb3b62fb33de3ec5e36638a1c3bbe40e84024f0f936b69",
+          "sourceHash": "sha256:9218d1dfc505a5555b206a829f83a30b9e48555fdd98b02318356bd4139b980e"
+        }
+      ]
+    }
+  ]
+}

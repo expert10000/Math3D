@@ -1,0 +1,255 @@
+{
+  "differences": [],
+  "docker": {
+    "cases": {},
+    "failures": [],
+    "reason": "<urlopen error [Errno 111] Connection refused>",
+    "status": "unavailable",
+    "version": null
+  },
+  "fixtureCount": 16,
+  "local": {
+    "cases": {
+      "polynomial_irreducible_over_qq": {
+        "degree": 2,
+        "discriminant": "-4",
+        "irreducibleOverQQ": true,
+        "polynomial": "x^2 + 1",
+        "rationalRoots": []
+      },
+      "polynomial_repeated": {
+        "degree": 2,
+        "derivativeGcd": "x - 1",
+        "discriminant": "0",
+        "polynomial": "x^2 - 2*x + 1",
+        "rationalRoots": [
+          {
+            "multiplicity": 2,
+            "value": "1"
+          }
+        ],
+        "squareFree": false,
+        "squareFreeDecomposition": {
+          "factors": [
+            {
+              "multiplicity": 2,
+              "polynomial": "x - 1"
+            }
+          ],
+          "unit": "1"
+        }
+      },
+      "polynomial_split": {
+        "degree": 2,
+        "derivative": "2*x",
+        "derivativeGcd": "1",
+        "discriminant": "4",
+        "factorization": {
+          "factors": [
+            {
+              "multiplicity": 1,
+              "polynomial": "x + 1"
+            },
+            {
+              "multiplicity": 1,
+              "polynomial": "x - 1"
+            }
+          ],
+          "unit": "1"
+        },
+        "polynomial": "x^2 - 1",
+        "rationalRoots": [
+          {
+            "multiplicity": 1,
+            "value": "-1"
+          },
+          {
+            "multiplicity": 1,
+            "value": "1"
+          }
+        ],
+        "squareFree": true
+      },
+      "qq_matrix_jordan": {
+        "characteristicPolynomial": "t^2 - 2*t + 1",
+        "kernelBasis": [],
+        "minimalPolynomial": "t^2 - 2*t + 1",
+        "rank": 2
+      },
+      "qq_matrix_rectangular": {
+        "imageBasis": [
+          [
+            "1",
+            "2"
+          ]
+        ],
+        "inputShape": [
+          2,
+          3
+        ],
+        "kernelBasis": [
+          [
+            "-2",
+            "1",
+            "0"
+          ],
+          [
+            "-3",
+            "0",
+            "1"
+          ]
+        ],
+        "minimalPolynomial": null,
+        "rank": 1,
+        "reducedRowEchelonForm": [
+          [
+            "1",
+            "2",
+            "3"
+          ],
+          [
+            "0",
+            "0",
+            "0"
+          ]
+        ]
+      },
+      "qq_matrix_singular": {
+        "characteristicPolynomial": "t^2 - 5*t",
+        "imageBasis": [
+          [
+            "1",
+            "2"
+          ]
+        ],
+        "kernelBasis": [
+          [
+            "-2",
+            "1"
+          ]
+        ],
+        "minimalPolynomial": "t^2 - 5*t",
+        "pivotColumns": [
+          0
+        ],
+        "rank": 1,
+        "reducedRowEchelonForm": [
+          [
+            "1",
+            "2"
+          ],
+          [
+            "0",
+            "0"
+          ]
+        ]
+      },
+      "reject_polynomial_degree_budget": {
+        "rejected": "oversized or unsupported exponent"
+      },
+      "reject_polynomial_foreign_variable": {
+        "rejected": "outside the selected ring"
+      },
+      "reject_qq_matrix_noncanonical_fraction": {
+        "rejected": "reduced canonical QQ fractions"
+      },
+      "reject_qq_matrix_ragged": {
+        "rejected": "rectangular matrix"
+      },
+      "reject_zero_polynomial": {
+        "rejected": "nonzero polynomial"
+      },
+      "reject_zz_matrix_dimension_budget": {
+        "rejected": "1 to 6 by 1 to 6"
+      },
+      "reject_zz_matrix_fraction": {
+        "rejected": "canonical signed decimals"
+      },
+      "zz_smith_hermite_diagonal": {
+        "cokernel": {
+          "freeRank": 1,
+          "torsionOrders": [
+            "2",
+            "6"
+          ]
+        },
+        "hermite": {
+          "form": [
+            [
+              "2",
+              "0",
+              "0"
+            ],
+            [
+              "0",
+              "6",
+              "0"
+            ],
+            [
+              "0",
+              "0",
+              "0"
+            ]
+          ]
+        },
+        "rank": 2,
+        "smith": {
+          "diagonal": [
+            "2",
+            "6",
+            "0"
+          ]
+        },
+        "transformationStatus": {
+          "hermite": "verified",
+          "smith": "verified"
+        }
+      },
+      "zz_smith_hermite_nondiagonal": {
+        "cokernel": {
+          "freeRank": 0,
+          "torsionOrders": [
+            "2",
+            "2"
+          ]
+        },
+        "rank": 2,
+        "smith": {
+          "diagonal": [
+            "2",
+            "2"
+          ]
+        },
+        "transformationStatus": {
+          "hermite": "verified",
+          "smith": "verified"
+        }
+      },
+      "zz_smith_hermite_tall": {
+        "cokernel": {
+          "freeRank": 2,
+          "torsionOrders": [
+            "2"
+          ]
+        },
+        "inputShape": [
+          3,
+          1
+        ],
+        "rank": 1,
+        "smith": {
+          "diagonal": [
+            "2"
+          ]
+        },
+        "transformationStatus": {
+          "hermite": "verified",
+          "smith": "verified"
+        }
+      }
+    },
+    "failures": [],
+    "status": "passed",
+    "version": "9.5"
+  }
+}

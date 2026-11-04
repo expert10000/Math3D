@@ -6,6 +6,9 @@ import type { ProjectResourceReader } from "../projects/projectResources";
 import { createWorkbookComparisonReference } from "@math3d/workbook";
 import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock, WorkbookSavedMeshTrendEditor } from "./WorkbookSavedMeshTrendBlock";
+import { WorkbookSavedMeshComparisonBlock, WorkbookSavedMeshComparisonEditor } from "./WorkbookSavedMeshComparisonBlock";
+import { WorkbookSavedMeshReviewBlock, WorkbookSavedMeshReviewEditor } from "./WorkbookSavedMeshReviewBlock";
+import { WorkbookCoordinateReviewBlock, WorkbookCoordinateReviewEditor } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -73,7 +76,10 @@ type WorkbookPanelProps = {
   onOpenNotebookDocument: (id: string, module: KernelWorkspaceModule) => void;
   onOpenProjects: () => void;
   onOpenSavedMeshResult?: (target: SavedMeshTrendTarget) => void;
+  onOpenSavedMeshComparison?: (comparisonId: string) => void;
+  onSaveMeshComparisonObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
   onOpenNote: (noteId: string) => void;
+  onOpenCoordinateNote?: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
   onToggleBlockEnabled: (stageId: WorkbookStageId, blockId: string, enabled: boolean) => void;
@@ -520,7 +526,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onOpenNotebookDocument,
   onOpenProjects,
   onOpenSavedMeshResult,
+  onOpenSavedMeshComparison,
+  onSaveMeshComparisonObservation,
   onOpenNote,
+  onOpenCoordinateNote,
   onRemoveBlock,
   onMoveBlock,
   onToggleBlockEnabled,
@@ -1553,8 +1562,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       {viewMode === "document" && activeWorkbook ? <WorkbookDocumentView workbook={activeWorkbook}
         project={dependencyProject} context={artifactContext} projectLive={projectLive} readArtifact={artifactContext?.readArtifact} readOnly={readOnly}
         readComparisonResource={readComparisonResource}
+        onSaveMeshComparisonObservation={onSaveMeshComparisonObservation}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult} onEditBlock={(stageId, blockId) => {
+        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenCoordinateNote={onOpenCoordinateNote} onOpenSavedMeshResult={onOpenSavedMeshResult}
+        onOpenSavedMeshComparison={onOpenSavedMeshComparison} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
       <div style={{ marginBottom: 10 }}>
@@ -1919,6 +1930,24 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     { visualize: { ...(block.visualize ?? { live: true }), savedMeshTrend } })} />
                 {block.visualize?.savedMeshTrend && <WorkbookSavedMeshTrendBlock project={dependencyProject}
                   reference={block.visualize.savedMeshTrend} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult} />}
+                <WorkbookSavedMeshComparisonEditor project={dependencyProject} reference={block.visualize?.savedMeshComparison}
+                  readResource={readComparisonResource} readOnly={readOnly}
+                  onChange={savedMeshComparison => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), savedMeshComparison } })} />
+                {block.visualize?.savedMeshComparison && <WorkbookSavedMeshComparisonBlock project={dependencyProject}
+                  reference={block.visualize.savedMeshComparison} readResource={readComparisonResource} onOpenResult={onOpenSavedMeshResult}
+                  onSaveObservation={onSaveMeshComparisonObservation} />}
+                <WorkbookSavedMeshReviewEditor project={dependencyProject} reference={block.visualize?.savedMeshReview}
+                  readOnly={readOnly} onChange={savedMeshReview => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), savedMeshReview } })} />
+                {block.visualize?.savedMeshReview && <WorkbookSavedMeshReviewBlock project={dependencyProject}
+                  reference={block.visualize.savedMeshReview} readResource={readComparisonResource}
+                  onOpenPair={onOpenSavedMeshComparison} onOpenNote={onOpenNote} />}
+                <WorkbookCoordinateReviewEditor project={dependencyProject} reference={block.visualize?.coordinateReview}
+                  readOnly={readOnly} onChange={coordinateReview => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), coordinateReview } })} />
+                {block.visualize?.coordinateReview && <WorkbookCoordinateReviewBlock project={dependencyProject}
+                  reference={block.visualize.coordinateReview} readResource={readComparisonResource} onOpenNote={onOpenCoordinateNote} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

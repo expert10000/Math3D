@@ -1,63 +1,201 @@
-import { useState } from "react";
-import { ScientificServicesPanel } from "../scientificServices/ScientificServicesPanel";
-import SageRuntimeInspector from "../computeCenter/SageRuntimeInspector";
-import { SageSymbolicAnalysisCard } from "./SageSymbolicAnalysisCard";
-import type { SymbolicResultRecord } from "./SageSymbolicPanel";
+import { useEffect, useState } from "react";
+import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraObjectRef,
+  type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
+import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
+import SageRingFieldBuilder from "./SageRingFieldBuilder";
+import SageIdealBuilder from "./SageIdealBuilder";
+import SageObjectOperations from "./SageObjectOperations";
+import SageRecipes from "./SageRecipes";
+import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
+import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
+import { createQuotientStarter, describeStructure, resolveStructureSelection, selectedStructure,
+  structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
-type Props = {
-  record: SymbolicResultRecord | null;
-  onResult: (record: SymbolicResultRecord) => void;
-  onSaveWorkbook: (record: SymbolicResultRecord) => void;
-  onOpenWorkbook: () => void;
+type Props = Omit<SageServicesWorkspaceProps, "structures"> & {
   onOpenConsole: () => void;
-  onOpenComputeRuntimes: () => void;
-  onClose: () => void;
+  project: Math3DProject | null;
+  onCreateStructure: (record: AlgebraObjectRecord) => void | Promise<void>;
+  onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
+  onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
+  onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
+  onOpenProjects: () => void;
 };
 
-const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff", color: "#183b70", padding: "6px 10px", cursor: "pointer" } as const;
+const action = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff", color: "#183b70",
+  padding: "7px 10px", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" } as const;
+const kindLabel: Record<StructureStarterKind, string> = {
+  "integer-ring": "Integer ring ZZ", "rational-field": "Rational field QQ", "modular-ring": "Modular ring Z/nZ",
+  "finite-field": "Finite field GF(p^n)", "polynomial-ring": "Polynomial ring",
+};
+const readSavedSelection = (project: Math3DProject | null): unknown => {
+  if (!project) return null;
+  try { const saved = localStorage.getItem(structureSelectionKey(project.identity.id)); return saved ? JSON.parse(saved) : null; }
+  catch { return null; }
+};
 
-/** A workspace surface over the existing Sage catalog, result cards, and runtime registry. */
-export default function CASAlgebraWorkspace({ record, onResult, onSaveWorkbook, onOpenWorkbook,
-  onOpenConsole, onOpenComputeRuntimes, onClose }: Props) {
-  const [rightTab, setRightTab] = useState<"inspector" | "runtimes">("inspector");
-  return <main data-testid="cas-algebra-workspace" aria-label="CAS / Algebra workspace"
-    style={{ position: "fixed", inset: 0, zIndex: 2100, background: "#f3f7fc", color: "#172b4d", display: "flex", flexDirection: "column", overflow: "auto" }}>
-    <header style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #cbd5e1", background: "#fff" }}>
-      <div>
-        <div style={{ fontSize: 11, color: "#64748b" }}>MATH3D / Scientific workspaces</div>
-        <h1 style={{ fontSize: 22, margin: "3px 0" }}>CAS / Algebra</h1>
-        <div style={{ fontSize: 12, color: "#526477" }}>Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations.</div>
+export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
+  onAppendRecipeEvidence, onOpenProjects, ...props }: Props) {
+  const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
+    resolveStructureSelection(project, readSavedSelection(project)));
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
+    project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
+  const [evidenceFocus, setEvidenceFocus] = useState(0);
+  const [builder, setBuilder] = useState<"ring" | "ideal" | null>(null);
+  const [quotientName, setQuotientName] = useState("");
+  const [quotientError, setQuotientError] = useState("");
+
+  useEffect(() => {
+    setSelection((current) => resolveStructureSelection(project,
+      current && project?.algebraObjects?.some((entry) => entry.id === current.objectId)
+        ? current : readSavedSelection(project)));
+  }, [project?.identity.id, project?.identity.revision]);
+  useEffect(() => {
+    const evidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId);
+    if (evidence && evidence.request.target.objectId !== selection?.objectId)
+      setSelection(evidence.request.target);
+  }, [project?.identity.revision, selectedEvidenceId]);
+
+  const select = (ref: AlgebraObjectRef) => {
+    setSelection(ref);
+    setSelectedEvidenceId(null);
+    if (project) try { localStorage.setItem(structureSelectionKey(project.identity.id), JSON.stringify(ref)); }
+    catch { /* Selection still works when local storage is unavailable. */ }
+  };
+  const chosen = selectedStructure(project, selection);
+  const selectedEvidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId &&
+    item.request.target.objectId === chosen?.record.id) ?? null;
+  const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
+  const inspectEvidence = (id: string) => {
+    const evidence = project?.algebraEvidence?.find((item) => item.id === id);
+    if (evidence && evidence.request.target.objectId !== selection?.objectId) {
+      setSelection(evidence.request.target);
+      try { localStorage.setItem(structureSelectionKey(project!.identity.id), JSON.stringify(evidence.request.target)); }
+      catch { /* Inspector selection remains available without local storage. */ }
+    }
+    setSelectedEvidenceId(id);
+    setEvidenceFocus((value) => value + 1);
+  };
+  const freshness = project ? inspectProjectAlgebraFreshness(project) : [];
+  const status = chosen ? freshness.find((item) => item.objectId === chosen.entry.id) : null;
+  const parent = chosen?.record.definition.kind === "polynomial-ring"
+    ? selectedStructure(project, chosen.record.definition.coefficientDomain)?.record
+    : chosen?.record.definition.kind === "ideal"
+      ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
+      : chosen?.record.definition.kind === "quotient-ring"
+        ? selectedStructure(project, chosen.record.definition.ambientRing)?.record : null;
+  const idealParent = chosen?.record.definition.kind === "quotient-ring"
+    ? selectedStructure(project, chosen.record.definition.ideal)?.record : null;
+  const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring"
+    ? describeStructure(chosen.record, project) : null;
+
+  const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+      <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ring")}>+ New structure</button>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ideal")}>+ New ideal</button>
       </div>
-      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-        <button type="button" style={button} onClick={onOpenConsole}>Open trusted Sage Console</button>
-        <button type="button" style={button} onClick={onOpenWorkbook}>Open Workbook</button>
-        <button type="button" style={button} onClick={onClose}>Back to workspace</button>
-      </div>
-    </header>
-    <div style={{ padding: "12px 20px", fontSize: 12, color: "#526477" }}>
-      Services use bounded operations. Sage code runs only after explicit trust in the local Console or a Workbook code cell.
     </div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 14, padding: "0 20px 20px", alignItems: "start" }}>
-      <section aria-label="CAS Services" style={{ minWidth: 0, padding: 14, border: "1px solid #dbe2ea", borderRadius: 10, background: "#fff" }}>
-        <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Services</h2>
-        <ScientificServicesPanel context="cas" onResult={(result) => { onResult(result); setRightTab("inspector"); }} onOpenRuntimes={onOpenComputeRuntimes} />
-      </section>
-      <section aria-label="CAS Inspector" style={{ minWidth: 0, padding: 14, border: "1px solid #dbe2ea", borderRadius: 10, background: "#fff" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Inspector</h2>
-          <nav aria-label="CAS Inspector sections" style={{ display: "flex", gap: 6 }}>
-            <button type="button" style={button} aria-pressed={rightTab === "inspector"} onClick={() => setRightTab("inspector")}>Results</button>
-            <button type="button" style={button} aria-pressed={rightTab === "runtimes"} onClick={() => setRightTab("runtimes")}>Runtimes</button>
-          </nav>
-        </div>
-        {rightTab === "inspector" ? record
-          ? <SageSymbolicAnalysisCard record={record} sourceStatus="unlinked" onSaveWorkbook={() => onSaveWorkbook(record)} />
-          : <div role="status" data-testid="cas-empty-result" style={{ color: "#64748b", fontSize: 12 }}>Run a Sage operation to inspect its exact result, warnings, and diagnostics.</div>
-          : <div data-testid="cas-runtime-view" style={{ display: "grid", gap: 10 }}>
-              <SageRuntimeInspector />
-              <button type="button" style={{ ...button, justifySelf: "start" }} onClick={onOpenComputeRuntimes}>Open Compute → Runtimes</button>
-            </div>}
-      </section>
-    </div>
-  </main>;
+    {!project && <div role="status" style={{ fontSize: 12 }}>Open or create a Project to save algebra structures.
+      <div style={{ marginTop: 8 }}><button type="button" style={action} onClick={onOpenProjects}>Open Projects</button></div>
+    </div>}
+    {project && <div className="sage-structure-list" aria-label="Saved algebra objects">
+      {(project.algebraObjects ?? []).length ? [...project.algebraObjects!].sort((a, b) =>
+        a.revisions[a.revisions.length - 1].label.localeCompare(b.revisions[b.revisions.length - 1].label))
+        .map((entry) => {
+          const latest = entry.revisions[entry.revisions.length - 1];
+          const fresh = freshness.find((item) => item.objectId === entry.id);
+          return <button type="button" key={entry.id} aria-current={selection?.objectId === entry.id}
+            onClick={() => select({ objectId: entry.id, revision: latest.revision })}>
+            <strong>{latest.label}</strong> <span style={{ fontSize: 11 }}>@{latest.revision}</span>
+            <div style={{ fontSize: 12 }}>{structureDisplay(latest, project)}</div>
+            <small>{entry.archived ? "Archived" : fresh?.status === "stale" ? "Stale parent" : "Current"}</small>
+          </button>;
+        }) : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>No structures in this Project yet.</div>}
+    </div>}
+  </div>;
+
+  const dossier = builder === "ring" && project ? <SageRingFieldBuilder key={project.identity.id} project={project}
+    onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : builder === "ideal" && project ? <SageIdealBuilder key={project.identity.id} project={project}
+      onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : chosen && project ? <div data-testid="cas-selected-structure" style={{ display: "grid", gap: 14 }}>
+    <div><div style={{ fontSize: 11, color: "#64748b" }}>Structure dossier</div>
+      <h2 style={{ margin: "3px 0", fontSize: 21 }}>{chosen.record.label}</h2>
+      <div style={{ fontSize: 17 }}>{structureDisplay(chosen.record, project)}</div></div>
+    <label style={{ display: "grid", gap: 4, maxWidth: 240, fontSize: 12 }}>Revision
+      <select aria-label="Structure revision" value={chosen.record.revision}
+        onChange={(event) => select({ objectId: chosen.record.id, revision: Number(event.target.value) })}>
+        {chosen.entry.revisions.map((item) => <option key={item.revision} value={item.revision}>{item.label}@{item.revision}</option>)}
+      </select>
+    </label>
+    <dl className="sage-structure-facts">
+      <dt>Kind</dt><dd>{chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
+        ? "Quotient ring" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
+      <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
+      {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
+        <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
+        <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
+      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}
+      {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
+        <dt>Validation</dt><dd>Bounded exact polynomial syntax</dd></>}
+      {chosen.record.definition.kind === "polynomial-ring" && <>
+        <dt>Variables</dt><dd>{chosen.record.definition.variables.join(", ")}</dd>
+        <dt>Monomial order</dt><dd>{chosen.record.definition.monomialOrder}</dd></>}
+      {chosen.record.definition.kind === "modular-ring" && <><dt>Modulus</dt><dd>{chosen.record.definition.modulus}</dd></>}
+      {chosen.record.definition.kind === "finite-field" && <><dt>Degree</dt><dd>{chosen.record.definition.degree}</dd>
+        <dt>Generator</dt><dd>{chosen.record.definition.generator}</dd><dt>Construction</dt><dd>Canonical Sage finite field</dd></>}
+    </dl>
+    {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <label>Quotient name <input aria-label="Quotient name" value={quotientName}
+        onChange={(event) => setQuotientName(event.target.value)} placeholder={`${chosen.record.label} quotient`} /></label>
+      <button type="button" style={action} onClick={() => { try {
+        if (!project) return;
+        const record = createQuotientStarter(project, quotientName || `${chosen.record.label} quotient`,
+          { objectId: chosen.record.id, revision: chosen.record.revision }, crypto.randomUUID());
+        void Promise.resolve(onCreateStructure(record)).then(() => { select({ objectId: record.id, revision: 1 });
+          setQuotientName(""); setQuotientError(""); }).catch((error) => setQuotientError(String(error)));
+      } catch (error) { setQuotientError(String(error)); } }}>Save quotient ring</button>
+      {quotientError && <span role="alert">{quotientError}</span>}
+    </div>}
+    {status?.causes.length ? <div role="status" style={{ color: "#9a3412", fontSize: 12 }}>Stale because a pinned parent definition advanced: {status.causes.map((item) => `${item.objectId}@${item.pinnedRevision} → @${item.currentRevision}`).join(", ")}.</div> : null}
+  </div> : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>{project ? "Select a saved structure to inspect its definition." : "Open a Project to inspect its structures."}</div>;
+
+  const inspector = chosen ? <dl className="sage-structure-facts" data-testid="cas-structure-inspector">
+    <dt>Object ID</dt><dd>{chosen.record.id}</dd>
+    <dt>Revision</dt><dd>{chosen.record.revision}</dd>
+    <dt>Definition hash</dt><dd>{chosen.record.contentHash}</dd>
+    <dt>Parent revisions</dt><dd>{chosen.record.dependencies.length ? chosen.record.dependencies.map((ref) => `${ref.objectId}@${ref.revision}`).join(", ") : "None"}</dd>
+    {chosen.record.definition.kind === "ideal" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd></>}
+    {chosen.record.definition.kind === "quotient-ring" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Ideal</dt><dd>{idealParent?.label}@{idealParent?.revision}</dd></>}
+    <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
+    {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
+      <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
+  </dl> : <div role="status" style={{ fontSize: 12 }}>Select a structure in the Project explorer.</div>;
+
+  return <SageServicesWorkspace {...props} onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
+    context="cas" title="CAS / Algebra"
+    description="Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations."
+    testId="cas-algebra-workspace" structures={{ projectId: project?.identity.id ?? null,
+      projectTitle: project?.metadata.title ?? null,
+      selectionKey: selection ? `${selection.objectId}@${selection.revision}` : null,
+      explorer, dossier, inspector,
+      evidence: evidenceModel && selectedEvidence ? {
+        focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
+        result: <SageAlgebraEvidenceInspector model={evidenceModel} section="result" />,
+        structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
+        verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
+        execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,
+      } : undefined,
+      operations: <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
+        onInspectEvidence={inspectEvidence} onSaveEvidence={async (evidence) => {
+          await onSaveEvidence(evidence);
+          inspectEvidence(evidence.id);
+        }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} />,
+      recipes: <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
+        revision: chosen.record.revision } : null} onSaveRecipe={onSaveRecipe}
+        onAppendEvidence={onAppendRecipeEvidence} onInspectEvidence={inspectEvidence} /> }} />;
 }

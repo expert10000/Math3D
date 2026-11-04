@@ -15,6 +15,9 @@ export type VectorField3DSliceArtifact = Readonly<{
     "curl-x" | "curl-y" | "curl-z" | "grad-speed-x" | "grad-speed-y" |
     "grad-speed-z" | "grad-speed-magnitude" | "laplacian-speed";
   unit: string; min: number; max: number;
+  /** Exact sampled plane vectors for bounded CPU LIC; omitted by scalar-only transfers. */
+  vectors?: readonly (readonly [number, number, number] | null)[];
+  planeUnits?: readonly [string, string];
   stencilGrid?: "source";
   method?: "bounded-finite-difference"; boundarySamples?: number;
   evaluated: number; rejected: number; sourceHash?: string;
@@ -134,8 +137,10 @@ export function sampleVectorField3DSlice(document: VectorField3DDocument,
   const unit = channel === "magnitude" ? componentUnits[0]! :
     componentUnits[{ p: 0, q: 1, r: 2 }[channel]]!;
   const values: (number | null)[] = [];
+  const vectors: ([number, number, number] | null)[] = [];
   for (let i = 0; i < shape[0]; i++) for (let j = 0; j < shape[1]; j++) {
     const vector = at(i, j);
+    vectors.push(vector);
     const value = vector ? channel === "magnitude" ? Math.hypot(...vector) :
       vector[{ p: 0, q: 1, r: 2 }[channel]]! : NaN;
     values.push(Number.isFinite(value) ? value : null);
@@ -144,6 +149,8 @@ export function sampleVectorField3DSlice(document: VectorField3DDocument,
   return { source: { documentId: checked.identity.id, revision: checked.identity.revision,
     structuralHash: checked.identity.structuralHash }, normalAxis, fixedCoordinate,
     fixedUnit: checked.source.axes[normalAxis].unit, planeAxes, coordinates, shape, values,
+    vectors, planeUnits: planeAxes.map(axis => checked.source.axes[axis]!.unit) as
+      [string, string],
     channel, unit, min: finite.length ? Math.min(...finite) : NaN,
     max: finite.length ? Math.max(...finite) : NaN,
     evaluated: values.length, rejected: values.length - finite.length, sourceHash,

@@ -6,8 +6,11 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   instantiateMath3DProjectTemplate, MATH3D_PROJECT_TEMPLATES, type Math3DProjectTemplateId,
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
+  linkQuantumSceneDocuments,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
-  upsertMath3DProjectComposition, inspectProjectCompositionAvailability, type ProjectComposition,
+  upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
+  migrateProjectScientificSelections,
+  type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
@@ -28,11 +31,20 @@ const ProjectSavedMeshResultTrendView = React.lazy(() => import("./ProjectSavedM
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
 import { comparableSavedMeshResults } from "../projects/projectSavedMeshResultComparison";
 import type { SavedMeshTrendComparison } from "../projects/projectSavedMeshTrendPoint";
+import { createSavedMeshPinnedComparison } from "../projects/projectSavedMeshPinnedComparison";
+import { createProjectSavedMeshComparisonNote, inspectProjectSavedMeshComparisonNote } from "../projects/projectSavedMeshComparisonNotes";
+import { buildSavedMeshComparisonReview } from "../projects/projectSavedMeshComparisonReview";
+import { createSavedMeshComparisonReviewSnapshot, savedMeshComparisonReviewHtml } from "../projects/projectSavedMeshComparisonReviewReport";
+import { downloadStudyBlob } from "../projects/studyComparisonExport";
+import { ProjectSavedMeshComparisonReviewIndex } from "./ProjectSavedMeshComparisonReviewIndex";
+import { ProjectCoordinateObservationReviewIndex } from "./ProjectCoordinateObservationReviewIndex";
+import { buildProjectCoordinateObservationReview } from "../projects/projectCoordinateObservationReview";
+import { createProjectCoordinateObservationReviewSnapshot, projectCoordinateObservationReviewHtml } from "../projects/projectCoordinateObservationReviewReport";
 import { ProjectResearchLinks } from "./ProjectResearchLinks";
 import { ProjectActivityTimeline } from "./ProjectActivityTimeline";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport, projectCheckpoint, type ProjectCompatibility } from "../projects/projectTransfer";
 import { ProjectCompatibilityPanel } from "./ProjectCompatibilityPanel";
-import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
+import { captureProjectResources, captureProjectResourcesAsync, exportProjectPackage, parseProjectPackage, projectResourceInventory, MAX_PROJECT_PACKAGE_BYTES, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { canReuseProjectResourceArchive, commitProjectResources, loadProjectResources, stageProjectBackupResources } from "../projects/projectResourceArchive";
 import { canonicalJsonStringify, structuralHash, VECTOR_FIELD3D_REGION_RESULT_TYPE,
   VECTOR_FIELD3D_COMBINED_REGION_RESULT_TYPE,
@@ -65,10 +77,12 @@ import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
+import { admitVerifiedQwzStudy } from "../projects/quantumStudyAdmission";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
+type StudyLaunchResponse = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["consumeStudyLaunch"]>>;
 const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false); }, [src]);
@@ -79,7 +93,7 @@ type Props = {
   projectNavigation?: { canBack: boolean; canForward: boolean; back: () => void; forward: () => void; recent: readonly { id: string; module: KernelWorkspaceModule }[] };
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCurrentProjectChange?: (project: Math3DProject) => void;
+  onCurrentProjectChange?: (project: Math3DProject, resources?: VerifiedProjectResources) => void;
   verifiedQuantumScene?: ProjectQuantumSceneReference | null;
   onImportQuantumScene?: () => void;
   onImportScientificScene?: () => void;
@@ -93,8 +107,9 @@ type Props = {
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectDetail?: () => void;
-  noteRequest?: { id: string; token: number } | null;
+  noteRequest?: { id: string; token: number; openTarget?: boolean } | null;
   resultRequest?: { id: string; token: number } | null;
+  pairRequest?: { id: string; token: number } | null;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   captureNoteSelection?: () => NoteSelectionDescriptor | null;
   captureProjectThumbnail?: () => Promise<string>;
@@ -109,7 +124,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -126,6 +141,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => document.removeEventListener("input", edited, true);
   }, []);
   const resourceSessionId = useRef<string | null>(null);
+  const [resourceVersion, setResourceVersion] = useState(0);
   const [quick, setQuick] = useState(false), [detailView, setDetailView] = useState(false), [viewerCompanion, setViewerCompanion] = useState(false), [collection, setCollection] = useState("All projects");
   const [detailPage, setDetailPage] = useState<"overview" | "documents" | "relations" | "results" | "history" | "settings" | "transfer">("overview");
   const [resultFocus, setResultFocus] = useState<{ id: string; token: number } | null>(null);
@@ -179,15 +195,64 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openingStarter = useRef(false);
   const rippleResearchAttempted = useRef(new Set<string>());
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
+  const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; runId: string;
+    resultSha256: string; references: ProjectQuantumSceneReference[] } | null>(null);
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const studyLaunchRequest = useRef<Promise<StudyLaunchResponse> | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    if (!window.quantumScenes?.consumeStudyLaunch) return;
+    const request = studyLaunchRequest.current ??= window.quantumScenes.consumeStudyLaunch();
+    void request.then(result => {
+      if (!mounted) return;
+      if (result.ok) { setStudyLaunch(result); onOpenChange(true); }
+      else if (!result.canceled) { setQuantumSceneMessage(`Study handoff refused: ${result.error}`); onOpenChange(true); }
+    }).catch(error => { if (mounted) { setQuantumSceneMessage(`Study handoff refused: ${String(error)}`); onOpenChange(true); } });
+    return () => { mounted = false; };
+  }, []);
+  useEffect(() => {
+    if (!project || resourceSessionId.current === project.identity.id) return;
+    let cancelled = false;
+    void loadProjectResources(project).then(resources => {
+      if (cancelled || resourceSessionId.current === project.identity.id) return;
+      resourceSession.current = resources;
+      resourceSessionId.current = project.identity.id;
+      setResourceVersion(version => version + 1);
+    }).catch(() => { /* Exact source checks in each view report unavailable resources. */ });
+    return () => { cancelled = true; };
+  }, [project?.identity.id]);
+  useEffect(() => {
+    const refreshExternalSave = () => {
+      try {
+        const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+        if (!raw || !project) return;
+        const saved = parseMath3DProject(raw);
+        if (saved.identity.id !== project.identity.id) return;
+        setProject(saved);
+        loadedProject.current = saved;
+      } catch { /* Keep the current Project draft if the saved copy is unavailable. */ }
+    };
+    window.addEventListener("math3d:project-saved-externally", refreshExternalSave);
+    return () => window.removeEventListener("math3d:project-saved-externally", refreshExternalSave);
+  }, [project?.identity.id]);
   const [compositionOpen, setCompositionOpen] = useState(false);
   const [meshResultComparisonOpen, setMeshResultComparisonOpen] = useState(false);
   const [meshResultTrendOpen, setMeshResultTrendOpen] = useState(false);
   const [meshTrendComparison, setMeshTrendComparison] = useState<SavedMeshTrendComparison | null>(null);
+  const [savedMeshComparison, setSavedMeshComparison] = useState<ProjectSavedMeshComparison | null>(null);
+  useEffect(() => {
+    if (!open || !pairRequest || !project) return;
+    const pair = project.savedMeshComparisons?.find(item => item.id === pairRequest.id);
+    if (!pair) return;
+    setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true);
+  }, [open, pairRequest?.token, project?.identity.id]);
   const [comparisonInitialId, setComparisonInitialId] = useState<string | undefined>();
-  const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader]);
+  const [comparisonInitialProbeId, setComparisonInitialProbeId] = useState<string | undefined>();
+  const comparisonResource = useCallback<ProjectResourceReader>((item) => resourceSession.current?.bytes(item) ?? resourceReader?.(item) ?? null, [resourceReader, resourceVersion]);
+  const savedMeshReview = useMemo(() => project ? buildSavedMeshComparisonReview(project, comparisonResource) : [], [project, comparisonResource]);
+  const coordinateReview = useMemo(() => project ? buildProjectCoordinateObservationReview(project, comparisonResource) : [], [project, comparisonResource]);
   const projectWorkbookBytes = useCallback((id: string) => resourceSessionId.current === project?.identity.id
     ? resourceSession.current?.bytes({ kind: "workbook-payload", id }) ?? null : null, [project?.identity.id]);
   useEffect(() => { setDetailPage("overview"); }, [project?.identity.id]);
@@ -319,8 +384,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!current || serializeMath3DProject(current) !== before) throw new TypeError("Project changed during verification. Retry admission.");
       if (current.workspace.entries.some((entry) => entry.expected.id === document.identity.id))
         throw new TypeError("This scene is already a Project document.");
+      const stagedEntries = [...current.workspace.entries, { module: "quantum" as const, checkpoint: document, expected: document.identity, replay: null }];
+      const linkedDocuments = new Map(linkQuantumSceneDocuments(stagedEntries.filter(entry => entry.module === "quantum")
+        .map(entry => entry.checkpoint as QuantumSceneDocument)).map(item => [item.source.sceneFingerprint, item]));
       const workspace = createMixedWorkspaceDocument({ ...current.workspace,
-        entries: [...current.workspace.entries, { module: "quantum", checkpoint: document, expected: document.identity, replay: null }],
+        entries: stagedEntries.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
+          ? { ...entry, checkpoint: linkedDocuments.get(entry.checkpoint.source.sceneFingerprint)! } : entry),
         activeDocumentIds: [...current.workspace.activeDocumentIds, document.identity.id] });
       const next = replaceMath3DProjectWorkspace(current, workspace);
       setProject(next);
@@ -449,7 +518,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (!keepManagement) { setManaged(null); setManagedBytes(undefined); }
     if (!keepManagement) { setInspectionOpen(false); setInspectedId(null); }
     if (!keepManagement) { setIncoming(null); importSequence.current++; }
-    if (!savedPreview) { loadedProject.current = next; onCurrentProjectChange?.(next); }
+    if (!savedPreview) { loadedProject.current = next; onCurrentProjectChange?.(next, resourceSession.current ?? undefined); }
   };
   const refreshLibrary = () => {
     try { setLibrary(parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY))); setLibraryMessage(""); }
@@ -465,8 +534,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     }
     const workspace = capturedWorkspace ?? capture();
     verifyMixedWorkspaceReplay(workspace);
-    return base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
+    const next = base ? replaceMath3DProjectWorkspace(base, mergeProjectLiveWorkspace(base.workspace, workspace)) :
       createMath3DProject(workspace, { stableKey: crypto.randomUUID(), title: title.trim() || "Untitled project" });
+    return migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
   };
   const refresh = () => {
     setAnalysisError(null);
@@ -512,6 +582,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   };
   useEffect(() => {
     if (!noteRequest) return;
+    if (noteRequest.openTarget) {
+      const note = project?.notes?.find(item => item.identity.id === noteRequest.id);
+      if (note?.anchor?.kind === "comparison" && note.anchor.coordinateProbe &&
+        inspectProjectComparisonNote(project!, note, comparisonResource).status === "current") {
+        setComparisonInitialId(note.anchor.compositionId);
+        setComparisonInitialProbeId(note.identity.id);
+        setCompositionOpen(true);
+        setNotesOpen(false);
+        onOpenChange(true);
+      } else setMessage("The exact saved coordinate Note or one of its sources is unavailable.");
+      return;
+    }
     setSelectedNoteId(null);
     setNotesPlacement("floating");
     onOpenChange(false);
@@ -570,7 +652,19 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         setNotesMessage("The exact saved comparison or one of its sources is unavailable. Reopen or relink the Project.");
         return;
       }
-      setComparisonInitialId(anchor.compositionId); setCompositionOpen(true); setNotesOpen(false); onOpenChange(true);
+      setComparisonInitialId(anchor.compositionId);
+      setComparisonInitialProbeId(anchor.coordinateProbe ? note.identity.id : undefined);
+      setCompositionOpen(true); setNotesOpen(false); onOpenChange(true);
+      return;
+    }
+    if (anchor.kind === "saved-mesh-comparison") {
+      const current = project?.identity.id === note.projectId ? project : notesProject;
+      if (!current || inspectProjectSavedMeshComparisonNote(current, note, comparisonResource).status !== "current") {
+        setNotesMessage("The exact saved Mesh comparison or one of its sources is unavailable."); return;
+      }
+      const pair = current.savedMeshComparisons?.find(item => item.id === anchor.comparisonId);
+      if (!pair) return;
+      setSavedMeshComparison(pair); setMeshTrendComparison(null); setMeshResultComparisonOpen(true); setNotesOpen(false); onOpenChange(true);
       return;
     }
     if (anchor.kind === "workbook-block") {
@@ -630,6 +724,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       const capturedWorkspace = managed ? undefined : capture();
       let next = updateMath3DProjectMetadata(managed?.project() ?? liveProject(capturedWorkspace), { ...(managed?.project() ?? project)?.metadata,
         title: title.trim(), description, tags: [...new Set(tags.split(",").map((tag) => tag.trim()).filter(Boolean))] });
+      next = migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
       if (!managed && noteDrafts.length) next = bindProjectNoteDrafts(next, noteDrafts);
       await verifyProjectQuantumSceneDocuments(next, onVerifyQuantumSceneDocument);
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
@@ -657,7 +752,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       resourceSession.current = resources; resourceSessionId.current = next.identity.id;
       if (managed) setManagedBytes(serializeMath3DProject(next));
       setProject(next); setTags((next.metadata.tags ?? []).join(", ")); setTitle(next.metadata.title); setThumbnail(null); setExplorer(tree); setPreview(!!managed); setLibraryMessage("");
-      if (!managed) { setHasOpenProject(true); loadedProject.current = next; onCurrentProjectChange?.(next); }
+      if (!managed) { setHasOpenProject(true); loadedProject.current = next; onCurrentProjectChange?.(next, resources); }
       if (!managed) { setNotesProject(next); setNoteDrafts([]); }
       setMessage(`Saved “${next.metadata.title}” with ${next.workspace.entries.length} documents.`);
     } catch (error) { setMessage(`Project save failed: ${(error as Error).message}`); }
@@ -764,7 +859,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         throw new Error("Open and save this Project before adding a Workbook.");
       const source = captureActiveWorkbook?.();
       if (!source) throw new Error("Select a Workbook first.");
-      const base = liveProject();
+      // Attaching a Workbook must not import unrelated live module editors into
+      // the saved Project. The Workbook reference belongs to this exact Project.
+      const base = saved;
       const prepared = prepareProjectWorkbook(base, source, crypto.randomUUID());
       const next = upsertMath3DProjectWorkbook(base, prepared.reference);
       const previous = await loadProjectResources(saved);
@@ -1050,6 +1147,60 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (sequence !== importSequence.current) return;
       setIncoming(prepared); setMessage("Project validated. Review compatibility before importing or opening.");
     } catch (error) { if (sequence === importSequence.current) setMessage(`Project import rejected: ${(error as Error).message}`); }
+  };
+  const exportPortableQuantumProject = async () => {
+    if (!project || busy || !window.quantumScenes?.exportPortableProject) return;
+    setBusy(true); setQuantumSceneMessage("Verifying quantum sources and packing by hash…");
+    try {
+      if (!project.quantumScenes?.length) throw new Error("Attach a verified quantum scene first.");
+      if (project.scientificScenes?.length) throw new Error("This quantum pack does not include scientific-scene folders.");
+      let portable = project;
+      for (const reference of project.quantumScenes) portable = relinkMath3DProjectQuantumScene(portable,
+        reference.sceneFingerprint, `scenes/${reference.sceneFingerprint}.qscene`);
+      const result = await window.quantumScenes.exportPortableProject({ projectJson: exportProjectPackage(portable, collectResources(portable)),
+        references: project.quantumScenes.map(item => ({ sceneFingerprint: item.sceneFingerprint, directory: item.directory })) });
+      if (!result.ok) { if (!result.canceled) throw new Error(result.error); return; }
+      setQuantumSceneMessage(`Portable quantum Project exported: ${result.directory}`);
+    } catch (error) { setQuantumSceneMessage(`Portable export refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
+  const openPortableQuantumProject = async () => {
+    if (busy || !window.quantumScenes?.openPortableProject) return;
+    setBusy(true); setQuantumSceneMessage("Checking portable quantum Project blobs…");
+    try {
+      const result = await window.quantumScenes.openPortableProject();
+      if (!result.ok) { if (!result.canceled) throw new Error(result.error); return; }
+      const packageContent = parseProjectPackage(result.projectJson);
+      let restored = packageContent.project;
+      if (result.references.length !== restored.quantumScenes?.length) throw new Error("Portable scene inventory disagrees with Project.");
+      for (const reference of result.references) restored = relinkMath3DProjectQuantumScene(restored,
+        reference.sceneFingerprint, reference.directory);
+      const prepared = previewProjectImport(exportProjectPackage(restored, packageContent.resources), transferOptions());
+      setIncoming(prepared);
+      setQuantumSceneMessage("Portable quantum Project verified. Review compatibility before opening.");
+    } catch (error) { setQuantumSceneMessage(`Portable import refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
+  const stageVerifiedStudy = async (mode: "new" | "attach") => {
+    const handoff = studyLaunch;
+    if (!handoff || busy || !onVerifyQuantumSceneDocument) return;
+    setBusy(true); setQuantumSceneMessage("Independently re-verifying both declared QWZ scenes…");
+    try {
+      const base = mode === "new"
+        ? createMath3DProject(capture(), { stableKey: crypto.randomUUID(), title: handoff.title })
+        : !preview && !managed ? projectStateRef.current : null;
+      if (!base) throw new Error("Open the intended editable Math3D Project before attaching this study.");
+      const expectedProjectId = base.identity.id;
+      const expectedProjectBytes = mode === "attach" ? serializeMath3DProject(base) : null;
+      const next = await admitVerifiedQwzStudy(base, handoff, onVerifyQuantumSceneDocument);
+      if (mode === "attach" && (projectStateRef.current?.identity.id !== expectedProjectId ||
+          serializeMath3DProject(projectStateRef.current) !== expectedProjectBytes))
+        throw new Error("The intended Project changed during verification.");
+      display(next, false);
+      setStudyLaunch(null);
+      setQuantumSceneMessage(`Both exact QWZ views staged in ${next.metadata.title}. Save Project to retain them.`);
+    } catch (error) { setQuantumSceneMessage(`Study attachment refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
   };
   const importSamsungExamples = async () => {
     if (busy) return; setBusy(true); setExampleMessage("Validating Samsung project collection…");
@@ -1431,12 +1582,31 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             project.workspace.entries.filter(entry => ["mesh", "geometry", "surface"].includes(entry.module)).length < 2 &&
             !project.workspace.entries.some(entry => ["mesh", "geometry", "surface"].includes(entry.module) && !!entry.replay &&
               (entry.checkpoint.identity.revision !== entry.expected.revision || entry.checkpoint.identity.structuralHash !== entry.expected.structuralHash))}
-            onClick={() => { setComparisonInitialId(undefined); setCompositionOpen(true); }}>Open comparison</button>
+            onClick={() => { setComparisonInitialId(undefined); setComparisonInitialProbeId(undefined); setCompositionOpen(true); }}>Open comparison</button>
           <div style={{ marginTop: 12 }}><strong>Saved Mesh analysis results</strong><p>Compare exact stored quality or curvature summaries. {comparableSavedMeshResults(project).length} eligible results.</p>
             <button type="button" data-testid="project-open-mesh-result-comparison" disabled={busy || comparableSavedMeshResults(project).length < 2}
-              onClick={() => { setMeshTrendComparison(null); setMeshResultComparisonOpen(true); }}>Compare saved results</button>{" "}
+              onClick={() => { setMeshTrendComparison(null); setSavedMeshComparison(null); setMeshResultComparisonOpen(true); }}>Compare saved results</button>{" "}
             <button type="button" data-testid="project-open-mesh-result-trend" disabled={busy || comparableSavedMeshResults(project).length < 1}
-              onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button></div>
+              onClick={() => setMeshResultTrendOpen(true)}>View saved result trend</button>
+            {!!savedMeshReview.length && <ProjectSavedMeshComparisonReviewIndex rows={savedMeshReview} busy={busy}
+              onOpenPair={id => { const pair = project.savedMeshComparisons?.find(item => item.id === id);
+                if (!pair) return; setMeshTrendComparison(null); setSavedMeshComparison(pair); setMeshResultComparisonOpen(true); }}
+              onOpenNote={id => openProjectNotes(id)}
+              onExport={() => { try {
+                const snapshot = createSavedMeshComparisonReviewSnapshot(project, comparisonResource);
+                downloadStudyBlob(new Blob([savedMeshComparisonReviewHtml(snapshot)], { type: "text/html" }),
+                  "math3d-saved-mesh-comparison-review.html");
+                setMessage("Saved Mesh comparison review exported with checked statuses and available observations.");
+              } catch (error) { setMessage(`Review export failed: ${(error as Error).message}`); } }} />}</div>
+          {!!coordinateReview.length && <ProjectCoordinateObservationReviewIndex rows={coordinateReview} onOpen={id => {
+            const note = project.notes?.find(item => item.identity.id === id);
+            if (note) openNoteTarget(note);
+          }} onExport={() => { try {
+            const snapshot = createProjectCoordinateObservationReviewSnapshot(project, comparisonResource);
+            downloadStudyBlob(new Blob([projectCoordinateObservationReviewHtml(snapshot)], { type: "text/html" }),
+              "math3d-coordinate-observation-review.html");
+            setMessage("Coordinate observation review exported with exact source statuses.");
+          } catch (error) { setMessage(`Coordinate review export failed: ${(error as Error).message}`); } }} />}
         </section>}
         {fullDetails && <nav className="project-detail-tabs" aria-label="Project details sections">
           {(["overview", "documents", "relations", "results", "history"] as const).map(page => <button key={page} type="button" data-testid={`project-detail-tab-${page}`}
@@ -1649,10 +1819,29 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     void onOpenQuantumScene(reference).then(() => { setProject(current => current?.identity.id === expectedProjectId ? upsertMath3DProjectQuantumScene(current, reference) : current); setQuantumSceneMessage("Verified source staged. Save project to retain the link."); })
                       .catch(error => setQuantumSceneMessage(`Attachment refused: ${String((error as Error).message)}`));
                   }}>Attach open verified scene</button></div>
+              {studyLaunch && <div data-testid="project-quantum-study-handoff" className="project-workspace-workbook">
+                <strong>{studyLaunch.title}</strong><p>Lab declared two QWZ views from run <code>{studyLaunch.runId}</code>. Math3D will recheck both bundles and their exact result hash before staging either view.</p>
+                <button type="button" data-testid="project-open-study-new" disabled={busy} onClick={() => void stageVerifiedStudy("new")}>Open in new Project</button>{" "}
+                <button type="button" data-testid="project-attach-study-current" disabled={busy || !project || preview || !!managed} onClick={() => void stageVerifiedStudy("attach")}>Attach to current Project</button>{" "}
+                <small>Lab requested {studyLaunch.mode === "new" ? "a new Project" : "the current Project"}; choose the intended target here.</small>
+              </div>}
+              <div><button type="button" data-testid="project-export-quantum-pack" disabled={busy || preview || !!managed || !project?.quantumScenes?.length || !window.quantumScenes?.exportPortableProject}
+                onClick={() => { void exportPortableQuantumProject(); }}>Export portable quantum pack</button>
+                <button type="button" data-testid="project-open-quantum-pack" disabled={busy || !window.quantumScenes?.openPortableProject}
+                  onClick={() => { void openPortableQuantumProject(); }}>Open portable quantum pack</button>
+                <button type="button" data-testid="project-open-quantum-study" disabled={busy || !window.quantumScenes?.openStudyHandoff}
+                  onClick={() => { void window.quantumScenes!.openStudyHandoff().then(result => {
+                    if (result.ok) { setStudyLaunch(result); setQuantumSceneMessage("Study folder verified. Choose its Project target."); }
+                    else if (!result.canceled) setQuantumSceneMessage(`Study handoff refused: ${result.error}`);
+                  }).catch(error => setQuantumSceneMessage(`Study handoff refused: ${String(error)}`)); }}>Open Theory Lab study folder</button></div>
               <p>External quantum-scene/v1 and v2 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
               {!project?.quantumScenes?.length && <small>Use Open .qscene folder above, then attach the verified source here.</small>}
               {project?.quantumScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">
                 <strong>{item.title}</strong><small style={{ overflowWrap: "anywhere" }}> · SHA-256 {item.sceneFingerprint}</small>
+                {project.workspace.entries.filter(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" &&
+                  entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint).map(entry => entry.checkpoint.format === "math3d.quantum-scene-document" &&
+                  entry.checkpoint.linkedViews?.length ? <small key="relation" data-testid={`project-quantum-linked-${item.sceneFingerprint}`}>
+                    Linked views from the same verified run: {entry.checkpoint.linkedViews.length}</small> : null)}
                 <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
                   onClick={() => { void openLinkedQuantumScene(item); }}>Verify and view scene</button>
                 <button type="button" data-testid={`project-admit-quantum-scene-${item.sceneFingerprint}`}
@@ -1791,7 +1980,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
-      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} initialCompositionId={comparisonInitialId} onClose={() => setCompositionOpen(false)}
+      {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} initialCompositionId={comparisonInitialId} initialProbeNoteId={comparisonInitialProbeId} onClose={() => setCompositionOpen(false)}
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
             const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
@@ -1801,22 +1990,37 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           }, `Saved composition “${composition.title}”.`);
           if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");
           return ok;
-        }} onSaveObservation={async (composition, title, body) => {
+        }} onSaveObservation={async (composition, title, body, probe) => {
           const ok = await commitNotes(saved => {
             if (saved.identity.id !== project.identity.id) throw new Error("The open Project changed. Reopen this comparison.");
-            const note = createProjectComparisonNote(saved, composition, comparisonResource, title, body, Date.now(), crypto.randomUUID());
+            const note = createProjectComparisonNote(saved, composition, comparisonResource, title, body, Date.now(), crypto.randomUUID(), probe);
             return upsertMath3DProjectNote(saved, note);
           }, `Saved comparison observation “${title.trim()}”.`);
           return ok;
         }} /></React.Suspense>}
       {meshResultComparisonOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh results…</p>}><ProjectSavedMeshResultComparisonView project={project} readResource={comparisonResource}
-        trendSelection={meshTrendComparison} onReturnToTrend={meshTrendComparison ? () => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); } : undefined}
-        onClose={() => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); }} /></React.Suspense>}
+        trendSelection={meshTrendComparison} savedReference={savedMeshComparison}
+        onSaveObservation={async (pair, title, body) => commitNotes(saved => {
+          if (saved.identity.id !== project.identity.id) throw new Error("The Project changed. Reopen the comparison.");
+          const exact = saved.savedMeshComparisons?.find(item => item.id === pair.id);
+          if (!exact || structuralHash(exact) !== structuralHash(pair)) throw new Error("The saved comparison changed.");
+          const note = createProjectSavedMeshComparisonNote(saved, exact, comparisonResource, title, body, Date.now(),
+            `mesh-comparison-${exact.id}-${Date.now()}`);
+          return upsertMath3DProjectNote(saved, note);
+        }, `Saved Mesh comparison observation “${title.trim()}”.`)}
+        onSavePinned={meshTrendComparison ? async (selection, title) => commitNotes(saved => {
+          if (saved.identity.id !== selection.study.projectId) throw new Error("The Project changed. Reopen the trend.");
+          const pairId = `mesh-${structuralHash([selection.a.resultId, selection.b.resultId, selection.study.metricPath]).slice(7, 39)}`;
+          const reference = createSavedMeshPinnedComparison(saved, selection, comparisonResource, pairId, title);
+          return upsertMath3DProjectSavedMeshComparison(saved, reference);
+        }, `Saved pinned Mesh comparison “${title.trim()}”.`) : undefined}
+        onReturnToTrend={meshTrendComparison ? () => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); } : undefined}
+        onClose={() => { setMeshResultComparisonOpen(false); setMeshTrendComparison(null); setSavedMeshComparison(null); }} /></React.Suspense>}
       {meshResultTrendOpen && project && <React.Suspense fallback={<p role="status">Opening saved Mesh trend…</p>}><ProjectSavedMeshResultTrendView project={project} readResource={comparisonResource}
         comparisonOpen={meshResultComparisonOpen && !!meshTrendComparison}
         onClose={() => setMeshResultTrendOpen(false)}
         onCompare={selection => { if (selection.study.projectId !== project.identity.id) throw new TypeError("The Project changed. Reopen the saved trend.");
-          setMeshTrendComparison(selection); setMeshResultComparisonOpen(true); }}
+          setSavedMeshComparison(null); setMeshTrendComparison(selection); setMeshResultComparisonOpen(true); }}
         onOpenResult={target => {
           if (target.projectId !== project.identity.id) throw new TypeError("The Project changed. Reopen the saved trend.");
           setMeshResultTrendOpen(false); setQuick(false); setViewerCompanion(false); setDetailView(true);
