@@ -24,6 +24,7 @@ export type Math3DWorkerOperationId =
   | "volume.distance-field"
   | "volume.streamlines"
   | "curve.analyze"
+  | "field.derived-profile"
   | "symbolic.simplify"
   | "symbolic.solve"
   | "symbolic.factor"
@@ -209,6 +210,14 @@ const definitions = [
   {
     id: "curve.analyze",
     title: "Curve analysis",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "field.derived-profile",
+    title: "Derived field line profile",
     canonicalOwner: "math3d-js",
     method: "numerical",
     environments: ["browser", "desktop", "server", "mobile"],
