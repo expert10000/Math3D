@@ -542,13 +542,17 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 });
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
+  timeFrames: (reference: { directory: string; sceneFingerprint: string }) =>
+    ipcRenderer.invoke("quantumScenes:timeFrames", reference),
+  compare: (a: { directory: string; sceneFingerprint: string }, b: { directory: string; sceneFingerprint: string }) =>
+    ipcRenderer.invoke("quantumScenes:compare", a, b),
   consumeStudyLaunch: (): Promise<
-    { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+    { ok: true; canceled: false; mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string; resultSha256: string;
       references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:consumeStudyLaunch"),
   openStudyHandoff: (): Promise<
-    { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+    { ok: true; canceled: false; mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string; resultSha256: string;
       references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:openStudyHandoff"),

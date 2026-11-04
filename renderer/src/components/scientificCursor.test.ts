@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ScientificCursorBus, projectQwzCursor, projectSpatialCursor } from "./scientificCursor";
+import { ScientificCursorBus, projectQwzCursor, projectSpatialCursor, projectTimeCursor } from "./scientificCursor";
 import { importQuantumSceneBundle } from "../../../src/main/quantumScene/importer";
 import { projectVerifiedQwzCursor } from "../../../src/main/quantumScene/cursorProjection";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,15 @@ describe("Scientific Cursor", () => {
     expect(projectSpatialCursor({ ...cursor, spatialPoint: { xyz: [0.8, 1.6, 3.2], coordinateSystemId: "field-grid" } }, target).status)
       .toBe("ambiguous");
     expect(projectSpatialCursor(cursor, { ...target, spacing: [2, 2, 2] }).status).toBe("mismatched-grid");
+  });
+  it("projects irregular physical time by exact frame identity or sample value", () => {
+    const cursor = new ScientificCursorBus().publish({ runId: "evolve", resultSha256: hash, datasetId: "time",
+      timePoint: { value: 0.3, unit: "fs", frameId: "f1", sampleIndex: 1 }, originViewId: "bloch" });
+    const target = { runId: "evolve", resultSha256: hash, unit: "fs", frameIds: ["f0", "f1", "f2"], values: [0, 0.3, 1.1] };
+    expect(projectTimeCursor(cursor, target)).toEqual({ status: "matched", value: 1 });
+    expect(projectTimeCursor(cursor, { ...target, frameIds: ["a", "b", "c"] })).toEqual({ status: "matched", value: 1 });
+    expect(projectTimeCursor(cursor, { ...target, values: [0, 0.4, 1.1] }).status).toBe("mismatched-grid");
+    expect(projectTimeCursor(cursor, { ...target, unit: "ps" }).status).toBe("incompatible-source");
   });
   it("projects QWZ vertex k to the independently verified curvature cell grid", async () => {
     const bands = await importQuantumSceneBundle(fileURLToPath(new URL(

@@ -36,6 +36,8 @@ test("Lab QWZ study handoff stages both exact scenes in a new Math3D Project", a
       .filter((entry: { module: string }) => entry.module === "quantum").length ?? 0), { timeout: 60_000 }).toBe(2);
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(project.quantumScenes).toHaveLength(2);
+    expect(project.workspace.quantumStudies).toHaveLength(1);
+    expect(project.workspace.quantumStudies[0].panels.map((panel: { role: string }) => panel.role)).toEqual(["curvature", "bands"]);
     expect(project.workspace.entries.filter((entry: { module: string }) => entry.module === "quantum")
       .every((entry: { checkpoint: { linkedViews?: unknown[] } }) => entry.checkpoint.linkedViews?.length === 1)).toBe(true);
   } finally {

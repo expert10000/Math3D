@@ -195,7 +195,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openingStarter = useRef(false);
   const rippleResearchAttempted = useRef(new Set<string>());
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
-  const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; runId: string;
+  const [comparisonA, setComparisonA] = useState("");
+  const [comparisonB, setComparisonB] = useState("");
+  const [quantumComparison, setQuantumComparison] = useState<Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["compare"]>> | null>(null);
+  const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string;
     resultSha256: string; references: ProjectQuantumSceneReference[] } | null>(null);
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
@@ -1184,7 +1187,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const stageVerifiedStudy = async (mode: "new" | "attach") => {
     const handoff = studyLaunch;
     if (!handoff || busy || !onVerifyQuantumSceneDocument) return;
-    setBusy(true); setQuantumSceneMessage("Independently re-verifying both declared QWZ scenes…");
+    setBusy(true); setQuantumSceneMessage(`Independently re-verifying both declared ${handoff.model} scenes…`);
     try {
       const base = mode === "new"
         ? createMath3DProject(capture(), { stableKey: crypto.randomUUID(), title: handoff.title })
@@ -1198,7 +1201,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         throw new Error("The intended Project changed during verification.");
       display(next, false);
       setStudyLaunch(null);
-      setQuantumSceneMessage(`Both exact QWZ views staged in ${next.metadata.title}. Save Project to retain them.`);
+      setQuantumSceneMessage(`Both exact ${handoff.model === "qwz" ? "QWZ" : "Hofstadter"} views staged in ${next.metadata.title}. Save Project to retain them.`);
     } catch (error) { setQuantumSceneMessage(`Study attachment refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
@@ -1820,10 +1823,59 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                       .catch(error => setQuantumSceneMessage(`Attachment refused: ${String((error as Error).message)}`));
                   }}>Attach open verified scene</button></div>
               {studyLaunch && <div data-testid="project-quantum-study-handoff" className="project-workspace-workbook">
-                <strong>{studyLaunch.title}</strong><p>Lab declared two QWZ views from run <code>{studyLaunch.runId}</code>. Math3D will recheck both bundles and their exact result hash before staging either view.</p>
+                <strong>{studyLaunch.title}</strong><p>Lab declared two {studyLaunch.model} views from run <code>{studyLaunch.runId}</code>. Math3D will recheck both bundles and their exact result hash before staging either view.</p>
                 <button type="button" data-testid="project-open-study-new" disabled={busy} onClick={() => void stageVerifiedStudy("new")}>Open in new Project</button>{" "}
                 <button type="button" data-testid="project-attach-study-current" disabled={busy || !project || preview || !!managed} onClick={() => void stageVerifiedStudy("attach")}>Attach to current Project</button>{" "}
                 <small>Lab requested {studyLaunch.mode === "new" ? "a new Project" : "the current Project"}; choose the intended target here.</small>
+              </div>}
+              {project?.workspace.quantumStudies?.map(study => <article key={study.id} data-testid="project-quantum-study" className="project-workspace-workbook">
+                <strong>{study.title}</strong><small> · {study.layout} · linked selection: {study.link.selection}</small>
+                <button type="button" onClick={() => setProject(current => { if (!current) return current;
+                  const quantumStudies = current.workspace.quantumStudies?.map(item => item.id !== study.id ? item :
+                    { ...item, layout: item.layout === "columns" ? "rows" as const : "columns" as const });
+                  return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...current.workspace, quantumStudies }));
+                })}>Use {study.layout === "columns" ? "rows" : "columns"}</button>
+                <div style={{ display: "grid", gridTemplateColumns: study.layout === "columns" ? "repeat(2, minmax(0, 1fr))" : "1fr", gap: 10, marginTop: 10 }}>
+                  {study.panels.map(panel => {
+                  const reference = project.quantumScenes?.find(item => item.sceneFingerprint === panel.sceneFingerprint);
+                  const sceneDocument = project.workspace.entries.find(entry => entry.module === "quantum" &&
+                    entry.checkpoint.format === "math3d.quantum-scene-document" &&
+                    entry.checkpoint.source.sceneFingerprint === panel.sceneFingerprint)?.checkpoint as QuantumSceneDocument | undefined;
+                  return <div key={panel.sceneFingerprint} style={{ padding: 10, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+                    {panel.role}: {reference?.title ?? "Missing source"} {panel.selectedObjectId ? `· ${panel.selectedObjectId}` : ""}
+                    {reference && <button type="button" disabled={busy || !onOpenQuantumScene} onClick={() => void openLinkedQuantumScene(reference)}>Open panel</button>}
+                    {sceneDocument && <select aria-label={`${panel.role} study selection`} value={panel.selectedObjectId ?? ""}
+                      onChange={event => { const selectedObjectId = event.target.value || null;
+                        setProject(current => { if (!current) return current;
+                          const quantumStudies = current.workspace.quantumStudies?.map(item => item.id !== study.id ? item : {
+                            ...item, panels: item.panels.map(candidate => candidate.sceneFingerprint === panel.sceneFingerprint ?
+                              { ...candidate, selectedObjectId, sampleIndex: null } : candidate) });
+                          return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...current.workspace, quantumStudies }));
+                        }); }}><option value="">No selection</option>{sceneDocument.source.objects.map(object =>
+                          <option key={object.id} value={object.id}>{object.label}</option>)}</select>}
+                  </div>;
+                })}</div>
+              </article>)}
+              {!!project?.quantumScenes?.length && <div data-testid="project-quantum-comparison" className="project-workspace-workbook">
+                <strong>Compare verified quantum scenes</strong>
+                <div><select aria-label="Comparison A" value={comparisonA} onChange={event => setComparisonA(event.target.value)}>
+                  <option value="">Select A</option>{project.quantumScenes.map(item => <option key={item.sceneFingerprint} value={item.sceneFingerprint}>{item.title}</option>)}
+                </select><select aria-label="Comparison B" value={comparisonB} onChange={event => setComparisonB(event.target.value)}>
+                  <option value="">Select B</option>{project.quantumScenes.map(item => <option key={item.sceneFingerprint} value={item.sceneFingerprint}>{item.title}</option>)}
+                </select><button type="button" disabled={busy || !comparisonA || !comparisonB || comparisonA === comparisonB}
+                  onClick={() => { const a = project.quantumScenes?.find(item => item.sceneFingerprint === comparisonA);
+                    const b = project.quantumScenes?.find(item => item.sceneFingerprint === comparisonB);
+                    if (!a || !b) return;
+                    setBusy(true); setQuantumComparison(null);
+                    void window.quantumScenes!.compare({ directory: a.directory, sceneFingerprint: a.sceneFingerprint },
+                      { directory: b.directory, sceneFingerprint: b.sceneFingerprint })
+                      .then(setQuantumComparison).catch(error => setQuantumSceneMessage(`Comparison refused: ${String(error)}`))
+                      .finally(() => setBusy(false)); }}>Compare A/B</button></div>
+                {quantumComparison && <div role="status">{quantumComparison.status === "compatible"
+                  ? `${quantumComparison.quantity}: ${quantumComparison.samples} aligned samples, mean absolute ${quantumComparison.meanAbsolute}, RMS ${quantumComparison.rootMeanSquare}, maximum ${quantumComparison.maximumAbsolute} ${quantumComparison.unit}`
+                  : `Incompatible: ${quantumComparison.reasons.join(" ")}`}
+                  {!!quantumComparison.metadataDiffs.length && <p>Parameter differences: {quantumComparison.metadataDiffs.map(item => `${item.key}: ${item.a} → ${item.b}`).join("; ")}</p>}
+                </div>}
               </div>}
               <div><button type="button" data-testid="project-export-quantum-pack" disabled={busy || preview || !!managed || !project?.quantumScenes?.length || !window.quantumScenes?.exportPortableProject}
                 onClick={() => { void exportPortableQuantumProject(); }}>Export portable quantum pack</button>

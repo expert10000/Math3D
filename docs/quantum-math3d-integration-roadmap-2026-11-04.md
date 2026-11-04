@@ -782,6 +782,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** a Hofstadter study reopens with declared linked scene panels and selections intact, while each source scene can still be opened alone.
 
+**Implementation note (2026-11-04):** The Project now persists a bounded `math3d.quantum-study/v1` graph with source identity, panel roles, layout, selection and link rule. The existing QWZ handoff remains supported; Theory Lab also produces a two-view Hofstadter handoff when one saved result contains both bulk and strip observations. Math3D verifies both bundles before admission and exposes each panel's standalone scene link. See [QI-13–15 implementation details](quantum-qi13-15-study-comparison-time.md).
+
 ### QI-14 — A/B comparisons
 
 **Commit:** `feat(quantum): compare runs with unit and gauge safeguards`
@@ -790,6 +792,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** incompatible runs are flagged; compatible results have reproducible numeric difference metrics.
 
+**Implementation note (2026-11-04):** Math3D compares independently reverified scene pairs, checks model, axes, units and exact grids, and reports aligned band residuals or gauge-invariant field density residuals. Unsupported or incompatible pairs return explicit reasons. See [QI-13–15 implementation details](quantum-qi13-15-study-comparison-time.md).
+
 ### QI-15 — Time-dependent scene contract
 
 **Commit:** `feat(scene): add typed time frames and synchronized playback`
@@ -797,6 +801,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Variable time grids, frame identity, playback and reference timelines.
 
 **Done when:** a Bloch trajectory and expectation plot track the same physical time.
+
+**Implementation note (2026-11-04):** The additive `quantum-scene/v2` time contract names a verified time dataset, exact frame identities, aligned tracks and playback bounds. Theory Lab emits Bloch and Pauli σz tracks from the same saved evolution rows; Math3D displays both at the same physical sample and rejects implicit interpolation. See [QI-13–15 implementation details](quantum-qi13-15-study-comparison-time.md).
 
 ### QI-16 — Preview/final lifecycle
 

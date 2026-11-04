@@ -57,9 +57,14 @@ export const deleteProjectDocument = (project: Math3DProject, id: string): Math3
   if (!impact.canDelete) throw new TypeError("Delete blocked: dependent documents, results, artifacts or construction references remain.");
   const results = new Set(impact.ownedResultIds);
   const retainedEntries = current.workspace.entries.filter(entry => entry.expected.id !== id);
+  const removedQuantumFingerprint = current.workspace.entries.find(entry => entry.expected.id === id && entry.module === "quantum" &&
+    entry.checkpoint.format === "math3d.quantum-scene-document")?.checkpoint;
   const linked = new Map(linkQuantumSceneDocuments(retainedEntries.filter(entry => entry.module === "quantum")
     .map(entry => entry.checkpoint as QuantumSceneDocument)).map(document => [document.source.sceneFingerprint, document]));
   const workspace = createMixedWorkspaceDocument({ ...current.workspace,
+    ...(removedQuantumFingerprint?.format === "math3d.quantum-scene-document" ? { quantumStudies:
+      current.workspace.quantumStudies?.filter(study => !study.panels.some(panel =>
+        panel.sceneFingerprint === removedQuantumFingerprint.source.sceneFingerprint)) } : {}),
     entries: retainedEntries.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
       ? { ...entry, checkpoint: linked.get(entry.checkpoint.source.sceneFingerprint)! } : entry),
     ...(current.workspace.scientificSelections === undefined ? {} : { scientificSelections:

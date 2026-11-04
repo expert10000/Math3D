@@ -4,6 +4,7 @@ export type ScientificCursor = Readonly<{
   datasetId: string;
   reciprocalPoint?: Readonly<{ k: readonly [number, number]; basisId: string; bandId?: string; sampleIndex: number }>;
   spatialPoint?: Readonly<{ xyz: readonly [number, number, number]; coordinateSystemId: string }>;
+  timePoint?: Readonly<{ value: number; unit: string; frameId: string; sampleIndex: number }>;
   originViewId: string;
   sequence: number;
 }>;
@@ -19,10 +20,14 @@ export class ScientificCursorBus {
 
   publish(draft: CursorDraft): ScientificCursor {
     if (!draft.runId || !/^[a-f0-9]{64}$/.test(draft.resultSha256) || !draft.originViewId ||
-        Number(draft.reciprocalPoint !== undefined) + Number(draft.spatialPoint !== undefined) !== 1)
+        Number(draft.reciprocalPoint !== undefined) + Number(draft.spatialPoint !== undefined) +
+        Number(draft.timePoint !== undefined) !== 1)
       throw new TypeError("Invalid scientific cursor identity or coordinates.");
-    const coordinates = draft.reciprocalPoint?.k ?? draft.spatialPoint?.xyz;
-    if (!coordinates?.every(Number.isFinite)) throw new TypeError("Scientific cursor coordinates must be finite.");
+    const coordinates = draft.reciprocalPoint?.k ?? draft.spatialPoint?.xyz ??
+      (draft.timePoint ? [draft.timePoint.value] : undefined);
+    if (!coordinates?.every(Number.isFinite) || draft.timePoint &&
+        (!draft.timePoint.unit || !draft.timePoint.frameId || !Number.isSafeInteger(draft.timePoint.sampleIndex) || draft.timePoint.sampleIndex < 0))
+      throw new TypeError("Scientific cursor coordinates must be finite.");
     const cursor = { ...draft, sequence: ++this.sequence };
     this.current = cursor;
     for (const listener of this.listeners) listener(cursor);
@@ -85,4 +90,20 @@ export function projectQwzCursor(cursor: ScientificCursor, target: Readonly<{
       Math.abs(point.k[1] - target.sample.k[1]) > 1e-8)
     return { status: "mismatched-grid", reason: "Physical k coordinates do not align." };
   return { status: "matched", value: point.sampleIndex };
+}
+
+/** Exact physical-time projection; irregular grids are never silently interpolated. */
+export function projectTimeCursor(cursor: ScientificCursor, target: Readonly<{
+  runId: string; resultSha256: string; unit: string; frameIds: readonly string[]; values: readonly number[];
+}>): CursorProjection<number> {
+  const point = cursor.timePoint;
+  if (!point || cursor.runId !== target.runId || cursor.resultSha256 !== target.resultSha256 || point.unit !== target.unit)
+    return { status: "incompatible-source", reason: "Run, result or physical time unit differs." };
+  const index = target.frameIds.indexOf(point.frameId);
+  if (index >= 0 && Math.abs(target.values[index] - point.value) <= 1e-10)
+    return { status: "matched", value: index };
+  const matches = target.values.flatMap((value, i) => Math.abs(value - point.value) <= 1e-10 ? [i] : []);
+  if (matches.length > 1) return { status: "ambiguous", reason: "Multiple frames share this physical time." };
+  return matches.length === 1 ? { status: "matched", value: matches[0] } :
+    { status: "mismatched-grid", reason: "No exact physical time sample exists in the target timeline." };
 }

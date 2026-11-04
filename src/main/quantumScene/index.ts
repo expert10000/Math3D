@@ -31,6 +31,7 @@ export interface QuantumScene {
   lattice?: SceneLattice;
   reciprocal?: SceneReciprocal;
   bands?: SceneBands;
+  time?: SceneTime;
   topology?: SceneTopology;
   annotations: { id: string; text: string; position: Vec3 }[];
 }
@@ -53,6 +54,11 @@ export interface SceneBands {
   kind: "path" | "surface"; coordinates: string; energies: string[];
   objects: string[]; labels: string[]; energyUnit: string; bulkGap: number;
   grid?: [number, number];
+}
+export interface SceneTime {
+  axis: string; unit: string; frameIds: string[];
+  tracks: { id: string; object?: string; positions: string }[];
+  playback: { startFrame: number; endFrame: number; loop: boolean };
 }
 export interface ScenePayload { scene: QuantumScene; artifacts: Record<string, Uint8Array> }
 export interface SceneTopology {
@@ -106,6 +112,21 @@ export function assertScene(value: unknown): asserts value is QuantumScene {
   unique(scene.datasets.map(d => d.id)); unique(scene.datasets.map(d => d.path));
   if (scene.datasets.reduce((n, d) => n + d.bytes, 0) > MAX_SCENE_BYTES) throw new Error("Scene exceeds memory budget");
   const datasets = new Map(scene.datasets.map(d => [d.id, d]));
+  if (scene.time) {
+    if (scene.schema !== "quantum-scene/v2") throw new Error("Time tracks require quantum-scene/v2");
+    const time = scene.time, axis = datasets.get(time.axis);
+    if (!axis || axis.components !== 1 || axis.count !== time.frameIds.length || axis.unit !== time.unit ||
+        new Set(time.frameIds).size !== time.frameIds.length ||
+        time.playback.startFrame >= time.playback.endFrame || time.playback.endFrame >= axis.count ||
+        new Set(time.tracks.map(track => track.id)).size !== time.tracks.length)
+      throw new Error("Invalid time axis or frame identities");
+    for (const track of time.tracks) {
+      const object = scene.objects.find(item => item.id === track.object), positions = datasets.get(track.positions);
+      if (track.object && (!object || object.positions !== track.positions) ||
+          !positions || positions.components !== 3 || positions.count !== axis.count)
+        throw new Error("Time track is not aligned with its frames");
+    }
+  }
   for (const d of scene.datasets) if (d.bytes !== d.count * d.components * 8) throw new Error("Dataset shape/size mismatch");
   for (const field of scene.fields ?? []) {
     if ((field.kind === "complex-field") !== !!field.imaginary) throw new Error("Field kind/reference mismatch");
@@ -207,6 +228,11 @@ export async function verifyScenePayload(payload: ScenePayload, digest: (bytes: 
     if (!values.every(Number.isFinite)) throw new Error("Non-finite scene data");
     if (d.components === 3 && !values.every(v => Math.abs(v) <= 1000000)) throw new Error("Scene coordinate exceeds bounds");
     arrays.set(d.id, values);
+  }
+  if (payload.scene.time) {
+    const values = arrays.get(payload.scene.time.axis)!;
+    for (let i = 1; i < values.length; i++) if (values[i] <= values[i - 1])
+      throw new Error("Physical time samples must increase strictly; interpolation is not implied");
   }
   for (const o of payload.scene.objects) if (o.indices) {
     const count = arrays.get(o.positions)!.length / 3;

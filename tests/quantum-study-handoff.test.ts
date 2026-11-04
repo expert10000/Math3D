@@ -36,3 +36,18 @@ test("QWZ study launch validates both exact bundles and refuses changed source b
     await assert.rejects(readQuantumStudyHandoff(directory));
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("Hofstadter study refuses a strip from a different saved result", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "math3d-harper-study-"));
+  try {
+    const names = ["run-9e46f98c78e842ebb12c92d5a73e8446-hofstadter.qscene",
+      "run-e02feae009f4467394f141d9291863bb-hofstadter-strip.qscene"];
+    for (const name of names) await cp(join(fixtures, name), join(directory, name), { recursive: true });
+    const scenes = await Promise.all(names.map(name => importQuantumSceneBundle(join(directory, name))));
+    const manifest = { schema: "quantum-study-handoff/v2", model: "hofstadter",
+      runId: scenes[0].source.provenance.runId, resultSha256: scenes[0].source.provenance.resultSha256,
+      scenes: scenes.map((item, index) => ({ role: index ? "strip" : "bands", folder: names[index], sceneId: item.source.id })) };
+    await writeFile(join(directory, "study.json"), JSON.stringify(manifest));
+    await assert.rejects(readQuantumStudyHandoff(directory), /does not match/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

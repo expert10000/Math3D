@@ -1,6 +1,5 @@
-// Pinned copy of Theory Lab quantum-scene/v2 (1D reciprocal extension).
-// Source JSON SHA-256: 417d15f3ab0381c1170d6b9b6cbe70b9272827d627e9e202102b58bfe4108ca2.
-// Same schema as v1 except version discriminator and 1D reciprocal basis minima.
+// Pinned copy of Theory Lab quantum-scene/v2 (1D reciprocal and typed time extension).
+// Source JSON SHA-256: 57f26b089438e705d3850b201045fec112443a6b3ae8ba7122ecfd5b8dbba139.
 // Do not silently broaden this importer.
 const schema = {
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -45,6 +44,18 @@ const schema = {
     },
     "datasets": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/definitions/dataset"}},
     "objects": {"type": "array", "maxItems": 64, "items": {"$ref": "#/definitions/object"}},
+    "time": {"type": "object", "additionalProperties": false,
+      "required": ["axis", "unit", "frameIds", "tracks", "playback"],
+      "properties": {
+        "axis": {"$ref": "#/definitions/id"}, "unit": {"$ref": "#/definitions/text"},
+        "frameIds": {"type": "array", "minItems": 2, "maxItems": 10000, "items": {"$ref": "#/definitions/id"}},
+        "tracks": {"type": "array", "minItems": 2, "maxItems": 8, "items": {"type": "object", "additionalProperties": false,
+          "required": ["id", "positions"], "properties": {"id": {"$ref": "#/definitions/id"},
+          "object": {"$ref": "#/definitions/id"}, "positions": {"$ref": "#/definitions/id"}}}},
+        "playback": {"type": "object", "additionalProperties": false, "required": ["startFrame", "endFrame", "loop"],
+          "properties": {"startFrame": {"type": "integer", "minimum": 0}, "endFrame": {"type": "integer", "minimum": 1}, "loop": {"type": "boolean"}}}
+      }
+    },
     "fields": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/definitions/field"}},
     "topology": {
       "type": "object", "additionalProperties": false, "required": ["quantities", "invariants", "limitations"],

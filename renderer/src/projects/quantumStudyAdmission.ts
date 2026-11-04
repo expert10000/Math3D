@@ -1,12 +1,15 @@
-import { createMixedWorkspaceDocument, linkQuantumSceneDocuments, replaceMath3DProjectWorkspace,
+import { createMixedWorkspaceDocument, createQuantumStudyDocument, linkQuantumSceneDocuments, replaceMath3DProjectWorkspace,
   upsertMath3DProjectQuantumScene, type Math3DProject, type ProjectQuantumSceneReference,
   type QuantumSceneDocument } from "@math3d/core";
 
 export type VerifiedQwzStudy = { runId: string; resultSha256: string; references: ProjectQuantumSceneReference[] };
+export type VerifiedStudy = VerifiedQwzStudy & { model?: "qwz" | "hofstadter";
+  roles?: readonly string[]; title?: string };
 
 /** Reverify every declared scene before publishing either document to a Project. */
-export async function admitVerifiedQwzStudy(base: Math3DProject, handoff: VerifiedQwzStudy,
+export async function admitVerifiedQwzStudy(base: Math3DProject, handoff: VerifiedStudy,
   verify: (reference: ProjectQuantumSceneReference) => Promise<QuantumSceneDocument>): Promise<Math3DProject> {
+  const model = handoff.model ?? "qwz";
   if (handoff.references.length !== 2 || new Set(handoff.references.map(item => item.sceneFingerprint)).size !== 2)
     throw new TypeError("Study needs two distinct exact scene identities.");
   const documents = await Promise.all(handoff.references.map(async reference => {
@@ -14,7 +17,7 @@ export async function admitVerifiedQwzStudy(base: Math3DProject, handoff: Verifi
     if (document.location.directory !== reference.directory || document.source.sceneFingerprint !== reference.sceneFingerprint ||
         document.source.provenance.runId !== handoff.runId ||
         document.source.provenance.resultSha256 !== handoff.resultSha256 ||
-        document.source.provenance.model !== "qwz") throw new TypeError("Verified study source differs from its declared run.");
+        document.source.provenance.model !== model) throw new TypeError("Verified study source differs from its declared run.");
     return document;
   }));
   let next = base;
@@ -27,7 +30,15 @@ export async function admitVerifiedQwzStudy(base: Math3DProject, handoff: Verifi
     expected: document.identity, replay: null }))];
   const linked = new Map(linkQuantumSceneDocuments(staged.filter(entry => entry.module === "quantum")
     .map(entry => entry.checkpoint as QuantumSceneDocument)).map(document => [document.source.sceneFingerprint, document]));
+  const roles = handoff.roles ?? (model === "qwz" ? ["curvature", "bands"] : ["bands", "strip"]);
+  if (roles.length !== documents.length || new Set(roles).size !== roles.length)
+    throw new TypeError("Study panel roles are invalid.");
+  const study = createQuantumStudyDocument(handoff.title ?? `${model} study · ${handoff.runId}`,
+    { model, runId: handoff.runId, resultSha256: handoff.resultSha256 }, documents.map((document, index) => ({
+      role: roles[index], sceneFingerprint: document.source.sceneFingerprint,
+      selectedObjectId: null, sampleIndex: null })));
   const workspace = createMixedWorkspaceDocument({ ...next.workspace,
+    quantumStudies: [...(next.workspace.quantumStudies ?? []).filter(item => item.id !== study.id), study],
     entries: staged.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
       ? { ...entry, checkpoint: linked.get(entry.checkpoint.source.sceneFingerprint)! } : entry),
     activeDocumentIds: [...next.workspace.activeDocumentIds, ...added.map(document => document.identity.id)] });

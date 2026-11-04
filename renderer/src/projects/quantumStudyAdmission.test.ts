@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createQuantumSceneDocument, instantiateMath3DProjectTemplate, parseMath3DProject,
+import { createQuantumSceneDocument, deleteProjectDocument, instantiateMath3DProjectTemplate, parseMath3DProject,
   serializeMath3DProject, type ProjectQuantumSceneReference } from "@math3d/core";
 import { admitVerifiedQwzStudy } from "./quantumStudyAdmission";
 
@@ -29,7 +29,31 @@ describe("exact QWZ study admission", () => {
       .map(entry => entry.checkpoint).filter(entry => entry.format === "math3d.quantum-scene-document");
     expect(quantum).toHaveLength(2);
     expect(quantum.every(item => item.linkedViews?.length === 1)).toBe(true);
+    expect(admitted.workspace.quantumStudies).toHaveLength(1);
+    expect(admitted.workspace.quantumStudies?.[0].panels.map(panel => panel.role)).toEqual(["curvature", "bands"]);
     expect((await admitVerifiedQwzStudy(admitted, handoff, verify)).workspace.entries).toHaveLength(admitted.workspace.entries.length);
+  });
+
+  it("retains Hofstadter bulk and strip panels with selections while source documents remain standalone", async () => {
+    const refs = references.map((item, index) => ({ ...item, title: index ? "strip" : "bands" }));
+    const docs = refs.map((item, index) => createQuantumSceneDocument({ ...documents[index].source,
+      provenance: { ...documents[index].source.provenance, model: "hofstadter" },
+      objects: [{ id: index ? "strip-left" : "band-0", kind: index ? "point-cloud" : "mesh", label: item.title }],
+    }, item.directory, item.title));
+    const base = instantiateMath3DProjectTemplate("geometry-note-pins", "hofstadter-study-admission");
+    const admitted = await admitVerifiedQwzStudy(base, { model: "hofstadter", title: "Harper study",
+      roles: ["bands", "strip"], runId, resultSha256, references: refs }, async reference =>
+      docs.find(item => item.source.sceneFingerprint === reference.sceneFingerprint)!);
+    const edited = { ...admitted.workspace, quantumStudies: admitted.workspace.quantumStudies?.map(study => ({
+      ...study, panels: study.panels.map((panel, index) => index ? { ...panel, selectedObjectId: "strip-left", sampleIndex: 0 } : panel),
+    })) };
+    const reopened = parseMath3DProject(serializeMath3DProject(
+      (await import("@math3d/core")).replaceMath3DProjectWorkspace(admitted,
+        (await import("@math3d/core")).createMixedWorkspaceDocument(edited))));
+    expect(reopened.workspace.quantumStudies?.[0].panels[1].selectedObjectId).toBe("strip-left");
+    expect(reopened.workspace.entries.filter(entry => entry.module === "quantum")).toHaveLength(2);
+    const withoutPanel = deleteProjectDocument(reopened, docs[1].identity.id);
+    expect(withoutPanel.workspace.quantumStudies).toEqual([]);
   });
 
   it("rejects a similarly titled scene with a different exact result before altering the Project", async () => {

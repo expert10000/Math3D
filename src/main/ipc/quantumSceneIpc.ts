@@ -17,6 +17,8 @@ import { bundledQuantumSceneDirectory, bundledQuantumSceneExample,
   listBundledQuantumSceneExamples } from "../quantumScene/examples";
 import { openQuantumProjectPack, writeQuantumProjectPack, type PackReference } from "../quantumScene/portableProject";
 import { readQuantumStudyHandoff, type QuantumStudyLaunch } from "../quantumScene/studyHandoff";
+import { compareVerifiedQuantumScenes } from "../quantumScene/comparison";
+import { inspectVerifiedTimeFrames } from "../quantumScene/timeFrame";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -48,6 +50,17 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 export function registerQuantumSceneIpc(initialDirectory: string | null = null, initialError: string | null = null,
   initialStudy: QuantumStudyLaunch | null = null): void {
   let studyLaunch = initialStudy;
+  ipcMain.handle("quantumScenes:timeFrames", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1) throw new Error("Invalid time frames request");
+    const { imported } = await reopenQuantumSceneReference(args[0]);
+    return inspectVerifiedTimeFrames(imported);
+  });
+  ipcMain.handle("quantumScenes:compare", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 2) throw new Error("Invalid quantum comparison request");
+    const a = await reopenQuantumSceneReference(args[0]);
+    const b = await reopenQuantumSceneReference(args[1]);
+    return compareVerifiedQuantumScenes(a.imported, b.imported);
+  });
   ipcMain.handle("quantumScenes:consumeStudyLaunch", async (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid study launch request" };
     if (initialError) return { ok: false, canceled: false, error: initialError };

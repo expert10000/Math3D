@@ -28,20 +28,23 @@ export async function readQuantumStudyHandoff(directory: string) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid study manifest");
   const manifest = raw as Record<string, unknown>;
   if (Object.keys(manifest).sort().join(",") !== "model,resultSha256,runId,scenes,schema" ||
-      manifest.schema !== "quantum-study-handoff/v1" || manifest.model !== "qwz" ||
+      !((manifest.schema === "quantum-study-handoff/v1" && manifest.model === "qwz") ||
+        (manifest.schema === "quantum-study-handoff/v2" && manifest.model === "hofstadter")) ||
       typeof manifest.runId !== "string" || !id.test(manifest.runId) ||
       typeof manifest.resultSha256 !== "string" || !hash.test(manifest.resultSha256) ||
       !Array.isArray(manifest.scenes) || manifest.scenes.length !== 2)
-    throw new Error("Invalid QWZ study contract");
+    throw new Error("Invalid quantum study contract");
+  const model = manifest.model as "qwz" | "hofstadter";
+  const roles = model === "qwz" ? ["curvature", "bands"] : ["bands", "strip"];
   const scenes = manifest.scenes as unknown[];
   const rows = scenes.map((value, index) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid declared scene");
     const row = value as Record<string, unknown>;
     if (Object.keys(row).sort().join(",") !== "folder,role,sceneId" ||
-        row.role !== (index === 0 ? "curvature" : "bands") ||
-        typeof row.folder !== "string" || !/^[A-Za-z0-9_-]{1,100}(?:-bands)?\.qscene$/.test(row.folder) ||
+        row.role !== roles[index] ||
+        typeof row.folder !== "string" || !/^[A-Za-z0-9_-]{1,100}\.qscene$/.test(row.folder) ||
         typeof row.sceneId !== "string" || !id.test(row.sceneId)) throw new Error("Invalid declared scene");
-    return row as { folder: string; role: "curvature" | "bands"; sceneId: string };
+    return row as { folder: string; role: string; sceneId: string };
   });
   if (rows[0].folder === rows[1].folder || rows[0].sceneId === rows[1].sceneId)
     throw new Error("Study views must have distinct scene identities");
@@ -56,13 +59,14 @@ export async function readQuantumStudyHandoff(directory: string) {
     const imported = await importQuantumSceneBundle(sceneDirectory);
     const scene = imported.source;
     if (scene.id !== row.sceneId || scene.provenance.runId !== manifest.runId ||
-        scene.provenance.resultSha256 !== manifest.resultSha256 || scene.provenance.model !== "qwz" ||
-        (row.role === "bands" ? scene.bands?.kind !== "surface" :
-          !scene.topology?.quantities.some(item => item.id === "lower-curvature")))
-      throw new Error("Declared study view does not match its independently verified QWZ scene");
+        scene.provenance.resultSha256 !== manifest.resultSha256 || scene.provenance.model !== model ||
+        (model === "qwz" ? row.role === "bands" ? scene.bands?.kind !== "surface" :
+          !scene.topology?.quantities.some(item => item.id === "lower-curvature") :
+          row.role === "bands" ? !scene.bands : !scene.objects.some(item => item.id === "strip-left")))
+      throw new Error("Declared study view does not match its independently verified scene");
     references.push({ format: scene.schema, title: scene.title, directory: sceneDirectory,
       sceneFingerprint: sceneFingerprint(imported) });
   }
-  return { title: `QWZ study · ${manifest.runId}`, runId: manifest.runId,
-    resultSha256: manifest.resultSha256, references };
+  return { title: `${model === "qwz" ? "QWZ" : "Hofstadter"} study · ${manifest.runId}`, model,
+    roles, runId: manifest.runId, resultSha256: manifest.resultSha256, references };
 }

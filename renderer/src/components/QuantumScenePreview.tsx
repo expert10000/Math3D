@@ -12,7 +12,7 @@ import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
 import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPointFromPrimitive,
   type ReciprocalDefinition } from "./quantumReciprocalView";
 import { qwzSceneRole, reviewedQwzPair, sshSceneRole, reviewedSshPair } from "./quantumStudyProfile";
-import { scientificCursorBus } from "./scientificCursor";
+import { projectTimeCursor, scientificCursorBus } from "./scientificCursor";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 
@@ -30,6 +30,9 @@ type SceneSource = {
   annotations: { id: string; text: string; position: [number, number, number] }[];
   bands?: { kind: "path" | "surface"; coordinates: string; energies: string[];
     objects: string[]; labels: string[]; energyUnit: string; bulkGap: number; grid?: [number, number] };
+  time?: { axis: string; unit: string; frameIds: string[];
+    tracks: { id: string; object: string; positions: string }[];
+    playback: { startFrame: number; endFrame: number; loop: boolean } };
   topology?: { quantities: { id: string; label: string; kind: string; object: string; dataset: string; convention: string }[];
     invariants: { id: string; label: string; value: number | null; status: string; method: string }[]; limitations: string[] };
 };
@@ -64,6 +67,42 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const [timeFrameIndex, setTimeFrameIndex] = useState(0);
+  const [timePlaying, setTimePlaying] = useState(false);
+  const [timeFrames, setTimeFrames] = useState<Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["timeFrames"]>> | null>(null);
+  const timeFrame = timeFrames?.[timeFrameIndex] ?? null;
+  const [timeError, setTimeError] = useState("");
+  useEffect(() => { setTimeFrameIndex(0); setTimePlaying(false); setTimeFrames(null); }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    const timeline = scene.time;
+    if (!timeline || !window.quantumScenes?.timeFrames) return;
+    let active = true;
+    void window.quantumScenes.timeFrames(opened.reference)
+      .then(frames => { if (active) {
+        const cursor = scientificCursorBus.snapshot();
+        if (cursor?.timePoint && cursor.originViewId !== opened.reference.sceneFingerprint) {
+          const projected = projectTimeCursor(cursor, { runId: scene.provenance.runId,
+            resultSha256: scene.provenance.resultSha256, unit: timeline.unit,
+            frameIds: timeline.frameIds, values: frames.map(frame => frame.time) });
+          if (projected.status === "matched") setTimeFrameIndex(projected.value);
+        }
+        setTimeFrames(frames); setTimeError("");
+      } })
+      .catch(error => { if (active) setTimeError(String(error)); });
+    return () => { active = false; };
+  }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    if (!timePlaying || !scene.time) return;
+    const timer = window.setInterval(() => setTimeFrameIndex(index => index < scene.time!.playback.endFrame ? index + 1 :
+      scene.time!.playback.loop ? scene.time!.playback.startFrame : index), 180);
+    return () => window.clearInterval(timer);
+  }, [timePlaying, opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    if (!timeFrame || !scene.time) return;
+    scientificCursorBus.publish({ runId: timeFrame.runId, resultSha256: timeFrame.resultSha256,
+      datasetId: scene.time.axis, originViewId: opened.reference.sceneFingerprint,
+      timePoint: { value: timeFrame.time, unit: timeFrame.unit, frameId: timeFrame.frameId, sampleIndex: timeFrame.index } });
+  }, [timeFrame, opened.reference.sceneFingerprint]);
   const activeFieldDocument = promotedField?.source.scene.sceneFingerprint === opened.reference.sceneFingerprint ? promotedField : null;
   const [fieldPromotionStatus, setFieldPromotionStatus] = useState("");
   const [promotingField, setPromotingField] = useState(false);
@@ -443,6 +482,11 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       segments: [...(sourceGeometry.segments?.filter(segment => !sourceMeshes.length ||
         ![...primitiveIds].some(id => segment.a.id?.startsWith(`${id}:link:`))) ?? []), ...translations] };
   }, [document.geometry, geometrySpace, meshObjects, primitiveMeshes, reciprocalMeshes, reciprocalView, scene.lattice, supercell]);
+  const timeDisplayScene = useMemo(() => timeFrame && scene.time ? { ...viewerScene,
+    points: [...(viewerScene.points ?? []), ...timeFrame.tracks.filter(track => track.object).map(track => ({
+      x: track.xyz[0], y: track.xyz[1], z: track.xyz[2], id: `time-frame:${track.id}`,
+      label: `${track.id} at ${timeFrame.time} ${timeFrame.unit}`, color: 0xffc857, size: .18,
+    }))] } : viewerScene, [viewerScene, timeFrame, scene.time]);
   const visibleLabels = useMemo(() => {
     const annotations = geometrySpace === "reciprocal" ? [] : supercell ? [] : scene.annotations;
     const supplied = annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
@@ -506,6 +550,33 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
+            {scene.time && <div data-testid="quantum-time-playback" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border, #cbd5e1)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button type="button" onClick={() => setTimePlaying(value => !value)}>{timePlaying ? "Pause" : "Play"}</button>
+                <input type="range" aria-label="Physical time frame" min={scene.time.playback.startFrame} max={scene.time.playback.endFrame}
+                  value={timeFrameIndex} onChange={event => setTimeFrameIndex(Number(event.target.value))} style={{ flex: 1 }} />
+                <strong>{timeFrame ? `${timeFrame.time.toPrecision(6)} ${timeFrame.unit}` : scene.time.frameIds[timeFrameIndex]}</strong>
+              </div>
+              {timeFrame && <small data-testid="quantum-time-tracks">{timeFrame.frameId} · {timeFrame.tracks.map(track =>
+                `${track.id}: (${track.xyz.map(value => value.toPrecision(4)).join(", ")})`).join(" · ")}</small>}
+              {timeFrames && timeFrames.length > 1 && timeFrames[0].tracks.some(track => track.id === "sigma-z") && <svg
+                role="img" aria-label="Pauli sigma z expectation versus physical time" viewBox="0 0 300 120"
+                style={{ display: "block", width: "100%", maxWidth: 420, height: 100, marginTop: 6, background: "var(--panel, #f8fafc)" }}>
+                <line x1="10" y1="60" x2="290" y2="60" stroke="#94a3b8" />
+                <polyline fill="none" stroke="#d97706" strokeWidth="2" points={timeFrames.map(frame => {
+                  const x = 10 + 280 * (frame.time - timeFrames[0].time) / (timeFrames[timeFrames.length - 1].time - timeFrames[0].time);
+                  const value = frame.tracks.find(track => track.id === "sigma-z")!.xyz[1];
+                  return `${x},${60 - 45 * value}`;
+                }).join(" ")} />
+                {timeFrame && <circle cx={10 + 280 * (timeFrame.time - timeFrames[0].time) /
+                  (timeFrames[timeFrames.length - 1].time - timeFrames[0].time)}
+                  cy={60 - 45 * timeFrame.tracks.find(track => track.id === "sigma-z")!.xyz[1]}
+                  r="5" fill="#f59e0b" stroke="#111827" />}
+                <text x="10" y="113" fontSize="10">{timeFrames[0].time.toPrecision(4)}</text>
+                <text x="260" y="113" fontSize="10">{timeFrames[timeFrames.length - 1].time.toPrecision(4)} {scene.time.unit}</text>
+              </svg>}
+              {timeError && <small role="alert">{timeError}</small>}
+            </div>}
             {scene.reciprocal && <div data-testid="quantum-space-controls" style={{ padding: 8, display: "flex", gap: 8 }}>
               <button type="button" aria-pressed={geometrySpace === "source"} onClick={() => {
                 reciprocalGeneration.current++; setVerifyingReciprocal(false); setReciprocalError("");
@@ -550,7 +621,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 onRecordDerivation?.(record);
                 return record;
               },
-              geometry: <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
+              geometry: <GeometryViewer scene={timeDisplayScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
               pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
               onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++; topologyGeneration.current++;
