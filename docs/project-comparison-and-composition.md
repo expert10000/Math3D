@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC28)
+# Project comparison and composition (PC01–PC29)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -600,3 +600,35 @@ verifies the three additional starters' numeric trend values and the unrecorded
 middle generation. Each Project was saved, exported with source resources,
 imported into a separate fresh Electron profile, and reopened after an app
 restart with the same values, statuses, result IDs, and source hashes.
+
+## PC29 · Comparison release acceptance
+
+Status: **Complete for the supported Mesh and Mesh/Geometry comparison paths**.
+Run `npm run test:projects:pc29` from the repository root. Its single portable
+Project fixture contains three retained Mesh quality results, three saved A/B
+pairs, a saved Mesh/Geometry composition, an authored coordinate Note, and a
+Workbook with saved pair and coordinate reviews. The fixture retains resource
+sidecars; its values are recorded evidence, not calculated by the review views.
+The complete gate passed on 2026-11-04: three unit checks, one Electron check,
+and four browser checks across two locales, with no test failures.
+
+The Electron test imports and saves this Project, restarts the UI, opens a
+retained Mesh generation from a selected trend point, checks a compatible
+saved A/B pair and exports its HTML, then opens the Workbook coordinate review
+and its exact marker. It checks that the viewer and WebGL context release on
+close. The browser test repeats the import, restart, generation, trend, A/B,
+Workbook review, HTML export, marker and viewer cleanup in en-US/UTC and
+pl-PL/Auckland. A second browser case refuses portable packages with changed
+Note or Mesh sidecar bytes.
+
+The focused unit gate verifies the same fixture's three trend points and pair
+rows, and checks missing or altered source sidecars: unavailable rows remain
+visible while stored scalar values and authored Note text are withheld from
+Workbook HTML. Portable import also rejects changed Note and sidecar bytes.
+The gate checks saved evidence and navigation; it does not rerun Mesh analysis
+or infer a matching element from a linked coordinate.
+
+PC03 remains **Partial** for legacy sources without frame metadata. PC05
+remains **Partial** for generations never retained and comparison families
+without a supported selection adapter. The acceptance covers development
+Electron and browser builds; it does not qualify a packaged installer.

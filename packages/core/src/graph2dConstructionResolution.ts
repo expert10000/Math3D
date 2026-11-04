@@ -1,11 +1,12 @@
 import { structuralHash } from "./documentIdentity";
 import type { Graph2DDocument, Graph2DGraphObject, Graph2DProbe } from "./graph2dDocument";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY,
-  GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY,
+  GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY,
   GRAPH2D_MAX_CONSTRUCTION_ARTIFACT_BYTES,
   GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS, GRAPH2D_MAX_CONSTRUCTIONS, nextGraph2DConstructionId,
   applyGraph2DConstructionAction, type Graph2DConstructionAction,
-  type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction, type Graph2DCandidateConstruction } from "./graph2dConstructions";
+  type Graph2DConstructionObject, type Graph2DPointOnCurveConstruction, type Graph2DCandidateConstruction,
+  type Graph2DIntegralConstruction } from "./graph2dConstructions";
 import { analyzeGraph2DCriticalPoints, isGraph2DCriticalPointCurrent,
   type Graph2DCriticalPoint, type Graph2DCriticalPointAnalysis } from "./graph2dCriticalPoints";
 import { analyzeGraph2DIntersections, isGraph2DIntersectionCurrent,
@@ -14,6 +15,8 @@ import { evaluateGraph2DExpression } from "./graph2dExpression";
 import { evaluateGraph2DParametric } from "./graph2dParametric";
 import { evaluateGraph2DPolar } from "./graph2dPolar";
 import { analyzeGraph2DLocalDifferential } from "./graph2dDifferential";
+import { analyzeGraph2DIntegral, isGraph2DIntegralCurrent,
+  type Graph2DIntegralAnalysis } from "./graph2dIntegral";
 import { analyzeGraph2DPolarLocalDifferential } from "./graph2dPolarDifferential";
 import { analyzeGraph2DParametricLocalDifferential } from "./graph2dParametricDifferential";
 import type { Graph2DDerivativeMethod } from "./graph2dDerivatives";
@@ -28,6 +31,9 @@ export type Graph2DResolvedConstruction = Readonly<{
   measurement?: Readonly<{ quantity: "signed-curvature"; value: number; method: Graph2DDerivativeMethod;
     convention: "increasing-x" | "increasing-t" | "increasing-theta"; certifiedErrorBound: null }> | null;
   circle?: Readonly<{ center: Point; radius: number }> | null;
+  integral?: Readonly<{ value: number; errorEstimate: number | null; evaluations: number;
+    mode: "signed" | "absolute"; interval: Readonly<{ min: number; max: number }>;
+    tolerance: number }> | null;
   style: Graph2DConstructionObject["style"];
 }>;
 export type Graph2DConstructionArtifact = Readonly<{
@@ -147,7 +153,6 @@ export function graph2DConstructionFromCandidate(document: Graph2DDocument,
   analysis: Graph2DCriticalPointAnalysis | Graph2DIntersectionAnalysis,
   candidate: Graph2DCriticalPoint | Graph2DIntersectionCandidate): Graph2DCandidateConstruction {
   const intersection = "firstObjectId" in candidate;
-  if (!intersection && candidate.kind === "inflection") throw new TypeError("Only roots and extrema can be saved as candidate constructions.");
   if (intersection !== ("firstObjectId" in analysis) ||
       analysis.status !== "complete" ||
       !(intersection ? isGraph2DIntersectionCurrent(analysis as Graph2DIntersectionAnalysis, document) :
@@ -167,8 +172,9 @@ export function graph2DConstructionFromCandidate(document: Graph2DDocument,
   if (!(matchRadius > 0)) throw new TypeError("Candidate cannot be matched uniquely.");
   const ids = intersection ? [candidate.firstObjectId, candidate.secondObjectId] : [candidate.objectId];
   return { id: nextGraph2DConstructionId(document.source),
-    kind: intersection ? "intersection" : candidate.kind === "zero" ? "root" : candidate.kind as "minimum" | "maximum",
-    label: intersection ? "Intersection" : candidate.kind === "zero" ? "Root" : candidate.kind === "minimum" ? "Minimum" : "Maximum",
+    kind: intersection ? "intersection" : candidate.kind === "zero" ? "root" : candidate.kind as "minimum" | "maximum" | "inflection",
+    label: intersection ? "Intersection" : candidate.kind === "zero" ? "Root" : candidate.kind === "minimum" ? "Minimum" :
+      candidate.kind === "maximum" ? "Maximum" : "Inflection",
     inputs: ids.map(objectId => ({ kind: "source" as const, objectId })),
     anchor: { interval, seedX: candidate.x, matchRadius, candidateId: candidate.candidateId,
       method: candidate.method, residual: candidate.residual, confidence: candidate.confidence,
@@ -177,10 +183,27 @@ export function graph2DConstructionFromCandidate(document: Graph2DDocument,
       lineWidth: 2, lineStyle: "solid" }, requiredCapability: GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY };
 }
 
+/** Save the numerical integral recipe, not its transient computed value. */
+export function graph2DIntegralConstructionFromAnalysis(document: Graph2DDocument,
+  analysis: Graph2DIntegralAnalysis, maxEvaluations = GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS): Graph2DIntegralConstruction {
+  const source = document.source.objects.find(item => item.id === analysis.objectId);
+  if (source?.kind !== "explicit-cartesian" || !isGraph2DIntegralCurrent(analysis, document) ||
+      analysis.status !== "complete" || analysis.value === null ||
+      !Number.isSafeInteger(maxEvaluations) || maxEvaluations < 1 ||
+      maxEvaluations > GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS)
+    throw new TypeError("A current complete integral analysis is required.");
+  return { id: nextGraph2DConstructionId(document.source), kind: "definite-integral",
+    label: analysis.mode === "signed" ? "Definite integral" : "Absolute integral",
+    inputs: [{ kind: "source", objectId: source.id }],
+    anchor: { interval: analysis.interval, mode: analysis.mode,
+      tolerance: analysis.tolerance, maxEvaluations },
+    style: { visible: true, color: document.display.objects.find(item => item.objectId === source.id)?.color ?? "#2563eb",
+      lineWidth: 2, lineStyle: "solid" }, requiredCapability: GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY };
+}
+
 /** A construction edit changes result IDs; match the same numerical feature within its local window. */
 export function isGraph2DCriticalCandidateAlreadySaved(document: Graph2DDocument,
   candidate: Graph2DCriticalPoint): boolean {
-  if (candidate.kind === "inflection") return false;
   const kind = candidate.kind === "zero" ? "root" : candidate.kind;
   return (document.source.constructions?.objects ?? []).some(object => {
     if (object.kind !== kind || object.inputs[0]?.objectId !== candidate.objectId) return false;
@@ -201,8 +224,8 @@ export function graph2DConstructionActionsFromCandidates(document: Graph2DDocume
   let staged = document;
   const actions: Graph2DConstructionAction[] = [];
   for (const candidate of candidates) {
-    if (candidate.kind === "inflection" || candidate.confidence !== "numerical")
-      throw new TypeError("Only validated zeros and extrema can be saved.");
+    if (candidate.confidence !== "numerical")
+      throw new TypeError("Only validated numerical candidates can be saved.");
     if (ids.has(candidate.candidateId) || isGraph2DCriticalCandidateAlreadySaved(document, candidate))
       throw new TypeError("Candidate is duplicated or already saved.");
     ids.add(candidate.candidateId);
@@ -302,7 +325,30 @@ export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DC
         state: point ? "ready" : "unavailable", reason: point ? null : "Point is outside the domain or undefined at this parameter.",
         confidence: point ? "source-defined" : "unavailable",
         sourceObjectId, point, direction: null };
+    } else if (definition.kind === "definite-integral") {
+      const sourceObjectId = definition.inputs[0]?.objectId ?? "";
+      const remaining = GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS - evaluations;
+      let analysis: Graph2DIntegralAnalysis | null = null;
+      if (remaining > 0) try {
+        analysis = analyzeGraph2DIntegral({ document, objectId: sourceObjectId,
+          interval: definition.anchor.interval, mode: definition.anchor.mode,
+          tolerance: definition.anchor.tolerance,
+          maxEvaluations: Math.min(remaining, definition.anchor.maxEvaluations) });
+        evaluations += analysis.evaluations;
+      } catch { /* The saved source or interval can become unavailable. */ }
+      if (remaining <= 0 || evaluations >= GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS) truncated = true;
+      const ready = analysis?.status === "complete" && analysis.value !== null;
+      item = { id: definition.id, kind: definition.kind, label: definition.label, style: definition.style,
+        state: ready ? "ready" : "unavailable", confidence: ready ? "approximate" : "unavailable",
+        reason: ready ? null : remaining <= 0 ? "Construction evaluation budget reached." :
+          analysis?.status === "incomplete" ? "Integral is unavailable over the full interval or within the evaluation budget." :
+            "Integral source or interval is unavailable.",
+        sourceObjectId, point: null, direction: null,
+        integral: ready ? { value: analysis!.value!, errorEstimate: analysis!.errorEstimate,
+          evaluations: analysis!.evaluations, mode: definition.anchor.mode,
+          interval: definition.anchor.interval, tolerance: definition.anchor.tolerance } : null };
     } else if (definition.kind === "root" || definition.kind === "minimum" || definition.kind === "maximum" ||
+        definition.kind === "inflection" ||
         definition.kind === "intersection") {
       const sourceObjectId = definition.inputs[0]?.objectId ?? "";
       const anchor = definition.anchor;
@@ -335,11 +381,14 @@ export function resolveGraph2DConstructions(document: Graph2DDocument): Graph2DC
         (definition.kind === "intersection" ? "classification" in candidate && candidate.classification === anchor.classification :
           "kind" in candidate && (candidate.kind === "zero" ? "root" : candidate.kind) === definition.kind));
       const match = near.length === 1 ? near[0] : null;
-      const point = analysisAvailable && match ? { x: match.x, y: match.y } : null;
+      const numericallyAccepted = definition.kind !== "inflection" || match?.confidence === "numerical";
+      const point = analysisAvailable && match && numericallyAccepted ? { x: match.x, y: match.y } : null;
       item = { id: definition.id, kind: definition.kind, label: definition.label, style: definition.style,
         state: point ? "ready" : "unavailable", confidence: point ? "approximate" : "unavailable",
         reason: point ? null : !analysisAvailable ? "Source or bounded analysis is unavailable." :
-          near.length > 1 ? "Matching window contains multiple candidates." : "Original candidate no longer has a unique local match.",
+          near.length > 1 ? "Matching window contains multiple candidates." :
+            !numericallyAccepted ? "Inflection is no longer numerically validated." :
+              "Original candidate no longer has a unique local match.",
         sourceObjectId, point, direction: null };
     } else if (definition.kind === "curvature" || definition.kind === "osculating-circle") {
       const parent = resolved.get(definition.inputs[0]?.objectId ?? "");

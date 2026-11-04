@@ -39,7 +39,8 @@ import {
   type Graph2DPhasePortraitArtifact,
   type Graph2DTimeOdeArtifact,
   type Graph2DConstructionAction,
-  graph2DConstructionFromCandidate, graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
+  graph2DConstructionFromCandidate, graph2DIntegralConstructionFromAnalysis,
+  graph2DLineConstructionActionsFromProbe, GRAPH2D_MAX_CONSTRUCTIONS,
   graph2DConstructionActionsFromIntersectionCandidates,
   type Graph2DIntegralMode,
   type Graph2DPolarMeasurement,
@@ -1204,6 +1205,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const wheelHandlerRef = useRef<(event: globalThis.WheelEvent) => void>(() => {});
   const [hoverSelection, setHoverSelection] = useState<Graph2DSelection | null>(null);
   const [areaDraft, setAreaDraft] = useState({ min: "-1", max: "1", mode: "signed" as Graph2DIntegralMode });
+  const [areaSaveError, setAreaSaveError] = useState("");
   const [areaRequest, setAreaRequest] = useState<{ objectId: string; min: number; max: number;
     mode: Graph2DIntegralMode } | null>(null);
   const [arcRequest, setArcRequest] = useState<{ objectId: string; min: number; max: number } | null>(null);
@@ -3046,6 +3048,17 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         {area.skippedCells > 0 && <p>{area.skippedCells} undefined or unresolved cells skipped; partial area {area.partialValue.toPrecision(7)}.</p>}
         {area.publication.diagnostics.filter(entry => entry.code === "evaluation-limit")
           .map(entry => <p key={entry.code} role="status">{entry.message}</p>)}
+        <button type="button" data-testid="gf08-save-integral"
+          disabled={!onConstructionCommit || area.status !== "complete" ||
+            (document.source.constructions?.objects.length ?? 0) >= GRAPH2D_MAX_CONSTRUCTIONS ||
+            document.source.constructions?.objects.some(item => item.kind === "definite-integral" &&
+              item.inputs[0]?.objectId === area.objectId && item.anchor.mode === area.mode &&
+              item.anchor.interval.min === area.interval.min && item.anchor.interval.max === area.interval.max)}
+          onClick={() => { try { onConstructionCommit?.({ type: "create",
+            object: graph2DIntegralConstructionFromAnalysis(document, area, areaAnalysisBudget) });
+            setAreaSaveError(""); } catch (cause) { setAreaSaveError(String((cause as Error).message ?? cause)); } }}>
+          Save definite integral</button>
+        {areaSaveError && <p role="alert">{areaSaveError}</p>}
       </div>}
     </section>
     <section className="graph2d-arc-length" data-testid="graph2d-arc-length" aria-label="Arc length">

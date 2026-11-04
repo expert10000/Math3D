@@ -5,6 +5,7 @@ export const GRAPH2D_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.v1" as co
 export const GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.candidates.v1" as const;
 export const GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.curvature.v1" as const;
 export const GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.osculating-circle.v1" as const;
+export const GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY = "graph2d.constructions.integral.v1" as const;
 export const GRAPH2D_CONSTRUCTION_VERSION = 1 as const;
 export const GRAPH2D_MAX_CONSTRUCTIONS = 32;
 export const GRAPH2D_MAX_CONSTRUCTION_DEPTH = 16;
@@ -42,12 +43,19 @@ export type Graph2DCandidateAnchor = Readonly<{
   sourceGeneration: ScientificSourceGeneration;
 }>;
 export type Graph2DCandidateConstruction = ConstructionBase & Readonly<{
-  kind: "root" | "minimum" | "maximum" | "intersection";
+  kind: "root" | "minimum" | "maximum" | "inflection" | "intersection";
   inputs: readonly Graph2DConstructionSourceInput[]; anchor: Graph2DCandidateAnchor;
   requiredCapability: typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY;
 }>;
+export type Graph2DIntegralConstruction = ConstructionBase & Readonly<{
+  kind: "definite-integral"; inputs: readonly Graph2DConstructionSourceInput[];
+  anchor: Readonly<{ interval: Readonly<{ min: number; max: number }>;
+    mode: "signed" | "absolute"; tolerance: number; maxEvaluations: number }>;
+  requiredCapability: typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY;
+}>;
 export type Graph2DConstructionObject = Graph2DPointOnCurveConstruction | Graph2DDerivedLineConstruction |
-  Graph2DCurvatureConstruction | Graph2DOsculatingCircleConstruction | Graph2DCandidateConstruction;
+  Graph2DCurvatureConstruction | Graph2DOsculatingCircleConstruction | Graph2DCandidateConstruction |
+  Graph2DIntegralConstruction;
 export type Graph2DConstructionSet = Readonly<{ version: typeof GRAPH2D_CONSTRUCTION_VERSION;
   objects: readonly Graph2DConstructionObject[] }>;
 export type Graph2DConstructionAction =
@@ -93,6 +101,17 @@ const validCandidateAnchor = (value: unknown): value is Graph2DCandidateAnchor =
     Number.isSafeInteger(generation.revision) && Number(generation.revision) >= 0 &&
     Number.isSafeInteger(generation.generation) && Number(generation.generation) >= 0;
 };
+const validIntegralAnchor = (value: unknown): value is Graph2DIntegralConstruction["anchor"] =>
+  record(value) && exact(value, ["interval", "mode", "tolerance", "maxEvaluations"]) &&
+  record(value.interval) && exact(value.interval, ["min", "max"]) &&
+  typeof value.interval.min === "number" && Number.isFinite(value.interval.min) &&
+  typeof value.interval.max === "number" && Number.isFinite(value.interval.max) &&
+  value.interval.min < value.interval.max && value.interval.max - value.interval.min <= 1e6 &&
+  (value.mode === "signed" || value.mode === "absolute") &&
+  typeof value.tolerance === "number" && Number.isFinite(value.tolerance) &&
+  value.tolerance > 0 && value.tolerance <= 0.1 &&
+  Number.isSafeInteger(value.maxEvaluations) && Number(value.maxEvaluations) >= 1 &&
+  Number(value.maxEvaluations) <= GRAPH2D_MAX_CONSTRUCTION_EVALUATIONS;
 
 /** Validates only persisted intent. A source edit may leave an anchor outside its new domain; resolution marks it unavailable. */
 export function validateGraph2DConstructionSet(value: unknown, sources: readonly Graph2DGraphObject[]): string[] {
@@ -106,9 +125,10 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
   for (const [index, item] of objects.entries()) {
     if (!record(item) || !exact(item, ["id", "kind", "label", "inputs", "anchor", "style", "requiredCapability"]) ||
         !validId(item.id) || !validLabel(item.label) || !validStyle(item.style) ||
-        !["point-on-curve", "tangent", "normal", "curvature", "osculating-circle", "root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ||
-        item.requiredCapability !== (["root", "minimum", "maximum", "intersection"].includes(String(item.kind)) ?
-          GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY : item.kind === "curvature" ?
+        !["point-on-curve", "tangent", "normal", "curvature", "osculating-circle", "root", "minimum", "maximum", "inflection", "intersection", "definite-integral"].includes(String(item.kind)) ||
+        item.requiredCapability !== (["root", "minimum", "maximum", "inflection", "intersection"].includes(String(item.kind)) ?
+          GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY : item.kind === "definite-integral" ?
+            GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY : item.kind === "curvature" ?
             GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY : item.kind === "osculating-circle" ?
               GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY : GRAPH2D_CONSTRUCTIONS_CAPABILITY) ||
         !Array.isArray(item.inputs) || item.inputs.length !== (item.kind === "intersection" ? 2 : 1) ||
@@ -126,7 +146,7 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
           typeof item.anchor.value !== "number" || !Number.isFinite(item.anchor.value) ||
           Math.abs(item.anchor.value) > 1e12)
         errors.push(`Point construction ${item.id} has an invalid parameter anchor.`);
-    } else if (["root", "minimum", "maximum", "intersection"].includes(String(item.kind))) {
+    } else if (["root", "minimum", "maximum", "inflection", "intersection"].includes(String(item.kind))) {
       const sourcesForCandidate = item.inputs as Graph2DConstructionSourceInput[];
       if (sourcesForCandidate.some(input => input.kind !== "source" || sourceById.get(input.objectId)?.kind !== "explicit-cartesian") ||
           new Set(sourcesForCandidate.map(input => input.objectId)).size !== sourcesForCandidate.length)
@@ -134,6 +154,10 @@ export function validateGraph2DConstructionSet(value: unknown, sources: readonly
       if (!validCandidateAnchor(item.anchor) ||
           (item.kind === "intersection") !== (record(item.anchor) && item.anchor.classification !== null))
         errors.push(`Candidate construction ${item.id} has invalid matching provenance.`);
+    } else if (item.kind === "definite-integral") {
+      if (input.kind !== "source" || sourceById.get(input.objectId)?.kind !== "explicit-cartesian" ||
+          !validIntegralAnchor(item.anchor))
+        errors.push(`Integral construction ${item.id} needs a local explicit source and bounded interval.`);
     } else {
       const dependency = input.kind === "construction" ? objects[indexById.get(input.objectId) ?? -1] : undefined;
       // Forward references are checked below after the full ID table is known.
