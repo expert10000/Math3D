@@ -21,6 +21,7 @@ import { isScientificSceneLibraryReference, scientificSceneLibraryKey,
 import { normalizeScientificSelection, type ScientificSelection } from "./scientificSelection";
 import { normalizeDerivedFieldDocument, vectorFieldDerivedShape,
   type DerivedFieldDocument } from "./derivedFieldDocument";
+import { normalizeTemporalFieldSourceDocument, type TemporalFieldSourceDocument } from "./temporalFieldSourceDocument";
 
 export const MIXED_WORKSPACE_FORMAT = "math3d.mixed-workspace" as const;
 export const MIXED_WORKSPACE_SCHEMA_VERSION = 1 as const;
@@ -59,6 +60,7 @@ export type MixedWorkspaceDocument = Readonly<{
   scientificSelections?: readonly ScientificSelection[];
   derivedFields?: readonly DerivedFieldDocument[];
   scientificScenes?: readonly ScientificSceneLibraryReference[];
+  timeSources?: readonly TemporalFieldSourceDocument[];
 }>;
 export type MixedWorkspaceReplayAdapter = (entry: MixedWorkspaceEntry) => KernelWorkspaceDocument;
 export type MixedWorkspaceReplayAdapters = Partial<Record<KernelWorkspaceModule, MixedWorkspaceReplayAdapter>>;
@@ -92,7 +94,7 @@ const identityEquals = (left: DocumentIdentity, right: DocumentIdentity): boolea
 
 export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResult<MixedWorkspaceDocument> => {
   const errors: string[] = [];
-  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections", "derivedFields"]) ||
+  if (!record(value) || !exact(value, ["format", "schemaVersion", "entries", "activeDocumentIds", "results", "artifacts", "relations", "committedSelection", "constructions"], ["scientificScenes", "scientificSelections", "derivedFields", "timeSources"]) ||
       value.format !== MIXED_WORKSPACE_FORMAT || value.schemaVersion !== MIXED_WORKSPACE_SCHEMA_VERSION) return { ok: false, errors: ["Invalid mixed workspace envelope."] };
   if (!Array.isArray(value.entries) || value.entries.length > 512) errors.push("Invalid mixed workspace entries.");
   const entries: MixedWorkspaceEntry[] = [];
@@ -116,6 +118,18 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
   if (new Set(entries.map(entryKey)).size !== entries.length) errors.push("Duplicate module document entry.");
   const expectedById = new Map<string, DocumentIdentity>(entries.map((entry) => [entry.expected.id, entry.expected]));
   if (expectedById.size !== entries.length) errors.push("Document IDs must be unique across modules.");
+  const timeSources: TemporalFieldSourceDocument[] = [];
+  if (value.timeSources !== undefined) {
+    if (!Array.isArray(value.timeSources) || value.timeSources.length > 32)
+      errors.push("Invalid Project temporal sources.");
+    else for (const candidate of value.timeSources) {
+      const checked = normalizeTemporalFieldSourceDocument(candidate);
+      if (!checked.ok) errors.push(...checked.errors);
+      else timeSources.push(checked.value);
+    }
+    if (new Set(timeSources.map(item => item.identity.id)).size !== timeSources.length)
+      errors.push("Duplicate Project temporal source IDs.");
+  }
   const derivedFields: DerivedFieldDocument[] = [];
   if (value.derivedFields !== undefined) {
     if (!Array.isArray(value.derivedFields) || value.derivedFields.length > 64)
@@ -247,6 +261,7 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
   catch (error) { errors.push(String((error as Error).message ?? error)); }
   if (errors.length) return { ok: false, errors };
   return { ok: true, value: jsonClone({ ...value, entries, results, artifacts, relations,
+    ...(value.timeSources === undefined ? {} : { timeSources }),
     committedSelection: selection, constructions,
     ...(value.derivedFields === undefined ? {} : { derivedFields }),
     ...(value.scientificSelections === undefined ? {} : { scientificSelections }) }) as unknown as MixedWorkspaceDocument };

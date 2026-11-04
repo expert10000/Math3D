@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { graph2DFourierCsv, graph2DMultiChannelFourierCsv, isGraph2DMultiChannelFourierCurrent, type Graph2DDocument,
+import { graph2DFourierCsv, graph2DMultiChannelFourierCsv, graph2DSpectralDiagnosticsCsv,
+  isGraph2DMultiChannelFourierCurrent, type Graph2DDocument,
   type Graph2DFourierOptions, type Graph2DFourierResult, type Graph2DMultiChannelFourierResult,
   type Graph2DPointSeriesObject } from "@math3d/core";
 import { pointTableStore } from "./pointTableStore";
@@ -23,6 +24,11 @@ const spectrumPath = (result: Graph2DFourierResult) => {
   });
   const max = Math.max(...peaks, Number.EPSILON);
   return peaks.map((value, index) => `${index ? "L" : "M"}${index},${(112 - 104 * value / max).toFixed(2)}`).join(" ");
+};
+const diagnosticsPath = (values: readonly number[], signed = false) => {
+  const max = Math.max(...values.map(Math.abs), Number.EPSILON);
+  return values.map((value, index) => `${index ? "L" : "M"}${index * 383 / Math.max(1, values.length - 1)},${
+    signed ? 60 - 52 * value / max : 112 - 104 * value / max}`).join(" ");
 };
 
 export function Graph2DFourierPanel({ document }: { document: Graph2DDocument }) {
@@ -149,6 +155,39 @@ export function Graph2DFourierPanel({ document }: { document: Graph2DDocument })
         <div><dt>Strongest non-DC</dt><dd>{strongest[0]?.frequency.toPrecision(5) ?? "—"}</dd></div>
         <div><dt>Nyquist</dt><dd>{result.nyquist.toPrecision(5)}</dd></div>
       </dl>
+      <section aria-label="Power spectral density and autocorrelation" data-testid="gf20-spectral-diagnostics">
+        <h4>PSD and autocorrelation · {active.label}</h4>
+        <p>One-sided window-energy periodogram ({spectrum.powerUnit}); mean-centered biased autocorrelation
+          through lag {spectrum.autocorrelation.length - 1} ({result.options.xUnit}).
+          {" "}{spectrum.autocorrelationStatus === "undefined-zero-variance" &&
+            "Normalized autocorrelation is undefined for this constant signal."}</p>
+        <svg role="img" aria-label="Power spectral density" viewBox="0 0 384 120"
+          style={{ width: "100%", height: 100, background: "#f6f9fc" }}>
+          <path d={diagnosticsPath(spectrum.psd.map(bin => bin.density))}
+            fill="none" stroke="#2563eb" strokeWidth="1.5" /></svg>
+        <svg role="img" aria-label="Autocorrelation by lag" viewBox="0 0 384 120"
+          style={{ width: "100%", height: 100, background: "#f6f9fc" }}>
+          <line x1="0" x2="384" y1="60" y2="60" stroke="#94a3b8" />
+          <path d={diagnosticsPath(spectrum.autocorrelation.map(lag => lag.coefficient ?? 0), true)}
+            fill="none" stroke="#0f766e" strokeWidth="1.5" /></svg>
+        <button type="button" disabled={!current} onClick={() => {
+          const url = URL.createObjectURL(new Blob([graph2DSpectralDiagnosticsCsv(spectrum)],
+            { type: "text/csv;charset=utf-8" }));
+          const link = globalThis.document.createElement("a"); link.href = url;
+          link.download = `graph-spectral-diagnostics-${spectrum.objectId}.csv`;
+          link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }}>Export PSD and autocorrelation CSV</button>
+        <details><summary>First 32 diagnostic rows</summary>
+          <table><thead><tr><th>Frequency</th><th>PSD</th><th>Lag</th><th>Autocorrelation</th></tr></thead>
+            <tbody>{Array.from({ length: Math.min(32, Math.max(spectrum.psd.length,
+              spectrum.autocorrelation.length)) }, (_, index) => <tr key={index}>
+              <td>{spectrum.psd[index]?.frequency.toPrecision(6) ?? ""}</td>
+              <td>{spectrum.psd[index]?.density.toPrecision(6) ?? ""}</td>
+              <td>{spectrum.autocorrelation[index]?.separation.toPrecision(6) ?? ""}</td>
+              <td>{spectrum.autocorrelation[index]?.coefficient?.toPrecision(6) ?? "undefined"}</td>
+            </tr>)}</tbody></table>
+        </details>
+      </section>
       <Graph2DNumericalResultsTable resultKey={`${result.resultId}:${active.objectId}`} tableLabel="Fourier numerical results"
         controlsLabel="Filter frequency bins" searchLabel="Search frequency bins" sortLabel="Sort bins by frequency"
         items={spectrum.bins} filters={filters} columns={columns} getId={bin => String(bin.index)}

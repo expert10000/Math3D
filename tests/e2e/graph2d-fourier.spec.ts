@@ -27,6 +27,11 @@ test("GRA-16 desktop shows a checked known-tone spectrum with frequency units", 
     await panel.getByRole("button", { name: "Analyze spectrum", exact: true }).click();
     await expect(panel.getByRole("status")).toHaveText("Current spectrum");
     await expect(panel.getByTestId("graph2d-fourier-plot")).toBeVisible();
+    const diagnostics = panel.getByTestId("gf20-spectral-diagnostics");
+    await expect(diagnostics.getByRole("img", { name: "Power spectral density" })).toBeVisible();
+    await expect(diagnostics.getByRole("img", { name: "Autocorrelation by lag" })).toBeVisible();
+    await expect(diagnostics).toContainText("One-sided window-energy periodogram");
+    await expect(diagnostics.getByRole("button", { name: "Export PSD and autocorrelation CSV" })).toBeEnabled();
     await expect(panel.getByRole("table", { name: "Fourier numerical results" })).toContainText("cycles/s");
     await panel.getByRole("button", { name: "Strongest 12" }).click();
     await expect(panel.getByRole("table", { name: "Fourier numerical results" }).locator("tbody"))
@@ -35,6 +40,7 @@ test("GRA-16 desktop shows a checked known-tone spectrum with frequency units", 
     await expect(panel.getByTestId("graph2d-fourier-selected-bin")).toHaveAttribute("x1", "48");
     await panel.getByLabel("Fourier x unit").fill("ms");
     await expect(panel.getByRole("status")).toHaveCount(0);
+    await expect(panel.getByTestId("gf20-spectral-diagnostics")).toHaveCount(0);
   } finally { await closeSurfaceApp(app); }
 });
 

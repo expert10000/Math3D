@@ -96,6 +96,8 @@ import { VectorField3DDerivedIsosurfacePanel } from "./VectorField3DDerivedIsosu
 import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfacePanel";
 import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPanel";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
+import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
+import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
 import "./fieldExplorerHierarchy.css";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -145,6 +147,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
   onSaveComparisonResult,
+  onSaveTemporalSource,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
@@ -204,6 +207,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onPromoteTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
   onPromoteLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
   onSaveComparisonResult?: (result: AnalysisResultEnvelope) => void;
+  onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
   onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
@@ -2766,6 +2770,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onPromote={onPromoteLocalSeparatrix} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} />
+      <VectorField3DFrameUnitPanel document={document} />
+      <VectorField3DTimeSourcePanel document={document} project={project}
+        onSave={onSaveTemporalSource} />
     </section>
     {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">
       <h5>Slice appearance and verification</h5>

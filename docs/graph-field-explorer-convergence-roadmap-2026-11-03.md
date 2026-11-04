@@ -8,6 +8,8 @@
 
 This roadmap adapts the external *MATH3D Graph + Field Explorer — Development Roadmap* dated 2026-11-03. That proposal is design input, not an implementation record or a command to build all 36 proposed tickets. The existing [Graph2D roadmap](math3d-graph2d-desktop-mobile-roadmap.md) owns Graph release and platform gates; the [Scientific Field Explorer roadmap](scientific-field-explorer-roadmap.md) owns SCI milestones and their detailed numerical contracts. This document owns the **cross-module gaps and their order**. Existing IDs keep their meaning; `GF-` IDs below identify new integration slices rather than renumbering G2D, GRA, or SCI work.
 
+The [GF-20–22 Graph diagnostics, Cartesian unit and discrete-time first gates](graph-field-gf20-gf22-diagnostics-frame-time.md) extend this checkpoint. Fourier now reports checked PSD and autocorrelation; Field Explorer previews explicit Cartesian length/time conversion and saves discrete temporal source pins. Verified bundled-source profile sampling and GF-18 scientific alignment/Graph profile export remain open.
+
 ## 1. Decision and current baseline
 
 Graphs plots and analyzes expressions and checked datasets. Field Explorer inspects verified scalar, vector and complex sources in physical coordinates. Shared Project relations, source generations, results, and scientific jobs are the convergence points. A saved scientific object holds compact intent and references; large samples and render geometry remain derived artifacts. A changed or missing external source withholds numerical claims until it is verified again.
@@ -75,10 +77,11 @@ This stage extends the current Explorer and Graph analysis rather than reintrodu
 | GF-19 | Complex-field analysis. | Reuse existing real/imaginary, magnitude/phase and Graph-to-Complex mappings. Add `|ψ|²`, domain coloring and phase winding only with undefined-point handling and discrete-contour convergence checks; do not imply holomorphic behavior for sampled fields. |
 | GF-20 | Graph data and spectral diagnostics. | Extend current checked regression/FFT work with residual views, uncertainty reports, PSD/autocorrelation and later cross-correlation/spectrogram using explicit sampling assumptions and fixture comparisons. |
 | GF-21 | Coordinate and unit model. | Introduce additional frames or unit conversion only after source schema, calculus operators and export behavior are specified; preserve regular-grid Cartesian behavior and reject unsupported mixed dimensions. |
+| GF-22 | Versioned time-axis/source contract. | Pin discrete source generations to physical times before time-aware sampling. Define interpolation, calculus and export rules explicitly; do not infer pathlines or streaklines from steady fields. |
 
 ## 6. Later: GF-TIME and advanced topology
 
-Time-dependent fields need a versioned time-axis/source contract first. Then add time-aware probes and slices, and distinguish steady streamlines, physical pathlines and streaklines. Moving isosurfaces and temporal spectra follow verified time sampling and interpolation. Basin maps, Poincare sections, Lyapunov estimates, tensor-field glyphs and manifold surfaces remain research/advanced work until fixtures, bounded algorithms and interpretation rules exist. Do not schedule them as prerequisites for GF-FOUNDATION.
+GF-22 supplies the initial discrete time-axis/source contract. Time-aware probes and slices come after a verified sampling and interpolation gate, and must distinguish steady streamlines, physical pathlines and streaklines. Moving isosurfaces and temporal spectra follow verified time sampling and interpolation. Basin maps, Poincare sections, Lyapunov estimates, tensor-field glyphs and manifold surfaces remain research/advanced work until fixtures, bounded algorithms and interpretation rules exist. Do not schedule them as prerequisites for GF-FOUNDATION.
 
 ## 7. Cross-module result matrix
 

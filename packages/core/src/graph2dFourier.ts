@@ -8,11 +8,17 @@ import type { ScientificSourceGeneration } from "./scientificJobs";
 export type Graph2DFourierOptions = Readonly<{ window: "rectangular" | "hann";
   normalization: "peak" | "rms"; detrend: "none" | "mean"; xUnit: string }>;
 export type Graph2DFourierBin = Readonly<{ index: number; frequency: number; amplitude: number; phaseRadians: number }>;
+export type Graph2DPowerBin = Readonly<{ index: number; frequency: number; density: number }>;
+export type Graph2DAutocorrelationLag = Readonly<{ lag: number; separation: number;
+  coefficient: number | null }>;
 export type Graph2DFourierResult = Readonly<{
   resultId: string; objectId: string; source: ScientificSourceGeneration; table: Graph2DPointTableReference;
   options: Graph2DFourierOptions; n: number; fftLength: number; sampleInterval: number;
   sampleRate: number; nyquist: number; frequencyUnit: string; amplitudeUnit: string;
   coherentGain: number; removedMean: number; bins: readonly Graph2DFourierBin[];
+  powerUnit: string; psd: readonly Graph2DPowerBin[];
+  autocorrelation: readonly Graph2DAutocorrelationLag[];
+  autocorrelationStatus: "resolved" | "undefined-zero-variance";
   publication: AnalysisResultEnvelope;
 }>;
 
@@ -60,6 +66,8 @@ export const analyzeGraph2DFourier = (input: Readonly<{ document: Graph2DDocumen
       !(["none", "mean"] as string[]).includes(options.detrend) ||
       typeof options.xUnit !== "string" || !options.xUnit.trim() || options.xUnit.length > 24 ||
       /[\r\n,]/.test(options.xUnit)) throw new TypeError("Choose a window, amplitude normalization, detrending and a short x unit.");
+  if (object.origin?.xUnit && object.origin.xUnit !== options.xUnit)
+    throw new TypeError("Fourier x unit must match the declared point-series source unit.");
   const certified = graph2DVerifiedPointTableReference(input.rows);
   const store = certified ? null : new Graph2DPointTableStore();
   const ref = certified ?? store!.publish(input.rows);
@@ -82,44 +90,81 @@ export const analyzeGraph2DFourier = (input: Readonly<{ document: Graph2DDocumen
     throw new TypeError("Irregular x spacing: Fourier analysis requires a uniform grid; resample explicitly before analysis.");
   const fftLength = 2 ** Math.ceil(Math.log2(n)), real = new Float64Array(fftLength), imaginary = new Float64Array(fftLength);
   const removedMean = options.detrend === "mean" ? rows.reduce((sum, row) => sum + row.y! / n, 0) : 0;
-  let windowSum = 0;
+  let windowSum = 0, windowSquareSum = 0;
   for (let i = 0; i < n; i++) {
     const weight = options.window === "hann" ? .5 * (1 - Math.cos(2 * Math.PI * i / (n - 1))) : 1;
-    windowSum += weight; real[i] = (rows[i]!.y! - removedMean) * weight;
+    windowSum += weight; windowSquareSum += weight * weight;
+    real[i] = (rows[i]!.y! - removedMean) * weight;
   }
   fft(real, imaginary);
   const sampleRate = 1 / sampleInterval, nyquist = sampleRate / 2;
   const bins: Graph2DFourierBin[] = [];
+  const psd: Graph2DPowerBin[] = [];
   for (let k = 0; k <= fftLength / 2; k++) {
     const endpoint = k === 0 || k === fftLength / 2;
     const amplitudePeak = Math.hypot(real[k]!, imaginary[k]!) * (endpoint ? 1 : 2) / windowSum;
     const amplitude = options.normalization === "rms" && !endpoint ? amplitudePeak / Math.SQRT2 : amplitudePeak;
     bins.push({ index: k, frequency: k * sampleRate / fftLength, amplitude,
       phaseRadians: Math.atan2(imaginary[k]!, real[k]!) });
+    psd.push({ index: k, frequency: k * sampleRate / fftLength,
+      density: (endpoint ? 1 : 2) * (real[k]! ** 2 + imaginary[k]! ** 2) /
+        (sampleRate * windowSquareSum) });
   }
+  const correlationMean = rows.reduce((sum, row) => sum + row.y! / n, 0);
+  const centered = rows.map(row => row.y! - correlationMean);
+  const energy = centered.reduce((sum, value) => sum + value * value, 0);
+  const autocorrelation = Array.from({ length: Math.min(256, n - 1) + 1 }, (_, lag) => {
+    let sum = 0;
+    for (let i = 0; i < n - lag; i++) sum += centered[i]! * centered[i + lag]!;
+    return { lag, separation: lag * sampleInterval,
+      coefficient: energy > 0 ? Math.max(-1, Math.min(1, sum / energy)) : null };
+  });
   const source = { documentId: document.identity.id, revision: document.identity.revision,
     structuralHash: document.identity.structuralHash, generation: document.identity.revision };
   const resultId = "graph2d.fourier." + structuralHash({ source, objectId, checksum: ref.checksum,
-    options, algorithm: "radix2-windowed-v1" }).slice(7);
+    options, algorithm: "radix2-windowed-v2-psd-autocorrelation" }).slice(7);
   const frequencyUnit = options.xUnit === "dimensionless" ? "cycles per x unit" : `cycles/${options.xUnit}`;
+  const yUnit = object.origin?.yUnit ?? "y unit";
+  const powerUnit = `(${yUnit})²/(${frequencyUnit})`;
   const publication = createAnalysisResultEnvelope({ resultId, status: "numerical", provenance: { source,
-    operation: { type: "graph2d.fourier", algorithm: "radix2-windowed-fft", algorithmVersion: "1",
+    operation: { type: "graph2d.fourier", algorithm: "radix2-windowed-fft", algorithmVersion: "2",
       parameters: { objectId, table: { ...ref }, options, sampleCount: n, fftLength,
         spacingTolerance, amplitudeConvention: "one-sided coherent-gain corrected" } },
     numericContext: { precision: { binaryBits: 53 } }, engine: { name: "math3d-core", version: "1" },
     elapsedMs: Math.max(0, Date.now() - started) },
     summary: { n, fftLength, sampleInterval, sampleRate, nyquist, frequencyUnit,
       coherentGain: windowSum / n, removedMean, window: options.window,
-      normalization: options.normalization, datasetChecksum: ref.checksum },
+      normalization: options.normalization, datasetChecksum: ref.checksum,
+      powerUnit, psdMethod: "one-sided-periodogram-window-energy-v1",
+      autocorrelationMethod: "mean-centered-biased-v1", maxLag: autocorrelation.length - 1,
+      autocorrelationStatus: energy > 0 ? "resolved" : "undefined-zero-variance" },
     warnings: ["Uniform x spacing is checked; x is treated as exact and input samples are not interpolated.",
       "Zero padding refines the displayed frequency grid but does not increase physical resolution or remove leakage.",
-      "Peak/RMS amplitude uses coherent-gain correction; this is not a power spectral density or a confidence interval.",
+      "Peak/RMS amplitude uses coherent-gain correction; read the separate PSD for power per frequency, not the amplitude curve.",
+      "PSD is a one-sided window-energy-normalized periodogram, not a confidence interval; zero padding does not add independent frequency information.",
+      "Autocorrelation is mean-centered and biased, with at most 256 lags; constant signals have undefined normalized correlation.",
+      ...(!object.origin ? ["This point series has no declared source units; the selected x unit and generic y unit are user assumptions."] : []),
       "Phase at near-zero amplitude is unstable and should not be interpreted as a reliable feature."],
     diagnostics: [], artifacts: [] });
   return freeze({ resultId, objectId, source, table: { ...ref }, options: { ...options }, n, fftLength,
-    sampleInterval, sampleRate, nyquist, frequencyUnit, amplitudeUnit: "y unit", coherentGain: windowSum / n,
-    removedMean, bins, publication });
+    sampleInterval, sampleRate, nyquist, frequencyUnit, amplitudeUnit: yUnit, coherentGain: windowSum / n,
+    removedMean, bins, powerUnit, psd, autocorrelation,
+    autocorrelationStatus: energy > 0 ? "resolved" : "undefined-zero-variance", publication });
 };
+
+export const graph2DSpectralDiagnosticsCsv = (result: Graph2DFourierResult): string => [
+  `# resultId=${result.resultId}`,
+  `# sourceDocument=${result.source.documentId}; revision=${result.source.revision}`,
+  `# datasetChecksum=${result.table.checksum}`,
+  `# psdMethod=one-sided-periodogram-window-energy-v1; powerUnit=${JSON.stringify(result.powerUnit)}`,
+  `# autocorrelationMethod=mean-centered-biased-v1; xUnit=${JSON.stringify(result.options.xUnit)}`,
+  "frequency,psd,lag,separation,autocorrelation",
+  ...Array.from({ length: Math.max(result.psd.length, result.autocorrelation.length) }, (_, index) => {
+    const bin = result.psd[index], lag = result.autocorrelation[index];
+    return [bin?.frequency ?? "", bin?.density ?? "", lag?.lag ?? "", lag?.separation ?? "",
+      lag?.coefficient ?? ""].join(",");
+  }),
+].join("\n") + "\n";
 
 export const graph2DFourierCsv = (result: Graph2DFourierResult): string => {
   const metadata = [
@@ -191,19 +236,23 @@ export const analyzeGraph2DMultiChannelFourier = (input: Readonly<{ document: Gr
   const resultId = "graph2d.fourier-multichannel." + structuralHash({ source,
     channels: channels.map(channel => ({ objectId: channel.objectId, checksum: channel.spectrum.table.checksum,
       xUnit: channel.xUnit, yUnit: channel.yUnit })), options: input.options,
-    algorithm: "aligned-radix2-windowed-v1" }).slice(7);
+    algorithm: "aligned-radix2-windowed-v2-psd-autocorrelation" }).slice(7);
   const reference = spectra[0]!;
   const publication = createAnalysisResultEnvelope({ resultId, status: "numerical", provenance: { source,
     operation: { type: "graph2d.fourier-multichannel", algorithm: "aligned-radix2-windowed-fft",
-      algorithmVersion: "1", parameters: { options: input.options,
+      algorithmVersion: "2", parameters: { options: input.options,
         channels: channels.map(channel => ({ objectId: channel.objectId, table: channel.spectrum.table,
           xUnit: channel.xUnit, yUnit: channel.yUnit, origin: channel.origin ?? null })),
-        sampleCount: reference.n, fftLength: reference.fftLength, alignment: "exact checked x coordinates" } },
+        sampleCount: reference.n, fftLength: reference.fftLength, alignment: "exact checked x coordinates",
+        psdMethod: "one-sided-periodogram-window-energy-v1",
+        autocorrelationMethod: "mean-centered-biased-v1" } },
     numericContext: { precision: { binaryBits: 53 } }, engine: { name: "math3d-core", version: "1" },
     elapsedMs: Math.max(0, Date.now() - started) },
     summary: { channelCount: channels.length, n: reference.n, fftLength: reference.fftLength,
       sampleInterval: reference.sampleInterval, nyquist: reference.nyquist,
-      frequencyUnit: reference.frequencyUnit, checksums: channels.map(channel => channel.spectrum.table.checksum) },
+      frequencyUnit: reference.frequencyUnit, checksums: channels.map(channel => channel.spectrum.table.checksum),
+      psdMethod: "one-sided-periodogram-window-energy-v1",
+      autocorrelationMethod: "mean-centered-biased-v1" },
     warnings: [...reference.publication.warnings,
       "Channels share exact checked x coordinates; no alignment or interpolation was inferred.",
       ...(!declared[0] ? ["Manually imported channels have no declared units; the chosen x unit and generic y unit are user assumptions."] : [])],

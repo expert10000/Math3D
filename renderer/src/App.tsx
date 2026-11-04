@@ -813,6 +813,7 @@ import {
   upsertProjectTrajectoryCurve,
   upsertProjectLocalSeparatrix,
   upsertProjectVectorField3DComparison,
+  upsertProjectTemporalFieldSource,
   appendProjectDerivedField,
   createVolumeDocument,
   createViewerProvenanceEvidence,
@@ -90756,6 +90757,13 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectVectorField3DComparison(active, result);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSource={source => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalFieldSource(active, source);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}
