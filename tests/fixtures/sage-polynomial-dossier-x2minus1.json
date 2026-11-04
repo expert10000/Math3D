@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "coefficientDomain": "QQ",
+  "variable": "x",
+  "sourcePolynomial": "x^2-1",
+  "polynomial": "x^2 - 1",
+  "degree": 2,
+  "leadingCoefficient": "1",
+  "constantCoefficient": "-1",
+  "content": "1",
+  "primitivePart": "x^2 - 1",
+  "derivative": "2*x",
+  "derivativeGcd": "1",
+  "squareFree": true,
+  "squareFreeDecomposition": { "unit": "1", "factors": [{ "polynomial": "x^2 - 1", "multiplicity": 1 }] },
+  "factorization": { "unit": "1", "factors": [
+    { "polynomial": "x + 1", "multiplicity": 1 },
+    { "polynomial": "x - 1", "multiplicity": 1 }
+  ] },
+  "irreducibleOverQQ": false,
+  "discriminant": "4",
+  "rationalRoots": [{ "value": "-1", "multiplicity": 1 }, { "value": "1", "multiplicity": 1 }]
+}

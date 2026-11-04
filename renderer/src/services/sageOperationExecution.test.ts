@@ -20,6 +20,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
   "sage.algebra.reconstruct",
   "sage.algebra.inspectDomains",
+  "sage.polynomial.dossier",
 ]);
 const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
@@ -219,6 +220,14 @@ describe("Sage scientific execution contract", () => {
       });
     }
   }
+
+  it("advertises the B02 dossier only on Docker and rejects a multivariate recipe", async () => {
+    const registry = createSageExecutionRegistry({ health });
+    expect((await registry.probeBackend("docker")).operations.map((item) => item.operationType)).toContain("polynomial.dossier");
+    expect((await registry.probeBackend("local")).operations.map((item) => item.operationType)).not.toContain("polynomial.dossier");
+    expect(() => registry.run({ operation: "sage.polynomial.dossier", backend: "docker",
+      params: { polynomial: "x+y", variables: ["x", "y"] } })).toThrow(/polynomial dossier parameters/);
+  });
 
   it("preserves exact-roots rejection diagnostics as a failed Compute job", async () => {
     const operation = "sage.polynomial.roots_exact";

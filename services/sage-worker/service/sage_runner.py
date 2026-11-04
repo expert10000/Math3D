@@ -206,6 +206,66 @@ def _polynomial_roots_exact(operation, params):
     )
 
 
+def _polynomial_dossier(operation, params):
+    if set(params) != {"polynomial", "variables"}:
+        raise SageRequestError("Polynomial dossier requires exactly polynomial and variables.")
+    variables = params["variables"]
+    if not isinstance(variables, list) or len(variables) != 1 or not isinstance(variables[0], str):
+        raise SageRequestError("Polynomial dossier requires one saved QQ polynomial variable.")
+    variable = _validate_name(variables[0])
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", variable):
+        raise SageRequestError("Polynomial dossier variable must match the saved algebra object schema.")
+    expression = _validate_expression(params["polynomial"])
+    if not re.fullmatch(r"[A-Za-z0-9_+\-*/^()\s]+", expression):
+        raise SageRequestError("Polynomial dossier contains unsupported syntax.")
+    if any(token != variable for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", expression)):
+        raise SageRequestError("Polynomial dossier uses a variable outside the selected ring.")
+    if any(len(token) > 18 for token in re.findall(r"[0-9]+", expression)) or any(
+        int(power) > 16 for power in re.findall(r"\^\s*([0-9]+)", expression)
+    ) or "**" in expression or re.search(r"\^\s*(?:[^0-9\s]|[0-9]+\s*\^)", expression):
+        raise SageRequestError("Polynomial dossier has an oversized or unsupported exponent or coefficient.")
+    ring = PolynomialRing(QQ, variable)
+    try:
+        poly = ring(expression)
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        raise SageRequestError("Polynomial dossier input is not a QQ polynomial.") from exc
+    if poly.is_zero():
+        raise SageRequestError("Polynomial dossier requires a nonzero polynomial.")
+    if poly.degree() > 16 or any(abs(coefficient.numerator()).nbits() > 256 or
+        coefficient.denominator().nbits() > 256 for coefficient in poly.list()):
+        raise SageRequestError("Polynomial dossier exceeds the degree or coefficient budget.")
+    factorization = poly.factor()
+    square_free = poly.squarefree_decomposition()
+    content = gcd(poly.list())
+    derivative = poly.derivative()
+    result = {
+        "schemaVersion": 1,
+        "coefficientDomain": "QQ",
+        "variable": variable,
+        "sourcePolynomial": expression,
+        "polynomial": str(poly),
+        "degree": int(poly.degree()),
+        "leadingCoefficient": str(poly.leading_coefficient()),
+        "constantCoefficient": str(poly[0]),
+        "content": str(content),
+        "primitivePart": str(poly / content),
+        "derivative": str(derivative),
+        "derivativeGcd": str(gcd(poly, derivative)),
+        "squareFree": bool(poly.is_squarefree()),
+        "squareFreeDecomposition": {"unit": str(square_free.unit()), "factors": [
+            {"polynomial": str(part), "multiplicity": int(multiplicity)}
+            for part, multiplicity in sorted(square_free, key=lambda item: str(item[0]))]},
+        "factorization": {"unit": str(factorization.unit()), "factors": [
+            {"polynomial": str(part), "multiplicity": int(multiplicity)}
+            for part, multiplicity in sorted(factorization, key=lambda item: str(item[0]))]},
+        "irreducibleOverQQ": bool(poly.degree() > 0 and poly.is_irreducible()),
+        "discriminant": str(poly.discriminant()) if poly.degree() >= 2 else None,
+        "rationalRoots": [{"value": str(root), "multiplicity": int(multiplicity)}
+            for root, multiplicity in sorted(poly.roots(ring=QQ), key=lambda item: item[0])],
+    }
+    return _success(operation, result, latex(poly))
+
+
 def _groebner_compute(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     raw_polys = params.get("polynomials")
@@ -521,6 +581,7 @@ OPERATIONS = {
     "sage.matrix.charpoly": _matrix_charpoly,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
+    "sage.polynomial.dossier": _polynomial_dossier,
     "sage.groebner.compute": _groebner_compute,
     "sage.numberTheory.gcd": _number_theory_gcd,
     "sage.numberTheory.modInverse": _number_theory_mod_inverse,

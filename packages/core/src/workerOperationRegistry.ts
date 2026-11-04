@@ -24,6 +24,7 @@ export type Math3DWorkerOperationId =
   | "volume.distance-field"
   | "volume.streamlines"
   | "curve.analyze"
+  | "field.derived-profile"
   | "symbolic.simplify"
   | "symbolic.solve"
   | "symbolic.factor"
@@ -32,6 +33,7 @@ export type Math3DWorkerOperationId =
   | "symbolic.gradient"
   | "symbolic.hessian"
   | "polynomial.factor"
+  | "polynomial.dossier"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -215,6 +217,14 @@ const definitions = [
     legacyRequestKinds: [],
   },
   {
+    id: "field.derived-profile",
+    title: "Derived field line profile",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
+  },
+  {
     id: "symbolic.simplify",
     title: "Symbolic simplification",
     canonicalOwner: "sage",
@@ -273,6 +283,14 @@ const definitions = [
   {
     id: "polynomial.factor",
     title: "Exact polynomial factorization",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "polynomial.dossier",
+    title: "Exact polynomial dossier over QQ",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],

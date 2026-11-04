@@ -124,6 +124,7 @@ Result shape:
 - `sage.matrix.charpoly`
 - `sage.polynomial.roots_exact`
 - `sage.polynomial.factor`
+- `sage.polynomial.dossier` (bounded exact `QQ[x]` analysis: factorization, square-free decomposition, derivative, discriminant and rational roots)
 - `sage.groebner.compute`
 - `sage.numberTheory.gcd`
 - `sage.numberTheory.modInverse`

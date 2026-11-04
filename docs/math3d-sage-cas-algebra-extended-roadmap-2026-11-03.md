@@ -296,6 +296,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B01 implementation update (2026-11-04):** The [B01 acceptance record](evidence/sage-b01-typed-operation-registry-2026-11-04.md) adds a core registry for seven existing bounded Sage operations with kind/domain constraints, versioned input/output schema identifiers, broker capability keys, route requirements and strict request/result validation. The CAS Operations view lists compatible operations for the selected current, fresh object and explains excluded actions. `ZZ` GCD, `Z/nZ` inverse and direct-`QQ` polynomial factorization/Gröbner/roots are distinguished; the current polynomial worker's `QQ` base is not presented as a general finite-field polynomial operation. Freeform Services remain available. Contextual object-linked execution and evidence remain **B05**; the next implementation gate is **SAGE-B02**, the polynomial dossier recipe.
 
+**B02 implementation update (2026-11-04):** The [B02 acceptance record](evidence/sage-b02-polynomial-dossier-2026-11-04.md) adds a bounded, versioned `QQ[x]` polynomial dossier recipe to the Sage worker, typed object operation registry and shared broker. It reports exact factorization and square-free decomposition, derivative and GCD, content and primitive part, irreducibility over `QQ`, discriminant and rational roots. A single JSON fixture is checked by Sage and TypeScript; SageMath 9.5 WSL ran the live cases and malformed-input checks. Docker HTTP execution awaits an available Docker service. Contextual run and saved evidence remain **B05**. The next implementation gate is **SAGE-B03**, exact matrix operations.
+
 ---
 
 ## 3. P0 — Algebra object registry

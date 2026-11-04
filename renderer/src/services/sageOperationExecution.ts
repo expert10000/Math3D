@@ -26,6 +26,7 @@ import { observeBrokerJob, recordScientificJobEvent, registerBrokerDiscovery } f
 export const SAGE_JOB_OPERATIONS = {
   "sage.symbolic.simplify": { type: "symbolic.simplify", label: "simplification", cancelled: "Sage symbolic job cancelled." },
   "sage.polynomial.factor": { type: "polynomial.factor", label: "polynomial factorization", cancelled: "Sage factorization cancelled." },
+  "sage.polynomial.dossier": { type: "polynomial.dossier", label: "polynomial dossier", cancelled: "Sage dossier cancelled." },
   "sage.polynomial.roots_exact": { type: "polynomial.roots.exact", label: "exact polynomial roots", cancelled: "Sage root calculation cancelled." },
   "sage.symbolic.gradient": { type: "symbolic.gradient", label: "gradient", cancelled: "Sage symbolic job cancelled." },
   "sage.symbolic.hessian": { type: "symbolic.hessian", label: "Hessian", cancelled: "Sage symbolic job cancelled." },
@@ -89,7 +90,8 @@ export type SageExecutionRegistryOptions = {
 const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOperation; backend: Backend }): void => {
   const definition = SAGE_JOB_OPERATIONS[request.operation];
   const params = request.params;
-  const polynomial = request.operation === "sage.polynomial.factor" || request.operation === "sage.polynomial.roots_exact";
+  const polynomial = request.operation === "sage.polynomial.factor" || request.operation === "sage.polynomial.roots_exact" ||
+    request.operation === "sage.polynomial.dossier";
   const matrix = params.matrix;
   const variables = params.variables;
   const stringVariables = Array.isArray(params.variables) &&
@@ -119,9 +121,10 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
         BigInt(params.modulus) > 1n
     : request.backend === "private" ? false
     : polynomial
-    ? request.backend === "local"
+    ? request.operation !== "sage.polynomial.dossier" && request.backend === "local"
       ? Array.isArray(params.coefficients) && params.coefficients.every((item) => typeof item === "string")
-      : typeof params.polynomial === "string" && stringVariables
+      : request.backend === "docker" && typeof params.polynomial === "string" && stringVariables &&
+        (request.operation !== "sage.polynomial.dossier" || (Array.isArray(variables) && variables.length === 1))
     : typeof params.expression === "string" && stringVariables;
   if (!validParams) {
     throw new TypeError(`Invalid Sage ${definition.label} parameters.`);
