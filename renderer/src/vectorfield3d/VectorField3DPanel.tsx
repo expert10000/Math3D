@@ -41,6 +41,7 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   type Graph2DScientificVolume,
   inspectGraph2DFieldReference, verifyGraph2DScientificVolume,
   type VectorField3DVerifiedTile } from "@math3d/core";
+import type { DerivedProfileProvenance } from "@math3d/core";
 import type { VectorField3DCameraState } from "@math3d/core";
 import { VectorField3DArrowView } from "./VectorField3DArrowView";
 import { seedPlaneNormalAxis, type SeedPlane3D } from "./fieldSeedPlacement3D";
@@ -82,6 +83,7 @@ import { linkedVectorDerivedRegionGraphs, checkVectorDerivedRegionGraphSeries,
   type VectorDerivedRegionVerificationSession } from "./linkedVectorDerivedRegionGraphs";
 import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
+import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
 
 const storageKey = "math3d.vector-field3d.document.v1";
 const tileTransferBuffers = (tiles: readonly VectorField3DVerifiedTile[]): ArrayBuffer[] => {
@@ -128,8 +130,14 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
-  onReturnToVectorLayer, overlayFields = [] }: {
+  onReturnToVectorLayer, overlayFields = [], derivedProfiles = [], onComputeDerivedProfile,
+  derivedProfileBusyId, derivedProfileProgress, derivedProfileError }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
+  derivedProfiles?: readonly DerivedProfileProvenance[];
+  onComputeDerivedProfile?: (id: string) => Promise<void>;
+  derivedProfileBusyId?: string | null;
+  derivedProfileProgress?: string;
+  derivedProfileError?: string;
   onSaveDocument?: (document: VectorField3DDocument) => void; onClose: () => void;
   mount?: HTMLElement;
   onAddGraphLine?: (preview: Graph2DScientificDatasetPreview, selection: VectorField3DGraphLineSelection) => void;
@@ -2242,6 +2250,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, onSaveDocum
       <button type="button" onClick={onOpenFieldDetails}>Open field controls</button>
     </section>}
     <h4>Inspector</h4>
+    {derivedProfiles.map(record => <DerivedProfileProvenanceCard key={record.profileId}
+      view="explorer" provenance={record}
+      onCompute={onComputeDerivedProfile ? () => void onComputeDerivedProfile(record.profileId) : undefined}
+      busy={derivedProfileBusyId === record.profileId}
+      progress={derivedProfileBusyId === record.profileId ? derivedProfileProgress : undefined}
+      error={derivedProfileError} />)}
     <p>Selected layer: {workspace.selectedLayer === "arrows" ? "3D arrows" :
       workspace.selectedLayer === "trajectories" ? "Trajectories" : `${workspace.selectedLayer.toUpperCase()} slice`}.</p>
     {sliceControlAxis !== undefined && <section aria-label="Rectangle actions"

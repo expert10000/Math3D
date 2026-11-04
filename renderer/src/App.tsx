@@ -90633,7 +90633,7 @@ case "mobius":
             )}
           </div>
         ) : mode === "graphs" ? (
-          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} analysisRequest={projectGraphAnalysisRequest}
+          <GraphsWorkspace key={graph2dDocument.identity.id} dockLayout={activeDockLayout} document={graph2dDocument} project={activeNotebookProjectRef.current} analysisRequest={projectGraphAnalysisRequest}
             onSaveSageResult={(record) => { openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
             onOpenSageRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
             savedVectorField3D={vectorField3DDocument} openVectorField3DRequest={vectorField3DOpenRequest}

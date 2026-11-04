@@ -63,6 +63,7 @@ import {
   editGraph2DProbes, graph2DPinnedProbeState, projectGraph2DProbeMarkers,
   getGraph2DGuidedDocumentGuidance,
   projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions,
+  type Math3DProject,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -86,6 +87,8 @@ import { ScientificFieldGraphResultControls } from "./ScientificFieldGraphResult
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from "./scientificFieldTransfer";
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
+import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
+import { useDerivedProfileProvenance } from "./useDerivedProfileProvenance";
 import type { LinkedExplorerProbe } from "../vectorfield3d/linkedFieldProbe";
 import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedScientificExplorerEntries,
   type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
@@ -204,6 +207,7 @@ function readGraph2DLeftPalette(): Graph2DLeftPalette {
 type Props = {
   dockLayout: WorkspaceDockLayout;
   document: Graph2DDocument;
+  project?: Math3DProject | null;
   analysisRequest?: { documentId: string; token: number } | null;
   status?: "ready" | "loading" | "error";
   errorMessage?: string;
@@ -256,7 +260,7 @@ type Props = {
 };
 
 /** Desktop/web projection of shared Graph2D source and persistent display state. */
-export function GraphsWorkspace({ dockLayout, document, analysisRequest, status = "ready", errorMessage, onViewportCommit,
+export function GraphsWorkspace({ dockLayout, document, project, analysisRequest, status = "ready", errorMessage, onViewportCommit,
   onGridModeCommit, onAxesCommit, onProbesCommit, onAuthoringCommit, onConstructionCommit, onConstructionBatchCommit, onSelectionCommit, onUndo, onRedo, promotions = [],
   onPromotionCreate, onPromotionLocate, onPromotionRegenerate, onComplexContourPlace, onOpenPreset, onResumeCheckpoint, onCopyProject,
   onExportPersonalProject, onCopyGraphDefinition, onPreviewPersonalImport, onImportPersonalProject,
@@ -270,6 +274,13 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
   openScientificFieldRequest, onSaveScientificField,
   savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D,
   onSaveSageResult, onOpenSageRuntimes }: Props) {
+  const derivedProfiles = useDerivedProfileProvenance(project);
+  const profileCards = derivedProfiles.records.map(record =>
+    <DerivedProfileProvenanceCard key={record.profileId} view="graphs" provenance={record}
+      onCompute={() => void derivedProfiles.compute(record.profileId)}
+      busy={derivedProfiles.busyId === record.profileId}
+      progress={derivedProfiles.busyId === record.profileId ? derivedProfiles.progress : undefined}
+      error={derivedProfiles.error || undefined} />);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [leftSection, setLeftSection] = useState<"objects" | "services">("objects");
   const [sageRecord, setSageRecord] = useState<SymbolicResultRecord | null>(null);
@@ -3688,6 +3699,10 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           linkedRegionFocus?.token ?? 0}`}
           mount={viewerRef.current?.closest<HTMLElement>(".graph2d-workspace") ?? undefined}
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
+          derivedProfiles={derivedProfiles.records.filter(record => record.source.documentId ===
+            (vectorField3DDocument ?? savedVectorField3D)?.identity.id)}
+          onComputeDerivedProfile={derivedProfiles.compute} derivedProfileBusyId={derivedProfiles.busyId}
+          derivedProfileProgress={derivedProfiles.progress} derivedProfileError={derivedProfiles.error}
           linkedRegionFocus={linkedRegionFocus?.focus ?? null}
           onFocusRegionInGraphs={focusExplorerRegionInGraphs}
           onFocusSubrectangleInGraphs={focusExplorerSubrectangleInGraphs}
@@ -4117,7 +4132,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{savedFields}</details>}
+            {inspector}{profileCards}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
@@ -4169,7 +4184,7 @@ export function GraphsWorkspace({ dockLayout, document, analysisRequest, status 
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{savedFields}
+        </details>}{inspector}{profileCards}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}
