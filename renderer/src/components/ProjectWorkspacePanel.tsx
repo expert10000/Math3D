@@ -77,10 +77,12 @@ import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
+import { admitVerifiedQwzStudy } from "../projects/quantumStudyAdmission";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
 
 export { PROJECT_STORAGE_KEY } from "../projects/projectLibrary";
+type StudyLaunchResponse = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["consumeStudyLaunch"]>>;
 const ProjectThumbnail: React.FC<{ src: string | null; modules: string[] }> = ({ src, modules }) => {
   const [failed, setFailed] = useState(false);
   useEffect(() => { setFailed(false); }, [src]);
@@ -193,9 +195,23 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const openingStarter = useRef(false);
   const rippleResearchAttempted = useRef(new Set<string>());
   const [quantumSceneMessage, setQuantumSceneMessage] = useState("");
+  const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; runId: string;
+    resultSha256: string; references: ProjectQuantumSceneReference[] } | null>(null);
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const studyLaunchRequest = useRef<Promise<StudyLaunchResponse> | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    if (!window.quantumScenes?.consumeStudyLaunch) return;
+    const request = studyLaunchRequest.current ??= window.quantumScenes.consumeStudyLaunch();
+    void request.then(result => {
+      if (!mounted) return;
+      if (result.ok) { setStudyLaunch(result); onOpenChange(true); }
+      else if (!result.canceled) { setQuantumSceneMessage(`Study handoff refused: ${result.error}`); onOpenChange(true); }
+    }).catch(error => { if (mounted) { setQuantumSceneMessage(`Study handoff refused: ${String(error)}`); onOpenChange(true); } });
+    return () => { mounted = false; };
+  }, []);
   useEffect(() => {
     if (!project || resourceSessionId.current === project.identity.id) return;
     let cancelled = false;
@@ -1165,6 +1181,27 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     } catch (error) { setQuantumSceneMessage(`Portable import refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
+  const stageVerifiedStudy = async (mode: "new" | "attach") => {
+    const handoff = studyLaunch;
+    if (!handoff || busy || !onVerifyQuantumSceneDocument) return;
+    setBusy(true); setQuantumSceneMessage("Independently re-verifying both declared QWZ scenes…");
+    try {
+      const base = mode === "new"
+        ? createMath3DProject(capture(), { stableKey: crypto.randomUUID(), title: handoff.title })
+        : !preview && !managed ? projectStateRef.current : null;
+      if (!base) throw new Error("Open the intended editable Math3D Project before attaching this study.");
+      const expectedProjectId = base.identity.id;
+      const expectedProjectBytes = mode === "attach" ? serializeMath3DProject(base) : null;
+      const next = await admitVerifiedQwzStudy(base, handoff, onVerifyQuantumSceneDocument);
+      if (mode === "attach" && (projectStateRef.current?.identity.id !== expectedProjectId ||
+          serializeMath3DProject(projectStateRef.current) !== expectedProjectBytes))
+        throw new Error("The intended Project changed during verification.");
+      display(next, false);
+      setStudyLaunch(null);
+      setQuantumSceneMessage(`Both exact QWZ views staged in ${next.metadata.title}. Save Project to retain them.`);
+    } catch (error) { setQuantumSceneMessage(`Study attachment refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
   const importSamsungExamples = async () => {
     if (busy) return; setBusy(true); setExampleMessage("Validating Samsung project collection…");
     try {
@@ -1782,10 +1819,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     void onOpenQuantumScene(reference).then(() => { setProject(current => current?.identity.id === expectedProjectId ? upsertMath3DProjectQuantumScene(current, reference) : current); setQuantumSceneMessage("Verified source staged. Save project to retain the link."); })
                       .catch(error => setQuantumSceneMessage(`Attachment refused: ${String((error as Error).message)}`));
                   }}>Attach open verified scene</button></div>
+              {studyLaunch && <div data-testid="project-quantum-study-handoff" className="project-workspace-workbook">
+                <strong>{studyLaunch.title}</strong><p>Lab declared two QWZ views from run <code>{studyLaunch.runId}</code>. Math3D will recheck both bundles and their exact result hash before staging either view.</p>
+                <button type="button" data-testid="project-open-study-new" disabled={busy} onClick={() => void stageVerifiedStudy("new")}>Open in new Project</button>{" "}
+                <button type="button" data-testid="project-attach-study-current" disabled={busy || !project || preview || !!managed} onClick={() => void stageVerifiedStudy("attach")}>Attach to current Project</button>{" "}
+                <small>Lab requested {studyLaunch.mode === "new" ? "a new Project" : "the current Project"}; choose the intended target here.</small>
+              </div>}
               <div><button type="button" data-testid="project-export-quantum-pack" disabled={busy || preview || !!managed || !project?.quantumScenes?.length || !window.quantumScenes?.exportPortableProject}
                 onClick={() => { void exportPortableQuantumProject(); }}>Export portable quantum pack</button>
                 <button type="button" data-testid="project-open-quantum-pack" disabled={busy || !window.quantumScenes?.openPortableProject}
-                  onClick={() => { void openPortableQuantumProject(); }}>Open portable quantum pack</button></div>
+                  onClick={() => { void openPortableQuantumProject(); }}>Open portable quantum pack</button>
+                <button type="button" data-testid="project-open-quantum-study" disabled={busy || !window.quantumScenes?.openStudyHandoff}
+                  onClick={() => { void window.quantumScenes!.openStudyHandoff().then(result => {
+                    if (result.ok) { setStudyLaunch(result); setQuantumSceneMessage("Study folder verified. Choose its Project target."); }
+                    else if (!result.canceled) setQuantumSceneMessage(`Study handoff refused: ${result.error}`);
+                  }).catch(error => setQuantumSceneMessage(`Study handoff refused: ${String(error)}`)); }}>Open Theory Lab study folder</button></div>
               <p>External quantum-scene/v1 and v2 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
               {!project?.quantumScenes?.length && <small>Use Open .qscene folder above, then attach the verified source here.</small>}
               {project?.quantumScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">

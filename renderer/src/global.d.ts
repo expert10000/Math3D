@@ -703,6 +703,14 @@ declare global {
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };
     quantumScenes?: {
+      consumeStudyLaunch: () => Promise<
+        { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+          references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      openStudyHandoff: () => Promise<
+        { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+          references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       theoryLabTargetStatus: () => Promise<{ state: "ready" | "unconfigured" | "invalid"; source: "saved" | "environment" | null;
         kind?: "installed" | "checkout"; path?: string; error?: string }>;
       configureTheoryLabTarget: (kind: "installed" | "checkout") => Promise<{ state: "ready" | "unconfigured" | "invalid";
@@ -753,6 +761,9 @@ declare global {
       cancelFieldVolume: (requestId: string) => Promise<boolean>;
       revealSource: (fingerprint: string) => Promise<{ ok: true; directory: string } | { ok: false; error: string }>;
       openSourceRun: (fingerprint: string) => Promise<
+        { ok: true; canceled: false; runId: string; resultSha256: string } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      forkSourceRun: (fingerprint: string) => Promise<
         { ok: true; canceled: false; runId: string; resultSha256: string } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       openStudySourceRun: (request: { fingerprint: string; series: "periodic" | "chain"; sampleIndex: number;

@@ -739,6 +739,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** exact source opening still passes, while a fork creates a new Lab run linked to the parent and leaves the old result and scene unchanged.
 
+**Implementation note (2026-11-04):** QI-07–09 are delivered for the existing verified viewers and the saved QWZ two-view study slice. The handler registry routes the current field/geometry families; Lab writes an exact QWZ curvature/bands study handoff that Math3D independently verifies before Project admission; a separate fork launch requires an additional Lab click and uses saved-rerun lineage. See [QI-07–09 implementation details](quantum-qi07-09-handlers-study-fork.md). Broader Lab study sets remain future recipes.
+
 ### QI-10 — Source / Derived / Display semantics
 
 **Commit:** `feat(provenance): classify immutable data, derivations and view state`

@@ -539,6 +539,16 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 });
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
+  consumeStudyLaunch: (): Promise<
+    { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+      references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:consumeStudyLaunch"),
+  openStudyHandoff: (): Promise<
+    { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+      references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openStudyHandoff"),
   theoryLabTargetStatus: (): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
     ipcRenderer.invoke("quantumScenes:theoryLabTargetStatus"),
   configureTheoryLabTarget: (kind: "installed" | "checkout"): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
@@ -573,6 +583,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:openSourceRun", { fingerprint }),
+  forkSourceRun: (fingerprint: string): Promise<
+    { ok: true; canceled: false; runId: string; resultSha256: string } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:forkSourceRun", { fingerprint }),
   openStudySourceRun: (request: StudySourceRunRequest): Promise<
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
