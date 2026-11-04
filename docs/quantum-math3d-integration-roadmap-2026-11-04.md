@@ -771,6 +771,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** a QWZ k-point and a hydrogen spatial point synchronize all relevant views without feedback loops.
 
+**Implementation note (2026-11-04):** QI-10–12 are delivered for the current quantum-scene source contract, the first approved hydrogen complex field bridge, and the paired QWZ/hydrogen cursor paths. See [QI-10–12 implementation details](quantum-qi10-12-provenance-field-cursor.md). Generic scalar promotion and wider study cursor adapters remain later extensions.
+
 ### QI-13 — Quantum Study documents
 
 **Commit:** `feat(project): persist linked multi-view quantum studies`

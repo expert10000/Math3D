@@ -1,4 +1,4 @@
-import { ALGEBRA_OPERATION_REGISTRY, inspectProjectAlgebraFreshness, parseProjectAlgebraEvidence,
+import { ALGEBRA_OPERATION_REGISTRY, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness, parseProjectAlgebraEvidence,
   type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 
 export type InspectorFact = Readonly<{ label: string; value: string | readonly string[] | readonly (readonly string[])[] }>;
@@ -56,6 +56,14 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     structure.push(fact("Coefficient domain", formatRef(source.definition.coefficientDomain)),
       fact("Variables", source.definition.variables),
       fact("Monomial order", source.definition.monomialOrder));
+  } else if (source?.definition.kind === "number-field") {
+    const field = analyzeQuadraticNumberField(source.definition.definingPolynomial, source.definition.generator);
+    structure.push(fact("Base field", formatRef(source.definition.baseField)),
+      fact("Defining polynomial", field.definingPolynomial), fact("Generator", field.generator),
+      fact("Signature", `(${field.signature.join(", ")})`),
+      fact("Field discriminant", field.fieldDiscriminant),
+      fact("Power basis", field.powerBasis), fact("Integral basis", field.integralBasis),
+      fact("Embeddings", field.embeddingImages));
   } else if (source?.definition.kind === "ideal") {
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Generators", source.definition.generators));
@@ -80,6 +88,14 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       facts.push(fact("Presentation", text(result.text)), fact("Characteristic", text(result.characteristic)),
         fact("Field", result.isField ? "Yes" : "No"), fact("Base ring", text(result.baseRing)),
         fact("Variables", list(result.variables)));
+      if (result.numberField && typeof result.numberField === "object") {
+        const field = result.numberField as Record<string, unknown>;
+        facts.push(fact("Degree", text(field.degree)), fact("Signature", list(field.signature)),
+          fact("Polynomial discriminant", text(field.polynomialDiscriminant)),
+          fact("Field discriminant", text(field.fieldDiscriminant)),
+          fact("Power basis", list(field.powerBasis)), fact("Sage integral basis", list(field.integralBasis)),
+          fact("Embedding count", text(field.embeddingCount)));
+      }
       checks.push(check("Definition identity", "checked", "Sage metadata matches the pinned object kind, hash and characteristic."));
       break;
     case "sage.algebra.inspectDomains": {

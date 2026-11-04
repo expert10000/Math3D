@@ -744,6 +744,10 @@ declare global {
           position: [number, number, number]; positionDatasetId: string; coordinateAxes: [string, string, string];
           coordinateUnits: [string, string, string]; value: number; valueUnit: string; valueDatasetId: string;
           convention: string; runId: string; resultSha256: string; fingerprint: string }>;
+      projectQwzCursor: (request: { fingerprint: string; runId: string; resultSha256: string;
+        k: readonly [number, number]; basisId: string }) => Promise<{ sampleIndex: number; k: [number, number];
+        distance: number; candidateCount: number; strategy: "nearest-lowest-index";
+        target: "bands" | "curvature" }>;
       vectorSample: (request: { fingerprint: string; objectId: string; sampleIndex: number }) => Promise<
         { objectId: string; objectLabel: string; sampleIndex: number; sampleId: string;
           position: [number, number, number]; positionDatasetId: string; positionUnit: string;

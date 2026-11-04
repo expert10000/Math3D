@@ -472,16 +472,19 @@ Acceptance: symbolic operations are reproducible from recorded inputs and
 provenance; Sage absence is a typed capability state, not an application fault.
 
 Workbook Sage result blocks now retain the exact operation request and job ID,
-the source module/identity/revision/fingerprint, selected Local WSL or Docker
+the source module/identity/revision/fingerprint, selected Local WSL, Docker, or Private gateway
 backend, the worker-reported SageMath version, the complete result, warnings,
 and diagnostics. Surface and Geometry can both save these blocks. Reopening a
 Workbook compares its saved source identity with the current Surface definition
 or Geometry object and marks changed or missing sources in the block and outline.
-An unsaved Surface equation is tied to its app session; reopening after a restart
-marks that source unavailable because the ephemeral equation is not restored.
+The active Surface equation and source ID persist in the same app profile; reopening
+after a restart compares saved evidence with the current equation and marks edits stale.
 Freeform Sage inputs that are not linked to a saved scene source remain explicitly
-unlinked; they are not silently marked current. Hosted gateway and code-cell
-provenance are separate future work.
+unlinked; they are not silently marked current. Trusted Local WSL Workbook Sage code
+cells retain exact code, scope, job ID, version, response, warnings, and diagnostics;
+changes to code or dependencies mark evidence stale. Trust remains session scoped.
+The [provenance and live-gate record](evidence/sage-provenance-cross-runtime-2026-11-04.md)
+tracks the required Docker comparison separately from saved-result support.
 
 The bounded WSL worker and optional Docker service remain local delivery slices.
 The Phase 6 private gateway now accepts GCD and modular inverse through an
@@ -529,6 +532,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 [SAGE-C05](evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md) adds runtime-advertised ideal syzygies and standard graded quotient Hilbert series with pinned Project evidence. Unsupported grading, homogeneity, size and runtime cases have explicit reasons. The next feature gate is **SAGE-C06**; B08's live Docker Sage 10.10 comparison remains open.
 
 [SAGE-C06](evidence/sage-c06-operation-budgets-2026-11-04.md) now adds explicit standard and expanded ideal budgets, input-cost warnings and an enforced Sage subprocess wall-time cap. Expanded desktop runs require an acknowledgment; older saved evidence without budget metadata still reopens. Track C is complete through C06. The next feature is **SAGE-D01**; B08's live Docker Sage 10.10 comparison remains open.
+
+[SAGE-D01](evidence/sage-d01-number-fields-2026-11-04.md) adds bounded quadratic number-field objects pinned to a saved `QQ` revision. Structures previews and reopens an exact `QQ(√5)` dossier with defining polynomial, discriminants, bases and embeddings; a bounded Sage constructor is available through the advertised reconstruction route. Core, real local Sage 9.5 and independent desktop Project reopen gates pass. The next feature is **SAGE-D02**, sharing field and ideal references across Algebra and Number Theory. B08's live Docker Sage 10.10 comparison remains open.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Workbook, WorkbookBlock, WorkbookBlockFreshness, WorkbookSageCodeRun } from "@math3d/workbook";
-import { inspectWorkbookDependency, workbookSageCodeDependencies, workbookSageCodeOutputText, workbookSageCodeRunStatus, workbookSageCodeSourceHash } from "@math3d/workbook";
+import { inspectWorkbookDependency, workbookSageCodeDependencies, workbookSageCodeEvidence, workbookSageCodeOutputText, workbookSageCodeRunStatus, workbookSageCodeSourceHash } from "@math3d/workbook";
 import type { Math3DProject } from "@math3d/core";
 import { SAGE_CONSOLE_LIMITS, SAGE_CONSOLE_OPERATION, sageExecutionRegistry } from "../services/sageOperationExecution";
+import { WorkbookSageEvidenceView } from "./WorkbookSageEvidence";
 
 type Props = {
   workbook: Workbook;
@@ -79,8 +80,12 @@ export function WorkbookSageCodeCell({ workbook, block, freshness, project, read
       if (!mounted.current) return;
       const status: WorkbookSageCodeRun["status"] = broker.ok ? "succeeded" : broker.code === "cancelled" ? "cancelled" : "failed";
       const diagnostic = broker.ok ? undefined : response?.error ?? broker.message;
-      const saved: WorkbookSageCodeRun = { id: handle.jobId, savedAt: Date.now(), sourceHash,
-        code: startedCode, dependencies, status, output: response, ...(diagnostic ? { error: diagnostic } : {}) };
+      const savedAt = Date.now();
+      const saved: WorkbookSageCodeRun = { id: handle.jobId, savedAt, sourceHash,
+        code: startedCode, dependencies, status, output: response,
+        evidence: workbookSageCodeEvidence({ blockId: block.id, jobId: handle.jobId, savedAt,
+          sourceHash, code: startedCode, scope: scope.current, output: response, error: diagnostic }),
+        ...(diagnostic ? { error: diagnostic } : {}) };
       onChange({ sageCode: { code: startedCode, runs: [...runs, saved].slice(-8) } });
       setError(diagnostic ?? "");
     } catch (cause) {
@@ -114,6 +119,10 @@ export function WorkbookSageCodeCell({ workbook, block, freshness, project, read
       <span style={{ overflowWrap: "anywhere" }}>Source SHA-256: {latest.output?.inputHash ?? "unavailable"} · Source/dependency hash: {latest.sourceHash}</span>
       <span>Dependencies: {latest.dependencies.length} saved · {effectiveStatus === "current" ? "source current" : "source changed or run failed"}</span>
       {latest.output?.warnings.map((warning) => <span key={warning}>Warning: {warning}</span>)}
+      {latest.evidence && <WorkbookSageEvidenceView evidence={latest.evidence}
+        freshnessOverride={effectiveStatus === "stale" ? "stale" : undefined}
+        currentSource={{ module: "workbook", id: `workbook:${block.id}`, revision: 1,
+          expression: code, fingerprint: workbookSageCodeSourceHash(workbook, block) }} />}
     </div>}
     {runs.length > 1 && <details><summary>Previous runs ({runs.length - 1})</summary>{runs.slice(0, -1).map((item) =>
       <details key={item.id} style={{ marginTop: 6, overflowWrap: "anywhere" }}>

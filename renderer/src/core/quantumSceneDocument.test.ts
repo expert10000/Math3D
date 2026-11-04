@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, createQuantumSceneDocument, normalizeQuantumSceneDocument,
+import { addQuantumSceneDerivation, createMath3DProject, createMixedWorkspaceDocument, createQuantumDerivationRecord,
+  createQuantumSceneDocument, normalizeQuantumSceneDocument, updateQuantumSceneView,
   parseMath3DProject, relocateQuantumSceneDocument, replayMixedWorkspaceDocument, serializeMath3DProject,
   upsertMath3DProjectQuantumScene, replaceMath3DProjectWorkspace,
   type QuantumSceneDocumentSource } from "@math3d/core";
@@ -48,5 +49,21 @@ describe("compact quantum scene Project document", () => {
     const wrong=upsertMath3DProjectQuantumScene(base,{format:"quantum-scene/v1",title:"SSH reciprocal",
       directory:document.location.directory,sceneFingerprint:v2.sceneFingerprint});
     expect(()=>replaceMath3DProjectWorkspace(wrong,workspace)).toThrow();
+  });
+  it("keeps source hashes fixed across display changes and records a versioned surface recipe", () => {
+    const document = createQuantumSceneDocument(source, "C:\\scene.qscene", "Scene");
+    const display = updateQuantumSceneView(document, { opacity: 0.35,
+      camera: { position: [3, 4, 5], target: [0, 0, 0], up: [0, 0, 1] } });
+    expect(display.identity).toEqual(document.identity);
+    expect(display.source.datasets).toEqual(document.source.datasets);
+    const derivation = createQuantumDerivationRecord(source, "surface:0.1", ["points"],
+      "quantum-density-isosurface/tetrahedra", "1", { level: 0.1, threshold: 0.025 });
+    const saved = addQuantumSceneDerivation(display, derivation);
+    expect(saved.identity).toEqual(document.identity);
+    expect(saved.derivations?.[0]).toMatchObject({ algorithm: "quantum-density-isosurface/tetrahedra",
+      parameters: { level: 0.1, threshold: 0.025 } });
+    expect(normalizeQuantumSceneDocument({ ...saved, derivations: [{ ...derivation,
+      parameters: { level: 0.2, threshold: 0.025 } }] }).ok).toBe(false);
+    expect(normalizeQuantumSceneDocument({ ...saved, view: { opacity: 1.2 } }).ok).toBe(false);
   });
 });

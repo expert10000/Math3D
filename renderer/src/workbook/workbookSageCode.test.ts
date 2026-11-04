@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createBlockDependencySource, createDefaultWorkbook, resolveWorkbookFreshness,
-  workbookSageCodeDependencies, workbookSageCodeRunStatus, workbookSageCodeSourceHash,
+  resolveWorkbookSageFreshness, workbookSageCodeDependencies, workbookSageCodeEvidence,
+  workbookSageCodeRunStatus, workbookSageCodeSourceHash,
   workbookSageCodeOutputText,
   type Workbook, type WorkbookBlock, type WorkbookSageCodeRun,
 } from "@math3d/workbook";
@@ -27,6 +28,14 @@ describe("Workbook Sage code provenance", () => {
       output: { jobId: "job-1", success: true, backendId: "sage-local-wsl", engineVersion: "9.5",
         stdout: "", result: "1024", warnings: [], inputHash: "a".repeat(64), elapsedMs: 5 } };
     block.sageCode!.runs.push(run);
+    const savedEvidence = workbookSageCodeEvidence({ blockId: block.id, jobId: run.id,
+      savedAt: run.savedAt, sourceHash: run.sourceHash, code: run.code, scope: "test-scope", output: run.output });
+    expect(savedEvidence.request).toMatchObject({ operation: "sage.console.execute", backend: "local",
+      jobId: "job-1", params: { code: "2^10", scope: "test-scope" } });
+    expect(savedEvidence.engine.version).toBe("9.5");
+    expect(savedEvidence.response.result).toMatchObject({ result: "1024", inputHash: "a".repeat(64) });
+    expect(resolveWorkbookSageFreshness(savedEvidence.source, { ...savedEvidence.source,
+      fingerprint: workbookSageCodeSourceHash(workbook, block) })).toBe("current");
     expect(workbookSageCodeOutputText(run)).toBe("1024");
     expect(workbookSageCodeOutputText({ ...run, status: "failed", output: { ...run.output!,
       success: false, stdout: "before error", result: "", error: "Traceback: bad input" } })).toContain("Traceback: bad input");
@@ -39,6 +48,8 @@ describe("Workbook Sage code provenance", () => {
     expect(workbookSageCodeRunStatus(reopened, reopenedBlock)).toBe("current");
     reopenedBlock.sageCode!.code = "2^11";
     expect(workbookSageCodeRunStatus(reopened, reopenedBlock)).toBe("stale");
+    expect(resolveWorkbookSageFreshness(savedEvidence.source, { ...savedEvidence.source,
+      expression: reopenedBlock.sageCode!.code, fingerprint: workbookSageCodeSourceHash(reopened, reopenedBlock) })).toBe("stale");
     expect(resolveWorkbookFreshness(reopened, null).get(reopenedBlock.id)?.status).toBe("stale");
     reopenedBlock.sageCode!.code = "2^10";
     reopened.stages[0].blocks[1].formula = "changed";

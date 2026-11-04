@@ -12,6 +12,9 @@ import { buildQuantumLatticeSupercell, SUPERCELL_SITE_OBJECT_ID,
 import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPointFromPrimitive,
   type ReciprocalDefinition } from "./quantumReciprocalView";
 import { qwzSceneRole, reviewedQwzPair, sshSceneRole, reviewedSshPair } from "./quantumStudyProfile";
+import { scientificCursorBus } from "./scientificCursor";
+import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
+import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -23,7 +26,7 @@ type SceneSource = {
   objects: { id: string; label: string; kind: string; positions: string; values?: string; scalars?: string; indices?: string; style: { color: string; opacity: number; size: number } }[];
   lattice?: LatticeGeometryDefinition;
   reciprocal?: ReciprocalDefinition;
-  fields?: QuantumField[];
+  fields?: (QuantumField & { real: string; imaginary?: string })[];
   annotations: { id: string; text: string; position: [number, number, number] }[];
   bands?: { kind: "path" | "surface"; coordinates: string; energies: string[];
     objects: string[]; labels: string[]; energyUnit: string; bulkGap: number; grid?: [number, number] };
@@ -48,8 +51,11 @@ type PickedTopologySample = Awaited<ReturnType<NonNullable<Window["quantumScenes
 type PickedVectorSample = Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["vectorSample"]>>;
 const CURVATURE_COLORS = [0x174f9c, 0x397ec6, 0x8cbadd, 0xb7bdc6, 0xefbe8b, 0xe7824d, 0xb94038];
 
-export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
+export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedField, onPromoteField, onRecordDerivation, onFieldViewChange }: {
   opened: OpenedScene; onClose: () => void; onOpenRelated?: (scene: OpenedScene) => void;
+  promotedField?: QuantumFieldDocument | null; onPromoteField?: () => Promise<QuantumFieldDocument>;
+  onRecordDerivation?: (record: QuantumDerivationRecord) => void;
+  onFieldViewChange?: (view: QuantumFieldDocument["view"]) => void;
 }) {
   const document = opened.document;
   const details = (document.extensions["quantum-scene/v2"] ?? document.extensions["quantum-scene/v1"]) as {
@@ -58,11 +64,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const activeFieldDocument = promotedField?.source.scene.sceneFingerprint === opened.reference.sceneFingerprint ? promotedField : null;
+  const [fieldPromotionStatus, setFieldPromotionStatus] = useState("");
+  const [promotingField, setPromotingField] = useState(false);
   const riceComparison = scene.provenance.model === "rice_mele_pump" && scene.objects.some(object => object.id === "comparison-bulk-current");
   const qwzRole = qwzSceneRole(opened);
   const [qwzPair, setQwzPair] = useState<{ bands: OpenedScene; curvature: OpenedScene } | null>(null);
   const [qwzBusy, setQwzBusy] = useState(false);
   const [qwzError, setQwzError] = useState("");
+  const [cursorStatus, setCursorStatus] = useState("");
   const qwzGeneration = useRef(0);
   useEffect(() => {
     if (qwzPair && ![qwzPair.bands.reference.sceneFingerprint, qwzPair.curvature.reference.sceneFingerprint]
@@ -188,6 +198,36 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
   const [pickedTopologySample, setPickedTopologySample] = useState<PickedTopologySample | null>(null);
+  useEffect(() => {
+    if (!qwzRole) return;
+    let active = true;
+    const originViewId = opened.reference.sceneFingerprint;
+    const unsubscribe = scientificCursorBus.subscribe(cursor => {
+      if (!active || !cursor.reciprocalPoint || cursor.originViewId === originViewId ||
+          cursor.runId !== scene.provenance.runId || cursor.resultSha256 !== scene.provenance.resultSha256) return;
+      const quantity = scene.topology?.quantities.find(item => item.object === "berry-curvature");
+      if (!window.quantumScenes?.projectQwzCursor || qwzRole === "curvature" && !quantity) return;
+      void window.quantumScenes.projectQwzCursor({ fingerprint: originViewId, runId: cursor.runId,
+        resultSha256: cursor.resultSha256, k: cursor.reciprocalPoint.k,
+        basisId: cursor.reciprocalPoint.basisId }).then(async projection => {
+        if (projection.target !== qwzRole) throw new TypeError("Cursor target changed during projection.");
+        const sample = qwzRole === "bands" ? await window.quantumScenes!.bandSample({ fingerprint: originViewId,
+          objectId: "band-0", sampleIndex: projection.sampleIndex }) :
+          await window.quantumScenes!.topologySample({ fingerprint: originViewId,
+            quantityId: quantity!.id, sampleIndex: projection.sampleIndex });
+        if (!active) return;
+        const k = "k" in sample ? sample.k : sample.position;
+        if (Math.abs(k[0] - projection.k[0]) > 1e-8 || Math.abs(k[1] - projection.k[1]) > 1e-8)
+          throw new TypeError("Projected k-point differs from the exact target sample.");
+        if ("k" in sample) setPickedBandSample(sample); else setPickedTopologySample(sample);
+        setCursorStatus(`Linked k-point [${k[0].toPrecision(5)}, ${k[1].toPrecision(5)}] from exact target samples; ` +
+          `offset ${projection.distance.toPrecision(4)} ${scene.coordinates.units[0]}. ` +
+          (projection.candidateCount > 1 ? `${projection.candidateCount} equally near samples; lowest index selected.` :
+            "Unique nearest sample."));
+      }).catch(error => { if (active) setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); });
+    });
+    return () => { active = false; unsubscribe(); };
+  }, [opened.reference.sceneFingerprint, qwzRole]);
   const [pickedVectorSample, setPickedVectorSample] = useState<PickedVectorSample | null>(null);
   const [topologyError, setTopologyError] = useState("");
   const [verifyingTopology, setVerifyingTopology] = useState(false);
@@ -250,8 +290,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     setPickedPrimitive(null); setPickedBandSample(null); setPickedVectorSample(null);
     setPickedTopologySample(null); setTopologyError(""); setVerifyingTopology(true);
     void window.quantumScenes!.topologySample({ fingerprint: opened.reference.sceneFingerprint, quantityId, sampleIndex })
-      .then(sample => { if (current === topologyGeneration.current && sample.fingerprint === opened.reference.sceneFingerprint)
-        setPickedTopologySample(sample); })
+      .then(sample => { if (current === topologyGeneration.current && sample.fingerprint === opened.reference.sceneFingerprint) {
+        setPickedTopologySample(sample);
+        if (qwzRole === "curvature") scientificCursorBus.publish({ runId: sample.runId,
+          resultSha256: sample.resultSha256, datasetId: sample.positionDatasetId,
+          reciprocalPoint: { k: [sample.position[0], sample.position[1]], basisId: `qwz:${scene.coordinates.units[0]}`,
+            sampleIndex: sample.sampleIndex }, originViewId: opened.reference.sceneFingerprint });
+      } })
       .catch(error => { if (current === topologyGeneration.current)
         setTopologyError(`Topology selection refused: ${String((error as Error)?.message ?? error)}`); })
       .finally(() => { if (current === topologyGeneration.current) setVerifyingTopology(false); });
@@ -278,8 +323,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
     setPickedPrimitive(null); setPickedBandSample(null); setBandSelectionError(""); setVerifyingBand(true);
     void window.quantumScenes!.bandSample({ fingerprint: opened.reference.sceneFingerprint, objectId, sampleIndex })
       .then(sample => {
-        if (bandGeneration.current === current && sample.fingerprint === opened.reference.sceneFingerprint)
+        if (bandGeneration.current === current && sample.fingerprint === opened.reference.sceneFingerprint) {
           setPickedBandSample(sample);
+          if (qwzRole === "bands") scientificCursorBus.publish({ runId: sample.runId,
+            resultSha256: sample.resultSha256, datasetId: sample.coordinateDatasetId,
+            reciprocalPoint: { k: [sample.k[0], sample.k[1]], basisId: `qwz:${scene.coordinates.units[0]}`,
+              bandId: sample.bandId, sampleIndex: sample.sampleIndex }, originViewId: opened.reference.sceneFingerprint });
+        }
       }).catch(error => {
         if (bandGeneration.current === current)
           setBandSelectionError(`Band selection refused: ${String((error as Error)?.message ?? error)}`);
@@ -473,11 +523,33 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               {availableView("slice") && <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>}
               {availableView("volume") && <button type="button" onClick={() => setView("volume")} aria-pressed={view === "volume"}>Volume</button>}
               {availableView("surface") && <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
+              {scene.provenance.model === "hydrogenic" && scene.fields?.length === 1 && <button type="button"
+                data-testid="quantum-promote-field" disabled={promotingField} onClick={() => { void (async () => { try {
+                  setPromotingField(true);
+                  const field = await onPromoteField?.();
+                  if (!field) throw new Error("Project field promotion is unavailable.");
+                  setFieldPromotionStatus(`Saved ${field.metadata.title} as a source-backed Field Explorer document.`);
+                  setView("slice");
+                } catch (error) { setFieldPromotionStatus(`Field promotion refused: ${String((error as Error).message)}`); }
+                finally { setPromotingField(false); } })(); }}>
+                {activeFieldDocument ? "Refresh Field Explorer document" : "Promote to Field Explorer"}</button>}
             </div>}
             <div style={{ minHeight: 0, flex: 1, position: "relative" }}>
             <QuantumViewHost request={view} capabilities={viewCapabilities} context={{
               fingerprint: opened.reference.sceneFingerprint, resultSha256: scene.provenance.resultSha256,
               fields: scene.fields ?? [], axes: scene.coordinates.axes, units: scene.coordinates.units, camera,
+              runId: scene.provenance.runId, coordinateSystemId: "field-grid",
+              fieldView: activeFieldDocument?.view, onFieldViewChange,
+              createSurfaceDerivation: (fieldId, level, threshold) => {
+                const field = scene.fields?.find(item => item.id === fieldId);
+                if (!field?.imaginary) throw new TypeError("A verified complex source is required for this surface.");
+                const source = quantumSceneDocumentFromVerifiedOpen(opened).source;
+                const record = createQuantumDerivationRecord(source, `${fieldId}:isosurface:${level}`,
+                  [field.real, field.imaginary], "quantum-density-isosurface/tetrahedra", "1",
+                  { level, threshold, extraction: "bounded-24-step-grid" });
+                onRecordDerivation?.(record);
+                return record;
+              },
               geometry: <GeometryViewer scene={viewerScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
               overlayLabelSets={visibleLabels} showPlanes={false}
               pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
@@ -492,6 +564,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
+            {fieldPromotionStatus && <p data-testid="quantum-field-promotion-status" role="status">{fieldPromotionStatus}</p>}
+            {activeFieldDocument && <section data-testid="quantum-field-explorer-document">
+              <h3>Field Explorer document</h3>
+              <p>Native Project field · {activeFieldDocument.source.field.label} · verified {activeFieldDocument.source.mapping.schema} mapping.</p>
+              <p>Source: {activeFieldDocument.source.scene.sceneId} / {activeFieldDocument.source.field.id} · {activeFieldDocument.source.field.shape.join(" × ")} samples · {activeFieldDocument.source.field.amplitudeUnit}.</p>
+              <p>Axes: {activeFieldDocument.source.mapping.axes.map((axis, index) => `${axis} (${activeFieldDocument.source.mapping.units[index]})`).join(" · ")}.</p>
+              <p>Project identity: <code>{activeFieldDocument.identity.id}</code> · source hash <code>{activeFieldDocument.identity.structuralHash}</code>.</p>
+              <p>Slice orientation, probe selection and camera are display state. Density and phase derive from exact supplied complex amplitudes.</p>
+            </section>}
             {scene.provenance.model==="bhz"&&scene.bands?.kind==="surface"&&<section data-testid="bhz-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>BHZ · producer-supplied bulk study</h3>
               <p>Four stored band surfaces from one verified Theory Lab result. Math3D reads the supplied energy arrays and sample coordinates; it runs no BHZ solver.</p>
@@ -678,6 +759,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated }: {
               </>}
               <p>Band inversion, edge/bulk classification, and nodes: not supplied in these bundles. Math3D does not calculate or infer them.</p>
               {qwzError && <p role="alert">QWZ view link refused: {qwzError}</p>}
+              {cursorStatus && <p data-testid="quantum-cursor-status" role="status">{cursorStatus}</p>}
             </section>}
             {sshRole && <section data-testid="ssh-study-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>SSH · supplied-result study</h3>

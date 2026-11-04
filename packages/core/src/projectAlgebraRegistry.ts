@@ -79,6 +79,8 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       if (!parent || parent.revision !== ref.revision) {
         throw new TypeError(`Missing algebra parent ${ref.objectId}@${ref.revision} for ${key}.`);
       }
+      if (record.definition.kind === "number-field" && parent.kind !== "rational-field")
+        throw new TypeError(`Number field ${key} requires a pinned QQ base field.`);
       if (record.definition.kind === "ideal") {
         if (parent.definition.kind !== "polynomial-ring")
           throw new TypeError(`Ideal ${key} requires a polynomial ambient ring.`);

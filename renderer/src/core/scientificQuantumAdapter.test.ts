@@ -4,10 +4,17 @@ import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeScientificSceneManifest } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, normalizeQuantumFieldDocument,
+  normalizeScientificSceneManifest, parseMath3DProject, relocateQuantumFieldDocument,
+  relinkMath3DProjectQuantumScene, replayMixedWorkspaceDocument, replaceMath3DProjectWorkspace,
+  serializeMath3DProject } from "@math3d/core";
+import { upsertMath3DProjectQuantumScene } from "@math3d/core";
 import { importQuantumSceneBundle } from "../../../src/main/quantumScene/importer";
 import { sceneFingerprint } from "../../../src/main/quantumScene/recent";
 import { importQuantumFieldScientificManifest } from "../../../src/main/quantumScene/scientificManifest";
+import { inspectVerifiedFieldSample } from "../../../src/main/quantumScene/fieldSlice";
+import { quantumFieldDocumentFromVerifiedOpen, quantumSceneDocumentFromVerifiedOpen,
+  verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
 
 const fixture = fileURLToPath(new URL("../../../tests/fixtures/quantum-scene-orbitals/orbital-2p.qscene", import.meta.url));
 const temporary: string[] = [];
@@ -63,5 +70,46 @@ describe("SSR-02 verified quantum field compatibility", () => {
     const directory = fileURLToPath(new URL(
       "../../../tests/fixtures/quantum-scene/run-97a132d1d712414bb62bb8c9212f517e-bands.qscene", import.meta.url));
     await expect(importQuantumFieldScientificManifest(directory)).rejects.toThrow(/single regular complex field/);
+  });
+  it("saves a native field document, exact probe and path relink without changing source identity", async () => {
+    const imported = await importQuantumSceneBundle(fixture);
+    const fingerprint = sceneFingerprint(imported);
+    const opened = { ok: true as const, canceled: false as const, directory: fixture,
+      reference: { directory: fixture, sceneFingerprint: fingerprint }, document: imported.document,
+      remembered: false, mappedObjectIds: imported.mappedObjectIds,
+      deferredObjectIds: imported.deferredObjectIds, deferredFieldIds: imported.deferredFieldIds };
+    const field = quantumFieldDocumentFromVerifiedOpen(opened);
+    expect(field.source.mapping).toMatchObject({ schema: "scientific-scene/v1", order: "last-axis-fastest" });
+    expect(field.source.field.shape).toEqual([21, 21, 21]);
+    const exact = inspectVerifiedFieldSample(imported, { fingerprint, fieldId: "wavefunction", axis: 2,
+      index: 10, u: 10, v: 11, quantity: "density" });
+    expect(exact.grid).toEqual([10, 11, 10]);
+    expect(exact.position[0]).toBeCloseTo(0);
+    expect(exact.position[1]).toBeCloseTo(1.6);
+    expect(exact.position[2]).toBeCloseTo(0);
+    const moved = relocateQuantumFieldDocument(field, "D:\\relinked.qscene");
+    expect(moved.identity).toEqual(field.identity);
+    expect(normalizeQuantumFieldDocument({ ...moved, source: { ...moved.source,
+      field: { ...moved.source.field, spacing: [2, 2, 2] } } }).ok).toBe(false);
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "field", checkpoint: moved,
+      expected: moved.identity, replay: null }], activeDocumentIds: [moved.identity.id], results: [],
+      artifacts: [], relations: [], committedSelection: null, constructions: [] });
+    const base = createMath3DProject(createMixedWorkspaceDocument({ ...workspace, entries: [], activeDocumentIds: [] }),
+      { stableKey: "hydrogen-field", title: "Hydrogen field" });
+    const linked = upsertMath3DProjectQuantumScene(base, { format: "quantum-scene/v1",
+      title: field.metadata.title, directory: moved.location.directory,
+      sceneFingerprint: moved.source.scene.sceneFingerprint });
+    const saved = parseMath3DProject(serializeMath3DProject(replaceMath3DProjectWorkspace(linked, workspace)));
+    expect(replayMixedWorkspaceDocument(saved.workspace).get(moved.identity.id)).toEqual(moved);
+    const relinked = relinkMath3DProjectQuantumScene(saved, fingerprint, fixture);
+    const reopened = relinked.workspace.entries.find(entry => entry.expected.id === moved.identity.id)?.checkpoint;
+    expect(reopened?.format).toBe("math3d.quantum-field-document");
+    if (reopened?.format !== "math3d.quantum-field-document") throw new Error("Field did not relink");
+    expect(reopened.location.directory).toBe(fixture);
+    expect(reopened.identity).toEqual(moved.identity);
+    await expect(verifyProjectQuantumSceneDocuments(relinked,
+      async () => quantumSceneDocumentFromVerifiedOpen(opened))).resolves.toBeUndefined();
+    await expect(verifyProjectQuantumSceneDocuments(relinked,
+      async () => { throw new Error("Source missing"); })).rejects.toThrow("Source missing");
   });
 });

@@ -14,6 +14,7 @@ const titleFor = (document: KernelWorkspaceDocument): string => {
     case "math3d.vector-field3d-document": return document.metadata.title;
     case "math3d.vector-field2d-document": return document.metadata.title;
     case "math3d.scientific-field-document": return document.metadata.title;
+    case "math3d.quantum-field-document": return document.metadata.title;
     case "math3d.curve-document": return document.metadata.title;
     case "math3d.surface-document": return document.metadata.title;
     case "math3d.topology-document": return typeof document.source.model.name === "string" ? document.source.model.name : "Topology document";

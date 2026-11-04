@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeometryScene } from "../geometry/types";
 import { GeometryViewer } from "./GeometryViewer";
 import type { QuantumField } from "./QuantumFieldSlice";
+import type { QuantumDerivationRecord } from "@math3d/core";
 
 export type FieldSurfaceRequest = { fingerprint: string; fieldId: string; level: 0.01 | 0.05 | 0.1 | 0.2 };
 export type FieldSurface = { fieldId: string; level: number; threshold: number; maximum: number;
@@ -14,9 +15,10 @@ const PHASE_COLORS = [0xef4444, 0xdb3ad5, 0x8b5cf6, 0x3b82f6, 0x06b6d4, 0x22c55e
 const SIGN_COLORS = [0x3b82f6, 0xf59e0b, 0x94a3b8];
 type SurfaceColor = "density" | "phase" | "real-sign";
 
-export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera }: {
+export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera, createDerivation }: {
   fingerprint: string; resultSha256: string; fields: QuantumField[];
   camera: { position: Vector3; target: Vector3; up: Vector3 } | undefined;
+  createDerivation?: (fieldId: string, level: number, threshold: number) => QuantumDerivationRecord;
 }) {
   const available = fields.filter(field => field.kind === "complex-field");
   const [fieldId, setFieldId] = useState(available[0]?.id ?? "");
@@ -24,16 +26,18 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
   const [level, setLevel] = useState<FieldSurfaceRequest["level"]>(0.1);
   const [color, setColor] = useState<SurfaceColor>("density");
   const [surface, setSurface] = useState<FieldSurface | null>(null);
+  const [derivation, setDerivation] = useState<QuantumDerivationRecord | null>(null);
   const [fitRevision, setFitRevision] = useState(0);
   const [error, setError] = useState("");
   const generation = useRef(0);
   useEffect(() => {
     const current = ++generation.current;
-    setSurface(null); setError("");
+    setSurface(null); setDerivation(null); setError("");
     if (!field || !window.quantumScenes?.fieldSurface) return;
     void window.quantumScenes.fieldSurface({ fingerprint, fieldId: field.id, level }).then(result => {
       if (generation.current === current) {
         setSurface(result);
+        if (createDerivation) setDerivation(createDerivation(result.fieldId, result.level, result.threshold));
         if (result.triangleCount) setFitRevision(revision => revision + 1);
       }
     }).catch(cause => {
@@ -110,6 +114,7 @@ export function QuantumFieldSurface({ fingerprint, resultSha256, fields, camera 
     </div>
     {surface && <div data-testid="quantum-surface-legend" style={{ padding: 8, fontSize: 12 }}>
       Derived |ψ|² isosurface · {surface.triangleCount.toLocaleString()} triangles · threshold {surface.threshold.toPrecision(5)} {surface.unit}
+      {derivation && <div data-testid="quantum-surface-derivation">Recipe {derivation.algorithm} v{derivation.version} · algorithm hash {derivation.algorithmVersionHash} · recipe hash {derivation.recipeHash} · source datasets {derivation.sourceDatasets.map(item => `${item.id}:${item.sha256}`).join(" · ")}</div>}
       {" · "}{(surface.level * 100).toFixed(0)}% of sampled maximum · extraction grid {surface.sampledShape.join(" × ")}
       {" · "}coordinates {surface.coordinateUnits.join(", ")}. {color === "density" ? "Uniform color: geometry is a density threshold, not a signed amplitude." :
         color === "phase" ? "Colors bin arg ψ from interpolated supplied amplitudes; grey means undefined near a node. −π and +π join cyclically." :

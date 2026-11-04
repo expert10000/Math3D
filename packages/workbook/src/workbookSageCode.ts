@@ -1,6 +1,7 @@
 import { structuralHash, type CanonicalJsonValue, type StructuralHash } from "@math3d/core";
 import type { Workbook, WorkbookBlock } from "./workbookModel";
 import type { WorkbookDependency } from "./workbookDependencies";
+import type { WorkbookSageEvidence } from "./workbookSageEvidence";
 
 export type WorkbookSageCodeOutput = Readonly<{
   jobId: string;
@@ -23,8 +24,31 @@ export type WorkbookSageCodeRun = Readonly<{
   dependencies: readonly WorkbookDependency[];
   status: "succeeded" | "failed" | "cancelled";
   output: WorkbookSageCodeOutput | null;
+  evidence?: WorkbookSageEvidence;
   error?: string;
 }>;
+
+export function workbookSageCodeEvidence(input: {
+  blockId: string; jobId: string; savedAt: number; sourceHash: StructuralHash; code: string;
+  scope: string; output: WorkbookSageCodeOutput | null; error?: string;
+}): WorkbookSageEvidence {
+  const { output } = input;
+  const error = input.error ?? output?.error;
+  return {
+    schemaVersion: 1, kind: "sage-result/v1", savedAt: input.savedAt,
+    source: { module: "workbook", id: `workbook:${input.blockId}`, revision: 1,
+      expression: input.code, fingerprint: input.sourceHash },
+    request: { operation: "sage.console.execute", params: { code: input.code, scope: input.scope },
+      backend: "local", jobId: input.jobId },
+    engine: { name: "SageMath", backend: "local", version: output?.engineVersion ?? "unreported" },
+    response: { engine: "sagemath", operation: "sage.console.execute", success: output?.success ?? false,
+      latex: "", result: output ? { ...output } : {}, warnings: output?.warnings ?? [],
+      ...(output ? { elapsedMs: output.elapsedMs } : {}), ...(error ? { error } : {}),
+      ...(output?.engineVersion ? { engineVersion: output.engineVersion } : {}) },
+    diagnostics: [...(output?.warnings ?? []), ...(error ? [error] : []),
+      ...(output?.engineVersion ? [] : ["SageMath version was not reported by this worker."])],
+  };
+}
 
 export const workbookSageCodeDependencies = (workbook: Workbook, blockId: string): readonly WorkbookDependency[] =>
   (workbook.dependencies ?? []).filter((edge) => edge.targetBlockId === blockId)

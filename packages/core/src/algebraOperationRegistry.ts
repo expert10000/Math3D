@@ -49,7 +49,8 @@ export type AlgebraOperationDefinition = Readonly<{
   inputSchema: string; outputSchema: string; deterministic: true; cachePolicy: "none"; executionMode: "bounded";
 }>;
 
-const ALL: readonly AlgebraObjectKind[] = ["integer-ring", "rational-field", "modular-ring", "finite-field", "polynomial-ring"];
+const ALL: readonly AlgebraObjectKind[] = ["integer-ring", "rational-field", "modular-ring", "finite-field",
+  "polynomial-ring", "number-field"];
 const POLY: readonly AlgebraObjectKind[] = ["polynomial-ring"];
 const definition = (id: AlgebraOperationId, label: string, category: AlgebraOperationDefinition["category"],
   accepts: readonly AlgebraObjectKind[], domain: AlgebraOperationDefinition["domain"], capability: string,

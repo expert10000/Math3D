@@ -1,5 +1,6 @@
 import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectRef } from "./algebraObjects";
 import { canonicalJsonStringify, isStableDocumentId, type StableDocumentId } from "./documentIdentity";
+import { analyzeQuadraticNumberField } from "./quadraticNumberField";
 import type { Math3DProject } from "./math3dProject";
 import { validateProjectAlgebraRegistry } from "./projectAlgebraRegistry";
 import { canonicalJsonByteLength } from "./scientificJobs";
@@ -29,6 +30,10 @@ export type SageAlgebraReconstructionResult = Readonly<{
   isField: boolean;
   baseRing?: string;
   variables?: readonly string[];
+  numberField?: Readonly<{ degree: 2; signature: readonly [number, number];
+    polynomialDiscriminant: string; fieldDiscriminant: string;
+    powerBasis: readonly [string, string]; integralBasis: readonly [string, string];
+    embeddingCount: 2 }>;
 }>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -131,6 +136,8 @@ export const parseSageAlgebraReconstructionResult = (value: unknown,
   input: SageAlgebraReconstructionInput): SageAlgebraReconstructionResult => {
   const targetRecord = input.objects[input.objects.length - 1];
   const polynomial = targetRecord.kind === "polynomial-ring";
+  const numberField = targetRecord.definition.kind === "number-field"
+    ? analyzeQuadraticNumberField(targetRecord.definition.definingPolynomial, targetRecord.definition.generator) : null;
   const characteristicByRef = new Map<string, string>();
   for (const object of input.objects) {
     const definition = object.definition;
@@ -143,7 +150,8 @@ export const parseSageAlgebraReconstructionResult = (value: unknown,
   }
   const expectedCharacteristic = characteristicByRef.get(keyOf(input.target));
   if (!record(value) || !exact(value, ["format", "schemaVersion", "target", "kind", "definitionHash",
-    "text", "latex", "characteristic", "isField", ...(polynomial ? ["baseRing", "variables"] : [])]) ||
+    "text", "latex", "characteristic", "isField", ...(polynomial ? ["baseRing", "variables"] : []),
+    ...(numberField ? ["numberField"] : [])]) ||
     value.format !== "math3d.sage-algebra-reconstruction-result" || value.schemaVersion !== 1 ||
     !record(value.target) || !exact(value.target, ["objectId", "revision"]) ||
     value.target.objectId !== input.target.objectId || value.target.revision !== input.target.revision ||
@@ -159,6 +167,20 @@ export const parseSageAlgebraReconstructionResult = (value: unknown,
     !Array.isArray(value.variables) || canonicalJsonStringify(value.variables) !==
       canonicalJsonStringify(targetRecord.definition.kind === "polynomial-ring" ? targetRecord.definition.variables : []))) {
     throw new TypeError("Sage algebra polynomial metadata does not match its definition.");
+  }
+  if (numberField) {
+    const facts = value.numberField;
+    if (!record(facts) || !exact(facts, ["degree", "signature", "polynomialDiscriminant",
+      "fieldDiscriminant", "powerBasis", "integralBasis", "embeddingCount"]) ||
+      facts.degree !== 2 || facts.embeddingCount !== 2 ||
+      canonicalJsonStringify(facts.signature) !== canonicalJsonStringify(numberField.signature) ||
+      facts.polynomialDiscriminant !== numberField.polynomialDiscriminant ||
+      facts.fieldDiscriminant !== numberField.fieldDiscriminant ||
+      canonicalJsonStringify(facts.powerBasis) !== canonicalJsonStringify(numberField.powerBasis) ||
+      !Array.isArray(facts.integralBasis) || facts.integralBasis.length !== 2 ||
+      !facts.integralBasis.every((item) => typeof item === "string" && item.length > 0 && item.length <= 256) ||
+      value.isField !== true)
+      throw new TypeError("Sage number field metadata differs from the pinned quadratic definition.");
   }
   return Object.freeze(JSON.parse(canonicalJsonStringify(value)) as SageAlgebraReconstructionResult);
 };

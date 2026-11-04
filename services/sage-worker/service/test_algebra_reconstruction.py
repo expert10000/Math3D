@@ -93,6 +93,38 @@ class AlgebraReconstructionTests(unittest.TestCase):
         self.assertEqual(extension_result["result"]["characteristic"], "7")
         self.assertIn("7^2", extension_result["result"]["text"])
 
+    def test_quadratic_number_field_with_exact_dossier(self):
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        q_ref = {"objectId": Q, "revision": 1}
+        k = object_record(F, "K", {"kind": "number-field", "baseField": q_ref,
+            "definingPolynomial": ["-5", "0", "1"], "generator": "a"}, [q_ref])
+        outcome = run_payload(request([q, k], F))
+        self.assertTrue(outcome["success"], outcome.get("error"))
+        result = outcome["result"]
+        self.assertTrue(result["isField"])
+        self.assertEqual(result["definitionHash"], k["contentHash"])
+        self.assertEqual(result["numberField"]["degree"], 2)
+        self.assertEqual(result["numberField"]["signature"], [2, 0])
+        self.assertEqual(result["numberField"]["polynomialDiscriminant"], "20")
+        self.assertEqual(result["numberField"]["fieldDiscriminant"], "5")
+        self.assertEqual(result["numberField"]["powerBasis"], ["1", "a"])
+        self.assertEqual(result["numberField"]["embeddingCount"], 2)
+        self.assertEqual(len(result["numberField"]["integralBasis"]), 2)
+
+    def test_quadratic_number_field_rejects_reducible_and_wrong_parent(self):
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        q_ref = {"objectId": Q, "revision": 1}
+        bad = object_record(F, "K", {"kind": "number-field", "baseField": q_ref,
+            "definingPolynomial": ["-4", "0", "1"], "generator": "a"}, [q_ref])
+        with self.assertRaisesRegex(ValueError, "reducible"):
+            run_payload(request([q, bad], F))
+        z = object_record(Z, "Z", {"kind": "integer-ring"})
+        z_ref = {"objectId": Z, "revision": 1}
+        wrong = object_record(F, "K", {"kind": "number-field", "baseField": z_ref,
+            "definingPolynomial": ["-5", "0", "1"], "generator": "a"}, [z_ref])
+        with self.assertRaisesRegex(ValueError, "pinned QQ"):
+            run_payload(request([z, wrong], F))
+
     def test_worker_script_mode_used_by_docker_adapter(self):
         q = object_record(Q, "Q", {"kind": "rational-field"})
         with tempfile.TemporaryDirectory() as directory:

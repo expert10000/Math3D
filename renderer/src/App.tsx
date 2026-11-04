@@ -5,7 +5,8 @@ import { MeshProjectEditor } from "./projects/MeshProjectEditor";
 import { QuantumScenePreview, type QuantumSceneOpenResponse, type QuantumSceneWorkspaceReference } from "./components/QuantumScenePreview";
 import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./components/ScientificScenePreview";
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
-import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
+import { quantumFieldDocumentFromVerifiedOpen, quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
+import { addQuantumFieldDerivation, updateQuantumFieldView } from "@math3d/core";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
   addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, type ProjectScientificSceneReference } from "@math3d/core";
@@ -1946,6 +1947,18 @@ const SURFACE_MESH_TOPOLOGY_SESSION_KEY = "math3d.mesh.topologySession.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_SKIPPED_RESTORE_KEY = "math3d.mesh.topologySession.skippedRestore.v1";
 const SURFACE_MESH_TOPOLOGY_SAVED_PRESETS_KEY = "math3d.mesh.topologySavedPresets.v1";
 const SURFACE_ANALYSIS_WORKSPACE_KEY = "math3d.surfaceAnalysis.workspace.v1";
+const SURFACE_SAGE_SOURCE_KEY = "math3d.surface.sageSource.v1";
+const readSageSurfaceSelection = (): { id: SurfaceId; expression: string } | null => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SURFACE_SAGE_SOURCE_KEY) ?? "null");
+    if (!value || typeof value !== "object") return null;
+    const saved = value as Record<string, unknown>;
+    if (saved.schemaVersion !== 1 || typeof saved.id !== "string" || typeof saved.expression !== "string" ||
+        saved.expression.length > 16_384 ||
+        (saved.id !== "implicit_custom" && !IMPLICIT_EXPR_PRESETS.some((item) => item.id === saved.id))) return null;
+    return { id: saved.id as SurfaceId, expression: saved.expression };
+  } catch { return null; }
+};
 const CURVE_ANALYSIS_WORKSPACE_KEY = "math3d.curveAnalysis.workspace.v1";
 const SURFACE_MESH_TOPOLOGY_SESSION_MAX_CHARS = 3_400_000;
 const SURFACE_MESH_TOPOLOGY_PERSIST_HISTORY_LIMIT = 4;
@@ -23263,6 +23276,8 @@ const App: React.FC = () => {
   const [vectorField2DOpenRequest, setVectorField2DOpenRequest] = useState<{ document: import("@math3d/core").VectorField2DDocument; token: number } | null>(null);
   const vectorField2DRequestSerial = useRef(0);
   const [scientificFieldDocuments, setScientificFieldDocuments] = useState<import("@math3d/core").ScientificFieldDocument[]>([]);
+  const [quantumFieldDocuments, setQuantumFieldDocuments] = useState<import("@math3d/core").QuantumFieldDocument[]>([]);
+  const [quantumFieldOpenDocument, setQuantumFieldOpenDocument] = useState<import("@math3d/core").QuantumFieldDocument | null>(null);
   const [scientificSceneLibrary, setScientificSceneLibrary] = useState<import("@math3d/core").ScientificSceneLibraryReference[]>([]);
   const [scientificFieldOpenRequest, setScientificFieldOpenRequest] = useState<{ document: import("@math3d/core").ScientificFieldDocument; token: number } | null>(null);
   const scientificFieldRequestSerial = useRef(0);
@@ -40852,7 +40867,7 @@ const App: React.FC = () => {
   }, [complexMapShowSphere, complexMapSphereStackParams, complexMapSphereLines]);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
-  const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
+  const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>(() => readSageSurfaceSelection()?.id ?? "sphere");
   const [graphSurfaceId, setGraphSurfaceId] = useState<SurfaceId>("graph_saddle");
 
   // Parametric surface selector
@@ -40958,7 +40973,11 @@ const App: React.FC = () => {
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
-  const [implicitExpr, setImplicitExpr] = useState("x*x + y*y + z*z - 1"); // f=0
+  const [implicitExpr, setImplicitExpr] = useState(() => readSageSurfaceSelection()?.expression ?? "x*x + y*y + z*z - 1"); // f=0
+  useEffect(() => {
+    try { localStorage.setItem(SURFACE_SAGE_SOURCE_KEY, JSON.stringify({ schemaVersion: 1, id: implicitSurfaceId, expression: implicitExpr })); }
+    catch { /* The live equation still works when local persistence is unavailable. */ }
+  }, [implicitSurfaceId, implicitExpr]);
   const [cgalTargetEdge, setCgalTargetEdge] = useState(0.1);
   const [cgalAutoTargetEdge, setCgalAutoTargetEdge] = useState(false);
   const [cgalPadFrac, setCgalPadFrac] = useState(0.05);
@@ -44703,15 +44722,13 @@ const App: React.FC = () => {
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<SurfacesLeftTab>("scene");
   const [symbolicAnalysisRecord, setSymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [geometrySymbolicAnalysisRecord, setGeometrySymbolicAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
-  const sageSourceSessionId = useRef(makeId()).current;
   const [symbolicActionStatus, setSymbolicActionStatus] = useState<string | null>(null);
   const [geometrySageActionStatus, setGeometrySageActionStatus] = useState<string | null>(null);
   const [surfaceSageVectorArtifact, setSurfaceSageVectorArtifact] = useState<SageVectorArtifact | null>(null);
   const [surfaceSageScalarPreview, setSurfaceSageScalarPreview] = useState<SageScalarPreview | null>(null);
   const [surfaceSageCommittedGeometry, setSurfaceSageCommittedGeometry] = useState<SageViewerProvenance | null>(null);
   const currentSageWorkbookSource = useCallback((saved: WorkbookSageEvidence["source"]): WorkbookSageEvidence["source"] | null => {
-    if (saved.module === "surface" && saved.id === `surface:active-implicit:${sageSourceSessionId}`) {
-      if (surfaceViewerKind !== "implicit") return null;
+    if (saved.module === "surface" && saved.id === "surface:active-implicit") {
       return { module: "surface", id: saved.id,
         revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
         expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) };
@@ -44731,7 +44748,7 @@ const App: React.FC = () => {
     }
     return null;
   }, [activeCanonicalSurfaceDefinition.identity.surfaceRevision, activeImplicitExpr, geometryDatasetMeshObjects,
-    geometryObjectRevisionById, geometryObjects, graph2dDocument, sageSourceSessionId, surfaceViewerKind]);
+    geometryObjectRevisionById, geometryObjects, graph2dDocument]);
   const sageInspectorSourceStatus = useCallback((record: SymbolicResultRecord): SageSourceStatus => {
     const source = record.source;
     if (!source || source.id.startsWith("sage-input:")) return "unlinked";
@@ -77549,7 +77566,7 @@ case "mobius":
           return { ...entry, checkpoint: vectorField3DDocument, expected: vectorField3DDocument.identity, replay: null };
         if (entry.module === "vector2d" && vectorField2DDocument?.identity.id === entry.expected.id)
           return { ...entry, checkpoint: vectorField2DDocument, expected: vectorField2DDocument.identity, replay: null };
-        const scientificFieldDocument = entry.module === "field" ? scientificFieldDocuments.find(item =>
+        const scientificFieldDocument = entry.module === "field" ? [...scientificFieldDocuments, ...quantumFieldDocuments].find(item =>
           item.identity.id === entry.expected.id) : null;
         if (scientificFieldDocument)
           return { ...entry, checkpoint: scientificFieldDocument, expected: scientificFieldDocument.identity, replay: null };
@@ -77585,6 +77602,9 @@ case "mobius":
         if (!entries.some((entry) => entry.expected.id === scientificFieldDocument.identity.id))
           entries.push({ module: "field", checkpoint: scientificFieldDocument,
             expected: scientificFieldDocument.identity, replay: null });
+      for (const field of quantumFieldDocuments)
+        if (!entries.some((entry) => entry.expected.id === field.identity.id))
+          entries.push({ module: "field", checkpoint: field, expected: field.identity, replay: null });
       // Capture newly selected native documents and their derived publications,
       // while keeping unrelated editors outside the opened project.
       const live = captureMixedKernelWorkspace(false);
@@ -77665,6 +77685,7 @@ case "mobius":
     add("vector3d", vectorField3DDocument);
     add("vector2d", vectorField2DDocument);
     for (const scientificFieldDocument of scientificFieldDocuments) add("field", scientificFieldDocument);
+    for (const field of quantumFieldDocuments) add("field", field);
     for (const promotion of graph2dPromotions) add(promotion.document.format === "math3d.curve-document" ? "curve" : promotion.document.format === "math3d.geometry-document" ? "geometry" : "surface", promotion.document);
     const activeDocumentIds = entries.map((entry) => entry.expected.id);
     const surfaceHandoffs = surfaceMeshKernelHandoff.records();
@@ -78906,6 +78927,9 @@ case "mobius":
           setScientificFieldDocuments(workspace.entries.filter((entry) => entry.module === "field")
             .map(entry => entry.checkpoint).filter((item): item is import("@math3d/core").ScientificFieldDocument =>
               item.format === "math3d.scientific-field-document"));
+          setQuantumFieldDocuments(workspace.entries.filter((entry) => entry.module === "field")
+            .map(entry => entry.checkpoint).filter((item): item is import("@math3d/core").QuantumFieldDocument =>
+              item.format === "math3d.quantum-field-document"));
           setScientificFieldOpenRequest(null);
           const graph = workspace.entries.find((entry) => entry.checkpoint.format === "math3d.graph2d-document")?.checkpoint;
           if (!graph || graph.format !== "math3d.graph2d-document") return;
@@ -78994,6 +79018,23 @@ case "mobius":
     }
     if (module === "field") {
       const entry = restored?.workspace.entries.find(item => item.module === "field" && item.expected.id === id);
+      const quantumField = entry?.checkpoint.format === "math3d.quantum-field-document" ? entry.checkpoint :
+        quantumFieldDocuments.find(item => item.identity.id === id);
+      if (quantumField) {
+        setQuantumSceneNavigationError(null); setQuantumScenePreview(null);
+        if (!window.quantumScenes?.openReference) { setQuantumSceneNavigationError("Quantum field source verifier unavailable."); return true; }
+        void window.quantumScenes.openReference({ directory: quantumField.location.directory,
+          sceneFingerprint: quantumField.source.scene.sceneFingerprint }).then(opened => {
+          if (!opened.ok) throw new TypeError(opened.canceled ? "Field opening was cancelled." : opened.error);
+          const verified = quantumFieldDocumentFromVerifiedOpen(opened);
+          if (canonicalJsonStringify(verified.source) !== canonicalJsonStringify(quantumField.source))
+            throw new TypeError("Saved quantum field mapping or source changed.");
+          if (navigationSequence !== quantumSceneNavigationSequence.current) return;
+          setQuantumFieldOpenDocument(quantumField); setQuantumSceneReference(opened.reference); setQuantumScenePreview(opened);
+        }).catch(error => { if (navigationSequence === quantumSceneNavigationSequence.current)
+          setQuantumSceneNavigationError(`Quantum field unavailable: ${String((error as Error).message)}`); });
+        return true;
+      }
       const field = entry?.checkpoint.format === "math3d.scientific-field-document" ? entry.checkpoint :
         scientificFieldDocuments.find(item => item.identity.id === id) ?? null;
       if (!field) return false;
@@ -79850,7 +79891,7 @@ case "mobius":
       text: [
         `${evidence.source.id.startsWith("sage-input:") ? "Input" : "Source: F"} = ${record.expression}`,
         `Operation: ${response.operation}`,
-        `Engine: SageMath ${evidence.engine.version} (${record.backend === "local" ? "Local WSL" : "Docker"})`,
+        `Engine: SageMath ${evidence.engine.version} (${record.backend === "local" ? "Local WSL" : record.backend === "docker" ? "Docker" : "Private gateway"})`,
         `Source revision: ${evidence.source.revision}`,
         `Status: ${response.success ? "Exact" : "Failed"}`,
         `Result: ${typeof response.result.text === "string" ? response.result.text : JSON.stringify(response.result)}`,
@@ -86534,7 +86575,7 @@ case "mobius":
                     onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
                     onResult={(record) => {
                       setSymbolicAnalysisRecord({ ...record, source: record.sourceExpression === activeImplicitExpr
-                        ? { module: "surface", id: `surface:active-implicit:${sageSourceSessionId}`,
+                        ? { module: "surface", id: "surface:active-implicit",
                           revision: activeCanonicalSurfaceDefinition.identity.surfaceRevision,
                           expression: activeImplicitExpr, fingerprint: hashValue(activeImplicitExpr) }
                         : { module: "surface", id: "sage-input:surface", revision: 0,
@@ -111309,6 +111350,26 @@ case "mobius":
         )}
       </div></SavedSurfaceModuleFrame></SavedMeshModuleFrame>)}
       {quantumScenePreview && <QuantumScenePreview opened={quantumScenePreview} onClose={() => setQuantumScenePreview(null)}
+        promotedField={quantumFieldOpenDocument}
+        onPromoteField={async () => { if (!await window.quantumScenes?.verifyActive(quantumScenePreview.reference.sceneFingerprint))
+            throw new TypeError("Quantum field source changed or is missing.");
+          const field = quantumFieldDocumentFromVerifiedOpen(quantumScenePreview);
+          const existing = quantumFieldDocuments.find(item => item.identity.id === field.identity.id);
+          if (existing && canonicalJsonStringify(existing.source) !== canonicalJsonStringify(field.source))
+            throw new TypeError("Saved quantum field source differs from the verified scene.");
+          const saved = existing ?? field;
+          setQuantumFieldDocuments(current => [saved, ...current.filter(item => item.identity.id !== saved.identity.id)]);
+          setQuantumFieldOpenDocument(saved); return saved; }}
+        onRecordDerivation={record => { setQuantumFieldDocuments(current => current.map(field =>
+          field.source.scene.sceneFingerprint === quantumScenePreview.reference.sceneFingerprint ?
+            addQuantumFieldDerivation(field, record) : field));
+          setQuantumFieldOpenDocument(current => current?.source.scene.sceneFingerprint === quantumScenePreview.reference.sceneFingerprint ?
+            addQuantumFieldDerivation(current, record) : current); }}
+        onFieldViewChange={view => { setQuantumFieldDocuments(current => current.map(field =>
+          field.source.scene.sceneFingerprint === quantumScenePreview.reference.sceneFingerprint ?
+            updateQuantumFieldView(field, view) : field));
+          setQuantumFieldOpenDocument(current => current?.source.scene.sceneFingerprint === quantumScenePreview.reference.sceneFingerprint ?
+            updateQuantumFieldView(current, view) : current); }}
         onOpenRelated={related => { setQuantumScenePreview(related); setQuantumSceneReference(related.reference); }} />}
       {scientificScenePreview && <ScientificScenePreview opened={scientificScenePreview} onClose={() => {
         void window.scientificScenes?.close(scientificScenePreview.fingerprint);
