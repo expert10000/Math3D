@@ -8,6 +8,7 @@ import { normalizeWorkbookComparisonReference } from "./workbookComparisonRefere
 import { normalizeWorkbookSavedMeshTrendReference } from "./workbookSavedMeshTrendReference";
 import { normalizeWorkbookSavedMeshComparisonReference } from "./workbookSavedMeshComparisonReference";
 import { normalizeWorkbookSavedMeshReviewReference } from "./workbookSavedMeshReviewReference";
+import { normalizeWorkbookCoordinateReviewReference } from "./workbookCoordinateReviewReference";
 
 /** Dependency edges record provenance and ordering. They do not execute or copy target content. */
 export type WorkbookDependency = Readonly<{
@@ -52,6 +53,10 @@ export function validateWorkbookDependencies(workbook: Workbook): void {
   for (const block of blocksOf(workbook)) if (block.visualize?.savedMeshReview !== undefined) {
     if (block.type !== "visualize") throw new TypeError("Saved Mesh reviews belong to Visualize blocks.");
     normalizeWorkbookSavedMeshReviewReference(block.visualize.savedMeshReview);
+  }
+  for (const block of blocksOf(workbook)) if (block.visualize?.coordinateReview !== undefined) {
+    if (block.type !== "visualize") throw new TypeError("Coordinate reviews belong to Visualize blocks.");
+    normalizeWorkbookCoordinateReviewReference(block.visualize.coordinateReview);
   }
   if (workbook.dependencies === undefined) return;
   if (!Array.isArray(workbook.dependencies)) throw new TypeError("Invalid Workbook dependencies.");
