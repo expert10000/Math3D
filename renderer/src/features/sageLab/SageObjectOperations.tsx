@@ -6,7 +6,8 @@ import { algebraOperationsFor, buildAlgebraOperationRequest, createProjectAlgebr
 import { sageExecutionRegistry, type SageOperationHandle } from "../../services/sageOperationExecution";
 
 type Props = { project: Math3DProject | null; target: AlgebraObjectRef | null;
-  onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void> };
+  onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
+  selectedEvidenceId: string | null; onInspectEvidence: (id: string) => void };
 const field = { width: "100%", boxSizing: "border-box" as const, padding: 6, fontSize: 12 };
 const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObjectRef):
   AlgebraOperationArguments[AlgebraOperationId] => {
@@ -20,7 +21,8 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   return { polynomial: text.trim() };
 };
 
-export default function SageObjectOperations({ project, target, onSaveEvidence }: Props) {
+export default function SageObjectOperations({ project, target, onSaveEvidence, selectedEvidenceId,
+  onInspectEvidence }: Props) {
   const [routes, setRoutes] = useState<readonly AlgebraRouteCapability[]>([]);
   const [checking, setChecking] = useState(false);
   const [selected, setSelected] = useState<AlgebraOperationId | null>(null);
@@ -118,13 +120,16 @@ export default function SageObjectOperations({ project, target, onSaveEvidence }
           setRunning(false); setMessage("Operation cancelled."); }}>Cancel</button>}</div>
     </div>}
     {message && <div role="status" data-testid="cas-object-run-status">{message}</div>}
-    <details><summary>Saved evidence for this structure ({saved.length})</summary>
+    <div><strong>Saved evidence for this structure ({saved.length})</strong>
+      <div style={{ maxHeight: 240, overflowY: "auto", marginTop: 4 }}>
       {saved.map((item) => <div key={item.id} style={{ borderTop: "1px solid #e2e8f0", padding: 6 }}>
         {item.request.operation} · revision {item.request.target.revision} · Sage {item.runtime.version} · {item.runtime.backend}
         {item.request.target.revision !== target.revision ? " · historical revision"
           : targetStale ? " · stale parent definition" : ""}
-        <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(item.result, null, 2)}</pre>
+        <div><button type="button" aria-current={selectedEvidenceId === item.id} onClick={() => onInspectEvidence(item.id)}>
+          Inspect saved result</button></div>
       </div>)}
-    </details>
+      </div>
+    </div>
   </section>;
 }

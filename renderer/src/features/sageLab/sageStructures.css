@@ -15,5 +15,15 @@
 .sage-structure-facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .sage-structure-facts dt { color: #5d6f84; }
 .sage-structure-facts dd { margin: 0; }
+.sage-evidence-inspector { font-size: 12px; overflow-wrap: anywhere; }
+.sage-evidence-matrix-wrap { max-width: 100%; overflow-x: auto; }
+.sage-evidence-matrix { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sage-evidence-matrix td { border: 1px solid #cbd5e1; padding: 4px 8px; text-align: right; white-space: nowrap; }
+.sage-evidence-mode { display: inline-block; padding: 3px 8px; border-radius: 6px; background: #e7f1ff; color: #17406f; font-weight: 700; }
+.sage-evidence-mode-failed { background: #fff0ed; color: #9a3412; }
+.sage-evidence-checks { list-style: none; display: grid; gap: 8px; padding: 0; }
+.sage-evidence-checks li { border: 1px solid #dbe2ea; border-radius: 7px; padding: 8px; }
+.sage-evidence-checks li span { text-transform: uppercase; margin-left: 5px; color: #526477; font-size: 10px; }
+.sage-evidence-checks li div { margin-top: 4px; color: #526477; }
 @media (max-width: 1050px) { .sage-workspace-grid-structures { grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.4fr); } .sage-workspace-grid-structures > section:last-child { grid-column: 1 / -1; } }
 @media (max-width: 650px) { .sage-workspace-grid-structures { grid-template-columns: minmax(0, 1fr); } .sage-workspace-grid-structures > section:last-child { grid-column: auto; } }

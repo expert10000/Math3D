@@ -4,6 +4,8 @@ import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraO
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageObjectOperations from "./SageObjectOperations";
+import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
+import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
 import { describeStructure, resolveStructureSelection, selectedStructure,
   structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
@@ -30,6 +32,9 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onOpenProjects, ...props }: Props) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
+    project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
+  const [evidenceFocus, setEvidenceFocus] = useState(0);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -40,10 +45,15 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
+    setSelectedEvidenceId(null);
     if (project) try { localStorage.setItem(structureSelectionKey(project.identity.id), JSON.stringify(ref)); }
     catch { /* Selection still works when local storage is unavailable. */ }
   };
   const chosen = selectedStructure(project, selection);
+  const selectedEvidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId &&
+    item.request.target.objectId === chosen?.record.id) ?? null;
+  const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
+  const inspectEvidence = (id: string) => { setSelectedEvidenceId(id); setEvidenceFocus((value) => value + 1); };
   const freshness = project ? inspectProjectAlgebraFreshness(project) : [];
   const status = chosen ? freshness.find((item) => item.objectId === chosen.entry.id) : null;
   const parent = chosen?.record.definition.kind === "polynomial-ring"
@@ -113,11 +123,23 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
   </dl> : <div role="status" style={{ fontSize: 12 }}>Select a structure in the Project explorer.</div>;
 
-  return <SageServicesWorkspace {...props} context="cas" title="CAS / Algebra"
+  return <SageServicesWorkspace {...props} onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
+    context="cas" title="CAS / Algebra"
     description="Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations."
     testId="cas-algebra-workspace" structures={{ projectId: project?.identity.id ?? null,
       projectTitle: project?.metadata.title ?? null,
       selectionKey: selection ? `${selection.objectId}@${selection.revision}` : null,
-      explorer, dossier, inspector, operations: <SageObjectOperations project={project} onSaveEvidence={onSaveEvidence}
-        target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} /> }} />;
+      explorer, dossier, inspector,
+      evidence: evidenceModel && selectedEvidence ? {
+        focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
+        result: <SageAlgebraEvidenceInspector model={evidenceModel} section="result" />,
+        structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
+        verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
+        execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,
+      } : undefined,
+      operations: <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
+        onInspectEvidence={inspectEvidence} onSaveEvidence={async (evidence) => {
+          await onSaveEvidence(evidence);
+          inspectEvidence(evidence.id);
+        }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} /> }} />;
 }

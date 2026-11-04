@@ -215,6 +215,14 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await cas.getByRole("button", { name: "Select Construct exact structure" }).click();
     await cas.getByRole("button", { name: "Run and save evidence" }).click();
     await expect(cas.getByTestId("cas-object-run-status")).toContainText("Saved Construct exact structure evidence");
+    await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
+    await cas.getByRole("button", { name: "Structure", exact: true }).click();
+    await expect(cas.getByTestId("cas-evidence-structure")).toContainText("Pinned revision");
+    await cas.getByRole("button", { name: "Verification", exact: true }).click();
+    await expect(cas.getByTestId("cas-evidence-verification-mode")).toHaveText("COMPUTED");
+    await expect(cas.getByTestId("cas-evidence-verification")).toContainText("Definition identity");
+    await cas.getByRole("button", { name: "Execution", exact: true }).click();
+    await expect(cas.getByTestId("cas-evidence-execution")).toContainText("10.10");
     const evidenceBytes = await ctx.page.evaluate((id) =>
       localStorage.getItem(`math3d.project.v1.payload.${id}`), project.identity.id);
     const exported = core.serializeMath3DProject(core.parseMath3DProject(evidenceBytes));
@@ -242,4 +250,54 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await closeSurfaceApp(ctx);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+test("SAGE-B06 independently reopens saved evidence in the structured Inspector", async () => {
+  test.setTimeout(120_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const surface = core.createSurfaceDocument({ stableKey: "sage-b06-import-surface",
+      metadata: { title: "Evidence surface" }, source: {
+        representation: "parametric", domain: { kind: "parameter", u: { min: -1, max: 1, periodic: false },
+          v: { min: -1, max: 1, periodic: false } }, units: { length: "unitless" }, orientation: {},
+        parameters: {}, branchPolicy: null,
+        definition: { familyId: "sage-b06-import-plane", expressions: { x: "u", y: "v", z: "0" } },
+      } });
+    const workspace = core.createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: surface,
+      expected: surface.identity, replay: null }], activeDocumentIds: [surface.identity.id], results: [],
+      artifacts: [], relations: [], committedSelection: null, constructions: [] });
+    let project = core.createMath3DProject(workspace, { stableKey: "sage-b06-import", title: "Imported Sage evidence" });
+    const q = core.createAlgebraObjectRecord({ id: core.createProjectAlgebraObjectId(project.identity.id, "Q"),
+      revision: 1, label: "Q", definition: { kind: "rational-field" } });
+    project = core.upsertMath3DProjectAlgebraObject(project, q);
+    const request = core.buildAlgebraOperationRequest(project, { objectId: q.id, revision: 1 },
+      "sage.algebra.reconstruct", "docker", {});
+    const evidence = core.createProjectAlgebraEvidence(project.identity.id, project.algebraObjects, request, {
+      format: "math3d.sage-algebra-reconstruction-result", schemaVersion: 1,
+      target: request.target, kind: "rational-field", definitionHash: q.contentHash,
+      text: "Rational Field", latex: "\\mathbb{Q}", characteristic: "0", isField: true,
+    }, { engine: "sagemath", version: "10.10", backend: "docker", jobId: "b06-imported",
+      elapsedMs: 14, warnings: [] });
+    project = core.addMath3DProjectAlgebraEvidence(project, evidence);
+    const raw = core.serializeMath3DProject(project);
+    ctx = await launchSurfaceApp();
+    await resetSurfaceAppState(ctx.page);
+    await ctx.page.evaluate(({ id, title, raw }) => {
+      localStorage.setItem("math3d.project.v1", raw);
+      localStorage.setItem(`math3d.project.v1.payload.${id}`, raw);
+      localStorage.setItem("math3d.project-library.v1", JSON.stringify({ format: "math3d.project-library", version: 1,
+        entries: [{ id, title, tags: [], favorite: false, savedAt: Date.now(), viewedAt: Date.now() }] }));
+    }, { id: project.identity.id, title: project.metadata.title, raw });
+    await ctx.page.reload();
+    await ctx.page.getByTestId("projects-toggle").click();
+    await ctx.page.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await ctx.page.getByTestId("workspace-nav-cas").click();
+    const cas = ctx.page.getByTestId("cas-algebra-workspace");
+    await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
+    await cas.getByRole("button", { name: "Verification", exact: true }).click();
+    await expect(cas.getByTestId("cas-evidence-verification-mode")).toHaveText("COMPUTED");
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    await cas.getByRole("button", { name: "Inspect saved result" }).click();
+    await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
+  } finally { await closeSurfaceApp(ctx); }
 });

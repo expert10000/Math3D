@@ -14,6 +14,8 @@ export type SageStructuresSlot = {
   dossier: ReactNode;
   inspector: ReactNode;
   operations?: ReactNode;
+  evidence?: Readonly<{ focusKey: string; result: ReactNode; structure: ReactNode;
+    verification: ReactNode; execution: ReactNode }>;
 };
 
 export type SageServicesWorkspaceProps = {
@@ -40,13 +42,16 @@ const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff
 export default function SageServicesWorkspace({ context, title, description, testId, record, onResult,
   onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures }: Props) {
   const [leftTab, setLeftTab] = useState<"structures" | "operations">(structures?.projectId ? "structures" : "operations");
-  const [rightTab, setRightTab] = useState<"results" | "structure" | "runtimes">(structures?.projectId ? "structure" : "results");
+  const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "runtimes">(structures?.projectId ? "structure" : "results");
+  const [resultSource, setResultSource] = useState<"evidence" | "freeform">("evidence");
   useEffect(() => {
     if (!structures) return;
     setLeftTab(structures.projectId ? "structures" : "operations");
     setRightTab(structures.projectId ? "structure" : "results");
   }, [structures?.projectId]);
   useEffect(() => { if (structures?.selectionKey) setRightTab("structure"); }, [structures?.selectionKey]);
+  useEffect(() => { if (structures?.evidence?.focusKey) { setResultSource("evidence"); setRightTab("results"); }
+  }, [structures?.evidence?.focusKey]);
   return <main data-testid={testId} aria-label={`${title} workspace`}
     style={{ position: "fixed", inset: 0, zIndex: 2100, background: "#f3f7fc", color: "#172b4d", display: "flex", flexDirection: "column", overflow: "auto" }}>
     <header style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #cbd5e1", background: "#fff" }}>
@@ -74,7 +79,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
         </nav> : <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Services</h2>}
         {leftTab === "structures" && structures ? structures.explorer : <>
           {structures?.operations}
-          <ScientificServicesPanel context={context} onResult={(result) => { onResult(result); setRightTab("results"); }} onOpenRuntimes={onOpenComputeRuntimes} />
+          <ScientificServicesPanel context={context} onResult={(result) => { onResult(result); setResultSource("freeform"); setRightTab("results"); }} onOpenRuntimes={onOpenComputeRuntimes} />
         </>}
       </section>
       {structures && <section aria-label="CAS / Algebra structure dossier" className="sage-workspace-card" data-testid="cas-structure-dossier">
@@ -83,16 +88,20 @@ export default function SageServicesWorkspace({ context, title, description, tes
       <section aria-label={`${title} Inspector`} className="sage-workspace-card">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Inspector</h2>
-          <nav aria-label={`${title} Inspector sections`} style={{ display: "flex", gap: 6 }}>
+          <nav aria-label={`${title} Inspector sections`} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button type="button" style={button} aria-pressed={rightTab === "results"} onClick={() => setRightTab("results")}>Results</button>
             {structures && <button type="button" style={button} aria-pressed={rightTab === "structure"} onClick={() => setRightTab("structure")}>Structure</button>}
+            {structures?.evidence && <button type="button" style={button} aria-pressed={rightTab === "verification"} onClick={() => setRightTab("verification")}>Verification</button>}
+            {structures?.evidence && <button type="button" style={button} aria-pressed={rightTab === "execution"} onClick={() => setRightTab("execution")}>Execution</button>}
             <button type="button" style={button} aria-pressed={rightTab === "runtimes"} onClick={() => setRightTab("runtimes")}>Runtimes</button>
           </nav>
         </div>
-        {rightTab === "results" ? record
+        {rightTab === "results" ? (resultSource === "evidence" ? structures?.evidence?.result : null) ?? (record
           ? <SageSymbolicAnalysisCard record={record} sourceStatus="unlinked" onSaveWorkbook={() => onSaveWorkbook(record)} />
-          : <div role="status" data-testid={`${context}-empty-result`} style={{ color: "#64748b", fontSize: 12 }}>Run a Sage operation to inspect its exact result, warnings, and diagnostics.</div>
-          : rightTab === "structure" ? structures?.inspector
+          : <div role="status" data-testid={`${context}-empty-result`} style={{ color: "#64748b", fontSize: 12 }}>Run a Sage operation to inspect its exact result, warnings, and diagnostics.</div>)
+          : rightTab === "structure" ? structures?.evidence?.structure ?? structures?.inspector
+          : rightTab === "verification" ? structures?.evidence?.verification
+          : rightTab === "execution" ? structures?.evidence?.execution
           : <div data-testid={`${context}-runtime-view`} style={{ display: "grid", gap: 10 }}>
               <SageRuntimeInspector />
               <button type="button" style={{ ...button, justifySelf: "start" }} onClick={onOpenComputeRuntimes}>Open Compute → Runtimes</button>

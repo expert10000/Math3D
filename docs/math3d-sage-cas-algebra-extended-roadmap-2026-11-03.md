@@ -304,6 +304,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B05 implementation update (2026-11-04):** The [B05 acceptance record](evidence/sage-b05-contextual-evidence-2026-11-04.md) adds run controls in CAS → Algebra → Operations for the selected saved structure. The typed registry disables incompatible or unavailable actions with a reason. Successful broker results are schema checked and saved inside the `.math3d` Project with the pinned object revision and hash, request, result hash, Sage version, backend and job ID. The Project parser rejects missing targets, changed results and duplicate evidence IDs. **SAGE-B06** will put structured result and verification panels in the Inspector.
 
+**B06 implementation update (2026-11-04):** The [B06 acceptance record](evidence/sage-b06-dossier-inspector-2026-11-04.md) connects selected saved evidence to structured **Results**, **Structure**, **Verification** and **Execution** views in the CAS Inspector. It renders exact matrices, polynomial facts and number-theory answers without a raw JSON dump. Verification recomputes GCD and inverse identities, reports checked matrix witnesses and transformations where available, and labels uncertified Sage claims as computed. Historical or stale sources remain visible. The next gate is **SAGE-B07**, recipe graphs with dependency-aware execution.
+
 ---
 
 ## 3. P0 — Algebra object registry
