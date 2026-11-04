@@ -104,7 +104,7 @@ type Props = {
   onOpenWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: WorkbookStageId, blockId?: string) => void;
   onViewProjectDetail?: () => void;
-  noteRequest?: { id: string; token: number } | null;
+  noteRequest?: { id: string; token: number; openTarget?: boolean } | null;
   resultRequest?: { id: string; token: number } | null;
   pairRequest?: { id: string; token: number } | null;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
@@ -561,6 +561,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   };
   useEffect(() => {
     if (!noteRequest) return;
+    if (noteRequest.openTarget) {
+      const note = project?.notes?.find(item => item.identity.id === noteRequest.id);
+      if (note?.anchor?.kind === "comparison" && note.anchor.coordinateProbe &&
+        inspectProjectComparisonNote(project!, note, comparisonResource).status === "current") {
+        setComparisonInitialId(note.anchor.compositionId);
+        setComparisonInitialProbeId(note.identity.id);
+        setCompositionOpen(true);
+        setNotesOpen(false);
+        onOpenChange(true);
+      } else setMessage("The exact saved coordinate Note or one of its sources is unavailable.");
+      return;
+    }
     setSelectedNoteId(null);
     setNotesPlacement("floating");
     onOpenChange(false);

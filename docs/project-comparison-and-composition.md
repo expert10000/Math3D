@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC26)
+# Project comparison and composition (PC01–PC27)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -62,6 +62,23 @@ text. Portable Project import retains the Notes and Mesh sidecars. On restart,
 the list loads saved resources before offering a verified marker. Closing the
 comparison releases its viewers. No target vertex, face or measured value is
 inferred. PC03 and PC05 retain their **Partial** boundaries.
+
+## PC27 Workbook coordinate review
+
+Save coordinate observations first. Open the Project's Workbook and choose
+**Workbook → Visualize → Saved coordinate review**. Select the exact Notes,
+then **Link selected coordinate Notes** and save the Workbook from Projects.
+After restart, open the Workbook and choose **Show embedded coordinate review**.
+Each verified row shows its shared-coordinate marker, frame, unit, Note ID and
+hash. **Open saved marker** opens that Note in its saved comparison. Closing
+the comparison releases its viewer. **Export coordinate review HTML** and the
+Workbook publication include exact, rechecked evidence; missing or changed
+sources remain unavailable rows without their coordinate or Note text. The
+portable Project package retains the linked Note and source resources.
+
+This is a saved-evidence view. It does not calculate a matching element or
+measured value. PC03 and PC05 remain **Partial** for undeclared legacy frames
+and generations that were never retained.
 
 | Starter | Saved comparison | What to check |
 | --- | --- | --- |

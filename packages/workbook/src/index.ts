@@ -13,4 +13,5 @@ export * from "./workbookComparisonReference";
 export * from "./workbookSavedMeshTrendReference";
 export * from "./workbookSavedMeshComparisonReference";
 export * from "./workbookSavedMeshReviewReference";
+export * from "./workbookCoordinateReviewReference";
 export * from "./workbookSageEvidence";

@@ -3,11 +3,12 @@ import { assessWorkbookClaim, inspectNotebookProvenance, normalizeNotebookRefere
 import { captureProjectResources, exportProjectPackage, parseProjectPackage, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
-import { inspectWorkbookComparisonReference, normalizeWorkbookSavedMeshTrendReference, normalizeWorkbookSavedMeshReviewReference } from "@math3d/workbook";
+import { inspectWorkbookComparisonReference, normalizeWorkbookSavedMeshTrendReference, normalizeWorkbookSavedMeshReviewReference, normalizeWorkbookCoordinateReviewReference } from "@math3d/workbook";
 import { createProjectComparisonEvidence } from "../projects/projectComparisonEvidence";
 import { inspectWorkbookSavedMeshTrend } from "../projects/projectSavedMeshWorkbookTrend";
 import { inspectWorkbookSavedMeshComparison } from "../projects/projectSavedMeshWorkbookComparison";
 import { inspectWorkbookSavedMeshReview } from "../projects/projectSavedMeshWorkbookReview";
+import { inspectWorkbookCoordinateReview } from "../projects/projectCoordinateWorkbookReview";
 import { checkedProjectSavedMeshComparisonObservations, inspectProjectSavedMeshComparisonNote } from "../projects/projectSavedMeshComparisonNotes";
 
 export const notebookPublicationManifest = (books: readonly Workbook[], project: Math3DProject | null, reader?: NotebookArtifactReader, selected?: readonly string[], sourceReader?: ProjectResourceReader) => {
@@ -51,6 +52,10 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
       const snapshot = inspectWorkbookSavedMeshReview(project, reference, sourceReader);
       return { reference, entries: snapshot.entries };
     })() : null;
+    const coordinateReview = block.visualize?.coordinateReview ? (() => {
+      const reference = normalizeWorkbookCoordinateReviewReference(block.visualize.coordinateReview);
+      return inspectWorkbookCoordinateReview(project, reference, sourceReader);
+    })() : null;
     const notes = (book.dependencies ?? []).filter(edge => edge.targetBlockId === block.id && edge.source.kind === "note").map(edge => {
       if (edge.source.kind !== "note") throw new Error("Expected Note source");
       const ref = edge.source, note = ref.projectId === project?.identity.id ? project.notes?.find(note => note.identity.id === ref.noteId) : undefined;
@@ -61,7 +66,7 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
       return { reference: ref, status,
         renderedBody: status === "current" && note ? projectNoteRenderedBody(note, project!.workspace) : null };
     });
-    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison, savedMeshTrend, savedMeshComparison, savedMeshReview };
+    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison, savedMeshTrend, savedMeshComparison, savedMeshReview, coordinateReview };
   })));
   return { schemaVersion: 1 as const, projectId: project?.identity.id ?? null, projectHash: project ? structuralHash(project) : null,
     parameters: books.map(book => ({ workbookId: book.id, namedParameters: book.namedParameters ?? [] })),
@@ -109,11 +114,17 @@ export const notebookPublicationManifestHtml = (manifest: NotebookPublicationMan
     return `<section data-saved-mesh-review><h3>Saved comparison review · ${review.entries.length} pairs</h3><p>Stored evidence only. Unavailable values and Note text are withheld.</p>${review.entries.map(entry =>
       `<article><h4>${escapeHtml(entry.title)} · ${escapeHtml(entry.metricPath)}</h4><p>${escapeHtml(entry.status)} · ${escapeHtml(entry.reason)}</p><p>Pair ${escapeHtml(entry.comparisonId)} · ${escapeHtml(entry.comparisonHash)}<br>A ${escapeHtml(entry.a.resultId)} · ${escapeHtml(entry.a.resultHash)} · Mesh r${entry.a.revision} · ${escapeHtml(entry.a.sourceHash)}<br>B ${escapeHtml(entry.b.resultId)} · ${escapeHtml(entry.b.resultHash)} · Mesh r${entry.b.revision} · ${escapeHtml(entry.b.sourceHash)}</p>${entry.values ? `<p>A ${entry.values.a}; B ${entry.values.b}; B − A ${entry.values.difference} ${escapeHtml(entry.values.unit)}</p>` : "<p>Values unavailable.</p>"}${entry.observations.map(note => note.status === "verified" ? `<p>Note ${escapeHtml(note.noteId)} r${note.noteRevision} · ${escapeHtml(note.noteHash)}: ${escapeHtml(note.title ?? "")} · ${escapeHtml(note.body ?? "")}</p>` : `<p>Note ${escapeHtml(note.noteId)} unavailable. Text withheld.</p>`).join("")}</article>`).join("")}</section>`;
   }).join("");
+  const coordinateReviews = manifest.blocks.filter(block => block.coordinateReview).map(block => {
+    const review = block.coordinateReview!;
+    return `<section data-coordinate-review><h3>Saved coordinate review · ${review.entries.length} observations</h3><p>Shared coordinates only; no element match or measured value is inferred.</p>${review.entries.map(entry =>
+      `<article><h4>${escapeHtml(entry.title)} · ${escapeHtml(entry.status)}</h4><p>Note ${escapeHtml(entry.noteId)} r${entry.noteRevision} · ${escapeHtml(entry.noteHash)}<br>Comparison ${escapeHtml(entry.compositionId)} · ${escapeHtml(entry.compositionHash)}</p>${entry.evidence && entry.status === "verified" ? `<p>◎ ${escapeHtml(entry.evidence.point?.join(", ") ?? "")} ${escapeHtml(entry.evidence.unit)} · frame ${escapeHtml(entry.evidence.frame)} · source ${escapeHtml(entry.evidence.sourceSlot)}</p><p>${escapeHtml(entry.evidence.body ?? "")}</p>` : `<p>Unavailable: ${escapeHtml(entry.reason ?? "Evidence changed")}. Coordinate and text withheld.</p>`}</article>`).join("")}</section>`;
+  }).join("");
   return `<section data-publication-manifest><h2>Linked-source manifest</h2><p>${escapeHtml(manifest.qualification)}</p>
     ${comparisons}
     ${trends}
     ${meshComparisons}
     ${meshReviews}
+    ${coordinateReviews}
     <table style="width:100%;font-size:11px;overflow-wrap:anywhere"><thead><tr><th>Exact target</th><th>Freshness</th><th>Recorded source</th><th>Authority, method and warnings</th></tr></thead><tbody>${rows}</tbody></table>
     <details><summary>Exact manifest (JSON)</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(JSON.stringify(manifest, null, 2))}</pre></details></section>`;
 };
@@ -180,6 +191,12 @@ export const inspectPortableNotebookPublication = (payload: ReturnType<typeof cr
     const checked = inspectWorkbookSavedMeshReview(reopened.project, saved.reference, item => reopened.resources.bytes(item));
     if (structuralHash(checked.entries) !== structuralHash(saved.entries))
       throw new TypeError("Publication saved comparison review sources or Notes changed.");
+  }
+  for (const block of payload.manifest.blocks) if (block.coordinateReview) {
+    const saved = block.coordinateReview;
+    const checked = inspectWorkbookCoordinateReview(reopened.project, saved.reference, item => reopened.resources.bytes(item));
+    if (structuralHash(checked.entries) !== structuralHash(saved.entries))
+      throw new TypeError("Publication saved coordinate review sources or Notes changed.");
   }
   for (const artifact of payload.artifacts) {
     const binary = atob(artifact.data), bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
