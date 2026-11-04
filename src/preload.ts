@@ -428,6 +428,8 @@ export type SageOperation =
   | "sage.ideal.hilbertSeries"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
+  | "sage.numberField.elementDossier"
+  | "sage.numberField.primeDecomposition"
   | "sage.topology.integer_homology"
   | "sage.complex.analyze"
   | "sage.algebra.reconstruct"

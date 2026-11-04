@@ -111596,11 +111596,61 @@ case "mobius":
         onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
         onClose={() => setCasWorkspaceOpen(false)} />}
       {numberTheoryWorkspaceOpen && <NumberTheoryWorkspace record={numberTheoryAnalysisRecord}
+        project={projectForNotePins}
+        onSaveRecipe={(recipe) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== recipe.projectId) throw new TypeError("Open the matching Project before saving an algebra recipe.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the recipe.");
+          const next = upsertMath3DProjectAlgebraRecipe(current, recipe);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onAppendRecipeEvidence={(base, evidence) => {
+          const savedBytes = localStorage.getItem(projectPayloadKey(base.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== base.identity.structuralHash)
+            throw new TypeError("The saved Project changed during the recipe. Completed evidence was retained; reopen before rerunning.");
+          const next = addMath3DProjectAlgebraEvidence(base, evidence);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          return next;
+        }}
+        onSaveEvidence={(evidence) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== evidence.projectId) throw new TypeError("Open the matching Project before saving Sage evidence.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed during the Sage operation. Reopen it and run again.");
+          const next = addMath3DProjectAlgebraEvidence(current, evidence);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onCreateStructure={(record) => {
+          const current = projectForNotePins;
+          if (!current) throw new TypeError("Open and save a Project before adding structures.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Save or reopen it in Projects before adding structures.");
+          const next = upsertMath3DProjectAlgebraObject(current, record);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onOpenProjects={() => { setNumberTheoryWorkspaceOpen(false); setProjectsOpen(true); }}
         onResult={(record) => setNumberTheoryAnalysisRecord({ ...record, source: {
           module: "number_theory", id: "sage-input:number-theory", revision: 0,
           expression: record.expression, fingerprint: hashValue(record.request.params) } })}
         onSaveWorkbook={(record) => { setNumberTheoryWorkspaceOpen(false); openNormalSurfacesWorkspace(); saveSageResultToWorkbook(record); }}
         onOpenWorkbook={() => { setNumberTheoryWorkspaceOpen(false); openNormalSurfacesWorkspace(); setActiveStageId("compute"); setRightPanelTab("workbook"); }}
+        onOpenConsole={() => setSageConsoleOpen(true)}
         onOpenComputeRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }}
         onClose={() => setNumberTheoryWorkspaceOpen(false)} />}
       {sageConsoleOpen && <SageConsoleDock onClose={() => setSageConsoleOpen(false)} onOpenRuntimes={() => { setComputeCenterInitialTab("runtimes"); setComputeCenterOpen(true); }} />}

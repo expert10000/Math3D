@@ -535,6 +535,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-D01](evidence/sage-d01-number-fields-2026-11-04.md) adds bounded quadratic number-field objects pinned to a saved `QQ` revision. Structures previews and reopens an exact `QQ(√5)` dossier with defining polynomial, discriminants, bases and embeddings; a bounded Sage constructor is available through the advertised reconstruction route. Core, real local Sage 9.5 and independent desktop Project reopen gates pass. The next feature is **SAGE-D02**, sharing field and ideal references across Algebra and Number Theory. B08's live Docker Sage 10.10 comparison remains open.
 
+[SAGE-D02](evidence/sage-d02-shared-number-theory-refs-2026-11-04.md) shares Project field and ideal IDs, definitions and revisions across CAS and Number Theory. [SAGE-D03](evidence/sage-d03-norm-trace-embeddings-2026-11-04.md) adds pinned quadratic norm, trace, embeddings and degree checks. [SAGE-D04](evidence/sage-d04-prime-decomposition-2026-11-04.md) adds bounded prime-ideal factors with ramification and residue degrees and a reusable recipe. Exact core and real local Sage 9.5 fixtures, plus controlled desktop Project export and fresh-profile import, pass. The next feature is **SAGE-D05**. B08's live Docker Sage 10.10 comparison remains open.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate

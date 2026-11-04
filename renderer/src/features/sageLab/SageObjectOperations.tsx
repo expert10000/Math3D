@@ -21,6 +21,8 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   if (id === "sage.algebra.inspectDomains") return { other };
   if (id === "sage.numberTheory.gcd") return { values: text.split(",").map((item) => item.trim()) };
   if (id === "sage.numberTheory.modInverse") return { a: text.trim() };
+  if (id === "sage.numberField.elementDossier") return { element: text.split(",").map((item) => item.trim()) as [string, string] };
+  if (id === "sage.numberField.primeDecomposition") return { prime: Number(text.trim()) };
   if (id === "sage.groebner.compute") return { polynomials: text.split(/\r?\n/).map((item) => item.trim()) };
   if (id === "sage.matrix.linear_dossier" || id === "sage.matrix.integer_forms") return {
     matrix: text.trim().split(/\r?\n/).map((row) => row.split(",").map((cell) => cell.trim())) };
@@ -123,7 +125,9 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
     {operations.map((item) => <div key={item.definition.id} data-testid={`cas-object-operation-${item.definition.id}`}
       style={{ display: "grid", gap: 2, borderTop: "1px solid #e2e8f0", paddingTop: 6 }}>
       <button type="button" disabled={!item.readyBackend || running} title={item.reason ?? item.runtimeReason ?? undefined}
-        aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id); setInput("");
+        aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id);
+          setInput(item.definition.id === "sage.numberField.elementDossier" ? "1, 1"
+            : item.definition.id === "sage.numberField.primeDecomposition" ? "5" : "");
           setBudgetProfile("standard"); setExpandedAcknowledged(false); setMessage(""); }}
         style={{ textAlign: "left", fontWeight: 600 }}>{item.definition.label}</button>
       <span style={{ color: item.readyBackend ? "#16703b" : "#9a3412", fontSize: 11 }}>
@@ -159,6 +163,8 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
           selected === "sage.ideal.membership" ? "Polynomial to test" :
           selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
+          selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :
+          selected === "sage.numberField.primeDecomposition" ? "Rational prime p (2–97)" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}
           {selected?.startsWith("sage.matrix.") || selected === "sage.groebner.compute" ?

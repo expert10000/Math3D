@@ -43,6 +43,8 @@ export type Math3DWorkerOperationId =
   | "algebra.groebner"
   | "algebra.reconstruct"
   | "algebra.domains.inspect"
+  | "number-field.element-dossier"
+  | "number-field.prime-decomposition"
   | "ideal.groebner"
   | "ideal.eliminate"
   | "ideal.membership"
@@ -376,6 +378,16 @@ const definitions = [
     method: "exact",
     environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
+  },
+  {
+    id: "number-field.element-dossier",
+    title: "Quadratic field norm, trace and embeddings",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "number-field.prime-decomposition",
+    title: "Quadratic field prime ideal decomposition",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
     id: "ideal.groebner",

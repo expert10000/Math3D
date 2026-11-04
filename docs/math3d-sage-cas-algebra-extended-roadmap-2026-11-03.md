@@ -322,6 +322,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **Provenance and B08 gate update (2026-11-04):** The [saved-source and cross-runtime record](evidence/sage-provenance-cross-runtime-2026-11-04.md) covers Surface equation identity across app restarts, exact Workbook Sage code execution evidence, and Private gateway result envelope persistence. The required B08 comparison was rerun on Local WSL (16/16 Sage 9.5 cases); Docker Desktop could not initialize on this PC, so the live Docker comparison remains open. The concurrently delivered [C06 budget gate](evidence/sage-c06-operation-budgets-2026-11-04.md) is retained unchanged.
 
+**D02–D04 implementation update (2026-11-04):** [D02](evidence/sage-d02-shared-number-theory-refs-2026-11-04.md) mounts the one Project algebra registry in CAS and Number Theory, so fields, polynomial ideals, recipes and evidence retain the same IDs and revisions across both workspaces. [D03](evidence/sage-d03-norm-trace-embeddings-2026-11-04.md) adds typed, exact norm, trace and embeddings for bounded quadratic elements with a checked degree product. [D04](evidence/sage-d04-prime-decomposition-2026-11-04.md) adds small-prime ideal factorization with `e`, `f`, norms, discriminant-based splitting checks and a saved recipe graph. The `QQ(√5)` local Sage 9.5 fixtures for `2`, `5`, and `11` and the controlled desktop export/fresh-profile import pass. The next feature gate is **SAGE-D05**, an extension tower viewer. The live B08 Docker Sage 10.10 comparison remains open.
+
 ---
 
 ## 3. P0 — Algebra object registry

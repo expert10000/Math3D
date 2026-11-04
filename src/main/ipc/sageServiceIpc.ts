@@ -26,6 +26,8 @@ type SageOperation =
   | "sage.algebra.inspectDomains"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
+  | "sage.numberField.elementDossier"
+  | "sage.numberField.primeDecomposition"
   | "sage.topology.integer_homology"
   | "sage.complex.analyze";
 
