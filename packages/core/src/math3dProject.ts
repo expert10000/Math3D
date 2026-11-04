@@ -5,6 +5,7 @@ import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, normalizeMixedWorksp
   type MixedWorkspaceDocument } from "./mixedWorkspace";
 import { canonicalJsonByteLength } from "./scientificJobs";
 import { quantumSceneRole, relocateQuantumSceneDocument } from "./quantumSceneDocument";
+import { relocateQuantumFieldDocument } from "./quantumFieldDocument";
 import { normalizeProjectNote, type ProjectNote } from "./projectNotes";
 import type { ValidationResult } from "./validation";
 import { validProjectComposition, type ProjectComposition } from "./projectComposition";
@@ -171,6 +172,17 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
           return { ok: false, errors: ["Quantum-scene same-result relation is missing, mismatched or not reciprocal."] };
       }
     }
+    for (const entry of workspace.value.entries.filter((item) => item.module === "field" &&
+      item.checkpoint.format === "math3d.quantum-field-document")) {
+      const checkpoint = entry.checkpoint;
+      if (checkpoint.format !== "math3d.quantum-field-document" || entry.replay !== null)
+        return { ok: false, errors: ["Quantum field documents must be compact, read-only checkpoints."] };
+      const linked = (value.quantumScenes as ProjectQuantumSceneReference[] | undefined)?.find(item =>
+        item.sceneFingerprint === checkpoint.source.scene.sceneFingerprint);
+      if (!linked || linked.directory !== checkpoint.location.directory ||
+          linked.format !== checkpoint.source.scene.sceneSchema)
+        return { ok: false, errors: ["Quantum field document requires its matching verified Project source reference."] };
+    }
     if (canonicalJsonByteLength(value.metadata) > 32 * 1024) return { ok: false, errors: ["Project metadata exceeds 32 KiB."] };
     if ("documents" in value.metadata) {
       const documents = value.metadata.documents, ids = new Set<string>(workspace.value.entries.map((entry) => entry.expected.id));
@@ -191,15 +203,30 @@ const requireProject = (value: unknown): Math3DProject => {
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
   return normalized.value;
 };
-export const createMath3DProject = (workspace: MixedWorkspaceDocument, options: { stableKey: CanonicalJsonValue; title?: string }): Math3DProject =>
-  requireProject({ format: MATH3D_PROJECT_FORMAT, schemaVersion: MATH3D_PROJECT_SCHEMA_VERSION,
-    identity: createDocumentIdentity(createStableDocumentId("project", options.stableKey), workspace),
-    metadata: { title: options.title ?? "Untitled project" }, workspace });
+const quantumFieldReferences = (workspace: MixedWorkspaceDocument): ProjectQuantumSceneReference[] =>
+  workspace.entries.flatMap(entry => entry.module === "field" && entry.checkpoint.format === "math3d.quantum-field-document" ?
+    [{ format: entry.checkpoint.source.scene.sceneSchema, title: entry.checkpoint.metadata.title,
+      directory: entry.checkpoint.location.directory,
+      sceneFingerprint: entry.checkpoint.source.scene.sceneFingerprint }] : [])
+    .filter((item, index, all) => all.findIndex(other => other.sceneFingerprint === item.sceneFingerprint) === index)
+    .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
+export const createMath3DProject = (workspace: MixedWorkspaceDocument, options: { stableKey: CanonicalJsonValue; title?: string }): Math3DProject => {
+  const quantumScenes = quantumFieldReferences(workspace);
+  return requireProject({ format: MATH3D_PROJECT_FORMAT, schemaVersion: MATH3D_PROJECT_SCHEMA_VERSION,
+    identity: createDocumentIdentity(createStableDocumentId("project", options.stableKey),
+      projectContent(workspace, undefined, undefined, quantumScenes.length ? quantumScenes : undefined)),
+    metadata: { title: options.title ?? "Untitled project" }, workspace,
+    ...(quantumScenes.length ? { quantumScenes } : {}) });
+};
 
 /** Project revision describes all persisted workspace content, not a domain source generation. */
 export const replaceMath3DProjectWorkspace = (project: Math3DProject, workspace: MixedWorkspaceDocument): Math3DProject => {
   const current = requireProject(project);
-  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, current.quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons, current.algebraObjects, current.algebraEvidence, current.algebraRecipes)), workspace });
+  const quantumScenes = [...(current.quantumScenes ?? []).filter(item =>
+    !quantumFieldReferences(workspace).some(field => field.sceneFingerprint === item.sceneFingerprint)),
+    ...quantumFieldReferences(workspace)].sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
+  return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes.length ? quantumScenes : undefined, current.scientificScenes, current.compositions, current.savedMeshComparisons, current.algebraObjects, current.algebraEvidence, current.algebraRecipes)), workspace,
+    ...(quantumScenes.length ? { quantumScenes } : {}) });
 };
 export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: ProjectWorkbookReference): Math3DProject => {
   const current = requireProject(project);
@@ -236,9 +263,11 @@ export const relinkMath3DProjectQuantumScene = (project: Math3DProject, fingerpr
   if (!validQuantumSceneReference(replacement)) throw new TypeError("Invalid replacement quantum-scene location.");
   if (linked.directory === directory) return current;
   const quantumScenes = current.quantumScenes!.map((item) => item.sceneFingerprint === fingerprint ? replacement : item);
-  const workspace = current.workspace.entries.some((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint)
-    ? { ...current.workspace, entries: current.workspace.entries.map((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint
-      ? { ...entry, checkpoint: relocateQuantumSceneDocument(entry.checkpoint, directory) } : entry) } : current.workspace;
+  const workspace = { ...current.workspace, entries: current.workspace.entries.map(entry =>
+    entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === fingerprint
+      ? { ...entry, checkpoint: relocateQuantumSceneDocument(entry.checkpoint, directory) } :
+    entry.module === "field" && entry.checkpoint.format === "math3d.quantum-field-document" && entry.checkpoint.source.scene.sceneFingerprint === fingerprint
+      ? { ...entry, checkpoint: relocateQuantumFieldDocument(entry.checkpoint, directory) } : entry) };
   return requireProject({ ...current, workspace, quantumScenes,
     identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes, current.scientificScenes, current.compositions, current.savedMeshComparisons, current.algebraObjects, current.algebraEvidence, current.algebraRecipes)) });
 };
@@ -388,7 +417,12 @@ export const adoptMixedWorkspaceProject = (workspace: MixedWorkspaceDocument, ti
   if (!normalized.ok) throw new TypeError(normalized.errors.join(" "));
   const quantumScenes: ProjectQuantumSceneReference[] = normalized.value.entries.flatMap((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
     ? [{ format: entry.checkpoint.source.sceneSchema, title: entry.checkpoint.metadata.title, directory: entry.checkpoint.location.directory,
-      sceneFingerprint: entry.checkpoint.source.sceneFingerprint }] : []).sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
+      sceneFingerprint: entry.checkpoint.source.sceneFingerprint }] :
+    entry.module === "field" && entry.checkpoint.format === "math3d.quantum-field-document" ?
+      [{ format: entry.checkpoint.source.scene.sceneSchema, title: entry.checkpoint.metadata.title,
+        directory: entry.checkpoint.location.directory, sceneFingerprint: entry.checkpoint.source.scene.sceneFingerprint }] : [])
+    .filter((entry, index, all) => all.findIndex(other => other.sceneFingerprint === entry.sceneFingerprint) === index)
+    .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
   const stableKey = { importedFormat: MIXED_WORKSPACE_FORMAT, documentIds: normalized.value.entries.map((entry) => entry.expected.id).sort() };
   return requireProject({ format: MATH3D_PROJECT_FORMAT, schemaVersion: MATH3D_PROJECT_SCHEMA_VERSION,
     identity: createDocumentIdentity(createStableDocumentId("project", stableKey), projectContent(normalized.value, undefined, undefined, quantumScenes)),

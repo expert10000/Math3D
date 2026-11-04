@@ -2,6 +2,7 @@ import React from "react";
 import { QuantumFieldSlice, type QuantumField } from "./QuantumFieldSlice";
 import { QuantumFieldSurface } from "./QuantumFieldSurface";
 import { QuantumFieldVolume } from "./QuantumFieldVolume";
+import type { QuantumDerivationRecord, QuantumFieldDocument } from "@math3d/core";
 
 export type QuantumViewRequest = "geometry" | "slice" | "surface" | "volume";
 export type QuantumSceneCapabilities = {
@@ -14,11 +15,16 @@ export type QuantumSceneCapabilities = {
 export type QuantumViewContext = {
   fingerprint: string;
   resultSha256: string;
+  runId: string;
+  coordinateSystemId: string;
   fields: QuantumField[];
   axes: [string, string, string];
   units: [string, string, string];
   camera: { position: { x: number; y: number; z: number }; target: { x: number; y: number; z: number }; up: { x: number; y: number; z: number } } | undefined;
   geometry: React.ReactNode;
+  createSurfaceDerivation?: (fieldId: string, level: number, threshold: number) => QuantumDerivationRecord;
+  fieldView?: QuantumFieldDocument["view"];
+  onFieldViewChange?: (view: QuantumFieldDocument["view"]) => void;
 };
 export type QuantumViewHandler = {
   id: string;
@@ -35,9 +41,12 @@ export const quantumViewHandlers: readonly QuantumViewHandler[] = [
   { id: "trajectory/v1", request: "geometry", accepts: caps => caps.hasGeometry && caps.hasTrajectory, render: geometry },
   { id: "geometry/v1", request: "geometry", accepts: caps => caps.hasGeometry, render: geometry },
   { id: "field-slice/v1", request: "slice", accepts: caps => caps.fields.length > 0,
-    render: ctx => <QuantumFieldSlice fingerprint={ctx.fingerprint} fields={ctx.fields} axes={ctx.axes} units={ctx.units} /> },
+    render: ctx => <QuantumFieldSlice fingerprint={ctx.fingerprint} fields={ctx.fields} axes={ctx.axes} units={ctx.units}
+      runId={ctx.runId} resultSha256={ctx.resultSha256} coordinateSystemId={ctx.coordinateSystemId}
+      initialView={ctx.fieldView} onViewChange={ctx.onFieldViewChange} /> },
   { id: "field-surface/v1", request: "surface", accepts: caps => caps.fields.some(field => field.kind === "complex-field"),
-    render: ctx => <QuantumFieldSurface fingerprint={ctx.fingerprint} resultSha256={ctx.resultSha256} fields={ctx.fields} camera={ctx.camera} /> },
+    render: ctx => <QuantumFieldSurface fingerprint={ctx.fingerprint} resultSha256={ctx.resultSha256} fields={ctx.fields}
+      camera={ctx.camera} createDerivation={ctx.createSurfaceDerivation} /> },
   { id: "field-volume/v1", request: "volume", accepts: caps => caps.fields.length > 0,
     render: ctx => <QuantumFieldVolume fingerprint={ctx.fingerprint} fields={ctx.fields} /> },
 ];

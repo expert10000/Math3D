@@ -29,6 +29,8 @@ test("QWZ study links independently verified bands and Berry views without infer
     await expect(page.getByTestId("quantum-band-selection")).toContainText("Stored datasets");
     await profile.getByTestId("qwz-view-curvature").click();
     await expect(profile.getByTestId("qwz-view-curvature")).toHaveAttribute("aria-pressed", "true");
+    await expect(profile.getByTestId("quantum-cursor-status")).toContainText("exact target samples");
+    await expect(profile.getByTestId("quantum-cursor-status")).toContainText("nearest");
     await expect(page.getByTestId("quantum-topology-inspector")).toContainText("Lower-band Berry curvature");
     await page.getByRole("button", { name: "Inspect first topology sample lower-curvature" }).click();
     await expect(page.getByTestId("quantum-topology-selection")).toContainText("Source datasets");

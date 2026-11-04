@@ -104,6 +104,7 @@ export * from "./sageIntegerMatrixForms";
 export * from "./projectComposition";
 export * from "./retainedMeshGenerations";
 export * from "./quantumSceneDocument";
+export * from "./quantumFieldDocument";
 export * from "./projectNotes";
 export * from "./projectNoteValues";
 export * from "./projectOperations";

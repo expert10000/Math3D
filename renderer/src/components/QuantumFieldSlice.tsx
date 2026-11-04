@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { projectSpatialCursor, scientificCursorBus } from "./scientificCursor";
+import type { QuantumFieldDocument } from "@math3d/core";
 
 export type FieldQuantity = "density" | "real" | "imaginary" | "phase";
 export type FieldSliceRequest = { fingerprint: string; fieldId: string; axis: 0 | 1 | 2; index: number; quantity: FieldQuantity };
@@ -10,16 +12,21 @@ export type FieldSample = { grid: [number, number, number]; position: [number, n
 export type QuantumField = { id: string; label: string; kind: "scalar-field" | "complex-field";
   grid: { shape: [number, number, number]; origin: [number, number, number]; spacing: [number, number, number]; order: "xyz-z-fastest" } };
 
-export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
+export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, resultSha256, coordinateSystemId,
+  initialView, onViewChange }: {
   fingerprint: string; fields: QuantumField[]; axes: [string, string, string]; units: [string, string, string];
+  runId: string; resultSha256: string; coordinateSystemId: string;
+  initialView?: QuantumFieldDocument["view"]; onViewChange?: (view: QuantumFieldDocument["view"]) => void;
 }) {
   const [fieldId, setFieldId] = useState(fields[0]?.id ?? "");
   const field = fields.find(entry => entry.id === fieldId) ?? fields[0];
-  const [axis, setAxis] = useState<0 | 1 | 2>(2);
-  const [index, setIndex] = useState(() => Math.floor((fields[0]?.grid.shape[2] ?? 1) / 2));
-  const [quantity, setQuantity] = useState<FieldQuantity>(field?.kind === "scalar-field" ? "real" : "density");
+  const [axis, setAxis] = useState<0 | 1 | 2>(initialView?.normalAxis ?? 2);
+  const [index, setIndex] = useState(() => initialView?.fixedIndex ?? Math.floor((fields[0]?.grid.shape[2] ?? 1) / 2));
+  const [quantity, setQuantity] = useState<FieldQuantity>(initialView?.quantity ?? (field?.kind === "scalar-field" ? "real" : "density"));
   const [slice, setSlice] = useState<Omit<FieldSlice, "rgba"> | null>(null);
   const [sample, setSample] = useState<FieldSample | null>(null);
+  const [cursorGrid, setCursorGrid] = useState<[number, number, number] | null>(null);
+  const [cursorStatus, setCursorStatus] = useState("");
   const [error, setError] = useState("");
   const [fitToField, setFitToField] = useState(true);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -27,6 +34,18 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
   const generation = useRef(0);
   const safeIndex = field ? Math.min(index, field.grid.shape[axis] - 1) : 0;
   const safeQuantity = field?.kind === "scalar-field" ? "real" : quantity;
+
+  useEffect(() => scientificCursorBus.subscribe(cursor => {
+    if (!cursor.spatialPoint || !field) return;
+    const projected = projectSpatialCursor(cursor, { runId, resultSha256, coordinateSystemId,
+      shape: field.grid.shape, origin: field.grid.origin, spacing: field.grid.spacing });
+    if (projected.status === "matched") {
+      setCursorGrid(projected.value); setIndex(projected.value[axis]);
+      setCursorStatus("Spatial cursor matched an exact verified field sample.");
+    } else if (cursor.runId === runId && cursor.resultSha256 === resultSha256) {
+      setCursorGrid(null); setCursorStatus(`Cursor withheld: ${projected.reason}`);
+    }
+  }), [fingerprint, field?.id, axis, runId, resultSha256, coordinateSystemId]);
 
   useEffect(() => {
     const current = ++generation.current;
@@ -42,6 +61,17 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
     }).catch(cause => { if (generation.current === current) setError(String((cause as Error)?.message ?? cause)); });
     return () => { generation.current += 1; };
   }, [fingerprint, field?.id, axis, safeIndex, safeQuantity]);
+
+  useEffect(() => {
+    if (!cursorGrid || !slice || !field || slice.index !== cursorGrid[axis] ||
+        slice.fieldId !== field.id || !window.quantumScenes?.fieldSample) return;
+    const plane = [0, 1, 2].filter(candidate => candidate !== axis);
+    const current = generation.current;
+    void window.quantumScenes.fieldSample({ fingerprint, fieldId: field.id, axis, index: cursorGrid[axis],
+      quantity: safeQuantity, u: cursorGrid[plane[0]], v: cursorGrid[plane[1]] }).then(result => {
+      if (generation.current === current) setSample(result);
+    }).catch(error => { if (generation.current === current) setCursorStatus(`Cursor withheld: ${String((error as Error).message)}`); });
+  }, [cursorGrid, slice, field?.id, axis, safeQuantity, fingerprint]);
 
   const viewport: [number, number, number, number] | null = slice && fitToField ? slice.fitBounds : null;
   const visible: [number, number, number, number] | null = slice
@@ -71,8 +101,13 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
     const v = Math.min(maxV - 1, Math.max(minV, minV + Math.floor((1 - (event.clientY - bounds.top) / bounds.height) * (maxV - minV))));
     const request: FieldSampleRequest = { fingerprint, fieldId: field.id, axis, index: safeIndex, quantity: safeQuantity, u, v };
     const current = generation.current;
+    setCursorGrid(null);
     void window.quantumScenes.fieldSample(request).then(result => {
-      if (generation.current === current) setSample(result);
+      if (generation.current === current) {
+        setSample(result);
+        scientificCursorBus.publish({ runId, resultSha256, datasetId: field.id,
+          spatialPoint: { xyz: result.position, coordinateSystemId }, originViewId: `${fingerprint}:${field.id}:slice` });
+      }
     }).catch(cause => { if (generation.current === current) setError(String((cause as Error)?.message ?? cause)); });
   };
   return <section data-testid="quantum-field-slice" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", gap: 12,
@@ -83,14 +118,21 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
         setFieldId(next.id); setQuantity(next.kind === "scalar-field" ? "real" : "density");
         setIndex(Math.floor(next.grid.shape[axis] / 2));
       }}>{fields.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
-      <label>Quantity <select aria-label="Quantum field quantity" value={safeQuantity} onChange={event => setQuantity(event.target.value as FieldQuantity)}>
+      <label>Quantity <select aria-label="Quantum field quantity" value={safeQuantity} onChange={event => {
+        const next = event.target.value as FieldQuantity; setQuantity(next);
+        onViewChange?.({ normalAxis: axis, fixedIndex: safeIndex, quantity: next });
+      }}>
         {(field.kind === "scalar-field" ? ["real"] : ["density", "real", "imaginary", "phase"]).map(value =>
           <option key={value} value={value}>{value === "density" ? "|ψ|² density (derived)" : value === "phase" ? "Phase (derived)" : value}</option>)}</select></label>
       <label>Normal <select aria-label="Quantum slice normal" value={axis} onChange={event => {
-        const next = Number(event.target.value) as 0 | 1 | 2; setAxis(next); setIndex(Math.floor(field.grid.shape[next] / 2));
+        const next = Number(event.target.value) as 0 | 1 | 2;
+        const nextIndex = Math.floor(field.grid.shape[next] / 2);
+        setAxis(next); setIndex(nextIndex);
+        onViewChange?.({ normalAxis: next, fixedIndex: nextIndex, quantity: safeQuantity });
       }}>{axes.map((label, value) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Slice {safeIndex} <input aria-label="Quantum slice index" type="range" min={0} max={field.grid.shape[axis] - 1}
-        value={safeIndex} onChange={event => setIndex(Number(event.target.value))} /></label>
+        value={safeIndex} onChange={event => { const next = Number(event.target.value); setIndex(next);
+          onViewChange?.({ normalAxis: axis, fixedIndex: next, quantity: safeQuantity }); }} /></label>
       <button type="button" aria-label="Fit to field" aria-pressed={Boolean(viewport)} disabled={!slice?.fitBounds}
         onClick={() => { setFitToField(true); setSample(null); }}>Fit to field</button>
       <button type="button" aria-label="Show full grid" aria-pressed={!viewport} onClick={() => { setFitToField(false); setSample(null); }}>Full grid</button>
@@ -109,6 +151,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units }: {
       {sample && <div data-testid="quantum-field-sample">Grid [{sample.grid.join(", ")}] · {sample.position.map((value, coordinate) =>
         `${axes[coordinate]}=${value.toPrecision(5)} ${units[coordinate]}`).join(" · ")} · {safeQuantity} = {
           sample.undefinedNearNode ? "undefined near a node" : sample.value?.toPrecision(7)} {sample.unit}</div>}
+      {cursorStatus && <div data-testid="quantum-spatial-cursor-status" role="status">{cursorStatus}</div>}
     </div> : <div role="status">Preparing verified field slice…</div>}
   </section>;
 }

@@ -10,6 +10,7 @@ import { normalizeTopologyDocument, type TopologyDocument } from "./topologyDocu
 import { normalizeComplexAnalysisDocument, type ComplexAnalysisDocument } from "./complexAnalysisDocument";
 import { normalizeGraph2DDocument, type Graph2DDocument } from "./graph2dDocument";
 import { normalizeQuantumSceneDocument, type QuantumSceneDocument } from "./quantumSceneDocument";
+import { normalizeQuantumFieldDocument, type QuantumFieldDocument } from "./quantumFieldDocument";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { normalizeVectorField2DDocument, type VectorField2DDocument } from "./vectorField2DDocument";
 import { normalizeScientificFieldDocument, type ScientificFieldDocument } from "./scientificFieldDocument";
@@ -28,7 +29,7 @@ export const MAX_MIXED_WORKSPACE_BYTES = 16 * 1024 * 1024;
 export const MAX_MIXED_WORKSPACE_REPLAY_BYTES = 256 * 1024;
 export const KERNEL_WORKSPACE_MODULES = ["geometry", "mesh", "surface", "curve", "volume", "topology", "complex", "graph2d", "quantum", "vector3d", "vector2d", "field"] as const;
 export type KernelWorkspaceModule = typeof KERNEL_WORKSPACE_MODULES[number];
-export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument | VectorField3DDocument | VectorField2DDocument | ScientificFieldDocument;
+export type KernelWorkspaceDocument = GeometryDocument | MeshDocument | SurfaceDocument | CurveDocument | VolumeDocument | TopologyDocument | ComplexAnalysisDocument | Graph2DDocument | QuantumSceneDocument | QuantumFieldDocument | VectorField3DDocument | VectorField2DDocument | ScientificFieldDocument;
 export type MixedWorkspaceReplay = Readonly<{ format: string; payload: CanonicalJsonValue }>;
 export type MixedWorkspaceEntry = Readonly<{
   module: KernelWorkspaceModule;
@@ -83,7 +84,8 @@ const normalizeModuleDocument = (module: KernelWorkspaceModule, value: unknown):
     case "quantum": return normalizeQuantumSceneDocument(value);
     case "vector3d": return normalizeVectorField3DDocument(value);
     case "vector2d": return normalizeVectorField2DDocument(value);
-    case "field": return normalizeScientificFieldDocument(value);
+    case "field": return record(value) && value.format === "math3d.quantum-field-document" ?
+      normalizeQuantumFieldDocument(value) : normalizeScientificFieldDocument(value);
   }
 };
 const entryKey = (entry: MixedWorkspaceEntry): string => `${entry.module}:${entry.expected.id}`;

@@ -1,0 +1,88 @@
+export type ScientificCursor = Readonly<{
+  runId: string;
+  resultSha256: string;
+  datasetId: string;
+  reciprocalPoint?: Readonly<{ k: readonly [number, number]; basisId: string; bandId?: string; sampleIndex: number }>;
+  spatialPoint?: Readonly<{ xyz: readonly [number, number, number]; coordinateSystemId: string }>;
+  originViewId: string;
+  sequence: number;
+}>;
+
+type CursorDraft = Omit<ScientificCursor, "sequence">;
+type Listener = (cursor: ScientificCursor) => void;
+
+/** One owner allocates sequence numbers. Subscribers never republish projected selections. */
+export class ScientificCursorBus {
+  private current: ScientificCursor | null = null;
+  private sequence = 0;
+  private listeners = new Set<Listener>();
+
+  publish(draft: CursorDraft): ScientificCursor {
+    if (!draft.runId || !/^[a-f0-9]{64}$/.test(draft.resultSha256) || !draft.originViewId ||
+        Number(draft.reciprocalPoint !== undefined) + Number(draft.spatialPoint !== undefined) !== 1)
+      throw new TypeError("Invalid scientific cursor identity or coordinates.");
+    const coordinates = draft.reciprocalPoint?.k ?? draft.spatialPoint?.xyz;
+    if (!coordinates?.every(Number.isFinite)) throw new TypeError("Scientific cursor coordinates must be finite.");
+    const cursor = { ...draft, sequence: ++this.sequence };
+    this.current = cursor;
+    for (const listener of this.listeners) listener(cursor);
+    return cursor;
+  }
+
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    if (this.current) listener(this.current);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  snapshot(): ScientificCursor | null { return this.current; }
+}
+
+export const scientificCursorBus = new ScientificCursorBus();
+
+export type CursorProjection<T> = Readonly<{ status: "matched"; value: T } | {
+  status: "outside" | "ambiguous" | "mismatched-grid" | "incompatible-source";
+  reason: string;
+}>;
+
+/** Exact regular-grid projection; half-way ties are exposed instead of silently rounded. */
+export function projectSpatialCursor(cursor: ScientificCursor, target: Readonly<{
+  runId: string; resultSha256: string; coordinateSystemId: string;
+  shape: readonly [number, number, number]; origin: readonly [number, number, number]; spacing: readonly [number, number, number];
+}>): CursorProjection<[number, number, number]> {
+  if (cursor.runId !== target.runId || cursor.resultSha256 !== target.resultSha256 ||
+      cursor.spatialPoint?.coordinateSystemId !== target.coordinateSystemId)
+    return { status: "incompatible-source", reason: "Run, result or coordinate system differs." };
+  const grid: number[] = [];
+  for (let axis = 0; axis < 3; axis++) {
+    const step = target.spacing[axis];
+    if (!Number.isFinite(step) || step <= 0) return { status: "mismatched-grid", reason: "Invalid target grid spacing." };
+    const fractional = (cursor.spatialPoint.xyz[axis] - target.origin[axis]) / step;
+    if (fractional < -1e-8 || fractional > target.shape[axis] - 1 + 1e-8)
+      return { status: "outside", reason: "Point is outside the target grid." };
+    if (Math.abs(fractional - Math.floor(fractional) - 0.5) < 1e-8)
+      return { status: "ambiguous", reason: "Point is equally close to two grid samples." };
+    const nearest = Math.round(fractional);
+    if (Math.abs(fractional - nearest) > 1e-7)
+      return { status: "mismatched-grid", reason: "Point is not an exact sample on the target grid." };
+    grid.push(nearest);
+  }
+  return { status: "matched", value: grid as [number, number, number] };
+}
+
+export function projectQwzCursor(cursor: ScientificCursor, target: Readonly<{
+  runId: string; resultSha256: string; basisId: string; sampleCount: number;
+  sample: Readonly<{ index: number; k: readonly [number, number] }>;
+}>): CursorProjection<number> {
+  const point = cursor.reciprocalPoint;
+  if (!point || cursor.runId !== target.runId || cursor.resultSha256 !== target.resultSha256 ||
+      point.basisId !== target.basisId)
+    return { status: "incompatible-source", reason: "Run, result or reciprocal basis differs." };
+  if (point.sampleIndex < 0 || point.sampleIndex >= target.sampleCount ||
+      target.sample.index !== point.sampleIndex)
+    return { status: "mismatched-grid", reason: "Sample indices do not align." };
+  if (Math.abs(point.k[0] - target.sample.k[0]) > 1e-8 ||
+      Math.abs(point.k[1] - target.sample.k[1]) > 1e-8)
+    return { status: "mismatched-grid", reason: "Physical k coordinates do not align." };
+  return { status: "matched", value: point.sampleIndex };
+}

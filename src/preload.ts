@@ -4,6 +4,7 @@ import type { FieldSample, FieldSampleRequest, FieldSlice, FieldSliceRequest } f
 import type { FieldSurface, FieldSurfaceRequest } from "./main/quantumScene/fieldSurface";
 import type { FieldVolume, FieldVolumeRequest } from "./main/quantumScene/fieldVolume";
 import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSelection";
+import type { QwzCursorProjection, QwzCursorProjectionRequest } from "./main/quantumScene/cursorProjection";
 import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
 import type { StudySourceRunRequest } from "./main/quantumScene/studySourceRun";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
@@ -570,6 +571,8 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
   scalarSample: (request: ScalarSampleRequest): Promise<ScalarSample> => ipcRenderer.invoke("quantumScenes:scalarSample", request),
   topologySample: (request: TopologySampleRequest): Promise<TopologySample> => ipcRenderer.invoke("quantumScenes:topologySample", request),
+  projectQwzCursor: (request: QwzCursorProjectionRequest): Promise<QwzCursorProjection> =>
+    ipcRenderer.invoke("quantumScenes:projectQwzCursor", request),
   vectorSample: (request: VectorSampleRequest): Promise<VectorSample> => ipcRenderer.invoke("quantumScenes:vectorSample", request),
   pickMatchingReference: (fingerprint: string): Promise<QuantumSceneRelinkResponse> => ipcRenderer.invoke("quantumScenes:pickMatchingReference", fingerprint),
   fieldSlice: (request: FieldSliceRequest): Promise<FieldSlice> => ipcRenderer.invoke("quantumScenes:fieldSlice", request),

@@ -12,6 +12,7 @@ import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantu
 import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
   type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
+import { projectVerifiedQwzCursor, type QwzCursorProjectionRequest } from "../quantumScene/cursorProjection";
 import { bundledQuantumSceneDirectory, bundledQuantumSceneExample,
   listBundledQuantumSceneExamples } from "../quantumScene/examples";
 import { openQuantumProjectPack, writeQuantumProjectPack, type PackReference } from "../quantumScene/portableProject";
@@ -236,6 +237,13 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
     if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during topology selection");
     return inspectVerifiedTopologySample(reopened.imported, args[0] as TopologySampleRequest);
+  });
+  ipcMain.handle("quantumScenes:projectQwzCursor", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) throw new TypeError("QWZ cursor projection requires one request");
+    const active = activeField(event, args[0]);
+    const reopened = await reopenQuantumSceneReference({ directory: active.directory, sceneFingerprint: active.fingerprint });
+    if (verifiedBySender.get(event.sender) !== active) throw new Error("Quantum scene changed during cursor projection");
+    return projectVerifiedQwzCursor(reopened.imported, args[0] as QwzCursorProjectionRequest);
   });
   ipcMain.handle("quantumScenes:vectorSample", async (event, ...args: unknown[]) => {
     if (args.length !== 1) throw new TypeError("Vector selection requires one request");
