@@ -542,6 +542,10 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 });
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
+  pinProjectSources: (projectId: string, references: { directory: string; sceneFingerprint: string }[]) =>
+    ipcRenderer.invoke("quantumScenes:pinProjectSources", projectId, references),
+  openLatestFromLabBus: (): Promise<import("./main/quantumScene/ipcContract").QuantumSceneOpenResponse> =>
+    ipcRenderer.invoke("quantumScenes:openLatestFromLabBus"),
   projectStudySample: (source: { directory: string; sceneFingerprint: string }, sourceObjectId: string,
     sourceSampleIndex: number, target: { directory: string; sceneFingerprint: string }, targetObjectId: string) =>
     ipcRenderer.invoke("quantumScenes:projectStudySample", source, sourceObjectId, sourceSampleIndex, target, targetObjectId),

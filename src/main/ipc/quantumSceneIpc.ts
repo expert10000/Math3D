@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { createHash } from "node:crypto";
 import { importQuantumSceneBundle, type ImportedQuantumScene } from "../quantumScene/importer";
 import { inspectVerifiedFieldSample, renderVerifiedFieldSlice, type FieldSampleRequest, type FieldSliceRequest } from "../quantumScene/fieldSlice";
 import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantumScene/fieldSurface";
@@ -20,6 +21,9 @@ import { readQuantumStudyHandoff, type QuantumStudyLaunch } from "../quantumScen
 import { compareVerifiedQuantumScenes } from "../quantumScene/comparison";
 import { inspectVerifiedTimeFrames } from "../quantumScene/timeFrame";
 import { projectVerifiedHofstadterStudySample } from "../quantumScene/studySelection";
+import { resolveLatestSceneFromLab } from "../quantumScene/integrationBus";
+import { SharedArtifactStore } from "../quantumScene/artifactStore";
+import { boundedRead } from "../quantumScene/bundle";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -51,6 +55,29 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 export function registerQuantumSceneIpc(initialDirectory: string | null = null, initialError: string | null = null,
   initialStudy: QuantumStudyLaunch | null = null): void {
   let studyLaunch = initialStudy;
+  ipcMain.handle("quantumScenes:pinProjectSources", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 2 || typeof args[0] !== "string" ||
+        !args[0].startsWith("math3d:project:") || args[0].length > 100 ||
+        !Array.isArray(args[1]) || args[1].length > 16) throw new Error("Invalid Project source pin request");
+    const references = args[1] as unknown[];
+    const store = new SharedArtifactStore(), hashes: string[] = [];
+    for (const reference of references) {
+      const opened = await reopenQuantumSceneReference(reference);
+      const scene = opened.imported.source;
+      for (const name of ["bundle.json", "scene.json"])
+        hashes.push(await store.put(await boundedRead(join(opened.directory, name))));
+      for (const dataset of scene.datasets)
+        hashes.push(await store.put(await boundedRead(join(opened.directory, dataset.path), dataset.bytes)));
+      const repeat = await reopenQuantumSceneReference(reference);
+      if (sceneFingerprint(repeat.imported) !== sceneFingerprint(opened.imported))
+        throw new Error("Project scene source changed while pinning");
+    }
+    if (hashes.length) {
+      const owner = `project-${createHash("sha256").update(args[0]).digest("hex").slice(0, 32)}`;
+      await store.pin(owner, hashes);
+    }
+    return { pinnedBlobs: new Set(hashes).size };
+  });
   ipcMain.handle("quantumScenes:projectStudySample", async (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length !== 5 || typeof args[1] !== "string" ||
         typeof args[2] !== "number" || typeof args[4] !== "string") throw new Error("Invalid study sample request");
@@ -136,6 +163,17 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), directory: resolve(directory), imported });
     return opened(directory, imported, remembered);
   };
+  ipcMain.handle("quantumScenes:openLatestFromLabBus", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length) return failed(new Error("Invalid integration bus open request"));
+    try {
+      const resolved = await resolveLatestSceneFromLab();
+      const imported = await importQuantumSceneBundle(resolved.directory);
+      if (imported.source.provenance.runId !== resolved.runId ||
+          imported.source.provenance.resultSha256 !== resolved.resultSha256)
+        throw new Error("Bus scene source differs from the verified completed run");
+      return openedFor(event, resolved.directory, imported, false);
+    } catch (error) { return failed(error); }
+  });
   const activeField = (event: Electron.IpcMainInvokeEvent, request: unknown) => {
     if (!trustedSender(event)) throw new Error("Untrusted quantum scene IPC sender");
     if (!request || typeof request !== "object" || Array.isArray(request)) throw new TypeError("Invalid field request");
