@@ -5,7 +5,7 @@ import { deriveVerifiedFieldSurface, type FieldSurfaceRequest } from "../quantum
 import { deriveVerifiedFieldVolume, type FieldVolumeRequest } from "../quantumScene/fieldVolume";
 import type { QuantumSceneOpenResponse, QuantumSceneRelinkResponse } from "../quantumScene/ipcContract";
 import { rememberQuantumScene, reopenRecentQuantumScene, reopenQuantumSceneReference, sceneFingerprint } from "../quantumScene/recent";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { chooseTheoryLabTarget, configureTheoryLabTarget, launchTheoryLab, theoryLabTargetStatus } from "../quantumScene/theoryLabLaunch";
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
 import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantumScene/scalarSelection";
@@ -14,6 +14,7 @@ import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
   type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
 import { bundledQuantumSceneDirectory, bundledQuantumSceneExample,
   listBundledQuantumSceneExamples } from "../quantumScene/examples";
+import { openQuantumProjectPack, writeQuantumProjectPack, type PackReference } from "../quantumScene/portableProject";
 
 export function quantumSceneLaunchDirectory(argv: readonly string[]): string | null {
   const flags = argv.flatMap((arg, index) => arg === "--quantum-scene" ? [index] : []);
@@ -43,6 +44,32 @@ function failed(error: unknown): QuantumSceneOpenResponse {
 }
 
 export function registerQuantumSceneIpc(initialDirectory: string | null = null, initialError: string | null = null): void {
+  ipcMain.handle("quantumScenes:exportPortableProject", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length !== 1 || !args[0] || typeof args[0] !== "object" || Array.isArray(args[0]))
+      return { ok: false, canceled: false, error: "Invalid portable quantum Project request" };
+    const request = args[0] as { projectJson?: unknown; references?: unknown };
+    if (typeof request.projectJson !== "string" || !Array.isArray(request.references))
+      return { ok: false, canceled: false, error: "Invalid portable quantum Project payload" };
+    try {
+      const selected = await dialog.showSaveDialog(BrowserWindow.fromWebContents(event.sender)!, {
+        title: "Export portable quantum Project", defaultPath: "Quantum-Project.qpack",
+      });
+      if (selected.canceled || !selected.filePath) return { ok: false, canceled: true };
+      await writeQuantumProjectPack(request.projectJson, request.references as PackReference[], selected.filePath);
+      return { ok: true, canceled: false, directory: selected.filePath };
+    } catch (error) { return { ok: false, canceled: false, error: String((error as Error).message) }; }
+  });
+  ipcMain.handle("quantumScenes:openPortableProject", async (event, ...args: unknown[]) => {
+    if (!trustedSender(event) || args.length) return { ok: false, canceled: false, error: "Invalid portable quantum Project open request" };
+    try {
+      const selected = await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender)!, {
+        title: "Open portable quantum Project (.qpack folder)", properties: ["openDirectory"],
+      });
+      if (selected.canceled || !selected.filePaths[0]) return { ok: false, canceled: true };
+      const opened = await openQuantumProjectPack(selected.filePaths[0], join(app.getPath("userData"), "quantum-pack-scenes"));
+      return { ok: true, canceled: false, ...opened };
+    } catch (error) { return { ok: false, canceled: false, error: String((error as Error).message) }; }
+  });
   ipcMain.handle("quantumScenes:theoryLabTargetStatus", (event, ...args: unknown[]) => {
     if (!trustedSender(event) || args.length) throw new Error("Invalid Theory Lab installation status request");
     return theoryLabTargetStatus();

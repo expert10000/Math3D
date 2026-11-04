@@ -4,7 +4,7 @@ import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity
 import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, normalizeMixedWorkspaceDocument,
   type MixedWorkspaceDocument } from "./mixedWorkspace";
 import { canonicalJsonByteLength } from "./scientificJobs";
-import { relocateQuantumSceneDocument } from "./quantumSceneDocument";
+import { quantumSceneRole, relocateQuantumSceneDocument } from "./quantumSceneDocument";
 import { normalizeProjectNote, type ProjectNote } from "./projectNotes";
 import type { ValidationResult } from "./validation";
 import { validProjectComposition, type ProjectComposition } from "./projectComposition";
@@ -157,6 +157,19 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       const linked = (value.quantumScenes as ProjectQuantumSceneReference[] | undefined)?.find((item) => item.sceneFingerprint === checkpoint.source.sceneFingerprint);
       if (!linked || linked.directory !== checkpoint.location.directory || linked.format !== checkpoint.source.sceneSchema)
         return { ok: false, errors: ["Quantum-scene document requires its matching external Project reference."] };
+      for (const relation of checkpoint.linkedViews ?? []) {
+        const sibling = workspace.value.entries.find(item => item.module === "quantum" &&
+          item.checkpoint.format === "math3d.quantum-scene-document" &&
+          item.checkpoint.source.sceneFingerprint === relation.sceneFingerprint)?.checkpoint;
+        if (!sibling || sibling.format !== "math3d.quantum-scene-document" ||
+          sibling.source.provenance.runId !== checkpoint.source.provenance.runId ||
+          sibling.source.provenance.resultSha256 !== checkpoint.source.provenance.resultSha256 ||
+          sibling.source.provenance.model !== checkpoint.source.provenance.model ||
+          relation.role !== quantumSceneRole(sibling.source) ||
+          !sibling.linkedViews?.some(back => back.sceneFingerprint === checkpoint.source.sceneFingerprint &&
+            back.role === quantumSceneRole(checkpoint.source)))
+          return { ok: false, errors: ["Quantum-scene same-result relation is missing, mismatched or not reciprocal."] };
+      }
     }
     if (canonicalJsonByteLength(value.metadata) > 32 * 1024) return { ok: false, errors: ["Project metadata exceeds 32 KiB."] };
     if ("documents" in value.metadata) {

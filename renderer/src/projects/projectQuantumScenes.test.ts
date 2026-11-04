@@ -3,6 +3,8 @@ import { adoptMixedWorkspaceProject, createEmptyGraph2DDocument, createGraph2DWo
   instantiateMath3DProjectTemplate,
   normalizeMath3DProject, parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference } from "@math3d/core";
+import { linkQuantumSceneDocuments, updateQuantumSceneView } from "@math3d/core";
+import { deleteProjectDocument } from "@math3d/core";
 import { loadLibraryProject, projectPayloadKey, PROJECT_LIBRARY_KEY, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
 import { inspectProjectCompatibility, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
 import { verifyProjectQuantumSceneDocuments } from "./quantumSceneAdmission";
@@ -31,6 +33,44 @@ const store = () => {
 };
 
 describe("read-only Project quantum-scene links", () => {
+  it("persists reciprocal QWZ scene relations and independent view state beside native Geometry", () => {
+    const base = instantiateMath3DProjectTemplate("geometry-note-pins", "qwz-multiview");
+    const runId = "run-05ce1036d70c466eb4f900944a85c474";
+    const resultSha256 = "01eb644e4a07df9f4aa6f49ce27a61a1e98d920aabd794962f57420ca2d2decf";
+    const make = (fingerprint: string, role: "bands" | "curvature") => createQuantumSceneDocument({
+      ...nativeDocument().source, sceneId: `qwz-${role}`, sceneFingerprint: fingerprint,
+      provenance: { ...nativeDocument().source.provenance, runId, model: "qwz", resultSha256 },
+      objects: [{ id: role === "bands" ? "band-0" : "berry-curvature", kind: "mesh", label: role }],
+    }, `C:\\${role}.qscene`, role);
+    const [curvature, bands] = linkQuantumSceneDocuments([
+      updateQuantumSceneView(make("d".repeat(64), "curvature"), { selectedObjectId: "berry-curvature", sampleIndex: 220 }),
+      updateQuantumSceneView(make("e".repeat(64), "bands"), { selectedObjectId: "band-0", sampleIndex: 0 }),
+    ]);
+    let project = base;
+    for (const document of [curvature, bands]) project = upsertMath3DProjectQuantumScene(project, {
+      format: "quantum-scene/v1", title: document.metadata.title, directory: document.location.directory,
+      sceneFingerprint: document.source.sceneFingerprint,
+    });
+    const workspace = createMixedWorkspaceDocument({ ...project.workspace,
+      entries: [...project.workspace.entries, ...[curvature, bands].map(document =>
+        ({ module: "quantum" as const, checkpoint: document, expected: document.identity, replay: null }))],
+      activeDocumentIds: [...project.workspace.activeDocumentIds, curvature.identity.id, bands.identity.id] });
+    project = parseMath3DProject(serializeMath3DProject(replaceMath3DProjectWorkspace(project, workspace)));
+    expect(project.workspace.entries.some(entry => entry.module === "geometry")).toBe(true);
+    const saved = project.workspace.entries.filter(entry => entry.module === "quantum")
+      .map(entry => entry.checkpoint).filter(entry => entry.format === "math3d.quantum-scene-document");
+    expect(saved.map(entry => entry.linkedViews?.[0].role)).toEqual(["bands", "curvature"]);
+    expect(saved.map(entry => entry.view?.sampleIndex)).toEqual([220, 0]);
+    expect(saved.map(entry => entry.source.sceneFingerprint)).toEqual(["d".repeat(64), "e".repeat(64)]);
+    const tampered = structuredClone(project);
+    const bad = tampered.workspace.entries.find(entry => entry.module === "quantum")!;
+    (bad.checkpoint as any).linkedViews[0].sceneFingerprint = "f".repeat(64);
+    expect(normalizeMath3DProject(tampered).ok).toBe(false);
+    const remaining = deleteProjectDocument(project, bands.identity.id).workspace.entries
+      .find(entry => entry.expected.id === curvature.identity.id)?.checkpoint;
+    expect(remaining?.format).toBe("math3d.quantum-scene-document");
+    if (remaining?.format === "math3d.quantum-scene-document") expect(remaining.linkedViews).toBeUndefined();
+  });
   it("saves a linked scene without dropping a saved Geometry document while its editor is not loaded", () => {
     const original = instantiateMath3DProjectTemplate("geometry-note-pins", "quantum-save-recovery");
     const linked = upsertMath3DProjectQuantumScene(original, reference);

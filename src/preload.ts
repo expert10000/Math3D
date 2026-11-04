@@ -542,6 +542,13 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   configureTheoryLabTarget: (kind: "installed" | "checkout"): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
     ipcRenderer.invoke("quantumScenes:configureTheoryLabTarget", kind),
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
+  exportPortableProject: (request: { projectJson: string; references: { sceneFingerprint: string; directory: string }[] }): Promise<
+    { ok: true; canceled: false; directory: string } | { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:exportPortableProject", request),
+  openPortableProject: (): Promise<
+    { ok: true; canceled: false; projectJson: string; references: { sceneFingerprint: string; directory: string }[] } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openPortableProject"),
   examples: (): Promise<QuantumSceneExampleSummary[]> => ipcRenderer.invoke("quantumScenes:examples"),
   openExample: (id: string): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openExample", id),
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),

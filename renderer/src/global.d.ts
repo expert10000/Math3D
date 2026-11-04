@@ -706,6 +706,11 @@ declare global {
       configureTheoryLabTarget: (kind: "installed" | "checkout") => Promise<{ state: "ready" | "unconfigured" | "invalid";
         source: "saved" | "environment" | null; kind?: "installed" | "checkout"; path?: string; error?: string }>;
       open: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      exportPortableProject: (request: { projectJson: string; references: { sceneFingerprint: string; directory: string }[] }) => Promise<
+        { ok: true; canceled: false; directory: string } | { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      openPortableProject: () => Promise<
+        { ok: true; canceled: false; projectJson: string; references: { sceneFingerprint: string; directory: string }[] } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       examples: () => Promise<{ id: string; label: string; description: string; model: "SSH" | "Rice–Mele" | "QWZ" | "BHZ" | "BBH" | "Kitaev" | "Weyl" | "Nodal" | "Landau" | "Hofstadter" | "Hydrogenic" }[]>;
       openExample: (id: string) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;

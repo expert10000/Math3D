@@ -7,6 +7,8 @@
 **Scope:** standalone Quantum Hamiltonian Lab, Python backend, verified scientific artifacts, Math3D quantum scene handler, shared scientific workspace and future scientific-runtime integration<br>
 **Review basis:** Math3D `origin/main` at `a5af9483`; Theory Lab `main` at `3c883fa4`; current source, project roadmaps and the SHA-256-checked visual review archive
 
+**QI-04–06 QWZ implementation note (2026-11-04):** Theory Lab now has versioned QWZ scene recipes with byte-stable golden manifests. Math3D persists reciprocal same-result links for two scene documents and opens a relocated content-addressed `.qpack` through the Project panel. See [`qwz-scene-recipes.md`](https://github.com/expert10000/theory-lab/blob/main/docs/qwz-scene-recipes.md) and [`quantum-qi05-06-project-portability.md`](quantum-qi05-06-project-portability.md). Model-wide recipe admission, scientific-scene pack members and general artifact lifecycle remain later work.
+
 ---
 
 ## 0. Executive direction
