@@ -16,6 +16,8 @@ export type SageOperation =
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
+  | "sage.numberField.elementDossier"
+  | "sage.numberField.primeDecomposition"
   | "sage.topology.integer_homology"
   | "sage.complex.analyze"
   | "sage.algebra.reconstruct"
@@ -29,6 +31,7 @@ export type SageOperation =
 
 export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" |
   "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
+  "sage.numberField.elementDossier" | "sage.numberField.primeDecomposition" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" |
   "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension" |
   "sage.ideal.syzygies" | "sage.ideal.hilbertSeries">;
@@ -86,6 +89,8 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.matrix.integer_forms",
   "sage.algebra.reconstruct",
   "sage.algebra.inspectDomains",
+  "sage.numberField.elementDossier",
+  "sage.numberField.primeDecomposition",
   "sage.ideal.groebner",
   "sage.ideal.eliminate",
   "sage.ideal.membership",

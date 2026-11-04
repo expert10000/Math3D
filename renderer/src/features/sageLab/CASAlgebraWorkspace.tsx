@@ -11,8 +11,9 @@ import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
 import { createQuotientStarter, describeStructure, resolveStructureSelection, selectedStructure,
   structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
-type Props = Omit<SageServicesWorkspaceProps, "structures"> & {
+export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structures"> & {
   onOpenConsole: () => void;
+  workspaceContext?: "cas" | "number_theory";
   project: Math3DProject | null;
   onCreateStructure: (record: AlgebraObjectRecord) => void | Promise<void>;
   onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
@@ -35,7 +36,7 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 };
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
-  onAppendRecipeEvidence, onOpenProjects, ...props }: Props) {
+  onAppendRecipeEvidence, onOpenProjects, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
@@ -194,9 +195,11 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   </dl> : <div role="status" style={{ fontSize: 12 }}>Select a structure in the Project explorer.</div>;
 
   return <SageServicesWorkspace {...props} onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
-    context="cas" title="CAS / Algebra"
-    description="Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations."
-    testId="cas-algebra-workspace" structures={{ projectId: project?.identity.id ?? null,
+    context={workspaceContext} title={workspaceContext === "cas" ? "CAS / Algebra" : "Number Theory"}
+    description={workspaceContext === "cas"
+      ? "Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations."
+      : "Exact arithmetic and saved number-field objects in the shared Project algebra registry."}
+    testId={workspaceContext === "cas" ? "cas-algebra-workspace" : "number-theory-workspace"} structures={{ projectId: project?.identity.id ?? null,
       projectTitle: project?.metadata.title ?? null,
       selectionKey: selection ? `${selection.objectId}@${selection.revision}` : null,
       explorer, dossier, inspector,

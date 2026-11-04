@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, createAlgebraObjectRecord, createMath3DProject,
+import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput,
+  createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
@@ -20,6 +21,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.numberTheory.gcd", "sage.numberTheory.modInverse",
   "sage.algebra.reconstruct",
   "sage.algebra.inspectDomains",
+  "sage.numberField.elementDossier", "sage.numberField.primeDecomposition",
   "sage.polynomial.dossier",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
@@ -37,9 +39,25 @@ const algebraParams = (domains = false) => {
   return JSON.parse(JSON.stringify(domains ? buildSageAlgebraDomainInput(project, ref, ref)
     : buildSageAlgebraReconstructionInput(project, ref))) as Record<string, unknown>;
 };
+const numberFieldParams = (operation: "sage.numberField.elementDossier" | "sage.numberField.primeDecomposition") => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-d03-broker" });
+  const q = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "Q"),
+    label: "Q", revision: 1, definition: { kind: "rational-field" } });
+  project = upsertMath3DProjectAlgebraObject(project, q);
+  const k = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "K"),
+    label: "K", revision: 1, definition: { kind: "number-field", baseField: { objectId: q.id, revision: 1 },
+      definingPolynomial: ["-5", "0", "1"], generator: "a" } });
+  project = upsertMath3DProjectAlgebraObject(project, k);
+  return buildSageNumberFieldInput(project, { objectId: k.id, revision: 1 }, operation,
+    operation === "sage.numberField.elementDossier" ? ["1", "1"] : 5) as unknown as Record<string, unknown>;
+};
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
   operation === "sage.algebra.reconstruct" ? algebraParams()
     : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
+    : operation === "sage.numberField.elementDossier" || operation === "sage.numberField.primeDecomposition"
+      ? numberFieldParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
       matrix: [["1", "2"], ["2", "4"]] }
     : operation === "sage.matrix.integer_forms" ? { format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,

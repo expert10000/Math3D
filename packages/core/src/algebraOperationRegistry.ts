@@ -13,8 +13,11 @@ import { buildSageIdealInput, parseSageIdealResult, type SageIdealResult,
   type SageIdealOperation } from "./sageIdealOperations";
 import type { SageIdealBudgetProfile } from "./sageIdealBudgets";
 import { isProvablyHomogeneousIdeal } from "./algebraIdealGrading";
+import { buildSageNumberFieldInput, parseSageNumberFieldInput, parseSageNumberFieldResult,
+  type SageNumberFieldOperation, type SageNumberFieldResult } from "./sageNumberFieldOperations";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
+  SageNumberFieldOperation |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
   "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" | SageIdealOperation;
@@ -24,6 +27,8 @@ export type AlgebraOperationArguments = {
   "sage.algebra.inspectDomains": Readonly<{ other: AlgebraObjectRef }>;
   "sage.numberTheory.gcd": Readonly<{ values: readonly string[] }>;
   "sage.numberTheory.modInverse": Readonly<{ a: string }>;
+  "sage.numberField.elementDossier": Readonly<{ element: readonly [string, string] }>;
+  "sage.numberField.primeDecomposition": Readonly<{ prime: number }>;
   "sage.polynomial.factor": Readonly<{ polynomial: string }>;
   "sage.polynomial.roots_exact": Readonly<{ polynomial: string }>;
   "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
@@ -38,7 +43,7 @@ export type AlgebraOperationArguments = {
   "sage.ideal.hilbertSeries": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
-  SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult |
+  SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -68,6 +73,10 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker", "private"], "math3d.algebra-gcd-arguments/v1", "sage.numberTheory.gcd/result-v1"),
   definition("sage.numberTheory.modInverse", "Modular inverse", "number-theory", ["modular-ring"], "any", "number-theory.mod-inverse",
     ["docker", "private"], "math3d.algebra-mod-inverse-arguments/v1", "sage.numberTheory.modInverse/result-v1"),
+  definition("sage.numberField.elementDossier", "Norm, trace and embeddings", "number-theory", ["number-field"], "any", "number-field.element-dossier",
+    ["docker"], "math3d.sage-number-field-operation/v1", "math3d.sage-number-field-result/v1"),
+  definition("sage.numberField.primeDecomposition", "Prime ideal decomposition", "number-theory", ["number-field"], "any", "number-field.prime-decomposition",
+    ["docker"], "math3d.sage-number-field-operation/v1", "math3d.sage-number-field-result/v1"),
   definition("sage.polynomial.factor", "Factor over QQ", "polynomial", POLY, "QQ-polynomial", "polynomial.factor",
     ["docker"], "math3d.algebra-polynomial-arguments/v1", "sage.polynomial.factor/result-v1"),
   definition("sage.polynomial.roots_exact", "Exact roots over QQ", "polynomial", POLY, "QQ-univariate-polynomial", "polynomial.roots.exact",
@@ -206,6 +215,14 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
       throw new TypeError("Modular inverse requires one canonical signed integer in the selected modular ring.");
     }
     params = { a: input.a, modulus: record.definition.modulus };
+  } else if (id === "sage.numberField.elementDossier" || id === "sage.numberField.primeDecomposition") {
+    if (id === "sage.numberField.elementDossier") {
+      if (!exact(input, ["element"])) throw new TypeError("Choose two integer coefficients in the field power basis.");
+      params = buildSageNumberFieldInput(project, target, id, input.element as readonly [string, string]) as unknown as Record<string, unknown>;
+    } else {
+      if (!exact(input, ["prime"])) throw new TypeError("Choose a rational prime from 2 to 97.");
+      params = buildSageNumberFieldInput(project, target, id, input.prime as number) as unknown as Record<string, unknown>;
+    }
   } else if (id === "sage.matrix.linear_dossier") {
     if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
     params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
@@ -251,6 +268,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     parseSageAlgebraReconstructionInput(request.params));
   if (request.operation === "sage.algebra.inspectDomains") return parseSageAlgebraDomainResult(value,
     parseSageAlgebraDomainInput(request.params));
+  if (request.operation === "sage.numberField.elementDossier" || request.operation === "sage.numberField.primeDecomposition")
+    return parseSageNumberFieldResult(value, parseSageNumberFieldInput(request.params, request.operation), request.operation);
   if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
     parseSageMatrixDossierInput(request.params));
   if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,

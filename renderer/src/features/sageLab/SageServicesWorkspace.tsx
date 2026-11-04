@@ -73,7 +73,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
     </div>
     <div className={`sage-workspace-grid${structures ? " sage-workspace-grid-structures" : ""}`}>
       <section aria-label={`${title} ${structures ? "Tools" : "Services"}`} className="sage-workspace-card">
-        {structures ? <nav aria-label="CAS / Algebra sections" className="sage-workspace-tabs">
+        {structures ? <nav aria-label={`${title} sections`} className="sage-workspace-tabs">
           <button type="button" style={button} aria-pressed={leftTab === "structures"} onClick={() => setLeftTab("structures")}>Structures</button>
           <button type="button" style={button} aria-pressed={leftTab === "operations"} onClick={() => setLeftTab("operations")}>Operations</button>
           <button type="button" style={button} disabled={!structures.recipes} aria-pressed={leftTab === "recipes"}
@@ -85,7 +85,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
           <ScientificServicesPanel context={context} onResult={(result) => { onResult(result); setResultSource("freeform"); setRightTab("results"); }} onOpenRuntimes={onOpenComputeRuntimes} />
         </>}
       </section>
-      {structures && <section aria-label="CAS / Algebra structure dossier" className="sage-workspace-card" data-testid="cas-structure-dossier">
+      {structures && <section aria-label={`${title} structure dossier`} className="sage-workspace-card" data-testid="cas-structure-dossier">
         {structures.dossier}
       </section>}
       <section aria-label={`${title} Inspector`} className="sage-workspace-card">

@@ -139,6 +139,27 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       if (mode !== "FAILED") mode = valid ? "CHECKED" : "FAILED";
       break;
     }
+    case "sage.numberField.elementDossier": {
+      const embeddings = Array.isArray(result.embeddings) ? result.embeddings as Record<string, unknown>[] : [];
+      facts.push(fact("Element coefficients", list(result.element)), fact("Norm to QQ", text(result.norm)),
+        fact("Trace to QQ", text(result.trace)), fact("Power basis", list(result.basis)),
+        fact("Base, relative, absolute degrees", [text(result.baseDegree), text(result.relativeDegree), text(result.absoluteDegree)]),
+        fact("Embeddings", embeddings.map((item) => `${text(item.generatorImage)} → ${text(item.elementImage)}`)));
+      checks.push(check("Quadratic identities", "checked",
+        "Exact norm, trace, basis, embeddings and degree product match the pinned defining polynomial."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
+    case "sage.numberField.primeDecomposition": {
+      const factors = Array.isArray(result.factors) ? result.factors as Record<string, unknown>[] : [];
+      facts.push(fact("Rational prime", text(result.prime)), fact("Splitting", text(result.splitting)),
+        fact("Prime ideal factors", factors.map((item) => `${text(item.ideal)} · e=${text(item.ramificationIndex)}, f=${text(item.residueDegree)}, N=${text(item.norm)}`)),
+        fact("Degree check", text(result.degreeCheck)));
+      checks.push(check("Prime decomposition invariants", "checked",
+        "Ramification indices, residue degrees and norms satisfy the quadratic degree and discriminant test."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.polynomial.factor":
       facts.push(fact("Polynomial", text(params.polynomial)), fact("Factorization", text(result.text)));
       checks.push(check("Factor identity", "reported", "Factor text was returned by Sage; multiplication back to the input is not recorded."));

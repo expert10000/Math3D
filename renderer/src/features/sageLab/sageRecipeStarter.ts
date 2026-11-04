@@ -31,6 +31,9 @@ export const createSageRecipeStarter = (project: Math3DProject, target: AlgebraO
     add("matrix-dossier", "sage.matrix.linear_dossier", { matrix: [["1", "2"], ["2", "4"]] }, ["construct"]);
   } else if (record.kind === "modular-ring") {
     add("inverse", "sage.numberTheory.modInverse", { a: "1" }, ["construct"]);
+  } else if (record.kind === "number-field") {
+    add("element", "sage.numberField.elementDossier", { element: ["1", "1"] }, ["construct"]);
+    add("prime-decomposition", "sage.numberField.primeDecomposition", { prime: 5 }, ["construct"]);
   } else if (record.definition.kind === "polynomial-ring") {
     const [first, second] = record.definition.variables;
     const polynomial = `${first}^2-1`;

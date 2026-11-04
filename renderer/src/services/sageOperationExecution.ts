@@ -6,6 +6,7 @@ import {
   parseSageAlgebraDomainInput,
   parseSageMatrixDossierInput,
   parseSageIntegerMatrixFormsInput,
+  parseSageNumberFieldInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -43,6 +44,8 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.groebner.compute": { type: "algebra.groebner", label: "Gröbner basis", cancelled: "Sage Gröbner job cancelled." },
   "sage.numberTheory.gcd": { type: "number-theory.gcd", label: "greatest common divisor", cancelled: "Sage number theory job cancelled." },
   "sage.numberTheory.modInverse": { type: "number-theory.mod-inverse", label: "modular inverse", cancelled: "Sage number theory job cancelled." },
+  "sage.numberField.elementDossier": { type: "number-field.element-dossier", label: "norm, trace and embeddings", cancelled: "Sage number-field job cancelled." },
+  "sage.numberField.primeDecomposition": { type: "number-field.prime-decomposition", label: "prime ideal decomposition", cancelled: "Sage number-field job cancelled." },
   "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
   "sage.algebra.inspectDomains": { type: "algebra.domains.inspect", label: "algebra parent inspection", cancelled: "Sage algebra domain inspection cancelled." },
   "sage.ideal.groebner": { type: "ideal.groebner", label: "saved ideal Gröbner basis", cancelled: "Sage ideal job cancelled." },
@@ -122,6 +125,8 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       ? request.backend === "docker" && !!parseSageAlgebraReconstructionInput(params)
     : request.operation === "sage.algebra.inspectDomains"
       ? request.backend === "docker" && !!parseSageAlgebraDomainInput(params)
+    : request.operation === "sage.numberField.elementDossier" || request.operation === "sage.numberField.primeDecomposition"
+      ? request.backend === "docker" && !!parseSageNumberFieldInput(params, request.operation)
     : request.operation === "sage.matrix.linear_dossier"
       ? request.backend === "docker" && !!parseSageMatrixDossierInput(params)
     : request.operation === "sage.matrix.integer_forms"

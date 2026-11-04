@@ -19,6 +19,7 @@ export * from "./analysisResults";
 export * from "./algebraObjects";
 export * from "./algebraIdealGenerators";
 export * from "./quadraticNumberField";
+export * from "./sageNumberFieldOperations";
 export * from "./sageIdealOperations";
 export * from "./sageIdealBudgets";
 export * from "./documentIdentity";
