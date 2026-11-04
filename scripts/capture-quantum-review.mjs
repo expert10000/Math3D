@@ -29,6 +29,13 @@ try {
       const filename = `${String(index + 1).padStart(2, "0")}-${example.id}.png`;
       await page.screenshot({ path: join(output, filename), animations: "disabled" });
       record.file = filename;
+      if (index === 0) {
+        const guidance = page.getByText("A pinned example may not have that run in your Lab profile", { exact: false });
+        await guidance.scrollIntoViewIfNeeded();
+        const variant = "01-qwz-curvature-source-run-guidance.png";
+        await page.screenshot({ path: join(output, variant), animations: "disabled" });
+        (record.variants ??= []).push(variant);
+      }
       if (example.model === "Hydrogenic") {
         const geometry = page.getByTestId("quantum-scene-geometry");
         for (const [view, suffix] of [["Volume", "volume"], ["Density surface", "density-surface"]]) {
