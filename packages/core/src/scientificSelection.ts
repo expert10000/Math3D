@@ -33,7 +33,22 @@ export type ScientificSelectionGeometry =
   | Readonly<{ kind: "plane-region"; normalAxis: 0 | 1 | 2;
       coordinate: number; bounds: readonly [readonly [number, number], readonly [number, number]];
       /** Present only when a Graph profile saved a row/column sampling axis. */
-      sampleAxis?: 0 | 1 | 2 }>;
+      sampleAxis?: 0 | 1 | 2 }>
+  | Readonly<{ kind: "oriented-plane-region"; normalAxis: 0 | 1 | 2;
+      coordinate: number; bounds: readonly [readonly [number, number], readonly [number, number]];
+      normalSign: 1 | -1; boundary: "right-hand" }>
+  | Readonly<{ kind: "oriented-box-region";
+      bounds: readonly [readonly [number, number], readonly [number, number], readonly [number, number]];
+      normal: "outward" | "inward" }>
+  | Readonly<{ kind: "trajectory-seed-recipe";
+      recipe: Readonly<{ kind: "point-set"; points: readonly (readonly [number, number, number])[] }> |
+        Readonly<{ kind: "line"; start: readonly [number, number, number];
+          end: readonly [number, number, number]; count: number }> |
+        Readonly<{ kind: "ring"; center: readonly [number, number, number];
+          normalAxis: 0 | 1 | 2; radius: number; count: number }> |
+        Readonly<{ kind: "plane"; normalAxis: 0 | 1 | 2; coordinate: number;
+          bounds: readonly [readonly [number, number], readonly [number, number]];
+          counts: readonly [number, number] }> }>;
 export type ScientificSelection = Readonly<{
   format: typeof SCIENTIFIC_SELECTION_FORMAT;
   schemaVersion: typeof SCIENTIFIC_SELECTION_SCHEMA_VERSION;
@@ -59,6 +74,26 @@ const axis = (value: unknown, count: number): value is number =>
 const bounds = (value: unknown): value is readonly [readonly [number, number], readonly [number, number]] =>
   Array.isArray(value) && value.length === 2 && value.every(pair =>
     Array.isArray(pair) && pair.length === 2 && finite(pair[0]) && finite(pair[1]) && pair[0] < pair[1]);
+const vec3 = (value: unknown): value is readonly [number, number, number] =>
+  Array.isArray(value) && value.length === 3 && value.every(v => finite(v) && Math.abs(v) <= 1e9);
+const seedRecipe = (value: unknown): boolean => {
+  if (!record(value)) return false;
+  if (value.kind === "point-set") return exact(value, ["kind", "points"]) &&
+    Array.isArray(value.points) && value.points.length >= 1 && value.points.length <= 32 &&
+    value.points.every(vec3);
+  if (value.kind === "line") return exact(value, ["kind", "start", "end", "count"]) &&
+    vec3(value.start) && vec3(value.end) && value.start.some((v, i) => v !== (value.end as number[])[i]) &&
+    Number.isInteger(value.count) && Number(value.count) >= 2 && Number(value.count) <= 32;
+  if (value.kind === "ring") return exact(value, ["kind", "center", "normalAxis", "radius", "count"]) &&
+    vec3(value.center) && axis(value.normalAxis, 3) && finite(value.radius) &&
+    value.radius > 0 && Number.isInteger(value.count) && Number(value.count) >= 3 && Number(value.count) <= 32;
+  if (value.kind === "plane") return exact(value, ["kind", "normalAxis", "coordinate", "bounds", "counts"]) &&
+    axis(value.normalAxis, 3) && finite(value.coordinate) && bounds(value.bounds) &&
+    Array.isArray(value.counts) && value.counts.length === 2 &&
+    value.counts.every(v => Number.isInteger(v) && v >= 2 && v <= 8) &&
+    value.counts[0] * value.counts[1] <= 32;
+  return false;
+};
 const legacySlot = (value: unknown): value is ScientificLegacySelectionSlot =>
   record(value) && value.kind === "legacy-slot" &&
   exact(value, ["kind", "ownerDocumentId", "path"], ["objectId"]) &&
@@ -118,12 +153,25 @@ export const normalizeScientificSelection = (value: unknown): ValidationResult<S
           coordinate === null : finite(coordinate)) &&
         Array.isArray(geometry.extent) && geometry.extent.length === 2 &&
         finite(geometry.extent[0]) && finite(geometry.extent[1]) && geometry.extent[0] < geometry.extent[1] ||
-      (geometry.kind === "orthogonal-plane" || geometry.kind === "plane-region") && count === 3 &&
+      (geometry.kind === "orthogonal-plane" || geometry.kind === "plane-region" ||
+        geometry.kind === "oriented-plane-region") && count === 3 &&
         exact(geometry, ["kind", "normalAxis", "coordinate", "bounds"],
-          geometry.kind === "plane-region" ? ["sampleAxis"] : []) &&
+          geometry.kind === "plane-region" ? ["sampleAxis"] :
+          geometry.kind === "oriented-plane-region" ? ["normalSign", "boundary"] : []) &&
         axis(geometry.normalAxis, 3) && finite(geometry.coordinate) && bounds(geometry.bounds) &&
         (geometry.kind !== "plane-region" || geometry.sampleAxis === undefined ||
-          axis(geometry.sampleAxis, 3) && geometry.sampleAxis !== geometry.normalAxis)))
+          axis(geometry.sampleAxis, 3) && geometry.sampleAxis !== geometry.normalAxis) &&
+        (geometry.kind !== "oriented-plane-region" ||
+          (geometry.normalSign === 1 || geometry.normalSign === -1) &&
+          geometry.boundary === "right-hand") ||
+      geometry.kind === "oriented-box-region" && count === 3 &&
+        exact(geometry, ["kind", "bounds", "normal"]) &&
+        Array.isArray(geometry.bounds) && geometry.bounds.length === 3 &&
+        geometry.bounds.every(pair => Array.isArray(pair) && pair.length === 2 &&
+          finite(pair[0]) && finite(pair[1]) && pair[0] < pair[1]) &&
+        (geometry.normal === "outward" || geometry.normal === "inward") ||
+      geometry.kind === "trajectory-seed-recipe" && count === 3 &&
+        exact(geometry, ["kind", "recipe"]) && seedRecipe(geometry.recipe)))
     return { ok: false, errors: ["Invalid scientific selection geometry."] };
   try {
     const serialized = canonicalJsonStringify(value);

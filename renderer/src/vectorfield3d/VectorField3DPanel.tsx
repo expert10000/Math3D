@@ -88,6 +88,8 @@ import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
 import { FieldExplorerProjectHierarchy } from "./FieldExplorerProjectHierarchy";
 import { VectorField3DLineIntegralPanel } from "./VectorField3DLineIntegralPanel";
+import { VectorField3DRegionIntegralPanel } from "./VectorField3DRegionIntegralPanel";
+import { VectorField3DTrajectoryPromotionPanel } from "./VectorField3DTrajectoryPromotionPanel";
 import "./fieldExplorerHierarchy.css";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -134,6 +136,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
   onSaveLineIntegralSelection, onSaveLineIntegralResult,
+  onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
+  onSaveTrajectorySeeds, onPromoteTrajectoryCurve,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
@@ -186,6 +190,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   onSaveLineIntegralSelection?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
   onSaveLineIntegralResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onSaveRegionIntegralSelection?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
+  onSaveRegionIntegralResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onSaveTrajectorySeeds?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
+  onPromoteTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
     surface: VectorField3DIsosurface) => void;
@@ -1985,6 +1993,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       }} />
     {!fieldLayer && <VectorField3DLineIntegralPanel document={document} project={project}
       onSaveSelection={onSaveLineIntegralSelection} onSaveResult={onSaveLineIntegralResult} />}
+    {!fieldLayer && <VectorField3DRegionIntegralPanel document={document} project={project}
+      onSaveSelection={onSaveRegionIntegralSelection} onSaveResult={onSaveRegionIntegralResult} />}
+    {!fieldLayer && <VectorField3DTrajectoryPromotionPanel document={document} project={project}
+      onSaveSeeds={(next, selection) => { onSaveTrajectorySeeds?.(next, selection); setDocument(next); }}
+      onPromoteCurve={onPromoteTrajectoryCurve} />}
     <section className="scientific-field-explorer-library" aria-label="Dataset library"
       data-testid="scientific-field-explorer-library">
       <h4>Dataset library</h4>

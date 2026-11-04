@@ -137,6 +137,8 @@ export * from "./scientificSelection";
 export * from "./scientificSelectionLegacy";
 export * from "./projectScientificSelections";
 export * from "./vectorField3DLineIntegral";
+export * from "./vectorField3DRegionIntegrals";
+export * from "./vectorField3DTrajectoryPromotion";
 export * from "./derivedFieldDocument";
 export * from "./projectDerivedFields";
 export * from "./derivedFieldProfileResult";

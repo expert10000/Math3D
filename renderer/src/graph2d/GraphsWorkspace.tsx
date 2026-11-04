@@ -252,6 +252,13 @@ type Props = {
     selection: import("@math3d/core").ScientificSelection) => void;
   onSaveVectorField3DLineIntegralResult?: (document: VectorField3DDocument,
     result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DRegionIntegralSelection?: (document: VectorField3DDocument,
+    selection: import("@math3d/core").ScientificSelection) => void;
+  onSaveVectorField3DRegionIntegralResult?: (document: VectorField3DDocument,
+    result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DTrajectorySeeds?: (document: VectorField3DDocument,
+    selection: import("@math3d/core").ScientificSelection) => void;
+  onPromoteVectorField3DTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
     surface: import("@math3d/core").VectorField3DIsosurface) => void;
@@ -278,6 +285,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   savedVectorField3DRegionResults, vectorField3DRegionStatuses,
   onSaveVectorField3DRegionResult, onOpenVectorField3DProjectResults,
   onSaveVectorField3DLineIntegralSelection, onSaveVectorField3DLineIntegralResult,
+  onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
+  onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
@@ -3868,6 +3877,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveRegionResult={onSaveVectorField3DRegionResult}
           onSaveLineIntegralSelection={onSaveVectorField3DLineIntegralSelection}
           onSaveLineIntegralResult={onSaveVectorField3DLineIntegralResult}
+          onSaveRegionIntegralSelection={onSaveVectorField3DRegionIntegralSelection}
+          onSaveRegionIntegralResult={onSaveVectorField3DRegionIntegralResult}
+          onSaveTrajectorySeeds={onSaveVectorField3DTrajectorySeeds}
+          onPromoteTrajectoryCurve={onPromoteVectorField3DTrajectoryCurve}
           onOpenProjectResults={onOpenVectorField3DProjectResults}
           onPromoteIsosurface={onPromoteVectorField3DIsosurface}
           isGraphLineImported={(selection, vectorDocument) => {

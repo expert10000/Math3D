@@ -12,6 +12,9 @@ const selectionSummary = (item: ScientificSelection) => {
     case "axis-line": return `Line · ${axis(geometry.varyingAxis)} ${geometry.extent[0]}…${geometry.extent[1]}`;
     case "orthogonal-plane": return `Plane · ${axis(geometry.normalAxis)} = ${geometry.coordinate}`;
     case "plane-region": return `Planar region · ${axis(geometry.normalAxis)} = ${geometry.coordinate}`;
+    case "oriented-plane-region": return `Oriented plane · ${axis(geometry.normalAxis)} = ${geometry.coordinate} · ${geometry.normalSign > 0 ? "+" : "−"} normal`;
+    case "oriented-box-region": return `Closed box · ${geometry.normal} normal`;
+    case "trajectory-seed-recipe": return `Trajectory seeds · ${geometry.recipe.kind}`;
   }
 };
 const selectionGeometry = (item: ScientificSelection) => {
@@ -26,6 +29,10 @@ const selectionGeometry = (item: ScientificSelection) => {
   if (geometry.kind === "axis-line") return `Extent ${geometry.extent[0]}…${geometry.extent[1]}; ` +
     geometry.fixedCoordinates.flatMap((value, index) => value === null ? [] :
       [coordinate(index, value)]).join(" · ");
+  if (geometry.kind === "oriented-box-region") return `${geometry.normal} boundary; bounds ` +
+    geometry.bounds.map((bounds, index) => `${frame.axes[index]?.name ?? `axis ${index + 1}`} ${
+      bounds[0]}…${bounds[1]}`).join(" · ");
+  if (geometry.kind === "trajectory-seed-recipe") return `${geometry.recipe.kind} seed recipe`;
   const planeAxes = [0, 1, 2].filter(index => index !== geometry.normalAxis);
   return `${coordinate(geometry.normalAxis, geometry.coordinate)}; bounds ` +
     geometry.bounds.map((bounds, index) => `${frame.axes[planeAxes[index]!]?.name ??
