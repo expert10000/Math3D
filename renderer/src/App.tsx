@@ -76917,7 +76917,7 @@ case "mobius":
     setGeometryViewerControlsOpen(previous.controlsOpen);
     setWorkspaceDockLayouts(layouts => ({ ...layouts, geometry: previous.layout }));
   }, [projectsOpen]);
-  const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number } | null>(null);
+  const [projectNoteRequest, setProjectNoteRequest] = useState<{ id: string; token: number; openTarget?: boolean } | null>(null);
   const [projectResultRequest, setProjectResultRequest] = useState<{ id: string; token: number } | null>(null);
   const [projectMeshComparisonRequest, setProjectMeshComparisonRequest] = useState<{ id: string; token: number } | null>(null);
   const activeNotebookProjectRef = useRef<Math3DProject | null>(null);
@@ -90518,6 +90518,10 @@ case "mobius":
                       }}
                       onOpenNote={(id) => {
                         setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1 }));
+                        setProjectsOpen(true);
+                      }}
+                      onOpenCoordinateNote={(id) => {
+                        setProjectNoteRequest((previous) => ({ id, token: (previous?.token ?? 0) + 1, openTarget: true }));
                         setProjectsOpen(true);
                       }}
                       onOpenNotebookDocument={(id, module) => {

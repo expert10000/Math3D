@@ -1408,6 +1408,7 @@ budgets must be explicit before members can be combined.
 | PC24 | `feat(projects): link declared coordinates across saved comparison panes` | Record the picked source generation and coordinate; mark that coordinate in the other Mesh/Geometry pane only when verified frame, axes, handedness and units match. Keep element picks source-local. |
 | PC25 | `feat(notes): retain saved coordinate observations` | Save a picked Mesh/Geometry coordinate as a Note bound to the exact comparison, source generations, frame and unit; show its marker only while both sources and sidecars verify. |
 | PC26 | `feat(projects): review saved coordinate observations` | Index exact coordinate Notes and verification status, open each at its own saved marker, and export a qualified multi-Note review with unavailable evidence withheld. |
+| PC27 | `feat(workbook): present saved coordinate observation reviews` | Link selected PC26 Notes by exact IDs and hashes in a Visualize block, reverify each marker and source byte, and retain qualified HTML and portable reports. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1528,6 +1529,13 @@ row and withholds authored coordinates and text when a source is missing or
 changed. Portable import, restart, source tampering and viewer cleanup have
 focused acceptance checks. PC03 and PC05 remain **Partial** for legacy
 undeclared frames and unretained generations.
+PC27 is complete for selected PC26 Notes in a Workbook Visualize block. The
+reference pins each Note revision and hash and its comparison hash. Opening
+or exporting rechecks both source generations and sidecars; unavailable rows
+retain their IDs but withhold the coordinate and Note text. Verified markers
+open the existing saved comparison viewer. Restart, portable publication,
+tampering, and viewer cleanup have focused acceptance checks. PC03 and PC05
+remain **Partial** for undeclared legacy frames and unretained generations.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

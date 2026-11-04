@@ -79,6 +79,7 @@ type WorkbookPanelProps = {
   onOpenSavedMeshComparison?: (comparisonId: string) => void;
   onSaveMeshComparisonObservation?: (comparisonId: string, comparisonHash: string, title: string, body: string) => Promise<boolean>;
   onOpenNote: (noteId: string) => void;
+  onOpenCoordinateNote?: (noteId: string) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
   onToggleBlockEnabled: (stageId: WorkbookStageId, blockId: string, enabled: boolean) => void;
@@ -528,6 +529,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onOpenSavedMeshComparison,
   onSaveMeshComparisonObservation,
   onOpenNote,
+  onOpenCoordinateNote,
   onRemoveBlock,
   onMoveBlock,
   onToggleBlockEnabled,
@@ -1562,7 +1564,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         readComparisonResource={readComparisonResource}
         onSaveMeshComparisonObservation={onSaveMeshComparisonObservation}
         statusFor={getBlockStatus} onUpdateBlock={onUpdateBlock} onOpenDocument={onOpenNotebookDocument}
-        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenSavedMeshResult={onOpenSavedMeshResult}
+        onOpenProjects={onOpenProjects} onOpenNote={onOpenNote} onOpenCoordinateNote={onOpenCoordinateNote} onOpenSavedMeshResult={onOpenSavedMeshResult}
         onOpenSavedMeshComparison={onOpenSavedMeshComparison} onEditBlock={(stageId, blockId) => {
           onSelectStage(stageId); setSelectedBlockId(blockId); setPendingScrollId(blockId); setViewMode("block");
         }} /> : <>
@@ -1945,7 +1947,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   readOnly={readOnly} onChange={coordinateReview => onUpdateBlock(activeStageId, block.id,
                     { visualize: { ...(block.visualize ?? { live: true }), coordinateReview } })} />
                 {block.visualize?.coordinateReview && <WorkbookCoordinateReviewBlock project={dependencyProject}
-                  reference={block.visualize.coordinateReview} readResource={readComparisonResource} onOpenNote={onOpenNote} />}
+                  reference={block.visualize.coordinateReview} readResource={readComparisonResource} onOpenNote={onOpenCoordinateNote} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

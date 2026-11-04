@@ -27,7 +27,8 @@ export function normalizeWorkbookCoordinateReviewReference(value: unknown): Work
       !isStableDocumentId(note.noteId) || !String(note.noteId).startsWith("math3d:note:") ||
       !Number.isSafeInteger(note.revision) || Number(note.revision) < 1 || !isStructuralHash(note.hash) ||
       typeof note.title !== "string" || !note.title.trim() || note.title.length > 160 ||
-      !isStableDocumentId(note.compositionId) || !isStructuralHash(note.compositionHash) || ids.has(String(note.noteId)))
+      typeof note.compositionId !== "string" || !note.compositionId || note.compositionId.length > 120 ||
+      !isStructuralHash(note.compositionHash) || ids.has(String(note.noteId)))
       throw new TypeError("Invalid Workbook coordinate Note reference.");
     ids.add(String(note.noteId));
   }

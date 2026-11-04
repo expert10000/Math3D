@@ -41,7 +41,7 @@ export type KernelWorkspacePanelProps = {
   onOpenWorkbook?: (workbook: Workbook, stageId?: import("@math3d/workbook").WorkbookStageId, blockId?: string) => void;
   onViewProjectWorkbook?: (workbook: Workbook, stageId?: import("@math3d/workbook").WorkbookStageId, blockId?: string) => void;
   onViewProjectDetail?: () => void;
-  noteRequest?: { id: string; token: number } | null;
+  noteRequest?: { id: string; token: number; openTarget?: boolean } | null;
   resultRequest?: { id: string; token: number } | null;
   pairRequest?: { id: string; token: number } | null;
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
