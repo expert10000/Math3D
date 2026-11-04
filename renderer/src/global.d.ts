@@ -705,6 +705,9 @@ declare global {
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };
     quantumScenes?: {
+      pinProjectSources: (projectId: string, references: { directory: string; sceneFingerprint: string }[]) =>
+        Promise<{ pinnedBlobs: number }>;
+      openLatestFromLabBus: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       projectStudySample: (source: { directory: string; sceneFingerprint: string }, sourceObjectId: string,
         sourceSampleIndex: number, target: { directory: string; sceneFingerprint: string }, targetObjectId: string) =>
         Promise<{ axis: "ky"; value: number; unit: string; candidateCount: number;

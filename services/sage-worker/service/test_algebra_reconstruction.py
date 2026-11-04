@@ -125,6 +125,32 @@ class AlgebraReconstructionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pinned QQ"):
             run_payload(request([z, wrong], F))
 
+    def test_biquadratic_tower_has_verified_inclusion_and_degree_product(self):
+        q = object_record(Q, "Q", {"kind": "rational-field"})
+        q_ref = {"objectId": Q, "revision": 1}
+        k = object_record(F, "K", {"kind": "number-field", "baseField": q_ref,
+            "definingPolynomial": ["-2", "0", "1"], "generator": "a"}, [q_ref])
+        k_ref = {"objectId": F, "revision": 1}
+        l = object_record(Z, "L", {"kind": "field-extension", "baseField": k_ref,
+            "radicand": "3", "generator": "b"}, [k_ref])
+        outcome = run_payload(request([q, k, l], Z))
+        self.assertTrue(outcome["success"], outcome.get("error"))
+        result = outcome["result"]
+        self.assertTrue(result["isField"])
+        self.assertEqual(result["definitionHash"], l["contentHash"])
+        self.assertEqual(result["fieldExtension"], {"baseDegree": 2, "relativeDegree": 2,
+            "absoluteDegree": 4, "baseGeneratorImage": "a", "extensionGenerator": "b",
+            "inclusionMapAvailable": True, "baseRelationVerified": True,
+            "extensionRelationVerified": True})
+        same = object_record(Z, "L", {"kind": "field-extension", "baseField": k_ref,
+            "radicand": "2", "generator": "b"}, [k_ref])
+        with self.assertRaisesRegex(ValueError, "reducible"):
+            run_payload(request([q, k, same], Z))
+        wrong = object_record(Z, "L", {"kind": "field-extension", "baseField": q_ref,
+            "radicand": "3", "generator": "b"}, [q_ref])
+        with self.assertRaisesRegex(ValueError, "quadratic number-field parent"):
+            run_payload(request([q, wrong], Z))
+
     def test_worker_script_mode_used_by_docker_adapter(self):
         q = object_record(Q, "Q", {"kind": "rational-field"})
         with tempfile.TemporaryDirectory() as directory:

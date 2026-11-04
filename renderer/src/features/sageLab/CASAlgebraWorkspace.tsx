@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { analyzeQuadraticNumberField, inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraObjectRef,
+import { analyzeBiquadraticExtensionFromDefinition, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness,
+  type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
+import SageFieldTowerViewer from "./SageFieldTowerViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -28,6 +30,7 @@ const kindLabel: Record<StructureStarterKind, string> = {
   "integer-ring": "Integer ring ZZ", "rational-field": "Rational field QQ", "modular-ring": "Modular ring Z/nZ",
   "finite-field": "Finite field GF(p^n)", "polynomial-ring": "Polynomial ring",
   "number-field": "Quadratic number field",
+  "field-extension": "Quadratic field extension",
 };
 const readSavedSelection = (project: Math3DProject | null): unknown => {
   if (!project) return null;
@@ -39,6 +42,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   onAppendRecipeEvidence, onOpenProjects, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
+  const [selectionFocus, setSelectionFocus] = useState(0);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
@@ -59,6 +63,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
+    setSelectionFocus((value) => value + 1);
     setSelectedEvidenceId(null);
     if (project) try { localStorage.setItem(structureSelectionKey(project.identity.id), JSON.stringify(ref)); }
     catch { /* Selection still works when local storage is unavailable. */ }
@@ -82,6 +87,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const parent = chosen?.record.definition.kind === "polynomial-ring"
     ? selectedStructure(project, chosen.record.definition.coefficientDomain)?.record
     : chosen?.record.definition.kind === "number-field"
+      ? selectedStructure(project, chosen.record.definition.baseField)?.record
+    : chosen?.record.definition.kind === "field-extension"
       ? selectedStructure(project, chosen.record.definition.baseField)?.record
     : chosen?.record.definition.kind === "ideal"
       ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
@@ -117,6 +124,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           </button>;
         }) : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>No structures in this Project yet.</div>}
     </div>}
+    {project && <SageFieldTowerViewer project={project} selected={selection} onSelect={select} />}
   </div>;
 
   const dossier = builder === "ring" && project ? <SageRingFieldBuilder key={project.identity.id} project={project}
@@ -140,7 +148,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
       {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}
       {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
         <dt>Validation</dt><dd>Bounded exact polynomial syntax</dd></>}
@@ -161,6 +169,17 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           <dt>Integral basis</dt><dd>{facts.integralBasis.join(", ")}</dd>
           <dt>Embeddings of {facts.generator}</dt><dd>{facts.embeddingImages.join("; ")}</dd>
           <dt>Ring of integers</dt><dd>{facts.ringOfIntegers}</dd></>;
+      })()}
+      {chosen.record.definition.kind === "field-extension" && (() => {
+        if (parent?.definition.kind !== "number-field") return null;
+        const facts = analyzeBiquadraticExtensionFromDefinition(parent.definition.definingPolynomial,
+          parent.definition.generator, chosen.record.definition.radicand, chosen.record.definition.generator);
+        return <><dt>Relative polynomial</dt><dd>{facts.relativePolynomial}</dd>
+          <dt>Base degree</dt><dd>{facts.baseDegree}</dd><dt>Relative degree</dt><dd>{facts.relativeDegree}</dd>
+          <dt>Absolute degree</dt><dd>{facts.absoluteDegree}</dd><dt>Tower law</dt><dd>2 × 2 = 4</dd>
+          <dt>Absolute basis</dt><dd>{facts.absoluteBasis.join(", ")}</dd>
+          <dt>Base generator image</dt><dd>{parent.definition.generator} ↦ {parent.definition.generator} · [{facts.baseGeneratorImage.join(", ")}]</dd>
+          <dt>Relation checks</dt><dd>{facts.baseRelation}; {facts.extensionRelation}</dd></>;
       })()}
     </dl>
     {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -189,6 +208,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Ideal</dt><dd>{idealParent?.label}@{idealParent?.revision}</dd></>}
     {chosen.record.definition.kind === "number-field" && <><dt>Base field</dt><dd>{parent?.label}@{parent?.revision}</dd>
       <dt>Defining coefficients</dt><dd>{chosen.record.definition.definingPolynomial.join(", ")}</dd></>}
+    {chosen.record.definition.kind === "field-extension" && <><dt>Base field</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Adjoined radicand</dt><dd>{chosen.record.definition.radicand}</dd></>}
     <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
     {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
@@ -201,7 +222,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       : "Exact arithmetic and saved number-field objects in the shared Project algebra registry."}
     testId={workspaceContext === "cas" ? "cas-algebra-workspace" : "number-theory-workspace"} structures={{ projectId: project?.identity.id ?? null,
       projectTitle: project?.metadata.title ?? null,
-      selectionKey: selection ? `${selection.objectId}@${selection.revision}` : null,
+      selectionKey: selection ? `${selection.objectId}@${selection.revision}:${selectionFocus}` : null,
       explorer, dossier, inspector,
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,

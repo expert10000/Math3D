@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { inspectProjectAlgebraFreshness, upsertMath3DProjectAlgebraObject,
   analyzeQuadraticNumberField,
+  analyzeBiquadraticExtensionFromDefinition,
   type AlgebraObjectRecord, type AlgebraObjectRef, type Math3DProject,
   type SageAlgebraReconstructionResult } from "@math3d/core";
 import { runSageAlgebraReconstruction } from "../../services/sageAlgebraReconstruction";
@@ -26,6 +27,7 @@ const kinds: readonly { value: StructureStarterKind; label: string }[] = [
   { value: "finite-field", label: "Finite field GF(p^n)" },
   { value: "polynomial-ring", label: "Polynomial ring" },
   { value: "number-field", label: "Quadratic number field over QQ" },
+  { value: "field-extension", label: "Quadratic extension of a saved number field" },
 ];
 
 export default function SageRingFieldBuilder({ project, onCreate, onCreated, onCancel }: Props) {
@@ -37,6 +39,7 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
   const [generator, setGenerator] = useState("a");
   const [quadraticConstant, setQuadraticConstant] = useState("-5");
   const [quadraticLinear, setQuadraticLinear] = useState("0");
+  const [towerRadicand, setTowerRadicand] = useState("3");
   const [parentId, setParentId] = useState("");
   const [variables, setVariables] = useState("x, y");
   const [order, setOrder] = useState<"lex" | "deglex" | "degrevlex">("degrevlex");
@@ -62,8 +65,9 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
     .map((entry) => entry.revisions[entry.revisions.length - 1]);
   const parent = parentOptions.find((item) => item.id === parentId);
   const numberFieldParents = parentOptions.filter((item) => item.kind === "rational-field");
+  const extensionParents = parentOptions.filter((item) => item.kind === "number-field");
   const draft: StructureDraft = { kind, label, modulus, characteristic, degree, generator,
-    quadraticConstant, quadraticLinear,
+    quadraticConstant, quadraticLinear, towerRadicand,
     coefficientDomain: parent ? { objectId: parent.id, revision: parent.revision } : undefined,
     variables, monomialOrder: order };
   const signature = JSON.stringify({ draft, projectId: project.identity.id, projectRevision: project.identity.revision,
@@ -118,7 +122,11 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
       </div>)}
     </section>
     <form onSubmit={(event) => { void validate(event); }} className="sage-structure-grid" data-testid="cas-new-structure-form">
-      <label>Type<select value={kind} onChange={(event) => setKind(event.target.value as StructureStarterKind)}>
+      <label>Type<select value={kind} onChange={(event) => {
+        const next = event.target.value as StructureStarterKind;
+        setKind(next);
+        if (next === "field-extension" && generator === "a") setGenerator("b");
+      }}>
         {kinds.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
       </select></label>
       <label>Name<input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={120} required placeholder="Q" /></label>
@@ -153,6 +161,18 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
         <label>Constant coefficient c<input aria-label="Quadratic constant coefficient" value={quadraticConstant}
           onChange={(event) => setQuadraticConstant(event.target.value)} required /></label>
       </>}
+      {kind === "field-extension" && <>
+        <label>Base number field<select aria-label="Tower base field" value={parentId}
+          onChange={(event) => setParentId(event.target.value)} required>
+          <option value="">Select saved quadratic field</option>
+          {extensionParents.map((item) => <option key={item.id} value={item.id}>{item.label}@{item.revision} · {structureDisplay(item, project)}</option>)}
+        </select></label>
+        <label>Extension generator<input aria-label="Tower generator" value={generator}
+          onChange={(event) => setGenerator(event.target.value)} required /></label>
+        <label>Squarefree radicand m<input aria-label="Tower radicand" value={towerRadicand}
+          onChange={(event) => setTowerRadicand(event.target.value)} required inputMode="numeric" /></label>
+        <div role="note" style={{ fontSize: 12 }}>D05 adjoins b with b²=m to a saved quadratic field. Choose positive squarefree m from 2 to 97; the new generator must enlarge the base field.</div>
+      </>}
       <div style={{ display: "flex", gap: 8 }}>
         <button type="submit" style={action} disabled={busy}>{busy ? "Checking…" : "Validate & preview"}</button>
         <button type="button" style={action} onClick={onCancel}>Cancel</button>
@@ -170,6 +190,7 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
         <dt>Exact arithmetic</dt><dd>Yes</dd>
         {parent && kind === "polynomial-ring" && <><dt>Coefficient domain</dt><dd>{parent.label}@{parent.revision}</dd></>}
         {parent && kind === "number-field" && <><dt>Base field</dt><dd>{parent.label}@{parent.revision} · QQ</dd></>}
+        {parent && kind === "field-extension" && <><dt>Base field</dt><dd>{parent.label}@{parent.revision}</dd></>}
         {currentPreview.record.definition.kind === "number-field" && (() => {
           const facts = analyzeQuadraticNumberField(currentPreview.record.definition.definingPolynomial,
             currentPreview.record.definition.generator);
@@ -180,6 +201,19 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
             <dt>Integral basis</dt><dd>{facts.integralBasis.join(", ")}</dd>
             <dt>Embeddings of {facts.generator}</dt><dd>{facts.embeddingImages.join("; ")}</dd>
             <dt>Ring of integers</dt><dd>{facts.ringOfIntegers}</dd></>;
+        })()}
+        {currentPreview.record.definition.kind === "field-extension" && (() => {
+          const base = parent?.definition;
+          if (base?.kind !== "number-field") return null;
+          const facts = analyzeBiquadraticExtensionFromDefinition(base.definingPolynomial, base.generator,
+            currentPreview.record.definition.radicand, currentPreview.record.definition.generator);
+          return <><dt>Relative polynomial</dt><dd>{facts.relativePolynomial}</dd>
+            <dt>Base degree</dt><dd>{facts.baseDegree}</dd><dt>Relative degree</dt><dd>{facts.relativeDegree}</dd>
+            <dt>Absolute degree</dt><dd>{facts.absoluteDegree}</dd>
+            <dt>Tower law</dt><dd>2 × 2 = 4</dd>
+            <dt>Absolute basis</dt><dd>{facts.absoluteBasis.join(", ")}</dd>
+            <dt>Base generator inclusion</dt><dd>{base.generator} ↦ {base.generator} · coordinates [{facts.baseGeneratorImage.join(", ")}]</dd>
+            <dt>Relation checks</dt><dd>{facts.baseRelation}; {facts.extensionRelation}</dd></>;
         })()}
         {currentPreview.sage && <><dt>Sage construction</dt><dd>{currentPreview.sage.text}</dd>
           <dt>Sage version</dt><dd>{currentPreview.sageVersion ?? "unreported"}</dd></>}

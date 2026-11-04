@@ -1,6 +1,7 @@
 import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectRef } from "./algebraObjects";
 import { canonicalJsonStringify, isStableDocumentId, type StableDocumentId } from "./documentIdentity";
 import { analyzeQuadraticNumberField } from "./quadraticNumberField";
+import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTower";
 import type { Math3DProject } from "./math3dProject";
 import { validateProjectAlgebraRegistry } from "./projectAlgebraRegistry";
 import { canonicalJsonByteLength } from "./scientificJobs";
@@ -34,6 +35,9 @@ export type SageAlgebraReconstructionResult = Readonly<{
     polynomialDiscriminant: string; fieldDiscriminant: string;
     powerBasis: readonly [string, string]; integralBasis: readonly [string, string];
     embeddingCount: 2 }>;
+  fieldExtension?: Readonly<{ baseDegree: 2; relativeDegree: 2; absoluteDegree: 4;
+    baseGeneratorImage: string; extensionGenerator: string;
+    inclusionMapAvailable: true; baseRelationVerified: true; extensionRelationVerified: true }>;
 }>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -87,6 +91,13 @@ export const parseSageAlgebraReconstructionInput = (value: unknown): SageAlgebra
     for (const dependency of object.dependencies) {
       if (!seen.has(keyOf(dependency))) throw new TypeError(`Sage algebra parent ${keyOf(dependency)} must precede ${key}.`);
     }
+    if (object.definition.kind === "field-extension") {
+      const parent = seen.get(keyOf(object.definition.baseField));
+      if (parent?.definition.kind !== "number-field")
+        throw new TypeError("Sage field tower requires a pinned quadratic number-field parent.");
+      analyzeBiquadraticExtensionFromDefinition(parent.definition.definingPolynomial, parent.definition.generator,
+        object.definition.radicand, object.definition.generator);
+    }
     seen.set(key, object);
   }
   const target = { objectId: value.target.objectId, revision: value.target.revision } as AlgebraObjectRef;
@@ -138,6 +149,14 @@ export const parseSageAlgebraReconstructionResult = (value: unknown,
   const polynomial = targetRecord.kind === "polynomial-ring";
   const numberField = targetRecord.definition.kind === "number-field"
     ? analyzeQuadraticNumberField(targetRecord.definition.definingPolynomial, targetRecord.definition.generator) : null;
+  const extensionDefinition = targetRecord.definition.kind === "field-extension" ? targetRecord.definition : null;
+  const extension = extensionDefinition ? (() => {
+    const base = input.objects.find((item) => item.id === extensionDefinition.baseField.objectId &&
+      item.revision === extensionDefinition.baseField.revision);
+    if (base?.definition.kind !== "number-field") throw new TypeError("Sage field extension has no pinned quadratic base.");
+    return analyzeBiquadraticExtensionFromDefinition(base.definition.definingPolynomial,
+      base.definition.generator, extensionDefinition.radicand, extensionDefinition.generator);
+  })() : null;
   const characteristicByRef = new Map<string, string>();
   for (const object of input.objects) {
     const definition = object.definition;
@@ -151,7 +170,7 @@ export const parseSageAlgebraReconstructionResult = (value: unknown,
   const expectedCharacteristic = characteristicByRef.get(keyOf(input.target));
   if (!record(value) || !exact(value, ["format", "schemaVersion", "target", "kind", "definitionHash",
     "text", "latex", "characteristic", "isField", ...(polynomial ? ["baseRing", "variables"] : []),
-    ...(numberField ? ["numberField"] : [])]) ||
+    ...(numberField ? ["numberField"] : []), ...(extension ? ["fieldExtension"] : [])]) ||
     value.format !== "math3d.sage-algebra-reconstruction-result" || value.schemaVersion !== 1 ||
     !record(value.target) || !exact(value.target, ["objectId", "revision"]) ||
     value.target.objectId !== input.target.objectId || value.target.revision !== input.target.revision ||
@@ -181,6 +200,16 @@ export const parseSageAlgebraReconstructionResult = (value: unknown,
       !facts.integralBasis.every((item) => typeof item === "string" && item.length > 0 && item.length <= 256) ||
       value.isField !== true)
       throw new TypeError("Sage number field metadata differs from the pinned quadratic definition.");
+  }
+  if (extension) {
+    const facts = value.fieldExtension;
+    if (!record(facts) || !exact(facts, ["baseDegree", "relativeDegree", "absoluteDegree",
+      "baseGeneratorImage", "extensionGenerator", "inclusionMapAvailable", "baseRelationVerified", "extensionRelationVerified"]) ||
+      facts.baseDegree !== 2 || facts.relativeDegree !== 2 || facts.absoluteDegree !== 4 ||
+      facts.baseGeneratorImage !== extension.absoluteBasis[1] ||
+      facts.extensionGenerator !== extension.generator || facts.inclusionMapAvailable !== true ||
+      facts.baseRelationVerified !== true || facts.extensionRelationVerified !== true || value.isField !== true)
+      throw new TypeError("Sage field tower metadata does not verify the pinned inclusion and degree product.");
   }
   return Object.freeze(JSON.parse(canonicalJsonStringify(value)) as SageAlgebraReconstructionResult);
 };

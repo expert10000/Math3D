@@ -732,6 +732,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       next = migrateProjectScientificSelections(next, verifyMixedWorkspaceReplay(next.workspace));
       if (!managed && noteDrafts.length) next = bindProjectNoteDrafts(next, noteDrafts);
       await verifyProjectQuantumSceneDocuments(next, onVerifyQuantumSceneDocument);
+      if (next.quantumScenes?.length && window.quantumScenes?.pinProjectSources)
+        await window.quantumScenes.pinProjectSources(next.identity.id, next.quantumScenes.map(item =>
+          ({ directory: item.directory, sceneFingerprint: item.sceneFingerprint })));
       if (managed && serializeMath3DProject(next) !== serializeMath3DProject(managed.project())) next = managed.commit(next);
       const tree = buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace));
       const previousResources = managed ? await loadProjectResources(loadLibraryProject(localStorage, next.identity.id)) : resourceSessionId.current === next.identity.id ? resourceSession.current : project ? await loadProjectResources(project) : undefined;
@@ -1924,6 +1927,17 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     if (result.ok) { setStudyLaunch(result); setQuantumSceneMessage("Study folder verified. Choose its Project target."); }
                     else if (!result.canceled) setQuantumSceneMessage(`Study handoff refused: ${result.error}`);
                   }).catch(error => setQuantumSceneMessage(`Study handoff refused: ${String(error)}`)); }}>Open Theory Lab study folder</button></div>
+              <button type="button" data-testid="project-open-latest-lab-bus" disabled={busy || !onOpenQuantumScene || !window.quantumScenes?.openLatestFromLabBus}
+                onClick={() => { setBusy(true); setQuantumSceneMessage("Resolving the latest completed Theory Lab run through the local bus…");
+                  void window.quantumScenes!.openLatestFromLabBus().then(async result => {
+                    if (!result.ok) { if (!result.canceled) throw new Error(result.error); return; }
+                    const details = (result.document.extensions["quantum-scene/v2"] ?? result.document.extensions["quantum-scene/v1"]) as
+                      { scene: { schema: "quantum-scene/v1" | "quantum-scene/v2" } };
+                    await onOpenQuantumScene!({ format: details.scene.schema, title: result.document.title,
+                      directory: result.directory, sceneFingerprint: result.reference.sceneFingerprint });
+                    setQuantumSceneMessage("Latest completed Lab scene independently verified and opened.");
+                  }).catch(error => setQuantumSceneMessage(`Local bus open refused: ${String(error)}`))
+                    .finally(() => setBusy(false)); }}>Open latest completed Lab run</button>
               <p>External quantum-scene/v1 and v2 bundles stay read-only. Opening a link re-verifies its fingerprint and source files; Project JSON does not embed the arrays.</p>
               {!project?.quantumScenes?.length && <small>Use Open .qscene folder above, then attach the verified source here.</small>}
               {project?.quantumScenes?.map(item => <article key={item.sceneFingerprint} className="project-workspace-workbook">

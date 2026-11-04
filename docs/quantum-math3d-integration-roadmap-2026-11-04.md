@@ -812,6 +812,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** partial output cannot be mistaken for a verified result.
 
+**Implementation note (2026-11-05):** Theory Lab writes saved runs and final `.qscene` bundles into hidden staging directories, verifies complete scene bundles, and publishes under the final name by one directory rename. Per-ID publication claims reject concurrent writers; preview IDs cannot be published as final scenes. The Scene Lab marks saved sources as verified final scenes. See [QI-16–18 implementation details](quantum-qi16-18-runtime-publication-bus-artifacts.md).
+
 ### QI-17 — Local Integration Bus
 
 **Commit:** `feat(integration): add authenticated local scientific broker`
@@ -821,6 +823,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** a run submitted in Theory Lab can publish completion and Math3D can resolve its verified scene without polling an arbitrary directory.
 
+**Implementation note (2026-11-05):** Theory Lab advertises a token-authenticated local pipe/socket, publishes bounded job progress and completion notices, and resolves an exact run ID plus result hash into a verified scene handoff. Math3D requests the latest completed run and independently verifies the returned bundle and provenance. Existing file and launch handoffs remain available. See [QI-16–18 implementation details](quantum-qi16-18-runtime-publication-bus-artifacts.md).
+
 ### QI-18 — Shared artifact store + GC
 
 **Commit:** `feat(artifacts): support reference-aware retention and portable packs`
@@ -828,6 +832,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Dedup, pinning, dry-run GC and portable project dependencies.
 
 **Done when:** removing a temporary scene cannot delete blobs referenced by a saved project.
+
+**Implementation note (2026-11-05):** Both apps use the same SHA-256 blob and pin format. Saved Lab runs pin their result bytes, and Math3D pins every verified source file of a Project before saving it. GC defaults to dry-run; explicit collection moves unpinned blobs to recoverable quarantine. Existing `.qpack` export embeds and verifies its dependencies for portable transport. See [QI-16–18 implementation details](quantum-qi16-18-runtime-publication-bus-artifacts.md).
 
 ### QI-19 — Large data LOD and chunking
 

@@ -1,5 +1,6 @@
 import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectRef } from "./algebraObjects";
 import { parseIdealGenerator } from "./algebraIdealGenerators";
+import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTower";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 
@@ -81,6 +82,12 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       }
       if (record.definition.kind === "number-field" && parent.kind !== "rational-field")
         throw new TypeError(`Number field ${key} requires a pinned QQ base field.`);
+      if (record.definition.kind === "field-extension") {
+        if (parent.definition.kind !== "number-field")
+          throw new TypeError(`Field extension ${key} requires a pinned quadratic number-field parent.`);
+        analyzeBiquadraticExtensionFromDefinition(parent.definition.definingPolynomial,
+          parent.definition.generator, record.definition.radicand, record.definition.generator);
+      }
       if (record.definition.kind === "ideal") {
         if (parent.definition.kind !== "polynomial-ring")
           throw new TypeError(`Ideal ${key} requires a polynomial ambient ring.`);

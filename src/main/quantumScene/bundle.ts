@@ -7,7 +7,7 @@ import { assertScene, verifyScenePayload, type ScenePayload } from "./index";
 const hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const digest = async (bytes: Uint8Array) => hash(bytes);
 
-async function boundedRead(path: string, expected?: number): Promise<Buffer> {
+export async function boundedRead(path: string, expected?: number): Promise<Buffer> {
   const info = await lstat(path);
   const limit = expected ?? 128 * 1024;
   if (!info.isFile() || info.isSymbolicLink() || info.size > limit || (expected !== undefined && info.size !== expected))
