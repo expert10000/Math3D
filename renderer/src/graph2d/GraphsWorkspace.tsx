@@ -248,6 +248,10 @@ type Props = {
   vectorField3DRegionStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onSaveVectorField3DRegionResult?: (document: VectorField3DDocument,
     result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DLineIntegralSelection?: (document: VectorField3DDocument,
+    selection: import("@math3d/core").ScientificSelection) => void;
+  onSaveVectorField3DLineIntegralResult?: (document: VectorField3DDocument,
+    result: import("@math3d/core").AnalysisResultEnvelope) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
     surface: import("@math3d/core").VectorField3DIsosurface) => void;
@@ -273,6 +277,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   savedVectorField3DPointResults, onSaveVectorField3DPointResult,
   savedVectorField3DRegionResults, vectorField3DRegionStatuses,
   onSaveVectorField3DRegionResult, onOpenVectorField3DProjectResults,
+  onSaveVectorField3DLineIntegralSelection, onSaveVectorField3DLineIntegralResult,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
@@ -3861,6 +3866,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           savedRegionResults={savedVectorField3DRegionResults}
           regionResultStatuses={vectorField3DRegionStatuses}
           onSaveRegionResult={onSaveVectorField3DRegionResult}
+          onSaveLineIntegralSelection={onSaveVectorField3DLineIntegralSelection}
+          onSaveLineIntegralResult={onSaveVectorField3DLineIntegralResult}
           onOpenProjectResults={onOpenVectorField3DProjectResults}
           onPromoteIsosurface={onPromoteVectorField3DIsosurface}
           isGraphLineImported={(selection, vectorDocument) => {

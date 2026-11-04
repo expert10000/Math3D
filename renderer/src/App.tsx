@@ -804,6 +804,9 @@ import {
   createEmptyGraph2DDocument,
   applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
+  replaceMath3DProjectWorkspace,
+  upsertProjectScientificSelection,
+  upsertProjectLineIntegralResult,
   createVolumeDocument,
   createViewerProvenanceEvidence,
   canonicalJsonByteLength,
@@ -90677,6 +90680,27 @@ case "mobius":
                     { kind: "vector-derived", vector: "source-current",
                       divergence: "source-current", curlMagnitude: "source-current" } :
                     "source-current" }));
+            }}
+            onSaveVectorField3DLineIntegralSelection={(field, selection) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const entries = active.workspace.entries.map(entry =>
+                entry.expected.id === field.identity.id ?
+                  { ...entry, checkpoint: field, expected: field.identity, replay: null } : entry);
+              if (!entries.some(entry => entry.expected.id === field.identity.id))
+                entries.push({ module: "vector3d", checkpoint: field,
+                  expected: field.identity, replay: null });
+              const updated = upsertProjectScientificSelection(replaceMath3DProjectWorkspace(active,
+                createMixedWorkspaceDocument({ ...active.workspace, entries })), selection);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DLineIntegralResult={(field, result) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectLineIntegralResult(active, result);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(field); setNotebookProjectVersion(value => value + 1);
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));

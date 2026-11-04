@@ -23,6 +23,8 @@ export type ScientificSelectionFrame = Readonly<{ kind: "cartesian";
   axes: readonly Readonly<{ name: string | null; unit: string | null }>[] }>;
 export type ScientificSelectionGeometry =
   | Readonly<{ kind: "point"; position: readonly number[] }>
+  | Readonly<{ kind: "oriented-polyline"; vertices: readonly (readonly [number, number, number])[];
+      closed: boolean; direction: "forward" | "reverse" }>
   | Readonly<{ kind: "axis-line"; varyingAxis: number;
       fixedCoordinates: readonly (number | null)[];
       extent: readonly [number, number] }>
@@ -96,6 +98,19 @@ export const normalizeScientificSelection = (value: unknown): ValidationResult<S
   const count = frame.axes.length, geometry = value.geometry;
   if (!record(geometry) || !(geometry.kind === "point" && exact(geometry, ["kind", "position"]) &&
         Array.isArray(geometry.position) && geometry.position.length === count && geometry.position.every(finite) ||
+      geometry.kind === "oriented-polyline" && count === 3 &&
+        exact(geometry, ["kind", "vertices", "closed", "direction"]) &&
+        Array.isArray(geometry.vertices) && geometry.vertices.length >= 2 &&
+        geometry.vertices.length <= 64 && typeof geometry.closed === "boolean" &&
+        (geometry.direction === "forward" || geometry.direction === "reverse") &&
+        (!geometry.closed || geometry.vertices.length >= 3) &&
+        geometry.vertices.every((vertex: unknown, index: number) =>
+          Array.isArray(vertex) && vertex.length === 3 && vertex.every(finite) &&
+          vertex.every((coordinate: number) => Math.abs(coordinate) <= 1e9) &&
+          (index === 0 || vertex.some((coordinate: number, axis: number) =>
+            coordinate !== (geometry.vertices as number[][])[index - 1]![axis]))) &&
+        (!geometry.closed || (geometry.vertices as number[][])[0]!.some((coordinate: number, axis: number) =>
+          coordinate !== (geometry.vertices as number[][])[(geometry.vertices as number[][]).length - 1]![axis])) ||
       geometry.kind === "axis-line" && exact(geometry, ["kind", "varyingAxis", "fixedCoordinates", "extent"]) &&
         axis(geometry.varyingAxis, count) && Array.isArray(geometry.fixedCoordinates) &&
         geometry.fixedCoordinates.length === count &&
