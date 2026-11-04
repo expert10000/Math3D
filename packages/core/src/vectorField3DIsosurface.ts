@@ -21,6 +21,7 @@ export type VectorField3DIsosurface = Readonly<{
   coordinateAxes: VectorField3DDocument["source"]["axes"];
   gridShape: Vec3; sampledPoints: number; triangleBudget: number;
   triangleCount: number; vertexCount: number; complete: boolean; clipped: boolean;
+  limitReason?: "triangle-budget" | "time-budget" | null;
   topology: VectorField3DIsosurfaceTopology;
   bounds: VectorField3DClipBounds | null;
   positions: Float32Array; normals: Float32Array; indices: Uint32Array;
@@ -172,12 +173,13 @@ export function analyzeVectorField3DIsosurfaceTopology(positions: ArrayLike<numb
 /** Marching tetrahedra over a bounded, verified scalar speed lattice. */
 export function extractVectorField3DSpeedIsosurface(document: VectorField3DDocument,
   plan: VectorField3DIsosurfacePlan, speeds: Float64Array, level: number,
-  triangleBudget = 40_000): VectorField3DIsosurface {
+  triangleBudget = 40_000, options: { allowSigned?: boolean; unit?: string;
+    deadlineAt?: number; now?: () => number } = {}): VectorField3DIsosurface {
   const coords = plan.coordinates, shape = coords.map(axis => axis.length) as [number, number, number];
   const pointCount = shape[0] * shape[1] * shape[2];
   if (!(speeds instanceof Float64Array) || speeds.length !== pointCount ||
-      speeds.some(value => !Number.isFinite(value) || value < 0) ||
-      !Number.isFinite(level) || level < 0 ||
+      speeds.some(value => !Number.isFinite(value) || !options.allowSigned && value < 0) ||
+      !Number.isFinite(level) || !options.allowSigned && level < 0 ||
       !Number.isSafeInteger(triangleBudget) || triangleBudget < 1 || triangleBudget > 100_000)
     throw new TypeError("Invalid bounded isosurface input.");
   const offset = (x: number, y: number, z: number) => (x * shape[1] + y) * shape[2] + z;
@@ -185,6 +187,7 @@ export function extractVectorField3DSpeedIsosurface(document: VectorField3DDocum
   const vertexByEdge = new Map<string, number>();
   const lower = [Infinity, Infinity, Infinity], upper = [-Infinity, -Infinity, -Infinity];
   let complete = true;
+  let limitReason: VectorField3DIsosurface["limitReason"] = null;
   const vertexIndex = (vertex: IsoVertex) => {
     const existing = vertexByEdge.get(vertex.key);
     if (existing !== undefined) return existing;
@@ -198,7 +201,7 @@ export function extractVectorField3DSpeedIsosurface(document: VectorField3DDocum
     return index;
   };
   const emit = (a: IsoVertex, b: IsoVertex, c: IsoVertex, direction: Vec3) => {
-    if (indices.length / 3 >= triangleBudget) { complete = false; return; }
+    if (indices.length / 3 >= triangleBudget) { complete = false; limitReason = "triangle-budget"; return; }
     let normal = cross(subtract(b.position, a.position), subtract(c.position, a.position));
     const length = Math.hypot(...normal);
     if (length < 1e-14) return;
@@ -215,6 +218,10 @@ export function extractVectorField3DSpeedIsosurface(document: VectorField3DDocum
   for (let x = 0; x < shape[0] - 1 && complete; x++)
     for (let y = 0; y < shape[1] - 1 && complete; y++)
       for (let z = 0; z < shape[2] - 1 && complete; z++) {
+        if (options.deadlineAt !== undefined &&
+            (options.now ?? (() => performance.now()))() >= options.deadlineAt) {
+          complete = false; limitReason = "time-budget"; break;
+        }
         const points = Array.from({ length: 8 }, (_, corner) => [
           coords[0][x + (corner & 1)]!, coords[1][y + ((corner >> 1) & 1)]!,
           coords[2][z + ((corner >> 2) & 1)]!] as Vec3);
@@ -272,10 +279,12 @@ export function extractVectorField3DSpeedIsosurface(document: VectorField3DDocum
     structuralHash: document.identity.structuralHash },
   sourceHash: source.kind === "scientific-bundle" ? createScientificDatasetLink(source.references).sourceHash : null,
   sourceReferences: source.kind === "scientific-bundle" ? source.references : null,
-  level, unit: source.kind === "scientific-bundle" ? source.componentUnits[0] : source.components[0].unit,
+  level, unit: options.unit ?? (source.kind === "scientific-bundle" ?
+    source.componentUnits[0] : source.components[0].unit),
   clipBounds: plan.clipBounds, coordinateAxes: document.source.axes,
   gridShape: shape, sampledPoints: pointCount, triangleBudget,
   triangleCount: indices.length / 3, vertexCount: positions.length / 3, complete,
+  limitReason,
   clipped: topology.clipBoundaryEdgeCount > 0, topology,
   bounds: positions.length ? lower.map((value, axis) => [value, upper[axis]!]) as unknown as
     VectorField3DClipBounds : null,

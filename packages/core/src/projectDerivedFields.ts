@@ -29,8 +29,7 @@ export const reviewProjectDerivedField = (project: Math3DProject, id: string,
     .map(document => [document.identity.id, document]));
   const root = byId.get(id);
   if (!root) throw new TypeError("Project derived field is missing.");
-  const inspect = (document: DerivedFieldDocument): DerivedFieldReview["status"] => {
-    const input = document.input;
+  const inspectInput = (input: DerivedFieldInput): DerivedFieldReview["status"] => {
     if (input.kind === "derived") {
       const parent = byId.get(input.documentId);
       if (!parent) return "missing";
@@ -50,10 +49,17 @@ export const reviewProjectDerivedField = (project: Math3DProject, id: string,
     try { return verifySource(source) ? "current" : "unverified"; }
     catch { return "unverified"; }
   };
+  const inspect = (document: DerivedFieldDocument): DerivedFieldReview["status"] => {
+    const statuses = [document.input, ...(document.secondaryInput ? [document.secondaryInput] : [])]
+      .map(inspectInput);
+    return (["missing", "stale", "unverified", "current"] as const)
+      .find(status => statuses.includes(status)) ?? "missing";
+  };
   const status = inspect(root);
   return { status, document: root,
     cacheKey: status === "current" ? structuralHash({ document: root.identity,
-      input: root.input, operation: root.operation, output: root.output }) : null };
+      input: root.input, ...(root.secondaryInput ? { secondaryInput: root.secondaryInput } : {}),
+      operation: root.operation, output: root.output }) : null };
 };
 
 /** Consumers release a cached numerical result only against the current verified recipe key. */
@@ -66,30 +72,34 @@ export const currentProjectDerivedFieldResult = <T>(project: Math3DProject, id: 
 
 /** Append exactly one typed operation after a verified vector source or current derived output. */
 export const appendProjectDerivedField = (project: Math3DProject, inputId: string,
-  operation: DerivedFieldOperation, options: { stableKey: string; title: string },
+  operation: DerivedFieldOperation, options: { stableKey: string; title: string;
+    secondaryInputId?: string },
   verifySource: DerivedSourceVerification,
   resolved?: ReadonlyMap<string, KernelWorkspaceDocument>): Math3DProject => {
   const current = requireProject(project);
-  const parent = current.workspace.derivedFields?.find(document => document.identity.id === inputId);
-  let input: DerivedFieldInput;
-  if (parent) {
-    const review = reviewProjectDerivedField(current, parent.identity.id, verifySource, resolved);
-    if (review.status !== "current") throw new TypeError("Derived input is not currently verified.");
-    input = { kind: "derived", documentId: parent.identity.id,
-      revision: parent.identity.revision, structuralHash: parent.identity.structuralHash,
-      shape: parent.output };
-  } else {
-    const entry = current.workspace.entries.find(item => item.module === "vector3d" &&
-      item.expected.id === inputId);
-    const source = entry?.replay === null ? entry.checkpoint : resolved?.get(inputId);
-    if (!entry || source?.format !== "math3d.vector-field3d-document" ||
-        !sameGeneration(entry.expected, source.identity) || !verifySource(source))
-      throw new TypeError("A current verified vector source is required.");
-    input = { kind: "vector3d", documentId: source.identity.id,
-      revision: source.identity.revision, structuralHash: source.identity.structuralHash,
-      shape: vectorFieldDerivedShape(source) };
-  }
-  const document = createDerivedFieldDocument(input, operation, options);
+  const resolveInput = (id: string): DerivedFieldInput => {
+    const parent = current.workspace.derivedFields?.find(document => document.identity.id === id);
+    if (parent) {
+      const review = reviewProjectDerivedField(current, parent.identity.id, verifySource, resolved);
+      if (review.status !== "current") throw new TypeError("Derived input is not currently verified.");
+      return { kind: "derived", documentId: parent.identity.id,
+        revision: parent.identity.revision, structuralHash: parent.identity.structuralHash,
+        shape: parent.output };
+    } else {
+      const entry = current.workspace.entries.find(item => item.module === "vector3d" &&
+        item.expected.id === id);
+      const source = entry?.replay === null ? entry.checkpoint : resolved?.get(id);
+      if (!entry || source?.format !== "math3d.vector-field3d-document" ||
+          !sameGeneration(entry.expected, source.identity) || !verifySource(source))
+        throw new TypeError("A current verified vector source is required.");
+      return { kind: "vector3d", documentId: source.identity.id,
+        revision: source.identity.revision, structuralHash: source.identity.structuralHash,
+        shape: vectorFieldDerivedShape(source) };
+    }
+  };
+  const input = resolveInput(inputId);
+  const secondaryInput = options.secondaryInputId ? resolveInput(options.secondaryInputId) : undefined;
+  const document = createDerivedFieldDocument(input, operation, { ...options, secondaryInput });
   if (current.workspace.derivedFields?.some(item => item.identity.id === document.identity.id))
     throw new TypeError("Derived field ID already exists in the Project.");
   return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...current.workspace,
@@ -103,7 +113,9 @@ export const projectDerivedFieldsForDocument = (project: Math3DProject, document
   const current = requireProject(project), fields = current.workspace.derivedFields ?? [];
   const descendants = new Set<string>([documentId]);
   for (let index = 0; index < fields.length; index++)
-    for (const field of fields) if (descendants.has(field.input.documentId)) descendants.add(field.identity.id);
+    for (const field of fields) if (descendants.has(field.input.documentId) ||
+      field.secondaryInput && descendants.has(field.secondaryInput.documentId))
+      descendants.add(field.identity.id);
   return fields.filter(field => descendants.has(field.identity.id))
     .map(field => reviewProjectDerivedField(current, field.identity.id, verifySource, resolved));
 };

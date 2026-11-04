@@ -9,7 +9,7 @@ export const DERIVED_FIELD_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const DERIVED_FIELD_MAX_DOCUMENT_BYTES = 4096;
 export type DerivedFieldAxis = Readonly<{ index: 0 | 1 | 2; name: string;
   unit: string; min: number; max: number }>;
-export type DerivedFieldShape = Readonly<{ kind: "vector" | "scalar";
+export type DerivedFieldShape = Readonly<{ kind: "vector" | "scalar" | "tensor";
   axes: readonly DerivedFieldAxis[]; unit: string;
   componentUnits?: readonly [string, string, string] }>;
 export type DerivedFieldInput = Readonly<{ kind: "vector3d" | "derived";
@@ -17,6 +17,12 @@ export type DerivedFieldInput = Readonly<{ kind: "vector3d" | "derived";
   shape: DerivedFieldShape }>;
 export type DerivedFieldOperation =
   | Readonly<{ kind: "vector-magnitude" }>
+  | Readonly<{ kind: "scalar-gradient" | "scalar-hessian" |
+      "vector-jacobian" | "jacobian-symmetric" | "jacobian-antisymmetric" |
+      "vorticity" | "helicity" | "enstrophy" |
+      "vector-dot" | "vector-cross" | "vector-difference" }>
+  | Readonly<{ kind: "directional-derivative";
+      direction: readonly [number, number, number] }>
   | Readonly<{ kind: "plane-slice"; normalAxis: 0 | 1 | 2;
       coordinate: number; interpolation: "linear" }>
   | Readonly<{ kind: "line-profile"; varyingAxis: 0 | 1 | 2;
@@ -27,6 +33,7 @@ export type DerivedFieldDocument = Readonly<{
   schemaVersion: typeof DERIVED_FIELD_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
   input: DerivedFieldInput;
+  secondaryInput?: DerivedFieldInput;
   operation: DerivedFieldOperation;
   output: DerivedFieldShape;
   metadata: Readonly<{ title: string }>;
@@ -46,7 +53,7 @@ const axisIndex = (value: unknown): value is 0 | 1 | 2 =>
   value === 0 || value === 1 || value === 2;
 const validShape = (value: unknown): value is DerivedFieldShape => {
   if (!record(value) || !exact(value, ["kind", "axes", "unit"], ["componentUnits"]) ||
-      !["scalar", "vector"].includes(String(value.kind)) || !label(value.unit) ||
+      !["scalar", "vector", "tensor"].includes(String(value.kind)) || !label(value.unit) ||
       !Array.isArray(value.axes) || value.axes.length < 1 || value.axes.length > 3 ||
       value.axes.some(axis => !record(axis) || !exact(axis, ["index", "name", "unit", "min", "max"]) ||
         !axisIndex(axis.index) || !label(axis.name) || !label(axis.unit) ||
@@ -55,6 +62,7 @@ const validShape = (value: unknown): value is DerivedFieldShape => {
   if (new Set(axes.map(axis => axis.index)).size !== axes.length ||
       axes.some((axis, index) => index > 0 && axis.index <= axes[index - 1]!.index)) return false;
   if (value.kind === "scalar") return value.componentUnits === undefined;
+  if (value.kind === "tensor") return axes.length === 3 && value.componentUnits === undefined;
   return axes.length === 3 && Array.isArray(value.componentUnits) &&
     value.componentUnits.length === 3 && value.componentUnits.every(unit => label(unit)) &&
     value.unit === value.componentUnits[0];
@@ -69,6 +77,13 @@ const validInput = (value: unknown): value is DerivedFieldInput =>
   (value.kind !== "vector3d" || value.shape.kind === "vector" && value.shape.axes.length === 3);
 const validOperation = (value: unknown): value is DerivedFieldOperation =>
   record(value) && (value.kind === "vector-magnitude" && exact(value, ["kind"]) ||
+    ["scalar-gradient", "scalar-hessian", "vector-jacobian", "jacobian-symmetric",
+      "jacobian-antisymmetric", "vorticity", "helicity", "enstrophy",
+      "vector-dot", "vector-cross", "vector-difference"].includes(String(value.kind)) &&
+      exact(value, ["kind"]) ||
+    value.kind === "directional-derivative" && exact(value, ["kind", "direction"]) &&
+      Array.isArray(value.direction) && value.direction.length === 3 &&
+      value.direction.every(finite) && Math.hypot(...value.direction as number[]) > 0 ||
     value.kind === "plane-slice" && exact(value, ["kind", "normalAxis", "coordinate", "interpolation"]) &&
       axisIndex(value.normalAxis) && finite(value.coordinate) && value.interpolation === "linear" ||
     value.kind === "line-profile" && exact(value, ["kind", "varyingAxis", "fixedCoordinate", "extent", "samples", "interpolation"]) &&
@@ -80,9 +95,49 @@ const validOperation = (value: unknown): value is DerivedFieldOperation =>
 
 /** A one-step type/domain check. No samples or numerical freshness are inferred here. */
 export const deriveFieldOutput = (input: DerivedFieldShape,
-  operation: DerivedFieldOperation): DerivedFieldShape => {
+  operation: DerivedFieldOperation, secondary?: DerivedFieldShape): DerivedFieldShape => {
   if (!validShape(input) || !validOperation(operation))
     throw new TypeError("Invalid derived field input or operation.");
+  const binary = ["vector-dot", "vector-cross", "vector-difference"].includes(operation.kind);
+  if (binary !== !!secondary) throw new TypeError("Binary vector operations require exactly two inputs.");
+  if (secondary && (!validShape(secondary) || input.kind !== "vector" ||
+      secondary.kind !== "vector" || input.axes.length !== 3 ||
+      canonicalJsonStringify(input.axes) !== canonicalJsonStringify(secondary.axes) ||
+      canonicalJsonStringify(input.componentUnits) !==
+        canonicalJsonStringify(secondary.componentUnits) ||
+      new Set(input.componentUnits).size !== 1))
+    throw new TypeError("Binary vector inputs need identical physical frames and component units.");
+  const axisUnit = input.axes[0]?.unit;
+  const uniformAxes = input.axes.length === 3 &&
+    input.axes.every(axis => axis.unit === axisUnit);
+  const uniformVector = input.kind === "vector" &&
+    new Set(input.componentUnits).size === 1;
+  const vector = (unit: string): DerivedFieldShape =>
+    ({ kind: "vector", axes: input.axes, unit,
+      componentUnits: [unit, unit, unit] });
+  const scalar = (unit: string): DerivedFieldShape =>
+    ({ kind: "scalar", axes: input.axes, unit });
+  if (binary) return operation.kind === "vector-dot" ?
+    scalar(`${input.unit}·${secondary!.unit}`) : operation.kind === "vector-cross" ?
+      vector(`${input.unit}·${secondary!.unit}`) : vector(input.unit);
+  if (["scalar-gradient", "scalar-hessian", "directional-derivative"].includes(operation.kind)) {
+    if (input.kind !== "scalar" || !uniformAxes)
+      throw new TypeError("Scalar derivatives need a 3D scalar with matching coordinate units.");
+    if (operation.kind === "scalar-hessian")
+      return { kind: "tensor", axes: input.axes, unit: `${input.unit}/${axisUnit}²` };
+    return operation.kind === "scalar-gradient" ? vector(`${input.unit}/${axisUnit}`) :
+      scalar(`${input.unit}/${axisUnit}`);
+  }
+  if (["vector-jacobian", "jacobian-symmetric", "jacobian-antisymmetric",
+    "vorticity", "helicity", "enstrophy"].includes(operation.kind)) {
+    if (!uniformAxes || !uniformVector)
+      throw new TypeError("Vector derivatives need matching component and coordinate units.");
+    const derivativeUnit = `${input.unit}/${axisUnit}`;
+    if (operation.kind === "vorticity") return vector(derivativeUnit);
+    if (operation.kind === "helicity") return scalar(`${input.unit}·${derivativeUnit}`);
+    if (operation.kind === "enstrophy") return scalar(`${derivativeUnit}²`);
+    return { kind: "tensor", axes: input.axes, unit: derivativeUnit };
+  }
   if (operation.kind === "vector-magnitude") {
     if (input.kind !== "vector" || input.axes.length !== 3 ||
         new Set(input.componentUnits).size !== 1)
@@ -98,6 +153,7 @@ export const deriveFieldOutput = (input: DerivedFieldShape,
     return { kind: "scalar", axes: input.axes.filter(item => item.index !== operation.normalAxis),
       unit: input.unit };
   }
+  if (operation.kind !== "line-profile") throw new TypeError("Unsupported derived operation.");
   const varying = input.axes.find(item => item.index === operation.varyingAxis);
   const fixed = input.axes.find(item => item.index !== operation.varyingAxis);
   if (input.axes.length !== 2 || !varying || !fixed ||
@@ -123,19 +179,25 @@ export const vectorFieldDerivedShape = (document: VectorField3DDocument): Derive
 export const normalizeDerivedFieldDocument = (value: unknown): ValidationResult<DerivedFieldDocument> => {
   try {
     if (!record(value) || !exact(value,
-      ["format", "schemaVersion", "identity", "input", "operation", "output", "metadata"]) ||
+      ["format", "schemaVersion", "identity", "input", "operation", "output", "metadata"],
+      ["secondaryInput"]) ||
         value.format !== DERIVED_FIELD_DOCUMENT_FORMAT ||
         value.schemaVersion !== DERIVED_FIELD_DOCUMENT_SCHEMA_VERSION ||
         !isDocumentIdentity(value.identity) ||
         !value.identity.id.startsWith("math3d:derived-field:") ||
-        !validInput(value.input) || !validOperation(value.operation) ||
+        !validInput(value.input) ||
+        (value.secondaryInput !== undefined && !validInput(value.secondaryInput)) ||
+        !validOperation(value.operation) ||
         !validShape(value.output) || !record(value.metadata) ||
         !exact(value.metadata, ["title"]) || !label(value.metadata.title, 160))
       return { ok: false, errors: ["Invalid derived field document envelope."] };
-    const expected = deriveFieldOutput(value.input.shape, value.operation);
+    const expected = deriveFieldOutput(value.input.shape, value.operation,
+      value.secondaryInput?.shape);
+    const identitySource = { input: value.input,
+      ...(value.secondaryInput === undefined ? {} : { secondaryInput: value.secondaryInput }),
+      operation: value.operation, output: expected };
     if (canonicalJsonStringify(value.output) !== canonicalJsonStringify(expected) ||
-        value.identity.structuralHash !== structuralHash({ input: value.input,
-          operation: value.operation, output: expected }))
+        value.identity.structuralHash !== structuralHash(identitySource))
       return { ok: false, errors: ["Derived field output or identity disagrees with its recipe."] };
     const bytes = canonicalJsonStringify(value);
     if (new TextEncoder().encode(bytes).length > DERIVED_FIELD_MAX_DOCUMENT_BYTES)
@@ -147,13 +209,17 @@ export const normalizeDerivedFieldDocument = (value: unknown): ValidationResult<
 };
 
 export const createDerivedFieldDocument = (input: DerivedFieldInput,
-  operation: DerivedFieldOperation, options: { stableKey: string; title: string }): DerivedFieldDocument => {
-  const output = deriveFieldOutput(input.shape, operation);
+  operation: DerivedFieldOperation, options: { stableKey: string; title: string;
+    secondaryInput?: DerivedFieldInput }): DerivedFieldDocument => {
+  const output = deriveFieldOutput(input.shape, operation, options.secondaryInput?.shape);
   const id = createStableDocumentId("derived-field", options.stableKey);
   const document = { format: DERIVED_FIELD_DOCUMENT_FORMAT,
     schemaVersion: DERIVED_FIELD_DOCUMENT_SCHEMA_VERSION,
-    identity: createDocumentIdentity(id, { input, operation, output }),
-    input, operation, output, metadata: { title: options.title.trim() } };
+    identity: createDocumentIdentity(id, { input,
+      ...(options.secondaryInput ? { secondaryInput: options.secondaryInput } : {}),
+      operation, output }),
+    input, ...(options.secondaryInput ? { secondaryInput: options.secondaryInput } : {}),
+    operation, output, metadata: { title: options.title.trim() } };
   const checked = normalizeDerivedFieldDocument(document);
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
   return checked.value;

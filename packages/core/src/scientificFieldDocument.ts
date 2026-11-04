@@ -11,7 +11,7 @@ export const SCIENTIFIC_FIELD_DOCUMENT_FORMAT = "math3d.scientific-field-documen
 export const SCIENTIFIC_FIELD_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const SCIENTIFIC_FIELD_MAX_DOCUMENT_BYTES = 128 * 1024;
 export type ScientificFieldTransfer = Readonly<
-  { mode: "data" | "percentile" } | { mode: "manual"; min: number; max: number }
+  { mode: "data" | "percentile" | "symmetric" } | { mode: "manual"; min: number; max: number }
 >;
 export type ScientificFieldDisplay = Readonly<{
   view: "plane" | "volume";
@@ -117,7 +117,8 @@ const text = (value: unknown, max = 160): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value &&
   !/[\x00-\x1f\x7f]/.test(value);
 const validTransfer = (value: unknown): value is ScientificFieldTransfer =>
-  record(value) && (value.mode === "data" || value.mode === "percentile" ? exact(value, ["mode"]) :
+  record(value) && (value.mode === "data" || value.mode === "percentile" ||
+    value.mode === "symmetric" ? exact(value, ["mode"]) :
     value.mode === "manual" && exact(value, ["mode", "min", "max"]) &&
     typeof value.min === "number" && typeof value.max === "number" &&
     Number.isFinite(value.min) && Number.isFinite(value.max) && value.min < value.max);

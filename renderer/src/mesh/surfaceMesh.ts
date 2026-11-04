@@ -102,6 +102,16 @@ export type SurfaceMeshSource =
       complete: boolean; clipped: boolean;
       rebuildSequence?: number;
       verifiedTiles: import("@math3d/core").VectorField3DIsosurface["verifiedTiles"] | null }
+  | { kind: "derivedScalarFieldIsosurface";
+      derived: import("@math3d/core").DerivedScalarIsosurface["derived"];
+      vectorSource: import("@math3d/core").DerivedScalarIsosurface["vectorSource"];
+      vectorSources: import("@math3d/core").DerivedScalarIsosurface["vectorSources"];
+      sampleHash: string;
+      recipe: { level: number; unit: string;
+        clipBounds: import("@math3d/core").VectorField3DClipBounds;
+        triangleBudget: number; timeBudgetMs: number;
+        gridShape: readonly [number, number, number] };
+      complete: boolean; limitReason: string | null }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }
   | { kind: "csg" }
@@ -147,6 +157,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return `verified scientific field ${source.sceneId}/${source.datasetId}`;
     case "derivedVectorFieldIsosurface":
       return `source-linked speed isosurface |F| = ${source.recipe.level} ${source.recipe.unit}`;
+    case "derivedScalarFieldIsosurface":
+      return `source-linked derived scalar isosurface ${source.recipe.level} ${source.recipe.unit}`;
     case "halfspaceIntersection":
       return "halfspace intersection";
     case "convexHull":

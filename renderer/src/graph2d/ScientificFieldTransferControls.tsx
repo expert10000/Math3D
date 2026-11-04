@@ -15,6 +15,7 @@ export function ScientificFieldTransferControls({ range, transfer, unit, onApply
       <label>Color range <select value={mode} onChange={event => setMode(event.target.value as ScientificFieldTransfer["mode"])}>
         <option value="data">{rangeLabel === "Displayed sample range" ? "Full displayed sample range" : "Full displayed range"}</option>
         <option value="percentile">Clip 2–98% outliers</option>
+        <option value="symmetric">Symmetric around zero</option>
         <option value="manual">Manual range</option>
       </select></label>
       {mode === "manual" && <>
@@ -29,6 +30,15 @@ export function ScientificFieldTransferControls({ range, transfer, unit, onApply
       <span>{range.min} {unit}</span><span className="graph2d-scientific-legend-scale" aria-hidden="true" />
       <span>{range.max} {unit}</span>
     </div>
+    <div role="img" aria-label={`Verified sample histogram, ${range.histogram.length} bins, ${
+      range.histogram.reduce((sum, bin) => sum + bin.count, 0)} samples`}
+      style={{ display: "flex", alignItems: "end", gap: 1, height: 48, maxWidth: 320 }}>
+      {range.histogram.map((bin, index) => <span key={index} aria-hidden="true"
+        style={{ flex: 1, height: `${Math.max(2, 100 * bin.count /
+          Math.max(1, ...range.histogram.map(item => item.count)))}%`, background: "#64748b" }} />)}
+    </div>
+    <p>Verified sample percentiles: 2% {range.percentiles.p02}, median {range.percentiles.p50},
+      98% {range.percentiles.p98} {unit}.</p>
     <p>{range.constant ? `${rangeLabel === "Displayed sample range" ? "Constant displayed samples" : "Constant displayed plane"}: ${range.dataMin} ${unit}; ${range.min === range.max ?
       "shown at the midpoint color." : "color follows the selected range."}` :
       `${rangeLabel} ${range.dataMin} to ${range.dataMax} ${unit}. ${range.min === range.max ?

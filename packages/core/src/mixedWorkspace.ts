@@ -129,30 +129,33 @@ export const normalizeMixedWorkspaceDocument = (value: unknown): ValidationResul
       [document.identity.id, document]));
     if (byId.size !== derivedFields.length) errors.push("Duplicate Project derived field IDs.");
     for (const document of derivedFields) {
-      const input = document.input;
-      if (input.kind === "vector3d") {
-        const entry = entries.find(item => item.module === "vector3d" && item.expected.id === input.documentId);
-        if (!entry) errors.push("Derived field vector source is outside the workspace.");
-        else if (entry.replay === null && entry.checkpoint.format === "math3d.vector-field3d-document" &&
-            entry.expected.revision === input.revision &&
-            entry.expected.structuralHash === input.structuralHash &&
-            canonicalJsonStringify(input.shape) !== canonicalJsonStringify(vectorFieldDerivedShape(entry.checkpoint)))
-          errors.push("Derived field input shape disagrees with its vector source.");
-      } else {
-        const parent = byId.get(input.documentId);
-        if (!parent) errors.push("Derived field input is outside the Project collection.");
-        else if (parent.identity.revision === input.revision &&
-            parent.identity.structuralHash === input.structuralHash &&
-            canonicalJsonStringify(input.shape) !== canonicalJsonStringify(parent.output))
-          errors.push("Derived field input shape disagrees with its parent.");
+      for (const input of [document.input, ...(document.secondaryInput ? [document.secondaryInput] : [])]) {
+        if (input.kind === "vector3d") {
+          const entry = entries.find(item => item.module === "vector3d" && item.expected.id === input.documentId);
+          if (!entry) errors.push("Derived field vector source is outside the workspace.");
+          else if (entry.replay === null && entry.checkpoint.format === "math3d.vector-field3d-document" &&
+              entry.expected.revision === input.revision &&
+              entry.expected.structuralHash === input.structuralHash &&
+              canonicalJsonStringify(input.shape) !== canonicalJsonStringify(vectorFieldDerivedShape(entry.checkpoint)))
+            errors.push("Derived field input shape disagrees with its vector source.");
+        } else {
+          const parent = byId.get(input.documentId);
+          if (!parent) errors.push("Derived field input is outside the Project collection.");
+          else if (parent.identity.revision === input.revision &&
+              parent.identity.structuralHash === input.structuralHash &&
+              canonicalJsonStringify(input.shape) !== canonicalJsonStringify(parent.output))
+            errors.push("Derived field input shape disagrees with its parent.");
+        }
       }
     }
     const depth = (id: string, visiting: Set<string>): number => {
       if (visiting.has(id)) throw new TypeError("Derived field dependency cycle.");
       const document = byId.get(id);
-      if (!document || document.input.kind !== "derived") return 1;
+      if (!document) return 1;
       visiting.add(id);
-      const result = 1 + depth(document.input.documentId, visiting);
+      const parents = [document.input, ...(document.secondaryInput ? [document.secondaryInput] : [])]
+        .filter(input => input.kind === "derived");
+      const result = 1 + Math.max(0, ...parents.map(input => depth(input.documentId, visiting)));
       visiting.delete(id);
       return result;
     };

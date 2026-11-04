@@ -259,6 +259,10 @@ type Props = {
   onSaveVectorField3DTrajectorySeeds?: (document: VectorField3DDocument,
     selection: import("@math3d/core").ScientificSelection) => void;
   onPromoteVectorField3DTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
+  onAppendVectorField3DDerivedOperation?: (inputId: string,
+    operation: import("@math3d/core").DerivedFieldOperation,
+    options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
+  onPromoteVectorField3DDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
     surface: import("@math3d/core").VectorField3DIsosurface) => void;
@@ -287,6 +291,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DLineIntegralSelection, onSaveVectorField3DLineIntegralResult,
   onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
   onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
+  onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
@@ -3881,6 +3886,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveRegionIntegralResult={onSaveVectorField3DRegionIntegralResult}
           onSaveTrajectorySeeds={onSaveVectorField3DTrajectorySeeds}
           onPromoteTrajectoryCurve={onPromoteVectorField3DTrajectoryCurve}
+          onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
+          onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
           onOpenProjectResults={onOpenVectorField3DProjectResults}
           onPromoteIsosurface={onPromoteVectorField3DIsosurface}
           isGraphLineImported={(selection, vectorDocument) => {

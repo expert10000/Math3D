@@ -6,11 +6,13 @@ export const DEFAULT_SCIENTIFIC_FIELD_TRANSFER: ScientificFieldTransfer = { mode
 export type ScientificFieldRange = Readonly<{
   min: number; max: number; dataMin: number; dataMax: number;
   below: number; above: number; constant: boolean;
+  histogram: readonly Readonly<{ min: number; max: number; count: number }>[];
+  percentiles: Readonly<{ p02: number; p50: number; p98: number }>;
 }>;
 
 /** Computes display bounds only; the checked sample array is never modified. */
 export function scientificFieldRange(values: readonly number[], transfer: ScientificFieldTransfer): ScientificFieldRange {
-  if (!values.length || values.some(value => !Number.isFinite(value)))
+  if (!values.length || values.length > 262_144 || values.some(value => !Number.isFinite(value)))
     throw new TypeError("A verified finite field is required for display.");
   const sorted = [...values].sort((a, b) => a - b);
   const dataMin = sorted[0]!, dataMax = sorted[sorted.length - 1]!;
@@ -19,13 +21,25 @@ export function scientificFieldRange(values: readonly number[], transfer: Scient
     // Nearest ranks keep a single extreme outlier from stretching a large field's colors.
     min = sorted[Math.floor((sorted.length - 1) * 0.02)]!;
     max = sorted[Math.ceil((sorted.length - 1) * 0.98)]!;
+  } else if (transfer.mode === "symmetric") {
+    const radius = Math.max(Math.abs(dataMin), Math.abs(dataMax));
+    min = -radius; max = radius;
   } else if (transfer.mode === "manual") {
     if (!Number.isFinite(transfer.min) || !Number.isFinite(transfer.max) || transfer.min >= transfer.max)
       throw new RangeError("The color maximum must be greater than the color minimum.");
     min = transfer.min; max = transfer.max;
   }
+  const count = 32, width = dataMax - dataMin;
+  const bins = new Uint32Array(count);
+  for (const value of values) bins[width === 0 ? Math.floor(count / 2) :
+    Math.min(count - 1, Math.floor((value - dataMin) / width * count))]++;
   return { min, max, dataMin, dataMax, below: values.filter(value => value < min).length,
-    above: values.filter(value => value > max).length, constant: dataMin === dataMax };
+    above: values.filter(value => value > max).length, constant: dataMin === dataMax,
+    histogram: Array.from(bins, (hits, index) => ({ min: dataMin + index * width / count,
+      max: dataMin + (index + 1) * width / count, count: hits })),
+    percentiles: { p02: sorted[Math.floor((sorted.length - 1) * .02)]!,
+      p50: sorted[Math.floor((sorted.length - 1) * .5)]!,
+      p98: sorted[Math.ceil((sorted.length - 1) * .98)]! } };
 }
 
 export function scientificFieldColor(value: number, range: ScientificFieldRange): readonly [number, number, number] {

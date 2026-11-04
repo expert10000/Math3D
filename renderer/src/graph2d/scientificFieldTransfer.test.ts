@@ -27,4 +27,15 @@ describe("scientific field display transfer", () => {
     expect(range).toMatchObject({ constant: true, below: 0, above: 2 });
     expect(scientificFieldColor(7, range)).toEqual([250, 80, 30]);
   });
+
+  it("summarizes finite samples and centers a symmetric range without changing the source", () => {
+    const values = Object.freeze([-4, -2, 0, 1, 2]);
+    const range = scientificFieldRange(values, { mode: "symmetric" });
+    expect(range).toMatchObject({ min: -4, max: 4, dataMin: -4, dataMax: 2,
+      percentiles: { p02: -4, p50: 0, p98: 2 } });
+    expect(range.histogram).toHaveLength(32);
+    expect(range.histogram.reduce((sum, bin) => sum + bin.count, 0)).toBe(values.length);
+    expect(values).toEqual([-4, -2, 0, 1, 2]);
+    expect(() => scientificFieldRange([0, Number.NaN], { mode: "data" })).toThrow(/verified/);
+  });
 });

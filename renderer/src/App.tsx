@@ -39,6 +39,7 @@ import { relatedDocuments } from "./workspace/relatedDocuments";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./projects/savedSurfaceMesh";
 import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
   reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
+import { promoteDerivedScalarIsosurfaceMesh } from "./projects/derivedScalarIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
@@ -810,6 +811,7 @@ import {
   upsertProjectRegionResult,
   upsertProjectTrajectorySeedRecipe,
   upsertProjectTrajectoryCurve,
+  appendProjectDerivedField,
   createVolumeDocument,
   createViewerProvenanceEvidence,
   canonicalJsonByteLength,
@@ -90739,6 +90741,27 @@ case "mobius":
               const updated = upsertProjectTrajectoryCurve(active, promotion);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
+            }}
+            onAppendVectorField3DDerivedOperation={(inputId, operation, options) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = appendProjectDerivedField(active, inputId, operation, options,
+                source => source.source.field.kind === "expressions");
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onPromoteVectorField3DDerivedIsosurface={surface => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const next = promoteDerivedScalarIsosurfaceMesh(active.workspace, active, surface);
+              const updated = replaceMath3DProjectWorkspace(active, next.workspace);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              restored.meshes.set(next.adapter.document().identity.id, next.adapter);
+              meshDocumentAdapterRef.current = next.adapter;
+              setMeshKernelDocument(next.adapter.document());
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(next.adapter.document().identity.id, "mesh");
             }}
             onOpenVectorField3DProjectResults={id => {
               setProjectResultRequest(previous => ({ id, token: (previous?.token ?? 0) + 1 }));
