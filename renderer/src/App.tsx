@@ -7,7 +7,8 @@ import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./comp
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
-import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject, addMath3DProjectAlgebraEvidence, type ProjectScientificSceneReference } from "@math3d/core";
+import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
+  addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, type ProjectScientificSceneReference } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -111368,6 +111369,29 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onSaveRecipe={(recipe) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== recipe.projectId) throw new TypeError("Open the matching Project before saving an algebra recipe.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the recipe.");
+          const next = upsertMath3DProjectAlgebraRecipe(current, recipe);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onAppendRecipeEvidence={(base, evidence) => {
+          const savedBytes = localStorage.getItem(projectPayloadKey(base.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== base.identity.structuralHash)
+            throw new TypeError("The saved Project changed during the recipe. Completed evidence was retained; reopen before rerunning.");
+          const next = addMath3DProjectAlgebraEvidence(base, evidence);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          return next;
+        }}
         onSaveEvidence={(evidence) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== evidence.projectId) throw new TypeError("Open the matching Project before saving Sage evidence.");

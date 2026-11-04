@@ -14,6 +14,7 @@ export type SageStructuresSlot = {
   dossier: ReactNode;
   inspector: ReactNode;
   operations?: ReactNode;
+  recipes?: ReactNode;
   evidence?: Readonly<{ focusKey: string; result: ReactNode; structure: ReactNode;
     verification: ReactNode; execution: ReactNode }>;
 };
@@ -41,7 +42,7 @@ const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff
 /** Shared workspace surface over the Sage catalog, result cards, and runtime registry. */
 export default function SageServicesWorkspace({ context, title, description, testId, record, onResult,
   onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures }: Props) {
-  const [leftTab, setLeftTab] = useState<"structures" | "operations">(structures?.projectId ? "structures" : "operations");
+  const [leftTab, setLeftTab] = useState<"structures" | "operations" | "recipes">(structures?.projectId ? "structures" : "operations");
   const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "runtimes">(structures?.projectId ? "structure" : "results");
   const [resultSource, setResultSource] = useState<"evidence" | "freeform">("evidence");
   useEffect(() => {
@@ -75,9 +76,11 @@ export default function SageServicesWorkspace({ context, title, description, tes
         {structures ? <nav aria-label="CAS / Algebra sections" className="sage-workspace-tabs">
           <button type="button" style={button} aria-pressed={leftTab === "structures"} onClick={() => setLeftTab("structures")}>Structures</button>
           <button type="button" style={button} aria-pressed={leftTab === "operations"} onClick={() => setLeftTab("operations")}>Operations</button>
-          <button type="button" style={button} disabled title="Recipes are planned after the object builder" aria-label="Recipes (planned)" >Recipes</button>
+          <button type="button" style={button} disabled={!structures.recipes} aria-pressed={leftTab === "recipes"}
+            onClick={() => setLeftTab("recipes")}>Recipes</button>
         </nav> : <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Services</h2>}
-        {leftTab === "structures" && structures ? structures.explorer : <>
+        {leftTab === "structures" && structures ? structures.explorer : leftTab === "recipes" && structures
+          ? structures.recipes : <>
           {structures?.operations}
           <ScientificServicesPanel context={context} onResult={(result) => { onResult(result); setResultSource("freeform"); setRightTab("results"); }} onOpenRuntimes={onOpenComputeRuntimes} />
         </>}

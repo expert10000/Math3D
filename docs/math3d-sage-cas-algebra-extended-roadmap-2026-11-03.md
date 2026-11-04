@@ -306,6 +306,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B06 implementation update (2026-11-04):** The [B06 acceptance record](evidence/sage-b06-dossier-inspector-2026-11-04.md) connects selected saved evidence to structured **Results**, **Structure**, **Verification** and **Execution** views in the CAS Inspector. It renders exact matrices, polynomial facts and number-theory answers without a raw JSON dump. Verification recomputes GCD and inverse identities, reports checked matrix witnesses and transformations where available, and labels uncertified Sage claims as computed. Historical or stale sources remain visible. The next gate is **SAGE-B07**, recipe graphs with dependency-aware execution.
 
+**B07 implementation update (2026-11-04):** The [B07 acceptance record](evidence/sage-b07-recipe-dag-2026-11-04.md) adds versioned algebra recipe graphs to `.math3d` Projects and enables CAS → Algebra → Recipes. Each bounded stage pins an object revision and output schema; dependency edges are typed and cycle-checked. The runner commits successful stage evidence separately, skips descendants of failures, continues independent branches and retains completed evidence on cancellation. Saved starters cover supported integer, rational, modular, finite-field and polynomial objects. The next gate is **SAGE-B08**, polynomial and matrix golden fixtures.
+
 ---
 
 ## 3. P0 — Algebra object registry

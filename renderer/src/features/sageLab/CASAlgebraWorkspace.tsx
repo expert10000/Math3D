@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraObjectRef,
-  type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
+  type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageObjectOperations from "./SageObjectOperations";
+import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
 import { describeStructure, resolveStructureSelection, selectedStructure,
@@ -14,6 +15,8 @@ type Props = Omit<SageServicesWorkspaceProps, "structures"> & {
   project: Math3DProject | null;
   onCreateStructure: (record: AlgebraObjectRecord) => void | Promise<void>;
   onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
+  onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
+  onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
   onOpenProjects: () => void;
 };
 
@@ -29,7 +32,8 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
   catch { return null; }
 };
 
-export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onOpenProjects, ...props }: Props) {
+export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
+  onAppendRecipeEvidence, onOpenProjects, ...props }: Props) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
@@ -42,6 +46,11 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       current && project?.algebraObjects?.some((entry) => entry.id === current.objectId)
         ? current : readSavedSelection(project)));
   }, [project?.identity.id, project?.identity.revision]);
+  useEffect(() => {
+    const evidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId);
+    if (evidence && evidence.request.target.objectId !== selection?.objectId)
+      setSelection(evidence.request.target);
+  }, [project?.identity.revision, selectedEvidenceId]);
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
@@ -53,7 +62,16 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const selectedEvidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId &&
     item.request.target.objectId === chosen?.record.id) ?? null;
   const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
-  const inspectEvidence = (id: string) => { setSelectedEvidenceId(id); setEvidenceFocus((value) => value + 1); };
+  const inspectEvidence = (id: string) => {
+    const evidence = project?.algebraEvidence?.find((item) => item.id === id);
+    if (evidence && evidence.request.target.objectId !== selection?.objectId) {
+      setSelection(evidence.request.target);
+      try { localStorage.setItem(structureSelectionKey(project!.identity.id), JSON.stringify(evidence.request.target)); }
+      catch { /* Inspector selection remains available without local storage. */ }
+    }
+    setSelectedEvidenceId(id);
+    setEvidenceFocus((value) => value + 1);
+  };
   const freshness = project ? inspectProjectAlgebraFreshness(project) : [];
   const status = chosen ? freshness.find((item) => item.objectId === chosen.entry.id) : null;
   const parent = chosen?.record.definition.kind === "polynomial-ring"
@@ -141,5 +159,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         onInspectEvidence={inspectEvidence} onSaveEvidence={async (evidence) => {
           await onSaveEvidence(evidence);
           inspectEvidence(evidence.id);
-        }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} /> }} />;
+        }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} />,
+      recipes: <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
+        revision: chosen.record.revision } : null} onSaveRecipe={onSaveRecipe}
+        onAppendEvidence={onAppendRecipeEvidence} onInspectEvidence={inspectEvidence} /> }} />;
 }
