@@ -15,6 +15,7 @@ import { canonicalJsonStringify, createVectorField3DDocument, defaultVectorField
   verifyVectorField3DVolumes,
   type VectorField3DDifferentialArtifact,
   type AnalysisResultEnvelope,
+  type ScientificSelection,
   type VectorField3DEquilibriumSearch,
   type VectorField3DIsosurface,
   sampleVectorField3DAnalyticLine, type VectorField3DAnalyticLine,
@@ -86,6 +87,7 @@ import type { CombinedRegionInspection } from "./combinedFieldInspection";
 import type { SavedRegionSourceStatus } from "./checkSavedRegionResultSources";
 import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
 import { FieldExplorerProjectHierarchy } from "./FieldExplorerProjectHierarchy";
+import { VectorField3DLineIntegralPanel } from "./VectorField3DLineIntegralPanel";
 import "./fieldExplorerHierarchy.css";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -131,6 +133,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   linkedRegionFocus = null,
   savedPointResults = [], onSavePointResult, savedRegionResults = [], regionResultStatuses = {},
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
+  onSaveLineIntegralSelection, onSaveLineIntegralResult,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
@@ -181,6 +184,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   savedRegionResults?: readonly AnalysisResultEnvelope[];
   regionResultStatuses?: Readonly<Record<string, SavedRegionSourceStatus>>;
   onSaveRegionResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
+  onSaveLineIntegralSelection?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
+  onSaveLineIntegralResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
     surface: VectorField3DIsosurface) => void;
@@ -1978,6 +1983,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
           card?.focus({ preventScroll: true });
         });
       }} />
+    {!fieldLayer && <VectorField3DLineIntegralPanel document={document} project={project}
+      onSaveSelection={onSaveLineIntegralSelection} onSaveResult={onSaveLineIntegralResult} />}
     <section className="scientific-field-explorer-library" aria-label="Dataset library"
       data-testid="scientific-field-explorer-library">
       <h4>Dataset library</h4>

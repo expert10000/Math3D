@@ -8,6 +8,7 @@ const selectionSummary = (item: ScientificSelection) => {
     frame.axes[index]?.unit ? ` (${frame.axes[index]!.unit})` : ""}`;
   switch (geometry.kind) {
     case "point": return `Point · ${geometry.position.map((value, index) => `${axis(index)} = ${value}`).join(" · ")}`;
+    case "oriented-polyline": return `${geometry.closed ? "Closed" : "Open"} oriented polyline · ${geometry.vertices.length} vertices · ${geometry.direction}`;
     case "axis-line": return `Line · ${axis(geometry.varyingAxis)} ${geometry.extent[0]}…${geometry.extent[1]}`;
     case "orthogonal-plane": return `Plane · ${axis(geometry.normalAxis)} = ${geometry.coordinate}`;
     case "plane-region": return `Planar region · ${axis(geometry.normalAxis)} = ${geometry.coordinate}`;
@@ -20,6 +21,8 @@ const selectionGeometry = (item: ScientificSelection) => {
       ` ${frame.axes[index]!.unit}` : ""}`;
   if (geometry.kind === "point") return geometry.position.map((value, index) =>
     coordinate(index, value)).join(" · ");
+  if (geometry.kind === "oriented-polyline") return `${geometry.direction} through ${geometry.vertices.map(vertex =>
+    `(${vertex.join(", ")})`).join(" → ")}${geometry.closed ? " → start" : ""}`;
   if (geometry.kind === "axis-line") return `Extent ${geometry.extent[0]}…${geometry.extent[1]}; ` +
     geometry.fixedCoordinates.flatMap((value, index) => value === null ? [] :
       [coordinate(index, value)]).join(" · ");
