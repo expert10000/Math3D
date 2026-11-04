@@ -1,8 +1,9 @@
 # Theory Lab and Math3D quantum visual review
 
 The 2026-11-04 review archive contains 58 direct Theory Lab Electron screenshots
-and 46 Math3D Electron screenshots. Math3D captures cover all 36 pinned,
-verified quantum examples plus ten orbital Volume and density-surface variants.
+and 47 Math3D Electron screenshots. Math3D captures cover all 36 pinned,
+verified quantum examples, ten orbital Volume and density-surface variants,
+and one close view of the corrected source-run guidance.
 The archive includes `index.html` for browsing, `review-manifest.json` with
 SHA-256 for every PNG, `scene-review-matrix.md` and `.json`, and
 `roundtrip-evidence.json`. The Theory Lab screens came from its passing desktop
