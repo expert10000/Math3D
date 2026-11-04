@@ -91,6 +91,16 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
         for (const generator of record.definition.generators)
           parseIdealGenerator(generator, parent.definition.variables);
       }
+      if (record.definition.kind === "quotient-ring") {
+        const ring = byId.get(record.definition.ambientRing.objectId)
+          ?.revisions[record.definition.ambientRing.revision - 1];
+        const ideal = byId.get(record.definition.ideal.objectId)
+          ?.revisions[record.definition.ideal.revision - 1];
+        if (ring?.kind !== "polynomial-ring" || ideal?.definition.kind !== "ideal" ||
+            ideal.definition.ambientRing.objectId !== ring.id ||
+            ideal.definition.ambientRing.revision !== ring.revision)
+          throw new TypeError(`Quotient ${key} requires an ideal in its pinned polynomial ambient ring.`);
+      }
       visit(parent);
     }
     visiting.delete(key);

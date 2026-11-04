@@ -8,7 +8,7 @@ import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
 import { algebraEvidenceInspectorModel } from "./algebraEvidenceInspectorModel";
-import { describeStructure, resolveStructureSelection, selectedStructure,
+import { createQuotientStarter, describeStructure, resolveStructureSelection, selectedStructure,
   structureDisplay, structureSelectionKey, type StructureStarterKind } from "./sageStructuresModel";
 
 type Props = Omit<SageServicesWorkspaceProps, "structures"> & {
@@ -41,6 +41,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
   const [builder, setBuilder] = useState<"ring" | "ideal" | null>(null);
+  const [quotientName, setQuotientName] = useState("");
+  const [quotientError, setQuotientError] = useState("");
 
   useEffect(() => {
     setSelection((current) => resolveStructureSelection(project,
@@ -78,8 +80,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const parent = chosen?.record.definition.kind === "polynomial-ring"
     ? selectedStructure(project, chosen.record.definition.coefficientDomain)?.record
     : chosen?.record.definition.kind === "ideal"
-      ? selectedStructure(project, chosen.record.definition.ambientRing)?.record : null;
-  const summary = chosen && project && chosen.record.kind !== "ideal" ? describeStructure(chosen.record, project) : null;
+      ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
+      : chosen?.record.definition.kind === "quotient-ring"
+        ? selectedStructure(project, chosen.record.definition.ambientRing)?.record : null;
+  const idealParent = chosen?.record.definition.kind === "quotient-ring"
+    ? selectedStructure(project, chosen.record.definition.ideal)?.record : null;
+  const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring"
+    ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -123,14 +130,16 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       </select>
     </label>
     <dl className="sage-structure-facts">
-      <dt>Kind</dt><dd>{chosen.record.kind === "ideal" ? "Polynomial ideal" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
+      <dt>Kind</dt><dd>{chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
+        ? "Quotient ring" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
       <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>{chosen.record.kind === "ideal" ? "Ambient ring" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}
       {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
-        <dt>Validation</dt><dd>Bounded exact polynomial syntax; Sage computation pending</dd></>}
+        <dt>Validation</dt><dd>Bounded exact polynomial syntax</dd></>}
       {chosen.record.definition.kind === "polynomial-ring" && <>
         <dt>Variables</dt><dd>{chosen.record.definition.variables.join(", ")}</dd>
         <dt>Monomial order</dt><dd>{chosen.record.definition.monomialOrder}</dd></>}
@@ -138,6 +147,18 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       {chosen.record.definition.kind === "finite-field" && <><dt>Degree</dt><dd>{chosen.record.definition.degree}</dd>
         <dt>Generator</dt><dd>{chosen.record.definition.generator}</dd><dt>Construction</dt><dd>Canonical Sage finite field</dd></>}
     </dl>
+    {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <label>Quotient name <input aria-label="Quotient name" value={quotientName}
+        onChange={(event) => setQuotientName(event.target.value)} placeholder={`${chosen.record.label} quotient`} /></label>
+      <button type="button" style={action} onClick={() => { try {
+        if (!project) return;
+        const record = createQuotientStarter(project, quotientName || `${chosen.record.label} quotient`,
+          { objectId: chosen.record.id, revision: chosen.record.revision }, crypto.randomUUID());
+        void Promise.resolve(onCreateStructure(record)).then(() => { select({ objectId: record.id, revision: 1 });
+          setQuotientName(""); setQuotientError(""); }).catch((error) => setQuotientError(String(error)));
+      } catch (error) { setQuotientError(String(error)); } }}>Save quotient ring</button>
+      {quotientError && <span role="alert">{quotientError}</span>}
+    </div>}
     {status?.causes.length ? <div role="status" style={{ color: "#9a3412", fontSize: 12 }}>Stale because a pinned parent definition advanced: {status.causes.map((item) => `${item.objectId}@${item.pinnedRevision} → @${item.currentRevision}`).join(", ")}.</div> : null}
   </div> : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>{project ? "Select a saved structure to inspect its definition." : "Open a Project to inspect its structures."}</div>;
 
@@ -148,6 +169,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     <dt>Parent revisions</dt><dd>{chosen.record.dependencies.length ? chosen.record.dependencies.map((ref) => `${ref.objectId}@${ref.revision}`).join(", ") : "None"}</dd>
     {chosen.record.definition.kind === "ideal" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
       <dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd></>}
+    {chosen.record.definition.kind === "quotient-ring" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Ideal</dt><dd>{idealParent?.label}@{idealParent?.revision}</dd></>}
     <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
     {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
@@ -167,12 +190,12 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,
       } : undefined,
-      operations: chosen?.record.kind === "ideal" ? <div role="status">Ideal operations begin with SAGE-C02.</div> : <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
+      operations: <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
         onInspectEvidence={inspectEvidence} onSaveEvidence={async (evidence) => {
           await onSaveEvidence(evidence);
           inspectEvidence(evidence.id);
         }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} />,
-      recipes: chosen?.record.kind === "ideal" ? <div role="status">Ideal recipes begin with SAGE-C02.</div> : <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
+      recipes: <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
         revision: chosen.record.revision } : null} onSaveRecipe={onSaveRecipe}
         onAppendEvidence={onAppendRecipeEvidence} onInspectEvidence={inspectEvidence} /> }} />;
 }

@@ -56,6 +56,12 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     structure.push(fact("Coefficient domain", formatRef(source.definition.coefficientDomain)),
       fact("Variables", source.definition.variables),
       fact("Monomial order", source.definition.monomialOrder));
+  } else if (source?.definition.kind === "ideal") {
+    structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
+      fact("Generators", source.definition.generators));
+  } else if (source?.definition.kind === "quotient-ring") {
+    structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
+      fact("Ideal", formatRef(source.definition.ideal)));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;
@@ -143,6 +149,24 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     case "sage.groebner.compute":
       facts.push(fact("Generators", list(params.polynomials)), fact("Gröbner basis", list(result.basis)));
       checks.push(check("Basis certificate", "reported", "Sage returned the basis; generator reductions and a Gröbner certificate are not recorded."));
+      break;
+    case "sage.ideal.groebner":
+      facts.push(fact("Ideal generators", list(params.generators)), fact("Gröbner basis", list(result.basis)));
+      checks.push(check("Basis computation", "reported", "Sage computed this basis in the pinned ambient ring and order."));
+      break;
+    case "sage.ideal.eliminate":
+      facts.push(fact("Eliminated variables", list(result.eliminate)), fact("Elimination basis", list(result.basis)));
+      checks.push(check("Elimination computation", "reported", "Sage computed the elimination ideal from the pinned generators."));
+      break;
+    case "sage.ideal.membership":
+      facts.push(fact("Polynomial", text(result.polynomial)), fact("Member", result.member ? "Yes" : "No"),
+        fact("Normal form", text(result.normalForm)), fact("Gröbner basis", list(result.basis)));
+      checks.push(check("Normal form status", "checked", "Member status agrees with whether the returned normal form is zero."),
+        check("Ideal reduction", "reported", "Sage computed the normal form from the pinned ideal; no reduction witness is retained."));
+      break;
+    case "sage.ideal.quotientDimension":
+      facts.push(fact("Quotient", text(result.quotientPresentation)), fact("Krull dimension", text(result.dimension)));
+      checks.push(check("Dimension computation", "reported", "Sage computed the dimension of the pinned ideal and quotient."));
       break;
     case "sage.matrix.linear_dossier":
       facts.push(fact("Source matrix", matrix(result.sourceMatrix)), fact("Rank", text(result.rank)),

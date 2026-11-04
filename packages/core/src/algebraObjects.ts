@@ -17,7 +17,8 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "modular-ring"; modulus: string }>
   | Readonly<{ kind: "finite-field"; characteristic: number; degree: number; generator: string; construction: "canonical" }>
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
-  | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>;
+  | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
+  | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>;
 
 export type AlgebraObjectKind = AlgebraObjectDefinition["kind"];
 export type AlgebraMonomialOrder = "lex" | "deglex" | "degrevlex";
@@ -147,6 +148,10 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
         throw new TypeError("definition.generators must be distinct.");
       return { kind: "ideal", ambientRing, generators };
     }
+    case "quotient-ring":
+      requireKeys(definition, ["kind", "ambientRing", "ideal"], "definition");
+      return { kind: "quotient-ring", ambientRing: requireRef(definition.ambientRing, "definition.ambientRing"),
+        ideal: requireRef(definition.ideal, "definition.ideal") };
     default:
       throw new TypeError(`Unsupported algebra object kind '${String(definition.kind)}'.`);
   }
@@ -154,7 +159,8 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
 
 const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraObjectRef[] =>
   definition.kind === "polynomial-ring" ? [definition.coefficientDomain]
-    : definition.kind === "ideal" ? [definition.ambientRing] : [];
+    : definition.kind === "ideal" ? [definition.ambientRing]
+      : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal] : [];
 
 const definitionHash = (definition: AlgebraObjectDefinition): StructuralHash =>
   structuralHash({ schemaVersion: ALGEBRA_OBJECT_SCHEMA_VERSION, definition });

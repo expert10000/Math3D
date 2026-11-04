@@ -9,11 +9,13 @@ import { parsePolynomialDossierResult, type PolynomialDossierResult } from "./po
 import { parseSageMatrixDossierInput, parseSageMatrixDossierResult, type SageMatrixDossierResult } from "./sageMatrixDossier";
 import { parseSageIntegerMatrixFormsInput, parseSageIntegerMatrixFormsResult,
   type SageIntegerMatrixFormsResult } from "./sageIntegerMatrixForms";
+import { buildSageIdealInput, parseSageIdealResult, type SageIdealResult,
+  type SageIdealOperation } from "./sageIdealOperations";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
   "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
-  "sage.matrix.linear_dossier" | "sage.matrix.integer_forms";
+  "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" | SageIdealOperation;
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
   "sage.algebra.reconstruct": Readonly<Record<string, never>>;
@@ -26,14 +28,18 @@ export type AlgebraOperationArguments = {
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
   "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
+  "sage.ideal.groebner": Readonly<Record<string, never>>;
+  "sage.ideal.eliminate": Readonly<{ eliminate: readonly string[] }>;
+  "sage.ideal.membership": Readonly<{ polynomial: string }>;
+  "sage.ideal.quotientDimension": Readonly<Record<string, never>>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
-  SageMatrixDossierResult | SageIntegerMatrixFormsResult |
+  SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
 export type AlgebraOperationDefinition = Readonly<{
-  id: AlgebraOperationId; label: string; category: "structure" | "number-theory" | "polynomial" | "matrix";
+  id: AlgebraOperationId; label: string; category: "structure" | "number-theory" | "polynomial" | "matrix" | "ideal";
   accepts: readonly AlgebraObjectKind[]; domain: "any" | "QQ-polynomial" | "QQ-univariate-polynomial";
   capability: string; backends: readonly AlgebraBackend[];
   inputSchema: string; outputSchema: string; deterministic: true; cachePolicy: "none"; executionMode: "bounded";
@@ -69,6 +75,14 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker"], "math3d.sage-matrix-dossier/v1", "math3d.sage-matrix-dossier-result/v1"),
   definition("sage.matrix.integer_forms", "Smith and Hermite forms over ZZ", "matrix", ["integer-ring"], "any", "matrix.integer-forms",
     ["docker"], "math3d.sage-integer-matrix-forms/v1", "math3d.sage-integer-matrix-forms-result/v1"),
+  definition("sage.ideal.groebner", "Saved ideal Gröbner basis", "ideal", ["ideal"], "any", "ideal.groebner",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.eliminate", "Elimination ideal", "ideal", ["ideal"], "any", "ideal.eliminate",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.membership", "Membership and normal form", "ideal", ["ideal"], "any", "ideal.membership",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.quotientDimension", "Quotient dimension", "ideal", ["quotient-ring"], "any", "ideal.quotient-dimension",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
 ]);
 const byId = new Map(ALGEBRA_OPERATION_REGISTRY.map((item) => [item.id, item]));
 if (byId.size !== ALGEBRA_OPERATION_REGISTRY.length) throw new Error("Duplicate algebra operation ID.");
@@ -92,6 +106,16 @@ const currentRecord = (project: Math3DProject, ref: AlgebraObjectRef): { record:
 const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
   operation: AlgebraOperationDefinition): string | null => {
   if (!operation.accepts.includes(record.kind)) return `${operation.label} does not accept ${record.kind} objects.`;
+  if (operation.category === "ideal") {
+    const idealRef = record.definition.kind === "quotient-ring" ? record.definition.ideal : { objectId: record.id, revision: record.revision };
+    const ideal = project.algebraObjects?.find((item) => item.id === idealRef.objectId)?.revisions[idealRef.revision - 1];
+    const ringRef = ideal?.definition.kind === "ideal" ? ideal.definition.ambientRing : null;
+    const ring = project.algebraObjects?.find((item) => item.id === ringRef?.objectId)?.revisions[(ringRef?.revision ?? 0) - 1];
+    if (ideal?.definition.kind !== "ideal" || ring?.definition.kind !== "polynomial-ring" ||
+        ring.definition.variables.length > 3 || ideal.definition.generators.length > 6 ||
+        ideal.definition.generators.some((item) => item.length > 128))
+      return "Bounded ideal operations require a pinned QQ polynomial ring with at most three variables and six short generators.";
+  }
   if (operation.domain === "any") return null;
   const polynomial = record.definition.kind === "polynomial-ring" ? record.definition : null;
   if (!polynomial) return `${operation.label} requires a polynomial ring over QQ.`;
@@ -175,6 +199,8 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
     if (!exact(input, ["matrix"])) throw new TypeError("Smith and Hermite analysis requires one exact ZZ matrix.");
     params = parseSageIntegerMatrixFormsInput({ format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,
       matrix: input.matrix }) as unknown as Record<string, unknown>;
+  } else if (id.startsWith("sage.ideal.")) {
+    params = buildSageIdealInput(project, target, id as SageIdealOperation, input) as unknown as Record<string, unknown>;
   } else {
     const variables = record.definition.kind === "polynomial-ring" ? record.definition.variables : [];
     if (id === "sage.groebner.compute") {
@@ -214,6 +240,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     parseSageMatrixDossierInput(request.params));
   if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,
     parseSageIntegerMatrixFormsInput(request.params));
+  if (request.operation.startsWith("sage.ideal.")) return parseSageIdealResult(value,
+    request.params as unknown as import("./sageIdealOperations").SageIdealInput, request.operation as SageIdealOperation);
   if (!object(value)) throw new TypeError("Invalid algebra operation result object.");
   if (request.operation === "sage.numberTheory.gcd") {
     if (!exact(value, ["value"]) || !decimal(value.value)) throw new TypeError("Invalid exact GCD result.");

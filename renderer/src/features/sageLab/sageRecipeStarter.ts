@@ -41,6 +41,16 @@ export const createSageRecipeStarter = (project: Math3DProject, target: AlgebraO
       add("factor", "sage.polynomial.factor", { polynomial }, ["construct"]);
       add("groebner", "sage.groebner.compute", { polynomials: [polynomial, second] }, ["construct"]);
     }
+  } else if (record.definition.kind === "ideal") {
+    const definition = record.definition;
+    add("groebner", "sage.ideal.groebner", {});
+    const ring = project.algebraObjects?.find((item) => item.id === definition.ambientRing.objectId)
+      ?.revisions[definition.ambientRing.revision - 1];
+    if (ring?.definition.kind === "polynomial-ring" && ring.definition.variables.length > 1)
+      add("elimination", "sage.ideal.eliminate", { eliminate: [ring.definition.variables[0]] }, ["groebner"]);
+    add("membership", "sage.ideal.membership", { polynomial: definition.generators[0] }, ["groebner"]);
+  } else if (record.definition.kind === "quotient-ring") {
+    add("dimension", "sage.ideal.quotientDimension", {});
   }
   return createAlgebraRecipeGraph(project, { template: "bounded-starter-v1", target },
     `${record.label} exact analysis`, stages);

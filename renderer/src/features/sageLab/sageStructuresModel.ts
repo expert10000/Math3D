@@ -60,6 +60,11 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
     const ambient = selectedStructure(project, definition.ambientRing)?.record;
     return `⟨${definition.generators.join(", ")}⟩ ⊂ ${ambient?.label ?? definition.ambientRing.objectId}`;
   }
+  if (definition.kind === "quotient-ring") {
+    const ambient = selectedStructure(project, definition.ambientRing)?.record;
+    const ideal = selectedStructure(project, definition.ideal)?.record;
+    return `${ambient?.label ?? "R"}/${ideal?.label ?? "I"}`;
+  }
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   return `${parent ? parent.label : definition.coefficientDomain.objectId}[${definition.variables.join(",")}]`;
 };
@@ -90,7 +95,8 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
   if (definition.kind === "finite-field") return { presentation, characteristic: String(definition.characteristic),
     field: "yes", exact: true, cardinality: String(BigInt(definition.characteristic) ** BigInt(definition.degree)),
     zeroDivisors: "no", coefficientDomain: null };
-  if (definition.kind === "ideal") throw new TypeError("An ideal is not a coefficient domain.");
+  if (definition.kind === "ideal" || definition.kind === "quotient-ring")
+    throw new TypeError("Ideal and quotient objects need dedicated exact analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   if (!parent) throw new TypeError("The polynomial coefficient domain is missing from the Project.");
   const base = describeStructure(parent, project);
@@ -162,6 +168,24 @@ export const createIdealStarter = (project: Math3DProject, label: string, ambien
   const generators = lines.map((item) => parseIdealGenerator(item, ring.variables));
   const record = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, stableKey),
     label: name, revision: 1, definition: { kind: "ideal", ambientRing, generators } });
+  upsertMath3DProjectAlgebraObject(project, record);
+  return record;
+};
+
+export const createQuotientStarter = (project: Math3DProject, label: string, idealRef: AlgebraObjectRef,
+  stableKey: string): AlgebraObjectRecord => {
+  const name = label.trim();
+  if (!name || name.length > 120 || project.algebraObjects?.some((entry) => !entry.archived &&
+      entry.revisions.at(-1)?.label.toLocaleLowerCase() === name.toLocaleLowerCase()))
+    throw new TypeError("Choose a unique quotient name of 1–120 characters.");
+  const ideal = selectedStructure(project, idealRef);
+  if (!ideal || ideal.entry.archived || ideal.record.definition.kind !== "ideal" ||
+      ideal.record.revision !== ideal.entry.revisions.length ||
+      inspectProjectAlgebraFreshness(project).find((item) => item.objectId === ideal.entry.id)?.status !== "fresh")
+    throw new TypeError("Select a current fresh ideal for its quotient ring.");
+  const record = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, stableKey),
+    revision: 1, label: name, definition: { kind: "quotient-ring", ideal: idealRef,
+      ambientRing: ideal.record.definition.ambientRing } });
   upsertMath3DProjectAlgebraObject(project, record);
   return record;
 };

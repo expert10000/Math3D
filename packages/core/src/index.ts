@@ -18,6 +18,7 @@ export * from "./sageIntegerHomology";
 export * from "./analysisResults";
 export * from "./algebraObjects";
 export * from "./algebraIdealGenerators";
+export * from "./sageIdealOperations";
 export * from "./documentIdentity";
 export * from "./documentRelations";
 export * from "./geometry";

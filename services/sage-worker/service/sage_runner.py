@@ -382,6 +382,70 @@ def _groebner_compute(operation, params):
     return _success(operation, {"basis": [str(item) for item in basis]}, latex(basis))
 
 
+def _ideal_operation(operation, params):
+    common = {"format", "schemaVersion", "target", "targetHash", "ideal", "idealHash",
+        "ambientRing", "ambientHash", "variables", "monomialOrder", "generators"}
+    extra = {"sage.ideal.groebner": set(), "sage.ideal.eliminate": {"eliminate"},
+        "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set()}[operation]
+    _require_exact_fields(params, common | extra, "ideal request")
+    if params["format"] != "math3d.sage-ideal-operation" or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
+        raise SageRequestError("Ideal request requires the versioned exact schema.")
+    variables = params["variables"]
+    if not isinstance(variables, list) or not 1 <= len(variables) <= 3 or \
+            any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", item) for item in variables) or \
+            len(set(variables)) != len(variables):
+        raise SageRequestError("Ideal operations require one to three distinct ambient variables.")
+    order = params["monomialOrder"]
+    if order not in ("lex", "deglex", "degrevlex"):
+        raise SageRequestError("Unsupported ideal monomial order.")
+    generators = params["generators"]
+    if not isinstance(generators, list) or not 1 <= len(generators) <= 6 or len(set(generators)) != len(generators):
+        raise SageRequestError("Ideal operations require one to six distinct generators.")
+    ring = PolynomialRing(QQ, variables, order=order)
+    def polynomial(source):
+        if not isinstance(source, str) or len(source) > 128 or "**" in source or \
+                not re.fullmatch(r"[A-Za-z0-9_()+*^/\-]+", source) or \
+                any(token not in variables for token in re.findall(r"[A-Za-z][A-Za-z0-9_]*", source)) or \
+                any(len(number) > 18 for number in re.findall(r"[0-9]+", source)) or \
+                any(int(power) > 16 for power in re.findall(r"\^([0-9]+)", source)):
+            raise SageRequestError("Invalid or unbounded polynomial in the pinned ideal ring.")
+        try:
+            value = ring(source)
+        except (TypeError, ValueError, ArithmeticError) as error:
+            raise SageRequestError("Polynomial does not belong to the pinned ideal ring.") from error
+        if value.total_degree() > 16 or len(value.monomials()) > 128:
+            raise SageRequestError("Ideal polynomial degree or term budget exceeded.")
+        return value
+    polys = [polynomial(item) for item in generators]
+    ideal = ring.ideal(polys)
+    shared = {"format": "math3d.sage-ideal-result", "schemaVersion": 1,
+        "target": params["target"], "targetHash": params["targetHash"], "idealHash": params["idealHash"]}
+    if operation == "sage.ideal.quotientDimension":
+        quotient = ring.quotient(ideal)
+        result = {**shared, "dimension": int(ideal.dimension()), "quotientPresentation": str(quotient)}
+    elif operation == "sage.ideal.eliminate":
+        eliminate = params["eliminate"]
+        if not isinstance(eliminate, list) or not 0 < len(eliminate) < len(variables) or \
+                len(set(eliminate)) != len(eliminate) or any(item not in variables for item in eliminate):
+            raise SageRequestError("Eliminate a proper nonempty subset of ambient variables.")
+        basis = ideal.elimination_ideal([ring(item) for item in eliminate]).groebner_basis()
+        result = {**shared, "basis": [str(item) for item in basis], "eliminate": eliminate}
+    else:
+        basis = ideal.groebner_basis()
+        result = {**shared, "basis": [str(item) for item in basis]}
+        if operation == "sage.ideal.membership":
+            source = params["polynomial"]
+            normal = ideal.reduce(polynomial(source))
+            result.update(polynomial=source, member=bool(normal == 0), normalForm=str(normal))
+    if "basis" in result and (len(result["basis"]) > 128 or any(len(item) > 1024 for item in result["basis"])):
+        raise SageRequestError("Ideal basis exceeds the bounded output budget.")
+    if "normalForm" in result and len(result["normalForm"]) > 1024:
+        raise SageRequestError("Ideal normal form exceeds the bounded output budget.")
+    if len(str(result)) > 65536:
+        raise SageRequestError("Ideal result exceeds the bounded output budget.")
+    return _success(operation, result)
+
+
 def _number_theory_gcd(operation, params):
     values = params.get("values")
     if values is None:
@@ -689,6 +753,10 @@ OPERATIONS = {
     "sage.polynomial.factor": _polynomial_factor,
     "sage.polynomial.dossier": _polynomial_dossier,
     "sage.groebner.compute": _groebner_compute,
+    "sage.ideal.groebner": _ideal_operation,
+    "sage.ideal.eliminate": _ideal_operation,
+    "sage.ideal.membership": _ideal_operation,
+    "sage.ideal.quotientDimension": _ideal_operation,
     "sage.numberTheory.gcd": _number_theory_gcd,
     "sage.numberTheory.modInverse": _number_theory_mod_inverse,
     "sage.topology.integer_homology": _topology_integer_homology,

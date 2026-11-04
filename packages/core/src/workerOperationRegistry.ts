@@ -43,6 +43,10 @@ export type Math3DWorkerOperationId =
   | "algebra.groebner"
   | "algebra.reconstruct"
   | "algebra.domains.inspect"
+  | "ideal.groebner"
+  | "ideal.eliminate"
+  | "ideal.membership"
+  | "ideal.quotient-dimension"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -370,6 +374,26 @@ const definitions = [
     method: "exact",
     environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.groebner",
+    title: "Saved ideal Gröbner basis",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.eliminate",
+    title: "Saved ideal elimination",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.membership",
+    title: "Saved ideal membership and normal form",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.quotient-dimension",
+    title: "Pinned quotient ring dimension",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
     id: "number-theory.gcd",

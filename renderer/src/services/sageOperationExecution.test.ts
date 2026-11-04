@@ -23,6 +23,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.polynomial.dossier",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
+  "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
 ]);
 const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
@@ -42,6 +43,13 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
       matrix: [["1", "2"], ["2", "4"]] }
     : operation === "sage.matrix.integer_forms" ? { format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,
       matrix: [["2", "0"], ["0", "6"]] }
+    : operation.startsWith("sage.ideal.") ? { format: "math3d.sage-ideal-operation", schemaVersion: 1,
+      target: { objectId: "math3d:algebra:fixture", revision: 1 }, targetHash: "sha256:fixture",
+      ideal: { objectId: "math3d:algebra:ideal", revision: 1 }, idealHash: "sha256:fixture",
+      ambientRing: { objectId: "math3d:algebra:ring", revision: 1 }, ambientHash: "sha256:fixture",
+      variables: ["x", "y"], monomialOrder: "lex", generators: ["x*y-1", "y-1"],
+      ...(operation === "sage.ideal.eliminate" ? { eliminate: ["x"] } : {}),
+      ...(operation === "sage.ideal.membership" ? { polynomial: "x-1" } : {}) }
     : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }

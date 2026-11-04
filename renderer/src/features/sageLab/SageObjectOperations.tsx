@@ -12,6 +12,9 @@ const field = { width: "100%", boxSizing: "border-box" as const, padding: 6, fon
 const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObjectRef):
   AlgebraOperationArguments[AlgebraOperationId] => {
   if (id === "sage.algebra.reconstruct") return {};
+  if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension") return {};
+  if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()) };
+  if (id === "sage.ideal.membership") return { polynomial: text.trim() };
   if (id === "sage.algebra.inspectDomains") return { other };
   if (id === "sage.numberTheory.gcd") return { values: text.split(",").map((item) => item.trim()) };
   if (id === "sage.numberTheory.modInverse") return { a: text.trim() };
@@ -107,7 +110,10 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
           {otherOptions.map((item) => <option key={item.id} value={item.id}>{item.record.label}@{item.record.revision}</option>)}
         </select></label>}
       {selected !== "sage.algebra.reconstruct" && selected !== "sage.algebra.inspectDomains" &&
-        <label>{selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :
+        selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
+        <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
+          selected === "sage.ideal.membership" ? "Polynomial to test" :
+          selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}

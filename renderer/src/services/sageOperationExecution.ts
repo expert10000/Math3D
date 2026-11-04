@@ -45,6 +45,10 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.numberTheory.modInverse": { type: "number-theory.mod-inverse", label: "modular inverse", cancelled: "Sage number theory job cancelled." },
   "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
   "sage.algebra.inspectDomains": { type: "algebra.domains.inspect", label: "algebra parent inspection", cancelled: "Sage algebra domain inspection cancelled." },
+  "sage.ideal.groebner": { type: "ideal.groebner", label: "saved ideal Gröbner basis", cancelled: "Sage ideal job cancelled." },
+  "sage.ideal.eliminate": { type: "ideal.eliminate", label: "elimination ideal", cancelled: "Sage ideal job cancelled." },
+  "sage.ideal.membership": { type: "ideal.membership", label: "ideal membership", cancelled: "Sage ideal job cancelled." },
+  "sage.ideal.quotientDimension": { type: "ideal.quotient-dimension", label: "quotient dimension", cancelled: "Sage quotient job cancelled." },
 } as const;
 export type BrokeredSageOperation = keyof typeof SAGE_JOB_OPERATIONS;
 export const isBrokeredSageOperation = (operation: string): operation is BrokeredSageOperation =>
@@ -100,7 +104,13 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
   const variables = params.variables;
   const stringVariables = Array.isArray(params.variables) &&
     params.variables.every((item) => typeof item === "string");
-  const validParams = request.operation.startsWith("sage.matrix.")
+  const validParams = request.operation.startsWith("sage.ideal.")
+    ? request.backend === "docker" && params.format === "math3d.sage-ideal-operation" &&
+      params.schemaVersion === 1 && Array.isArray(params.variables) && params.variables.length >= 1 &&
+      params.variables.length <= 3 && Array.isArray(params.generators) && params.generators.length >= 1 &&
+      params.generators.length <= 6 && typeof params.targetHash === "string" &&
+      typeof params.idealHash === "string" && typeof params.ambientHash === "string"
+    : request.operation.startsWith("sage.matrix.")
     ? request.backend === "docker" && Array.isArray(matrix) &&
       matrix.length > 0 && matrix.length <= 8 &&
       matrix.every((row) => Array.isArray(row) && row.length === matrix.length &&
