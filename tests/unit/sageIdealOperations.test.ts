@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { addMath3DProjectAlgebraEvidence, algebraOperationsFor, buildAlgebraOperationRequest, createAlgebraObjectRecord,
-  createMath3DProject, createMixedWorkspaceDocument, createProjectAlgebraEvidence, createProjectAlgebraObjectId,
-  parseMath3DProject, serializeMath3DProject, upsertMath3DProjectAlgebraObject } from "../../packages/core/src/index";
+  createAlgebraRecipeGraph, analyzeIdealGenerator, assessSageIdealCost, createMath3DProject, createMixedWorkspaceDocument,
+  createProjectAlgebraEvidence, createProjectAlgebraObjectId,
+  parseMath3DProject, serializeMath3DProject, upsertMath3DProjectAlgebraObject,
+  upsertMath3DProjectAlgebraRecipe } from "../../packages/core/src/index";
 
 const setup = (options: { generators?: string[]; monomialOrder?: "lex" | "deglex" | "degrevlex";
   variables?: string[] } = {}) => {
@@ -123,5 +125,48 @@ describe("SAGE-C05 capability-gated syzygies and Hilbert series", () => {
       buildAlgebraOperationRequest(project, iref, "sage.ideal.syzygies", "docker", {}),
       result(buildAlgebraOperationRequest(project, iref, "sage.ideal.syzygies", "docker", {}),
         { syzygies: [["-y"]], generatorCount: 2 }), runtime("bad-shape"))).toThrow(/syzygy result/);
+  });
+});
+
+describe("SAGE-C06 explicit ideal budgets", () => {
+  it("enforces exact standard and expanded profiles", () => {
+    const { project, iref } = setup({ generators: ["x^9+y", "y-1"] });
+    expect(() => buildAlgebraOperationRequest(project, iref, "sage.ideal.groebner", "docker",
+      { budgetProfile: "standard" }))
+      .toThrow(/standard ideal budget exceeded/);
+    const expanded = buildAlgebraOperationRequest(project, iref, "sage.ideal.groebner", "docker",
+      { budgetProfile: "expanded" });
+    expect(expanded.params.budget).toMatchObject({ profile: "expanded", maxDegree: 16,
+      maxTermsPerPolynomial: 128, wallTimeMs: 30_000 });
+    expect(assessSageIdealCost(["x", "y"], ["x^9+y", "y-1"], "lex").level).toBe("elevated");
+    expect(analyzeIdealGenerator("(x+y)^4", ["x", "y"]))
+      .toMatchObject({ degreeUpperBound: 4, termUpperBound: 16 });
+  });
+
+  it("rejects forged budgets and oversized results while reopening legacy evidence", () => {
+    const { project, iref } = setup();
+    const request = buildAlgebraOperationRequest(project, iref, "sage.ideal.groebner", "docker",
+      { budgetProfile: "standard" });
+    expect(request.params.budget).toMatchObject({ profile: "standard", maxDegree: 8, wallTimeMs: 15_000 });
+    const forged = { ...request, params: { ...request.params,
+      budget: { ...(request.params.budget as Record<string, unknown>), maxDegree: 100 } } };
+    expect(() => createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, forged,
+      result(forged, { basis: ["x - 1", "y - 1"] }), runtime("forged-budget"))).toThrow(/supported bounded profile/);
+    expect(() => createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request,
+      result(request, { basis: Array(20).fill("x".repeat(900)) }), runtime("oversized-result")))
+      .toThrow(/output budget/);
+    const { budget: _removed, ...legacyParams } = request.params;
+    const legacy = { ...request, params: legacyParams };
+    const evidence = createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, legacy,
+      result(legacy, { basis: ["x - 1", "y - 1"] }), runtime("legacy-ideal"));
+    const reopened = parseMath3DProject(serializeMath3DProject(addMath3DProjectAlgebraEvidence(project, evidence)));
+    expect(reopened.algebraEvidence?.[0].request.params).not.toHaveProperty("budget");
+    const oldRecipe = createAlgebraRecipeGraph(project, "pre-c06-ideal", "Old ideal recipe", [
+      { id: "basis", operation: "sage.ideal.groebner", backend: "docker", target: iref,
+        args: {}, dependsOn: [] },
+    ]);
+    const reopenedRecipe = parseMath3DProject(serializeMath3DProject(
+      upsertMath3DProjectAlgebraRecipe(project, oldRecipe)));
+    expect(reopenedRecipe.algebraRecipes?.[0].stages[0].requestHash).toBe(oldRecipe.stages[0].requestHash);
   });
 });

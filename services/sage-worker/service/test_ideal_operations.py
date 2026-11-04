@@ -1,8 +1,12 @@
 """SAGE-C02–C04 exact ideal fixtures; run with sage -python -m unittest."""
 
 import unittest
+import subprocess
+from unittest.mock import patch
 
-from .sage_runner import OPERATIONS, run_payload
+from . import sage_adapter
+from .sage_adapter import ideal_timeout_seconds
+from .sage_runner import IDEAL_BUDGETS, OPERATIONS, run_payload
 
 
 BASE = {"format": "math3d.sage-ideal-operation", "schemaVersion": 1,
@@ -17,6 +21,44 @@ def compute(operation, **extra):
 
 
 class IdealOperationTests(unittest.TestCase):
+    def test_c06_adapter_kills_job_at_wall_time_deadline(self):
+        class SlowProcess:
+            killed = False
+            returncode = -9
+
+            def communicate(self, timeout=None):
+                if timeout is not None:
+                    raise subprocess.TimeoutExpired(cmd="sage", timeout=timeout)
+                return "", ""
+
+            def kill(self):
+                self.killed = True
+
+        slow = SlowProcess()
+        with patch.object(sage_adapter.subprocess, "Popen", return_value=slow):
+            response = sage_adapter.run_sage_operation("sage.ideal.groebner",
+                {"budget": IDEAL_BUDGETS["standard"]}, timeout_seconds=0)
+        self.assertTrue(slow.killed)
+        self.assertFalse(response["success"])
+        self.assertIn("wall-time budget exceeded", response["error"])
+
+    def test_c06_budget_profiles_and_wall_time_cap(self):
+        request = {**BASE, "generators": ["x^9"], "budget": IDEAL_BUDGETS["standard"]}
+        with self.assertRaisesRegex(ValueError, "budget"):
+            run_payload({"operation": "sage.ideal.groebner", "params": request})
+        expanded = {**request, "budget": IDEAL_BUDGETS["expanded"]}
+        self.assertEqual(run_payload({"operation": "sage.ideal.groebner", "params": expanded})["result"]["basis"],
+            ["x^9"])
+        for bad in [{**IDEAL_BUDGETS["standard"], "maxDegree": 100},
+                {**IDEAL_BUDGETS["standard"], "wallTimeMs": 60000}, None]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                run_payload({"operation": "sage.ideal.groebner", "params": {**request, "budget": bad}})
+        self.assertEqual(ideal_timeout_seconds("sage.ideal.groebner", {"budget": IDEAL_BUDGETS["standard"]}), 15)
+        self.assertEqual(ideal_timeout_seconds("sage.ideal.groebner", {"budget": IDEAL_BUDGETS["expanded"]}), 30)
+        self.assertEqual(ideal_timeout_seconds("sage.ideal.groebner", {"budget": {"profile": "standard", "wallTimeMs": 60000}}), 30)
+        self.assertEqual(ideal_timeout_seconds("sage.ideal.groebner", {"budget": {"profile": [], "wallTimeMs": 15000}}), 30)
+        self.assertEqual(ideal_timeout_seconds("sage.numberTheory.gcd", {"budget": IDEAL_BUDGETS["standard"]}), 30)
+
     def test_c05_capabilities_and_exact_advanced_results(self):
         self.assertIn("sage.ideal.syzygies", OPERATIONS)
         self.assertIn("sage.ideal.hilbertSeries", OPERATIONS)

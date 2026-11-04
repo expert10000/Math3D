@@ -528,6 +528,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-C05](evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md) adds runtime-advertised ideal syzygies and standard graded quotient Hilbert series with pinned Project evidence. Unsupported grading, homogeneity, size and runtime cases have explicit reasons. The next feature gate is **SAGE-C06**; B08's live Docker Sage 10.10 comparison remains open.
 
+[SAGE-C06](evidence/sage-c06-operation-budgets-2026-11-04.md) now adds explicit standard and expanded ideal budgets, input-cost warnings and an enforced Sage subprocess wall-time cap. Expanded desktop runs require an acknowledgment; older saved evidence without budget metadata still reopens. Track C is complete through C06. The next feature is **SAGE-D01**; B08's live Docker Sage 10.10 comparison remains open.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate

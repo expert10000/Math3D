@@ -382,15 +382,31 @@ def _groebner_compute(operation, params):
     return _success(operation, {"basis": [str(item) for item in basis]}, latex(basis))
 
 
+IDEAL_BUDGETS = {
+    "standard": {"format": "math3d.sage-ideal-budget", "schemaVersion": 1, "profile": "standard",
+        "maxVariables": 2, "maxGenerators": 3, "maxDegree": 8, "maxTermsPerPolynomial": 48,
+        "maxResultBytes": 16384, "wallTimeMs": 15000},
+    "expanded": {"format": "math3d.sage-ideal-budget", "schemaVersion": 1, "profile": "expanded",
+        "maxVariables": 3, "maxGenerators": 6, "maxDegree": 16, "maxTermsPerPolynomial": 128,
+        "maxResultBytes": 65536, "wallTimeMs": 30000},
+}
+
+
 def _ideal_operation(operation, params):
     common = {"format", "schemaVersion", "target", "targetHash", "ideal", "idealHash",
         "ambientRing", "ambientHash", "variables", "monomialOrder", "generators"}
     extra = {"sage.ideal.groebner": set(), "sage.ideal.eliminate": {"eliminate"},
         "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set(),
         "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set()}[operation]
-    _require_exact_fields(params, common | extra, "ideal request")
+    _require_exact_fields(params, common | extra | ({"budget"} if "budget" in params else set()), "ideal request")
     if params["format"] != "math3d.sage-ideal-operation" or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
         raise SageRequestError("Ideal request requires the versioned exact schema.")
+    budget = params.get("budget")
+    if "budget" in params:
+        _require_exact_fields(budget, IDEAL_BUDGETS["standard"].keys(), "ideal budget")
+        expected = IDEAL_BUDGETS.get(budget.get("profile")) if isinstance(budget.get("profile"), str) else None
+        if expected is None or budget != expected or type(budget["schemaVersion"]) is not int:
+            raise SageRequestError("Ideal budget must match a supported bounded profile exactly.")
     variables = params["variables"]
     if not isinstance(variables, list) or not 1 <= len(variables) <= 3 or \
             any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", item) for item in variables) or \
@@ -402,6 +418,8 @@ def _ideal_operation(operation, params):
     generators = params["generators"]
     if not isinstance(generators, list) or not 1 <= len(generators) <= 6 or len(set(generators)) != len(generators):
         raise SageRequestError("Ideal operations require one to six distinct generators.")
+    if budget is not None and (len(variables) > budget["maxVariables"] or len(generators) > budget["maxGenerators"]):
+        raise SageRequestError(f"{budget['profile']} ideal budget exceeded: variables or generators.")
     if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries") and \
             (len(variables) > 2 or len(generators) > 3):
         raise SageRequestError("Advanced ideal operations require at most two variables and three generators.")
@@ -417,7 +435,8 @@ def _ideal_operation(operation, params):
             value = ring(source)
         except (TypeError, ValueError, ArithmeticError) as error:
             raise SageRequestError("Polynomial does not belong to the pinned ideal ring.") from error
-        if value.total_degree() > 16 or len(value.monomials()) > 128:
+        if value.total_degree() > (budget["maxDegree"] if budget else 16) or \
+                len(value.monomials()) > (budget["maxTermsPerPolynomial"] if budget else 128):
             raise SageRequestError("Ideal polynomial degree or term budget exceeded.")
         return value
     polys = [polynomial(item) for item in generators]
@@ -463,7 +482,7 @@ def _ideal_operation(operation, params):
         raise SageRequestError("Syzygy output exceeds the bounded result budget.")
     if "series" in result and (len(result["series"]) > 1024 or len(result["numerator"]) > 1024):
         raise SageRequestError("Hilbert output exceeds the bounded result budget.")
-    if len(str(result)) > 65536:
+    if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > (budget["maxResultBytes"] if budget else 65536):
         raise SageRequestError("Ideal result exceeds the bounded output budget.")
     return _success(operation, result)
 

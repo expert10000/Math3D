@@ -144,9 +144,18 @@ jobs:
       - name: Build app
         run: npm run build:core
 
+      - name: Verify Python and Theory Lab scientific scene interchange
+        env:
+          PYTHON: python
+        run: node scripts/test-scientific-scene-publisher.mjs
+
       - name: Verify scientific Workbook rerun and profile chart
         timeout-minutes: 25
         run: npx playwright test tests/e2e/vector-field-3d.spec.ts --grep "SCI-06 publishes a vector-only subrectangle from the Inspector" --reporter=list
+
+      - name: Verify scientific Workbook JSON audit reopen and tamper
+        timeout-minutes: 25
+        run: npx playwright test tests/e2e/scientific-workbook-json-audit.spec.ts --reporter=list
 
       - name: Verify frozen quantum scene corpus and import boundary
         run: node scripts/test-quantum-scene-import.mjs

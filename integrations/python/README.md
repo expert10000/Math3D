@@ -51,11 +51,34 @@ publish_scene(spec, "velocity-run.sscene")
 
 In desktop Graphs, choose **Import scientific dataset** and select a component. Each import copies one checked component into a separate point series with source and unit metadata. 1D bundles have no surface or slice view. Names must be unique; all component arrays must match the shape and contain finite values.
 
+For a 3D vector field from a Theory Lab run or Python notebook, use three components, three coordinate axes and a three-element `shape`. Set `producer` to `theory-lab` only when the data actually came from Theory Lab; use its stable run ID as `sourceId` and its versioned data contract as `sourceSchema`. The publisher writes no declarative slice `view` for vector fields. In desktop Graphs, choose **Import scientific dataset → Open in Field Explorer** to inspect the verified volume. For example, a 3×3×3 vortex sampled with x outermost and z fastest:
+
+```python
+points = [(x, y, z) for x in (-1, 0, 1) for y in (-1, 0, 1) for z in (-1, 0, 1)]
+spec = {
+    "sceneId": "lab-vortex", "title": "Theory Lab vortex",
+    "producer": "theory-lab", "sourceId": "run-vortex-1", "sourceSchema": "theory-data/v1",
+    "coordinateKind": "cartesian",
+    "axes": [{"name": axis, "unit": "m"} for axis in ("x", "y", "z")],
+    "origin": [-1, -1, -1], "spacing": [1, 1, 1],
+    "periodic": [False, False, False], "shape": [3, 3, 3],
+    "datasetId": "velocity", "quantity": {"name": "Velocity", "unit": "m/s"},
+    "components": [
+        {"name": "east", "values": [-y for x, y, z in points]},
+        {"name": "north", "values": [x for x, y, z in points]},
+        {"name": "up", "values": [0 for _ in points]},
+    ],
+}
+publish_scene(spec, "lab-vortex.sscene")
+```
+
+`npm run test:ssr:publisher` publishes this shape with Theory Lab source metadata, reads all three components through Math3D's verified 3D importer, then checks that an edited publication has a different source hash and an old fingerprint cannot be used for it. This tests the interchange contract; it does not launch Theory Lab or establish an automatic two-app round-trip.
+
 The flat value order is last-axis-fastest. A 2D scalar grid gets an `identity` height-surface view. A 3D scalar grid gets an `identity` slice; a 3D complex grid supplies an additional flat `imaginary` array and gets a `complex-density/v1` slice. A caller can provide an explicit `view` with those same registered operations and a 3D `axis` of 0, 1 or 2. No expression is accepted as a view operation. Each resource is little-endian Float64, hashed independently, and held to the 16 MiB contract budget; the published manifest and envelope are hashed too. The output parent must exist; an existing `.sscene` destination is refused, not overwritten.
 
 Cross-language acceptance: `npm run test:ssr:publisher` invokes Python, checks the files with Math3D's shared TypeScript validator and desktop byte-verifying reader, checks exact samples and units, then tests malformed and tampered bundles. Set `PYTHON` to a Python 3.10+ executable if it is not `py` on Windows or `python3` elsewhere.
 
-**Current UI boundary:** Desktop Graphs imports the bounded 1D scalar, complex and vector subsets as point series, and a 2D scalar grid as a line after you explicitly choose the varying axis and fixed index. The separate **File → Verified quantum examples → Open external .sscene folder…** read-only preview supports the bounded **2D scalar height-surface** subset; it validates the bytes and re-verifies them for each selected sample. The 3D scalar and complex bundles above are valid interchange data, but the generic external picker does not yet render them. Producer claims are displayed as supplied and are not authenticated. Opening a bundle launches no Python process and does not automatically import into a Project.
+**Current UI boundary:** Desktop Graphs imports the bounded 1D scalar, complex and vector subsets as point series, and a 2D scalar grid as a line after you explicitly choose the varying axis and fixed index. Eligible 3D scientific fields open in Field Explorer through **Import scientific dataset**. The separate **File → Verified quantum examples → Open external .sscene folder…** read-only preview supports the bounded **2D scalar height-surface** subset. Producer claims are displayed as supplied and are not authenticated. Opening a bundle launches no Python process.
 
 Graphs → **More → Author** also includes two bundled 2D grid presets: **Sine–cosine grid** (17×17, sampled trigonometric function) and **Thermal gradient grid** (5×7, time in seconds, distance in metres, temperature in kelvin). Select one to load its verified bundle, then choose the varying axis and fixed index and preview the line before importing. These illustrative datasets are generated from deterministic fixtures; they are not measurements. No folder selection or Python execution is needed.
 

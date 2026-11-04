@@ -7,7 +7,8 @@ import { join, resolve, sep } from "node:path";
 
 const { readScientificSceneBundle } = await import("../dist/main/scientificScene/bundle.js");
 const { inspectScientificHeightSample } = await import("../dist/main/scientificScene/heightSurface.js");
-const { openScientificGraphDatasets } = await import("../dist/main/scientificScene/graphDataset.js");
+const { openScientificGraphDatasets, previewScientificGraphVectorVolume } =
+  await import("../dist/main/scientificScene/graphDataset.js");
 const { normalizeScientificSceneManifest } = await import("../dist/shared/scientificSceneManifest.js");
 const root = resolve(".");
 const publisher = join(root, "integrations", "python", "scientific_scene_publisher.py");
@@ -124,6 +125,58 @@ try {
   assert.equal(vectorBundle.manifest.source.sha256,
     sha(Buffer.concat([vectorBundle.resources.get("east"), vectorBundle.resources.get("north")])));
 
+  // SCI-20: a Theory Lab producer can hand a complete 3D vector lattice to Field Explorer.
+  const theorySpecPath = join(rootTemp, "theory-vector.json");
+  const theoryPath = join(rootTemp, "theory-vector.sscene");
+  const lattice = Array.from({ length: 27 }, (_, index) => ({
+    x: Math.floor(index / 9) - 1, y: Math.floor(index / 3) % 3 - 1,
+  }));
+  const theorySpec = { ...vectorSpec, sceneId: "theory-vector", title: "Theory Lab vortex",
+    producer: "theory-lab", sourceId: "run-vortex-1", sourceSchema: "theory-data/v1",
+    axes: [{ name: "x", unit: "m" }, { name: "y", unit: "m" }, { name: "z", unit: "m" }],
+    origin: [-1, -1, -1], spacing: [1, 1, 1], periodic: [false, false, false], shape: [3, 3, 3],
+    components: [
+      { name: "east", values: lattice.map(point => -point.y) },
+      { name: "north", values: lattice.map(point => point.x) },
+      { name: "up", values: lattice.map(() => 0) },
+    ] };
+  await writeFile(theorySpecPath, JSON.stringify(theorySpec));
+  runPublisher(theorySpecPath, theoryPath);
+  const theory = await readScientificSceneBundle(theoryPath);
+  assert.equal(normalizeScientificSceneManifest(theory.manifest).ok, true);
+  assert.deepEqual(theory.manifest.views, []);
+  assert.deepEqual(theory.manifest.source, {
+    producer: "theory-lab", sourceId: "run-vortex-1", sourceSchema: "theory-data/v1",
+    sha256: sha(Buffer.concat([theory.resources.get("east"), theory.resources.get("north"),
+      theory.resources.get("up")])) });
+  const theoryVolume = await previewScientificGraphVectorVolume(theoryPath, theory.fingerprint,
+    "velocity", ["east", "north", "up"]);
+  assert.deepEqual(theoryVolume.map(component => component.sampleShape),
+    [[3, 3, 3], [3, 3, 3], [3, 3, 3]]);
+  assert.deepEqual(theoryVolume.map(component => component.values[3]), [0, -1, 0]);
+  await assert.rejects(previewScientificGraphVectorVolume(theoryPath, "0".repeat(64),
+    "velocity", ["east", "north", "up"]), /fingerprint changed/);
+
+  const editedTheoryPath = join(rootTemp, "theory-vector-edited.sscene");
+  const editedTheorySpec = { ...theorySpec, components: theorySpec.components.map(component =>
+    component.name === "east" ? { ...component, values: component.values.map((value, index) =>
+      index === 3 ? value + 0.5 : value) } : component) };
+  await writeFile(theorySpecPath, JSON.stringify(editedTheorySpec));
+  runPublisher(theorySpecPath, editedTheoryPath);
+  const editedTheory = await readScientificSceneBundle(editedTheoryPath);
+  assert.notEqual(editedTheory.manifest.source.sha256, theory.manifest.source.sha256);
+  assert.notEqual(editedTheory.fingerprint, theory.fingerprint);
+  await assert.rejects(previewScientificGraphVectorVolume(editedTheoryPath, theory.fingerprint,
+    "velocity", ["east", "north", "up"]), /fingerprint changed/);
+
+  const invalidTheoryPath = join(rootTemp, "invalid-theory-vector.sscene");
+  await writeFile(theorySpecPath, JSON.stringify({ ...theorySpec,
+    components: theorySpec.components.slice(0, 2) }));
+  const incompleteTheory = spawnSync(python,
+    [publisher, "--spec", theorySpecPath, "--output", invalidTheoryPath], { encoding: "utf8" });
+  assert.notEqual(incompleteTheory.status, 0);
+  assert.match(incompleteTheory.stderr, /requires three components/);
+
   const invalidVectorSpec = join(rootTemp, "invalid-vector.json");
   const invalidVectorPath = join(rootTemp, "invalid-vector.sscene");
   await writeFile(invalidVectorSpec, JSON.stringify({ ...vectorSpec, components: [
@@ -171,7 +224,7 @@ try {
   const damagedManifest = Buffer.from(originalManifest); damagedManifest[0] ^= 1;
   await writeFile(manifest, damagedManifest);
   await assert.rejects(readScientificSceneBundle(scalarPath), /manifest integrity/);
-  console.log("SSR-05 Python publisher 1D Graph scalar/complex/vector and 2D/3D field compatibility, bounds, non-overwrite and tamper tests passed");
+  console.log("SSR-05/SCI-20 Python publisher 1D Graph and 2D/3D field compatibility, Theory Lab 3D vector, bounds, non-overwrite and tamper tests passed");
 } finally {
   if (!rootTemp.startsWith(resolve(tmpdir()) + sep) || !rootTemp.includes("math3d-ssr05-"))
     throw new Error("Unsafe scientific publisher test cleanup path");

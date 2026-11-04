@@ -112,7 +112,7 @@ def publish_scene(spec: dict[str, Any], output: str | Path) -> dict[str, Any]:
         checked_quantity["symbol"] = _text(quantity["symbol"], "quantity symbol", 32)
     complex_field = "imaginary" in spec
     _require(not complex_field or len(shape) in (1, 3), "Complex publisher requires a 1D or 3D field")
-    _require(not vector_field or len(shape) == 1, "Vector publisher requires a 1D field")
+    _require(not vector_field or len(shape) in (1, 3), "Vector publisher requires a 1D or 3D field")
     payloads = []
     dataset = {"id": dataset_id, "semanticType": "vector-field" if vector_field else
                ("complex-scalar-field" if complex_field else "scalar-field"),
@@ -122,6 +122,8 @@ def publish_scene(spec: dict[str, Any], output: str | Path) -> dict[str, Any]:
         components = spec["components"]
         _require(isinstance(components, list) and 2 <= len(components) <= 3,
                  "Vector field requires two or three components")
+        _require(len(shape) != 3 or len(components) == 3,
+                 "Three-dimensional vector field requires three components")
         checked_components = []
         for component in components:
             _require(isinstance(component, dict) and set(component) == {"name", "values"},
@@ -148,8 +150,8 @@ def publish_scene(spec: dict[str, Any], output: str | Path) -> dict[str, Any]:
                           "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
     view = spec.get("view")
     checked_views = []
-    if len(shape) == 1:
-        _require(view is None, "One-dimensional datasets do not accept a surface or slice view")
+    if len(shape) == 1 or vector_field:
+        _require(view is None, "One-dimensional and vector datasets do not accept a surface or slice view")
     else:
         if view is None:
             view = {"id": "default", "label": "Density slice" if complex_field else

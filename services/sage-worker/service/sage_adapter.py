@@ -42,6 +42,20 @@ def _failure(operation: str, start: float, message: str) -> dict:
     }
 
 
+def ideal_timeout_seconds(operation: str, params: dict, hard_limit: int = 30) -> float:
+    """Apply a reviewed shorter wall clock cap before launching a Sage ideal job."""
+    if not operation.startswith("sage.ideal.") or not isinstance(params, dict):
+        return float(hard_limit)
+    budget = params.get("budget")
+    profiles = {"standard": 15000, "expanded": 30000}
+    if not isinstance(budget, dict) or not isinstance(budget.get("profile"), str) or \
+            budget["profile"] not in profiles or \
+            type(budget.get("wallTimeMs")) is not int or \
+            budget["wallTimeMs"] != profiles[budget["profile"]]:
+        return float(hard_limit)
+    return min(float(hard_limit), budget["wallTimeMs"] / 1000)
+
+
 def run_sage_operation(operation: str, params: dict, timeout_seconds: int = 30, job_id: str | None = None) -> dict:
     start = time.time()
     cancelled = Event()
@@ -69,7 +83,8 @@ def run_sage_operation(operation: str, params: dict, timeout_seconds: int = 30, 
                     _active_jobs[job_id] = (cancelled, process)
                     if cancelled.is_set() and process.poll() is None:
                         process.terminate()
-            deadline = time.monotonic() + timeout_seconds
+            effective_timeout = ideal_timeout_seconds(operation, params, timeout_seconds)
+            deadline = time.monotonic() + effective_timeout
             while True:
                 try:
                     stdout, stderr = process.communicate(timeout=0.1)
@@ -82,7 +97,7 @@ def run_sage_operation(operation: str, params: dict, timeout_seconds: int = 30, 
             if cancelled.is_set():
                 return _failure(operation, start, "Sage Docker job cancelled.")
             if time.monotonic() >= deadline:
-                return _failure(operation, start, "SageMath execution timed out.")
+                return _failure(operation, start, f"SageMath wall-time budget exceeded ({effective_timeout:g} s).")
             if process.returncode != 0:
                 return _failure(operation, start, (stderr or stdout or "SageMath execution failed").strip())
             if not output_path.exists():

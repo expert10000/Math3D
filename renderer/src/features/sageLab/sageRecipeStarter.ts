@@ -43,14 +43,16 @@ export const createSageRecipeStarter = (project: Math3DProject, target: AlgebraO
     }
   } else if (record.definition.kind === "ideal") {
     const definition = record.definition;
-    add("groebner", "sage.ideal.groebner", {});
+    add("groebner", "sage.ideal.groebner", { budgetProfile: "standard" });
     const ring = project.algebraObjects?.find((item) => item.id === definition.ambientRing.objectId)
       ?.revisions[definition.ambientRing.revision - 1];
     if (ring?.definition.kind === "polynomial-ring" && ring.definition.variables.length > 1)
-      add("elimination", "sage.ideal.eliminate", { eliminate: [ring.definition.variables[0]] }, ["groebner"]);
-    add("membership", "sage.ideal.membership", { polynomial: definition.generators[0] }, ["groebner"]);
+      add("elimination", "sage.ideal.eliminate", { eliminate: [ring.definition.variables[0]],
+        budgetProfile: "standard" }, ["groebner"]);
+    add("membership", "sage.ideal.membership", { polynomial: definition.generators[0],
+      budgetProfile: "standard" }, ["groebner"]);
   } else if (record.definition.kind === "quotient-ring") {
-    add("dimension", "sage.ideal.quotientDimension", {});
+    add("dimension", "sage.ideal.quotientDimension", { budgetProfile: "standard" });
   }
   return createAlgebraRecipeGraph(project, { template: "bounded-starter-v1", target },
     `${record.label} exact analysis`, stages);

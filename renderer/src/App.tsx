@@ -80446,10 +80446,10 @@ case "mobius":
           }
         }}
       />
-      {projectMiddleContent?.kind === "workbook" && activeProjectDocumentId && <ProjectWorkbookMiddleView
+      {projectMiddleContent?.kind === "workbook" && <ProjectWorkbookMiddleView
         workbook={projectMiddleContent.workbook} project={activeNotebookProjectRef.current}
         readComparisonResource={readComparisonResource}
-        documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId]?.title ?? "document"}
+        documentTitle={activeProjectDocumentId ? activeNotebookProjectRef.current?.metadata.documents?.[activeProjectDocumentId]?.title ?? "document" : "document"}
         focusBlockId={projectMiddleContent.focusBlockId}
         onReturn={() => setProjectMiddleContent(null)}
         onEdit={() => {

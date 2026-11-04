@@ -11,6 +11,7 @@ import { parseSageIntegerMatrixFormsInput, parseSageIntegerMatrixFormsResult,
   type SageIntegerMatrixFormsResult } from "./sageIntegerMatrixForms";
 import { buildSageIdealInput, parseSageIdealResult, type SageIdealResult,
   type SageIdealOperation } from "./sageIdealOperations";
+import type { SageIdealBudgetProfile } from "./sageIdealBudgets";
 import { isProvablyHomogeneousIdeal } from "./algebraIdealGrading";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
@@ -29,12 +30,12 @@ export type AlgebraOperationArguments = {
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
   "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
-  "sage.ideal.groebner": Readonly<Record<string, never>>;
-  "sage.ideal.eliminate": Readonly<{ eliminate: readonly string[] }>;
-  "sage.ideal.membership": Readonly<{ polynomial: string }>;
-  "sage.ideal.quotientDimension": Readonly<Record<string, never>>;
-  "sage.ideal.syzygies": Readonly<Record<string, never>>;
-  "sage.ideal.hilbertSeries": Readonly<Record<string, never>>;
+  "sage.ideal.groebner": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.eliminate": Readonly<{ eliminate: readonly string[]; budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.membership": Readonly<{ polynomial: string; budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.quotientDimension": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.syzygies": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.hilbertSeries": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult |
