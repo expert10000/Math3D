@@ -298,6 +298,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B02 implementation update (2026-11-04):** The [B02 acceptance record](evidence/sage-b02-polynomial-dossier-2026-11-04.md) adds a bounded, versioned `QQ[x]` polynomial dossier recipe to the Sage worker, typed object operation registry and shared broker. It reports exact factorization and square-free decomposition, derivative and GCD, content and primitive part, irreducibility over `QQ`, discriminant and rational roots. A single JSON fixture is checked by Sage and TypeScript; SageMath 9.5 WSL ran the live cases and malformed-input checks. Docker HTTP execution awaits an available Docker service. Contextual run and saved evidence remain **B05**. The next implementation gate is **SAGE-B03**, exact matrix operations.
 
+**B03 implementation update (2026-11-04):** The [B03 acceptance record](evidence/sage-b03-exact-matrix-2026-11-04.md) adds a bounded, versioned exact `QQ` matrix dossier to the worker, typed registry and broker. A selected rational-field object admits 1–8 by 1–8 canonical rational matrices. Results include RREF, pivots, rank, right-kernel and image bases, and minimal/characteristic polynomials for square matrices. The core parser verifies exact kernel and image witnesses. SageMath 9.5 WSL checked singular, rectangular, Jordan, rational-entry and zero matrices; the shared fixture also passes TypeScript validation. Docker HTTP execution awaits an available Docker service. The next gate is **SAGE-B04**, Smith and Hermite workflows.
+
 ---
 
 ## 3. P0 — Algebra object registry

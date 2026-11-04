@@ -37,6 +37,7 @@ export type Math3DWorkerOperationId =
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
+  | "matrix.linear-dossier"
   | "algebra.groebner"
   | "algebra.reconstruct"
   | "algebra.domains.inspect"
@@ -315,6 +316,14 @@ const definitions = [
   {
     id: "matrix.charpoly",
     title: "Matrix characteristic polynomial",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "matrix.linear-dossier",
+    title: "Exact QQ matrix RREF, kernel, image and minimal polynomial",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],

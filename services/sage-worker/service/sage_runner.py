@@ -188,6 +188,49 @@ def _matrix_charpoly(operation, params):
     return _success(operation, {"inputShape": [mat.nrows(), mat.ncols()], "text": str(poly)}, latex(poly))
 
 
+def _matrix_linear_dossier(operation, params):
+    if set(params) != {"format", "schemaVersion", "matrix"} or \
+            params.get("format") != "math3d.sage-matrix-dossier" or type(params.get("schemaVersion")) is not int or \
+            params.get("schemaVersion") != 1:
+        raise SageRequestError("Matrix dossier requires the versioned exact QQ matrix schema.")
+    rows = params["matrix"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_MATRIX_DIM or \
+            not isinstance(rows[0], list) or not 1 <= len(rows[0]) <= MAX_MATRIX_DIM or \
+            any(not isinstance(row, list) or len(row) != len(rows[0]) for row in rows):
+        raise SageRequestError("Matrix dossier requires a rectangular matrix with 1 to 8 rows and columns.")
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,63})(?:/[1-9][0-9]{0,63})?$")
+    if any(not isinstance(entry, str) or not canonical.fullmatch(entry) or str(QQ(entry)) != entry
+            for row in rows for entry in row):
+        raise SageRequestError("Matrix dossier entries must be reduced canonical QQ fractions of at most 64 digits.")
+    mat = matrix(QQ, [[QQ(entry) for entry in row] for row in rows])
+    rref = mat.echelon_form()
+    pivots = list(rref.pivots())
+    free = [column for column in range(mat.ncols()) if column not in pivots]
+    kernel = []
+    for column in free:
+        vector = [QQ(0)] * mat.ncols()
+        vector[column] = QQ(1)
+        for pivot_row, pivot_column in enumerate(pivots):
+            vector[pivot_column] = -rref[pivot_row, column]
+        kernel.append([str(entry) for entry in vector])
+    result = {
+        "format": "math3d.sage-matrix-dossier-result",
+        "schemaVersion": 1,
+        "coefficientDomain": "QQ",
+        "sourceMatrix": rows,
+        "inputShape": [mat.nrows(), mat.ncols()],
+        "rank": len(pivots),
+        "reducedRowEchelonForm": [[str(rref[row, column]) for column in range(mat.ncols())]
+            for row in range(mat.nrows())],
+        "pivotColumns": pivots,
+        "kernelBasis": kernel,
+        "imageBasis": [[str(entry) for entry in mat.column(column)] for column in pivots],
+        "minimalPolynomial": str(mat.minimal_polynomial("t")) if mat.is_square() else None,
+        "characteristicPolynomial": str(mat.charpoly("t")) if mat.is_square() else None,
+    }
+    return _success(operation, result, latex(rref))
+
+
 def _polynomial_factor(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     poly = ring(_validate_expression(params.get("polynomial") or params.get("expression")))
@@ -579,6 +622,7 @@ OPERATIONS = {
     "sage.symbolic.singularities": _surface_calculus,
     "sage.matrix.eigen_exact": _matrix_eigen_exact,
     "sage.matrix.charpoly": _matrix_charpoly,
+    "sage.matrix.linear_dossier": _matrix_linear_dossier,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
     "sage.polynomial.dossier": _polynomial_dossier,

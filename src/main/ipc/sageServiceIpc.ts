@@ -10,6 +10,7 @@ type SageOperation =
   | "sage.symbolic.solve"
   | "sage.matrix.eigen_exact"
   | "sage.matrix.charpoly"
+  | "sage.matrix.linear_dossier"
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
   | "sage.polynomial.dossier"

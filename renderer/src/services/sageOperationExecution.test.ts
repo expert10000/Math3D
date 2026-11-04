@@ -21,6 +21,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.algebra.reconstruct",
   "sage.algebra.inspectDomains",
   "sage.polynomial.dossier",
+  "sage.matrix.linear_dossier",
 ]);
 const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
@@ -36,6 +37,8 @@ const algebraParams = (domains = false) => {
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
   operation === "sage.algebra.reconstruct" ? algebraParams()
     : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
+    : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
+      matrix: [["1", "2"], ["2", "4"]] }
     : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }

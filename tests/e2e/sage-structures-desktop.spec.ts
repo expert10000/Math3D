@@ -47,6 +47,9 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await expect(cas.getByTestId("cas-builder-preview")).toContainText("Fieldyes");
     await cas.getByRole("button", { name: "Create and save" }).click();
     await expect(cas.getByTestId("cas-selected-structure")).toContainText("Rational field QQ");
+    await cas.getByRole("button", { name: "Operations", exact: true }).click();
+    await expect(cas.getByTestId("cas-object-operation-sage.matrix.linear_dossier")).toBeVisible();
+    await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: "+ New structure" }).click();
     await form.getByLabel("Type").selectOption("polynomial-ring");
     await form.getByLabel("Name").fill("R");
@@ -100,6 +103,7 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await expect(objectOperations.getByTestId("cas-object-operation-sage.groebner.compute")).toBeVisible();
     await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.roots_exact")).toHaveCount(0);
     await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.dossier")).toHaveCount(0);
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.matrix.linear_dossier")).toHaveCount(0);
     await cas.screenshot({ path: "test-results/sage-b01-operations.png", animations: "disabled" });
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: /F49 @1/ }).click();

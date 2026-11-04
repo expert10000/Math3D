@@ -6,10 +6,12 @@ import { buildSageAlgebraReconstructionInput, parseSageAlgebraReconstructionInpu
 import { buildSageAlgebraDomainInput, parseSageAlgebraDomainInput, parseSageAlgebraDomainResult,
   type SageAlgebraDomainResult } from "./sageAlgebraDomains";
 import { parsePolynomialDossierResult, type PolynomialDossierResult } from "./polynomialDossier";
+import { parseSageMatrixDossierInput, parseSageMatrixDossierResult, type SageMatrixDossierResult } from "./sageMatrixDossier";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
-  "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute";
+  "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
+  "sage.matrix.linear_dossier";
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
   "sage.algebra.reconstruct": Readonly<Record<string, never>>;
@@ -20,13 +22,15 @@ export type AlgebraOperationArguments = {
   "sage.polynomial.roots_exact": Readonly<{ polynomial: string }>;
   "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
+  "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
+  SageMatrixDossierResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
 export type AlgebraOperationDefinition = Readonly<{
-  id: AlgebraOperationId; label: string; category: "structure" | "number-theory" | "polynomial";
+  id: AlgebraOperationId; label: string; category: "structure" | "number-theory" | "polynomial" | "matrix";
   accepts: readonly AlgebraObjectKind[]; domain: "any" | "QQ-polynomial" | "QQ-univariate-polynomial";
   capability: string; backends: readonly AlgebraBackend[];
   inputSchema: string; outputSchema: string; deterministic: true; cachePolicy: "none"; executionMode: "bounded";
@@ -58,6 +62,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker"], "math3d.algebra-polynomial-arguments/v1", "math3d.polynomial-dossier-result/v1"),
   definition("sage.groebner.compute", "Gröbner basis over QQ", "polynomial", POLY, "QQ-polynomial", "algebra.groebner",
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
+  definition("sage.matrix.linear_dossier", "Exact QQ matrix analysis", "matrix", ["rational-field"], "any", "matrix.linear-dossier",
+    ["docker"], "math3d.sage-matrix-dossier/v1", "math3d.sage-matrix-dossier-result/v1"),
 ]);
 const byId = new Map(ALGEBRA_OPERATION_REGISTRY.map((item) => [item.id, item]));
 if (byId.size !== ALGEBRA_OPERATION_REGISTRY.length) throw new Error("Duplicate algebra operation ID.");
@@ -156,6 +162,10 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
       throw new TypeError("Modular inverse requires one canonical signed integer in the selected modular ring.");
     }
     params = { a: input.a, modulus: record.definition.modulus };
+  } else if (id === "sage.matrix.linear_dossier") {
+    if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
+    params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
+      matrix: input.matrix }) as unknown as Record<string, unknown>;
   } else {
     const variables = record.definition.kind === "polynomial-ring" ? record.definition.variables : [];
     if (id === "sage.groebner.compute") {
@@ -191,6 +201,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     parseSageAlgebraReconstructionInput(request.params));
   if (request.operation === "sage.algebra.inspectDomains") return parseSageAlgebraDomainResult(value,
     parseSageAlgebraDomainInput(request.params));
+  if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
+    parseSageMatrixDossierInput(request.params));
   if (!object(value)) throw new TypeError("Invalid algebra operation result object.");
   if (request.operation === "sage.numberTheory.gcd") {
     if (!exact(value, ["value"]) || !decimal(value.value)) throw new TypeError("Invalid exact GCD result.");

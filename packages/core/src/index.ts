@@ -92,6 +92,7 @@ export * from "./sageAlgebraReconstruction";
 export * from "./sageAlgebraDomains";
 export * from "./algebraOperationRegistry";
 export * from "./polynomialDossier";
+export * from "./sageMatrixDossier";
 export * from "./projectComposition";
 export * from "./retainedMeshGenerations";
 export * from "./quantumSceneDocument";
