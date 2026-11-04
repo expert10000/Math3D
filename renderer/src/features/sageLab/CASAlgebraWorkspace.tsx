@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraObjectRef,
-  type Math3DProject } from "@math3d/core";
+  type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageObjectOperations from "./SageObjectOperations";
@@ -11,6 +11,7 @@ type Props = Omit<SageServicesWorkspaceProps, "structures"> & {
   onOpenConsole: () => void;
   project: Math3DProject | null;
   onCreateStructure: (record: AlgebraObjectRecord) => void | Promise<void>;
+  onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
   onOpenProjects: () => void;
 };
 
@@ -26,7 +27,7 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
   catch { return null; }
 };
 
-export default function CASAlgebraWorkspace({ project, onCreateStructure, onOpenProjects, ...props }: Props) {
+export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onOpenProjects, ...props }: Props) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
   const [creating, setCreating] = useState(false);
@@ -117,6 +118,6 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onOpen
     testId="cas-algebra-workspace" structures={{ projectId: project?.identity.id ?? null,
       projectTitle: project?.metadata.title ?? null,
       selectionKey: selection ? `${selection.objectId}@${selection.revision}` : null,
-      explorer, dossier, inspector, operations: <SageObjectOperations project={project}
+      explorer, dossier, inspector, operations: <SageObjectOperations project={project} onSaveEvidence={onSaveEvidence}
         target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} /> }} />;
 }

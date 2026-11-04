@@ -7,7 +7,7 @@ import { ScientificScenePreview, type ScientificSceneOpenResponse } from "./comp
 import { QuantumSceneExamples } from "./components/QuantumSceneExamples";
 import { quantumSceneDocumentFromVerifiedOpen } from "./projects/quantumSceneAdmission";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
-import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject, type ProjectScientificSceneReference } from "@math3d/core";
+import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject, addMath3DProjectAlgebraEvidence, type ProjectScientificSceneReference } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -111368,6 +111368,18 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onSaveEvidence={(evidence) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== evidence.projectId) throw new TypeError("Open the matching Project before saving Sage evidence.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed during the Sage operation. Reopen it and run again.");
+          const next = addMath3DProjectAlgebraEvidence(current, evidence);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
         onCreateStructure={(record) => {
           const current = projectForNotePins;
           if (!current) throw new TypeError("Open and save a Project before adding structures.");

@@ -52,7 +52,9 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await expect(cas.getByTestId("cas-selected-structure")).toContainText("Rational field QQ");
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await expect(cas.getByTestId("cas-object-operation-sage.matrix.linear_dossier")).toBeVisible();
-    await expect(cas.getByTestId("cas-object-operation-sage.matrix.integer_forms")).toHaveCount(0);
+    await expect(cas.getByTestId("cas-object-operation-sage.matrix.integer_forms").getByRole("button")).toBeDisabled();
+    await expect(cas.getByTestId("cas-object-operation-sage.matrix.integer_forms"))
+      .toContainText("does not accept rational-field objects");
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: "+ New structure" }).click();
     await form.getByLabel("Type").selectOption("polynomial-ring");
@@ -93,21 +95,21 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     const objectOperations = cas.getByTestId("cas-object-operations");
     await expect(objectOperations.getByTestId("cas-object-operation-sage.algebra.reconstruct")).toBeVisible();
-    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.gcd")).toHaveCount(0);
-    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.modInverse")).toHaveCount(0);
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.gcd").getByRole("button")).toBeDisabled();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.modInverse").getByRole("button")).toBeDisabled();
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: /Z12 @1/ }).click();
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await expect(objectOperations.getByTestId("cas-object-operation-sage.numberTheory.modInverse")).toBeVisible();
-    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.factor")).toHaveCount(0);
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.factor").getByRole("button")).toBeDisabled();
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: /R @1/ }).click();
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.factor")).toBeVisible();
     await expect(objectOperations.getByTestId("cas-object-operation-sage.groebner.compute")).toBeVisible();
-    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.roots_exact")).toHaveCount(0);
-    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.dossier")).toHaveCount(0);
-    await expect(objectOperations.getByTestId("cas-object-operation-sage.matrix.linear_dossier")).toHaveCount(0);
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.roots_exact").getByRole("button")).toBeDisabled();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.dossier").getByRole("button")).toBeDisabled();
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.matrix.linear_dossier").getByRole("button")).toBeDisabled();
     await cas.screenshot({ path: "test-results/sage-b01-operations.png", animations: "disabled" });
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: /F49 @1/ }).click();
@@ -210,6 +212,17 @@ test("SAGE-A07 previews a bounded Sage constructor and rejects mismatched eviden
     await cas.getByRole("button", { name: "Create and save" }).click();
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await expect(cas.getByTestId("cas-object-operation-sage.algebra.reconstruct")).toContainText("docker route ready");
+    await cas.getByRole("button", { name: "Select Construct exact structure" }).click();
+    await cas.getByRole("button", { name: "Run and save evidence" }).click();
+    await expect(cas.getByTestId("cas-object-run-status")).toContainText("Saved Construct exact structure evidence");
+    const evidenceBytes = await ctx.page.evaluate((id) =>
+      localStorage.getItem(`math3d.project.v1.payload.${id}`), project.identity.id);
+    const exported = core.serializeMath3DProject(core.parseMath3DProject(evidenceBytes));
+    const independent = core.parseMath3DProject(exported);
+    expect(independent.algebraEvidence).toHaveLength(1);
+    expect(independent.algebraEvidence[0].request.target.objectId).toBe(independent.algebraObjects[0].id);
+    expect(independent.algebraEvidence[0].runtime.version).toBe("10.10");
+    expect(independent.algebraEvidence[0].result.text).toBe("Rational Field");
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     mismatch = true;
     await cas.getByRole("button", { name: "+ New structure" }).click();

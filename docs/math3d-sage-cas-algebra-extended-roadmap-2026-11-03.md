@@ -302,6 +302,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B04 implementation update (2026-11-04):** The [B04 acceptance record](evidence/sage-b04-smith-hermite-2026-11-04.md) adds bounded Smith and row-Hermite workflows over a selected `ZZ` object. A versioned result contains Smith diagonal and form, Hermite form, rank and the correctly ranked cokernel. The worker and core verify supplied unimodular transformations and exact identities, while an unavailable status makes missing transformations explicit. SageMath 9.5 WSL and TypeScript share the `(2,6,0)` fixture; rectangular and nontrivial transform cases also pass. Docker HTTP execution awaits an available Docker service. The next gate is **SAGE-B05**, contextual object-linked run controls and saved evidence.
 
+**B05 implementation update (2026-11-04):** The [B05 acceptance record](evidence/sage-b05-contextual-evidence-2026-11-04.md) adds run controls in CAS → Algebra → Operations for the selected saved structure. The typed registry disables incompatible or unavailable actions with a reason. Successful broker results are schema checked and saved inside the `.math3d` Project with the pinned object revision and hash, request, result hash, Sage version, backend and job ID. The Project parser rejects missing targets, changed results and duplicate evidence IDs. **SAGE-B06** will put structured result and verification panels in the Inspector.
+
 ---
 
 ## 3. P0 — Algebra object registry

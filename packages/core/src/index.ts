@@ -91,6 +91,7 @@ export * from "./projectAlgebraRegistry";
 export * from "./sageAlgebraReconstruction";
 export * from "./sageAlgebraDomains";
 export * from "./algebraOperationRegistry";
+export * from "./projectAlgebraEvidence";
 export * from "./polynomialDossier";
 export * from "./sageMatrixDossier";
 export * from "./sageIntegerMatrixForms";
