@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, structuralHash } from "./documentIdentity";
+import { canonicalJsonStringify, structuralHash, type StructuralHash } from "./documentIdentity";
 import { createDerivedFieldDocument, vectorFieldDerivedShape,
   type DerivedFieldDocument, type DerivedFieldInput, type DerivedFieldOperation } from "./derivedFieldDocument";
 import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
@@ -8,7 +8,7 @@ import type { VectorField3DDocument } from "./vectorField3DDocument";
 
 export const PROJECT_DERIVED_FIELDS_CAPABILITY = "project.derived-fields.v1" as const;
 export type DerivedFieldReview = Readonly<{ status: "current" | "stale" | "missing" | "unverified";
-  document: DerivedFieldDocument; cacheKey: string | null }>;
+  document: DerivedFieldDocument; cacheKey: StructuralHash | null }>;
 /** The host must use its existing source-resource verifier for scientific bundles. */
 export type DerivedSourceVerification = (document: VectorField3DDocument) => boolean;
 const requireProject = (project: Math3DProject) => parseMath3DProject(serializeMath3DProject(project));

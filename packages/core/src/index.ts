@@ -130,6 +130,7 @@ export * from "./scientificSelectionLegacy";
 export * from "./projectScientificSelections";
 export * from "./derivedFieldDocument";
 export * from "./projectDerivedFields";
+export * from "./derivedFieldProfileResult";
 export * from "./scientificSceneManifest";
 export * from "./scientificDatasetCoordinates";
 export * from "./scientificDatasetLink";
