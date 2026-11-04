@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import dossierFixture from "../fixtures/sage-polynomial-dossier-x2minus1.json";
 import { ALGEBRA_OPERATION_REGISTRY, algebraOperationsFor, buildAlgebraOperationRequest,
   parseAlgebraOperationResult, type AlgebraRouteCapability,
   createAlgebraObjectRecord, createMath3DProject, createMixedWorkspaceDocument,
@@ -42,6 +43,7 @@ describe("SAGE-B01 typed object operation registry", () => {
     expect(eligible(project, ref(q))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains"]);
     expect(eligible(project, ref(rxy))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains", "sage.polynomial.factor", "sage.groebner.compute"]);
     expect(eligible(project, ref(rt))).toContain("sage.polynomial.roots_exact");
+    expect(eligible(project, ref(rt))).toContain("sage.polynomial.dossier");
     expect(eligible(project, ref(ft))).toEqual(["sage.algebra.reconstruct", "sage.algebra.inspectDomains"]);
     expect(algebraOperationsFor(project, ref(ft), ready).find((item) => item.definition.id === "sage.polynomial.factor")?.reason)
       .toMatch(/direct QQ coefficient domain/);
@@ -117,5 +119,28 @@ describe("SAGE-B01 typed object operation registry", () => {
       { polynomial: "x^9999" })).toThrow(/bounded polynomial/);
     expect(() => buildAlgebraOperationRequest(project, ref(r), "sage.polynomial.roots_exact", "docker",
       { polynomial: "x^2-1" })).toThrow(/exactly one polynomial variable/);
+    expect(() => buildAlgebraOperationRequest(project, ref(r), "sage.polynomial.dossier", "docker",
+      { polynomial: "x^2-1" })).toThrow(/exactly one polynomial variable/);
+  });
+
+  it("pins the B02 QQ[x] dossier and validates a structured exact result", () => {
+    let project = empty();
+    let q: AlgebraObjectRecord, ring: AlgebraObjectRecord;
+    [project, q] = add(project, "Q", { kind: "rational-field" });
+    [project, ring] = add(project, "Rx", { kind: "polynomial-ring", coefficientDomain: ref(q),
+      variables: ["x"], monomialOrder: "lex" });
+    const request = buildAlgebraOperationRequest(project, ref(ring), "sage.polynomial.dossier", "docker",
+      { polynomial: "x^2-1" });
+    expect(request).toMatchObject({ target: ref(ring), outputSchema: "math3d.polynomial-dossier-result/v1",
+      params: { polynomial: "x^2-1", variables: ["x"] } });
+    const result = dossierFixture;
+    expect(parseAlgebraOperationResult(request, result)).toMatchObject({ degree: 2, discriminant: "4",
+      rationalRoots: [{ value: "-1" }, { value: "1" }] });
+    expect(() => parseAlgebraOperationResult(request, { ...result, coefficientDomain: "GF(5)" })).toThrow(/QQ\[x\]/);
+    expect(() => parseAlgebraOperationResult(request, { ...result, variable: "y" })).toThrow(/QQ\[x\]/);
+    expect(() => parseAlgebraOperationResult(request, { ...result, sourcePolynomial: "x^2+1" })).toThrow(/dossier/);
+    expect(() => parseAlgebraOperationResult(request, { ...result, code: "print(1)" })).toThrow(/dossier/);
+    expect(() => parseAlgebraOperationResult(request, { ...result,
+      rationalRoots: [{ value: "1", multiplicity: 0 }] })).toThrow(/dossier/);
   });
 });

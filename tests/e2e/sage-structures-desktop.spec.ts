@@ -99,6 +99,7 @@ test("SAGE-A07 builds exact rings and fields and reselects one after an independ
     await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.factor")).toBeVisible();
     await expect(objectOperations.getByTestId("cas-object-operation-sage.groebner.compute")).toBeVisible();
     await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.roots_exact")).toHaveCount(0);
+    await expect(objectOperations.getByTestId("cas-object-operation-sage.polynomial.dossier")).toHaveCount(0);
     await cas.screenshot({ path: "test-results/sage-b01-operations.png", animations: "disabled" });
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await cas.getByRole("button", { name: /F49 @1/ }).click();

@@ -12,6 +12,7 @@ type SageOperation =
   | "sage.matrix.charpoly"
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
+  | "sage.polynomial.dossier"
   | "sage.groebner.compute"
   | "sage.algebra.reconstruct"
   | "sage.algebra.inspectDomains"

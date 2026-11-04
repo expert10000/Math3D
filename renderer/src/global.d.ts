@@ -521,6 +521,7 @@ declare global {
     | "sage.matrix.charpoly"
     | "sage.polynomial.roots_exact"
     | "sage.polynomial.factor"
+    | "sage.polynomial.dossier"
     | "sage.groebner.compute"
     | "sage.numberTheory.gcd"
     | "sage.numberTheory.modInverse"

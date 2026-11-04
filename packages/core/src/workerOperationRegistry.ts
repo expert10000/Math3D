@@ -32,6 +32,7 @@ export type Math3DWorkerOperationId =
   | "symbolic.gradient"
   | "symbolic.hessian"
   | "polynomial.factor"
+  | "polynomial.dossier"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -273,6 +274,14 @@ const definitions = [
   {
     id: "polynomial.factor",
     title: "Exact polynomial factorization",
+    canonicalOwner: "sage",
+    method: "exact",
+    environments: ["browser", "desktop", "server"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "polynomial.dossier",
+    title: "Exact polynomial dossier over QQ",
     canonicalOwner: "sage",
     method: "exact",
     environments: ["browser", "desktop", "server"],

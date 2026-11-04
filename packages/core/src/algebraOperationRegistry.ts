@@ -5,10 +5,11 @@ import { buildSageAlgebraReconstructionInput, parseSageAlgebraReconstructionInpu
   parseSageAlgebraReconstructionResult, type SageAlgebraReconstructionResult } from "./sageAlgebraReconstruction";
 import { buildSageAlgebraDomainInput, parseSageAlgebraDomainInput, parseSageAlgebraDomainResult,
   type SageAlgebraDomainResult } from "./sageAlgebraDomains";
+import { parsePolynomialDossierResult, type PolynomialDossierResult } from "./polynomialDossier";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
-  "sage.polynomial.roots_exact" | "sage.groebner.compute";
+  "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute";
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
   "sage.algebra.reconstruct": Readonly<Record<string, never>>;
@@ -17,9 +18,10 @@ export type AlgebraOperationArguments = {
   "sage.numberTheory.modInverse": Readonly<{ a: string }>;
   "sage.polynomial.factor": Readonly<{ polynomial: string }>;
   "sage.polynomial.roots_exact": Readonly<{ polynomial: string }>;
+  "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
 };
-export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult |
+export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -52,6 +54,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker"], "math3d.algebra-polynomial-arguments/v1", "sage.polynomial.factor/result-v1"),
   definition("sage.polynomial.roots_exact", "Exact roots over QQ", "polynomial", POLY, "QQ-univariate-polynomial", "polynomial.roots.exact",
     ["docker"], "math3d.algebra-polynomial-arguments/v1", "sage.polynomial.roots_exact/result-v1"),
+  definition("sage.polynomial.dossier", "Polynomial dossier over QQ", "polynomial", POLY, "QQ-univariate-polynomial", "polynomial.dossier",
+    ["docker"], "math3d.algebra-polynomial-arguments/v1", "math3d.polynomial-dossier-result/v1"),
   definition("sage.groebner.compute", "Gröbner basis over QQ", "polynomial", POLY, "QQ-polynomial", "algebra.groebner",
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
 ]);
@@ -165,6 +169,11 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
       if (!exact(input, ["polynomial"]) || !polynomialText(input.polynomial, variables)) {
         throw new TypeError("Enter a bounded polynomial using only the selected ring variables.");
       }
+      if (id === "sage.polynomial.dossier" &&
+          (input.polynomial.includes("**") || [...input.polynomial.matchAll(/\^\s*([0-9]+)/g)]
+            .some((match) => Number(match[1]) > 16))) {
+        throw new TypeError("Polynomial dossier exponents must be at most 16.");
+      }
       params = { polynomial: input.polynomial, variables: [...variables],
         ...(variables.length > 1 ? { order: record.definition.kind === "polynomial-ring" ? record.definition.monomialOrder : "degrevlex" } : {}) };
     }
@@ -208,6 +217,14 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
       throw new TypeError("Invalid exact polynomial roots result.");
     }
     return Object.freeze({ roots: value.roots.map((root) => Object.freeze({ value: root.value, multiplicity: root.multiplicity })) });
+  }
+  if (request.operation === "sage.polynomial.dossier") {
+    const variables = request.params.variables;
+    if (!Array.isArray(variables) || variables.length !== 1 || typeof variables[0] !== "string" ||
+        !polynomialText(request.params.polynomial, variables)) {
+      throw new TypeError("Invalid polynomial dossier request input.");
+    }
+    return parsePolynomialDossierResult(value, variables[0], request.params.polynomial as string);
   }
   if (!exact(value, ["basis"]) || !Array.isArray(value.basis) || value.basis.length > 256 ||
       !value.basis.every((item) => typeof item === "string" && !!item && item.length <= 4096)) {
