@@ -55,7 +55,7 @@ export type AlgebraOperationDefinition = Readonly<{
 }>;
 
 const ALL: readonly AlgebraObjectKind[] = ["integer-ring", "rational-field", "modular-ring", "finite-field",
-  "polynomial-ring", "number-field"];
+  "polynomial-ring", "number-field", "field-extension"];
 const POLY: readonly AlgebraObjectKind[] = ["polynomial-ring"];
 const definition = (id: AlgebraOperationId, label: string, category: AlgebraOperationDefinition["category"],
   accepts: readonly AlgebraObjectKind[], domain: AlgebraOperationDefinition["domain"], capability: string,

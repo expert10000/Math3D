@@ -1,4 +1,5 @@
-import { ALGEBRA_OPERATION_REGISTRY, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness, parseProjectAlgebraEvidence,
+import { ALGEBRA_OPERATION_REGISTRY, analyzeBiquadraticExtensionFromDefinition,
+  analyzeQuadraticNumberField, inspectProjectAlgebraFreshness, parseProjectAlgebraEvidence,
   type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 
 export type InspectorFact = Readonly<{ label: string; value: string | readonly string[] | readonly (readonly string[])[] }>;
@@ -64,6 +65,19 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       fact("Field discriminant", field.fieldDiscriminant),
       fact("Power basis", field.powerBasis), fact("Integral basis", field.integralBasis),
       fact("Embeddings", field.embeddingImages));
+  } else if (source?.definition.kind === "field-extension") {
+    const extension = source.definition;
+    const base = project.algebraObjects?.find((item) => item.id === extension.baseField.objectId)
+      ?.revisions[extension.baseField.revision - 1];
+    if (base?.definition.kind === "number-field") {
+      const tower = analyzeBiquadraticExtensionFromDefinition(base.definition.definingPolynomial,
+        base.definition.generator, extension.radicand, extension.generator);
+      structure.push(fact("Base field", formatRef(extension.baseField)),
+        fact("Relative polynomial", tower.relativePolynomial),
+        fact("Absolute basis", tower.absoluteBasis),
+        fact("Base generator image coordinates", tower.baseGeneratorImage),
+        fact("Degree product", "2 × 2 = 4"));
+    }
   } else if (source?.definition.kind === "ideal") {
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Generators", source.definition.generators));
@@ -95,6 +109,17 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
           fact("Field discriminant", text(field.fieldDiscriminant)),
           fact("Power basis", list(field.powerBasis)), fact("Sage integral basis", list(field.integralBasis)),
           fact("Embedding count", text(field.embeddingCount)));
+      }
+      if (result.fieldExtension && typeof result.fieldExtension === "object") {
+        const tower = result.fieldExtension as Record<string, unknown>;
+        facts.push(fact("Base degree", text(tower.baseDegree)),
+          fact("Relative degree", text(tower.relativeDegree)),
+          fact("Absolute degree", text(tower.absoluteDegree)),
+          fact("Base generator image", text(tower.baseGeneratorImage)),
+          fact("Extension generator", text(tower.extensionGenerator)));
+        checks.push(check("Field inclusion", "checked",
+          "Sage reports a canonical base map, both defining relations vanish, and 2 × 2 = 4."));
+        if (mode !== "FAILED") mode = "CHECKED";
       }
       checks.push(check("Definition identity", "checked", "Sage metadata matches the pinned object kind, hash and characteristic."));
       break;

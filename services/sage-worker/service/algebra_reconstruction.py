@@ -74,6 +74,17 @@ def _definition(value):
         if discriminant >= 0 and ZZ(discriminant).is_square():
             raise ValueError("Defining quadratic is reducible over QQ.")
         return [parent]
+    if kind == "field-extension":
+        _fields(value, ("kind", "baseField", "radicand", "generator"), "definition")
+        parent = _reference(value["baseField"], "definition.baseField")
+        radicand = value["radicand"]
+        if type(radicand) is not str or not re.fullmatch(r"(?:[2-9]|[1-9][0-9])", radicand) or \
+                int(radicand) > 97 or not ZZ(radicand).is_squarefree():
+            raise ValueError("Field tower radicand must be squarefree from 2 to 97.")
+        generator = value["generator"]
+        if type(generator) is not str or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", generator):
+            raise ValueError("Field tower generator is invalid.")
+        return [parent]
     if kind == "polynomial-ring":
         _fields(value, ("kind", "coefficientDomain", "variables", "monomialOrder"), "definition")
         parent = _reference(value["coefficientDomain"], "definition.coefficientDomain")
@@ -176,6 +187,21 @@ def _build_algebra(records):
             if not polynomial.is_irreducible():
                 raise ValueError("Defining polynomial is reducible over QQ.")
             value = NumberField(polynomial, name=definition["generator"])
+        elif kind == "field-extension":
+            parent = definition["baseField"]
+            parent_key = (parent["objectId"], parent["revision"])
+            parent_record = next((record for record in records if
+                (record["id"], record["revision"]) == parent_key), None)
+            if parent_record is None or parent_record["kind"] != "number-field":
+                raise ValueError("Field tower requires a pinned quadratic number-field parent.")
+            base = built[parent_key]
+            if definition["generator"] == parent_record["definition"]["generator"]:
+                raise ValueError("Field tower generator must differ from its base generator.")
+            ring = PolynomialRing(base, "t")
+            polynomial = ring.gen() ** 2 - ZZ(definition["radicand"])
+            if not polynomial.is_irreducible():
+                raise ValueError("Field tower polynomial is reducible over its pinned base field.")
+            value = base.extension(polynomial, definition["generator"])
         else:
             parent = definition["coefficientDomain"]
             base = built[(parent["objectId"], parent["revision"])]
@@ -208,6 +234,17 @@ def reconstruct_algebra(params):
             "powerBasis": [str(item) for item in value.power_basis()],
             "integralBasis": [str(item) for item in value.integral_basis()],
             "embeddingCount": len(value.embeddings(QQbar))}
+    if record["kind"] == "field-extension":
+        definition = record["definition"]
+        base_ref = definition["baseField"]
+        base = built[(base_ref["objectId"], base_ref["revision"])]
+        base_image = value(base.gen())
+        result["fieldExtension"] = {"baseDegree": int(base.degree()),
+            "relativeDegree": int(value.relative_degree()), "absoluteDegree": int(value.absolute_degree()),
+            "baseGeneratorImage": str(base_image), "extensionGenerator": str(value.gen()),
+            "inclusionMapAvailable": value.coerce_map_from(base) is not None,
+            "baseRelationVerified": base.defining_polynomial()(base_image) == 0,
+            "extensionRelationVerified": value.gen() ** 2 - ZZ(definition["radicand"]) == 0}
     return result
 
 
