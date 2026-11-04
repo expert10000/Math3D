@@ -1,5 +1,9 @@
-/** Conservative syntax gate for bounded exact QQ polynomial ideal generators. */
-export const parseIdealGenerator = (input: unknown, variables?: readonly string[]): string => {
+export type IdealGeneratorMetrics = Readonly<{ expression: string; degreeUpperBound: number; termUpperBound: number }>;
+type Metrics = { degree: number; terms: number };
+const capped = (value: number) => Math.min(value, 129);
+
+/** Conservative syntax and expansion bounds for exact QQ polynomial ideal generators. */
+export const analyzeIdealGenerator = (input: unknown, variables?: readonly string[]): IdealGeneratorMetrics => {
   if (typeof input !== "string" || input.length > 256 || !input.trim())
     throw new TypeError("Ideal generator must contain 1 to 256 characters.");
   const expression = input.replace(/\s+/g, "");
@@ -11,36 +15,38 @@ export const parseIdealGenerator = (input: unknown, variables?: readonly string[
   if (!tokens || tokens.length > 128 || tokens.join("") !== expression)
     throw new TypeError("Ideal generator has noncanonical numbers or too many tokens.");
   let at = 0;
-  const atom = (): number => {
+  const atom = (): Metrics => {
     const token = tokens[at++];
     if (token === "(") {
-      const degree = sum();
+      const metrics = sum();
       if (tokens[at++] !== ")") throw new TypeError("Ideal generator has unmatched parentheses.");
-      return degree;
+      return metrics;
     }
     if (token && /^[A-Za-z]/.test(token)) {
       if (variables && !variables.includes(token))
         throw new TypeError(`Ideal generator variable ${token} is outside the ambient ring.`);
-      return 1;
+      return { degree: 1, terms: 1 };
     }
-    if (token && /^(?:0|[1-9][0-9]{0,17})(?:\/[1-9][0-9]{0,17})?$/.test(token)) return 0;
+    if (token && /^(?:0|[1-9][0-9]{0,17})(?:\/[1-9][0-9]{0,17})?$/.test(token))
+      return { degree: 0, terms: 1 };
     throw new TypeError("Ideal generator is not a polynomial expression.");
   };
-  const power = (): number => {
+  const power = (): Metrics => {
     if (tokens[at] === "+" || tokens[at] === "-") at += 1;
-    let degree = atom();
+    const metrics = atom();
     if (tokens[at] === "^") {
       at += 1;
       const exponent = tokens[at++];
       if (!exponent || !/^(?:0|[1-9][0-9]?)$/.test(exponent) || Number(exponent) > 16)
         throw new TypeError("Ideal generator exponent must be an integer from 0 to 16.");
-      degree *= Number(exponent);
+      metrics.degree *= Number(exponent);
+      metrics.terms = capped(metrics.terms ** Number(exponent));
     }
-    if (degree > 16) throw new TypeError("Ideal generator total degree exceeds 16.");
-    return degree;
+    if (metrics.degree > 16) throw new TypeError("Ideal generator total degree exceeds 16.");
+    return metrics;
   };
-  const product = (): number => {
-    let degree = power();
+  const product = (): Metrics => {
+    const metrics = power();
     while (tokens[at] === "*" || tokens[at] === "/") {
       if (tokens[at] === "/") {
         at += 1;
@@ -50,17 +56,28 @@ export const parseIdealGenerator = (input: unknown, variables?: readonly string[
         continue;
       }
       at += 1;
-      degree += power();
-      if (degree > 16) throw new TypeError("Ideal generator total degree exceeds 16.");
+      const factor = power();
+      metrics.degree += factor.degree;
+      metrics.terms = capped(metrics.terms * factor.terms);
+      if (metrics.degree > 16) throw new TypeError("Ideal generator total degree exceeds 16.");
     }
-    return degree;
+    return metrics;
   };
-  const sum = (): number => {
-    let degree = product();
-    while (tokens[at] === "+" || tokens[at] === "-") { at += 1; degree = Math.max(degree, product()); }
-    return degree;
+  const sum = (): Metrics => {
+    const metrics = product();
+    while (tokens[at] === "+" || tokens[at] === "-") {
+      at += 1;
+      const next = product();
+      metrics.degree = Math.max(metrics.degree, next.degree);
+      metrics.terms = capped(metrics.terms + next.terms);
+    }
+    return metrics;
   };
-  sum();
+  const metrics = sum();
   if (at !== tokens.length) throw new TypeError("Ideal generator is not a complete polynomial expression.");
-  return expression;
+  return { expression, degreeUpperBound: metrics.degree, termUpperBound: metrics.terms };
 };
+
+/** Conservative syntax gate for bounded exact QQ polynomial ideal generators. */
+export const parseIdealGenerator = (input: unknown, variables?: readonly string[]): string =>
+  analyzeIdealGenerator(input, variables).expression;

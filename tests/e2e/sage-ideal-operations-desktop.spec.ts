@@ -9,6 +9,7 @@ const core = require(resolve("packages/core/src/index.ts"));
 test("SAGE-C02–C04 saves exact ideal recipes, quotient dimension and independent Project evidence", async () => {
   test.setTimeout(180_000);
   const calls: string[] = [];
+  const budgetProfiles: string[] = [];
   const server = createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/health") {
@@ -22,6 +23,7 @@ test("SAGE-C02–C04 saves exact ideal recipes, quotient dimension and independe
     req.on("end", () => {
       const request = JSON.parse(body), params = request.params;
       calls.push(request.operation);
+      budgetProfiles.push(params.budget?.profile ?? "legacy");
       const base = { engine: "sagemath", engineVersion: "10.10", operation: request.operation,
         success: true, latex: "", warnings: [], elapsedMs: 5 };
       const result = { format: "math3d.sage-ideal-result", schemaVersion: 1, target: params.target,
@@ -87,6 +89,10 @@ test("SAGE-C02–C04 saves exact ideal recipes, quotient dimension and independe
     await expect(cas.getByTestId("cas-selected-structure")).toContainText("RmodI");
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await cas.getByRole("button", { name: "Select Quotient dimension" }).click();
+    await expect(cas.getByTestId("cas-ideal-budget-warning")).toContainText("runtime cannot be predicted");
+    await cas.getByLabel("Ideal budget profile").selectOption("expanded");
+    await expect(cas.getByRole("button", { name: "Run and save evidence" })).toBeDisabled();
+    await cas.getByLabel("I understand this larger exact job may take longer.").check();
     await cas.getByRole("button", { name: "Run and save evidence" }).click();
     await expect(cas.getByTestId("cas-object-run-status")).toContainText("Saved Quotient dimension evidence");
     const bytes = await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1"));
@@ -98,6 +104,10 @@ test("SAGE-C02–C04 saves exact ideal recipes, quotient dimension and independe
       ideal: { objectId: ideal.id, revision: 1 } });
     expect(imported.algebraEvidence.find((item: { request: { operation: string } }) =>
       item.request.operation === "sage.ideal.quotientDimension").result.dimension).toBe(0);
+    expect(imported.algebraEvidence.find((item: { request: { operation: string } }) =>
+      item.request.operation === "sage.ideal.quotientDimension").request.params.budget)
+      .toMatchObject({ profile: "expanded", wallTimeMs: 30_000 });
+    expect(budgetProfiles).toEqual(["standard", "standard", "standard", "expanded"]);
     if (!bytes) throw new Error("Project export bytes are missing.");
     await ctx.app.close();
     ctx = await launchSurfaceApp({ MATH3D_SAGE_SERVICE_URL: `http://127.0.0.1:${address.port}` });
@@ -120,5 +130,8 @@ test("SAGE-C02–C04 saves exact ideal recipes, quotient dimension and independe
     await expect(fresh.getByTestId("cas-object-operations")).toContainText("Saved evidence for this structure (1)");
     await fresh.getByRole("button", { name: "Inspect saved result" }).click();
     await expect(fresh.getByTestId("cas-evidence-result")).toContainText("Krull dimension");
+    await fresh.getByRole("button", { name: "Execution", exact: true }).click();
+    await expect(fresh.getByTestId("cas-evidence-execution")).toContainText("expanded");
+    await expect(fresh.getByTestId("cas-evidence-execution")).toContainText("30000 ms");
   } finally { await closeSurfaceApp(ctx); await new Promise<void>((done) => server.close(() => done())); }
 });

@@ -316,6 +316,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **C05 implementation update (2026-11-04):** The [C05 acceptance record](evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md) adds runtime-advertised generator syzygies and standard graded quotient Hilbert series, pinned Project evidence, and explicit unsupported reasons for absent capabilities, unproven homogeneity, lex order and advanced input bounds. Exact local Sage 9.5 fixtures pass. The next feature gate is **SAGE-C06**, operation budgets and cost warnings. The live B08 Docker Sage 10.10 comparison remains open.
 
+**C06 implementation update (2026-11-04):** The [C06 acceptance record](evidence/sage-c06-operation-budgets-2026-11-04.md) adds exact standard/expanded ideal request profiles, conservative input-cost warnings, pre-dispatch and worker-side size checks, a subprocess wall-clock deadline, and saved budget provenance. Old budgetless Project evidence remains importable. The next roadmap feature is **SAGE-D01**, the number-field object builder. The live B08 Docker Sage 10.10 comparison remains open.
+
 ---
 
 ## 3. P0 — Algebra object registry

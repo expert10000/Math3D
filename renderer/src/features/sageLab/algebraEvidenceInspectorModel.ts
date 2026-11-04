@@ -217,5 +217,13 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     fact("Warnings", evidence.runtime.warnings.length ? evidence.runtime.warnings : "None"),
     fact("Algorithm", "Not reported"), fact("Proof settings", "Not recorded"),
   ];
+  if (operation.startsWith("sage.ideal.")) {
+    const budget = params.budget as Record<string, unknown> | undefined;
+    execution.push(fact("Ideal budget", budget ? text(budget.profile) : "Legacy fixed worker limits"));
+    if (budget) execution.push(fact("Wall time cap", `${text(budget.wallTimeMs)} ms`),
+      fact("Degree cap", text(budget.maxDegree)),
+      fact("Terms per polynomial cap", text(budget.maxTermsPerPolynomial)),
+      fact("Result byte cap", text(budget.maxResultBytes)));
+  }
   return { title, result: facts, structure, checks, mode, execution };
 };

@@ -1,5 +1,7 @@
 import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { isProvablyHomogeneousIdeal } from "./algebraIdealGrading";
+import { enforceSageIdealBudget, parseSageIdealBudget, SAGE_IDEAL_BUDGETS,
+  type SageIdealBudget, type SageIdealBudgetProfile } from "./sageIdealBudgets";
 import { canonicalJsonStringify, type StructuralHash } from "./documentIdentity";
 import type { AlgebraObjectRef, AlgebraMonomialOrder } from "./algebraObjects";
 import type { Math3DProject } from "./math3dProject";
@@ -8,12 +10,13 @@ import type { ProjectAlgebraObjectEntry } from "./projectAlgebraRegistry";
 
 export type SageIdealOperation = "sage.ideal.groebner" | "sage.ideal.eliminate" |
   "sage.ideal.membership" | "sage.ideal.quotientDimension" | "sage.ideal.syzygies" | "sage.ideal.hilbertSeries";
-export type SageIdealArguments = Readonly<{ eliminate?: readonly string[]; polynomial?: string }>;
+export type SageIdealArguments = Readonly<{ eliminate?: readonly string[]; polynomial?: string;
+  budgetProfile?: SageIdealBudgetProfile }>;
 export type SageIdealInput = Readonly<{ format: "math3d.sage-ideal-operation"; schemaVersion: 1;
   target: AlgebraObjectRef; targetHash: StructuralHash; ideal: AlgebraObjectRef; idealHash: StructuralHash;
   ambientRing: AlgebraObjectRef; ambientHash: StructuralHash; variables: readonly string[];
   monomialOrder: AlgebraMonomialOrder; generators: readonly string[];
-  eliminate?: readonly string[]; polynomial?: string }>;
+  eliminate?: readonly string[]; polynomial?: string; budget?: SageIdealBudget }>;
 export type SageIdealResult = Readonly<{ format: "math3d.sage-ideal-result"; schemaVersion: 1;
   target: AlgebraObjectRef; targetHash: StructuralHash; idealHash: StructuralHash;
   basis?: readonly string[]; eliminate?: readonly string[];
@@ -66,9 +69,14 @@ export const buildSageIdealInput = (project: Math3DProject, target: AlgebraObjec
   if (selected.definition.kind === "quotient-ring" && (selected.definition.ambientRing.objectId !== ambient.id ||
       selected.definition.ambientRing.revision !== ambient.revision))
     throw new TypeError("The quotient's pinned ambient ring differs from its ideal.");
-  if (!record(args) || !exact(args, operation === "sage.ideal.eliminate" ? ["eliminate"] :
-      operation === "sage.ideal.membership" ? ["polynomial"] : []))
+  const argumentKeys = operation === "sage.ideal.eliminate" ? ["eliminate"] :
+    operation === "sage.ideal.membership" ? ["polynomial"] : [];
+  if (!record(args) || !exact(args, [...argumentKeys,
+      ...(Object.hasOwn(args, "budgetProfile") ? ["budgetProfile"] : [])]))
     throw new TypeError("Ideal operation arguments do not match the typed mode.");
+  if (args.budgetProfile !== undefined && args.budgetProfile !== "standard" && args.budgetProfile !== "expanded")
+    throw new TypeError("Choose a supported ideal budget profile.");
+  const budget = args.budgetProfile ? SAGE_IDEAL_BUDGETS[args.budgetProfile] : undefined;
   const variables = ring.variables;
   let extra: { eliminate?: readonly string[]; polynomial?: string } = {};
   if (operation === "sage.ideal.eliminate") {
@@ -82,11 +90,12 @@ export const buildSageIdealInput = (project: Math3DProject, target: AlgebraObjec
     if (polynomial.length > 128) throw new TypeError("Membership polynomial exceeds 128 characters.");
     extra = { polynomial };
   }
+  if (budget) enforceSageIdealBudget(budget, variables, ideal.definition.generators, ring.monomialOrder, extra.polynomial);
   return Object.freeze({ format: "math3d.sage-ideal-operation", schemaVersion: 1,
     target, targetHash: selected.contentHash, ideal: idealRef, idealHash: ideal.contentHash,
     ambientRing: ideal.definition.ambientRing, ambientHash: ambient.contentHash,
     variables: [...variables], monomialOrder: ring.monomialOrder,
-    generators: [...ideal.definition.generators], ...extra });
+    generators: [...ideal.definition.generators], ...extra, ...(budget ? { budget } : {}) });
 };
 
 /** Rechecks historical Project snapshots without requiring old revisions to remain current. */
@@ -111,9 +120,12 @@ export const validateSageIdealSnapshot = (input: SageIdealInput, operation: Sage
     target: input.target, targetHash: target.contentHash, ideal: input.ideal, idealHash: ideal.contentHash,
     ambientRing: input.ambientRing, ambientHash: ring.contentHash,
     variables: ring.definition.variables, monomialOrder: ring.definition.monomialOrder,
-    generators: ideal.definition.generators, ...extra };
+    generators: ideal.definition.generators, ...extra,
+    ...(input.budget === undefined ? {} : { budget: input.budget }) };
   if (canonicalJsonStringify(input) !== canonicalJsonStringify(expected))
     throw new TypeError("Saved ideal request fields differ from the pinned Project definitions.");
+  if (input.budget !== undefined) enforceSageIdealBudget(parseSageIdealBudget(input.budget),
+    ring.definition.variables, ideal.definition.generators, ring.definition.monomialOrder, input.polynomial);
   if (operation === "sage.ideal.eliminate" && (!Array.isArray(input.eliminate) ||
       !input.eliminate.length || input.eliminate.length >= ring.definition.variables.length ||
       new Set(input.eliminate).size !== input.eliminate.length ||
@@ -173,5 +185,8 @@ export const parseSageIdealResult = (value: unknown, input: SageIdealInput,
         value.normalForm.length > 1024 || value.member !== (value.normalForm === "0")))
       throw new TypeError("Membership result or normal form differs from the request.");
   }
-  return Object.freeze(JSON.parse(canonicalJsonStringify(value)) as SageIdealResult);
+  const serialized = canonicalJsonStringify(value);
+  if (input.budget && new TextEncoder().encode(serialized).length > parseSageIdealBudget(input.budget).maxResultBytes)
+    throw new TypeError("Ideal result exceeds its saved output budget.");
+  return Object.freeze(JSON.parse(serialized) as SageIdealResult);
 };
