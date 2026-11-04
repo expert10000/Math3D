@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { inspectProjectAlgebraFreshness, upsertMath3DProjectAlgebraObject,
+  analyzeQuadraticNumberField,
   type AlgebraObjectRecord, type AlgebraObjectRef, type Math3DProject,
   type SageAlgebraReconstructionResult } from "@math3d/core";
 import { runSageAlgebraReconstruction } from "../../services/sageAlgebraReconstruction";
@@ -24,6 +25,7 @@ const kinds: readonly { value: StructureStarterKind; label: string }[] = [
   { value: "modular-ring", label: "Modular ring Z/nZ" },
   { value: "finite-field", label: "Finite field GF(p^n)" },
   { value: "polynomial-ring", label: "Polynomial ring" },
+  { value: "number-field", label: "Quadratic number field over QQ" },
 ];
 
 export default function SageRingFieldBuilder({ project, onCreate, onCreated, onCancel }: Props) {
@@ -33,6 +35,8 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
   const [characteristic, setCharacteristic] = useState("7");
   const [degree, setDegree] = useState("2");
   const [generator, setGenerator] = useState("a");
+  const [quadraticConstant, setQuadraticConstant] = useState("-5");
+  const [quadraticLinear, setQuadraticLinear] = useState("0");
   const [parentId, setParentId] = useState("");
   const [variables, setVariables] = useState("x, y");
   const [order, setOrder] = useState<"lex" | "deglex" | "degrevlex">("degrevlex");
@@ -57,7 +61,9 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
     freshness.find((item) => item.objectId === entry.id)?.status === "fresh")
     .map((entry) => entry.revisions[entry.revisions.length - 1]);
   const parent = parentOptions.find((item) => item.id === parentId);
+  const numberFieldParents = parentOptions.filter((item) => item.kind === "rational-field");
   const draft: StructureDraft = { kind, label, modulus, characteristic, degree, generator,
+    quadraticConstant, quadraticLinear,
     coefficientDomain: parent ? { objectId: parent.id, revision: parent.revision } : undefined,
     variables, monomialOrder: order };
   const signature = JSON.stringify({ draft, projectId: project.identity.id, projectRevision: project.identity.revision,
@@ -74,7 +80,8 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
       const summary = describeStructure(record, candidate);
       let sage: SageAlgebraReconstructionResult | null = null;
       let sageVersion: string | null = null;
-      let message = "Validated locally.";
+      let message = record.kind === "number-field"
+        ? "Irreducibility proven locally by a nonsquare discriminant." : "Validated locally.";
       const probe = await sageExecutionRegistry.probeBackend("docker");
       setRuntimeProbes((current) => ({ ...current, docker: probe }));
       const capability = describeAlgebraRuntime(probe);
@@ -84,7 +91,7 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
         sage = outcome.result;
         sageVersion = outcome.response.engineVersion ?? probe.health.engineVersion ?? null;
         message = "Exact Sage constructor succeeded.";
-      } else message = `Validated locally. Sage constructor not checked. ${capability.detail}${capability.next ? ` Next: ${capability.next}` : ""}`;
+      } else message = `${message} Sage constructor not checked. ${capability.detail}${capability.next ? ` Next: ${capability.next}` : ""}`;
       setPreview({ signature, record, summary, sage, sageVersion, message });
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
@@ -132,6 +139,20 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
           <option value="degrevlex">Degree reverse lexicographic</option><option value="deglex">Degree lexicographic</option><option value="lex">Lexicographic</option>
         </select></label>
       </>}
+      {kind === "number-field" && <>
+        <label>Base field<select aria-label="Number field base" value={parentId}
+          onChange={(event) => setParentId(event.target.value)} required>
+          <option value="">Select saved QQ</option>
+          {numberFieldParents.map((item) => <option key={item.id} value={item.id}>{item.label}@{item.revision} · QQ</option>)}
+        </select></label>
+        <label>Generator name<input aria-label="Number field generator" value={generator}
+          onChange={(event) => setGenerator(event.target.value)} required /></label>
+        <div role="note" style={{ fontSize: 12 }}>D01 saves monic quadratic x² + b·x + c over QQ. Enter canonical integer coefficients from −4096 to 4096; the discriminant must be nonsquare.</div>
+        <label>Linear coefficient b<input aria-label="Quadratic linear coefficient" value={quadraticLinear}
+          onChange={(event) => setQuadraticLinear(event.target.value)} required /></label>
+        <label>Constant coefficient c<input aria-label="Quadratic constant coefficient" value={quadraticConstant}
+          onChange={(event) => setQuadraticConstant(event.target.value)} required /></label>
+      </>}
       <div style={{ display: "flex", gap: 8 }}>
         <button type="submit" style={action} disabled={busy}>{busy ? "Checking…" : "Validate & preview"}</button>
         <button type="button" style={action} onClick={onCancel}>Cancel</button>
@@ -148,6 +169,18 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
           ? currentPreview.sage.isField ? "no" : "yes" : currentPreview.summary.zeroDivisors}</dd>
         <dt>Exact arithmetic</dt><dd>Yes</dd>
         {parent && kind === "polynomial-ring" && <><dt>Coefficient domain</dt><dd>{parent.label}@{parent.revision}</dd></>}
+        {parent && kind === "number-field" && <><dt>Base field</dt><dd>{parent.label}@{parent.revision} · QQ</dd></>}
+        {currentPreview.record.definition.kind === "number-field" && (() => {
+          const facts = analyzeQuadraticNumberField(currentPreview.record.definition.definingPolynomial,
+            currentPreview.record.definition.generator);
+          return <><dt>Defining polynomial</dt><dd>{facts.definingPolynomial}</dd>
+            <dt>Degree</dt><dd>2</dd><dt>Signature</dt><dd>({facts.signature.join(", ")})</dd>
+            <dt>Field discriminant</dt><dd>{facts.fieldDiscriminant}</dd>
+            <dt>Power basis</dt><dd>{facts.powerBasis.join(", ")}</dd>
+            <dt>Integral basis</dt><dd>{facts.integralBasis.join(", ")}</dd>
+            <dt>Embeddings of {facts.generator}</dt><dd>{facts.embeddingImages.join("; ")}</dd>
+            <dt>Ring of integers</dt><dd>{facts.ringOfIntegers}</dd></>;
+        })()}
         {currentPreview.sage && <><dt>Sage construction</dt><dd>{currentPreview.sage.text}</dd>
           <dt>Sage version</dt><dd>{currentPreview.sageVersion ?? "unreported"}</dd></>}
       </dl>

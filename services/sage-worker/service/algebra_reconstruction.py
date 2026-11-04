@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 
-from sage.all import GF, QQ, ZZ, Integers, PolynomialRing, latex
+from sage.all import GF, QQ, QQbar, ZZ, Integers, NumberField, PolynomialRing, latex
 
 
 FORMAT = "math3d.sage-algebra-reconstruction"
@@ -59,6 +59,21 @@ def _definition(value):
         if value["construction"] != "canonical":
             raise ValueError("Only canonical finite-field construction is supported.")
         return []
+    if kind == "number-field":
+        _fields(value, ("kind", "baseField", "definingPolynomial", "generator"), "definition")
+        parent = _reference(value["baseField"], "definition.baseField")
+        coefficients = value["definingPolynomial"]
+        if type(coefficients) is not list or len(coefficients) != 3 or coefficients[2] != "1" or any(
+            type(item) is not str or not re.fullmatch(r"(?:0|-?[1-9][0-9]{0,3})", item) or abs(int(item)) > 4096
+            for item in coefficients[:2]
+        ):
+            raise ValueError("Number field requires monic quadratic integer coefficients bounded by 4096.")
+        if type(value["generator"]) is not str or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", value["generator"]):
+            raise ValueError("Number field generator is invalid.")
+        discriminant = int(coefficients[1]) ** 2 - 4 * int(coefficients[0])
+        if discriminant >= 0 and ZZ(discriminant).is_square():
+            raise ValueError("Defining quadratic is reducible over QQ.")
+        return [parent]
     if kind == "polynomial-ring":
         _fields(value, ("kind", "coefficientDomain", "variables", "monomialOrder"), "definition")
         parent = _reference(value["coefficientDomain"], "definition.coefficientDomain")
@@ -152,6 +167,15 @@ def _build_algebra(records):
             value = Integers(ZZ(definition["modulus"]))
         elif kind == "finite-field":
             value = GF(definition["characteristic"] ** definition["degree"], name=definition["generator"])
+        elif kind == "number-field":
+            parent = definition["baseField"]
+            if built[(parent["objectId"], parent["revision"])] != QQ:
+                raise ValueError("Number field requires a pinned QQ base field.")
+            ring = PolynomialRing(QQ, "x")
+            polynomial = ring([ZZ(item) for item in definition["definingPolynomial"]])
+            if not polynomial.is_irreducible():
+                raise ValueError("Defining polynomial is reducible over QQ.")
+            value = NumberField(polynomial, name=definition["generator"])
         else:
             parent = definition["coefficientDomain"]
             base = built[(parent["objectId"], parent["revision"])]
@@ -175,6 +199,15 @@ def reconstruct_algebra(params):
     if record["kind"] == "polynomial-ring":
         result["baseRing"] = str(value.base_ring())
         result["variables"] = list(value.variable_names())
+    if record["kind"] == "number-field":
+        polynomial = value.defining_polynomial()
+        result["numberField"] = {"degree": int(value.degree()),
+            "signature": [int(item) for item in value.signature()],
+            "polynomialDiscriminant": str(polynomial.discriminant()),
+            "fieldDiscriminant": str(value.discriminant()),
+            "powerBasis": [str(item) for item in value.power_basis()],
+            "integralBasis": [str(item) for item in value.integral_basis()],
+            "embeddingCount": len(value.embeddings(QQbar))}
     return result
 
 

@@ -530,6 +530,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-C06](evidence/sage-c06-operation-budgets-2026-11-04.md) now adds explicit standard and expanded ideal budgets, input-cost warnings and an enforced Sage subprocess wall-time cap. Expanded desktop runs require an acknowledgment; older saved evidence without budget metadata still reopens. Track C is complete through C06. The next feature is **SAGE-D01**; B08's live Docker Sage 10.10 comparison remains open.
 
+[SAGE-D01](evidence/sage-d01-number-fields-2026-11-04.md) adds bounded quadratic number-field objects pinned to a saved `QQ` revision. Structures previews and reopens an exact `QQ(√5)` dossier with defining polynomial, discriminants, bases and embeddings; a bounded Sage constructor is available through the advertised reconstruction route. Core, real local Sage 9.5 and independent desktop Project reopen gates pass. The next feature is **SAGE-D02**, sharing field and ideal references across Algebra and Number Theory. B08's live Docker Sage 10.10 comparison remains open.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate

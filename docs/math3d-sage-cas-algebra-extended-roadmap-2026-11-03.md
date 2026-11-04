@@ -318,6 +318,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **C06 implementation update (2026-11-04):** The [C06 acceptance record](evidence/sage-c06-operation-budgets-2026-11-04.md) adds exact standard/expanded ideal request profiles, conservative input-cost warnings, pre-dispatch and worker-side size checks, a subprocess wall-clock deadline, and saved budget provenance. Old budgetless Project evidence remains importable. The next roadmap feature is **SAGE-D01**, the number-field object builder. The live B08 Docker Sage 10.10 comparison remains open.
 
+**D01 implementation update (2026-11-04):** The [D01 acceptance record](evidence/sage-d01-number-fields-2026-11-04.md) adds a bounded quadratic number-field definition pinned to a saved `QQ` revision, a Structures builder and dossier with exact basis and embedding facts, and safe Sage `NumberField` reconstruction. The `QQ(√5)` Project export independently reopens with the same object identity, definition and revision; reducible and wrong-parent examples are rejected. Local Sage 9.5 and desktop acceptance pass. The next feature is **SAGE-D02**, shared field and ideal references across Algebra and Number Theory. The B08 live Docker Sage 10.10 comparison remains open.
+
 ---
 
 ## 3. P0 — Algebra object registry

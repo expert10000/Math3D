@@ -1,9 +1,10 @@
 import { createAlgebraObjectRecord, createProjectAlgebraObjectId, inspectProjectAlgebraFreshness, parseIdealGenerator,
-  buildSageAlgebraReconstructionInput, upsertMath3DProjectAlgebraObject,
+  analyzeQuadraticNumberField, buildSageAlgebraReconstructionInput, upsertMath3DProjectAlgebraObject,
   type AlgebraObjectDefinition, type AlgebraObjectRecord, type AlgebraObjectRef,
   type Math3DProject, type ProjectAlgebraObjectEntry } from "@math3d/core";
 
-export type StructureStarterKind = "integer-ring" | "rational-field" | "modular-ring" | "finite-field" | "polynomial-ring";
+export type StructureStarterKind = "integer-ring" | "rational-field" | "modular-ring" | "finite-field" |
+  "polynomial-ring" | "number-field";
 export type StructureDraft = Readonly<{
   kind: StructureStarterKind;
   label: string;
@@ -14,6 +15,8 @@ export type StructureDraft = Readonly<{
   characteristic?: string;
   degree?: string;
   generator?: string;
+  quadraticConstant?: string;
+  quadraticLinear?: string;
 }>;
 
 export type StructureSummary = Readonly<{
@@ -56,6 +59,11 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
   if (definition.kind === "rational-field") return "QQ";
   if (definition.kind === "modular-ring") return `Z/${definition.modulus}Z`;
   if (definition.kind === "finite-field") return `GF(${definition.characteristic}${definition.degree > 1 ? `^${definition.degree}` : ""})`;
+  if (definition.kind === "number-field") {
+    const facts = analyzeQuadraticNumberField(definition.definingPolynomial, definition.generator);
+    const base = selectedStructure(project, definition.baseField)?.record;
+    return `${base?.label ?? "QQ"}(${definition.generator}), ${facts.definingPolynomial}=0`;
+  }
   if (definition.kind === "ideal") {
     const ambient = selectedStructure(project, definition.ambientRing)?.record;
     return `⟨${definition.generators.join(", ")}⟩ ⊂ ${ambient?.label ?? definition.ambientRing.objectId}`;
@@ -95,6 +103,8 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
   if (definition.kind === "finite-field") return { presentation, characteristic: String(definition.characteristic),
     field: "yes", exact: true, cardinality: String(BigInt(definition.characteristic) ** BigInt(definition.degree)),
     zeroDivisors: "no", coefficientDomain: null };
+  if (definition.kind === "number-field") return { presentation, characteristic: "0", field: "yes",
+    exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
   if (definition.kind === "ideal" || definition.kind === "quotient-ring")
     throw new TypeError("Ideal and quotient objects need dedicated exact analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
@@ -126,6 +136,17 @@ export const createStructureStarter = (project: Math3DProject, draft: StructureD
     }
     definition = { kind: "finite-field", characteristic: Number(characteristic), degree: Number(degree),
       generator: draft.generator?.trim() ?? "", construction: "canonical" };
+  }
+  else if (draft.kind === "number-field") {
+    if (!draft.coefficientDomain) throw new TypeError("Select a saved QQ base field.");
+    const base = selectedStructure(project, draft.coefficientDomain);
+    if (!base || base.entry.archived || base.record.kind !== "rational-field" ||
+        base.record.revision !== base.entry.revisions.length ||
+        inspectProjectAlgebraFreshness(project).find((item) => item.objectId === base.entry.id)?.status !== "fresh")
+      throw new TypeError("Select a current, fresh QQ base field.");
+    definition = { kind: "number-field", baseField: draft.coefficientDomain,
+      definingPolynomial: [draft.quadraticConstant?.trim() ?? "", draft.quadraticLinear?.trim() ?? "", "1"] as const,
+      generator: draft.generator?.trim() ?? "" };
   }
   else {
     if (!draft.coefficientDomain) throw new TypeError("Select an existing coefficient domain.");

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraObjectRef,
+import { analyzeQuadraticNumberField, inspectProjectAlgebraFreshness, type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
@@ -26,6 +26,7 @@ const action = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff
 const kindLabel: Record<StructureStarterKind, string> = {
   "integer-ring": "Integer ring ZZ", "rational-field": "Rational field QQ", "modular-ring": "Modular ring Z/nZ",
   "finite-field": "Finite field GF(p^n)", "polynomial-ring": "Polynomial ring",
+  "number-field": "Quadratic number field",
 };
 const readSavedSelection = (project: Math3DProject | null): unknown => {
   if (!project) return null;
@@ -79,6 +80,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const status = chosen ? freshness.find((item) => item.objectId === chosen.entry.id) : null;
   const parent = chosen?.record.definition.kind === "polynomial-ring"
     ? selectedStructure(project, chosen.record.definition.coefficientDomain)?.record
+    : chosen?.record.definition.kind === "number-field"
+      ? selectedStructure(project, chosen.record.definition.baseField)?.record
     : chosen?.record.definition.kind === "ideal"
       ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
       : chosen?.record.definition.kind === "quotient-ring"
@@ -136,7 +139,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
       {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}
       {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
         <dt>Validation</dt><dd>Bounded exact polynomial syntax</dd></>}
@@ -146,6 +149,18 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       {chosen.record.definition.kind === "modular-ring" && <><dt>Modulus</dt><dd>{chosen.record.definition.modulus}</dd></>}
       {chosen.record.definition.kind === "finite-field" && <><dt>Degree</dt><dd>{chosen.record.definition.degree}</dd>
         <dt>Generator</dt><dd>{chosen.record.definition.generator}</dd><dt>Construction</dt><dd>Canonical Sage finite field</dd></>}
+      {chosen.record.definition.kind === "number-field" && (() => {
+        const facts = analyzeQuadraticNumberField(chosen.record.definition.definingPolynomial,
+          chosen.record.definition.generator);
+        return <><dt>Defining polynomial</dt><dd>{facts.definingPolynomial}</dd>
+          <dt>Degree</dt><dd>2</dd><dt>Signature</dt><dd>({facts.signature.join(", ")})</dd>
+          <dt>Polynomial discriminant</dt><dd>{facts.polynomialDiscriminant}</dd>
+          <dt>Field discriminant</dt><dd>{facts.fieldDiscriminant}</dd>
+          <dt>Power basis</dt><dd>{facts.powerBasis.join(", ")}</dd>
+          <dt>Integral basis</dt><dd>{facts.integralBasis.join(", ")}</dd>
+          <dt>Embeddings of {facts.generator}</dt><dd>{facts.embeddingImages.join("; ")}</dd>
+          <dt>Ring of integers</dt><dd>{facts.ringOfIntegers}</dd></>;
+      })()}
     </dl>
     {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       <label>Quotient name <input aria-label="Quotient name" value={quotientName}
@@ -171,6 +186,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd></>}
     {chosen.record.definition.kind === "quotient-ring" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
       <dt>Ideal</dt><dd>{idealParent?.label}@{idealParent?.revision}</dd></>}
+    {chosen.record.definition.kind === "number-field" && <><dt>Base field</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Defining coefficients</dt><dd>{chosen.record.definition.definingPolynomial.join(", ")}</dd></>}
     <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
     {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}

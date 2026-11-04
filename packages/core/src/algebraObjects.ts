@@ -7,6 +7,7 @@ import {
   type StructuralHash,
 } from "./documentIdentity";
 import { parseIdealGenerator } from "./algebraIdealGenerators";
+import { analyzeQuadraticNumberField } from "./quadraticNumberField";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
@@ -16,6 +17,8 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "rational-field" }>
   | Readonly<{ kind: "modular-ring"; modulus: string }>
   | Readonly<{ kind: "finite-field"; characteristic: number; degree: number; generator: string; construction: "canonical" }>
+  | Readonly<{ kind: "number-field"; baseField: AlgebraObjectRef;
+      definingPolynomial: readonly [string, string, "1"]; generator: string }>
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
   | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
   | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>;
@@ -122,6 +125,12 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       return { kind: definition.kind, characteristic, degree: definition.degree as number,
         generator: requireIdentifier(definition.generator, "definition.generator"), construction: "canonical" };
     }
+    case "number-field": {
+      requireKeys(definition, ["kind", "baseField", "definingPolynomial", "generator"], "definition");
+      const facts = analyzeQuadraticNumberField(definition.definingPolynomial, definition.generator);
+      return { kind: "number-field", baseField: requireRef(definition.baseField, "definition.baseField"),
+        definingPolynomial: facts.coefficients, generator: facts.generator };
+    }
     case "polynomial-ring": {
       requireKeys(definition, ["kind", "coefficientDomain", "variables", "monomialOrder"], "definition");
       const coefficientDomain = requireRef(definition.coefficientDomain, "definition.coefficientDomain");
@@ -159,6 +168,7 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
 
 const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraObjectRef[] =>
   definition.kind === "polynomial-ring" ? [definition.coefficientDomain]
+    : definition.kind === "number-field" ? [definition.baseField]
     : definition.kind === "ideal" ? [definition.ambientRing]
       : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal] : [];
 
