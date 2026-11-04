@@ -1,6 +1,7 @@
 import { canonicalJsonStringify, createDocumentIdentity, createStableDocumentId, isDocumentIdentity,
   structuralHash, type CanonicalJsonValue, type DocumentIdentity } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
+import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import type { ValidationResult } from "./validation";
 
@@ -10,14 +11,14 @@ export type TemporalFieldFrame = Readonly<{ time: number; documentId: string;
 export type TemporalFieldSource = Readonly<{
   frames: readonly TemporalFieldFrame[];
   timeAxis: Readonly<{ unit: string; sampling: "discrete-frames";
-    interpolation: "none" }>;
+    interpolation: "none" | "linear" }>;
   frame: "cartesian-identical";
   calculus: "per-frame-cartesian-only";
   export: "per-frame-source-lineage";
   generationHash: string;
 }>;
 export type TemporalFieldSourceDocument = Readonly<{
-  format: typeof TEMPORAL_FIELD_SOURCE_FORMAT; schemaVersion: 1;
+  format: typeof TEMPORAL_FIELD_SOURCE_FORMAT; schemaVersion: 1 | 2;
   identity: DocumentIdentity; source: TemporalFieldSource;
   metadata: Readonly<{ title: string }>;
 }>;
@@ -33,7 +34,7 @@ const physicalTimeUnits = new Set(["ms", "s", "min", "h"]);
 export function normalizeTemporalFieldSourceDocument(value: unknown): ValidationResult<TemporalFieldSourceDocument> {
   const errors: string[] = [];
   if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "source", "metadata"]) ||
-      value.format !== TEMPORAL_FIELD_SOURCE_FORMAT || value.schemaVersion !== 1 ||
+      value.format !== TEMPORAL_FIELD_SOURCE_FORMAT || ![1, 2].includes(Number(value.schemaVersion)) ||
       !record(value.identity) || !record(value.source) || !record(value.metadata) ||
       !exact(value.metadata, ["title"]) || typeof value.metadata.title !== "string" ||
       !value.metadata.title.trim() || value.metadata.title.length > 160 ||
@@ -45,9 +46,12 @@ export function normalizeTemporalFieldSourceDocument(value: unknown): Validation
       source.export !== "per-frame-source-lineage" ||
       !record(source.timeAxis) || !exact(source.timeAxis, ["unit", "sampling", "interpolation"]) ||
       typeof source.timeAxis.unit !== "string" || !physicalTimeUnits.has(source.timeAxis.unit) ||
-      source.timeAxis.sampling !== "discrete-frames" || source.timeAxis.interpolation !== "none" ||
+      source.timeAxis.sampling !== "discrete-frames" ||
+      !["none", "linear"].includes(String(source.timeAxis.interpolation)) ||
+      (value.schemaVersion === 1 && source.timeAxis.interpolation !== "none") ||
+      (value.schemaVersion === 2 && source.timeAxis.interpolation !== "linear") ||
       !Array.isArray(source.frames) || source.frames.length < 2 || source.frames.length > 64)
-    errors.push("Temporal source needs 2–64 discrete Cartesian frames and no inferred interpolation.");
+    errors.push("Temporal source needs 2–64 Cartesian frames and a versioned interpolation rule.");
   const frames = Array.isArray(source.frames) ? source.frames : [];
   for (const [index, frame] of frames.entries()) {
     if (!record(frame) || !exact(frame, ["time", "documentId", "revision", "structuralHash"]) ||
@@ -85,7 +89,8 @@ const sameSpace = (left: VectorField3DDocument, right: VectorField3DDocument) =>
 /** Pin existing Project snapshots at explicit physical times; no between-frame values exist yet. */
 export function createTemporalFieldSourceDocument(project: Math3DProject,
   frames: readonly Readonly<{ time: number; documentId: string }>[],
-  options: Readonly<{ stableKey: CanonicalJsonValue; title?: string; timeUnit: string }> ): TemporalFieldSourceDocument {
+  options: Readonly<{ stableKey: CanonicalJsonValue; title?: string; timeUnit: string;
+    interpolation?: "none" | "linear" }> ): TemporalFieldSourceDocument {
   if (frames.length < 2 || frames.length > 64)
     throw new RangeError("A temporal source requires 2–64 saved frames.");
   const documents = frames.map(frame => project.workspace.entries.find(item =>
@@ -101,10 +106,11 @@ export function createTemporalFieldSourceDocument(project: Math3DProject,
       documentId: checked[index]!.identity.id, revision: checked[index]!.identity.revision,
       structuralHash: checked[index]!.identity.structuralHash })),
     timeAxis: { unit: options.timeUnit, sampling: "discrete-frames" as const,
-      interpolation: "none" as const }, frame: "cartesian-identical" as const,
+      interpolation: options.interpolation ?? "none" }, frame: "cartesian-identical" as const,
     calculus: "per-frame-cartesian-only" as const, export: "per-frame-source-lineage" as const };
   const source = { ...recipe, generationHash: sourceHash(recipe) };
-  const document = { format: TEMPORAL_FIELD_SOURCE_FORMAT, schemaVersion: 1 as const,
+  const document = { format: TEMPORAL_FIELD_SOURCE_FORMAT,
+    schemaVersion: options.interpolation === "linear" ? 2 as const : 1 as const,
     identity: createDocumentIdentity(createStableDocumentId("temporal-field", options.stableKey), source),
     source, metadata: { title: options.title ?? "Temporal field source" } };
   const normalized = normalizeTemporalFieldSourceDocument(document);
@@ -142,6 +148,88 @@ export function temporalFrameAtTime(project: Math3DProject, temporal: TemporalFi
   if (!frame) throw new RangeError("Time lies between saved frames; interpolation is not defined.");
   return project.workspace.entries.find(item => item.module === "vector3d" &&
     item.expected.id === frame.documentId)!.checkpoint as VectorField3DDocument;
+}
+
+export type TemporalFieldProbe = Readonly<{ time: number;
+  position: readonly [number, number, number]; vector: readonly [number, number, number];
+  magnitude: number; componentUnit: string; timeUnit: string;
+  interpolation: "none" | "linear"; frameIds: readonly string[] }>;
+
+/** Exact frames or declared linear interpolation only; no temporal extrapolation. */
+export function sampleTemporalFieldProbe(project: Math3DProject,
+  temporal: TemporalFieldSourceDocument, time: number,
+  position: readonly [number, number, number]): TemporalFieldProbe {
+  const status = projectTemporalFieldSourceStatus(project, temporal);
+  if (status.status !== "current") throw new TypeError(`Temporal source withheld: ${status.reason}.`);
+  if (!Number.isFinite(time) || position.length !== 3 || position.some(value => !Number.isFinite(value)))
+    throw new RangeError("Time and physical position must be finite.");
+  const frames = temporal.source.frames;
+  const exactIndex = frames.findIndex(frame => frame.time === time);
+  const lowerIndex = exactIndex >= 0 ? exactIndex : frames.findIndex((frame, index) =>
+    frame.time < time && (frames[index + 1]?.time ?? Infinity) > time);
+  if (lowerIndex < 0 || time < frames[0]!.time || time > frames.at(-1)!.time)
+    throw new RangeError("Time is outside the saved frame interval.");
+  const lower = frames[lowerIndex]!, upper = exactIndex >= 0 ? undefined : frames[lowerIndex + 1];
+  if (time !== lower.time && temporal.source.timeAxis.interpolation === "none")
+    throw new RangeError("Between-frame sampling is not defined for this source version.");
+  const sample = (frame: TemporalFieldFrame) => {
+    const document = project.workspace.entries.find(item => item.module === "vector3d" &&
+      item.expected.id === frame.documentId)?.checkpoint;
+    if (document?.format !== "math3d.vector-field3d-document" ||
+        document.source.field.kind !== "expressions") throw new TypeError("Temporal frame is unavailable.");
+    if (position.some((value, axis) => value < document.source.axes[axis]!.min ||
+        value > document.source.axes[axis]!.max)) throw new RangeError("Probe lies outside the physical domain.");
+    const components = document.source.field.components.map(component =>
+      evaluateGraph2DExpression(component.ast, { x: position[0], y: position[1],
+        z: position[2] }, { maxEvaluations: 256 }));
+    if (components.some(value => !value.ok || !Number.isFinite(value.value)))
+      throw new TypeError("Temporal frame has an unavailable value at this point.");
+    return { vector: components.map(value => value.ok ? value.value : NaN) as
+      [number, number, number], unit: document.source.field.components[0].unit };
+  };
+  const a = sample(lower), b = time === lower.time ? null : sample(upper!);
+  const fraction = b ? (time - lower.time) / (upper!.time - lower.time) : 0;
+  const vector = a.vector.map((value, index) =>
+    b ? value * (1 - fraction) + b.vector[index]! * fraction : value) as
+    [number, number, number];
+  return { time, position, vector, magnitude: Math.hypot(...vector),
+    componentUnit: a.unit, timeUnit: temporal.source.timeAxis.unit,
+    interpolation: temporal.source.timeAxis.interpolation,
+    frameIds: b ? [lower.documentId, upper!.documentId] : [lower.documentId] };
+}
+
+export function sampleTemporalFieldSlice(project: Math3DProject,
+  temporal: TemporalFieldSourceDocument, time: number, normalAxis: 0 | 1 | 2,
+  coordinate: number, resolution: number): Readonly<{ time: number;
+    normalAxis: number; coordinate: number; shape: readonly [number, number];
+    values: readonly number[]; unit: string; frameIds: readonly string[] }> {
+  if (![0, 1, 2].includes(normalAxis) || !Number.isSafeInteger(resolution) ||
+      resolution < 2 || resolution > 32 || resolution * resolution > 1024)
+    throw new RangeError("Temporal slice requires a 2–32 by 2–32 bounded grid.");
+  const first = project.workspace.entries.find(item => item.module === "vector3d" &&
+    item.expected.id === temporal.source.frames[0]?.documentId)?.checkpoint;
+  if (first?.format !== "math3d.vector-field3d-document" ||
+      !Number.isFinite(coordinate) || coordinate < first.source.axes[normalAxis].min ||
+      coordinate > first.source.axes[normalAxis].max)
+    throw new RangeError("Temporal slice plane is outside the source domain.");
+  const axes = [0, 1, 2].filter(axis => axis !== normalAxis);
+  const values: number[] = [];
+  let frameIds: readonly string[] = [];
+  for (let i = 0; i < resolution; i++) for (let j = 0; j < resolution; j++) {
+    const point = [0, 0, 0] as [number, number, number];
+    point[normalAxis] = coordinate;
+    for (const [axis, index] of axes.map((axis, index) => [axis, index] as const)) {
+      const bounds = first.source.axes[axis]!;
+      point[axis] = bounds.min + (bounds.max - bounds.min) * (index === 0 ? i : j) /
+        (resolution - 1);
+    }
+    const probe = sampleTemporalFieldProbe(project, temporal, time, point);
+    frameIds = probe.frameIds;
+    values.push(probe.magnitude);
+  }
+  return { time, normalAxis, coordinate, shape: [resolution, resolution], values,
+    unit: first.source.field.kind === "expressions" ? first.source.field.components[0].unit :
+      first.source.field.componentUnits[0], frameIds };
 }
 
 export const serializeTemporalFieldSourceDocument = (document: TemporalFieldSourceDocument) =>

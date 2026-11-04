@@ -101,14 +101,16 @@ export const buildDerivedProfileProvenance = (project: Math3DProject, profileId:
   const sourceDocument = sourceEntry?.replay === null &&
     sourceEntry.checkpoint.format === "math3d.vector-field3d-document" ?
       sourceEntry.checkpoint : null;
-  const coverage = review.status === "current" &&
+  const suppliedTransfer = options.transfer ?? (result?.verifiedSamples ?
+    { source: result.source, components: result.verifiedSamples } : null);
+  const coverage = ready &&
     sourceDocument?.source.field.kind === "scientific-bundle" &&
-    options.transfer && transferIsValid(options.transfer) &&
-    matchesScientificSourceGeneration(options.transfer.source, {
+    suppliedTransfer && transferIsValid(suppliedTransfer) &&
+    matchesScientificSourceGeneration(suppliedTransfer.source, {
       documentId: sourceDocument.identity.id, revision: sourceDocument.identity.revision,
       structuralHash: sourceDocument.identity.structuralHash,
       generation: sourceDocument.identity.revision }) ?
-      JSON.parse(canonicalJsonStringify(options.transfer.components)) as
+      JSON.parse(canonicalJsonStringify(suppliedTransfer.components)) as
         DerivedProfileTransferEvidence["components"] : undefined;
   return {
     profileId: profile.identity.id, title: profile.metadata.title,

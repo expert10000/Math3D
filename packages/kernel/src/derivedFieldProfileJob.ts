@@ -5,6 +5,8 @@ import {
   serializeMath3DProject, type DerivedFieldDocument, type DerivedFieldProfileResult,
   type DerivedSourceVerification, type Math3DProject, type ScientificSourceGeneration,
   type StableDocumentId, type StructuralHash, type VectorField3DDocument,
+  type VerifiedVectorFieldTransfer, verifiedVectorFieldSampler,
+  vectorField3DVolumeProvenance, verifyVectorField3DVolumes,
 } from "@math3d/core";
 import { createExecutionService } from "./executionService";
 import { createInProcessScientificBackend, createScientificExecutionBroker,
@@ -14,7 +16,7 @@ import { createInProcessScientificJobService,
 
 export const DERIVED_PROFILE_OPERATION = "field.derived-profile" as const;
 const MAX_INPUT_BYTES = 4096, MAX_OUTPUT_BYTES = 256 * 1024;
-const MAX_MEMORY_BYTES = 512 * 1024, MAX_WORK_UNITS = 2048 * 768;
+const MAX_MEMORY_BYTES = 2 * 1024 * 1024, MAX_WORK_UNITS = 2048 * 768;
 type Chain = { magnitude: DerivedFieldDocument; plane: DerivedFieldDocument;
   profile: DerivedFieldDocument; source: VectorField3DDocument; cacheKey: StructuralHash };
 type Pending = Chain & { projectId: string; jobId: string;
@@ -30,6 +32,8 @@ export type DerivedProfileJobHandle = Readonly<{
 export type DerivedFieldProfileJobOptions = Readonly<{
   project: () => Math3DProject;
   verifySource: DerivedSourceVerification;
+  /** Host opens and verifies the pinned bundle; called again before publication. */
+  loadBundle?: (source: VectorField3DDocument) => Promise<VerifiedVectorFieldTransfer>;
   /** Cooperative yield seam; the default yields to the event loop after each 16 samples. */
   yieldControl?: (jobId: string) => Promise<void>;
 }>;
@@ -45,6 +49,7 @@ const sameIdentity = (left: VectorField3DDocument["identity"],
 export class DerivedFieldProfileJob {
   readonly #project: DerivedFieldProfileJobOptions["project"];
   readonly #verifySource: DerivedSourceVerification;
+  readonly #loadBundle: DerivedFieldProfileJobOptions["loadBundle"];
   readonly #yieldControl: (jobId: string) => Promise<void>;
   readonly #pending = new Map<string, Pending>();
   readonly #latest = new Map<string, string>();
@@ -56,6 +61,7 @@ export class DerivedFieldProfileJob {
   constructor(options: DerivedFieldProfileJobOptions) {
     this.#project = options.project;
     this.#verifySource = options.verifySource;
+    this.#loadBundle = options.loadBundle;
     this.#yieldControl = options.yieldControl ?? (() => new Promise(resolve => setTimeout(resolve, 0)));
     const resolveSource = (id: StableDocumentId): ScientificSourceGeneration | null => {
       try {
@@ -122,7 +128,7 @@ export class DerivedFieldProfileJob {
       limits: { deadlineAt: Date.now() + timeoutMs, maxInputBytes: MAX_INPUT_BYTES,
         maxOutputBytes: MAX_OUTPUT_BYTES, maxMemoryBytes: MAX_MEMORY_BYTES,
         maxWorkUnits: samples * 768 } });
-    const promise = this.#execution.submit(request).then((broker): DerivedProfileJobOutcome => {
+    const promise = this.#execution.submit(request).then(async (broker): Promise<DerivedProfileJobOutcome> => {
       if (!broker.ok) return { broker, publication: "failed", result: null };
       if (this.#latest.get(key) !== jobId)
         return { broker, publication: "superseded", result: null };
@@ -143,6 +149,18 @@ export class DerivedFieldProfileJob {
         if (current.identity.id !== pending.projectId ||
             reviewProjectDerivedField(current, profileId, this.#verifySource).cacheKey !== chain.cacheKey)
           return { broker, publication: "stale-recipe", result: null };
+        if (chain.source.source.field.kind === "scientific-bundle") {
+          if (!this.#loadBundle || !checked.value.verifiedSamples)
+            return { broker, publication: "stale-recipe", result: null };
+          const fresh = await this.#loadBundle(chain.source);
+          const volumes = verifyVectorField3DVolumes(chain.source, fresh.manifestJson,
+            fresh.fingerprint, fresh.volumes);
+          const evidence = vectorField3DVolumeProvenance(fresh.manifestJson, volumes);
+          if (JSON.stringify(evidence) !== JSON.stringify(checked.value.verifiedSamples) ||
+              this.#latest.get(key) !== jobId ||
+              reviewProjectDerivedField(this.#project(), profileId, this.#verifySource).cacheKey !== chain.cacheKey)
+            return { broker, publication: "stale-recipe", result: null };
+        }
       } catch { return { broker, publication: "stale-recipe", result: null }; }
       this.#published.set(key, checked.value);
       if (this.#published.size > 64) this.#published.delete(this.#published.keys().next().value!);
@@ -168,8 +186,8 @@ export class DerivedFieldProfileJob {
     const entry = project.workspace.entries.find(item => item.module === "vector3d" &&
       item.expected.id === magnitude.input.documentId);
     if (!entry || entry.replay !== null || entry.checkpoint.format !== "math3d.vector-field3d-document" ||
-        entry.checkpoint.source.field.kind !== "expressions")
-      throw new TypeError("GF-04 currently samples verified analytic vector fields.");
+        (entry.checkpoint.source.field.kind === "scientific-bundle" && !this.#loadBundle))
+      throw new TypeError("Derived profile needs a verified analytic or bundled vector field.");
     return { magnitude, plane, profile, source: entry.checkpoint,
       cacheKey: review.cacheKey };
   }
@@ -178,15 +196,17 @@ export class DerivedFieldProfileJob {
     const pending = this.#pending.get(jobId);
     if (!pending) throw new TypeError("Derived profile job input is unavailable.");
     const { source, plane, profile } = pending;
-    if (source.source.field.kind !== "expressions" ||
-        plane.operation.kind !== "plane-slice" || profile.operation.kind !== "line-profile")
+    if (plane.operation.kind !== "plane-slice" || profile.operation.kind !== "line-profile")
       throw new TypeError("Unsupported derived profile recipe.");
     const operation = profile.operation, normal = plane.operation.normalAxis;
     const varying = operation.varyingAxis;
     const fixed = [0, 1, 2].find(axis => axis !== normal && axis !== varying);
     if (fixed === undefined) throw new TypeError("Line axis is outside the selected plane.");
     const axis = source.source.axes[varying], count = operation.samples;
-    const memory = count * 128;
+    const transfer = source.source.field.kind === "scientific-bundle" ?
+      await this.#loadBundle!(source) : null;
+    const sampler = transfer ? verifiedVectorFieldSampler(source, transfer) : null;
+    const memory = count * 128 + (transfer ? transfer.volumes[0].values.length * 3 * 8 : 0);
     context.reserveMemory(memory);
     try {
       const rows: { x: number; y: number | null }[] = [];
@@ -200,9 +220,11 @@ export class DerivedFieldProfileJob {
         point[fixed] = operation.fixedCoordinate;
         point[varying] = x;
         const variables = { x: point[0]!, y: point[1]!, z: point[2]! };
-        const values = source.source.field.components.map(component =>
-          evaluateGraph2DExpression(component.ast, variables, { maxEvaluations: 256 }));
-        const magnitude = values.every(value => value.ok) ?
+        const vector = sampler ? sampler.sample(point as [number, number, number]) : null;
+        const values = source.source.field.kind === "expressions" ?
+          source.source.field.components.map(component =>
+            evaluateGraph2DExpression(component.ast, variables, { maxEvaluations: 256 })) : null;
+        const magnitude = vector ? Math.hypot(...vector) : values?.every(value => value.ok) ?
           Math.hypot(...values.map(value => value.ok ? value.value : NaN)) : NaN;
         rows.push({ x, y: Number.isFinite(magnitude) ? magnitude : null });
         if ((index + 1) % 16 === 0 || index + 1 === count) {
@@ -216,10 +238,12 @@ export class DerivedFieldProfileJob {
         throw new RangeError("Derived profile has fewer than two finite samples.");
       const result: DerivedFieldProfileResult = {
         profileId: profile.identity.id, cacheKey: pending.cacheKey,
-        source: generation(source), method: "analytic-expression",
+        source: generation(source), method: transfer ? "verified-volume-trilinear" : "analytic-expression",
         axis: { name: axis.label, unit: axis.unit,
           min: operation.extent[0], max: operation.extent[1] },
         unit: profile.output.unit, rows,
+        ...(transfer ? { verifiedSamples: vectorField3DVolumeProvenance(transfer.manifestJson,
+          transfer.volumes) } : {}),
       };
       const checked = normalizeDerivedFieldProfileResult(result);
       if (!checked.ok) throw new TypeError(checked.errors.join(" "));

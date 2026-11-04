@@ -90794,10 +90794,10 @@ case "mobius":
               setVectorField3DDocument(promotion.source);
               setNotebookProjectVersion(value => value + 1);
             }}
-            onSaveVectorField3DComparisonResult={result => {
+            onSaveVectorField3DComparisonResult={(result, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
-              const updated = upsertProjectVectorField3DComparison(active, result);
+              const updated = upsertProjectVectorField3DComparison(active, result, transfers);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}

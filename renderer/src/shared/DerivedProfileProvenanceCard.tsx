@@ -40,7 +40,7 @@ export function DerivedProfileProvenanceCard({ provenance, view, onCompute, busy
           `, ${part.verifiedChunks}/${part.totalChunks} chunks`}${part.verifiedTiles === undefined ? "" :
           `, ${part.verifiedTiles}/${part.totalTiles} tiles`}`).join("; ")}</dd></>}
     </dl>
-    {onCompute && <button type="button" disabled={busy || provenance.reason === "source-unverified" ||
+    {onCompute && <button type="button" disabled={busy ||
       provenance.reason === "source-missing" || provenance.reason === "source-changed" ||
       provenance.reason === "recipe-changed"} onClick={onCompute}>
       {busy ? "Computing profile…" : "Compute profile"}</button>}

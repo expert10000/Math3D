@@ -158,6 +158,8 @@ export * from "./scientificDatasetCoordinates";
 export * from "./scientificFrameUnitContract";
 export * from "./temporalFieldSourceDocument";
 export * from "./projectTemporalFieldSources";
+export * from "./verifiedVectorFieldSampling";
+export * from "./projectComparisonProfileGraph";
 export * from "./scientificDatasetLink";
 export * from "./scientificDerivedResultCache";
 export * from "./graph2dFieldReference";

@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
-test("GF-21/22 explicit Cartesian plan and discrete temporal source reopen", async () => {
+test("GF-21/25 Cartesian plan and linear temporal probe/slice reopen", async () => {
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -50,8 +50,13 @@ test("GF-21/22 explicit Cartesian plan and discrete temporal source reopen", asy
     const temporal = explorer.getByTestId("gf22-time-source");
     await temporal.getByLabel("Later frame").selectOption(second.identity.id);
     await temporal.getByLabel("Later time (s)").fill("2");
+    await temporal.getByLabel("Time interpolation").selectOption("linear");
     await temporal.getByRole("button", { name: "Save temporal source" }).click();
     await expect(temporal).toContainText("Saved temporal sources (1)");
+    await temporal.getByTestId("gf25-saved-time-source-select").selectOption({ index: 1 });
+    await temporal.getByLabel("Sample time").fill("1");
+    await temporal.getByRole("button", { name: "Sample temporal probe and slice" }).click();
+    await expect(temporal.getByTestId("gf25-sample-result")).toContainText("9 × 9");
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
@@ -63,5 +68,9 @@ test("GF-21/22 explicit Cartesian plan and discrete temporal source reopen", asy
     await expect(reopened).toContainText("Saved temporal sources (1)");
     await reopened.getByText("Saved temporal sources (1)").click();
     await expect(reopened).toContainText("2 frames, s, current");
+    await reopened.getByTestId("gf25-saved-time-source-select").selectOption({ index: 1 });
+    await reopened.getByLabel("Sample time").fill("1");
+    await reopened.getByRole("button", { name: "Sample temporal probe and slice" }).click();
+    await expect(reopened.getByTestId("gf25-sample-result")).toContainText("9 × 9");
   } finally { await closeSurfaceApp(app); }
 });

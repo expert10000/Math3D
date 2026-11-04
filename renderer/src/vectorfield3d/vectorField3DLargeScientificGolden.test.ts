@@ -11,6 +11,7 @@ import { analyzeVectorField3DDifferential, createGraph2DFieldReference,
   integrateVectorField3DVerifiedTileTrajectories, VectorField3DNeededTile,
   VectorField3DVerifiedTileCache,
   sampleVectorField3DDerivedSlice, sampleVectorField3DProbe, sampleVectorField3DSlice,
+  verifiedVectorFieldSampler,
   createVectorField3DDerivedLine, validGraph2DDerivedFieldOrigin,
   createVectorField3DPointResult, reverifyVectorField3DPointResult,
   vectorField3DPointResultRelation, createMixedWorkspaceDocument,
@@ -141,6 +142,17 @@ const close = (actual: number | null | undefined, expected: number, tolerance: n
 };
 
 describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
+  it("samples the GF-23 profile from the verified bounded 80³ transfer", () => {
+    const sampler = verifiedVectorFieldSampler(document, scientific);
+    expect(sampler.shape).toEqual([32, 32, 32]);
+    const y = at(0, 21, 0)[1], z = at(0, 0, 16)[2];
+    for (const x of [-4, -2.75, 0, 1.8, 4]) {
+      const point = [x, y, z] as const;
+      const vector = sampler.sample(point);
+      close(vector && Math.hypot(...vector), oracle(point).speed, 0.035);
+    }
+    expect(sampler.sample([4.001, y, z])).toBeNull();
+  });
   it("places bounded sphere, shell and reproducible random seeds in physical coordinates", () => {
     const common = { center: [1, -.5, .25] as const, radius: 1.5,
       count: 12, randomSeed: 314159 };

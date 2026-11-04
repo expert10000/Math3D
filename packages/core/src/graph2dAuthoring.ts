@@ -1,10 +1,10 @@
 import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDatasetOrigin,
   validGraph2DAnalyticFieldOrigin, validGraph2DDerivedFieldOrigin, validGraph2DLinkedOverlayOrigin,
-  validGraph2DProjectProfileOrigin,
+  validGraph2DProjectProfileOrigin, validGraph2DComparisonProfileOrigin,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
   type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin,
   type Graph2DAnalyticFieldOrigin, type Graph2DDerivedFieldOrigin, type Graph2DProjectProfileOrigin,
-  type Graph2DLinkedOverlayOrigin } from "./graph2dDocument";
+  type Graph2DLinkedOverlayOrigin, type Graph2DComparisonProfileOrigin } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
 import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DParameterAction } from "./graph2dParameters";
@@ -77,6 +77,7 @@ export type Graph2DPointSeriesDraft = Readonly<{
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
+  comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
@@ -267,12 +268,16 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
     errors.push("Derived field provenance is invalid.");
   if (draft.projectProfileOrigin !== undefined && !validGraph2DProjectProfileOrigin(draft.projectProfileOrigin))
     errors.push("Project profile provenance is invalid.");
+  if (draft.comparisonProfileOrigin !== undefined &&
+      !validGraph2DComparisonProfileOrigin(draft.comparisonProfileOrigin))
+    errors.push("Comparison profile provenance is invalid.");
   if (draft.parameterStudyOrigin !== undefined && !isGraph2DParameterStudyOrigin(draft.parameterStudyOrigin))
     errors.push("Parameter study provenance is invalid.");
   if (draft.linkedOrigin !== undefined && !validGraph2DLinkedOverlayOrigin(draft.linkedOrigin))
     errors.push("Linked field provenance is invalid.");
   if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin, draft.linkedOrigin,
-    draft.projectProfileOrigin, draft.parameterStudyOrigin].filter(item => item !== undefined).length > 1)
+    draft.projectProfileOrigin, draft.comparisonProfileOrigin,
+    draft.parameterStudyOrigin].filter(item => item !== undefined).length > 1)
     errors.push("Choose one provenance source for the point series.");
   return errors;
 };
@@ -640,6 +645,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         ...(draft.origin ? { origin: draft.origin } : {}),
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
         ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
+        ...(draft.comparisonProfileOrigin ? { comparisonProfileOrigin: draft.comparisonProfileOrigin } : {}),
         ...(draft.parameterStudyOrigin ? { parameterStudyOrigin: draft.parameterStudyOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}) };
       if (draft.linkedOrigin) objects[target] = { ...objects[target], linkedOrigin: draft.linkedOrigin };
@@ -665,6 +671,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         ...(draft.origin ? { origin: draft.origin } : {}),
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
         ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
+        ...(draft.comparisonProfileOrigin ? { comparisonProfileOrigin: draft.comparisonProfileOrigin } : {}),
         ...(draft.parameterStudyOrigin ? { parameterStudyOrigin: draft.parameterStudyOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}),
         ...(draft.linkedOrigin ? { linkedOrigin: draft.linkedOrigin } : {}) });
@@ -688,6 +695,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       ...(action.draft.origin ? { origin: action.draft.origin } : {}),
       ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}),
       ...(action.draft.projectProfileOrigin ? { projectProfileOrigin: action.draft.projectProfileOrigin } : {}),
+      ...(action.draft.comparisonProfileOrigin ? { comparisonProfileOrigin: action.draft.comparisonProfileOrigin } : {}),
       ...(action.draft.parameterStudyOrigin ? { parameterStudyOrigin: action.draft.parameterStudyOrigin } : {}),
       ...(action.draft.derivedOrigin ? { derivedOrigin: action.draft.derivedOrigin } : {}),
       ...(action.draft.linkedOrigin ? { linkedOrigin: action.draft.linkedOrigin } : {}) };

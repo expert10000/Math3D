@@ -67,6 +67,8 @@ import {
   type Math3DProject,
   createProjectProfileGraphOrigin, findProjectProfileSelection, projectProfileGraphRows,
   projectProfileGraphStatus,
+  createProjectComparisonProfileOrigin, projectComparisonProfileRows,
+  projectComparisonProfileGraphStatus, vectorField3DComparisonTransferKey,
   graph2DParameterStudyStatus,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -93,6 +95,7 @@ import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from 
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
 import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
 import { useDerivedProfileProvenance } from "./useDerivedProfileProvenance";
+import { loadVerifiedVectorFieldTransfer } from "../vectorfield3d/loadVerifiedVectorFieldTransfer";
 import { Graph2DParameterStudyPanel } from "./Graph2DParameterStudyPanel";
 import type { LinkedExplorerProbe } from "../vectorfield3d/linkedFieldProbe";
 import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedScientificExplorerEntries,
@@ -260,7 +263,8 @@ type Props = {
     selection: import("@math3d/core").ScientificSelection) => void;
   onPromoteVectorField3DTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
   onPromoteVectorField3DLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
-  onSaveVectorField3DComparisonResult?: (result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DComparisonResult?: (result: import("@math3d/core").AnalysisResultEnvelope,
+    transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument) => void;
   onAppendVectorField3DDerivedOperation?: (inputId: string,
     operation: import("@math3d/core").DerivedFieldOperation,
@@ -304,11 +308,33 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D,
   onSaveSageResult, onOpenSageRuntimes }: Props) {
   const derivedProfiles = useDerivedProfileProvenance(project);
+  const [comparisonVerified, setComparisonVerified] = useState<Record<string, string>>({});
+  const comparisonSourceKey = (source: VectorField3DDocument) =>
+    `${source.identity.id}:${source.identity.revision}:${source.identity.structuralHash}`;
+  const verifiedComparisonSource = (source: VectorField3DDocument) =>
+    comparisonVerified[comparisonSourceKey(source)] ?? null;
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      const sources = project?.workspace.entries.filter(item => item.module === "vector3d" &&
+        item.checkpoint.format === "math3d.vector-field3d-document" &&
+        item.checkpoint.source.field.kind === "scientific-bundle").map(item =>
+        item.checkpoint as VectorField3DDocument) ?? [];
+      const results = await Promise.allSettled(sources.map(async source =>
+        [comparisonSourceKey(source), vectorField3DComparisonTransferKey(
+          await loadVerifiedVectorFieldTransfer(source))] as const));
+      if (active) setComparisonVerified(Object.fromEntries(results.flatMap(item =>
+        item.status === "fulfilled" ? [item.value] : [])));
+    };
+    void refresh();
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.removeEventListener("focus", refresh); };
+  }, [project?.identity.structuralHash]);
   const projectProfileRef = useRef(project);
   projectProfileRef.current = project;
   const [profileActionError, setProfileActionError] = useState("");
   const [selectionFocus, setSelectionFocus] = useState<{ id: string; token: number } | null>(null);
-  const verifiedProfileSource = (source: VectorField3DDocument) => source.source.field.kind === "expressions";
+  const verifiedProfileSource = derivedProfiles.verifySource;
   const openProjectProfile = async (profileId: string) => {
     try {
       setProfileActionError("");
@@ -337,6 +363,36 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       return true;
     } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); return false; }
   };
+  const openComparisonProfile = async (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit) throw new TypeError("Open a saved Project and Graph editor first.");
+      const sources = [result.provenance.source.documentId,
+        (result.provenance.operation.parameters.secondSource as { documentId: string }).documentId];
+      const updates: Record<string, string> = {};
+      for (const id of sources) {
+        const source = project.workspace.entries.find(item => item.module === "vector3d" &&
+          item.expected.id === id)?.checkpoint;
+        if (source?.format === "math3d.vector-field3d-document" &&
+            source.source.field.kind === "scientific-bundle")
+          updates[comparisonSourceKey(source)] = vectorField3DComparisonTransferKey(
+            await loadVerifiedVectorFieldTransfer(source));
+      }
+      const checked = (source: VectorField3DDocument) =>
+        updates[comparisonSourceKey(source)] ?? verifiedComparisonSource(source);
+      const origin = createProjectComparisonProfileOrigin(project, result, checked);
+      const rows = projectComparisonProfileRows(result);
+      onAuthoringCommit({ type: "create-point-series", draft: {
+        label: "Field difference profile", table: pointTableStore.publish(rows),
+        mode: "line", domain: { min: origin.axis.min, max: origin.axis.max,
+          includeMin: true, includeMax: true }, comparisonProfileOrigin: origin,
+        style: { color: SCIENTIFIC_GRID_LINE_COLORS[0], lineWidth: 2,
+          lineStyle: "solid", visible: true },
+      } });
+      setComparisonVerified(previous => ({ ...previous, ...updates }));
+      setVectorField3DOpen(false);
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
   const profileCards = derivedProfiles.records.map(record =>
     <div key={record.profileId}><DerivedProfileProvenanceCard view="graphs" provenance={record}
       onCompute={() => void derivedProfiles.compute(record.profileId)}
@@ -345,7 +401,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       error={derivedProfiles.error || undefined} />
       <button type="button" data-testid="gf07-open-profile-in-graphs"
         disabled={!onAuthoringCommit || !findProjectProfileSelection(project!, record.profileId) ||
-          !["current", "not-computed"].includes(record.reason ?? "current")}
+          !["current", "not-computed", "source-unverified"].includes(record.reason ?? "current")}
         onClick={() => void openProjectProfile(record.profileId)}>Open profile in Graphs</button>
     </div>);
   const studyPanel = <Graph2DParameterStudyPanel document={document}
@@ -1412,7 +1468,11 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const projectProfileStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
     object.kind === "point-series" && object.projectProfileOrigin ? [[object.id,
       projectProfileGraphStatus(project, object.projectProfileOrigin, verifiedProfileSource)]] : [])),
-    [document, project]);
+    [document, project, derivedProfiles.records]);
+  const comparisonProfileStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.comparisonProfileOrigin ? [[object.id,
+      projectComparisonProfileGraphStatus(project, object.comparisonProfileOrigin,
+        verifiedComparisonSource)]] : [])), [document, project, comparisonVerified]);
   const parameterStudyStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
     object.kind === "point-series" && object.parameterStudyOrigin ? [[object.id,
       graph2DParameterStudyStatus(document, object.parameterStudyOrigin,
@@ -1425,13 +1485,18 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         object.projectProfileOrigin && (projectProfileStates[object.id]?.status !== "current" ||
           (() => { const rows = pointTableStore.resolve(object.table);
             return !rows || structuralHash(rows) !== object.projectProfileOrigin.rowsSha256; })()) ||
+        object.comparisonProfileOrigin &&
+          (comparisonProfileStates[object.id]?.status !== "current" ||
+            (() => { const rows = pointTableStore.resolve(object.table);
+              return !rows || structuralHash(rows) !==
+                object.comparisonProfileOrigin.rowsSha256; })()) ||
         object.parameterStudyOrigin && parameterStudyStates[object.id]?.status !== "current" ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
           linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
-    projectProfileStates, parameterStudyStates]);
+    projectProfileStates, comparisonProfileStates, parameterStudyStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1651,6 +1716,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
   const selectedProjectProfile = selectedObject?.kind === "point-series" ?
     selectedObject.projectProfileOrigin : undefined;
+  const selectedComparisonProfile = selectedObject?.kind === "point-series" ?
+    selectedObject.comparisonProfileOrigin : undefined;
   const selectedProjectProfileState = selectedProjectProfile && selectedObject ?
     projectProfileStates[selectedObject.id] : null;
   const selectedProjectProfileRowsReady = selectedProjectProfile && selectedObject?.kind === "point-series" ?
@@ -1712,8 +1779,19 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     <button type="button" data-testid="gf07-refresh-profile" onClick={() => void refreshProjectProfile()}
       disabled={!onAuthoringCommit || derivedProfiles.busyId !== null ||
         !derivedProfiles.records.some(record => record.profileId === selectedProjectProfile.profileId &&
-          (record.status === "current" || record.reason === "not-computed") &&
+          (record.status === "current" || ["not-computed", "source-unverified"].includes(record.reason ?? "")) &&
           !!project && !!findProjectProfileSelection(project, record.profileId))}>Refresh profile row</button>
+  </section>;
+  const comparisonGraphInspector = selectedComparisonProfile && <section
+    aria-label="Saved field comparison profile" data-testid="gf24-graph-profile-status">
+    <h3>Field comparison profile · {comparisonProfileStates[selectedObject!.id]?.status ===
+      "current" ? "current" : "values withheld"}</h3>
+    {comparisonProfileStates[selectedObject!.id]?.reason && <p role="status">Values withheld: {
+      comparisonProfileStates[selectedObject!.id]?.reason}. Reverify both sources and export again.</p>}
+    <p>Saved Project result {selectedComparisonProfile.resultId} · physical axis {
+      selectedComparisonProfile.axis.name} {selectedComparisonProfile.axis.min}…{
+      selectedComparisonProfile.axis.max} {selectedComparisonProfile.axis.unit} · {
+      selectedComparisonProfile.unit}</p>
   </section>;
   const selectedSageExpression = selectedObject?.kind === "explicit-cartesian"
     ? selectedObject.expression.source : undefined;
@@ -1738,6 +1816,11 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     (!selectedObject.projectProfileOrigin || projectProfileStates[selectedObject.id]?.status === "current" &&
       (() => { const rows = pointTableStore.resolve(selectedObject.table);
         return !!rows && structuralHash(rows) === selectedObject.projectProfileOrigin.rowsSha256; })()) &&
+    (!selectedObject.comparisonProfileOrigin ||
+      comparisonProfileStates[selectedObject.id]?.status === "current" &&
+      (() => { const rows = pointTableStore.resolve(selectedObject.table);
+        return !!rows && structuralHash(rows) ===
+          selectedObject.comparisonProfileOrigin.rowsSha256; })()) &&
     (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
@@ -3893,6 +3976,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onPromoteTrajectoryCurve={onPromoteVectorField3DTrajectoryCurve}
           onPromoteLocalSeparatrix={onPromoteVectorField3DLocalSeparatrix}
           onSaveComparisonResult={onSaveVectorField3DComparisonResult}
+          onOpenComparisonProfile={result => void openComparisonProfile(result)}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
           onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
@@ -4313,7 +4397,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+            {inspector}{profileGraphInspector}{comparisonGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
             {profileCards}{studyPanel}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
@@ -4366,7 +4450,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
         {profileCards}{studyPanel}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}

@@ -7,13 +7,14 @@ import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProje
   type Math3DProject } from "./math3dProject";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import { viewerSourceFromDocument } from "./viewerProvenance";
+import { verifiedVectorFieldSampler, type VerifiedVectorFieldTransfer } from "./verifiedVectorFieldSampling";
 
 export const VECTOR_FIELD3D_COMPARISON_RESULT_TYPE = "vector3d.field-comparison" as const;
 export type VectorField3DComparisonPolicy = Readonly<{
   frame: "cartesian-identical";
   grid: readonly [number, number, number];
   units: "identical";
-  interpolation: "analytic-direct";
+  interpolation: "analytic-direct" | "verified-volume-trilinear";
   coverage: "complete-or-withhold";
 }>;
 export type VectorField3DComparison = Readonly<{
@@ -24,31 +25,56 @@ export type VectorField3DComparison = Readonly<{
   vectorDifference: Readonly<{ mean: number | null; max: number | null; rms: number | null; unit: string }>;
   scalarMagnitudeDifference: Readonly<{ mean: number | null; maxAbsolute: number | null; unit: string }>;
   angularError: Readonly<{ meanRadians: number | null; maxRadians: number | null }>;
+  profile: Readonly<{ axis: Readonly<{ name: string; unit: string; min: number; max: number }>;
+    unit: string; rows: readonly Readonly<{ x: number; y: number | null }>[] }>;
+  verification: Readonly<{ a: string | null; b: string | null }>;
   status: "complete" | "incomplete";
 }>;
 
+export type VectorField3DComparisonTransfers = Readonly<{
+  a?: VerifiedVectorFieldTransfer; b?: VerifiedVectorFieldTransfer }>;
+export const vectorField3DComparisonTransferKey = (transfer: VerifiedVectorFieldTransfer) => structuralHash({
+  fingerprint: transfer.fingerprint, components: transfer.volumes.map(item => ({
+    name: item.component, sha256: item.sampleSha256, resource: item.resourceSha256,
+    shape: item.sampleShape })) });
+
 /** Explicit first-gate policy: identical Cartesian domains and units, direct analytic sampling. */
 export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DDocument,
-  policy: VectorField3DComparisonPolicy): VectorField3DComparison {
+  policy: VectorField3DComparisonPolicy,
+  transfers: VectorField3DComparisonTransfers = {}): VectorField3DComparison {
   const left = normalizeVectorField3DDocument(a), right = normalizeVectorField3DDocument(b);
   if (!left.ok || !right.ok) throw new TypeError("Comparison sources must be valid Project documents.");
   if (a.identity.id === b.identity.id) throw new TypeError("Choose two distinct field sources.");
   if (policy.frame !== "cartesian-identical" || policy.units !== "identical" ||
-      policy.interpolation !== "analytic-direct" || policy.coverage !== "complete-or-withhold")
+      !["analytic-direct", "verified-volume-trilinear"].includes(policy.interpolation) ||
+      policy.coverage !== "complete-or-withhold")
     throw new TypeError("Frame, unit, interpolation and coverage policy must be explicit.");
   if (!Array.isArray(policy.grid) || policy.grid.length !== 3 || policy.grid.some(n =>
       !Number.isSafeInteger(n) || n < 2 || n > 16) ||
       policy.grid[0] * policy.grid[1] * policy.grid[2] > 4096)
     throw new RangeError("Comparison grid must contain 2–16 points per axis and at most 4096 points.");
   const aField = a.source.field, bField = b.source.field;
-  if (aField.kind !== "expressions" || bField.kind !== "expressions")
-    throw new TypeError("Analytic-direct comparison requires two authored expression fields; verified bundle resampling needs its own policy.");
+  const bundled = policy.interpolation === "verified-volume-trilinear";
+  if (bundled ? aField.kind !== "scientific-bundle" || bField.kind !== "scientific-bundle" ||
+      !transfers.a || !transfers.b : aField.kind !== "expressions" || bField.kind !== "expressions")
+    throw new TypeError("Comparison interpolation requires two matching verified source kinds.");
   if (a.source.axes.some((axis, i) => axis.label !== b.source.axes[i]!.label ||
       axis.unit !== b.source.axes[i]!.unit || axis.min !== b.source.axes[i]!.min ||
       axis.max !== b.source.axes[i]!.max) ||
-      aField.components.some((component, i) => component.unit !== bField.components[i]!.unit) ||
-      new Set(aField.components.map(component => component.unit)).size !== 1)
+      (aField.kind === "expressions" && bField.kind === "expressions" ?
+        aField.components.some((component, i) => component.unit !== bField.components[i]!.unit) ||
+        new Set(aField.components.map(component => component.unit)).size !== 1 :
+        aField.kind === "scientific-bundle" && bField.kind === "scientific-bundle" ?
+          aField.componentUnits.some((unit, i) => unit !== bField.componentUnits[i]) ||
+          new Set(aField.componentUnits).size !== 1 ||
+          aField.references[0].shape.some((size, i) => size !== bField.references[0].shape[i]) ||
+          aField.references[0].axes.some((axis, i) =>
+            JSON.stringify(axis) !== JSON.stringify(bField.references[0].axes[i])) : true))
     throw new TypeError("Both fields require identical Cartesian axes, domain and component units.");
+  const samplerA = bundled ? verifiedVectorFieldSampler(a, transfers.a!) : null;
+  const samplerB = bundled ? verifiedVectorFieldSampler(b, transfers.b!) : null;
+  const unit = aField.kind === "expressions" ? aField.components[0].unit : aField.componentUnits[0];
+  const profileRows: { x: number; y: number | null }[] = [];
   let valid = 0, angularUndefined = 0, vectorSum = 0, vectorSquared = 0;
   let vectorMax = 0, scalarSum = 0, scalarMax = 0, angleSum = 0, angleMax = 0;
   for (let i = 0; i < policy.grid[0]; i++) for (let j = 0; j < policy.grid[1]; j++)
@@ -61,14 +87,22 @@ export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DD
       const sample = (document: VectorField3DDocument) => document.source.field.kind === "expressions" ?
         document.source.field.components.map(component => evaluateGraph2DExpression(component.ast,
           variables, { maxEvaluations: 256 })) : [];
-      const av = sample(a), bv = sample(b);
-      if (av.some(value => !value.ok) || bv.some(value => !value.ok)) continue;
-      const x = av.map(value => value.ok ? value.value : NaN),
-        y = bv.map(value => value.ok ? value.value : NaN);
-      if (![...x, ...y].every(Number.isFinite)) continue;
+      const av = samplerA ? samplerA.sample(position as [number, number, number]) : null;
+      const bv = samplerB ? samplerB.sample(position as [number, number, number]) : null;
+      const x = samplerA ? av : sample(a).map(value => value.ok ? value.value : NaN);
+      const y = samplerB ? bv : sample(b).map(value => value.ok ? value.value : NaN);
+      if (!x || !y || ![...x, ...y].every(Number.isFinite)) {
+        if (j === Math.floor((policy.grid[1] - 1) / 2) &&
+            k === Math.floor((policy.grid[2] - 1) / 2))
+          profileRows.push({ x: position[0]!, y: null });
+        continue;
+      }
       const ma = Math.hypot(...x), mb = Math.hypot(...y),
         delta = Math.hypot(...x.map((value, index) => value - y[index]!));
       if (![ma, mb, delta].every(Number.isFinite)) continue;
+      if (j === Math.floor((policy.grid[1] - 1) / 2) &&
+          k === Math.floor((policy.grid[2] - 1) / 2))
+        profileRows.push({ x: position[0]!, y: delta });
       valid++; vectorSum += delta; vectorSquared += delta * delta;
       vectorMax = Math.max(vectorMax, delta);
       const scalar = ma - mb;
@@ -79,7 +113,6 @@ export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DD
       angleSum += angle; angleMax = Math.max(angleMax, angle);
     }
   const sampled = policy.grid[0] * policy.grid[1] * policy.grid[2];
-  const unit = aField.components[0].unit;
   return { policy, sourceA: viewerSourceFromDocument(a), sourceB: viewerSourceFromDocument(b),
     sampled, valid, gaps: sampled - valid, angularUndefined,
     vectorDifference: { mean: valid ? vectorSum / valid : null,
@@ -88,6 +121,10 @@ export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DD
       maxAbsolute: valid ? scalarMax : null, unit },
     angularError: { meanRadians: valid > angularUndefined ? angleSum / (valid - angularUndefined) : null,
       maxRadians: valid > angularUndefined ? angleMax : null },
+    profile: { axis: { name: a.source.axes[0].label, unit: a.source.axes[0].unit,
+      min: a.source.axes[0].min, max: a.source.axes[0].max }, unit, rows: profileRows },
+    verification: { a: transfers.a ? vectorField3DComparisonTransferKey(transfers.a) : null,
+      b: transfers.b ? vectorField3DComparisonTransferKey(transfers.b) : null },
     status: valid === sampled ? "complete" : "incomplete" };
 }
 
@@ -102,7 +139,8 @@ export function createVectorField3DComparisonResult(comparison: VectorField3DCom
     angularUndefined: comparison.angularUndefined,
     vectorDifference: comparison.vectorDifference,
     scalarMagnitudeDifference: comparison.scalarMagnitudeDifference,
-    angularError: comparison.angularError,
+    angularError: comparison.angularError, profile: comparison.profile,
+    verification: comparison.verification,
     state: comparison.status } as unknown as Record<string, CanonicalJsonValue>;
   parameters.summaryHash = structuralHash(summary);
   return createAnalysisResultEnvelope({
@@ -119,7 +157,9 @@ export function createVectorField3DComparisonResult(comparison: VectorField3DCom
 }
 
 export function projectVectorField3DComparisonStatus(project: Math3DProject,
-  result: AnalysisResultEnvelope): Readonly<{ status: "current" | "withheld"; reason: string | null }> {
+  result: AnalysisResultEnvelope,
+  verifiedTransfer?: (document: VectorField3DDocument) => string | null):
+  Readonly<{ status: "current" | "withheld"; reason: string | null }> {
   if (result.provenance.operation.type !== VECTOR_FIELD3D_COMPARISON_RESULT_TYPE)
     return { status: "withheld", reason: "wrong-result-type" };
   if (result.provenance.operation.parameters.summaryHash !== structuralHash(result.summary))
@@ -137,15 +177,24 @@ export function projectVectorField3DComparisonStatus(project: Math3DProject,
     if (document.identity.revision !== expected.revision ||
         document.identity.structuralHash !== expected.structuralHash)
       return { status: "withheld", reason: `source-${index + 1}-changed` };
+    if (document.source.field.kind === "scientific-bundle" &&
+        verifiedTransfer?.(document) !== (result.summary.verification as
+          { a?: string; b?: string } | undefined)?.[index === 0 ? "a" : "b"])
+      return { status: "withheld", reason: `source-${index + 1}-unverified` };
   }
   return result.status === "numerical" && result.summary.state === "complete" ?
     { status: "current", reason: null } : { status: "withheld", reason: "incomplete-coverage" };
 }
 
 export function upsertProjectVectorField3DComparison(project: Math3DProject,
-  result: AnalysisResultEnvelope): Math3DProject {
+  result: AnalysisResultEnvelope,
+  transfers: VectorField3DComparisonTransfers = {}): Math3DProject {
   const current = parseMath3DProject(serializeMath3DProject(project));
-  if (projectVectorField3DComparisonStatus(current, result).status !== "current")
+  const verified = (document: VectorField3DDocument) =>
+    document.identity.id === result.provenance.source.documentId && transfers.a ?
+      vectorField3DComparisonTransferKey(transfers.a) : transfers.b ?
+        vectorField3DComparisonTransferKey(transfers.b) : null;
+  if (projectVectorField3DComparisonStatus(current, result, verified).status !== "current")
     throw new TypeError("Both pinned sources and complete coverage are required to save comparison values.");
   const pin = result.provenance.operation.parameters.secondSource as { documentId: string };
   const first = current.workspace.entries.find(item => item.expected.id ===
@@ -156,7 +205,8 @@ export function upsertProjectVectorField3DComparison(project: Math3DProject,
   const policy = { frame: parameters.frame, grid: parameters.counts,
     units: parameters.units, interpolation: parameters.interpolation,
     coverage: parameters.coverage } as VectorField3DComparisonPolicy;
-  const expected = createVectorField3DComparisonResult(compareVectorField3D(first, second, policy));
+  const expected = createVectorField3DComparisonResult(compareVectorField3D(first, second, policy,
+    transfers));
   if (expected.resultId !== result.resultId || structuralHash(expected.summary) !== structuralHash(result.summary))
     throw new TypeError("Comparison values no longer match the two saved sources.");
   const relation = createDocumentRelation({ kind: "analysis-of",

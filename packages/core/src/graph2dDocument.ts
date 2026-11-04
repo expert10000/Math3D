@@ -148,7 +148,13 @@ export type Graph2DProjectProfileOrigin = Readonly<{
   recipe: readonly Readonly<{ documentId: string; revision: number; structuralHash: string }>[];
   selection: Readonly<{ id: string; structuralHash: string }>;
   cacheKey: string; rowsSha256: string;
-  method: "analytic-expression";
+  method: "analytic-expression" | "verified-volume-trilinear";
+  axis: Readonly<{ name: string; unit: string; min: number; max: number }>;
+  unit: string;
+}>;
+export type Graph2DComparisonProfileOrigin = Readonly<{
+  kind: "project-field-comparison-profile/v1"; projectId: string;
+  resultId: string; summaryHash: string; rowsSha256: string;
   axis: Readonly<{ name: string; unit: string; min: number; max: number }>;
   unit: string;
 }>;
@@ -229,6 +235,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
+  comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
 }>;
@@ -557,9 +564,20 @@ export const validGraph2DProjectProfileOrigin = (value: unknown): value is Graph
   record(value.selection) && exact(value.selection, ["id", "structuralHash"]) &&
   isStableDocumentId(value.selection.id) && isStructuralHash(value.selection.structuralHash) &&
   isStructuralHash(value.cacheKey) && isStructuralHash(value.rowsSha256) &&
-  value.method === "analytic-expression" && record(value.axis) &&
+  ["analytic-expression", "verified-volume-trilinear"].includes(String(value.method)) && record(value.axis) &&
   exact(value.axis, ["name", "unit", "min", "max"]) && bounded(value.axis.name, 80) &&
   bounded(value.axis.unit, 80) && finite(value.axis.min) && finite(value.axis.max) &&
+  (value.axis.min as number) < (value.axis.max as number) && bounded(value.unit, 80);
+export const validGraph2DComparisonProfileOrigin = (value: unknown):
+  value is Graph2DComparisonProfileOrigin =>
+  record(value) && exact(value, ["kind", "projectId", "resultId", "summaryHash",
+    "rowsSha256", "axis", "unit"]) &&
+  value.kind === "project-field-comparison-profile/v1" &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  record(value.axis) && exact(value.axis, ["name", "unit", "min", "max"]) &&
+  bounded(value.axis.name, 80) && bounded(value.axis.unit, 80) &&
+  finite(value.axis.min) && finite(value.axis.max) &&
   (value.axis.min as number) < (value.axis.max as number) && bounded(value.unit, 80);
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && value.kind === "vector-derived-linked-region/v1") {
@@ -785,16 +803,20 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"]),
     ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"]),
     ...(value.projectProfileOrigin === undefined ? [] : ["projectProfileOrigin"]),
+    ...(value.comparisonProfileOrigin === undefined ? [] : ["comparisonProfileOrigin"]),
     ...(value.parameterStudyOrigin === undefined ? [] : ["parameterStudyOrigin"]),
     ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
   [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin,
-    value.projectProfileOrigin, value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
+    value.projectProfileOrigin, value.comparisonProfileOrigin,
+    value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
   (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
   (value.derivedOrigin === undefined || validGraph2DDerivedFieldOrigin(value.derivedOrigin)) &&
   (value.projectProfileOrigin === undefined || validGraph2DProjectProfileOrigin(value.projectProfileOrigin)) &&
+  (value.comparisonProfileOrigin === undefined ||
+    validGraph2DComparisonProfileOrigin(value.comparisonProfileOrigin)) &&
   (value.parameterStudyOrigin === undefined || isGraph2DParameterStudyOrigin(value.parameterStudyOrigin)) &&
   (value.linkedOrigin === undefined || validGraph2DLinkedOverlayOrigin(value.linkedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {

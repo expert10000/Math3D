@@ -146,7 +146,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveLineIntegralSelection, onSaveLineIntegralResult,
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
-  onSaveComparisonResult,
+  onSaveComparisonResult, onOpenComparisonProfile,
   onSaveTemporalSource,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
@@ -206,7 +206,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveTrajectorySeeds?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
   onPromoteTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
   onPromoteLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
-  onSaveComparisonResult?: (result: AnalysisResultEnvelope) => void;
+  onSaveComparisonResult?: (result: AnalysisResultEnvelope,
+    transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
+  onOpenComparisonProfile?: (result: AnalysisResultEnvelope) => void;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
@@ -2352,7 +2354,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       error={derivedProfileError} />)}
     {derivedProfiles.map(record => <button key={`graph:${record.profileId}`} type="button"
       data-testid="gf07-open-profile-from-explorer"
-      disabled={!onOpenDerivedProfileInGraphs || !["current", "not-computed"].includes(record.reason ?? "current")}
+      disabled={!onOpenDerivedProfileInGraphs || !["current", "not-computed", "source-unverified"].includes(record.reason ?? "current")}
       onClick={() => void onOpenDerivedProfileInGraphs?.(record.profileId)}>
       Open {record.title} in Graphs</button>)}
     </div>
@@ -2769,7 +2771,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         selectedIndex={selectedEquilibrium} project={project}
         onPromote={onPromoteLocalSeparatrix} />
       <VectorField3DComparisonPanel document={document} project={project}
-        onSave={onSaveComparisonResult} />
+        onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
       <VectorField3DTimeSourcePanel document={document} project={project}
         onSave={onSaveTemporalSource} />
