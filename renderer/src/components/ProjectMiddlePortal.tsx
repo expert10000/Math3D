@@ -6,16 +6,17 @@ export const ProjectMiddlePortal: React.FC<{ testId: string; label: string; chil
   const [host, setHost] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const locate = () => {
-      const candidates = [...document.querySelectorAll<HTMLElement>('[data-testid="main-viewer"], [data-testid="project-source-view"]')];
+      const candidates = [...document.querySelectorAll<HTMLElement>('[data-testid="main-viewer"], [data-testid="project-source-view"], [data-testid="geometry-viewer-panel"]')];
       const visible = candidates.filter((element) => {
         const rect = element.getBoundingClientRect();
-        return rect.width > 200 && rect.height > 150 && getComputedStyle(element).display !== "none";
+        return rect.width > 200 && rect.height > 50 && getComputedStyle(element).display !== "none";
       });
       visible.sort((a, b) => {
         const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
         return br.width * br.height - ar.width * ar.height;
       });
-      setHost((current) => current === (visible[0] ?? null) ? current : visible[0] ?? null);
+      const next = visible[0] ?? document.querySelector<HTMLElement>(".math3d-app");
+      setHost((current) => current === next ? current : next);
     };
     locate();
     let pendingFrame = 0;

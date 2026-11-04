@@ -828,10 +828,21 @@ Acceptance:
   statistics for verified fields. Changed fields carry a status without their
   statistics or profile values. If no field verifies, only failure statuses are
   exported.
+- A desktop reopen and source-tamper regression now saves a combined six-field
+  subrectangle and its Workbook, reopens both, downloads a verified JSON audit,
+  then changes one vector resource. The second download withholds vector speed,
+  divergence and curl values while preserving verified scalar and complex
+  fields. CI runs this regression as a blocking check.
 - **Remaining:** Extend audit-friendly exports to other applicable result types.
 
 #### SCI-20 — Theory Lab artifact round-trip
 
+- **First interchange slice:** The standalone Python publisher accepts a bounded
+  three-component 3D vector scene with Theory Lab producer, run ID and source
+  schema metadata. A cross-language golden test verifies all three components
+  through Math3D's Field Explorer importer, then edits and republishes a
+  component and confirms that the old fingerprint is refused. This does not
+  yet exercise a live Theory Lab application or derived export back to it.
 - Import native scientific scene/dataset manifests from Theory Lab.
 - Produce derived scene and profiles usable by Theory Lab/Python.
 - Retain shared artifact IDs, algorithm versions and hashes.
