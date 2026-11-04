@@ -1,8 +1,9 @@
 import { GRAPH2D_MAX_OBJECTS, validPointTableReference, validGraph2DScientificDatasetOrigin,
   validGraph2DAnalyticFieldOrigin, validGraph2DDerivedFieldOrigin, validGraph2DLinkedOverlayOrigin,
+  validGraph2DProjectProfileOrigin,
   type Graph2DDocument, type Graph2DDomain, type Graph2DObjectDisplay,
   type Graph2DPointTableReference, type Graph2DScientificDatasetOrigin,
-  type Graph2DAnalyticFieldOrigin, type Graph2DDerivedFieldOrigin,
+  type Graph2DAnalyticFieldOrigin, type Graph2DDerivedFieldOrigin, type Graph2DProjectProfileOrigin,
   type Graph2DLinkedOverlayOrigin } from "./graph2dDocument";
 import { parseGraph2DExpression } from "./graph2dExpression";
 import { inspectGraph2DPiecewiseDomains } from "./graph2dPiecewise";
@@ -72,6 +73,7 @@ export type Graph2DPointSeriesDraft = Readonly<{
   origin?: Graph2DScientificDatasetOrigin;
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
   derivedOrigin?: Graph2DDerivedFieldOrigin;
+  projectProfileOrigin?: Graph2DProjectProfileOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
@@ -257,9 +259,12 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
     errors.push("Analytic field provenance is invalid.");
   if (draft.derivedOrigin !== undefined && !validGraph2DDerivedFieldOrigin(draft.derivedOrigin))
     errors.push("Derived field provenance is invalid.");
+  if (draft.projectProfileOrigin !== undefined && !validGraph2DProjectProfileOrigin(draft.projectProfileOrigin))
+    errors.push("Project profile provenance is invalid.");
   if (draft.linkedOrigin !== undefined && !validGraph2DLinkedOverlayOrigin(draft.linkedOrigin))
     errors.push("Linked field provenance is invalid.");
-  if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin, draft.linkedOrigin].filter(item => item !== undefined).length > 1)
+  if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin, draft.linkedOrigin,
+    draft.projectProfileOrigin].filter(item => item !== undefined).length > 1)
     errors.push("Choose one provenance source for the point series.");
   return errors;
 };
@@ -596,6 +601,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         table: draft.table, mode: draft.mode, missing: "gap", domain: draft.domain,
         ...(draft.origin ? { origin: draft.origin } : {}),
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
+        ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}) };
       if (draft.linkedOrigin) objects[target] = { ...objects[target], linkedOrigin: draft.linkedOrigin };
       displays[target] = { objectId: edit.objectId, ...draft.style };
@@ -619,6 +625,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         mode: draft.mode, missing: "gap", domain: draft.domain,
         ...(draft.origin ? { origin: draft.origin } : {}),
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
+        ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}),
         ...(draft.linkedOrigin ? { linkedOrigin: draft.linkedOrigin } : {}) });
       displays.push({ objectId: id, ...draft.style });
@@ -640,6 +647,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       table: action.draft.table, mode: action.draft.mode, missing: "gap" as const, domain: action.draft.domain,
       ...(action.draft.origin ? { origin: action.draft.origin } : {}),
       ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}),
+      ...(action.draft.projectProfileOrigin ? { projectProfileOrigin: action.draft.projectProfileOrigin } : {}),
       ...(action.draft.derivedOrigin ? { derivedOrigin: action.draft.derivedOrigin } : {}),
       ...(action.draft.linkedOrigin ? { linkedOrigin: action.draft.linkedOrigin } : {}) };
     const display = { objectId: id, ...action.draft.style };

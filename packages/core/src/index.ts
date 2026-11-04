@@ -135,6 +135,7 @@ export * from "./derivedFieldDocument";
 export * from "./projectDerivedFields";
 export * from "./derivedFieldProfileResult";
 export * from "./derivedProfileProvenance";
+export * from "./projectDerivedProfileGraph";
 export * from "./scientificSceneManifest";
 export * from "./scientificDatasetCoordinates";
 export * from "./scientificDatasetLink";

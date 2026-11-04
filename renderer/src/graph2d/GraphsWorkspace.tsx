@@ -64,6 +64,8 @@ import {
   getGraph2DGuidedDocumentGuidance,
   projectGraph2DConstrainedPoint, previewGraph2DConstrainedPoint, resolveGraph2DConstructions,
   type Math3DProject,
+  createProjectProfileGraphOrigin, findProjectProfileSelection, projectProfileGraphRows,
+  projectProfileGraphStatus,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -275,12 +277,49 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   savedVectorField2D, openVectorField2DRequest, onSaveVectorField2D,
   onSaveSageResult, onOpenSageRuntimes }: Props) {
   const derivedProfiles = useDerivedProfileProvenance(project);
+  const projectProfileRef = useRef(project);
+  projectProfileRef.current = project;
+  const [profileActionError, setProfileActionError] = useState("");
+  const [selectionFocus, setSelectionFocus] = useState<{ id: string; token: number } | null>(null);
+  const verifiedProfileSource = (source: VectorField3DDocument) => source.source.field.kind === "expressions";
+  const openProjectProfile = async (profileId: string) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit) throw new Error("Open a saved Project and Graph editor first.");
+      const existing = document.source.objects.find(item => item.kind === "point-series" &&
+        item.projectProfileOrigin?.projectId === project.identity.id &&
+        item.projectProfileOrigin.profileId === profileId);
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null }); return; }
+      const selection = findProjectProfileSelection(project, profileId);
+      if (!selection) throw new Error("Save a matching physical line selection in this Project first.");
+      const result = derivedProfiles.read(profileId) ?? await derivedProfiles.compute(profileId);
+      if (!result) throw new Error("The verified profile did not produce a current result.");
+      if (projectProfileRef.current?.identity.structuralHash !== project.identity.structuralHash)
+        throw new Error("The Project changed while the profile was computing.");
+      const origin = createProjectProfileGraphOrigin(project, profileId, result, verifiedProfileSource);
+      const profile = project.workspace.derivedFields?.find(item => item.identity.id === profileId);
+      const count = document.source.objects.filter(item => item.kind === "point-series" &&
+        item.projectProfileOrigin).length;
+      onAuthoringCommit({ type: "create-point-series", draft: {
+        label: profile?.metadata.title ?? "Derived profile", table: pointTableStore.publish(projectProfileGraphRows(result)),
+        mode: "line", domain: { min: result.axis.min, max: result.axis.max,
+          includeMin: true, includeMax: true }, projectProfileOrigin: origin,
+        style: { color: SCIENTIFIC_GRID_LINE_COLORS[count % SCIENTIFIC_GRID_LINE_COLORS.length],
+          lineWidth: 2, lineStyle: "solid", visible: true },
+      } });
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
   const profileCards = derivedProfiles.records.map(record =>
-    <DerivedProfileProvenanceCard key={record.profileId} view="graphs" provenance={record}
+    <div key={record.profileId}><DerivedProfileProvenanceCard view="graphs" provenance={record}
       onCompute={() => void derivedProfiles.compute(record.profileId)}
       busy={derivedProfiles.busyId === record.profileId}
       progress={derivedProfiles.busyId === record.profileId ? derivedProfiles.progress : undefined}
-      error={derivedProfiles.error || undefined} />);
+      error={derivedProfiles.error || undefined} />
+      <button type="button" data-testid="gf07-open-profile-in-graphs"
+        disabled={!onAuthoringCommit || !findProjectProfileSelection(project!, record.profileId) ||
+          !["current", "not-computed"].includes(record.reason ?? "current")}
+        onClick={() => void openProjectProfile(record.profileId)}>Open profile in Graphs</button>
+    </div>);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [leftSection, setLeftSection] = useState<"objects" | "services">("objects");
   const [sageRecord, setSageRecord] = useState<SymbolicResultRecord | null>(null);
@@ -1339,16 +1378,24 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     linkedVerificationQueue.current = linkedVerificationQueue.current.then(verifyPairs, verifyPairs);
     return () => { active = false; };
   }, [document]);
+  const projectProfileStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.projectProfileOrigin ? [[object.id,
+      projectProfileGraphStatus(project, object.projectProfileOrigin, verifiedProfileSource)]] : [])),
+    [document, project]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null || phaseSeedPreview !== null,
     separatePhaseAnalysis: true,
     pointTables: Object.fromEntries(document.source.objects.flatMap((object) =>
       object.kind === "point-series" ? [[object.table.id,
+        object.projectProfileOrigin && (projectProfileStates[object.id]?.status !== "current" ||
+          (() => { const rows = pointTableStore.resolve(object.table);
+            return !rows || structuralHash(rows) !== object.projectProfileOrigin.rowsSha256; })()) ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
           linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
-  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification]);
+  }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
+    projectProfileStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1566,6 +1613,72 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   };
   const selectedSeries = series.find((item) => item.objectId === document.selection.objectId);
   const selectedObject = document.source.objects.find((item) => item.id === document.selection.objectId);
+  const selectedProjectProfile = selectedObject?.kind === "point-series" ?
+    selectedObject.projectProfileOrigin : undefined;
+  const selectedProjectProfileState = selectedProjectProfile && selectedObject ?
+    projectProfileStates[selectedObject.id] : null;
+  const selectedProjectProfileRowsReady = selectedProjectProfile && selectedObject?.kind === "point-series" ?
+    (() => { const rows = pointTableStore.resolve(selectedObject.table);
+      return !!rows && structuralHash(rows) === selectedProjectProfile.rowsSha256; })() : true;
+  const refreshProjectProfile = async () => {
+    if (!project || !selectedProjectProfile || selectedObject?.kind !== "point-series" ||
+        !onAuthoringCommit) return;
+    try {
+      setProfileActionError("");
+      const result = await derivedProfiles.compute(selectedProjectProfile.profileId);
+      if (!result) throw new Error("The verified profile did not produce a current result.");
+      if (projectProfileRef.current?.identity.structuralHash !== project.identity.structuralHash)
+        throw new Error("The Project changed while the profile was computing.");
+      const origin = createProjectProfileGraphOrigin(project, selectedProjectProfile.profileId,
+        result, verifiedProfileSource);
+      const display = document.display.objects.find(item => item.objectId === selectedObject.id)!;
+      onAuthoringCommit({ type: "edit-point-series", objectId: selectedObject.id, draft: {
+        label: selectedObject.label, table: pointTableStore.publish(projectProfileGraphRows(result)),
+        mode: "line", domain: { min: result.axis.min, max: result.axis.max,
+          includeMin: true, includeMax: true }, projectProfileOrigin: origin,
+        style: { color: display.color, lineWidth: display.lineWidth,
+          lineStyle: display.lineStyle, visible: display.visible },
+      } });
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const locateProjectProfileSelection = () => {
+    if (!project || !selectedProjectProfile) return;
+    const source = project.workspace.entries.find(entry => entry.module === "vector3d" &&
+      entry.expected.id === selectedProjectProfile.source.documentId);
+    if (!source || source.checkpoint.format !== "math3d.vector-field3d-document") return;
+    setVectorField3DDocument(source.checkpoint);
+    setExplorerFieldLayer(null);
+    setSelectionFocus(previous => ({ id: selectedProjectProfile.selection.id,
+      token: (previous?.token ?? 0) + 1 }));
+    setVectorField3DOpen(true);
+  };
+  const profileGraphInspector = selectedProjectProfile && <section aria-label="Saved Project profile"
+    data-testid="gf07-graph-profile-status">
+    <h3>Project profile · {selectedProjectProfileState?.status === "current" &&
+      selectedProjectProfileRowsReady ? "current" : "values withheld"}</h3>
+    {selectedProjectProfileState?.reason && <p role="status">Values withheld: {
+      selectedProjectProfileState.reason.replaceAll("-", " ")}. Reverify the source and recipe before refreshing.</p>}
+    {!selectedProjectProfileRowsReady && <p role="status">Values withheld: saved profile samples are missing or changed. Refresh the verified profile.</p>}
+    <dl><dt>Source</dt><dd>{selectedProjectProfile.source.documentId} · revision {
+      selectedProjectProfile.source.revision} · {selectedProjectProfile.source.structuralHash}</dd>
+      <dt>Recipe</dt><dd>{selectedProjectProfile.recipe.map(item =>
+        `${item.documentId} r${item.revision} ${item.structuralHash}`).join(" → ")}</dd>
+      <dt>Selection</dt><dd>{selectedProjectProfile.selection.id} · {
+        selectedProjectProfile.selection.structuralHash}</dd>
+      <dt>Method</dt><dd>{selectedProjectProfile.method}</dd>
+      <dt>Physical axis</dt><dd>{selectedProjectProfile.axis.name} {
+        selectedProjectProfile.axis.min}…{selectedProjectProfile.axis.max} {
+        selectedProjectProfile.axis.unit} · {selectedProjectProfile.unit}</dd></dl>
+    <button type="button" data-testid="gf07-locate-selection" onClick={locateProjectProfileSelection}
+      disabled={!project?.workspace.entries.some(item => item.module === "vector3d" &&
+        item.expected.id === selectedProjectProfile.source.documentId)}>
+      Locate selection in Field Explorer</button>
+    <button type="button" data-testid="gf07-refresh-profile" onClick={() => void refreshProjectProfile()}
+      disabled={!onAuthoringCommit || derivedProfiles.busyId !== null ||
+        !derivedProfiles.records.some(record => record.profileId === selectedProjectProfile.profileId &&
+          (record.status === "current" || record.reason === "not-computed") &&
+          !!project && !!findProjectProfileSelection(project, record.profileId))}>Refresh profile row</button>
+  </section>;
   const selectedSageExpression = selectedObject?.kind === "explicit-cartesian"
     ? selectedObject.expression.source : undefined;
   const selectedSageSource = selectedObject?.kind === "explicit-cartesian"
@@ -1585,10 +1698,14 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   };
   const selectedLinkedVectorField = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin ?
     parseVectorField3DDocument(selectedObject.linkedOrigin.vectorDocumentJson).source.field : null;
-  const selectedLinkedReady = selectedObject?.kind !== "point-series" || !selectedObject.linkedOrigin ||
+  const selectedLinkedReady = selectedObject?.kind !== "point-series" ||
+    (!selectedObject.projectProfileOrigin || projectProfileStates[selectedObject.id]?.status === "current" &&
+      (() => { const rows = pointTableStore.resolve(selectedObject.table);
+        return !!rows && structuralHash(rows) === selectedObject.projectProfileOrigin.rowsSha256; })()) &&
+    (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
-      linkedVerified(selectedObject.linkedOrigin);
+      linkedVerified(selectedObject.linkedOrigin));
   const selectedRegionOrigin = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin &&
     "region" in selectedObject.linkedOrigin &&
     !isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
@@ -3700,6 +3817,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           mount={viewerRef.current?.closest<HTMLElement>(".graph2d-workspace") ?? undefined}
           initialDocument={vectorField3DDocument ?? undefined} savedDocument={savedVectorField3D}
           project={project}
+          focusSelectionRequest={selectionFocus}
           derivedProfiles={derivedProfiles.records.filter(record => record.source.documentId ===
             (vectorField3DDocument ?? savedVectorField3D)?.identity.id)}
           onComputeDerivedProfile={derivedProfiles.compute} derivedProfileBusyId={derivedProfiles.busyId}
@@ -4133,7 +4251,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{profileCards}{savedFields}</details>}
+            {inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+            {profileCards}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
@@ -4185,7 +4304,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{profileCards}{savedFields}
+        </details>}{inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+        {profileCards}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}

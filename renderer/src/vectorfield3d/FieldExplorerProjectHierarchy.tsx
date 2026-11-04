@@ -81,7 +81,7 @@ export function FieldExplorerProjectHierarchy({ project, activeSourceId, activeS
     </details>
     <details open><summary>Selections ({selections.length})</summary>
       {selections.length ? <ul>{selections.map(item => <li key={selectionId(item)}>
-        <details><summary>{selectionSummary(item)}</summary>
+        <details data-selection-id={selectionId(item)}><summary>{selectionSummary(item)}</summary>
           <code>{selectionId(item)}</code>
           <small>{selectionGeometry(item)}</small>
           {item.source?.kind === "document" && item.source.checkpoint &&

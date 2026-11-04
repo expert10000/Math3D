@@ -121,7 +121,8 @@ export function createDefaultVectorField3DDocument(): VectorField3DDocument {
   { stableKey: crypto.randomUUID(), title: "3D vector field" });
 }
 
-export function VectorField3DPanel({ initialDocument, savedDocument, project, onSaveDocument, onClose, mount,
+export function VectorField3DPanel({ initialDocument, savedDocument, project, focusSelectionRequest,
+  onSaveDocument, onClose, mount,
   onAddGraphLine, isGraphLineImported, onAddAnalyticLine, onAddDerivedLine,
   onAddLinkedOverlayLine, onFocusRegionInGraphs, onFocusSubrectangleInGraphs,
   onPublishVectorSubrectangle, onPublishCombinedSubrectangle,
@@ -137,8 +138,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, on
   derivedProfileBusyId, derivedProfileProgress, derivedProfileError }: {
   initialDocument?: VectorField3DDocument; savedDocument?: VectorField3DDocument | null;
   project?: Math3DProject | null;
+  focusSelectionRequest?: { id: string; token: number } | null;
   derivedProfiles?: readonly DerivedProfileProvenance[];
-  onComputeDerivedProfile?: (id: string) => Promise<void>;
+  onComputeDerivedProfile?: (id: string) => Promise<unknown>;
   derivedProfileBusyId?: string | null;
   derivedProfileProgress?: string;
   derivedProfileError?: string;
@@ -213,6 +215,19 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, on
     return () => { cancelRequested.current = true; cancelRunRef.current?.(); probeEpoch.current++;
       previewEpoch.current++; previous?.focus(); };
   }, []);
+  useEffect(() => {
+    if (!focusSelectionRequest) return;
+    const frame = requestAnimationFrame(() => {
+      const target = [...(dialogRef.current?.querySelectorAll<HTMLDetailsElement>(
+        "[data-selection-id]") ?? [])].find(item => item.dataset.selectionId === focusSelectionRequest.id);
+      if (!target) return;
+      target.open = true;
+      const summary = target.querySelector<HTMLElement>("summary");
+      summary?.scrollIntoView({ block: "nearest" });
+      summary?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusSelectionRequest]);
   const onDialogKey = (event: KeyboardEvent<HTMLDivElement>) => {
     event.stopPropagation();
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
