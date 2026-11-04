@@ -472,16 +472,19 @@ Acceptance: symbolic operations are reproducible from recorded inputs and
 provenance; Sage absence is a typed capability state, not an application fault.
 
 Workbook Sage result blocks now retain the exact operation request and job ID,
-the source module/identity/revision/fingerprint, selected Local WSL or Docker
+the source module/identity/revision/fingerprint, selected Local WSL, Docker, or Private gateway
 backend, the worker-reported SageMath version, the complete result, warnings,
 and diagnostics. Surface and Geometry can both save these blocks. Reopening a
 Workbook compares its saved source identity with the current Surface definition
 or Geometry object and marks changed or missing sources in the block and outline.
-An unsaved Surface equation is tied to its app session; reopening after a restart
-marks that source unavailable because the ephemeral equation is not restored.
+The active Surface equation and source ID persist in the same app profile; reopening
+after a restart compares saved evidence with the current equation and marks edits stale.
 Freeform Sage inputs that are not linked to a saved scene source remain explicitly
-unlinked; they are not silently marked current. Hosted gateway and code-cell
-provenance are separate future work.
+unlinked; they are not silently marked current. Trusted Local WSL Workbook Sage code
+cells retain exact code, scope, job ID, version, response, warnings, and diagnostics;
+changes to code or dependencies mark evidence stale. Trust remains session scoped.
+The [provenance and live-gate record](evidence/sage-provenance-cross-runtime-2026-11-04.md)
+tracks the required Docker comparison separately from saved-result support.
 
 The bounded WSL worker and optional Docker service remain local delivery slices.
 The Phase 6 private gateway now accepts GCD and modular inverse through an
