@@ -1,4 +1,4 @@
-# Project comparison and composition (PC01–PC27)
+# Project comparison and composition (PC01–PC28)
 
 This is a read-only view of two documents or explicitly retained generations
 already saved in one Math3D Project. A
@@ -79,6 +79,23 @@ portable Project package retains the linked Note and source resources.
 This is a saved-evidence view. It does not calculate a matching element or
 measured value. PC03 and PC05 remain **Partial** for undeclared legacy frames
 and generations that were never retained.
+
+## PC28 desktop and browser acceptance
+
+The PC27 Workbook review now has a browser acceptance path: import the
+portable Project package, save the Project, reopen it after a reload, choose
+the saved Workbook, then select **Visualize → Show embedded coordinate
+review**. **Export coordinate review HTML** includes only verified Note text
+and coordinates. **Open saved marker** navigates to the exact saved comparison;
+closing it releases the viewer. The same reopen, export, marker, and cleanup
+path is checked in the desktop app.
+
+Portable packages with changed Note or Mesh sidecar bytes are refused. If a
+saved review later loses its Note or source bytes, its Workbook and published
+HTML row remain unavailable and withhold the coordinate and authored text.
+The acceptance covers the bounded Mesh/Geometry adapter. PC03 remains
+**Partial** for sources without declared coordinate frames, and PC05 remains
+**Partial** for generations that were never retained.
 
 | Starter | Saved comparison | What to check |
 | --- | --- | --- |

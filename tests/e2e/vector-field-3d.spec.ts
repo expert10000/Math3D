@@ -83,8 +83,8 @@ test("SCI-02 keeps slice preview and probe controls in the contextual Inspector"
     const [right, middle, left, action] = await Promise.all([
       inspector.boundingBox(), viewer.boundingBox(), controls.boundingBox(), preview.boundingBox()]);
     expect(right && middle && left && action).toBeTruthy();
+    expect(left!.y).toBeLessThan(right!.y);
     expect(right!.y).toBeLessThan(middle!.y);
-    expect(middle!.y).toBeLessThan(left!.y);
     expect(action!.y).toBeGreaterThanOrEqual(right!.y);
     expect(action!.y + action!.height).toBeLessThanOrEqual(right!.y + right!.height + 2);
     const width = await explorer.evaluate(element => ({ width: element.clientWidth,

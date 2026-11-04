@@ -1409,6 +1409,7 @@ budgets must be explicit before members can be combined.
 | PC25 | `feat(notes): retain saved coordinate observations` | Save a picked Mesh/Geometry coordinate as a Note bound to the exact comparison, source generations, frame and unit; show its marker only while both sources and sidecars verify. |
 | PC26 | `feat(projects): review saved coordinate observations` | Index exact coordinate Notes and verification status, open each at its own saved marker, and export a qualified multi-Note review with unavailable evidence withheld. |
 | PC27 | `feat(workbook): present saved coordinate observation reviews` | Link selected PC26 Notes by exact IDs and hashes in a Visualize block, reverify each marker and source byte, and retain qualified HTML and portable reports. |
+| PC28 | `test(projects): accept coordinate review across desktop and browser` | Reopen a portable PC27 review in the browser, refuse changed Note and source bytes, check unavailable Workbook and HTML rows, and verify marker navigation and viewer cleanup on both delivery surfaces. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1536,6 +1537,18 @@ retain their IDs but withhold the coordinate and Note text. Verified markers
 open the existing saved comparison viewer. Restart, portable publication,
 tampering, and viewer cleanup have focused acceptance checks. PC03 and PC05
 remain **Partial** for undeclared legacy frames and unretained generations.
+PC28 is complete for the bounded coordinate review path. Browser acceptance
+imports a portable Mesh/Geometry Project, saves and reopens its Workbook in
+both configured locales, exports verified HTML, navigates to the exact saved
+marker, and checks viewer detach. Changed Note or Mesh sidecar bytes are
+rejected on portable import. Focused evidence tests show missing Notes,
+missing resources, and altered source bytes as unavailable Workbook and
+publication rows with coordinates and authored text withheld. Electron
+acceptance creates and reopens a saved coordinate review, exports HTML,
+navigates to its marker, and checks WebGL viewer release. This qualifies the
+current Mesh/Geometry adapter; it does not create metadata for legacy sources
+or recover generations that were never retained. PC03 and PC05 remain
+**Partial** under those existing limits.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
