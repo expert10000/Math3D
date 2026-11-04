@@ -94,6 +94,8 @@ import { VectorField3DLICPanel } from "./VectorField3DLICPanel";
 import { VectorField3DDerivedOperationsPanel } from "./VectorField3DDerivedOperationsPanel";
 import { VectorField3DDerivedIsosurfacePanel } from "./VectorField3DDerivedIsosurfacePanel";
 import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfacePanel";
+import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPanel";
+import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import "./fieldExplorerHierarchy.css";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -141,7 +143,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionResult, onOpenProjectResults, onPromoteIsosurface,
   onSaveLineIntegralSelection, onSaveLineIntegralResult,
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
-  onSaveTrajectorySeeds, onPromoteTrajectoryCurve,
+  onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
+  onSaveComparisonResult,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
@@ -199,6 +202,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralResult?: (document: VectorField3DDocument, result: AnalysisResultEnvelope) => void;
   onSaveTrajectorySeeds?: (document: VectorField3DDocument, selection: ScientificSelection) => void;
   onPromoteTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
+  onPromoteLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
+  onSaveComparisonResult?: (result: AnalysisResultEnvelope) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
   onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
@@ -2756,6 +2761,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
             "linked; reverify before new analysis" : "stale field revision"}
         </li>)}</ul>
       </details>}
+      <VectorField3DLocalTopologyPanel document={document} search={equilibriumSearch}
+        selectedIndex={selectedEquilibrium} project={project}
+        onPromote={onPromoteLocalSeparatrix} />
+      <VectorField3DComparisonPanel document={document} project={project}
+        onSave={onSaveComparisonResult} />
     </section>
     {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">
       <h5>Slice appearance and verification</h5>

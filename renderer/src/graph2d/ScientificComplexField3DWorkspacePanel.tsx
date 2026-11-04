@@ -6,6 +6,7 @@ import { canonicalJsonStringify, createGraph2DFieldReference, inspectGraph2DFiel
   type ScientificFieldDocument } from "@math3d/core";
 import { ScientificComplexVolumeLinesPanel, type ScientificComplexVolumeLineSelection } from
   "./ScientificComplexVolumeLinesPanel";
+import { ScientificComplexPlaneAnalysisPanel } from "./ScientificComplexPlaneAnalysisPanel";
 import { invalidateVerifiedScientificFieldResults } from "./verifiedScientificFieldCache";
 
 type Verified = Readonly<{ manifestJson: string; fingerprint: string }>;
@@ -165,6 +166,11 @@ export function ScientificComplexField3DWorkspacePanel({ initialDocument, graphD
       <p role="status">{busy ? "Reverifying both components…" : verified ?
         "Both source components verified on this opening." : "No verified field is ready."}</p>
       {error && <p role="alert">{error}</p>}
+      {verified && paired && <ScientificComplexPlaneAnalysisPanel
+        manifestJson={verified.manifestJson} fingerprint={verified.fingerprint}
+        reference={reference}
+        normalAxis={document.source.display.normalAxis ?? 2}
+        fixedIndex={document.source.display.fixedIndex ?? Math.floor(reference.shape[2]! / 2)} />}
       {verified && paired && <ScientificComplexVolumeLinesPanel
         key={reference.sceneFingerprint} manifestJson={verified.manifestJson}
         fingerprint={verified.fingerprint} locator={reference.locator}

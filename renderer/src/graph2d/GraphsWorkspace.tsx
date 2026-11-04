@@ -259,6 +259,8 @@ type Props = {
   onSaveVectorField3DTrajectorySeeds?: (document: VectorField3DDocument,
     selection: import("@math3d/core").ScientificSelection) => void;
   onPromoteVectorField3DTrajectoryCurve?: (promotion: import("@math3d/core").TrajectoryCurvePromotion) => void;
+  onPromoteVectorField3DLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
+  onSaveVectorField3DComparisonResult?: (result: import("@math3d/core").AnalysisResultEnvelope) => void;
   onAppendVectorField3DDerivedOperation?: (inputId: string,
     operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
@@ -291,6 +293,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DLineIntegralSelection, onSaveVectorField3DLineIntegralResult,
   onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
   onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
+  onPromoteVectorField3DLocalSeparatrix, onSaveVectorField3DComparisonResult,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
@@ -3886,6 +3889,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveRegionIntegralResult={onSaveVectorField3DRegionIntegralResult}
           onSaveTrajectorySeeds={onSaveVectorField3DTrajectorySeeds}
           onPromoteTrajectoryCurve={onPromoteVectorField3DTrajectoryCurve}
+          onPromoteLocalSeparatrix={onPromoteVectorField3DLocalSeparatrix}
+          onSaveComparisonResult={onSaveVectorField3DComparisonResult}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
           onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
           onOpenProjectResults={onOpenVectorField3DProjectResults}

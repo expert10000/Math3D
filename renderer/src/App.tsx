@@ -811,6 +811,8 @@ import {
   upsertProjectRegionResult,
   upsertProjectTrajectorySeedRecipe,
   upsertProjectTrajectoryCurve,
+  upsertProjectLocalSeparatrix,
+  upsertProjectVectorField3DComparison,
   appendProjectDerivedField,
   createVolumeDocument,
   createViewerProvenanceEvidence,
@@ -90739,6 +90741,21 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTrajectoryCurve(active, promotion);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onPromoteVectorField3DLocalSeparatrix={promotion => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectLocalSeparatrix(active, promotion);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(promotion.source);
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DComparisonResult={result => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectVectorField3DComparison(active, result);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}
