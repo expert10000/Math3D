@@ -115,7 +115,8 @@ export async function chooseTheoryLabTarget(win: BrowserWindow): Promise<TheoryL
   return target;
 }
 
-export async function launchTheoryLab(target: TheoryLabTarget, runId: string, resultSha256: string): Promise<void> {
+export async function launchTheoryLab(target: TheoryLabTarget, runId: string, resultSha256: string,
+  mode: "open" | "fork" = "open"): Promise<void> {
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(runId) || !/^[a-f0-9]{64}$/.test(resultSha256))
     throw new Error("Invalid verified source-run identity");
   const env = { ...process.env };
@@ -130,7 +131,7 @@ export async function launchTheoryLab(target: TheoryLabTarget, runId: string, re
   await new Promise<void>((done, fail) => {
     const child = spawn(target.executable,
       [...debugArgs, ...(target.kind === "checkout" ? [target.directory] : []),
-        "--quantum-source-run", runId, resultSha256],
+        mode === "fork" ? "--quantum-source-fork" : "--quantum-source-run", runId, resultSha256],
       { cwd: target.directory, env, detached: true, stdio: "ignore", windowsHide: true });
     child.once("error", fail);
     child.once("spawn", () => { child.unref(); done(); });

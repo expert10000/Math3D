@@ -47,6 +47,8 @@ export type Math3DWorkerOperationId =
   | "ideal.eliminate"
   | "ideal.membership"
   | "ideal.quotient-dimension"
+  | "ideal.syzygies"
+  | "ideal.hilbert-series"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -393,6 +395,16 @@ const definitions = [
   {
     id: "ideal.quotient-dimension",
     title: "Pinned quotient ring dimension",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.syzygies",
+    title: "Saved ideal generator syzygies",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.hilbert-series",
+    title: "Graded quotient Hilbert series",
     canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

@@ -11,6 +11,7 @@ import { parseSageIntegerMatrixFormsInput, parseSageIntegerMatrixFormsResult,
   type SageIntegerMatrixFormsResult } from "./sageIntegerMatrixForms";
 import { buildSageIdealInput, parseSageIdealResult, type SageIdealResult,
   type SageIdealOperation } from "./sageIdealOperations";
+import { isProvablyHomogeneousIdeal } from "./algebraIdealGrading";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
@@ -32,6 +33,8 @@ export type AlgebraOperationArguments = {
   "sage.ideal.eliminate": Readonly<{ eliminate: readonly string[] }>;
   "sage.ideal.membership": Readonly<{ polynomial: string }>;
   "sage.ideal.quotientDimension": Readonly<Record<string, never>>;
+  "sage.ideal.syzygies": Readonly<Record<string, never>>;
+  "sage.ideal.hilbertSeries": Readonly<Record<string, never>>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult |
@@ -83,6 +86,10 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
   definition("sage.ideal.quotientDimension", "Quotient dimension", "ideal", ["quotient-ring"], "any", "ideal.quotient-dimension",
     ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.syzygies", "Generator syzygies", "ideal", ["ideal"], "any", "ideal.syzygies",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.hilbertSeries", "Quotient Hilbert series", "ideal", ["quotient-ring"], "any", "ideal.hilbert-series",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
 ]);
 const byId = new Map(ALGEBRA_OPERATION_REGISTRY.map((item) => [item.id, item]));
 if (byId.size !== ALGEBRA_OPERATION_REGISTRY.length) throw new Error("Duplicate algebra operation ID.");
@@ -115,6 +122,12 @@ const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
         ring.definition.variables.length > 3 || ideal.definition.generators.length > 6 ||
         ideal.definition.generators.some((item) => item.length > 128))
       return "Bounded ideal operations require a pinned QQ polynomial ring with at most three variables and six short generators.";
+    if ((operation.id === "sage.ideal.syzygies" || operation.id === "sage.ideal.hilbertSeries") &&
+        (ring.definition.variables.length > 2 || ideal.definition.generators.length > 3))
+      return "Advanced ideal operations require at most two variables and three generators.";
+    if (operation.id === "sage.ideal.hilbertSeries" && (ring.definition.monomialOrder === "lex" ||
+        !isProvablyHomogeneousIdeal(ideal.definition.generators, ring.definition.variables)))
+      return "Hilbert series requires a graded monomial order and provably homogeneous generators.";
   }
   if (operation.domain === "any") return null;
   const polynomial = record.definition.kind === "polynomial-ring" ? record.definition : null;

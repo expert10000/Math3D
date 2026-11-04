@@ -7,6 +7,8 @@
 **Scope:** standalone Quantum Hamiltonian Lab, Python backend, verified scientific artifacts, Math3D quantum scene handler, shared scientific workspace and future scientific-runtime integration<br>
 **Review basis:** Math3D `origin/main` at `a5af9483`; Theory Lab `main` at `3c883fa4`; current source, project roadmaps and the SHA-256-checked visual review archive
 
+**QI-04–06 QWZ implementation note (2026-11-04):** Theory Lab now has versioned QWZ scene recipes with byte-stable golden manifests. Math3D persists reciprocal same-result links for two scene documents and opens a relocated content-addressed `.qpack` through the Project panel. See [`qwz-scene-recipes.md`](https://github.com/expert10000/theory-lab/blob/main/docs/qwz-scene-recipes.md) and [`quantum-qi05-06-project-portability.md`](quantum-qi05-06-project-portability.md). Model-wide recipe admission, scientific-scene pack members and general artifact lifecycle remain later work.
+
 ---
 
 ## 0. Executive direction
@@ -736,6 +738,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Add a separately authorized fork request, new-run lineage and errors; no direct Python calls from Math3D UI.
 
 **Done when:** exact source opening still passes, while a fork creates a new Lab run linked to the parent and leaves the old result and scene unchanged.
+
+**Implementation note (2026-11-04):** QI-07–09 are delivered for the existing verified viewers and the saved QWZ two-view study slice. The handler registry routes the current field/geometry families; Lab writes an exact QWZ curvature/bands study handoff that Math3D independently verifies before Project admission; a separate fork launch requires an additional Lab click and uses saved-rerun lineage. See [QI-07–09 implementation details](quantum-qi07-09-handlers-study-fork.md). Broader Lab study sets remain future recipes.
 
 ### QI-10 — Source / Derived / Display semantics
 

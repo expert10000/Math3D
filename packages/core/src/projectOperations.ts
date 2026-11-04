@@ -4,6 +4,7 @@ import { parseMath3DProject, serializeMath3DProject, replaceMath3DProjectWorkspa
 import { createMixedWorkspaceDocument, type KernelWorkspaceDocument } from "./mixedWorkspace";
 import { buildProjectExplorer } from "./projectExplorer";
 import { viewerSourceFromDocument } from "./viewerProvenance";
+import { linkQuantumSceneDocuments, type QuantumSceneDocument } from "./quantumSceneDocument";
 
 const requireProject = (project: Math3DProject) => parseMath3DProject(serializeMath3DProject(project));
 const requireEntry = (project: Math3DProject, id: string) => {
@@ -55,8 +56,12 @@ export const deleteProjectDocument = (project: Math3DProject, id: string): Math3
   const current = requireProject(project), impact = inspectProjectDocumentDelete(current, id);
   if (!impact.canDelete) throw new TypeError("Delete blocked: dependent documents, results, artifacts or construction references remain.");
   const results = new Set(impact.ownedResultIds);
+  const retainedEntries = current.workspace.entries.filter(entry => entry.expected.id !== id);
+  const linked = new Map(linkQuantumSceneDocuments(retainedEntries.filter(entry => entry.module === "quantum")
+    .map(entry => entry.checkpoint as QuantumSceneDocument)).map(document => [document.source.sceneFingerprint, document]));
   const workspace = createMixedWorkspaceDocument({ ...current.workspace,
-    entries: current.workspace.entries.filter((entry) => entry.expected.id !== id),
+    entries: retainedEntries.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"
+      ? { ...entry, checkpoint: linked.get(entry.checkpoint.source.sceneFingerprint)! } : entry),
     ...(current.workspace.scientificSelections === undefined ? {} : { scientificSelections:
       current.workspace.scientificSelections.filter((selection) =>
         selection.identity.kind !== "authored" ||

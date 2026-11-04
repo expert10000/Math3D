@@ -423,6 +423,8 @@ export type SageOperation =
   | "sage.ideal.eliminate"
   | "sage.ideal.membership"
   | "sage.ideal.quotientDimension"
+  | "sage.ideal.syzygies"
+  | "sage.ideal.hilbertSeries"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.topology.integer_homology"
@@ -537,11 +539,28 @@ contextBridge.exposeInMainWorld("topologyDocuments", {
 });
 
 contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
+  consumeStudyLaunch: (): Promise<
+    { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+      references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:consumeStudyLaunch"),
+  openStudyHandoff: (): Promise<
+    { ok: true; canceled: false; mode: "new" | "attach"; title: string; runId: string; resultSha256: string;
+      references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openStudyHandoff"),
   theoryLabTargetStatus: (): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
     ipcRenderer.invoke("quantumScenes:theoryLabTargetStatus"),
   configureTheoryLabTarget: (kind: "installed" | "checkout"): Promise<import("./main/quantumScene/theoryLabLaunch").TheoryLabTargetStatus> =>
     ipcRenderer.invoke("quantumScenes:configureTheoryLabTarget", kind),
   open: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:open"),
+  exportPortableProject: (request: { projectJson: string; references: { sceneFingerprint: string; directory: string }[] }): Promise<
+    { ok: true; canceled: false; directory: string } | { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:exportPortableProject", request),
+  openPortableProject: (): Promise<
+    { ok: true; canceled: false; projectJson: string; references: { sceneFingerprint: string; directory: string }[] } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openPortableProject"),
   examples: (): Promise<QuantumSceneExampleSummary[]> => ipcRenderer.invoke("quantumScenes:examples"),
   openExample: (id: string): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openExample", id),
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
@@ -564,6 +583,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:openSourceRun", { fingerprint }),
+  forkSourceRun: (fingerprint: string): Promise<
+    { ok: true; canceled: false; runId: string; resultSha256: string } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:forkSourceRun", { fingerprint }),
   openStudySourceRun: (request: StudySourceRunRequest): Promise<
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>

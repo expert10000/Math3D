@@ -386,7 +386,8 @@ def _ideal_operation(operation, params):
     common = {"format", "schemaVersion", "target", "targetHash", "ideal", "idealHash",
         "ambientRing", "ambientHash", "variables", "monomialOrder", "generators"}
     extra = {"sage.ideal.groebner": set(), "sage.ideal.eliminate": {"eliminate"},
-        "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set()}[operation]
+        "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set(),
+        "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set()}[operation]
     _require_exact_fields(params, common | extra, "ideal request")
     if params["format"] != "math3d.sage-ideal-operation" or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
         raise SageRequestError("Ideal request requires the versioned exact schema.")
@@ -401,6 +402,9 @@ def _ideal_operation(operation, params):
     generators = params["generators"]
     if not isinstance(generators, list) or not 1 <= len(generators) <= 6 or len(set(generators)) != len(generators):
         raise SageRequestError("Ideal operations require one to six distinct generators.")
+    if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries") and \
+            (len(variables) > 2 or len(generators) > 3):
+        raise SageRequestError("Advanced ideal operations require at most two variables and three generators.")
     ring = PolynomialRing(QQ, variables, order=order)
     def polynomial(source):
         if not isinstance(source, str) or len(source) > 128 or "**" in source or \
@@ -420,7 +424,20 @@ def _ideal_operation(operation, params):
     ideal = ring.ideal(polys)
     shared = {"format": "math3d.sage-ideal-result", "schemaVersion": 1,
         "target": params["target"], "targetHash": params["targetHash"], "idealHash": params["idealHash"]}
-    if operation == "sage.ideal.quotientDimension":
+    if operation == "sage.ideal.syzygies":
+        module = ideal.syzygy_module()
+        rows = [[str(value) for value in row] for row in module.rows()]
+        if module.ncols() != len(polys) or any(sum(row[index] * polys[index]
+                for index in range(len(polys))) != 0 for row in module.rows()):
+            raise SageRequestError("Sage syzygy rows do not annihilate the pinned generators.")
+        result = {**shared, "syzygies": rows, "generatorCount": len(polys)}
+    elif operation == "sage.ideal.hilbertSeries":
+        if order == "lex" or not ideal.is_homogeneous():
+            raise SageRequestError("Hilbert series requires a graded monomial order and a homogeneous ideal.")
+        result = {**shared, "series": str(ideal.hilbert_series()),
+            "numerator": str(ideal.hilbert_numerator()), "dimension": int(ideal.dimension()),
+            "grading": "standard"}
+    elif operation == "sage.ideal.quotientDimension":
         quotient = ring.quotient(ideal)
         result = {**shared, "dimension": int(ideal.dimension()), "quotientPresentation": str(quotient)}
     elif operation == "sage.ideal.eliminate":
@@ -441,6 +458,11 @@ def _ideal_operation(operation, params):
         raise SageRequestError("Ideal basis exceeds the bounded output budget.")
     if "normalForm" in result and len(result["normalForm"]) > 1024:
         raise SageRequestError("Ideal normal form exceeds the bounded output budget.")
+    if "syzygies" in result and (len(result["syzygies"]) > 128 or
+            any(len(entry) > 1024 for row in result["syzygies"] for entry in row)):
+        raise SageRequestError("Syzygy output exceeds the bounded result budget.")
+    if "series" in result and (len(result["series"]) > 1024 or len(result["numerator"]) > 1024):
+        raise SageRequestError("Hilbert output exceeds the bounded result budget.")
     if len(str(result)) > 65536:
         raise SageRequestError("Ideal result exceeds the bounded output budget.")
     return _success(operation, result)
@@ -735,6 +757,16 @@ def _complex_analysis(operation, params):
 
 
 
+def _ideal_capability_available(method):
+    try:
+        probe_ring = PolynomialRing(QQ, ["x", "y"], order="degrevlex")
+        x, y = probe_ring.gens()
+        getattr(probe_ring.ideal([x, y]), method)()
+        return True
+    except Exception:
+        return False
+
+
 OPERATIONS = {
     "sage.algebra.reconstruct": lambda op, params: _success(op, reconstruct_algebra(params)),
     "sage.algebra.inspectDomains": lambda op, params: _success(op, inspect_algebra_domains(params)),
@@ -762,6 +794,11 @@ OPERATIONS = {
     "sage.topology.integer_homology": _topology_integer_homology,
     "sage.complex.analyze": _complex_analysis,
 }
+if _ideal_capability_available("syzygy_module"):
+    OPERATIONS["sage.ideal.syzygies"] = _ideal_operation
+if _ideal_capability_available("is_homogeneous") and _ideal_capability_available("hilbert_series") and \
+        _ideal_capability_available("hilbert_numerator"):
+    OPERATIONS["sage.ideal.hilbertSeries"] = _ideal_operation
 
 
 def run_payload(payload):

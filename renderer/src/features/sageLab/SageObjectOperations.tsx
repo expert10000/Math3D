@@ -12,7 +12,8 @@ const field = { width: "100%", boxSizing: "border-box" as const, padding: 6, fon
 const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObjectRef):
   AlgebraOperationArguments[AlgebraOperationId] => {
   if (id === "sage.algebra.reconstruct") return {};
-  if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension") return {};
+  if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
+      id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return {};
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()) };
   if (id === "sage.ideal.membership") return { polynomial: text.trim() };
   if (id === "sage.algebra.inspectDomains") return { other };
@@ -111,6 +112,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
         </select></label>}
       {selected !== "sage.algebra.reconstruct" && selected !== "sage.algebra.inspectDomains" &&
         selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
+        selected !== "sage.ideal.syzygies" && selected !== "sage.ideal.hilbertSeries" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
           selected === "sage.ideal.membership" ? "Polynomial to test" :
           selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :

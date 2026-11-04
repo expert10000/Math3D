@@ -168,6 +168,18 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       facts.push(fact("Quotient", text(result.quotientPresentation)), fact("Krull dimension", text(result.dimension)));
       checks.push(check("Dimension computation", "reported", "Sage computed the dimension of the pinned ideal and quotient."));
       break;
+    case "sage.ideal.syzygies":
+      facts.push(fact("Ideal generators", list(params.generators)),
+        fact("Generator syzygies", matrix(result.syzygies)));
+      checks.push(check("Syzygy identities", "reported",
+        "The Sage worker checked that every returned row annihilates the pinned generators; the app checks its shape and identity."));
+      break;
+    case "sage.ideal.hilbertSeries":
+      facts.push(fact("Standard graded quotient", "R/I"), fact("Hilbert series", text(result.series)),
+        fact("Hilbert numerator", text(result.numerator)), fact("Krull dimension", text(result.dimension)));
+      checks.push(check("Grading and Hilbert computation", "reported",
+        "The pinned generators passed the conservative homogeneous syntax gate; Sage checked homogeneity and computed the standard graded quotient series."));
+      break;
     case "sage.matrix.linear_dossier":
       facts.push(fact("Source matrix", matrix(result.sourceMatrix)), fact("Rank", text(result.rank)),
         fact("RREF", matrix(result.reducedRowEchelonForm)),

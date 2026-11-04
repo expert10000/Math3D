@@ -19,6 +19,12 @@ export type QuantumSceneDocumentSource = Readonly<{
   datasets: readonly Readonly<{ id: string; sha256: string; count: number; components: number; unit: string; bytes: number }>[];
   objects: readonly Readonly<{ id: string; kind: string; label: string }>[];
 }>;
+export type QuantumSceneLinkedView = Readonly<{
+  relation: "same-result"; sceneFingerprint: string; role: "curvature" | "bands" | "other";
+}>;
+export type QuantumSceneViewState = Readonly<{
+  selectedObjectId?: string; sampleIndex?: number;
+}>;
 export type QuantumSceneDocument = Readonly<{
   format: typeof QUANTUM_SCENE_DOCUMENT_FORMAT;
   schemaVersion: typeof QUANTUM_SCENE_DOCUMENT_SCHEMA_VERSION;
@@ -26,7 +32,13 @@ export type QuantumSceneDocument = Readonly<{
   source: QuantumSceneDocumentSource;
   location: Readonly<{ directory: string }>;
   metadata: Readonly<{ title: string }>;
+  linkedViews?: readonly QuantumSceneLinkedView[];
+  view?: QuantumSceneViewState;
 }>;
+
+export const quantumSceneRole = (source: QuantumSceneDocumentSource): QuantumSceneLinkedView["role"] =>
+  source.objects.some(object => object.id === "berry-curvature") ? "curvature" :
+    source.objects.some(object => object.id === "band-0") ? "bands" : "other";
 
 const validSource = (value: unknown): value is QuantumSceneDocumentSource => {
   if (!record(value) || !exact(value, ["sceneSchema", "sceneId", "sceneFingerprint", "provenance", "coordinates", "datasets", "objects"]) ||
@@ -56,13 +68,28 @@ const validSource = (value: unknown): value is QuantumSceneDocumentSource => {
 export const normalizeQuantumSceneDocument = (value: unknown): ValidationResult<QuantumSceneDocument> => {
   try {
     if (canonicalJsonByteLength(value) > 256 * 1024 || !record(value) ||
-      !exact(value, ["format", "schemaVersion", "identity", "source", "location", "metadata"]) ||
+      !["format", "schemaVersion", "identity", "source", "location", "metadata"].every(key => key in value) ||
+      Object.keys(value).some(key => !["format", "schemaVersion", "identity", "source", "location", "metadata", "linkedViews", "view"].includes(key)) ||
       value.format !== QUANTUM_SCENE_DOCUMENT_FORMAT || value.schemaVersion !== QUANTUM_SCENE_DOCUMENT_SCHEMA_VERSION ||
       !isDocumentIdentity(value.identity) || !value.identity.id.startsWith("math3d:quantum-scene:") ||
       !validSource(value.source) || !record(value.location) || !exact(value.location, ["directory"]) ||
       !text(value.location.directory, 2048) || /[\x00-\x1f]/.test(value.location.directory) ||
       !record(value.metadata) || !exact(value.metadata, ["title"]) || !text(value.metadata.title))
       return { ok: false, errors: ["Invalid quantum-scene document."] };
+    if (value.linkedViews !== undefined && (!Array.isArray(value.linkedViews) || value.linkedViews.length < 1 || value.linkedViews.length > 15 ||
+      value.linkedViews.some((link: unknown) => !record(link) || !exact(link, ["relation", "sceneFingerprint", "role"]) ||
+        link.relation !== "same-result" || !sha(link.sceneFingerprint) || link.sceneFingerprint === (value.source as QuantumSceneDocumentSource).sceneFingerprint ||
+        !["curvature", "bands", "other"].includes(String(link.role))) ||
+      new Set(value.linkedViews.map((link: QuantumSceneLinkedView) => link.sceneFingerprint)).size !== value.linkedViews.length ||
+      value.linkedViews.some((link: QuantumSceneLinkedView, index: number) => index > 0 &&
+        (value.linkedViews as QuantumSceneLinkedView[])[index - 1].sceneFingerprint >= link.sceneFingerprint)))
+      return { ok: false, errors: ["Invalid quantum-scene linked views."] };
+    if (value.view !== undefined && (!record(value.view) || Object.keys(value.view).some(key => !["selectedObjectId", "sampleIndex"].includes(key)) ||
+      (value.view.selectedObjectId !== undefined && (!text(value.view.selectedObjectId, 128) ||
+        !(value.source as QuantumSceneDocumentSource).objects.some(object => object.id === (value.view as Record<string, unknown>).selectedObjectId))) ||
+      (value.view.sampleIndex !== undefined && (!Number.isSafeInteger(value.view.sampleIndex) ||
+        Number(value.view.sampleIndex) < 0 || Number(value.view.sampleIndex) > 300000))))
+      return { ok: false, errors: ["Invalid quantum-scene view state."] };
     if (value.identity.id !== createStableDocumentId("quantum-scene", { sceneFingerprint: value.source.sceneFingerprint }) ||
       value.identity.structuralHash !== structuralHash(value.source))
       return { ok: false, errors: ["Quantum-scene source identity hash changed."] };
@@ -84,3 +111,31 @@ export const relocateQuantumSceneDocument = (document: QuantumSceneDocument, dir
   if (!checked.ok) throw new TypeError(checked.errors.join(" "));
   return checked.value;
 };
+
+export const updateQuantumSceneView = (document: QuantumSceneDocument, view: QuantumSceneViewState): QuantumSceneDocument => {
+  const checked = normalizeQuantumSceneDocument({ ...document, view });
+  if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+  return checked.value;
+};
+
+/** Link only scenes with the same exact result identity; preserve each view and v1 document reader. */
+export const linkQuantumSceneDocuments = (documents: readonly QuantumSceneDocument[]): QuantumSceneDocument[] =>
+  documents.map(document => {
+    const siblings = documents.filter(other => other.source.sceneFingerprint !== document.source.sceneFingerprint &&
+      other.source.provenance.runId === document.source.provenance.runId &&
+      other.source.provenance.resultSha256 === document.source.provenance.resultSha256 &&
+      other.source.provenance.model === document.source.provenance.model);
+    if (!siblings.length) {
+      if (!document.linkedViews?.length) return document;
+      const { linkedViews: _removed, ...unlinked } = document;
+      const checked = normalizeQuantumSceneDocument(unlinked);
+      if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+      return checked.value;
+    }
+    const linkedViews = siblings.map(other => ({ relation: "same-result" as const,
+      sceneFingerprint: other.source.sceneFingerprint, role: quantumSceneRole(other.source) }))
+      .sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
+    const checked = normalizeQuantumSceneDocument({ ...document, linkedViews });
+    if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+    return checked.value;
+  });

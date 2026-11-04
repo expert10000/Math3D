@@ -526,6 +526,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-C02–C04](evidence/sage-c02-c04-ideal-workflows-2026-11-04.md) now adds bounded Gröbner and elimination recipes for saved ideals, typed membership with positive and negative normal forms, and versioned quotient rings with pinned dimension evidence. Exact local Sage 9.5 fixtures and a fresh-profile desktop Project reopen pass. The next feature gate is **SAGE-C05**; the real B08 Docker Sage 10.10 comparison remains open.
 
+[SAGE-C05](evidence/sage-c05-syzygy-hilbert-capabilities-2026-11-04.md) adds runtime-advertised ideal syzygies and standard graded quotient Hilbert series with pinned Project evidence. Unsupported grading, homogeneity, size and runtime cases have explicit reasons. The next feature gate is **SAGE-C06**; B08's live Docker Sage 10.10 comparison remains open.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate
