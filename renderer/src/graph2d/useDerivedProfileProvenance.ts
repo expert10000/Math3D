@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildDerivedProfileProvenance, type DerivedProfileProvenance,
-  type Math3DProject, type VectorField3DDocument } from "@math3d/core";
+  type DerivedFieldProfileResult, type Math3DProject, type VectorField3DDocument } from "@math3d/core";
 import { createDerivedFieldProfileJob } from "@math3d/kernel";
 
 const verifySource = (source: VectorField3DDocument) => source.source.field.kind === "expressions";
@@ -25,16 +25,17 @@ export function useDerivedProfileProvenance(project: Math3DProject | null | unde
       catch { return []; }
     });
   }, [project, job, version]);
-  const compute = async (id: string) => {
-    if (busyId) return;
+  const compute = async (id: string): Promise<DerivedFieldProfileResult | null> => {
+    if (busyId) return null;
     setBusyId(id); setError(""); setProgress("");
     try {
       const outcome = await job.submit(id, { onProgress: (completed, total) =>
         setProgress(`${completed}/${total} samples computed`) }).promise;
       if (outcome.publication !== "published")
         setError(`Profile result withheld: ${outcome.publication}.`);
-    } catch (cause) { setError(String((cause as Error).message ?? cause)); }
+      return outcome.publication === "published" ? outcome.result : null;
+    } catch (cause) { setError(String((cause as Error).message ?? cause)); return null; }
     finally { setBusyId(null); setVersion(current => current + 1); }
   };
-  return { records, compute, busyId, progress, error };
+  return { records, compute, read: (id: string) => job.read(id), busyId, progress, error };
 }
