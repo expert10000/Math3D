@@ -1410,6 +1410,7 @@ budgets must be explicit before members can be combined.
 | PC26 | `feat(projects): review saved coordinate observations` | Index exact coordinate Notes and verification status, open each at its own saved marker, and export a qualified multi-Note review with unavailable evidence withheld. |
 | PC27 | `feat(workbook): present saved coordinate observation reviews` | Link selected PC26 Notes by exact IDs and hashes in a Visualize block, reverify each marker and source byte, and retain qualified HTML and portable reports. |
 | PC28 | `test(projects): accept coordinate review across desktop and browser` | Reopen a portable PC27 review in the browser, refuse changed Note and source bytes, check unavailable Workbook and HTML rows, and verify marker navigation and viewer cleanup on both delivery surfaces. |
+| PC29 | `test(projects): qualify the saved comparison release path` | Exercise retained Mesh generations, saved result trends and A/B pairs, Workbook and coordinate reviews in one portable Project across Electron and browser; check restart, HTML export, changed or missing evidence, and viewer cleanup. |
 
 PC01, PC02, and PC04 are delivered for the bounded adapters. PC03 checks two
 source-declared coordinate frames when present and refuses mismatches, but remains
@@ -1549,6 +1550,23 @@ navigates to its marker, and checks WebGL viewer release. This qualifies the
 current Mesh/Geometry adapter; it does not create metadata for legacy sources
 or recover generations that were never retained. PC03 and PC05 remain
 **Partial** under those existing limits.
+PC29 is complete for the supported saved-comparison adapters, using one
+portable Project fixture with three retained Mesh quality results, three
+saved A/B pairs, a Mesh/Geometry comparison and an authored coordinate Note.
+The Electron and browser flows import, save, restart, open an exact retained
+Mesh generation, inspect the result trend and a compatible A/B pair, reopen
+the Workbook coordinate review, export HTML, navigate to its exact marker,
+and release the comparison viewer. The browser gate runs in both en-US/UTC
+and pl-PL/Auckland. Unit acceptance checks missing and altered Mesh sidecars,
+withholds unverified values and authored Note text from Workbook HTML, and
+rejects changed Note or sidecar bytes on portable import. The browser gate
+also refuses both changed portable inputs. Run `npm run test:projects:pc29`;
+the 2026-11-04 gate passed (3 unit, 1 Electron, 4 browser checks; no failures),
+the [acceptance record](docs/project-comparison-and-composition.md#pc29--comparison-release-acceptance)
+names the exact covered paths. PC29 does not add a new comparison adapter.
+PC03 remains **Partial** for legacy sources without declared coordinate
+frames. PC05 remains **Partial** for generations never explicitly retained
+and unsupported cross-model selection mapping.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific
