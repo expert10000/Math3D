@@ -308,6 +308,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **B07 implementation update (2026-11-04):** The [B07 acceptance record](evidence/sage-b07-recipe-dag-2026-11-04.md) adds versioned algebra recipe graphs to `.math3d` Projects and enables CAS → Algebra → Recipes. Each bounded stage pins an object revision and output schema; dependency edges are typed and cycle-checked. The runner commits successful stage evidence separately, skips descendants of failures, continues independent branches and retains completed evidence on cancellation. Saved starters cover supported integer, rational, modular, finite-field and polynomial objects. The next gate is **SAGE-B08**, polynomial and matrix golden fixtures.
 
+**B08 implementation update (2026-11-04):** The [B08 acceptance record](evidence/sage-b08-operation-goldens-2026-11-04.md) and versioned fixture corpus add exact polynomial, `QQ` matrix and `ZZ` Smith/Hermite outcomes plus invalid-input cases. All 16 cases pass on the local Sage 9.5 worker implementation; a controlled HTTP response proves the comparison and mismatch checks. The Docker Sage 10.10 route is unavailable on this PC, so live cross-version acceptance remains open and `--require-docker` fails until it can run. The next feature gate is **SAGE-C01**, Project ideal objects and an Inspector.
+
 ---
 
 ## 3. P0 — Algebra object registry
