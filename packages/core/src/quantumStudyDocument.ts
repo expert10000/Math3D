@@ -36,7 +36,7 @@ export function normalizeQuantumStudyDocument(value: unknown,
     if (!record(panel) || Object.keys(panel).sort().join() !== "role,sampleIndex,sceneFingerprint,selectedObjectId" ||
         typeof panel.role !== "string" || !token.test(panel.role) ||
         typeof panel.sceneFingerprint !== "string" || !hash.test(panel.sceneFingerprint) || seen.has(panel.sceneFingerprint) ||
-        !(panel.sampleIndex === null || Number.isSafeInteger(panel.sampleIndex) && Number(panel.sampleIndex) >= 0) ||
+        !(panel.sampleIndex === null || Number.isSafeInteger(panel.sampleIndex) && Number(panel.sampleIndex) >= 0 && Number(panel.sampleIndex) <= 300000) ||
         !(panel.selectedObjectId === null || typeof panel.selectedObjectId === "string" && token.test(panel.selectedObjectId)))
       return { ok: false, errors: ["Invalid quantum study panel."] };
     seen.add(panel.sceneFingerprint);

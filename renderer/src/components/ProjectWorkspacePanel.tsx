@@ -198,6 +198,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [comparisonA, setComparisonA] = useState("");
   const [comparisonB, setComparisonB] = useState("");
   const [quantumComparison, setQuantumComparison] = useState<Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["compare"]>> | null>(null);
+  const [studySampleDraft, setStudySampleDraft] = useState<Record<string, string>>({});
+  const [studyProjection, setStudyProjection] = useState("");
   const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string;
     resultSha256: string; references: ProjectQuantumSceneReference[] } | null>(null);
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
@@ -1853,8 +1855,42 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                           return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...current.workspace, quantumStudies }));
                         }); }}><option value="">No selection</option>{sceneDocument.source.objects.map(object =>
                           <option key={object.id} value={object.id}>{object.label}</option>)}</select>}
+                    {study.source.model === "hofstadter" && reference && sceneDocument && <>
+                      <input type="number" min="0" max="300000" step="1" aria-label={`${panel.role} sample index`}
+                        placeholder="Sample index" value={studySampleDraft[panel.sceneFingerprint] ?? panel.sampleIndex ?? ""}
+                        onChange={event => setStudySampleDraft(current => ({ ...current, [panel.sceneFingerprint]: event.target.value }))}
+                        style={{ width: 105 }} />
+                      <button type="button" disabled={busy || !window.quantumScenes?.projectStudySample}
+                        onClick={() => { const other = study.panels.find(item => item.sceneFingerprint !== panel.sceneFingerprint);
+                          const target = project.quantumScenes?.find(item => item.sceneFingerprint === other?.sceneFingerprint);
+                          const targetDocument = project.workspace.entries.find(entry => entry.module === "quantum" &&
+                            entry.checkpoint.format === "math3d.quantum-scene-document" &&
+                            entry.checkpoint.source.sceneFingerprint === other?.sceneFingerprint)?.checkpoint as QuantumSceneDocument | undefined;
+                          const sourceObjectId = panel.selectedObjectId ?? sceneDocument.source.objects[0]?.id;
+                          const targetObjectId = other?.selectedObjectId ?? targetDocument?.source.objects[0]?.id;
+                          const rawIndex = studySampleDraft[panel.sceneFingerprint] ?? panel.sampleIndex;
+                          const index = rawIndex === "" || rawIndex === null ? NaN : Number(rawIndex);
+                          if (!other || !target || !sourceObjectId || !targetObjectId ||
+                              !Number.isSafeInteger(index) || index < 0) { setStudyProjection("Select a valid source sample and both scene objects."); return; }
+                          setBusy(true); setStudyProjection("Checking exact shared momentum…");
+                          void window.quantumScenes!.projectStudySample({ directory: reference.directory,
+                            sceneFingerprint: reference.sceneFingerprint }, sourceObjectId, index,
+                            { directory: target.directory, sceneFingerprint: target.sceneFingerprint }, targetObjectId)
+                            .then(result => { setStudyProjection(`kᵧ ${result.value.toPrecision(6)} ${result.unit}: ${result.candidateCount} target samples · ${result.status}.`);
+                              setProject(current => { if (!current) return current;
+                                const quantumStudies = current.workspace.quantumStudies?.map(item => item.id !== study.id ? item : {
+                                  ...item, panels: item.panels.map(candidate => candidate.sceneFingerprint === panel.sceneFingerprint ?
+                                    { ...candidate, selectedObjectId: sourceObjectId, sampleIndex: index } :
+                                    candidate.sceneFingerprint === other.sceneFingerprint && result.sampleIndex !== null ?
+                                      { ...candidate, selectedObjectId: targetObjectId, sampleIndex: result.sampleIndex } : candidate) });
+                                return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...current.workspace, quantumStudies }));
+                              });
+                            }).catch(error => setStudyProjection(`Link refused: ${String(error)}`))
+                            .finally(() => setBusy(false)); }}>Link kᵧ</button>
+                    </>}
                   </div>;
                 })}</div>
+                {studyProjection && <small role="status">{studyProjection}</small>}
               </article>)}
               {!!project?.quantumScenes?.length && <div data-testid="project-quantum-comparison" className="project-workspace-workbook">
                 <strong>Compare verified quantum scenes</strong>
@@ -1875,6 +1911,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   ? `${quantumComparison.quantity}: ${quantumComparison.samples} aligned samples, mean absolute ${quantumComparison.meanAbsolute}, RMS ${quantumComparison.rootMeanSquare}, maximum ${quantumComparison.maximumAbsolute} ${quantumComparison.unit}`
                   : `Incompatible: ${quantumComparison.reasons.join(" ")}`}
                   {!!quantumComparison.metadataDiffs.length && <p>Parameter differences: {quantumComparison.metadataDiffs.map(item => `${item.key}: ${item.a} → ${item.b}`).join("; ")}</p>}
+                  {quantumComparison.convergence && <p>Bulk-gap change across grids {quantumComparison.convergence.gridA.join("×")} → {quantumComparison.convergence.gridB.join("×")}: {quantumComparison.convergence.absoluteChange}.</p>}
+                  {quantumComparison.warnings.map(warning => <p key={warning}>{warning}</p>)}
                 </div>}
               </div>}
               <div><button type="button" data-testid="project-export-quantum-pack" disabled={busy || preview || !!managed || !project?.quantumScenes?.length || !window.quantumScenes?.exportPortableProject}

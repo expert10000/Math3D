@@ -8,7 +8,7 @@ Theory Lab's QWZ handoff remains `quantum-study-handoff/v1`. Its additive Hofsta
 
 ## QI-14: verified A/B comparison
 
-The Project A/B control reopens both exact scene references. It requires the same model, coordinate axes and units, aligned band coordinates and band identity, or matching field grids and amplitude units. It reports parameter metadata differences and mean absolute, root mean square, and maximum absolute residuals for every aligned sample. Bands include a bulk gap delta. Complex fields compare probability density, never raw real or imaginary amplitudes, because their phase is gauge dependent. Unsupported quantities and mismatches yield explicit incompatibility reasons without a numeric difference.
+The Project A/B control reopens both exact scene references. It requires the same model, coordinate axes and units, aligned band coordinates and band identity, or matching field grids and amplitude units. It reports parameter metadata differences, warnings, and mean absolute, root mean square, and maximum absolute residuals for every aligned sample. Bands include a bulk gap delta. A pair of different band grids can report the absolute change in the producer's bulk gap as a two-resolution convergence indicator, with an explicit warning that two grids do not establish asymptotic convergence. Complex fields compare probability density, never raw real or imaginary amplitudes, because their phase is gauge dependent. Unsupported quantities and mismatches yield explicit incompatibility reasons without a per-sample numeric difference.
 
 ## QI-15: physical time contract
 
@@ -19,4 +19,4 @@ An additive `quantum-scene/v2` `time` object references one scalar time dataset 
 - Math3D: Project study roundtrip and Hofstadter selection tests; exact handoff rejection; A/B alignment and gauge tests; irregular time frame tests; cursor projection tests; main and renderer builds and typecheck.
 - Theory Lab: typecheck and build; deterministic irregular time scene test. The existing worker-backed scene suite requires a ready local Python worker and is not a gate for this contract change.
 
-The first comparison surface covers aligned bands and single fields. Other physical quantities need declared alignment rules before subtraction. Study object selections persist; numerical cross-panel projection for Hofstadter bulk and strip remains guarded by the absence of a one-to-one physical sample map.
+The first comparison surface covers aligned bands and single fields. Other physical quantities need declared alignment rules before subtraction. Hofstadter study selections link the shared physical kᵧ coordinate after independent source verification. Multiple strip states at that momentum are reported as ambiguous; no branch correspondence is inferred.

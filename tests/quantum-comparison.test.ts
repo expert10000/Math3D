@@ -21,6 +21,15 @@ describe("verified quantum A/B comparison", () => {
     const result = compareVerifiedQuantumScenes(imported([0, 1, 2, 3]), imported([0, 1, 2, 3], [0, 0, 0, 2, 0, 0], "meV"));
     assert.equal(result.status, "incompatible"); assert.equal(result.samples, 0);
   });
+  it("reports a two-resolution gap indicator with an explicit convergence warning", () => {
+    const a = imported([0, 1, 2, 3]), b = imported([0, 1, 2, 3]);
+    const coarse = { ...a, source: { ...a.source, bands: { ...a.source.bands!, grid: [9, 9] as [number, number], bulkGap: 0.8 } } } as ImportedQuantumScene;
+    const fine = { ...b, source: { ...b.source, bands: { ...b.source.bands!, grid: [17, 17] as [number, number], bulkGap: 0.9 } } } as ImportedQuantumScene;
+    const result = compareVerifiedQuantumScenes(coarse, fine);
+    assert.equal(result.status, "incompatible");
+    assert.ok(Math.abs(result.convergence!.absoluteChange - 0.1) < 1e-12);
+    assert.match(result.warnings.join(" "), /not established/);
+  });
   it("compares density rather than gauge-dependent complex amplitudes", () => {
     const field = (real: number, imaginary: number) => ({ source: {
       provenance: { model: "hydrogenic" }, coordinates: { axes: ["x", "y", "z"], units: ["a0", "a0", "a0"] },

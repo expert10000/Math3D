@@ -3,7 +3,10 @@ import type { ImportedQuantumScene } from "./importer";
 export type QuantumComparison = Readonly<{
   status: "compatible" | "incompatible";
   reasons: string[];
+  warnings: string[];
   metadataDiffs: { key: string; a: string | number | null; b: string | number | null }[];
+  convergence: { quantity: "bulk gap"; gridA: [number, number]; gridB: [number, number];
+    absoluteChange: number; status: "two-resolution-indicator" } | null;
   quantity: string | null;
   unit: string | null;
   samples: number;
@@ -17,11 +20,19 @@ export type QuantumComparison = Readonly<{
 export function compareVerifiedQuantumScenes(a: ImportedQuantumScene, b: ImportedQuantumScene): QuantumComparison {
   const sa = a.source, sb = b.source;
   const reasons: string[] = [];
+  const warnings: string[] = [];
   if (sa.provenance.model !== sb.provenance.model) reasons.push("Model differs.");
   if (JSON.stringify(sa.coordinates) !== JSON.stringify(sb.coordinates)) reasons.push("Coordinate axes or units differ.");
   const pa = sa.provenance.parameters ?? {}, pb = sb.provenance.parameters ?? {};
   const metadataDiffs = [...new Set([...Object.keys(pa), ...Object.keys(pb)])].sort()
     .filter(key => pa[key] !== pb[key]).map(key => ({ key, a: pa[key] ?? null, b: pb[key] ?? null }));
+  if (metadataDiffs.length) warnings.push("Model parameters differ; residuals compare different parameterizations.");
+  const convergence = sa.bands?.grid && sb.bands?.grid && sa.provenance.model === sb.provenance.model &&
+    sa.bands.energyUnit === sb.bands.energyUnit && JSON.stringify(sa.coordinates) === JSON.stringify(sb.coordinates) &&
+    JSON.stringify(sa.bands.grid) !== JSON.stringify(sb.bands.grid) ?
+    { quantity: "bulk gap" as const, gridA: sa.bands.grid, gridB: sb.bands.grid,
+      absoluteChange: Math.abs(sb.bands.bulkGap - sa.bands.bulkGap), status: "two-resolution-indicator" as const } : null;
+  if (convergence) warnings.push("A two-resolution bulk-gap change is shown; asymptotic convergence is not established.");
   let quantity: string | null = null, unit: string | null = null;
   let va: number[] | null = null, vb: number[] | null = null;
   if (sa.bands && sb.bands) {
@@ -59,13 +70,13 @@ export function compareVerifiedQuantumScenes(a: ImportedQuantumScene, b: Importe
     }
   } else reasons.push("No matching supported band or field quantity exists.");
   if (va && vb && va.length !== vb.length) reasons.push("Aligned quantity sample counts differ.");
-  if (reasons.length || !va || !vb) return { status: "incompatible", reasons, metadataDiffs,
+  if (reasons.length || !va || !vb) return { status: "incompatible", reasons, warnings, metadataDiffs, convergence,
     quantity: null, unit: null, samples: 0, meanAbsolute: null, rootMeanSquare: null,
     maximumAbsolute: null, bulkGapDelta: null };
   let abs = 0, square = 0, max = 0;
   for (let i = 0; i < va.length; i++) { const delta = va[i] - vb[i], magnitude = Math.abs(delta);
     abs += magnitude; square += delta * delta; max = Math.max(max, magnitude); }
-  return { status: "compatible", reasons: [], metadataDiffs, quantity, unit, samples: va.length,
+  return { status: "compatible", reasons: [], warnings, metadataDiffs, convergence, quantity, unit, samples: va.length,
     meanAbsolute: abs / va.length, rootMeanSquare: Math.sqrt(square / va.length), maximumAbsolute: max,
     bulkGapDelta: sa.bands && sb.bands ? sb.bands.bulkGap - sa.bands.bulkGap : null };
 }

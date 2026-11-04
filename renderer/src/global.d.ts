@@ -705,12 +705,18 @@ declare global {
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };
     quantumScenes?: {
+      projectStudySample: (source: { directory: string; sceneFingerprint: string }, sourceObjectId: string,
+        sourceSampleIndex: number, target: { directory: string; sceneFingerprint: string }, targetObjectId: string) =>
+        Promise<{ axis: "ky"; value: number; unit: string; candidateCount: number;
+          status: "outside" | "matched" | "ambiguous"; sampleIndex: number | null }>;
       timeFrames: (reference: { directory: string; sceneFingerprint: string }) => Promise<{
         frameId: string; index: number; time: number; unit: string; runId: string; resultSha256: string;
         tracks: { id: string; object?: string; xyz: number[] }[] }[]>;
       compare: (a: { directory: string; sceneFingerprint: string }, b: { directory: string; sceneFingerprint: string }) =>
-        Promise<{ status: "compatible" | "incompatible"; reasons: string[];
+        Promise<{ status: "compatible" | "incompatible"; reasons: string[]; warnings: string[];
           metadataDiffs: { key: string; a: string | number | null; b: string | number | null }[];
+          convergence: { quantity: "bulk gap"; gridA: [number, number]; gridB: [number, number];
+            absoluteChange: number; status: "two-resolution-indicator" } | null;
           quantity: string | null; unit: string | null; samples: number; meanAbsolute: number | null;
           rootMeanSquare: number | null; maximumAbsolute: number | null; bulkGapDelta: number | null }>;
       consumeStudyLaunch: () => Promise<
