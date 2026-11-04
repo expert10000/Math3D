@@ -15,6 +15,7 @@ import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock } from "./WorkbookSavedMeshTrendBlock";
 import { WorkbookSavedMeshComparisonBlock } from "./WorkbookSavedMeshComparisonBlock";
 import { WorkbookSavedMeshReviewBlock } from "./WorkbookSavedMeshReviewBlock";
+import { WorkbookCoordinateReviewBlock } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
 
@@ -99,6 +100,8 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.type === "visualize" && block.visualize?.savedMeshReview && <WorkbookSavedMeshReviewBlock project={project}
             reference={block.visualize.savedMeshReview} readResource={readComparisonResource}
             onOpenPair={onOpenSavedMeshComparison} onOpenNote={onOpenNote} />}
+          {block.type === "visualize" && block.visualize?.coordinateReview && <WorkbookCoordinateReviewBlock project={project}
+            reference={block.visualize.coordinateReview} readResource={readComparisonResource} onOpenNote={onOpenNote} />}
           {block.type === "text" && <textarea aria-label={`${block.title || "Text"} content`} value={block.text ?? ""}
             onChange={(event) => onUpdateBlock(stage.id, block.id, { text: event.target.value })} readOnly={readOnly}
             rows={Math.max(3, Math.min(12, (block.text ?? "").split("\n").length + 1))}

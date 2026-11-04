@@ -8,6 +8,7 @@ import { WorkbookComparisonBlock } from "./WorkbookComparisonBlock";
 import { WorkbookSavedMeshTrendBlock, WorkbookSavedMeshTrendEditor } from "./WorkbookSavedMeshTrendBlock";
 import { WorkbookSavedMeshComparisonBlock, WorkbookSavedMeshComparisonEditor } from "./WorkbookSavedMeshComparisonBlock";
 import { WorkbookSavedMeshReviewBlock, WorkbookSavedMeshReviewEditor } from "./WorkbookSavedMeshReviewBlock";
+import { WorkbookCoordinateReviewBlock, WorkbookCoordinateReviewEditor } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
@@ -1940,6 +1941,11 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 {block.visualize?.savedMeshReview && <WorkbookSavedMeshReviewBlock project={dependencyProject}
                   reference={block.visualize.savedMeshReview} readResource={readComparisonResource}
                   onOpenPair={onOpenSavedMeshComparison} onOpenNote={onOpenNote} />}
+                <WorkbookCoordinateReviewEditor project={dependencyProject} reference={block.visualize?.coordinateReview}
+                  readOnly={readOnly} onChange={coordinateReview => onUpdateBlock(activeStageId, block.id,
+                    { visualize: { ...(block.visualize ?? { live: true }), coordinateReview } })} />
+                {block.visualize?.coordinateReview && <WorkbookCoordinateReviewBlock project={dependencyProject}
+                  reference={block.visualize.coordinateReview} readResource={readComparisonResource} onOpenNote={onOpenNote} />}
               </div>}
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
