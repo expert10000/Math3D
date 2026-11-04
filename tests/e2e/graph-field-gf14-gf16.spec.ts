@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
-test("GF-14–16 derived recipe reopens and scalar Mesh promotes in Field Explorer", async () => {
+test("GF-14–16 derived recipe and promoted scalar Mesh survive Project reopen", async () => {
   const app = await launchSurfaceApp();
   try {
     const page = app.page;
@@ -65,5 +65,11 @@ test("GF-14–16 derived recipe reopens and scalar Mesh promotes in Field Explor
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
+    await page.reload();
+    await openLastSavedProject(page);
+    await page.getByTestId("workspace-nav-graphs").click();
+    explorer = await openExplorer();
+    await expect(explorer.getByTestId("gf16-derived-operations"))
+      .toContainText("scalar gradient: vector");
   } finally { await closeSurfaceApp(app); }
 });

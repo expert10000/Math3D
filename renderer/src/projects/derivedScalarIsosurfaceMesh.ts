@@ -1,8 +1,10 @@
 import { createDocumentRelation, createMixedWorkspaceDocument, reviewProjectDerivedField,
   structuralHash, viewerSourceFromDocument,
-  type DerivedScalarIsosurface, type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
+  type CanonicalJsonValue, type DerivedScalarIsosurface, type Math3DProject,
+  type MixedWorkspaceDocument } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import type { SurfaceMeshSource } from "../mesh/surfaceMesh";
+import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
 
 /** Promote a current analytic scalar DAG result with its exact source and recipe lineage. */
 export function promoteDerivedScalarIsosurfaceMesh(workspace: MixedWorkspaceDocument,
@@ -39,6 +41,7 @@ export function promoteDerivedScalarIsosurfaceMesh(workspace: MixedWorkspaceDocu
     surface.level} ${surface.unit}`, positions: surface.positions,
     normals: surface.normals, indices: surface.indices, source: origin });
   const mesh = adapter.document();
+  const replay = adapter.replayBundle();
   if (workspace.entries.some(item => item.expected.id === mesh.identity.id))
     throw new TypeError("This derived scalar Mesh is already in the Project.");
   const relation = createDocumentRelation({ kind: "generated-by",
@@ -52,8 +55,9 @@ export function promoteDerivedScalarIsosurfaceMesh(workspace: MixedWorkspaceDocu
       level: surface.level, unit: surface.unit, clipBounds: surface.clipBounds,
       triangleBudget: surface.triangleBudget, timeBudgetMs: surface.timeBudgetMs } });
   return { adapter, workspace: createMixedWorkspaceDocument({ ...workspace,
-    entries: [...workspace.entries, { module: "mesh", checkpoint: mesh,
-      expected: mesh.identity, replay: null }],
+    entries: [...workspace.entries, { module: "mesh", checkpoint: replay.checkpoint.document,
+      expected: mesh.identity, replay: { format: MIXED_REPLAY_FORMATS.mesh,
+        payload: replay as unknown as CanonicalJsonValue } }],
     activeDocumentIds: [...new Set([...workspace.activeDocumentIds, mesh.identity.id])],
     relations: [...workspace.relations, relation] }) };
 }

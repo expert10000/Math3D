@@ -1,7 +1,7 @@
 import type { MeshDocument } from "@math3d/core";
 import type { MeshReplayBundle } from "../mesh/meshReplay";
 
-const kinds = new Set(["import", "bakedFromImplicit", "bakedFromExplicit", "bakedFromParam", "bakedFromWeierstrass", "detachedMesh", "geometryObject", "polyhedronPreset", "halfspaceIntersection", "convexHull", "csg", "proceduralObjects", "derivedSurface", "derivedCurve", "derivedVolume", "derivedVectorFieldIsosurface", "surface-tessellation"]);
+const kinds = new Set(["import", "bakedFromImplicit", "bakedFromExplicit", "bakedFromParam", "bakedFromWeierstrass", "detachedMesh", "geometryObject", "polyhedronPreset", "halfspaceIntersection", "convexHull", "csg", "proceduralObjects", "derivedSurface", "derivedCurve", "derivedVolume", "derivedVectorFieldIsosurface", "derivedScalarFieldIsosurface", "surface-tessellation"]);
 /** The resource-backed viewer consumes the saved buffers, never regenerating their originating recipe. */
 export const meshDocumentEditable = (document: MeshDocument): boolean => {
   const origin = document.source.origin as Record<string, unknown> | null;
@@ -42,6 +42,29 @@ export const meshDocumentEditable = (document: MeshDocument): boolean => {
         typeof topology.boundaryEdgeCount !== "number" ||
         typeof topology.clipBoundaryEdgeCount !== "number" ||
         typeof topology.nonManifoldEdgeCount !== "number") return false;
+  }
+  if (origin.kind === "derivedScalarFieldIsosurface") {
+    const generation = (value: unknown): value is Record<string, unknown> & { documentId: string;
+      revision: number; structuralHash: string } => !!value && typeof value === "object" &&
+      typeof (value as Record<string, unknown>).documentId === "string" &&
+      Number.isSafeInteger((value as Record<string, unknown>).revision) &&
+      typeof (value as Record<string, unknown>).structuralHash === "string";
+    const derived = origin.derived as Record<string, unknown> | undefined;
+    const recipe = origin.recipe as Record<string, unknown> | undefined;
+    if (!generation(derived) || typeof derived.recipeHash !== "string" ||
+        !generation(origin.vectorSource) ||
+        !Array.isArray(origin.vectorSources) || !origin.vectorSources.length ||
+        !origin.vectorSources.every(generation) ||
+        !origin.vectorSources.some(source => source.documentId ===
+          (origin.vectorSource as { documentId: string }).documentId) ||
+        typeof origin.sampleHash !== "string" ||
+        !recipe || typeof recipe.level !== "number" ||
+        typeof recipe.unit !== "string" ||
+        !Array.isArray(recipe.clipBounds) ||
+        !Number.isSafeInteger(recipe.triangleBudget) ||
+        !Number.isSafeInteger(recipe.timeBudgetMs) ||
+        !Array.isArray(recipe.gridShape) ||
+        typeof origin.complete !== "boolean") return false;
   }
   return true;
 };

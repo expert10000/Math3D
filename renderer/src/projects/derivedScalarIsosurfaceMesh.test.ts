@@ -6,6 +6,7 @@ import { appendProjectDerivedField, createMixedWorkspaceDocument,
   serializeMath3DProject, vectorField3DExpression,
   type VectorField3DDocument } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
+import { meshReplayEditable } from "./nativeMeshRestore";
 import { projectDerivedScalarMeshStatus, promoteDerivedScalarIsosurfaceMesh } from
   "./derivedScalarIsosurfaceMesh";
 
@@ -24,6 +25,10 @@ describe("GF-14 derived scalar Mesh lineage", () => {
     expect(surface.sampledPoints).toBeLessThan(10_000);
     expect(surface.vectorSources).toEqual([surface.vectorSource]);
     const promoted = promoteDerivedScalarIsosurfaceMesh(project.workspace, project, surface);
+    const savedMesh = promoted.workspace.entries.find(item => item.module === "mesh")!;
+    expect(savedMesh.replay).not.toBeNull();
+    expect(meshReplayEditable(promoted.adapter.document(),
+      savedMesh.replay!.payload as never)).toBe(true);
     const reopened = parseMath3DProject(serializeMath3DProject(
       replaceMath3DProjectWorkspace(project, promoted.workspace)));
     const origin = promoted.adapter.document().source.origin;
