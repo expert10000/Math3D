@@ -7,6 +7,8 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowImportingTsExtensions": true,
     "paths": {
+      "@math3d/core": ["../../packages/core/src/index.ts"],
+      "@math3d/core/*": ["../../packages/core/src/*"],
       "@math3d/kernel": ["../../packages/kernel/src/index.ts"],
       "@math3d/kernel/*": ["../../packages/kernel/src/*"]
     },

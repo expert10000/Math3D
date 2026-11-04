@@ -10,7 +10,7 @@ The worker rejects zero polynomials, unknown variables, extra request fields, ex
 
 - Live SageMath 9.5 in WSL ran six B02 worker tests. `x²−1` returned factors `x+1` and `x−1`, rational roots ±1, derivative `2x`, `gcd(f,f')=1`, and discriminant `4`. `(x−1)²` returned a repeated root, square-free factor multiplicity 2, and discriminant `0`. `x²+1` and `x⁴−2` were irreducible over `QQ` with no rational roots. `2x²−2` retained content `2` and primitive part `x²−1`; a nonzero constant returned degree 0 and no discriminant.
 - The worker script entry point returned a successful envelope with Sage version. A shared JSON fixture is checked by both Sage and TypeScript tests. Core tests verified the selected `QQ[x]` request and rejected mismatched or malformed results. Broker tests verified Docker-only discovery and rejected multivariate input.
-- `npm run typecheck:noemit`, `npm run build:core`, focused Vitest tests, and the desktop Structures test were run in the clean worktree. Docker is unavailable on this PC, so the live calculation used the same Sage runner under WSL rather than the Docker HTTP transport.
+- The post-merge core and renderer build, 53 focused Vitest tests, 15 Sage worker tests and both desktop Structures tests passed. The end-to-end TypeScript config now resolves core from its own checkout, avoiding another worktree's in-progress files through shared `node_modules`. The standard `npm run typecheck:noemit` gate passed after this correction. Docker is unavailable on this PC, so the live calculation used the same Sage runner under WSL rather than the Docker HTTP transport.
 
 ## Next
 
