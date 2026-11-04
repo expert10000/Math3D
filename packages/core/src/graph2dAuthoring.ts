@@ -11,6 +11,9 @@ import { applyGraph2DParameterAction, isGraph2DParameterAction, type Graph2DPara
 import { isGraph2DFieldReference, reviewGraph2DFieldRelink, type Graph2DFieldReference } from "./graph2dFieldReference";
 import { isGraph2DVectorFieldReference, reviewGraph2DVectorFieldRelink,
   type Graph2DVectorFieldReference } from "./graph2dVectorFieldReference";
+import { GRAPH2D_MAX_PARAMETER_STUDIES, isGraph2DParameterStudy,
+  isGraph2DParameterStudyOrigin, type Graph2DParameterStudy,
+  type Graph2DParameterStudyOrigin } from "./graph2dParameterStudy";
 
 export type Graph2DScene = Pick<Graph2DDocument, "source" | "display" | "selection">;
 export type Graph2DFunctionDraft = Readonly<{
@@ -74,6 +77,7 @@ export type Graph2DPointSeriesDraft = Readonly<{
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
+  parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
   style: Pick<Graph2DObjectDisplay, "color" | "lineWidth" | "lineStyle" | "visible">;
 }>;
@@ -84,6 +88,8 @@ export type Graph2DPiecewiseDraft = Readonly<{
 }>;
 export type Graph2DAuthoringAction =
   | Graph2DParameterAction
+  | Readonly<{ type: "create-parameter-study" | "update-parameter-study"; study: Graph2DParameterStudy }>
+  | Readonly<{ type: "delete-parameter-study"; studyId: string }>
   | Readonly<{ type: "save-field-reference"; reference: Graph2DFieldReference }>
   | Readonly<{ type: "relink-field-reference"; referenceId: string; replacement: Graph2DFieldReference }>
   | Readonly<{ type: "remove-field-reference"; referenceId: string }>
@@ -261,10 +267,12 @@ export const validateGraph2DPointSeriesDraft = (draft: Graph2DPointSeriesDraft):
     errors.push("Derived field provenance is invalid.");
   if (draft.projectProfileOrigin !== undefined && !validGraph2DProjectProfileOrigin(draft.projectProfileOrigin))
     errors.push("Project profile provenance is invalid.");
+  if (draft.parameterStudyOrigin !== undefined && !isGraph2DParameterStudyOrigin(draft.parameterStudyOrigin))
+    errors.push("Parameter study provenance is invalid.");
   if (draft.linkedOrigin !== undefined && !validGraph2DLinkedOverlayOrigin(draft.linkedOrigin))
     errors.push("Linked field provenance is invalid.");
   if ([draft.origin, draft.analyticOrigin, draft.derivedOrigin, draft.linkedOrigin,
-    draft.projectProfileOrigin].filter(item => item !== undefined).length > 1)
+    draft.projectProfileOrigin, draft.parameterStudyOrigin].filter(item => item !== undefined).length > 1)
     errors.push("Choose one provenance source for the point series.");
   return errors;
 };
@@ -285,6 +293,36 @@ export const validateGraph2DPiecewiseDraft = (draft: Graph2DPiecewiseDraft,
 
 export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2DAuthoringAction): Graph2DScene => {
   if (isGraph2DParameterAction(action)) return applyGraph2DParameterAction(document, action);
+  if (action.type === "create-parameter-study" || action.type === "update-parameter-study") {
+    if (!isGraph2DParameterStudy(action.study)) throw new TypeError("Invalid parameter study recipe.");
+    const existing = document.source.parameterStudies ?? [];
+    if (action.type === "create-parameter-study" ?
+        existing.some(item => item.id === action.study.id) || existing.length >= GRAPH2D_MAX_PARAMETER_STUDIES :
+        !existing.some(item => item.id === action.study.id))
+      throw new TypeError("Parameter study ID is unavailable.");
+    const source = document.source.objects.find(item => item.id === action.study.sourceObjectId);
+    const parameter = document.source.variables.find(item => item.name === action.study.parameterName);
+    if (source?.kind !== "explicit-cartesian" || !parameter?.control)
+      throw new TypeError("Parameter study needs an explicit function and configured parameter.");
+    if (action.study.range.min < parameter.control.min || action.study.range.max > parameter.control.max)
+      throw new RangeError("Parameter study bounds exceed the saved control.");
+    if (action.study.measurement.x < source.domain.min || action.study.measurement.x > source.domain.max ||
+        action.study.measurement.x === source.domain.min && !source.domain.includeMin ||
+        action.study.measurement.x === source.domain.max && !source.domain.includeMax)
+      throw new RangeError("Parameter study measurement lies outside the source domain.");
+    const studies = action.type === "create-parameter-study" ? [...existing, action.study] :
+      existing.map(item => item.id === action.study.id ? action.study : item);
+    return { source: { ...document.source, parameterStudies: studies },
+      display: document.display, selection: document.selection };
+  }
+  if (action.type === "delete-parameter-study") {
+    const studies = document.source.parameterStudies ?? [];
+    if (!studies.some(item => item.id === action.studyId)) throw new TypeError("Parameter study is missing.");
+    const remaining = studies.filter(item => item.id !== action.studyId);
+    const { parameterStudies: _removed, ...source } = document.source;
+    return { source: remaining.length ? { ...source, parameterStudies: remaining } : source,
+      display: document.display, selection: document.selection };
+  }
   if (action.type === "save-field-reference") {
     if (!isGraph2DFieldReference(action.reference)) throw new TypeError("Invalid field reference.");
     const existing = document.source.fieldReferences ?? [];
@@ -602,6 +640,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         ...(draft.origin ? { origin: draft.origin } : {}),
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
         ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
+        ...(draft.parameterStudyOrigin ? { parameterStudyOrigin: draft.parameterStudyOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}) };
       if (draft.linkedOrigin) objects[target] = { ...objects[target], linkedOrigin: draft.linkedOrigin };
       displays[target] = { objectId: edit.objectId, ...draft.style };
@@ -626,6 +665,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
         ...(draft.origin ? { origin: draft.origin } : {}),
         ...(draft.analyticOrigin ? { analyticOrigin: draft.analyticOrigin } : {}),
         ...(draft.projectProfileOrigin ? { projectProfileOrigin: draft.projectProfileOrigin } : {}),
+        ...(draft.parameterStudyOrigin ? { parameterStudyOrigin: draft.parameterStudyOrigin } : {}),
         ...(draft.derivedOrigin ? { derivedOrigin: draft.derivedOrigin } : {}),
         ...(draft.linkedOrigin ? { linkedOrigin: draft.linkedOrigin } : {}) });
       displays.push({ objectId: id, ...draft.style });
@@ -648,6 +688,7 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       ...(action.draft.origin ? { origin: action.draft.origin } : {}),
       ...(action.draft.analyticOrigin ? { analyticOrigin: action.draft.analyticOrigin } : {}),
       ...(action.draft.projectProfileOrigin ? { projectProfileOrigin: action.draft.projectProfileOrigin } : {}),
+      ...(action.draft.parameterStudyOrigin ? { parameterStudyOrigin: action.draft.parameterStudyOrigin } : {}),
       ...(action.draft.derivedOrigin ? { derivedOrigin: action.draft.derivedOrigin } : {}),
       ...(action.draft.linkedOrigin ? { linkedOrigin: action.draft.linkedOrigin } : {}) };
     const display = { objectId: id, ...action.draft.style };

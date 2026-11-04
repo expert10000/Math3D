@@ -67,6 +67,7 @@ import {
   type Math3DProject,
   createProjectProfileGraphOrigin, findProjectProfileSelection, projectProfileGraphRows,
   projectProfileGraphStatus,
+  graph2DParameterStudyStatus,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, PointerEvent } from "react";
@@ -92,6 +93,7 @@ import { DEFAULT_SCIENTIFIC_FIELD_TRANSFER, type ScientificFieldTransfer } from 
 import { VectorField3DPanel, fieldExplorerSessionKey, readFieldExplorerSession } from "../vectorfield3d/VectorField3DPanel";
 import { DerivedProfileProvenanceCard } from "../shared/DerivedProfileProvenanceCard";
 import { useDerivedProfileProvenance } from "./useDerivedProfileProvenance";
+import { Graph2DParameterStudyPanel } from "./Graph2DParameterStudyPanel";
 import type { LinkedExplorerProbe } from "../vectorfield3d/linkedFieldProbe";
 import { scientificExplorerLibrary, scientificSceneReferenceFromManifest, savedScientificExplorerEntries,
   type BuiltinExplorerSceneId, type ExplorerLibraryEntry } from
@@ -322,6 +324,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           !["current", "not-computed"].includes(record.reason ?? "current")}
         onClick={() => void openProjectProfile(record.profileId)}>Open profile in Graphs</button>
     </div>);
+  const studyPanel = <Graph2DParameterStudyPanel document={document}
+    onAuthoringCommit={onAuthoringCommit} onSelectionCommit={onSelectionCommit} />;
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [leftSection, setLeftSection] = useState<"objects" | "services">("objects");
   const [sageRecord, setSageRecord] = useState<SymbolicResultRecord | null>(null);
@@ -1385,6 +1389,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     object.kind === "point-series" && object.projectProfileOrigin ? [[object.id,
       projectProfileGraphStatus(project, object.projectProfileOrigin, verifiedProfileSource)]] : [])),
     [document, project]);
+  const parameterStudyStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.parameterStudyOrigin ? [[object.id,
+      graph2DParameterStudyStatus(document, object.parameterStudyOrigin,
+        pointTableStore.resolve(object.table))]] : [])), [document]);
   const samplingRequest = useMemo(() => ({ document: sampledDocument, viewport, width: size.width, height: size.height,
     interaction: previewViewport !== null || phaseSeedPreview !== null,
     separatePhaseAnalysis: true,
@@ -1393,12 +1401,13 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         object.projectProfileOrigin && (projectProfileStates[object.id]?.status !== "current" ||
           (() => { const rows = pointTableStore.resolve(object.table);
             return !rows || structuralHash(rows) !== object.projectProfileOrigin.rowsSha256; })()) ||
+        object.parameterStudyOrigin && parameterStudyStates[object.id]?.status !== "current" ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
           linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
-    projectProfileStates]);
+    projectProfileStates, parameterStudyStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1708,7 +1717,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
-      linkedVerified(selectedObject.linkedOrigin));
+      linkedVerified(selectedObject.linkedOrigin)) &&
+    (!selectedObject.parameterStudyOrigin || parameterStudyStates[selectedObject.id]?.status === "current");
   const selectedRegionOrigin = selectedObject?.kind === "point-series" && selectedObject.linkedOrigin &&
     "region" in selectedObject.linkedOrigin &&
     !isVectorDerivedRegionOrigin(selectedObject.linkedOrigin) ?
@@ -4269,7 +4279,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
             {inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
-            {profileCards}{savedFields}</details>}
+            {profileCards}{studyPanel}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
           selectedPhaseSeed={selectedPhaseSeed}
@@ -4322,7 +4332,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
         </details>}{inspector}{profileGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
-        {profileCards}{savedFields}
+        {profileCards}{studyPanel}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
         onExportProject={onExportPersonalProject} onCopyDefinition={onCopyGraphDefinition} onPreviewImport={onPreviewPersonalImport}

@@ -25,6 +25,7 @@ export type Math3DWorkerOperationId =
   | "volume.streamlines"
   | "curve.analyze"
   | "field.derived-profile"
+  | "graph2d.parameter-study"
   | "symbolic.simplify"
   | "symbolic.solve"
   | "symbolic.factor"
@@ -221,6 +222,14 @@ const definitions = [
   {
     id: "field.derived-profile",
     title: "Derived field line profile",
+    canonicalOwner: "math3d-js",
+    method: "numerical",
+    environments: ["browser", "desktop", "server", "mobile"],
+    legacyRequestKinds: [],
+  },
+  {
+    id: "graph2d.parameter-study",
+    title: "Graph parameter study",
     canonicalOwner: "math3d-js",
     method: "numerical",
     environments: ["browser", "desktop", "server", "mobile"],

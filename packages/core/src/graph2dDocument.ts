@@ -14,6 +14,9 @@ import { isGraph2DViewport } from "./graph2dViewport";
 import { parseVectorField3DDocument, type VectorField3DLinkedLineProfile,
   type VectorField3DOverlayRegion } from "./vectorField3DDocument";
 import { isScientificSourceGeneration, type ScientificSourceGeneration } from "./scientificJobs";
+import { GRAPH2D_PARAMETER_STUDY_CAPABILITY, GRAPH2D_MAX_PARAMETER_STUDIES,
+  isGraph2DParameterStudy, isGraph2DParameterStudyOrigin,
+  type Graph2DParameterStudy, type Graph2DParameterStudyOrigin } from "./graph2dParameterStudy";
 import { GRAPH2D_GRID_CAPABILITY, isGraph2DGridOptions, type Graph2DGridOptions } from "./graph2dGridOptions";
 import { GRAPH2D_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY, GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY, validateGraph2DConstructionSet,
   type Graph2DConstructionSet } from "./graph2dConstructions";
@@ -226,6 +229,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   analyticOrigin?: Graph2DAnalyticFieldOrigin;
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
+  parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
 }>;
 export type Graph2DPiece = Readonly<{
@@ -280,6 +284,7 @@ export type Graph2DSource = Readonly<{
   variables: readonly Graph2DParameter[];
   assumptions: readonly string[];
   constructions?: Graph2DConstructionSet;
+  parameterStudies?: readonly Graph2DParameterStudy[];
   fieldReferences?: readonly Graph2DFieldReference[];
   vectorFieldReferences?: readonly Graph2DVectorFieldReference[];
 }>;
@@ -301,6 +306,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "phase-portrait") ? [GRAPH2D_PHASE_PORTRAIT_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "time-ode") ? [GRAPH2D_TIME_ODE_CAPABILITY] : []),
     ...(source.constructions !== undefined ? [GRAPH2D_CONSTRUCTIONS_CAPABILITY] : []),
+    ...(source.parameterStudies?.length || source.objects.some(object => object.kind === "point-series" &&
+      object.parameterStudyOrigin) ? [GRAPH2D_PARAMETER_STUDY_CAPABILITY] : []),
     ...(source.constructions?.objects.some(object => ["root", "minimum", "maximum", "inflection", "intersection"].includes(object.kind)) ?
       [GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY] : []),
     ...(source.constructions?.objects.some(object => object.kind === "definite-integral") ?
@@ -353,7 +360,7 @@ export type Graph2DDocument = Readonly<{
   requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
-    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
+    typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PARAMETER_STUDY_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
   source: Graph2DSource;
   display: Graph2DDisplay;
   selection: Graph2DSelection;
@@ -778,15 +785,17 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     ...(value.analyticOrigin === undefined ? [] : ["analyticOrigin"]),
     ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"]),
     ...(value.projectProfileOrigin === undefined ? [] : ["projectProfileOrigin"]),
+    ...(value.parameterStudyOrigin === undefined ? [] : ["parameterStudyOrigin"]),
     ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
   [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin,
-    value.projectProfileOrigin].filter(item => item !== undefined).length <= 1 &&
+    value.projectProfileOrigin, value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
   (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
   (value.derivedOrigin === undefined || validGraph2DDerivedFieldOrigin(value.derivedOrigin)) &&
   (value.projectProfileOrigin === undefined || validGraph2DProjectProfileOrigin(value.projectProfileOrigin)) &&
+  (value.parameterStudyOrigin === undefined || isGraph2DParameterStudyOrigin(value.parameterStudyOrigin)) &&
   (value.linkedOrigin === undefined || validGraph2DLinkedOverlayOrigin(value.linkedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
   if (!record(value) || !exact(value, ["id", "kind", "label", "pieces"]) || !objectId(value.id) ||
@@ -803,6 +812,7 @@ const validPiecewiseObject = (value: unknown, variables: readonly string[]): val
 };
 const validSource = (value: unknown): value is Graph2DSource => {
   if (!record(value) || !exact(value, ["objects", "variables", "assumptions", ...(value.constructions !== undefined ? ["constructions"] : []),
+      ...(value.parameterStudies !== undefined ? ["parameterStudies"] : []),
       ...(value.fieldReferences !== undefined ? ["fieldReferences"] : []),
       ...(value.vectorFieldReferences !== undefined ? ["vectorFieldReferences"] : [])]) || !Array.isArray(value.objects) ||
       value.objects.length > GRAPH2D_MAX_OBJECTS ||
@@ -810,6 +820,11 @@ const validSource = (value: unknown): value is Graph2DSource => {
       !value.variables.every(isGraph2DParameter) ||
       new Set(value.variables.map((entry: { name: string }) => entry.name)).size !== value.variables.length ||
       !graph2DParameterExpressionsCurrent(value.variables) ||
+      (value.parameterStudies !== undefined && (!Array.isArray(value.parameterStudies) ||
+        value.parameterStudies.length > GRAPH2D_MAX_PARAMETER_STUDIES ||
+        !value.parameterStudies.every(isGraph2DParameterStudy) ||
+        new Set(value.parameterStudies.map((item: Graph2DParameterStudy) => item.id)).size !==
+          value.parameterStudies.length)) ||
       !Array.isArray(value.assumptions) || value.assumptions.length > 32 ||
       !value.assumptions.every((entry: unknown) => bounded(entry, 160)) ||
       (value.fieldReferences !== undefined && (!Array.isArray(value.fieldReferences) ||
