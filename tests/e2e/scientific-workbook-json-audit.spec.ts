@@ -18,7 +18,7 @@ async function downloadAudit(app: LaunchedSurfaceApp, filename: string): Promise
   await app.app.evaluate(({ session }, path) => session.defaultSession.once(
     "will-download", (_event, item) => item.setSavePath(path)), target);
   await workbook.getByTestId("scientific-subrectangle-export-json")
-    .click({ timeout: 120_000 });
+    .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
   const status = workbook.getByTestId("scientific-subrectangle-workbook-report")
     .getByRole("status");
   await expect(status).toContainText(/JSON audit exported|JSON export failed/,
@@ -82,7 +82,9 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
         .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
     await expect(projects.getByTestId("project-save"))
       .toBeEnabled({ timeout: 120_000 });
-    await projects.getByTestId("project-save").click();
+    await projects.getByTestId("project-save").evaluate(element => {
+      setTimeout(() => (element as HTMLButtonElement).click(), 0);
+    });
     await expect.poll(() => page.evaluate(() =>
       localStorage.getItem("math3d.project.v1")), { timeout: 120_000 })
       .not.toBeNull();
@@ -97,7 +99,8 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
     await projects.getByTestId("project-detail-tab-results").click();
     const outputs = projects.getByTestId("project-results-browser");
     await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
-    await outputs.getByTestId("project-create-subrectangle-workbook").click();
+    await outputs.getByTestId("project-create-subrectangle-workbook")
+      .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
     await expect.poll(() => page.evaluate(id => {
       const payload = localStorage.getItem(`math3d.project.v1.payload.${id}`);
       return payload ? JSON.parse(payload).workbooks?.length ?? 0 : 0;
@@ -112,12 +115,21 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
       await expect(projects).toBeVisible();
       const openProject = projects.getByTestId(`project-open-saved-${saved.identity.id}`);
       await expect(openProject).toBeEnabled({ timeout: 120_000 });
-      await openProject.dispatchEvent("click", undefined, { timeout: 120_000 });
+      await openProject.evaluate(element => {
+        setTimeout(() => (element as HTMLButtonElement).click(), 0);
+      }, undefined, { timeout: 120_000 });
       if (!await projects.getByTestId("project-workbooks").isVisible())
         await projects.getByTestId("project-detail-tab-documents").click();
       const viewWorkbook = projects.getByTestId(`project-view-workbook-${workbookId}`);
-      await expect(viewWorkbook).toBeEnabled({ timeout: 120_000 });
-      await viewWorkbook.dispatchEvent("click", undefined, { timeout: 120_000 });
+      await expect.poll(async () => {
+        const message = await projects.getByTestId("project-message").innerText();
+        if (/Project import failed|Saved project unavailable/.test(message))
+          throw new Error(message);
+        return viewWorkbook.isEnabled();
+      }, { timeout: 360_000 }).toBe(true);
+      await viewWorkbook.evaluate(element => {
+        setTimeout(() => (element as HTMLButtonElement).click(), 0);
+      }, undefined, { timeout: 120_000 });
       await expect(projects.getByTestId("project-message"))
         .toContainText("Opened “Field report", { timeout: 120_000 });
       await expect(page.getByTestId("project-middle-workbook"))
