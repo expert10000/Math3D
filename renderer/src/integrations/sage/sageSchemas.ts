@@ -51,6 +51,9 @@ export type SageHealthResponse = {
   available: boolean;
   operations: SageOperation[];
   limits?: { maxInputBytes: number; maxConcurrent: number; maxRequestsPerMinute: number; timeoutMs: number };
+  workerPolicy?: { schemaVersion: 1; maxRunning: number; maxQueued: number; queueWaitMs: number;
+    wallTimeMs: number; cpuTimeSeconds: number; maxMemoryBytes: number;
+    maxInputBytes: number; maxOutputBytes: number };
 };
 
 export type SageRunRequest = {
@@ -142,6 +145,12 @@ export const normalizeSageHealth = (payload: unknown): SageHealthResponse => {
     available: data.available,
     operations,
     ...(data.limits && typeof data.limits === "object" ? { limits: data.limits } : {}),
+    ...(data.workerPolicy && typeof data.workerPolicy === "object" &&
+      data.workerPolicy.schemaVersion === 1 &&
+      ["maxRunning", "maxQueued", "queueWaitMs", "wallTimeMs", "cpuTimeSeconds",
+        "maxMemoryBytes", "maxInputBytes", "maxOutputBytes"].every((key) =>
+        Number.isFinite(data.workerPolicy?.[key as keyof typeof data.workerPolicy]))
+      ? { workerPolicy: data.workerPolicy } : {}),
   };
 };
 

@@ -123,6 +123,9 @@ export default function SageRuntimeInspector() {
             <div data-testid={`sage-runtime-limits-${id}`}>
               <strong>Service operation limits:</strong> input {formatBytes(probe.limits.maxInputBytes)} · output {formatBytes(probe.limits.maxOutputBytes)} · memory {formatBytes(probe.limits.maxMemoryBytes)} · work {probe.limits.maxWorkUnits.toLocaleString()} units
             </div>
+            {probe.health.workerPolicy && <div data-testid={`sage-runtime-worker-policy-${id}`}>
+              <strong>Worker queue and budgets:</strong> {probe.health.workerPolicy.maxRunning} running · {probe.health.workerPolicy.maxQueued} waiting · {Math.round(probe.health.workerPolicy.queueWaitMs / 1000)} s queue wait · {Math.round(probe.health.workerPolicy.wallTimeMs / 1000)} s wall · {probe.health.workerPolicy.cpuTimeSeconds} s CPU · {formatBytes(probe.health.workerPolicy.maxMemoryBytes)} memory · {formatBytes(probe.health.workerPolicy.maxInputBytes)} input · {formatBytes(probe.health.workerPolicy.maxOutputBytes)} output
+            </div>}
             {id === "private" && probe.health.limits && <div data-testid="sage-runtime-quota-private">
               <strong>Gateway quotas:</strong> {probe.health.limits.maxConcurrent} concurrent · {probe.health.limits.maxRequestsPerMinute} requests/min · {Math.round(probe.health.limits.timeoutMs / 1000)} s timeout
             </div>}

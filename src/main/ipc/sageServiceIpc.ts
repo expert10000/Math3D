@@ -61,7 +61,7 @@ const validConsoleScope = (scope: unknown): scope is string =>
 async function requestJson(path: string, init?: RequestInit, signal?: AbortSignal,
   endpoint = baseUrl, credential?: string): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), endpoint === gatewayUrl ? 25_000 : 15_000);
+  const timeout = setTimeout(() => controller.abort(), endpoint === gatewayUrl ? 25_000 : path === "/run" ? 45_000 : 15_000);
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) controller.abort();

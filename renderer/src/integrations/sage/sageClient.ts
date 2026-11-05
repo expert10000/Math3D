@@ -97,7 +97,7 @@ const runDocker = async (request: SageRunRequest): Promise<SageRunResponse> => {
   if (jobId) dockerJobs.set(jobId, controller);
   try {
     return normalizeSageRunResponse(await requestJson<unknown>(
-      "POST", "/run", request, sageBaseUrl, sageServiceUnavailableMessage, 15_000, controller.signal,
+      "POST", "/run", request, sageBaseUrl, sageServiceUnavailableMessage, 45_000, controller.signal,
     ));
   } finally {
     if (jobId) dockerJobs.delete(jobId);

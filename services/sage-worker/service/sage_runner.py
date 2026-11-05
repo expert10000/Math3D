@@ -1,3 +1,11 @@
+import os
+if os.environ.get("MATH3D_SAGE_WORKER_LIMITS") == "1":
+    import resource
+    cpu_seconds = int(os.environ["MATH3D_SAGE_WORKER_CPU_SECONDS"])
+    memory_bytes = int(os.environ["MATH3D_SAGE_WORKER_MEMORY_BYTES"])
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
+    resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+
 import json
 import math
 import re

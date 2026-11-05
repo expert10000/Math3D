@@ -356,6 +356,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F06 implementation update (2026-11-05):** The [F06 acceptance record](evidence/sage-f06-capability-manifests-2026-11-05.md) adds a hashed v1 capability manifest to each Sage route probe. Compute → Runtimes shows the reported version and operation-level support or deterministic unavailable reason. Broker discovery uses that same route-filtered manifest, so the displayed decision matches executable capability. Live Sage 9.5 WSL and Docker Sage 10.10 checks confirm their distinct operation sets. The next feature is **SAGE-F07**, bounded queue cancellation and budgets.
 
+**F07 implementation update (2026-11-05):** The [F07 acceptance record](evidence/sage-f07-bounded-worker-2026-11-05.md) bounds Docker Sage admission, queue wait, wall/CPU time, memory, input and output. Queued cancellation never launches Sage; deadline cancellation kills the process group and cleans temporary files. The rebuilt Sage 10.10 service passes the worker gates and a real GCD request, and Compute → Runtimes displays its policy. The next feature is **SAGE-F08**, the real-backend regression suite.
+
 ---
 
 ## 3. P0 — Algebra object registry

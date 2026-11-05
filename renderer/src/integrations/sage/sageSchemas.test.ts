@@ -23,6 +23,16 @@ describe("Sage schemas", () => {
       available: true, operations: ["sage.symbolic.simplify"] }).engineVersion).toBe("10.6");
   });
 
+  it("retains a validated worker queue policy", () => {
+    const workerPolicy = { schemaVersion: 1, maxRunning: 2, maxQueued: 4, queueWaitMs: 10000,
+      wallTimeMs: 30000, cpuTimeSeconds: 30, maxMemoryBytes: 4294967296,
+      maxInputBytes: 65536, maxOutputBytes: 262144 };
+    const health = { status: "ok", engine: "sagemath", available: true, operations: [], workerPolicy };
+    expect(normalizeSageHealth(health).workerPolicy).toEqual(workerPolicy);
+    expect(normalizeSageHealth({ ...health, workerPolicy: { ...workerPolicy, maxQueued: "many" } }).workerPolicy)
+      .toBeUndefined();
+  });
+
   it("normalizes successful run responses", () => {
     expect(
       normalizeSageRunResponse({

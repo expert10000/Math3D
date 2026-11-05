@@ -26,6 +26,9 @@ class IdealOperationTests(unittest.TestCase):
             killed = False
             returncode = -9
 
+            def poll(self):
+                return self.returncode if self.killed else None
+
             def communicate(self, timeout=None):
                 if timeout is not None:
                     raise subprocess.TimeoutExpired(cmd="sage", timeout=timeout)
