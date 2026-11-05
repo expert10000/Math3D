@@ -148,6 +148,9 @@ describe("SAGE-C06 explicit ideal budgets", () => {
     const request = buildAlgebraOperationRequest(project, iref, "sage.ideal.groebner", "docker",
       { budgetProfile: "standard" });
     expect(request.params.budget).toMatchObject({ profile: "standard", maxDegree: 8, wallTimeMs: 15_000 });
+    const certified = createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request,
+      result(request, { basis: ["x - 1", "y - 1"] }), runtime("certified-budget"));
+    expect(certified.certificate?.limits).toMatchObject({ profile: "standard", wallTimeMs: 15_000 });
     const forged = { ...request, params: { ...request.params,
       budget: { ...(request.params.budget as Record<string, unknown>), maxDegree: 100 } } };
     expect(() => createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, forged,

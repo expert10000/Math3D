@@ -111,6 +111,7 @@ export * from "./sageAlgebraReconstruction";
 export * from "./sageAlgebraDomains";
 export * from "./algebraOperationRegistry";
 export * from "./projectAlgebraEvidence";
+export * from "./sageExecutionCertificate";
 export * from "./algebraRecipeGraph";
 export * from "./algebraRecipeRunner";
 export * from "./polynomialDossier";

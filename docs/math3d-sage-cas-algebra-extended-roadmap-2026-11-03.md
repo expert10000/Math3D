@@ -350,6 +350,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F04 implementation update (2026-11-05):** The [F04 acceptance record](evidence/sage-f04-typed-workbook-cells-2026-11-05.md) adds a typed Algebra object Workbook block with an `algebra-object` output port. Each bounded local run pins a Project object ID, revision, definition hash and complete validated object record. The cell displays saved output without a runtime, but marks it stale when a newer revision or parent change exists. Explicit recompute updates to the latest fresh revision and retains prior runs. Project Workbook resource export/import, document view and publication manifest carry the typed source and output hashes. The next feature is **SAGE-F05**, execution certificates and provenance schemas.
 
+**F05 implementation update (2026-11-05):** The [F05 acceptance record](evidence/sage-f05-execution-certificates-2026-11-05.md) adds a versioned, validated execution certificate to new object-linked Project algebra evidence. It pins operation schemas, request/result hashes and sizes, target and parent definitions, backend route, Sage version, elapsed time, warnings, known GAP subsystem version and declared ideal budgets. The Inspector displays it separately from mathematical Verification. Unknown algorithm, proof mode and memory remain unclaimed; legacy evidence still imports. The next feature is **SAGE-F06**, versioned capability manifests.
+
 ---
 
 ## 3. P0 — Algebra object registry

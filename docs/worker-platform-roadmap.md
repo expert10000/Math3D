@@ -561,6 +561,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-F04](evidence/sage-f04-typed-workbook-cells-2026-11-05.md) adds a typed Algebra object Workbook block with revision-pinned record output, an `algebra-object` dependency port, freshness after source or parent changes, and explicit bounded recompute with saved prior runs. A Project Workbook resource and publication manifest retain its exact output refs and hashes. The next feature is **SAGE-F05** execution certificates and provenance schemas.
 
+[SAGE-F05](evidence/sage-f05-execution-certificates-2026-11-05.md) adds a versioned execution certificate to saved object-linked Sage algebra evidence. It records pinned definitions, operation schemas, request/result hashes and sizes, route and version, warnings, declared budget and honest verifier scope; the Inspector shows the certificate while legacy evidence still imports. The next feature is **SAGE-F06** runtime capability manifests.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,

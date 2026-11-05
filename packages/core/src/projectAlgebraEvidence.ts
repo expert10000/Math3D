@@ -10,6 +10,8 @@ import { parseSageGaloisInput, validateSageGaloisSnapshot } from "./sageGaloisAn
 import { parseSageFiniteGroupInput, validateSageFiniteGroupSnapshot } from "./sageFiniteGroupOperations";
 import { parseSageModuleInvariantInput, validateSageModuleInvariantSnapshot } from "./sageModuleInvariantFactors";
 import { parseSageChainHomologyInput, validateSageChainHomologySnapshot } from "./sageChainHomology";
+import { createSageExecutionCertificate, parseSageExecutionCertificate,
+  type SageExecutionCertificate } from "./sageExecutionCertificate";
 
 export const MAX_PROJECT_ALGEBRA_EVIDENCE = 128;
 export type ProjectAlgebraEvidence = Readonly<{
@@ -19,6 +21,7 @@ export type ProjectAlgebraEvidence = Readonly<{
   request: AlgebraOperationRequest;
   result: AlgebraOperationResult;
   resultHash: StructuralHash;
+  certificate?: SageExecutionCertificate;
   runtime: Readonly<{ engine: "sagemath"; version: string; backend: "docker" | "private";
     jobId: string; elapsedMs: number; warnings: readonly string[] }>;
 }>;
@@ -39,13 +42,15 @@ export const createProjectAlgebraEvidence = (projectId: StableDocumentId,
   if (!target) throw new TypeError("Algebra evidence target revision is missing.");
   const checked = parseAlgebraOperationResult(request, result);
   const value = { id: evidenceId(projectId, runtime.jobId), projectId, targetHash: target.contentHash,
-    request, result: checked, resultHash: structuralHash(checked), runtime };
+    request, result: checked, resultHash: structuralHash(checked), runtime,
+    certificate: createSageExecutionCertificate(objects, request, checked, runtime) };
   return parseProjectAlgebraEvidence(value, projectId, objects);
 };
 
 export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDocumentId,
   objects: readonly ProjectAlgebraObjectEntry[]): ProjectAlgebraEvidence => {
-  if (!object(value) || !exact(value, ["id", "projectId", "targetHash", "request", "result", "resultHash", "runtime"]) ||
+  if (!object(value) || !(exact(value, ["id", "projectId", "targetHash", "request", "result", "resultHash", "runtime"]) ||
+      exact(value, ["id", "projectId", "targetHash", "request", "result", "resultHash", "runtime", "certificate"])) ||
       !isStableDocumentId(value.id) || value.projectId !== projectId || !isStructuralHash(value.targetHash) ||
       !isStructuralHash(value.resultHash) || !object(value.request) ||
       !exact(value.request, ["operation", "backend", "params", "target", "outputSchema"]) ||
@@ -87,5 +92,8 @@ export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDoc
     validateSageChainHomologySnapshot(parseSageChainHomologyInput(request.params), projectId, objects);
   const result = parseAlgebraOperationResult(request, value.result);
   if (structuralHash(result) !== value.resultHash) throw new TypeError("Algebra evidence result hash does not match.");
+  if (value.certificate !== undefined)
+    parseSageExecutionCertificate(value.certificate, objects, request, result,
+      runtime as ProjectAlgebraEvidence["runtime"]);
   return JSON.parse(canonicalJsonStringify(value)) as ProjectAlgebraEvidence;
 };
