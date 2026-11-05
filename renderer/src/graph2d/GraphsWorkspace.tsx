@@ -3015,10 +3015,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const polarDifferential = useMemo(() => analyzeGraph2DPolarLocalDifferential(document), [document]);
   const parametricDifferential = useMemo(() => analyzeGraph2DParametricLocalDifferential(document), [document]);
   const derivatives = differential?.derivatives ?? null;
-  const derivativeCurve = useMemo(() => showDerivativeCurve && selectedObject?.kind === "explicit-cartesian" &&
+  const derivativeCurve = useMemo(() => selectedObject?.kind === "explicit-cartesian" &&
     !graph2DHasLogScale(document.display.viewport) ?
     sampleGraph2DDerivativeCurve(document, selectedObject.id, size) : null,
-  [showDerivativeCurve, selectedObject, document, size]);
+  [selectedObject, document, size]);
   const differentialOverlays = useMemo(() => [
     ...(differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : []),
     ...(polarDifferential && isGraph2DPolarLocalDifferentialCurrent(polarDifferential, document) ? polarDifferential.overlays : []),
@@ -3236,6 +3236,15 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       <h3>Calculus overlays</h3>
       <button type="button" aria-pressed={showDerivativeCurve} onClick={() => setShowDerivativeCurve(value => !value)}>
         {showDerivativeCurve ? "Hide derivative plot" : "Show derivative plot"}</button>
+      {!selectedObject.derivativeOrigin && <button type="button"
+        data-testid="gf36-save-derivative-curve"
+        disabled={!onAuthoringCommit || parameterPreviewActive ||
+          graph2DHasLogScale(document.display.viewport) ||
+          (derivativeCurve?.status === "unavailable")}
+        onClick={() => onAuthoringCommit?.({ type: "create-derivative-curve",
+          sourceObjectId: selectedObject.id })}>Save linked derivative curve</button>}
+      {!selectedObject.derivativeOrigin && derivativeCurve?.status === "unavailable" &&
+        <small role="status">Saved derivative unavailable: {derivativeCurve.reason}</small>}
       {showDerivativeCurve && <small>{graph2DHasLogScale(document.display.viewport) ?
         "Derivative plot is unavailable on log axes." : derivativeCurve?.status === "unavailable" ?
           derivativeCurve.reason : derivativeCurve ?
@@ -4569,7 +4578,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           focusedIntervalId={focusedInterval && focusedInterval.resultId === intervals?.resultId ?
             focusedInterval.intervalId : null}
           area={!parameterPreviewActive && area && isGraph2DIntegralCurrent(area, document) ? area : null}
-          derivativeCurve={!parameterPreviewActive && derivativeCurve?.sourceHash === document.identity.structuralHash ? derivativeCurve : null}
+          derivativeCurve={showDerivativeCurve && !parameterPreviewActive && derivativeCurve?.sourceHash === document.identity.structuralHash ? derivativeCurve : null}
           unresolvedIntervals={parameterPreviewActive ? [] : [
             ...(criticalPoints?.unresolvedIntervals ?? []),
             ...(intersections && isGraph2DIntersectionCurrent(intersections, document) ? intersections.unresolvedIntervals : []),

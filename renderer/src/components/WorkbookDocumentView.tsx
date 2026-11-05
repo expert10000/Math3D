@@ -19,6 +19,7 @@ import { WorkbookSavedMeshReviewBlock } from "./WorkbookSavedMeshReviewBlock";
 import { WorkbookCoordinateReviewBlock } from "./WorkbookCoordinateReviewBlock";
 import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoint";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
+import { WorkbookAlgebraResultCell } from "./WorkbookAlgebraResultCell";
 
 type Props = {
   workbook: Workbook;
@@ -117,6 +118,10 @@ export const WorkbookDocumentView: React.FC<Props> = ({
           {block.documentContent && <div data-testid="workbook-document-content" style={{ minWidth: 0 }} dangerouslySetInnerHTML={{ __html: workbookDocumentContentHtml(block) ?? "" }} />}
           {(block.type === "text" || block.type === "visualize") && <details><summary>Edit document content</summary><WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(stage.id, block.id, patch)} /></details>}
           {block.type === "reference" && <div style={{ display: "grid", gap: 4 }}>
+            {block.algebraResult && <WorkbookAlgebraResultCell value={block.algebraResult} readOnly={readOnly}
+              getProject={() => context ?? null}
+              onChange={(algebraResult) => onUpdateBlock(stage.id, block.id, { algebraResult, notebookReference: undefined })}
+              onClear={() => onUpdateBlock(stage.id, block.id, { algebraResult: undefined })} />}
             {reference ? <>
               <strong>{reference.kind === "document" ? sourceTitle || source?.module || "Project document" : inspection?.result?.provenance.operation.type || "Project result"}</strong>
               <span>{reference.kind === "document" ? "Document" : "Saved result"} · source revision {reference.source.revision} · {inspection?.status ?? "unresolved"}</span>
@@ -125,7 +130,7 @@ export const WorkbookDocumentView: React.FC<Props> = ({
               {!readOnly && <WorkbookAnalysisRerun context={context ?? null} reference={reference} onRelink={notebookReference => onUpdateBlock(stage.id, block.id, { notebookReference })} />}
               <button type="button" disabled={!projectLive || !source || inspection?.status === "missing" || inspection?.status === "different-project"}
                 onClick={() => source && onOpenDocument(source.expected.id, source.module)} style={{ justifySelf: "start", fontSize: 11 }}>Open source document</button>
-            </> : <span>No Project target linked yet.</span>}
+            </> : !block.algebraResult && <span>No Project target linked yet.</span>}
           </div>}
           {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
             <ScientificSubrectangleWorkbookReport project={project} reference={reference} workbookId={workbook.id}

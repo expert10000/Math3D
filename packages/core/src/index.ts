@@ -161,6 +161,7 @@ export * from "./vectorField3DTrajectoryPromotion";
 export * from "./vectorField3DLocalSeparatrices";
 export * from "./vectorField3DComparison";
 export * from "./derivedFieldDocument";
+export * from "./advancedTensorMeasures";
 export * from "./derivedFieldEvaluation";
 export * from "./derivedFieldIsosurface";
 export * from "./projectDerivedFields";
