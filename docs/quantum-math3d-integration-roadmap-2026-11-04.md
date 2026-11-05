@@ -837,15 +837,19 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 ### QI-19 — Large data LOD and chunking
 
+**Status (2026-11-05): Partial.** Theory Lab progressively loads a 97³ field fixture with measured buffer bounds. Math3D now independently verifies stream bundles, opens the bounded preview level first, and can load or cancel a fuller verified level. It rejects a changed source revision and enforces per-level and total byte limits. Math3D Project pinning and portable packs for multi-level streams remain open.
+
 **Commit:** `perf(viewer): progressively load and render large scientific fields`
 
 - Chunked fields, preview LOD, bounded memory, verification at transport boundaries.
 
 **Done when:** datasets over the chosen fixture size load progressively without unbounded main-thread memory spikes.
 
-**Implementation note (2026-11-05):** Theory Lab's stream viewer opens a coarse field preview first, then loads verified chunks progressively. The loader yields between chunk batches, enforces a 4 MiB chunk cache and 16 MiB scene ceiling, and reports tracked peak resident buffer bytes. A 97³ field fixture verifies preview size, progressive events, byte equality at full resolution and buffer bounds. Math3D's scene and Study validators now admit up to one million samples; its independent scene viewer still opens full verified scene bundles. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
+**Implementation note (2026-11-05):** Theory Lab's stream viewer opens a coarse field preview first, then loads verified chunks progressively. The loader yields between chunk batches, enforces a 4 MiB chunk cache and 16 MiB scene ceiling, and reports tracked peak resident buffer bytes. A 97³ field fixture verifies preview size, progressive events, byte equality at full resolution and buffer bounds. Math3D's scene and Study validators now admit up to one million samples; its independent viewer supports both complete verified scene bundles and bounded preview/full stream levels. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
 
 ### QI-20 — Parameter sweeps
+
+**Status (2026-11-05): Complete for the supported QWZ and Hofstadter producers.** QWZ saved phase diagrams pin each cell to a verified run and related scenes. A verified Hofstadter flux sweep has a linked flux–energy plot whose supplied points resolve to exact saved Lab run IDs and result hashes. Navigation re-verifies the source. Other model families need producer-backed adapters.
 
 **Commit:** `feat(science): represent phase diagrams as linked sweep datasets`
 
@@ -856,6 +860,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 **Implementation note (2026-11-05):** Theory Lab can save a QWZ phase diagram from existing runs across mass and grid resolution. Each heatmap cell pins the run ID, result SHA-256, numerical checks and bands/curvature scene IDs. Selecting a cell re-verifies the source before opening its run or related scenes. Empty parameter combinations stay visibly unresolved. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
 
 ### QI-21 — Native Math3D promotion commands
+
+**Status (2026-11-05): Complete for supported mapped primitives.** A single verified regular 3D scalar or complex field promotes to a source-backed Field Explorer document, preserving its grid, units, and provenance while editing only its display state. Verified Project scenes can produce native Geometry, Curve, Graph2D, Mesh, and mesh-backed Surface copies with `derived-from` provenance. Unsupported primitives are refused.
 
 **Commit:** `feat(project): promote quantum datasets to native documents`
 

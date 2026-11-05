@@ -641,7 +641,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               {availableView("slice") && <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>}
               {availableView("volume") && <button type="button" onClick={() => setView("volume")} aria-pressed={view === "volume"}>Volume</button>}
               {availableView("surface") && <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
-              {scene.provenance.model === "hydrogenic" && scene.fields?.length === 1 && <button type="button"
+              {scene.fields?.length === 1 && scene.objects.length === 0 &&
+                scene.datasets.length === (scene.fields[0].kind === "complex-field" ? 2 : 1) && <button type="button"
                 data-testid="quantum-promote-field" disabled={promotingField} onClick={() => { void (async () => { try {
                   setPromotingField(true);
                   const field = await onPromoteField?.();
