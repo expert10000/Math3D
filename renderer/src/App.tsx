@@ -10249,6 +10249,15 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push(block.formula ?? "");
           lines.push("$$");
         } else if (block.type === "reference") {
+          if (block.algebraResult) {
+            const cell = block.algebraResult;
+            lines.push(`Algebra object: ${cell.objectId} revision ${cell.revision}`);
+            lines.push(`Operation: ${cell.evidence.request.operation}`);
+            lines.push(`Runtime: ${cell.evidence.runtime.backend} SageMath ${cell.evidence.runtime.version}`);
+            lines.push(`Result hash: ${cell.evidence.resultHash}`);
+            lines.push(`Freshness: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
+            lines.push("```json", JSON.stringify(cell.evidence.result, null, 2), "```");
+          }
           const reference = normalizeNotebookReference(block.notebookReference);
           if (reference) {
             lines.push(`Project: ${reference.projectId}`);
@@ -10487,8 +10496,16 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
         } else if (block.type === "formula") {
           body = `<div class="block-body">${renderNotebookMath(block.formula ?? "", true, true)}</div>`;
         } else if (block.type === "reference") {
+          const algebra = block.algebraResult;
           const reference = normalizeNotebookReference(block.notebookReference);
-          body = reference ? `<div class="block-body">
+          body = algebra ? `<div class="block-body">
+            <div>Algebra object: ${escapeHtml(algebra.objectId)} revision ${algebra.revision}</div>
+            <div>Operation: ${escapeHtml(algebra.evidence.request.operation)}</div>
+            <div>Runtime: ${escapeHtml(algebra.evidence.runtime.backend)} SageMath ${escapeHtml(algebra.evidence.runtime.version)}</div>
+            <div>Result hash: ${escapeHtml(algebra.evidence.resultHash)}</div>
+            <div>Freshness: ${escapeHtml(resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing")}</div>
+            <pre>${escapeHtml(JSON.stringify(algebra.evidence.result, null, 2))}</pre>
+          </div>` : reference ? `<div class="block-body">
             <div>Project: ${escapeHtml(reference.projectId)}</div>
             <div>${reference.kind === "document" ? "Document" : "Saved result"}: ${escapeHtml(reference.targetId)}</div>
             <div>Source: ${escapeHtml(reference.source.documentId)} revision ${reference.source.revision}</div>

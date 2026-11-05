@@ -9,6 +9,7 @@ import { normalizeWorkbookSavedMeshTrendReference } from "./workbookSavedMeshTre
 import { normalizeWorkbookSavedMeshComparisonReference } from "./workbookSavedMeshComparisonReference";
 import { normalizeWorkbookSavedMeshReviewReference } from "./workbookSavedMeshReviewReference";
 import { normalizeWorkbookCoordinateReviewReference } from "./workbookCoordinateReviewReference";
+import { normalizeWorkbookAlgebraResult } from "./workbookAlgebraResult";
 
 /** Dependency edges record provenance and ordering. They do not execute or copy target content. */
 export type WorkbookDependency = Readonly<{
@@ -32,6 +33,10 @@ const keyOf = (edge: WorkbookDependency): string => JSON.stringify([edge.targetB
 
 /** Checks the graph without modifying persisted blocks, ports, or saved runs. */
 export function validateWorkbookDependencies(workbook: Workbook): void {
+  for (const block of blocksOf(workbook)) if (block.algebraResult !== undefined) {
+    if (block.type !== "reference") throw new TypeError("Typed algebra results belong to Project reference blocks.");
+    normalizeWorkbookAlgebraResult(block.algebraResult);
+  }
   if (workbook.namedParameters !== undefined) normalizeWorkbookNamedParameters(workbook.namedParameters);
   for (const block of blocksOf(workbook)) if (block.claim !== undefined) {
     if (block.type !== "assert") throw new TypeError("Evidence claims belong to assert blocks.");
@@ -143,7 +148,8 @@ export function createProjectDependencySource(project: Math3DProject, kind: Note
 export function workbookBlockSourceHash(block: WorkbookBlock): StructuralHash {
   return structuralHash({
     type: block.type, enabled: block.enabled !== false, text: block.text ?? null, formula: block.formula ?? null,
-    reference: block.notebookReference ?? null, inputs: block.inputs ?? null, outputs: block.outputs ?? null,
+    reference: block.notebookReference ?? null, algebraResult: block.algebraResult ?? null,
+    inputs: block.inputs ?? null, outputs: block.outputs ?? null,
     params: block.params?.values ?? null, visualize: block.visualize ?? null, interaction: block.interaction ?? null,
     ...(block.documentContent ? { documentContent: block.documentContent } : {}),
     ...(block.claim ? { claim: block.claim } : {}),

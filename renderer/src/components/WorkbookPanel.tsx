@@ -13,6 +13,7 @@ import type { SavedMeshTrendTarget } from "../projects/projectSavedMeshTrendPoin
 import { WorkbookPublication, type PublicationKind } from "./WorkbookPublication";
 import { WorkbookSnapshotRecord } from "./WorkbookSnapshotRecord";
 import { WorkbookProjectReferenceCell } from "./WorkbookProjectReferenceCell";
+import { WorkbookAlgebraResultCell } from "./WorkbookAlgebraResultCell";
 import { WorkbookDependencies } from "./WorkbookDependencies";
 import { WorkbookDocumentView } from "./WorkbookDocumentView";
 import { ScientificSubrectangleWorkbookReport } from "./ScientificSubrectangleWorkbookReport";
@@ -1887,16 +1888,20 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
               {(block.type === "text" || block.type === "visualize") && <WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(activeStageId, block.id, patch)} />}
               {block.type === "assert" && activeWorkbook && <WorkbookClaimEditor workbook={activeWorkbook} block={block} project={dependencyProject} projectLive={projectLive} reader={artifactContext?.readArtifact} readOnly={readOnly} onChange={claim => onUpdateBlock(activeStageId, block.id, { claim })} />}
-              {block.type === "reference" && (
+              {block.type === "reference" && !block.algebraResult && (
                 <WorkbookProjectReferenceCell
                   reference={block.notebookReference}
                   readOnly={readOnly}
                   getProject={getNotebookProject}
-                  onChange={(reference: NotebookReference) => onUpdateBlock(activeStageId, block.id, { notebookReference: reference })}
+                  onChange={(reference: NotebookReference) => onUpdateBlock(activeStageId, block.id, { notebookReference: reference, algebraResult: undefined })}
                   onOpenDocument={onOpenNotebookDocument}
                   onOpenProjects={onOpenProjects}
                 />
               )}
+              {block.type === "reference" && <WorkbookAlgebraResultCell value={block.algebraResult}
+                readOnly={readOnly || !enabled} getProject={getNotebookProject}
+                onChange={(algebraResult) => onUpdateBlock(activeStageId, block.id, { algebraResult, notebookReference: undefined })}
+                onClear={() => onUpdateBlock(activeStageId, block.id, { algebraResult: undefined })} />}
               {block.scientificRegionReport?.kind === "scientific-subrectangle-report/v1" &&
                 <ScientificSubrectangleWorkbookReport project={dependencyProject} reference={block.notebookReference}
                   workbookId={activeWorkbook?.id} previousResultId={block.scientificRegionReport.previousResultId} />}

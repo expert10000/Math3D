@@ -9,6 +9,7 @@ import { inspectWorkbookSavedMeshComparisonReference } from "./workbookSavedMesh
 import { inspectWorkbookSavedMeshReviewReference } from "./workbookSavedMeshReviewReference";
 import { inspectWorkbookCoordinateReviewReference } from "./workbookCoordinateReviewReference";
 import { workbookSageCodeRunStatus } from "./workbookSageCode";
+import { inspectWorkbookAlgebraResult } from "./workbookAlgebraResult";
 
 export type WorkbookFreshnessStatus = "current" | "stale" | "missing" | "failed";
 export type WorkbookBlockFreshness = Readonly<{
@@ -26,7 +27,7 @@ const priority: Record<WorkbookFreshnessStatus, number> = { current: 0, stale: 1
 
 export function workbookNeedsProjectInspection(workbook: Workbook): boolean {
   return !!workbook.dependencies?.some((edge) => edge.source.kind === "project" || edge.source.kind === "note") ||
-    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference ||
+    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && (!!block.notebookReference || !!block.algebraResult) ||
       !!block.visualize?.comparison || !!block.visualize?.savedMeshTrend || !!block.visualize?.savedMeshComparison ||
       !!block.visualize?.savedMeshReview || !!block.visualize?.coordinateReview || block.claim?.evidence.some(item => item.kind === "result")));
 }
@@ -53,6 +54,8 @@ export function resolveWorkbookFreshness(
       ? project ? inspectNotebookReference(project, block.notebookReference)
         : { status: "missing" as const, reason: "Open the linked Project to inspect this reference." }
       : null;
+    const algebraResult = block.type === "reference" && block.algebraResult
+      ? inspectWorkbookAlgebraResult(project, block.algebraResult) : null;
     const comparison = block.type === "visualize" && block.visualize?.comparison
       ? inspectWorkbookComparisonReference(project, block.visualize.comparison) : null;
     const savedMeshTrend = block.type === "visualize" && block.visualize?.savedMeshTrend
@@ -72,6 +75,8 @@ export function resolveWorkbookFreshness(
         ? { status: "failed" as const, reason: "Sage code execution failed.", path: [id], blockedBySource: false }
       : sageCodeStatus === "stale" || sageCodeStatus === "pending"
         ? { status: "stale" as const, reason: sageCodeStatus === "pending" ? "Sage code has not run." : "Sage code or dependency links changed after the saved run.", path: [id], blockedBySource: false }
+        : algebraResult && algebraResult.status !== "current"
+          ? { status: algebraResult.status, reason: algebraResult.reason, path: [id], blockedBySource: true }
         : reference && reference.status !== "current"
           ? { status: reference.status === "different-project" ? "missing" as const : reference.status,
             reason: reference.reason, path: [id], blockedBySource: true }
