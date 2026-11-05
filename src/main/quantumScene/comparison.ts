@@ -36,7 +36,8 @@ function pathAxis(values:Float64Array):number[]|null{
   return axis;
 }
 function interpolate(axis:number[],values:Float64Array,target:number[]):number[]|null{
-  if(values.length!==axis.length||target[0]<axis[0]-1e-10||target.at(-1)!>axis.at(-1)!+1e-10)return null;
+  if(values.length!==axis.length||target[0]<axis[0]-1e-10||
+      target[target.length-1]>axis[axis.length-1]+1e-10)return null;
   const result:number[]=[];let j=0;
   for(const x of target){
     while(j<axis.length-2&&axis[j+1]<x)j++;
