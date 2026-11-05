@@ -85,10 +85,11 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Ideal", formatRef(source.definition.ideal)));
   } else if (source?.definition.kind === "finite-group") {
-    structure.push(fact("Representation", source.definition.representation),
-      fact("Generators", source.definition.representation === "permutation"
-        ? source.definition.generators.map((item) => `${item.name}: (${item.images.join(", ")})`)
-        : source.definition.generators.map((name, index) => `${name}: C${source.definition.invariantFactors[index]}`)));
+    const group = source.definition;
+    structure.push(fact("Representation", group.representation),
+      fact("Generators", group.representation === "permutation"
+        ? group.generators.map((item) => `${item.name}: (${item.images.join(", ")})`)
+        : group.generators.map((name, index) => `${name}: C${group.invariantFactors[index]}`)));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;

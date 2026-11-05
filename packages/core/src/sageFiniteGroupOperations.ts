@@ -83,7 +83,8 @@ export const validateSageFiniteGroupSnapshot = (input: SageFiniteGroupInput, pro
 export const buildSageFiniteGroupInput = (project: Math3DProject,
   target: AlgebraObjectRef): SageFiniteGroupInput => {
   const record = project.algebraObjects?.find((item) => item.id === target.objectId)?.revisions[target.revision - 1];
-  if (record?.kind !== "finite-group") throw new TypeError("Select a saved finite group.");
+  if (record?.kind !== "finite-group" || record.definition.kind !== "finite-group")
+    throw new TypeError("Select a saved finite group.");
   return validateSageFiniteGroupSnapshot({ format: SAGE_GROUP_FORMAT, schemaVersion: 1,
     projectId: project.identity.id, target, targetHash: record.contentHash, definition: record.definition },
   project.identity.id, project.algebraObjects ?? []);
