@@ -1,5 +1,6 @@
 import { canonicalJsonStringify, encodeProjectResourceBytes, sha256Checksum, structuralHash, upsertMath3DProjectWorkbook, type Math3DProject } from "@math3d/core";
-import { assessWorkbookClaim, inspectNotebookProvenance, normalizeNotebookReference, workbookSnapshotQualification, type NotebookArtifactReader, type NotebookReference, type Workbook } from "@math3d/workbook";
+import { assessWorkbookClaim, inspectNotebookProvenance, inspectWorkbookAlgebraObjectCell,
+  normalizeNotebookReference, workbookSnapshotQualification, type NotebookArtifactReader, type NotebookReference, type Workbook } from "@math3d/workbook";
 import { captureProjectResources, exportProjectPackage, parseProjectPackage, type ProjectResourceReader, type VerifiedProjectResources } from "../projects/projectResources";
 import { projectNoteRenderedBody } from "../projects/projectNoteValues";
 import { prepareProjectWorkbook, readProjectWorkbook } from "../projects/projectWorkbookBinding";
@@ -66,7 +67,11 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
       return { reference: ref, status,
         renderedBody: status === "current" && note ? projectNoteRenderedBody(note, project!.workspace) : null };
     });
-    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison, savedMeshTrend, savedMeshComparison, savedMeshReview, coordinateReview };
+    const algebraObject = block.algebraObject ? { source: block.algebraObject.source,
+      outputHash: block.algebraObject.runs.at(-1)!.outputHash,
+      objectKind: block.algebraObject.runs.at(-1)!.output.objectKind,
+      inspection: inspectWorkbookAlgebraObjectCell(project, block.algebraObject) } : null;
+    return { workbookId: book.id, blockId: block.id, title: block.title, notes, enabled: block.enabled !== false, contentHash: structuralHash(JSON.parse(JSON.stringify(block))), claim: block.claim ? assessWorkbookClaim(block.claim, book, project) : null, snapshots, comparison, savedMeshTrend, savedMeshComparison, savedMeshReview, coordinateReview, algebraObject };
   })));
   return { schemaVersion: 1 as const, projectId: project?.identity.id ?? null, projectHash: project ? structuralHash(project) : null,
     parameters: books.map(book => ({ workbookId: book.id, namedParameters: book.namedParameters ?? [] })),
@@ -77,7 +82,10 @@ export const notebookPublicationManifest = (books: readonly Workbook[], project:
     }) };
 };
 export type NotebookPublicationManifest = ReturnType<typeof notebookPublicationManifest>;
-export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n${manifest.blocks.filter(block => block.savedMeshComparison).map(block => {
+export const notebookPublicationMarkdown = (manifest: NotebookPublicationManifest) => `## Linked-source manifest\n\n${manifest.qualification}\n\n${manifest.blocks.filter(block => block.algebraObject).map(block => {
+  const item = block.algebraObject!;
+  return `### Algebra object · ${block.title}\n\n${item.objectKind} · ${item.source.objectId} @r${item.source.revision} · definition ${item.source.contentHash} · output ${item.outputHash}.\n\nProject ${item.source.projectId} · ${item.inspection.status}: ${item.inspection.reason}`;
+}).join("\n\n")}\n\n${manifest.blocks.filter(block => block.savedMeshComparison).map(block => {
   const { reference, evidence, observations } = block.savedMeshComparison!;
   return `### Saved Mesh comparison · ${reference.comparisonId}\n\nPinned metric: ${reference.metricPath}; comparison hash ${reference.comparisonHash}.\n\n${([evidence.a, evidence.b] as const).map((side, index) => `- ${index ? "B" : "A"}: result ${side.resultId} · ${side.resultHash}; Mesh r${side.sourceRevision} · ${side.sourceHash}`).join("\n")}\n\n${evidence.metrics.map(metric => `- ${metric.path}: A ${metric.a}; B ${metric.b}; unit ${metric.unit ?? "unqualified"}; B − A ${metric.difference ?? metric.reason}`).join("\n")}\n\nAuthored observations (not independent measurements):\n${observations.length ? observations.map(note => `- ${JSON.stringify(note.title)}: ${JSON.stringify(note.body)} · ${note.noteId} r${note.noteRevision} · ${note.noteHash}`).join("\n") : "- None saved."}\n\n${evidence.qualification}`;
 }).join("\n\n")}\n\n${manifest.blocks.filter(block => block.savedMeshTrend).map(block => {

@@ -1,0 +1,9 @@
+# SAGE-F04 typed algebra object Workbook cells — 2026-11-05
+
+Workbook → **2 Compute** → **Add block → Algebra object**. With a named Project open, choose a saved algebra object and select **Compute selected object**. The block emits a typed `algebra-object` output port and saves a validated object record, its Project and object IDs, exact revision, definition hash, output hash and run time. The output is a bounded local registry read; it does not execute arbitrary Sage code. Workbook Block and Document views show the exact definition and freshness.
+
+If the object advances, the saved output remains visible as historical evidence and the block becomes stale. A dependent block linked through the typed output port also becomes stale. **Recompute latest revision** explicitly reads the latest fresh object, keeps the previous run (up to eight), and changes the output hash. A stale parent definition blocks recomputation until its saved object is repaired. A missing or different Project is reported without silently rebinding the cell.
+
+**Acceptance:** A saved `R = QQ[x,y]` cell at revision 1 outputs its exact record. Advancing `R` to revision 2 with a different monomial order marks the cell and dependent typed link stale. Recompute yields revision 2, retains revision 1, and leaves the dependent link stale until relinked. Tests reject a forged output hash, mismatched object kind and incompatible output ports. A Project Workbook resource roundtrip independently reopens the exact record and run history; the publication manifest and Markdown include the pinned object and output hashes. The desktop gate binds, advances and recomputes `R`, then exports the Project package and opens its Workbook in a fresh profile.
+
+**Next:** SAGE-F05 defines execution certificate and provenance schemas for runtime-backed algebra calculations. F04's registry snapshot is explicitly a local read, so it does not claim a Sage execution certificate.

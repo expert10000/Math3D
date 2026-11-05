@@ -956,8 +956,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Source-linked rounds, defects, correction chains and logical results.
 
-**Status (2026-11-05): Partial.** Theory Lab has a pinned, source-checked repetition-code viewer in its Atlas and a bounded ideal three-data-bit example on its Backend page. The Python worker records exact flip, parity syndrome, temporal defects, final correction and logical outcome; Electron independently checks the trace and digest. Multiple-error ambiguity is explicit. The live example has no immutable saved run or `.qscene` export; there is no surface-code patch or circuit-level noisy decoding. Those producer and consumer pieces remain required for full QI-31.
-See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
+**Status (2026-11-05): Partial.** Theory Lab has a pinned, source-checked repetition-code viewer in its Atlas and a bounded ideal three-data-bit example on its Backend page. The Python worker records exact flip, parity syndrome, temporal defects, final correction and logical outcome; Electron independently checks the trace and digest. The trace now persists as a hash-verified immutable run and exports a portable `.qscene` with exact syndrome, defect and data-bit arrays. Math3D independently opens and verifies that scene, shows its ideal-example scope and decoder record, and refuses changed scene bytes. Multiple-error ambiguity is explicit. A surface-code patch, circuit-level noisy decoding and comparison of scientifically independent decoders remain required for full QI-31.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md) and [saved QEC scene evidence](evidence/quantum-qi40-qec-saved-scene-2026-11-05.md).
 
 ### QI-32 — Numerical validation dashboard
 
@@ -1033,7 +1033,7 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Done when:** release evidence is generated, all P0 gates pass, known limitations are documented, and new result/scene adapters can be rolled back while both pinned `quantum-scene/v1|v2` readers remain available.
 
-**Status (2026-11-05): In progress; release freeze withheld.** The [QI-40 certification candidate](evidence/quantum-qi40-certification-2026-11-05.md) pins 38 v1/v2 scenes and records passing QWZ, importer, Project, portable, inspector, worker and live two-app checks. All 38 scenes have a current screenshot capture; a 24-cycle Electron stress run observed WebGL context loss and subsequent reopen. Manual visual approval, long-duration resource budgets, installed-app signoff and demonstrated rollback remain open. QEC remains a bounded example without a saved scene. Do not interpret passing source-checkout tests as installer signoff.
+**Status (2026-11-05): In progress; release freeze withheld.** The [QI-40 certification candidate](evidence/quantum-qi40-certification-2026-11-05.md) pins 38 v1/v2 scenes and records passing QWZ, importer, Project, portable, inspector, worker and live two-app checks. All 38 scenes have a current screenshot capture; a 24-cycle Electron stress run observed WebGL context loss and subsequent reopen. The bounded ideal QEC example now has a verified saved run and portable scene, while surface-code science remains outside its supported scope. Manual visual approval, long-duration resource budgets, installed-app signoff and demonstrated rollback remain open. Do not interpret passing source-checkout tests as installer signoff.
 
 ### Cross-repository ownership and evidence for the first cut
 

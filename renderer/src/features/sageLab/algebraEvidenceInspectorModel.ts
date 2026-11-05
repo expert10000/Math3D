@@ -364,6 +364,25 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     fact("Warnings", evidence.runtime.warnings.length ? evidence.runtime.warnings : "None"),
     fact("Algorithm", "Not reported"), fact("Proof settings", "Not recorded"),
   ];
+  const certificate = evidence.certificate;
+  if (certificate) execution.push(
+    fact("Certificate", `v${certificate.schemaVersion} · ${certificate.contentHash}`),
+    fact("Input schema", certificate.operation.inputSchema),
+    fact("Request hash", certificate.requestHash),
+    fact("Pinned sources", certificate.sources.map((source) =>
+      `${source.objectId}@${source.revision} · ${source.contentHash}`)),
+    fact("Input size", `${certificate.inputBytes} bytes`),
+    fact("Output size", `${certificate.outputBytes} bytes`),
+    fact("Outcome", `${certificate.outcome.status} · ${certificate.outcome.representation} representation`),
+    fact("Certificate checks", certificate.verifier.checks),
+    fact("Mathematical proof", "Not claimed by this execution certificate"),
+    fact("Subsystem", certificate.runtime.subsystem
+      ? `${certificate.runtime.subsystem} ${certificate.runtime.subsystemVersion ?? ""}`.trim() : "Not reported"),
+    fact("Peak memory", certificate.runtime.peakMemoryBytes === null ? "Not measured" : `${certificate.runtime.peakMemoryBytes} bytes`),
+    fact("Recorded limits", certificate.limits
+      ? `${certificate.limits.profile} · ${certificate.limits.wallTimeMs} ms · ${certificate.limits.maxResultBytes} bytes output`
+      : "Not recorded"));
+  else execution.push(fact("Certificate", "Legacy evidence · no execution certificate"));
   if (operation.startsWith("sage.ideal.")) {
     const budget = params.budget as Record<string, unknown> | undefined;
     execution.push(fact("Ideal budget", budget ? text(budget.profile) : "Legacy fixed worker limits"));
