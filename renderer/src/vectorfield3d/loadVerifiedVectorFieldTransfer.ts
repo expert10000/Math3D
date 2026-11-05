@@ -2,11 +2,12 @@ import { verifyVectorField3DVolumes, type VectorField3DDocument,
   type VerifiedVectorFieldTransfer } from "@math3d/core";
 
 /** Reopen pinned resources through the desktop verifier before using sampled values. */
-export async function loadVerifiedVectorFieldTransfer(source: VectorField3DDocument):
+export async function loadVerifiedVectorFieldTransfer(source: VectorField3DDocument,
+  verifier?: Window["scientificScenes"]):
   Promise<VerifiedVectorFieldTransfer> {
   if (source.source.field.kind !== "scientific-bundle")
     throw new TypeError("A scientific vector bundle is required.");
-  const bridge = window.scientificScenes;
+  const bridge = verifier ?? (typeof window !== "undefined" ? window.scientificScenes : undefined);
   if (!bridge?.openGraphDatasetReference || !bridge.previewVectorVolume ||
       !bridge.closeGraphDataset)
     throw new TypeError("Desktop scientific source verifier is unavailable.");
