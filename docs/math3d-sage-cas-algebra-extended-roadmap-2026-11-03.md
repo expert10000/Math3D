@@ -348,6 +348,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F03 implementation update (2026-11-05):** The [F03 acceptance record](evidence/sage-f03-singular-locus-tangent-2026-11-05.md) adds exact `QQ` hypersurface Jacobian equations and point-local tangent scenes pinned to the F01 source. A rational point inspector reports exact locus membership, Jacobian rank, multiplicity and the leading homogeneous tangent cone. The node `y²−x²(x+1)` has two real tangents; the cusp `y²−x³` has a repeated tangent and nonzero transverse cubic jet. The view saves as a validated Geometry checkpoint with a Project comparison adapter. Multi-equation ideals remain an explicit dimension-aware Jacobian-minors follow-up. The next feature is **SAGE-F04**, typed algebra object Workbook cells.
 
+**F04 implementation update (2026-11-05):** The [F04 acceptance record](evidence/sage-f04-typed-workbook-cells-2026-11-05.md) adds a typed Algebra object Workbook block with an `algebra-object` output port. Each bounded local run pins a Project object ID, revision, definition hash and complete validated object record. The cell displays saved output without a runtime, but marks it stale when a newer revision or parent change exists. Explicit recompute updates to the latest fresh revision and retains prior runs. Project Workbook resource export/import, document view and publication manifest carry the typed source and output hashes. The next feature is **SAGE-F05**, execution certificates and provenance schemas.
+
 ---
 
 ## 3. P0 — Algebra object registry

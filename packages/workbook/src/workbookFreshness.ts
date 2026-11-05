@@ -9,6 +9,7 @@ import { inspectWorkbookSavedMeshComparisonReference } from "./workbookSavedMesh
 import { inspectWorkbookSavedMeshReviewReference } from "./workbookSavedMeshReviewReference";
 import { inspectWorkbookCoordinateReviewReference } from "./workbookCoordinateReviewReference";
 import { workbookSageCodeRunStatus } from "./workbookSageCode";
+import { inspectWorkbookAlgebraObjectCell } from "./workbookAlgebraObject";
 
 export type WorkbookFreshnessStatus = "current" | "stale" | "missing" | "failed";
 export type WorkbookBlockFreshness = Readonly<{
@@ -26,7 +27,8 @@ const priority: Record<WorkbookFreshnessStatus, number> = { current: 0, stale: 1
 
 export function workbookNeedsProjectInspection(workbook: Workbook): boolean {
   return !!workbook.dependencies?.some((edge) => edge.source.kind === "project" || edge.source.kind === "note") ||
-    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "reference" && !!block.notebookReference ||
+    workbook.stages.some((stage) => stage.blocks.some((block) => block.type === "algebra-object" ||
+      block.type === "reference" && !!block.notebookReference ||
       !!block.visualize?.comparison || !!block.visualize?.savedMeshTrend || !!block.visualize?.savedMeshComparison ||
       !!block.visualize?.savedMeshReview || !!block.visualize?.coordinateReview || block.claim?.evidence.some(item => item.kind === "result")));
 }
@@ -64,6 +66,8 @@ export function resolveWorkbookFreshness(
     const coordinateReview = block.type === "visualize" && block.visualize?.coordinateReview
       ? inspectWorkbookCoordinateReviewReference(project, block.visualize.coordinateReview) : null;
     const sageCodeStatus = block.type === "sage-code" ? workbookSageCodeRunStatus(workbook, block) : null;
+    const algebraStatus = block.type === "algebra-object" && block.algebraObject
+      ? inspectWorkbookAlgebraObjectCell(project, block.algebraObject) : null;
     const base = block.enabled === false || intrinsicComputeStatus[id] === "disabled"
       ? { status: "missing" as const, reason: "Block is disabled.", path: [id], blockedBySource: false }
       : intrinsicComputeStatus[id] === "failed" || block.type === "assert" && !block.claim && block.assert?.status === "fail"
@@ -72,6 +76,11 @@ export function resolveWorkbookFreshness(
         ? { status: "failed" as const, reason: "Sage code execution failed.", path: [id], blockedBySource: false }
       : sageCodeStatus === "stale" || sageCodeStatus === "pending"
         ? { status: "stale" as const, reason: sageCodeStatus === "pending" ? "Sage code has not run." : "Sage code or dependency links changed after the saved run.", path: [id], blockedBySource: false }
+        : block.type === "algebra-object" && !block.algebraObject
+          ? { status: "missing" as const, reason: "Choose a saved Project algebra object and compute this cell.", path: [id], blockedBySource: true }
+        : algebraStatus && algebraStatus.status !== "current"
+          ? { status: algebraStatus.status === "stale" ? "stale" as const : "missing" as const,
+            reason: algebraStatus.reason, path: [id], blockedBySource: true }
         : reference && reference.status !== "current"
           ? { status: reference.status === "different-project" ? "missing" as const : reference.status,
             reason: reference.reason, path: [id], blockedBySource: true }

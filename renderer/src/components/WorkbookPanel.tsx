@@ -23,6 +23,7 @@ import { WorkbookNamedParameters } from "./WorkbookNamedParameters";
 import { WorkbookClaimEditor } from "./WorkbookClaimEditor";
 import { WorkbookSageEvidenceView } from "./WorkbookSageEvidence";
 import { WorkbookSageCodeCell } from "./WorkbookSageCodeCell";
+import { WorkbookAlgebraObjectCell } from "./WorkbookAlgebraObjectCell";
 import { assessWorkbookClaim } from "@math3d/workbook";
 import { uiStyles as styles } from "../uiStyles";
 import type {
@@ -159,6 +160,7 @@ const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
   visualize: "Visualize",
   compute: "Compute",
   "sage-code": "Sage code",
+  "algebra-object": "Algebra object",
   interaction: "Interact",
   assert: "Assert",
 };
@@ -170,6 +172,7 @@ const BLOCK_ACCENT: Record<WorkbookBlockType, string> = {
   visualize: "#1f3556",
   compute: "#0f766e",
   "sage-code": "#0369a1",
+  "algebra-object": "#6540a5",
   interaction: "#7c3aed",
   assert: "#9a3412",
 };
@@ -1884,6 +1887,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               {block.type === "sage-code" && activeWorkbook && <WorkbookSageCodeCell
                 workbook={activeWorkbook} block={block} freshness={freshnessById.get(block.id)} project={dependencyProject} readOnly={readOnly || !enabled}
                 onChange={(patch) => onUpdateBlock(activeStageId, block.id, patch)} />}
+              {block.type === "algebra-object" && <WorkbookAlgebraObjectCell
+                cell={block.algebraObject} project={dependencyProject} readOnly={readOnly || !enabled}
+                onChange={(algebraObject) => onUpdateBlock(activeStageId, block.id, { algebraObject })} />}
 
               {(block.type === "text" || block.type === "visualize") && <WorkbookContentEditor block={block} readOnly={readOnly} onChange={patch => onUpdateBlock(activeStageId, block.id, patch)} />}
               {block.type === "assert" && activeWorkbook && <WorkbookClaimEditor workbook={activeWorkbook} block={block} project={dependencyProject} projectLive={projectLive} reader={artifactContext?.readArtifact} readOnly={readOnly} onChange={claim => onUpdateBlock(activeStageId, block.id, { claim })} />}

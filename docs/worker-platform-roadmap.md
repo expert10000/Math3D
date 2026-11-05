@@ -559,6 +559,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-F03](evidence/sage-f03-singular-locus-tangent-2026-11-05.md) adds exact Jacobian equations and tangent-cone scenes for one saved `QQ` hypersurface equation. Rational-point inspection distinguishes the node and cusp fixtures, displays the smooth sphere tangent plane, and saves revision-pinned Geometry evidence that independently reopens. Multi-equation ideals report the need for a dimension-aware minors workflow. The next feature is **SAGE-F04** typed algebra object Workbook cells.
 
+[SAGE-F04](evidence/sage-f04-typed-workbook-cells-2026-11-05.md) adds a typed Algebra object Workbook block with revision-pinned record output, an `algebra-object` dependency port, freshness after source or parent changes, and explicit bounded recompute with saved prior runs. A Project Workbook resource and publication manifest retain its exact output refs and hashes. The next feature is **SAGE-F05** execution certificates and provenance schemas.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
