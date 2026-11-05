@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T13:32:33.145Z",
+  "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+  "entries": [
+    {
+      "file": "curves-workspace.png",
+      "module": "Curves",
+      "title": "Curves workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "surfaces-workspace.png",
+      "module": "Surfaces",
+      "title": "Surfaces workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "mesh-workspace.png",
+      "module": "Mesh",
+      "title": "Mesh workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "geometry-workspace.png",
+      "module": "Geometry",
+      "title": "Geometry workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "volume-workspace.png",
+      "module": "Volume",
+      "title": "Volume workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "topology-workspace.png",
+      "module": "Topology",
+      "title": "Topology workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "complex_analysis-workspace.png",
+      "module": "Complex Analysis",
+      "title": "Complex Analysis workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graphs-workspace.png",
+      "module": "Graphs",
+      "title": "Graphs workspace",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graphs-gallery.png",
+      "module": "Graphs",
+      "title": "Graph Gallery",
+      "view": "Feature",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-line-comparison.png",
+      "module": "Graphs",
+      "title": "Two slopes",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-translated-quadratic.png",
+      "module": "Graphs",
+      "title": "Moving a parabola",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-cubic-extrema.png",
+      "module": "Graphs",
+      "title": "Cubic turning points",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-repeated-root.png",
+      "module": "Graphs",
+      "title": "A root that touches",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-reciprocal-pole.png",
+      "module": "Graphs",
+      "title": "Across an asymptote",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-exponential-log.png",
+      "module": "Graphs",
+      "title": "Exponential and logarithm",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-sine-cosine.png",
+      "module": "Graphs",
+      "title": "Sine and cosine",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-damped-wave.png",
+      "module": "Graphs",
+      "title": "Damped oscillation",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-wave-beats.png",
+      "module": "Graphs",
+      "title": "Beating waves",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-sine-derivative.png",
+      "module": "Graphs",
+      "title": "A wave and its derivative",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-parabola-tangent.png",
+      "module": "Graphs",
+      "title": "A tangent at x = 1",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-circle-ellipse.png",
+      "module": "Graphs",
+      "title": "Circle and ellipse",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-lissajous.png",
+      "module": "Graphs",
+      "title": "Lissajous loops",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-cycloid.png",
+      "module": "Graphs",
+      "title": "A rolling circle's trace",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-polar-rose.png",
+      "module": "Graphs",
+      "title": "A three-petal rose",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-archimedean-spiral.png",
+      "module": "Graphs",
+      "title": "An Archimedean spiral",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-cardioid.png",
+      "module": "Graphs",
+      "title": "A cardioid",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-implicit-conics.png",
+      "module": "Graphs",
+      "title": "Implicit conics",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-strict-disk.png",
+      "module": "Graphs",
+      "title": "Inside, excluding the boundary",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-piecewise-data-gaps.png",
+      "module": "Graphs",
+      "title": "Endpoints and missing data",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-regression-10000.png",
+      "module": "Graphs",
+      "title": "10,000-point regression",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-phase-center.png",
+      "module": "Graphs",
+      "title": "Circular flow",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-time-ode-driven.png",
+      "module": "Graphs",
+      "title": "Driven trajectory",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-phase-orbit-explorer.png",
+      "module": "Graphs",
+      "title": "Orbit explorer · two starts",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-phase-saddle.png",
+      "module": "Graphs",
+      "title": "Saddle flow",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    },
+    {
+      "file": "graph-phase-bistable.png",
+      "module": "Graphs",
+      "title": "Three equilibria",
+      "view": "Graph scene",
+      "sourceUrl": "https://expert10000.github.io/Math3D/app/",
+      "capturedAt": "2026-11-05T13:32:33.145Z"
+    }
+  ]
+}
