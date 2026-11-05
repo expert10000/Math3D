@@ -44,4 +44,14 @@ describe("QI-21 verified quantum source promotion", () => {
     expect(decodeMeshBuffers(mesh.meshBytes!.bytes).positions).toHaveLength(9);
     expect(surface.meshBytes!.id).toBe(mesh.meshBytes!.id);
   });
+  it("carries an exact shared coordinate frame into promoted Geometry and Mesh", () => {
+    const opened = source();
+    const extension = opened.document.extensions["quantum-scene/v1"] as { scene: { coordinates: unknown } };
+    extension.scene.coordinates = { axes: ["x", "y", "z"], units: ["a0", "a0", "a0"], handedness: "right" };
+    const geometry = promoteQuantumNative(opened, "geometry", () => { throw new Error("not needed"); }).documents[0];
+    const mesh = promoteQuantumNative(opened, "mesh", () => { throw new Error("not needed"); }).documents[0];
+    if (geometry.format !== "math3d.geometry-document" || mesh.format !== "math3d.mesh-document") throw new Error("Wrong native kind");
+    expect(geometry.source.extensions.math3dCoordinateFrame).toEqual(mesh.source.origin.math3dCoordinateFrame);
+    expect(geometry.source.extensions.math3dCoordinateFrame).toMatchObject({ frame: `quantum:${"a".repeat(64)}`, unit: "a0" });
+  });
 });

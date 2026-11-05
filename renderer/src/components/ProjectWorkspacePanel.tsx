@@ -28,6 +28,7 @@ import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnaly
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
+const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
 const ProjectSavedMeshResultTrendView = React.lazy(() => import("./ProjectSavedMeshResultTrendView").then(module => ({ default: module.ProjectSavedMeshResultTrendView })));
 import { ProjectResultsBrowser } from "./ProjectResultsBrowser";
@@ -249,6 +250,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => window.removeEventListener("math3d:project-saved-externally", refreshExternalSave);
   }, [project?.identity.id]);
   const [compositionOpen, setCompositionOpen] = useState(false);
+  const [quantumOverlay, setQuantumOverlay] = useState<ProjectQuantumSceneReference | null>(null);
   const [meshResultComparisonOpen, setMeshResultComparisonOpen] = useState(false);
   const [meshResultTrendOpen, setMeshResultTrendOpen] = useState(false);
   const [meshTrendComparison, setMeshTrendComparison] = useState<SavedMeshTrendComparison | null>(null);
@@ -2015,6 +2017,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     Linked views from the same verified run: {entry.checkpoint.linkedViews.length}</small> : null)}
                 <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
                   onClick={() => { void openLinkedQuantumScene(item); }}>Verify and view scene</button>
+                <button type="button" data-testid={`project-overlay-quantum-scene-${item.sceneFingerprint}`}
+                  disabled={busy || !window.quantumScenes?.openReference || !project.workspace.entries.some(entry => entry.module === "mesh" || entry.module === "geometry")}
+                  onClick={() => setQuantumOverlay(item)}>Overlay native document</button>
                 {project.workspace.entries.filter(entry => entry.module === "quantum" &&
                   entry.checkpoint.format === "math3d.quantum-scene-document" &&
                   entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint).map(entry => {
@@ -2167,6 +2172,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         </div>
       </aside></div>
       {incoming && <div className="project-gallery-preview-backdrop"><div className="project-gallery-preview-sheet"><ProjectCompatibilityPanel busy={busy} preview={incoming} canOpen={!!onRestoreWorkspace && !busy} onCancel={() => { importSequence.current++; setIncoming(null); setMessage("Import cancelled. Current workspace and library unchanged."); }} onImport={() => { void importPreview(false); }} onOpen={() => { void importPreview(true); }} /></div></div>}
+      {quantumOverlay && project && <React.Suspense fallback={<p role="status">Opening quantum overlay…</p>}>
+        <QuantumNativeOverlayView project={project} reference={quantumOverlay} readResource={comparisonResource}
+          onClose={() => setQuantumOverlay(null)} onOpenQuantum={() => { setQuantumOverlay(null); void openLinkedQuantumScene(quantumOverlay); }}
+          onOpenNative={(id, module) => { setQuantumOverlay(null); navigate(id, module); }} /></React.Suspense>}
       {compositionOpen && project && <React.Suspense fallback={<p role="status">Opening Project comparison…</p>}><ProjectCompositionView project={project} readResource={comparisonResource} initialCompositionId={comparisonInitialId} initialProbeNoteId={comparisonInitialProbeId} onClose={() => setCompositionOpen(false)}
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
