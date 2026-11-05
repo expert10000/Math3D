@@ -843,6 +843,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** datasets over the chosen fixture size load progressively without unbounded main-thread memory spikes.
 
+**Implementation note (2026-11-05):** Theory Lab's stream viewer opens a coarse field preview first, then loads verified chunks progressively. The loader yields between chunk batches, enforces a 4 MiB chunk cache and 16 MiB scene ceiling, and reports tracked peak resident buffer bytes. A 97³ field fixture verifies preview size, progressive events, byte equality at full resolution and buffer bounds. Math3D's scene and Study validators now admit up to one million samples; its independent scene viewer still opens full verified scene bundles. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
+
 ### QI-20 — Parameter sweeps
 
 **Commit:** `feat(science): represent phase diagrams as linked sweep datasets`
@@ -851,6 +853,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** selecting a phase-diagram point opens the exact source run and related scenes.
 
+**Implementation note (2026-11-05):** Theory Lab can save a QWZ phase diagram from existing runs across mass and grid resolution. Each heatmap cell pins the run ID, result SHA-256, numerical checks and bands/curvature scene IDs. Selecting a cell re-verifies the source before opening its run or related scenes. Empty parameter combinations stay visibly unresolved. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
+
 ### QI-21 — Native Math3D promotion commands
 
 **Commit:** `feat(project): promote quantum datasets to native documents`
@@ -858,6 +862,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Field, Surface, Curve, Geometry, Mesh and Graph conversions with provenance.
 
 **Done when:** promoted documents remain editable where appropriate without overwriting scientific inputs.
+
+**Implementation note (2026-11-05):** Math3D can promote a verified Project quantum scene into native Geometry, Curve, Graph2D, Mesh or mesh-backed Surface copies, preserving a read-only quantum source and a `derived-from` provenance relation. Field promotion already exists in Field Explorer. Mesh byte resources are retained with the Project; graph point rows use its point-table sidecar. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
 
 ## Wave C — Runtime maturity and advanced visualization (P2)
 

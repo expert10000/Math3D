@@ -107,7 +107,7 @@ const schema = {
         "grid": {
           "type": "object", "additionalProperties": false, "required": ["shape", "origin", "spacing", "order"],
           "properties": {
-            "shape": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 3, "maximum": 49}},
+            "shape": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 3, "maximum": 97}},
             "origin": {"$ref": "#/definitions/vec3"}, "spacing": {"$ref": "#/definitions/vec3"},
             "order": {"const": "xyz-z-fastest"}
           }
@@ -123,7 +123,7 @@ const schema = {
       "required": ["id", "path", "format", "count", "components", "unit", "bytes", "sha256"],
       "properties": {
         "id": {"$ref": "#/definitions/id"}, "path": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,100}\\.f64$"},
-        "format": {"const": "f64le"}, "count": {"type": "integer", "minimum": 1, "maximum": 300000},
+        "format": {"const": "f64le"}, "count": {"type": "integer", "minimum": 1, "maximum": 1000000},
         "components": {"enum": [1, 3]}, "unit": {"$ref": "#/definitions/text"},
         "bytes": {"type": "integer", "minimum": 8, "maximum": 16777216}, "sha256": {"$ref": "#/definitions/hash"}
       }

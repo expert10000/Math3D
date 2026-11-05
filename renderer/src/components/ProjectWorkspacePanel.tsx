@@ -7,6 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   linkQuantumSceneDocuments,
+  createDocumentRelation, viewerSourceFromDocument,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
   migrateProjectScientificSelections,
@@ -77,6 +78,8 @@ import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
 import { projectAnalysisAvailability, type ProjectAnalysisRoute } from "../projects/projectAnalysisAvailability";
 import { verifyProjectQuantumSceneDocuments } from "../projects/quantumSceneAdmission";
+import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
+import { promoteQuantumNative, type QuantumNativeTarget } from "../projects/quantumNativePromotion";
 import { admitVerifiedQwzStudy } from "../projects/quantumStudyAdmission";
 import type { NoteValuePatch } from "./ProjectNoteLiveValues";
 import { PROJECT_RESUME_KEY, PROJECT_UI_KEY, projectUiPreferences, rememberProjectUi, selectProjectDocument, rememberProjectDocument } from "../projects/projectResume";
@@ -128,6 +131,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
+  const quantumPromotionMeshBytes = useRef(new Map<string, Uint8Array>());
   const stagedBackup = useRef<{ snapshot: string; inputToken: number; session: VerifiedProjectResources | undefined; project: Math3DProject; resources: VerifiedProjectResources; slot: "before-open-a" | "before-open-b" } | null>(null);
   const backupStageSequence = useRef(0);
   const backupStaging = useRef<Promise<void> | null>(null);
@@ -692,6 +696,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   };
   const resourceBytes = (extra = resourceSession.current, workbook?: { id: string; bytes: Uint8Array }): ProjectResourceReader => (item) => {
     if (item.kind === "workbook-payload" && item.id === workbook?.id) return workbook.bytes;
+    if (item.kind === "mesh-buffers" && quantumPromotionMeshBytes.current.has(item.id))
+      return quantumPromotionMeshBytes.current.get(item.id)!;
     const live = resourceReader?.(item); if (live) return live;
     if (item.kind === "graph-point-table") { const rows = pointTableStore.resolve(item.reference as import("@math3d/core").Graph2DPointTableReference); if (rows) return new TextEncoder().encode(canonicalJsonStringify(rows)); }
     return extra?.bytes(item) ?? null;
@@ -723,6 +729,47 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => { window.clearTimeout(timer); backupStageSequence.current++; };
   }, [open]);
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, resourceBytes(extra, workbook), allowMissing);
+  const promoteQuantumScene = async (reference: ProjectQuantumSceneReference, target: QuantumNativeTarget) => {
+    const current = projectStateRef.current;
+    if (!current || busy || !window.quantumScenes?.openReference) return;
+    const before = serializeMath3DProject(current);
+    setBusy(true);
+    try {
+      const opened = await window.quantumScenes.openReference({ directory: reference.directory,
+        sceneFingerprint: reference.sceneFingerprint });
+      if (!opened.ok) throw new Error(opened.canceled ? "Scene opening was cancelled" : opened.error);
+      if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
+        throw new Error("Project changed during quantum promotion");
+      const source = quantumSceneDocumentFromVerifiedOpen(opened);
+      const promotion = promoteQuantumNative(opened, target, rows => pointTableStore.publish(rows));
+      const entries = [...current.workspace.entries];
+      if (!entries.some(entry => entry.expected.id === source.identity.id))
+        entries.push({ module: "quantum", checkpoint: source, expected: source.identity, replay: null });
+      for (const document of promotion.documents) {
+        if (entries.some(entry => entry.expected.id === document.identity.id))
+          throw new Error("This native copy is already staged in the Project");
+        const module: KernelWorkspaceModule = document.format === "math3d.graph2d-document" ? "graph2d" :
+          document.format === "math3d.geometry-document" ? "geometry" :
+          document.format === "math3d.curve-document" ? "curve" :
+          document.format === "math3d.surface-document" ? "surface" : "mesh";
+        entries.push({ module, checkpoint: document, expected: document.identity, replay: null });
+      }
+      const relations = [...current.workspace.relations, ...promotion.documents.map(document => createDocumentRelation({
+        kind: "derived-from", sources: [viewerSourceFromDocument(source)], sourceOrder: "ordered",
+        target: { type: "document", generation: viewerSourceFromDocument(document) },
+        operation: `quantum.promote-${target}`, parameters: { sceneFingerprint: reference.sceneFingerprint,
+          resultSha256: source.source.provenance.resultSha256, precision: target === "mesh" || target === "surface" ? "float32-copy" : "source-coordinates" },
+      }))];
+      const workspace = createMixedWorkspaceDocument({ ...current.workspace, entries, relations,
+        activeDocumentIds: [...current.workspace.activeDocumentIds, source.identity.id,
+          ...promotion.documents.map(document => document.identity.id)].filter((id, index, all) => all.indexOf(id) === index) });
+      const next = replaceMath3DProjectWorkspace(current, workspace);
+      if (promotion.meshBytes) quantumPromotionMeshBytes.current.set(promotion.meshBytes.id, promotion.meshBytes.bytes);
+      setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
+      setQuantumSceneMessage(`${target} copy staged with exact quantum source relation. Save Project to retain it.`);
+    } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); }
+    finally { setBusy(false); }
+  };
   const save = async () => {
     if (busy) return; setBusy(true);
     try {
@@ -1948,6 +1995,12 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     Linked views from the same verified run: {entry.checkpoint.linkedViews.length}</small> : null)}
                 <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
                   onClick={() => { void openLinkedQuantumScene(item); }}>Verify and view scene</button>
+                <div aria-label="Promote verified quantum scene to native Project documents" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  {(["geometry", "curve", "graph2d", "mesh", "surface"] as const).map(target =>
+                    <button type="button" key={target} data-testid={`quantum-promote-${target}-${item.sceneFingerprint}`}
+                      disabled={busy || preview || !!managed} onClick={() => void promoteQuantumScene(item, target)}>
+                      Promote {target === "graph2d" ? "Graph" : target[0].toUpperCase() + target.slice(1)} copy</button>)}
+                </div>
                 <button type="button" data-testid={`project-admit-quantum-scene-${item.sceneFingerprint}`}
                   disabled={busy || preview || !!managed || !onVerifyQuantumSceneDocument || project.workspace.entries.some((entry) => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document" && entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint)}
                   onClick={() => { void admitQuantumScene(item); }}>Add read-only Project document</button>

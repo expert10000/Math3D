@@ -80,7 +80,7 @@ const validSource = (value: unknown): value is QuantumSceneDocumentSource => {
   }
   if (!Array.isArray(value.datasets) || value.datasets.length < 1 || value.datasets.length > 64 || !value.datasets.every((item: unknown) =>
     record(item) && exact(item, ["id", "sha256", "count", "components", "unit", "bytes"]) && text(item.id, 128) &&
-    sha(item.sha256) && Number.isSafeInteger(item.count) && Number(item.count) >= 1 && Number(item.count) <= 300000 &&
+    sha(item.sha256) && Number.isSafeInteger(item.count) && Number(item.count) >= 1 && Number(item.count) <= 1000000 &&
     [1, 3].includes(Number(item.components)) &&
     text(item.unit, 80) && Number.isSafeInteger(item.bytes) && Number(item.bytes) === Number(item.count) * Number(item.components) * 8 && Number(item.bytes) <= 16777216)) return false;
   if (new Set(value.datasets.map((item: { id: string }) => item.id)).size !== value.datasets.length) return false;
@@ -130,7 +130,7 @@ export const normalizeQuantumSceneDocument = (value: unknown): ValidationResult<
       (value.view.selectedObjectId !== undefined && (!text(value.view.selectedObjectId, 128) ||
         !(value.source as QuantumSceneDocumentSource).objects.some(object => object.id === (value.view as Record<string, unknown>).selectedObjectId))) ||
       (value.view.sampleIndex !== undefined && (!Number.isSafeInteger(value.view.sampleIndex) ||
-        Number(value.view.sampleIndex) < 0 || Number(value.view.sampleIndex) > 300000)) ||
+        Number(value.view.sampleIndex) < 0 || Number(value.view.sampleIndex) > 1000000)) ||
       (value.view.opacity !== undefined && (typeof value.view.opacity !== "number" || !Number.isFinite(value.view.opacity) || value.view.opacity < 0 || value.view.opacity > 1)) ||
       (value.view.camera !== undefined && (!record(value.view.camera) || !exact(value.view.camera, ["position", "target", "up"]) ||
         ["position", "target", "up"].some(key => !Array.isArray(((value.view as Record<string, unknown>).camera as Record<string, unknown>)[key]) ||
