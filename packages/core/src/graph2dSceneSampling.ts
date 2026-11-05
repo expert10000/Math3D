@@ -1,6 +1,7 @@
 import type { Graph2DDocument, Graph2DViewport, Graph2DObjectDisplay } from "./index";
 import type { Graph2DSamplingArtifact } from "./graph2dSampling";
 import { sampleGraph2DExplicit } from "./graph2dSampling";
+import { sampleGraph2DSavedDerivative } from "./graph2dSavedDerivativeSampling";
 import { sampleGraph2DParametric } from "./graph2dParametric";
 import { sampleGraph2DPolar } from "./graph2dPolar";
 import { sampleGraph2DImplicit } from "./graph2dImplicit";
@@ -56,6 +57,9 @@ export const sampleGraph2DScene = (request: Graph2DSceneSamplingRequest): readon
         diagnostics: [{ code: "sample-limit" as const, count: 1 }] } }];
     const common = { variables, viewport, width, height, policy: { ...policy, maxSamples: Math.min(remaining, policy.maxSamples) }, deadlineMs };
     const artifact = object.kind === "explicit-cartesian" ? sampleGraph2DExplicit({ ...common, ast: object.expression.ast, domain: object.domain }) :
+      object.kind === "derivative-curve" ? sampleGraph2DSavedDerivative({ ...common,
+        object, source: document.source.objects.find(entry => entry.kind === "explicit-cartesian" &&
+          entry.id === object.sourceObjectId) as import("./graph2dDocument").Graph2DExplicitObject }) :
       object.kind === "parametric" ? sampleGraph2DParametric({ ...common, object }) :
       object.kind === "polar" ? sampleGraph2DPolar({ ...common, object }) :
       object.kind === "implicit" ? sampleGraph2DImplicit({ ...common, object }) :

@@ -31,8 +31,9 @@ export async function playTemporalMovingIsosurfaces(project: Math3DProject,
       !Number.isSafeInteger(options.memoryBudgetBytes) ||
       options.memoryBudgetBytes < 1 || options.memoryBudgetBytes > 64 * 1024 * 1024 ||
       temporalSurfaceResidentBytes(frames) + (options.interpolate ?
-        Math.max(...frames.map(frame => frame.surface.positions.byteLength +
-          frame.surface.normals.byteLength)) : 0) > options.memoryBudgetBytes)
+        Math.max(...frames.map(frame => 3 * (frame.surface.positions.byteLength +
+          frame.surface.normals.byteLength) + frame.surface.positions.length / 3 * 64)) : 0) >
+        options.memoryBudgetBytes)
     throw new RangeError("Playback needs 2–4 exact frames within 10 seconds and 64 MiB of geometry.");
   const started = performance.now();
   const assertPinned = (frame: TemporalMovingIsosurfaceFrame, index: number) => {

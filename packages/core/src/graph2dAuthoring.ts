@@ -104,6 +104,9 @@ export type Graph2DAuthoringAction =
   | Readonly<{ type: "remove-vector-field-reference"; referenceId: string }>
   | Readonly<{ type: "create"; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-derivative-curve"; sourceObjectId: string }>
+  | Readonly<{ type: "create-saved-derivative"; sourceObjectId: string;
+      order: 1 | 2; fallback: "none" | "finite-difference";
+      tolerance: number }>
   | Readonly<{ type: "edit"; objectId: string; draft: Graph2DFunctionDraft }>
   | Readonly<{ type: "create-parametric"; draft: Graph2DParametricDraft }>
   | Readonly<{ type: "edit-parametric"; objectId: string; draft: Graph2DParametricDraft }>
@@ -394,7 +397,29 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
   let selection = document.selection;
   const index = "objectId" in action ? objects.findIndex((entry) => entry.id === action.objectId) : -1;
   if ("objectId" in action && index < 0) throw new TypeError("Function does not exist.");
-  if (action.type === "create-derivative-curve") {
+  if (action.type === "create-saved-derivative") {
+    const source = objects.find(item => item.id === action.sourceObjectId);
+    if (source?.kind !== "explicit-cartesian" || source.derivativeOrigin)
+      throw new TypeError("Choose a source explicit function.");
+    if (objects.length >= GRAPH2D_MAX_OBJECTS || ![1, 2].includes(action.order) ||
+        !["none", "finite-difference"].includes(action.fallback) ||
+        !Number.isFinite(action.tolerance) || action.tolerance < 1e-8 ||
+        action.tolerance > .01)
+      throw new TypeError("Saved derivative order, tolerance or object budget is invalid.");
+    const differentiated = differentiateGraph2DExpression(source.expression.ast,
+      action.order);
+    if (!differentiated.ok && action.fallback === "none")
+      throw new TypeError("Saved derivative unavailable: symbolic rule or work limit.");
+    let serial = 1, id = `saved_derivative_${serial}`;
+    while (objects.some(item => item.id === id)) id = `saved_derivative_${++serial}`;
+    objects.push({ id, kind: "derivative-curve", label: `${source.label}${"'".repeat(action.order)}`,
+      sourceObjectId: source.id, sourceExpressionHash: structuralHash(source.expression.ast),
+      order: action.order, method: differentiated.ok ? "symbolic-rules" : "finite-difference",
+      fallback: action.fallback, tolerance: action.tolerance, domain: source.domain });
+    displays.push({ objectId: id, visible: true, color: "#a855f7", lineWidth: 2,
+      lineStyle: "dashed" });
+    selection = { objectId: id, probe: null };
+  } else if (action.type === "create-derivative-curve") {
     const source = objects.find(item => item.id === action.sourceObjectId);
     if (source?.kind !== "explicit-cartesian" || source.derivativeOrigin)
       throw new TypeError("Choose a source explicit function.");
@@ -440,6 +465,8 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
       const dependentIndexes = objects.flatMap((entry, i) =>
         entry.kind === "explicit-cartesian" &&
         entry.derivativeOrigin?.sourceObjectId === id ? [i] : []);
+      const savedIndexes = objects.flatMap((entry, i) =>
+        entry.kind === "derivative-curve" && entry.sourceObjectId === id ? [i] : []);
       if (dependentIndexes.length) {
         const next = differentiateGraph2DExpression(parsed.ast, 1);
         if (!next.ok) throw new TypeError("Saved derivative unavailable for the edited source. Remove it first.");
@@ -454,6 +481,16 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
             derivativeOrigin: { sourceObjectId: id,
               sourceExpressionHash: structuralHash(parsed.ast), order: 1 } };
         }
+      }
+      for (const savedIndex of savedIndexes) {
+        const prior = objects[savedIndex]!;
+        if (prior.kind !== "derivative-curve") continue;
+        const symbolic = differentiateGraph2DExpression(parsed.ast, prior.order);
+        if (!symbolic.ok && prior.fallback === "none")
+          throw new TypeError("Saved derivative unavailable for the edited source. Remove it or enable fallback.");
+        objects[savedIndex] = { ...prior, domain: action.draft.domain,
+          sourceExpressionHash: structuralHash(parsed.ast),
+          method: symbolic.ok ? "symbolic-rules" : "finite-difference" };
       }
       objects[index] = object; displays[index] = display;
     }
@@ -769,6 +806,9 @@ export const applyGraph2DAuthoring = (document: Graph2DDocument, action: Graph2D
     displays.splice(index + 1, 0, { ...displays[index]!, objectId: id });
     selection = { objectId: id, probe: null };
   } else if (action.type === "delete") {
+    if (objects.some(entry => entry.kind === "derivative-curve" &&
+        entry.sourceObjectId === action.objectId))
+      throw new TypeError("Remove saved derivative curves before deleting their source.");
     if (objects.some(entry => entry.kind === "explicit-cartesian" &&
         entry.derivativeOrigin?.sourceObjectId === action.objectId))
       throw new TypeError("Remove saved derivative curves before deleting their source.");

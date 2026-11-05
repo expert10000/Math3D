@@ -27,6 +27,7 @@ export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
 export const GRAPH2D_LINKED_DERIVATIVE_CAPABILITY = "graph2d.linked-derivative.v1" as const;
+export const GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY = "graph2d.extended-derivative.v1" as const;
 export const GRAPH2D_PROBES_CAPABILITY = "graph2d.probes.v1" as const;
 export const GRAPH2D_PROBE_VISIBILITY_CAPABILITY = "graph2d.probe-visibility.v1" as const;
 export const GRAPH2D_MAX_PINNED_PROBES = 8;
@@ -46,7 +47,7 @@ export const GRAPH2D_SLOPE_FIELD_CAPABILITY = "graph2d.slope-field.v1" as const;
 export const GRAPH2D_TRAJECTORY_CAPABILITY = "graph2d.trajectory.v1" as const;
 export const GRAPH2D_PHASE_PORTRAIT_CAPABILITY = "graph2d.phase-portrait.v1" as const;
 export const GRAPH2D_TIME_ODE_CAPABILITY = "graph2d.time-ode.v1" as const;
-export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise", "slope-field", "trajectory", "phase-portrait", "time-ode"] as const;
+export const GRAPH2D_OBJECT_KINDS = ["explicit-cartesian", "derivative-curve", "parametric", "polar", "implicit", "inequality", "point-series", "piecewise", "slope-field", "trajectory", "phase-portrait", "time-ode"] as const;
 export type Graph2DObjectKind = (typeof GRAPH2D_OBJECT_KINDS)[number];
 export const GRAPH2D_RESERVED_OBJECT_KINDS = GRAPH2D_OBJECT_KINDS.slice(1);
 export const GRAPH2D_MAX_DOCUMENT_BYTES = 256 * 1024;
@@ -62,6 +63,13 @@ export type Graph2DExplicitObject = Readonly<{
   domain: Graph2DDomain;
   derivativeOrigin?: Readonly<{ sourceObjectId: string; sourceExpressionHash: string;
     order: 1 }>;
+}>;
+export type Graph2DSavedDerivativeObject = Readonly<{
+  id: string; kind: "derivative-curve"; label: string;
+  sourceObjectId: string; sourceExpressionHash: string;
+  order: 1 | 2; method: "symbolic-rules" | "finite-difference";
+  fallback: "none" | "finite-difference"; tolerance: number;
+  domain: Graph2DDomain;
 }>;
 export type Graph2DParametricObject = Readonly<{
   id: string;
@@ -295,7 +303,7 @@ export type Graph2DTimeOdeObject = Readonly<{
   domain: Graph2DDomain; stateDomain: Graph2DDomain;
   seed: Readonly<{ t: number; x: number }>;
 }>;
-export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DParametricObject | Graph2DPolarObject |
+export type Graph2DGraphObject = Graph2DExplicitObject | Graph2DSavedDerivativeObject | Graph2DParametricObject | Graph2DPolarObject |
   Graph2DImplicitObject | Graph2DInequalityObject | Graph2DPointSeriesObject | Graph2DPiecewiseObject |
   Graph2DSlopeFieldObject | Graph2DTrajectoryObject | Graph2DPhasePortraitObject | Graph2DTimeOdeObject;
 export type Graph2DSource = Readonly<{
@@ -309,6 +317,8 @@ export type Graph2DSource = Readonly<{
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport" | "axes">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
+    ...(source.objects.some(object => object.kind === "derivative-curve") ?
+      [GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY] : []),
     ...(source.objects.some(object => object.kind === "explicit-cartesian" &&
       object.derivativeOrigin) ? [GRAPH2D_LINKED_DERIVATIVE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
@@ -378,7 +388,7 @@ export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_LINKED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
+  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_LINKED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
     typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PARAMETER_STUDY_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
@@ -427,6 +437,18 @@ const validObject = (value: unknown, variables: readonly string[]): value is Gra
     typeof value.derivativeOrigin.sourceExpressionHash === "string" &&
     /^sha256:[0-9a-f]{64}$/.test(value.derivativeOrigin.sourceExpressionHash) &&
     value.derivativeOrigin.order === 1);
+const validSavedDerivativeObject = (value: unknown): value is Graph2DSavedDerivativeObject =>
+  record(value) && exact(value, ["id", "kind", "label", "sourceObjectId",
+    "sourceExpressionHash", "order", "method", "fallback", "tolerance", "domain"]) &&
+  objectId(value.id) && value.kind === "derivative-curve" &&
+  bounded(value.label, 160) && objectId(value.sourceObjectId) &&
+  typeof value.sourceExpressionHash === "string" &&
+  /^sha256:[0-9a-f]{64}$/.test(value.sourceExpressionHash) &&
+  (value.order === 1 || value.order === 2) &&
+  (value.method === "symbolic-rules" || value.method === "finite-difference") &&
+  (value.fallback === "none" || value.fallback === "finite-difference") &&
+  finite(value.tolerance) && value.tolerance >= 1e-8 && value.tolerance <= .01 &&
+  validDomain(value.domain);
 const validParametricObject = (value: unknown, variables: readonly string[]): value is Graph2DParametricObject => record(value) &&
   exact(value, ["id", "kind", "label", "xExpression", "yExpression", "domain"]) && objectId(value.id) &&
   value.kind === "parametric" && bounded(value.label, 160) &&
@@ -901,6 +923,7 @@ const validSource = (value: unknown): value is Graph2DSource => {
   if (names.includes("y") && value.objects.some((entry: Graph2DGraphObject) =>
     entry.kind === "implicit" || entry.kind === "inequality" || entry.kind === "slope-field" || entry.kind === "phase-portrait")) return false;
   return value.objects.every((entry: unknown) => validObject(entry, ["x", ...names]) ||
+    validSavedDerivativeObject(entry) ||
     validParametricObject(entry, ["t", ...names]) || validPolarObject(entry, ["theta", ...names]) ||
     validImplicitObject(entry, ["x", "y", ...names]) || validInequalityObject(entry, ["x", "y", ...names]) ||
     validPointSeriesObject(entry) || validPiecewiseObject(entry, ["x", ...names]) ||
@@ -922,6 +945,17 @@ const validSource = (value: unknown): value is Graph2DSource => {
           ["x", ...names]);
         return expected.ok && canonicalJsonStringify(expected.ast) ===
           canonicalJsonStringify(entry.expression.ast);
+      })) &&
+    (value.objects as Graph2DGraphObject[]).every(entry => entry.kind !== "derivative-curve" ||
+      (value.objects as Graph2DGraphObject[]).some(source => {
+        if (source.kind !== "explicit-cartesian" || source.derivativeOrigin ||
+            source.id !== entry.sourceObjectId || source.id === entry.id ||
+            structuralHash(source.expression.ast) !== entry.sourceExpressionHash ||
+            canonicalJsonStringify(source.domain) !== canonicalJsonStringify(entry.domain))
+          return false;
+        const symbolic = differentiateGraph2DExpression(source.expression.ast, entry.order);
+        return symbolic.ok ? entry.method === "symbolic-rules" :
+          entry.method === "finite-difference" && entry.fallback === "finite-difference";
       })) &&
     (value.objects as Graph2DGraphObject[]).every((entry) => entry.kind !== "trajectory" ||
       (value.objects as Graph2DGraphObject[]).some((source) => source.kind === "slope-field" &&

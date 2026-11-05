@@ -412,7 +412,7 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
             const review = validateTemporalSurfacePair(frame.surface,
               movingFrames[index + 1]!.surface);
             return <p key={index} role="status">Frames {index + 1}–{index + 2}: {
-              review.status === "compatible" ? "interpolation available" :
+              review.status === "compatible" ? `interpolation available — ${review.reason}` :
                 `exact playback only — ${review.reason}`}</p>;
           })}
           <button type="button" disabled={playbackBusy || !onPreviewMovingIsosurface}

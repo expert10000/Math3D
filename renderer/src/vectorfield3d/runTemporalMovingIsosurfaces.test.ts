@@ -12,6 +12,7 @@ import { playTemporalMovingIsosurfaces, temporalSurfaceResidentBytes } from
   "./playTemporalMovingIsosurfaces";
 import { interpolateTemporalSurfacePair, validateTemporalSurfacePair } from
   "./validateTemporalSurfacePair";
+import { matchReindexedTemporalSurface } from "./matchReindexedTemporalSurface";
 
 const fixture = () => {
   let project = createGf23Project();
@@ -39,6 +40,14 @@ describe("GF-30 bounded pinned-frame isosurfaces", () => {
     expect(joined.topology.connectedComponents).toBe(1);
     expect(validateTemporalSurfacePair(separated, separated).status).toBe("compatible");
     expect(validateTemporalSurfacePair(separated, joined).reason).toMatch(/topology/);
+    const count = separated.positions.length / 3;
+    const permuted = { ...separated,
+      positions: Float32Array.from(separated.positions, (_, i) =>
+        separated.positions[(count - 1 - Math.floor(i / 3)) * 3 + i % 3]!),
+      normals: Float32Array.from(separated.normals, (_, i) =>
+        separated.normals[(count - 1 - Math.floor(i / 3)) * 3 + i % 3]!),
+      indices: Uint32Array.from(separated.indices, id => count - 1 - id) };
+    expect(validateTemporalSurfacePair(separated, permuted).status).toBe("compatible");
   });
   it("GF-35 admits stable indexed topology and explains changed topology", async () => {
     const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -52,6 +61,30 @@ describe("GF-30 bounded pinned-frame isosurfaces", () => {
     const shifted = { ...surface, positions: Float32Array.from(positions,
       (value, index) => index % 3 === 2 ? value + .1 : value) };
     expect(validateTemporalSurfacePair(surface, shifted).status).toBe("compatible");
+    const order = [2, 0, 3, 1];
+    const bIndex = [1, 3, 0, 2];
+    const reindexed = { ...shifted,
+      positions: Float32Array.from(shifted.positions, (_, i) =>
+        shifted.positions[order[Math.floor(i / 3)]! * 3 + i % 3]!),
+      normals: Float32Array.from(shifted.normals, (_, i) =>
+        shifted.normals[order[Math.floor(i / 3)]! * 3 + i % 3]!),
+      indices: Uint32Array.from(indices, id => bIndex[id]!) };
+    const mapped = validateTemporalSurfacePair(surface, reindexed);
+    expect(mapped).toMatchObject({ status: "compatible",
+      correspondence: "reindexed" });
+    expect(mapped.maxDisplacement).toBeCloseTo(.1);
+    expect(mapped.rmsDisplacement).toBeCloseTo(.1);
+    const ambiguous = { ...reindexed, positions: new Float32Array(reindexed.positions) };
+    ambiguous.positions.set(ambiguous.positions.slice(3, 6), 0);
+    expect(matchReindexedTemporalSurface(surface, ambiguous))
+      .toMatchObject({ status: "unavailable",
+        reason: expect.stringContaining("ambiguous") });
+    expect(interpolateTemporalSurfacePair(surface, reindexed, .5).positions[2])
+      .toBeCloseTo(.05);
+    expect(validateTemporalSurfacePair(surface, { ...reindexed,
+      indices: Uint32Array.from(reindexed.indices, (id, i) =>
+        i === 0 ? reindexed.indices[1]! : i === 1 ? reindexed.indices[0]! : id) })
+      .reason).toMatch(/triangle correspondence/);
     const midpoint = interpolateTemporalSurfacePair(surface, shifted, .5);
     expect(midpoint.positions[2]).toBeCloseTo(.05);
     expect(midpoint.sourceHash).toBeNull();
@@ -85,6 +118,16 @@ describe("GF-30 bounded pinned-frame isosurfaces", () => {
       intervalMs: 100, timeBudgetMs: 1000, memoryBudgetBytes: 10_000,
       wait: async () => {} });
     expect(midpoints).toHaveLength(1);
+    expect(midpoints[0]).toBeCloseTo(.05, 5);
+    midpoints.length = 0;
+    await playTemporalMovingIsosurfaces(project, temporal,
+      [frames[0]!, { ...frames[1]!, surface: { ...frames[1]!.surface,
+        positions: reindexed.positions, normals: reindexed.normals,
+        indices: reindexed.indices } }], {
+        loadTransfers: async () => transfers, onFrame: () => {},
+        interpolate: true, onInterpolated: result => midpoints.push(result.positions[2]!),
+        intervalMs: 100, timeBudgetMs: 1000, memoryBudgetBytes: 10_000,
+        wait: async () => {} });
     expect(midpoints[0]).toBeCloseTo(.05, 5);
     await expect(playTemporalMovingIsosurfaces(project, temporal, frames, {
       loadTransfers: async () => transfers, onFrame: () => {},

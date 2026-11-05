@@ -2,6 +2,7 @@ import {
   analyzeGraph2DArcLength, analyzeGraph2DCriticalPoints, analyzeGraph2DIntegral, analyzeGraph2DIntervals,
   analyzeGraph2DIntersections,
   sampleGraph2DDerivativeCurve,
+  differentiateGraph2DExpression,
   analyzeGraph2DLocalDifferential, fitGraph2DViewport,
   graph2DSceneFitBounds, graph2DConstructionFitBounds,
   previewGraph2DScientificDataset,
@@ -1299,6 +1300,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const [vectorFieldAnalysisBudget, setVectorFieldAnalysisBudget] = useState<Graph2DAnalysisBudget>(2000);
   const [focusedInterval, setFocusedInterval] = useState<{ resultId: string; intervalId: string } | null>(null);
   const [showDerivativeCurve, setShowDerivativeCurve] = useState(false);
+  const [savedDerivativeOrder, setSavedDerivativeOrder] = useState<1 | 2>(2);
+  const [savedDerivativeFallback, setSavedDerivativeFallback] = useState(true);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [parameterCards, setParameterCards] = useState(false);
   const [scalesOpen, setScalesOpen] = useState(false);
@@ -3019,6 +3022,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     !graph2DHasLogScale(document.display.viewport) ?
     sampleGraph2DDerivativeCurve(document, selectedObject.id, size) : null,
   [selectedObject, document, size]);
+  const extendedDerivativeAvailable = selectedObject?.kind === "explicit-cartesian" &&
+    differentiateGraph2DExpression(selectedObject.expression.ast,
+      savedDerivativeOrder).ok;
   const differentialOverlays = useMemo(() => [
     ...(differential && isGraph2DLocalDifferentialCurrent(differential, document) ? differential.overlays : []),
     ...(polarDifferential && isGraph2DPolarLocalDifferentialCurrent(polarDifferential, document) ? polarDifferential.overlays : []),
@@ -3245,6 +3251,25 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           sourceObjectId: selectedObject.id })}>Save linked derivative curve</button>}
       {!selectedObject.derivativeOrigin && derivativeCurve?.status === "unavailable" &&
         <small role="status">Saved derivative unavailable: {derivativeCurve.reason}</small>}
+      {!selectedObject.derivativeOrigin && <div data-testid="gf40-saved-derivative">
+        <label>Saved derivative order <select value={savedDerivativeOrder}
+          onChange={event => setSavedDerivativeOrder(Number(event.target.value) as 1 | 2)}>
+          <option value={1}>First</option><option value={2}>Second</option></select></label>
+        <label><input type="checkbox" checked={savedDerivativeFallback}
+          onChange={event => setSavedDerivativeFallback(event.target.checked)} />
+          Allow approximate numerical fallback</label>
+        <button type="button" disabled={!onAuthoringCommit || parameterPreviewActive ||
+          !extendedDerivativeAvailable && !savedDerivativeFallback}
+          onClick={() => onAuthoringCommit?.({ type: "create-saved-derivative",
+            sourceObjectId: selectedObject.id, order: savedDerivativeOrder,
+            fallback: savedDerivativeFallback ? "finite-difference" : "none",
+            tolerance: 1e-5 })}>Save extended derivative curve</button>
+        <small role="status">{extendedDerivativeAvailable ?
+          "Symbolic derivative; current parameters recompute it." :
+          savedDerivativeFallback ?
+            "Approximate finite differences; undefined or nonconvergent positions become gaps. At most 129 positions per plot." :
+            "Unavailable: this source has no supported symbolic derivative."}</small>
+      </div>}
       {showDerivativeCurve && <small>{graph2DHasLogScale(document.display.viewport) ?
         "Derivative plot is unavailable on log axes." : derivativeCurve?.status === "unavailable" ?
           derivativeCurve.reason : derivativeCurve ?
