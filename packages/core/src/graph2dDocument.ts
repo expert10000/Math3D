@@ -158,6 +158,13 @@ export type Graph2DComparisonProfileOrigin = Readonly<{
   axis: Readonly<{ name: string; unit: string; min: number; max: number }>;
   unit: string;
 }>;
+export type Graph2DTemporalSpectrumOrigin = Readonly<{
+  kind: "project-temporal-spectrum/v1"; projectId: string; resultId: string;
+  summaryHash: string; rowsSha256: string; series: "psd" | "autocorrelation";
+  axisUnit: string; valueUnit: string; sampleCount: 16 | 32 | 64;
+  window: "rectangular" | "hann"; detrend: "none" | "mean";
+  interpolation: "none" | "linear";
+}>;
 type Graph2DLinkedOverlayCommon = Readonly<{
   pairId: string;
   vectorDocumentJson: string;
@@ -236,6 +243,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   derivedOrigin?: Graph2DDerivedFieldOrigin;
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
   comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
+  temporalSpectrumOrigin?: Graph2DTemporalSpectrumOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
 }>;
@@ -579,6 +587,19 @@ export const validGraph2DComparisonProfileOrigin = (value: unknown):
   bounded(value.axis.name, 80) && bounded(value.axis.unit, 80) &&
   finite(value.axis.min) && finite(value.axis.max) &&
   (value.axis.min as number) < (value.axis.max as number) && bounded(value.unit, 80);
+export const validGraph2DTemporalSpectrumOrigin = (value: unknown):
+  value is Graph2DTemporalSpectrumOrigin =>
+  record(value) && exact(value, ["kind", "projectId", "resultId", "summaryHash",
+    "rowsSha256", "series", "axisUnit", "valueUnit", "sampleCount", "window",
+    "detrend", "interpolation"]) && value.kind === "project-temporal-spectrum/v1" &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  ["psd", "autocorrelation"].includes(String(value.series)) &&
+  bounded(value.axisUnit, 80) && bounded(value.valueUnit, 80) &&
+  [16, 32, 64].includes(value.sampleCount as number) &&
+  ["rectangular", "hann"].includes(String(value.window)) &&
+  ["none", "mean"].includes(String(value.detrend)) &&
+  ["none", "linear"].includes(String(value.interpolation));
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && value.kind === "vector-derived-linked-region/v1") {
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
@@ -804,12 +825,13 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     ...(value.derivedOrigin === undefined ? [] : ["derivedOrigin"]),
     ...(value.projectProfileOrigin === undefined ? [] : ["projectProfileOrigin"]),
     ...(value.comparisonProfileOrigin === undefined ? [] : ["comparisonProfileOrigin"]),
+    ...(value.temporalSpectrumOrigin === undefined ? [] : ["temporalSpectrumOrigin"]),
     ...(value.parameterStudyOrigin === undefined ? [] : ["parameterStudyOrigin"]),
     ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
   [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin,
-    value.projectProfileOrigin, value.comparisonProfileOrigin,
+    value.projectProfileOrigin, value.comparisonProfileOrigin, value.temporalSpectrumOrigin,
     value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
   (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
@@ -817,6 +839,8 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
   (value.projectProfileOrigin === undefined || validGraph2DProjectProfileOrigin(value.projectProfileOrigin)) &&
   (value.comparisonProfileOrigin === undefined ||
     validGraph2DComparisonProfileOrigin(value.comparisonProfileOrigin)) &&
+  (value.temporalSpectrumOrigin === undefined ||
+    validGraph2DTemporalSpectrumOrigin(value.temporalSpectrumOrigin)) &&
   (value.parameterStudyOrigin === undefined || isGraph2DParameterStudyOrigin(value.parameterStudyOrigin)) &&
   (value.linkedOrigin === undefined || validGraph2DLinkedOverlayOrigin(value.linkedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {
