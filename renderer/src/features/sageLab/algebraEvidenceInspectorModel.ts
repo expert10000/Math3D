@@ -208,6 +208,28 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       checks.push(check("Dossier identities", "reported", "The typed dossier matches its source and QQ[x] domain; factor and derivative identities are not independently recorded."));
       break;
     }
+    case "sage.galois.analyze": {
+      const group = result.group as Record<string, unknown>;
+      const splitting = result.splittingField as Record<string, unknown>;
+      const subgroups = result.subgroups as Record<string, unknown>[];
+      facts.push(fact("Source polynomial", text(result.sourcePolynomial)),
+        fact("Transitive group", text(group.transitiveId)),
+        fact("Group classification", text(group.classification)),
+        fact("Notation convention", text(group.convention)),
+        fact("Group order", text(group.order)),
+        fact("Splitting field degree", text(splitting.degree)),
+        fact("Splitting field polynomial", text(splitting.definingPolynomial)),
+        fact("Regular permutation degree", text(group.regularDegree)),
+        fact("Generator indices", list(group.generators)),
+        fact("Solvable", group.solvable ? "Yes" : "No"),
+        fact("Subgroups", String(subgroups.length)), fact("Lattice", result.complete ? "Complete" : "Truncated"));
+      checks.push(check("Permutation group", "checked",
+        "The app verifies closure, identity, generators and the complete bounded subgroup enumeration."),
+      check("Galois correspondence", "checked",
+        "Subgroup normality and index/degree products are checked; Sage verifies each fixed-field defining relation."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.groebner.compute":
       facts.push(fact("Generators", list(params.polynomials)), fact("Gröbner basis", list(result.basis)));
       checks.push(check("Basis certificate", "reported", "Sage returned the basis; generator reductions and a Gröbner certificate are not recorded."));

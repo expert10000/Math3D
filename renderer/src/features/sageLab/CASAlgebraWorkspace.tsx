@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
+import type { SageGaloisResult } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
+import SageGaloisViewer from "./SageGaloisViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -226,7 +228,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       explorer, dossier, inspector,
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
-        result: <SageAlgebraEvidenceInspector model={evidenceModel} section="result" />,
+        result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />
+          {selectedEvidence.request.operation === "sage.galois.analyze" &&
+            <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,

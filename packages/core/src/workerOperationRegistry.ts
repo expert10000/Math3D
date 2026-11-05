@@ -35,6 +35,7 @@ export type Math3DWorkerOperationId =
   | "symbolic.hessian"
   | "polynomial.factor"
   | "polynomial.dossier"
+  | "galois.analyze"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -314,6 +315,11 @@ const definitions = [
     method: "exact",
     environments: ["browser", "desktop", "server"],
     legacyRequestKinds: [],
+  },
+  {
+    id: "galois.analyze",
+    title: "Bounded Galois group and fixed-field correspondence",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
     id: "polynomial.roots.exact",

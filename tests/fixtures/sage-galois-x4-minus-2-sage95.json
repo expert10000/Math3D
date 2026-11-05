@@ -1,0 +1,272 @@
+{
+  "format": "math3d.sage-galois-analysis-result",
+  "schemaVersion": 1,
+  "sourcePolynomial": "x^4-2",
+  "variable": "x",
+  "coefficientDomain": "QQ",
+  "irreducible": true,
+  "squareFree": true,
+  "splittingField": {
+    "degree": 8,
+    "definingPolynomial": "x^8 + 28*x^4 + 2500"
+  },
+  "group": {
+    "order": 8,
+    "regularDegree": 8,
+    "transitiveId": "4T3",
+    "classification": "D4",
+    "convention": "D4 = symmetries of a square, order 8",
+    "solvable": true,
+    "elements": [
+      [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      [
+        2,
+        8,
+        4,
+        6,
+        3,
+        5,
+        1,
+        7
+      ],
+      [
+        3,
+        5,
+        1,
+        7,
+        2,
+        8,
+        4,
+        6
+      ],
+      [
+        4,
+        3,
+        2,
+        1,
+        8,
+        7,
+        6,
+        5
+      ],
+      [
+        5,
+        6,
+        7,
+        8,
+        1,
+        2,
+        3,
+        4
+      ],
+      [
+        6,
+        4,
+        8,
+        2,
+        7,
+        1,
+        5,
+        3
+      ],
+      [
+        7,
+        1,
+        5,
+        3,
+        6,
+        4,
+        8,
+        2
+      ],
+      [
+        8,
+        7,
+        6,
+        5,
+        4,
+        3,
+        2,
+        1
+      ]
+    ],
+    "generators": [
+      1,
+      5,
+      7
+    ]
+  },
+  "subgroups": [
+    {
+      "id": "H0",
+      "members": [
+        0
+      ],
+      "order": 1,
+      "normal": true,
+      "fixedField": {
+        "degree": 8,
+        "polynomial": "x^8 + 28*x^4 + 2500",
+        "generatorImage": "ac",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H1",
+      "members": [
+        0,
+        2
+      ],
+      "order": 2,
+      "normal": false,
+      "fixedField": {
+        "degree": 4,
+        "polynomial": "x^4 + 2",
+        "generatorImage": "13/12000*ac^7 + 307/6000*ac^3",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H2",
+      "members": [
+        0,
+        3
+      ],
+      "order": 2,
+      "normal": false,
+      "fixedField": {
+        "degree": 4,
+        "polynomial": "x^4 - 2",
+        "generatorImage": "1/120*ac^5 + 19/60*ac",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H3",
+      "members": [
+        0,
+        4
+      ],
+      "order": 2,
+      "normal": false,
+      "fixedField": {
+        "degree": 4,
+        "polynomial": "x^4 - 2",
+        "generatorImage": "-1/240*ac^5 + 41/120*ac",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H4",
+      "members": [
+        0,
+        5
+      ],
+      "order": 2,
+      "normal": false,
+      "fixedField": {
+        "degree": 4,
+        "polynomial": "x^4 + 2",
+        "generatorImage": "3/4000*ac^7 - 83/2000*ac^3",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H5",
+      "members": [
+        0,
+        7
+      ],
+      "order": 2,
+      "normal": true,
+      "fixedField": {
+        "degree": 4,
+        "polynomial": "x^4 + 1",
+        "generatorImage": "1/2400*ac^6 - 161/1200*ac^2",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H6",
+      "members": [
+        0,
+        1,
+        6,
+        7
+      ],
+      "order": 4,
+      "normal": true,
+      "fixedField": {
+        "degree": 2,
+        "polynomial": "x^2 + 1",
+        "generatorImage": "1/48*ac^4 + 7/24",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H7",
+      "members": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "order": 4,
+      "normal": true,
+      "fixedField": {
+        "degree": 2,
+        "polynomial": "x^2 + 2",
+        "generatorImage": "1/400*ac^6 + 39/200*ac^2",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H8",
+      "members": [
+        0,
+        3,
+        4,
+        7
+      ],
+      "order": 4,
+      "normal": true,
+      "fixedField": {
+        "degree": 2,
+        "polynomial": "x^2 - 2",
+        "generatorImage": "-1/300*ac^6 + 11/150*ac^2",
+        "relationVerified": true
+      }
+    },
+    {
+      "id": "H9",
+      "members": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "order": 8,
+      "normal": true,
+      "fixedField": {
+        "degree": 1,
+        "polynomial": null,
+        "generatorImage": null,
+        "relationVerified": true
+      }
+    }
+  ],
+  "complete": true
+}

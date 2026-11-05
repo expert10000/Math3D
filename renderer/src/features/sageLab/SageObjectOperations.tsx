@@ -127,7 +127,9 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       <button type="button" disabled={!item.readyBackend || running} title={item.reason ?? item.runtimeReason ?? undefined}
         aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id);
           setInput(item.definition.id === "sage.numberField.elementDossier" ? "1, 1"
-            : item.definition.id === "sage.numberField.primeDecomposition" ? "5" : "");
+            : item.definition.id === "sage.numberField.primeDecomposition" ? "5"
+              : item.definition.id === "sage.galois.analyze" && targetRecord?.definition.kind === "polynomial-ring"
+                ? `${targetRecord.definition.variables[0]}^4-2` : "");
           setBudgetProfile("standard"); setExpandedAcknowledged(false); setMessage(""); }}
         style={{ textAlign: "left", fontWeight: 600 }}>{item.definition.label}</button>
       <span style={{ color: item.readyBackend ? "#16703b" : "#9a3412", fontSize: 11 }}>
@@ -165,6 +167,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
           selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :
           selected === "sage.numberField.primeDecomposition" ? "Rational prime p (2–97)" :
+          selected === "sage.galois.analyze" ? "Monic irreducible QQ polynomial (degree 2–4; coefficients ≤ 100)" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}
           {selected?.startsWith("sage.matrix.") || selected === "sage.groebner.compute" ?

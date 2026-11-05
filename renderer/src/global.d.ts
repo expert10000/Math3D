@@ -524,6 +524,7 @@ declare global {
     | "sage.polynomial.roots_exact"
     | "sage.polynomial.factor"
     | "sage.polynomial.dossier"
+    | "sage.galois.analyze"
     | "sage.groebner.compute"
     | "sage.ideal.groebner"
     | "sage.ideal.eliminate"

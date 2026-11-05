@@ -11,9 +11,11 @@ from sage.env import SAGE_VERSION
 if __package__:
     from .algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
     from .number_field_operations import run_number_field_operation
+    from .galois_analysis import analyze_galois
 else:
     from algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
     from number_field_operations import run_number_field_operation
+    from galois_analysis import analyze_galois
 
 
 ENGINE = "sagemath"
@@ -793,6 +795,7 @@ OPERATIONS = {
     "sage.algebra.inspectDomains": lambda op, params: _success(op, inspect_algebra_domains(params)),
     "sage.numberField.elementDossier": lambda op, params: _success(op, run_number_field_operation(op, params)),
     "sage.numberField.primeDecomposition": lambda op, params: _success(op, run_number_field_operation(op, params)),
+    "sage.galois.analyze": lambda op, params: _success(op, analyze_galois(params)),
     "sage.symbolic.simplify": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.simplify_full()),
     "sage.symbolic.factor": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.factor()),
     "sage.symbolic.expand": lambda op, params: _symbolic_unary(op, params, lambda expr: expr.expand()),

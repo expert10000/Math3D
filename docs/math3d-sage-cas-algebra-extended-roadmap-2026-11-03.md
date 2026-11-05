@@ -326,6 +326,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **D05 implementation update (2026-11-05):** The [D05 acceptance record](evidence/sage-d05-field-tower-2026-11-05.md) adds a bounded saved quadratic-over-quadratic field extension and a Structures tower diagram with pinned inclusion maps, composition, defining-relation checks and `2×2=4` degree verification. Exact core, real local Sage 9.5 and controlled desktop export/fresh-profile import gates pass. The next feature is **SAGE-D06**, Galois analysis and subgroup views. The live B08 Docker Sage 10.10 comparison remains open.
 
+**D06 implementation update (2026-11-05):** The [D06 acceptance record](evidence/sage-d06-galois-correspondence-2026-11-05.md) adds a bounded `QQ[x]` Galois operation, an exact permutation and fixed-field result contract, independent group and subgroup checks, and linked subgroup/intermediate-field diagrams. The `x⁴−2` local Sage 9.5 fixture gives `D4` of order eight and ten complete subgroup/fixed-field pairs; desktop Project export and fresh-profile reopen pass. The next feature is **SAGE-E01**, finite group objects. The [B08 live comparison](evidence/sage-b08-live-2026-11-05.md) closed its 16-case Sage 9.5/10.10 matrix with zero differences; live Docker D06 parity remains untested.
+
 ---
 
 ## 3. P0 — Algebra object registry
