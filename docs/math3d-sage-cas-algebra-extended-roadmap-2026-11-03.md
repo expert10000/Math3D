@@ -328,6 +328,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **D06 implementation update (2026-11-05):** The [D06 acceptance record](evidence/sage-d06-galois-correspondence-2026-11-05.md) adds a bounded `QQ[x]` Galois operation, an exact permutation and fixed-field result contract, independent group and subgroup checks, and linked subgroup/intermediate-field diagrams. The `x⁴−2` local Sage 9.5 fixture gives `D4` of order eight and ten complete subgroup/fixed-field pairs; desktop Project export and fresh-profile reopen pass. The next feature is **SAGE-E01**, finite group objects. The [B08 live comparison](evidence/sage-b08-live-2026-11-05.md) closed its 16-case Sage 9.5/10.10 matrix with zero differences; live Docker D06 parity remains untested.
 
+**E01 implementation update (2026-11-05):** The [E01 acceptance record](evidence/sage-e01-finite-group-objects-2026-11-05.md) adds versioned finite-group Project definitions for bounded permutation generators with verified relation words and finite abelian invariant-factor presentations. Structures previews and saves `C4`, `V4`, `S3`, `D4` and `Q8`; exact core and independent Project reopen gates pass. The next feature is **SAGE-E02**, capability-gated GAP operations.
+
 ---
 
 ## 3. P0 — Algebra object registry

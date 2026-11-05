@@ -22,6 +22,7 @@ export * from "./quadraticNumberField";
 export * from "./biquadraticFieldTower";
 export * from "./projectFieldTower";
 export * from "./sageGaloisAnalysis";
+export * from "./finiteGroup";
 export * from "./sageNumberFieldOperations";
 export * from "./sageIdealOperations";
 export * from "./sageIdealBudgets";

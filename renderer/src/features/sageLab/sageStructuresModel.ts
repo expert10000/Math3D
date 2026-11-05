@@ -1,6 +1,7 @@
 import { createAlgebraObjectRecord, createProjectAlgebraObjectId, inspectProjectAlgebraFreshness, parseIdealGenerator,
   analyzeQuadraticNumberField, buildSageAlgebraReconstructionInput, upsertMath3DProjectAlgebraObject,
   analyzeBiquadraticExtensionFromDefinition,
+  analyzeFiniteGroup,
   type AlgebraObjectDefinition, type AlgebraObjectRecord, type AlgebraObjectRef,
   type Math3DProject, type ProjectAlgebraObjectEntry } from "@math3d/core";
 
@@ -70,6 +71,10 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
     const base = selectedStructure(project, definition.baseField)?.record;
     return `${base?.label ?? definition.baseField.objectId}(${definition.generator}), ${definition.generator}^2=${definition.radicand}`;
   }
+  if (definition.kind === "finite-group") {
+    const facts = analyzeFiniteGroup(definition);
+    return `${facts.presentation}, order ${facts.order}`;
+  }
   if (definition.kind === "ideal") {
     const ambient = selectedStructure(project, definition.ambientRing)?.record;
     return `⟨${definition.generators.join(", ")}⟩ ⊂ ${ambient?.label ?? definition.ambientRing.objectId}`;
@@ -113,8 +118,8 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
   if (definition.kind === "field-extension") return { presentation, characteristic: "0", field: "yes",
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
-  if (definition.kind === "ideal" || definition.kind === "quotient-ring")
-    throw new TypeError("Ideal and quotient objects need dedicated exact analysis.");
+  if (definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group")
+    throw new TypeError("Ideal, quotient and finite-group objects need dedicated exact analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   if (!parent) throw new TypeError("The polynomial coefficient domain is missing from the Project.");
   const base = describeStructure(parent, project);

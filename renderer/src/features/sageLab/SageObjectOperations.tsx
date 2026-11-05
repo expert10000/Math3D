@@ -69,6 +69,8 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
   const targetStale = inspectProjectAlgebraFreshness(project).find((item) => item.objectId === target.objectId)?.status === "stale";
   const idealSelection = selected?.startsWith("sage.ideal.") ?? false;
   const targetRecord = project.algebraObjects?.find((item) => item.id === target.objectId)?.revisions[target.revision - 1];
+  if (targetRecord?.kind === "finite-group") return <section data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
+    This finite group has an exact saved definition. Runtime group calculations are not available yet.</section>;
   const idealRef = targetRecord?.definition.kind === "quotient-ring" ? targetRecord.definition.ideal : target;
   const ideal = project.algebraObjects?.find((item) => item.id === idealRef.objectId)?.revisions[idealRef.revision - 1];
   const ringRef = ideal?.definition.kind === "ideal" ? ideal.definition.ambientRing : null;
