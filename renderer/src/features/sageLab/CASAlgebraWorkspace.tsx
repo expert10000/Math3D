@@ -7,6 +7,7 @@ import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageSe
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
 import SageGaloisViewer from "./SageGaloisViewer";
+import SageFiniteGroupViewer from "./SageFiniteGroupViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageFiniteGroupBuilder from "./SageFiniteGroupBuilder";
 import SageObjectOperations from "./SageObjectOperations";
@@ -249,7 +250,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
         result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />
           {selectedEvidence.request.operation === "sage.galois.analyze" &&
-            <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult} />}</>,
+            <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult} />}
+          {selectedEvidence.request.operation === "sage.group.dossier" && project &&
+            <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,
