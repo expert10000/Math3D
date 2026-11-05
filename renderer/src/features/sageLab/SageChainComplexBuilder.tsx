@@ -20,11 +20,13 @@ export default function SageChainComplexBuilder({ project, onCreate, onCreated, 
     fresh.find((item) => item.objectId === entry.id)?.status === "fresh").map((entry) => entry.revisions.at(-1)!);
   const byRef = (value: AlgebraObjectRef) => records.find((record) => record.id === value.objectId &&
     record.revision === value.revision);
-  const maps = records.filter((record) => record.definition.kind === "module-map" && (() => {
+  const maps = records.filter((record): record is AlgebraObjectRecord & {
+    definition: Extract<AlgebraObjectRecord["definition"], { kind: "module-map" }>
+  } => record.definition.kind === "module-map").filter((record) => {
     const source = byRef(record.definition.sourceModule);
     const ring = source?.definition.kind === "module" ? byRef(source.definition.baseRing) : null;
     return ring?.definition.kind === "integer-ring";
-  })());
+  });
   const d1Options = maps.filter((candidate) => candidate.definition.kind === "module-map" &&
     maps.some((next) => next.definition.kind === "module-map" &&
       next.definition.targetModule.objectId === candidate.definition.sourceModule.objectId &&
