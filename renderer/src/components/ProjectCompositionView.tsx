@@ -5,6 +5,7 @@ import {
   type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember, type MixedWorkspaceEntry,
   SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
+  SAGE_LOCUS_SINGULARITY_EXTENSION, parseAlgebraicSingularityGeometryDocument,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { projectResourceInventory, type ProjectResourceReader } from "../projects/projectResources";
@@ -87,6 +88,35 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
     meshes.push({ ...decoded, label: document.metadata.label, source: source.origin as SurfaceMeshData["source"], id: member.documentId, color, opacity: member.opacity });
   } else if (entry.module === "geometry" && document.format === "math3d.geometry-document") {
     const source = (document as GeometryDocument).source;
+    if (SAGE_LOCUS_SINGULARITY_EXTENSION in source.extensions) {
+      const { analysis } = parseAlgebraicSingularityGeometryDocument(document, project);
+      const coordinate = (value: string) => { const [n, d] = value.split("/"); return Number(n) / Number(d ?? 1); };
+      const p = analysis.point.map(coordinate), origin = { x: p[0] ?? 0, y: p[1] ?? 0, z: p[2] ?? 0 };
+      points.push({ points: [origin], color, opacity: member.opacity, size: 9 });
+      const span = Math.min(...analysis.scene.domain.bounds.map((bound) => bound.max - bound.min)) * 0.3;
+      if (analysis.local.realTangentDirections.length) lines.push({
+        lines: analysis.local.realTangentDirections.map(([dx, dy]) => {
+          const scale = span / (Math.hypot(dx, dy) || 1);
+          return [{ x: origin.x - dx * scale, y: origin.y - dy * scale, z: origin.z },
+            { x: origin.x + dx * scale, y: origin.y + dy * scale, z: origin.z }];
+        }), color, opacity: member.opacity });
+      if (p.length === 3 && analysis.local.onLocus && analysis.local.jacobianRank === 1) {
+        const normal = analysis.local.jacobian.map(coordinate), length = Math.hypot(...normal);
+        if (length > 0 && Number.isFinite(length)) {
+          const n = normal.map((value) => value / length);
+          const anchor = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+          const u = [n[1]*anchor[2]-n[2]*anchor[1], n[2]*anchor[0]-n[0]*anchor[2], n[0]*anchor[1]-n[1]*anchor[0]];
+          const ul = Math.hypot(...u), unit = u.map((value) => value / ul);
+          const v = [n[1]*unit[2]-n[2]*unit[1], n[2]*unit[0]-n[0]*unit[2], n[0]*unit[1]-n[1]*unit[0]];
+          const vertex = (a: number, b: number) => [origin.x, origin.y, origin.z].map((value, axis) =>
+            value + span * (a * unit[axis] + b * v[axis]));
+          const a = vertex(-1,-1), b = vertex(1,-1), c = vertex(1,1), d = vertex(-1,1);
+          meshes.push({ id: `${member.documentId}/tangent-plane`, label: "Exact tangent plane at selected point",
+            positions: new Float32Array([...a,...b,...c,...a,...c,...d]), indices: null,
+            source: { kind: "bakedFromImplicit" }, color, opacity: member.opacity * 0.5 });
+        }
+      }
+    }
     if (SAGE_LOCUS_SAMPLE_EXTENSION in source.extensions) {
       const { sample } = parseSampledAlgebraicLocusGeometryDocument(document, project);
       const asPoint = (p: readonly number[]) => ({ x: p[0] ?? 0, y: p[1] ?? 0, z: p[2] ?? 0 });

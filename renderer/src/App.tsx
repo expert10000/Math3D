@@ -810,6 +810,7 @@ import {
   replaceMath3DProjectWorkspace,
   upsertMath3DProjectAlgebraicLocusScene,
   upsertMath3DProjectAlgebraicLocusSample,
+  upsertMath3DProjectAlgebraicSingularityScene,
   upsertProjectScientificSelection,
   upsertProjectLineIntegralResult,
   upsertProjectRegionResult,
@@ -111623,6 +111624,19 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onSaveLocusSingularity={(analysis) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== analysis.scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving a tangent view.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the tangent view.");
+          const next = upsertMath3DProjectAlgebraicSingularityScene(current, analysis);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
         onSaveLocusSample={(sample) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== sample.scene.source.projectId)

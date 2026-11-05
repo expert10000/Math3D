@@ -346,6 +346,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F02 implementation update (2026-11-05):** The [F02 acceptance record](evidence/sage-f02-bounded-real-locus-2026-11-05.md) adds bounded numerical sampling for one-variable real roots, two-variable implicit curves, three-variable implicit surfaces, and two-equation three-dimensional loci with a linear plane constraint. The sphere/plane intersection over `QQ[x,y,z]` renders as a curve. A versioned sample retains the complete F01 scene, declares its algorithm and sample count, and labels completeness as a bounded sample. Its Geometry checkpoint is validated against the exact pinned Project source on import. The next feature is **SAGE-F03**, singular-locus and tangent views.
 
+**F03 implementation update (2026-11-05):** The [F03 acceptance record](evidence/sage-f03-singular-locus-tangent-2026-11-05.md) adds exact `QQ` hypersurface Jacobian equations and point-local tangent scenes pinned to the F01 source. A rational point inspector reports exact locus membership, Jacobian rank, multiplicity and the leading homogeneous tangent cone. The node `y²−x²(x+1)` has two real tangents; the cusp `y²−x³` has a repeated tangent and nonzero transverse cubic jet. The view saves as a validated Geometry checkpoint with a Project comparison adapter. Multi-equation ideals remain an explicit dimension-aware Jacobian-minors follow-up. The next feature is **SAGE-F04**, typed algebra object Workbook cells.
+
 ---
 
 ## 3. P0 — Algebra object registry
@@ -782,6 +784,8 @@ Hessian / quadratic jet  ... [if applicable]
 - Node `y²-x²(x+1)=0` — singular at origin, tangent cone with two lines over suitable field.
 - Cusp `y²-x³=0` — singular at origin, tangent cone is a doubled line.
 - Crossed surfaces and non-reduced schemes — explicitly distinguish set-theoretic geometry from scheme-sensitive multiplicity.
+
+**F03 scope:** For a single hypersurface equation over `QQ`, show the exact unsolved system `f=∂f/∂x₁=⋯=0` and evaluate its Jacobian at a selected rational point inside the F01 bounds. Translate the polynomial exactly to that point to obtain the lowest nonzero homogeneous jet and tangent cone. Classify only the supported two-dimensional ordinary real node and ordinary cusp patterns; all other singular points stay unclassified. The global singular set is not solved, and multi-equation ideals need a dimension/codimension-aware minors criterion before classification.
 
 ---
 

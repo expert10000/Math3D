@@ -1,13 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonicalJsonStringify,
   sampleSageAlgebraicLocus, sampledAlgebraicLocusGeometryDocument,
+  analyzeSageAlgebraicSingularity, algebraicSingularityGeometryDocument,
   type AlgebraObjectRef, type Math3DProject, type SageAlgebraicLocusScene,
-  type SageAlgebraicLocusSample } from "@math3d/core";
+  type SageAlgebraicLocusSample, type SageAlgebraicSingularityScene } from "@math3d/core";
 import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
+import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
 
 type Props = { project: Math3DProject; target: AlgebraObjectRef;
   onSave: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
-  onSaveSample: (sample: SageAlgebraicLocusSample) => void | Promise<void> };
+  onSaveSample: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
+  onSaveSingularity: (analysis: SageAlgebraicSingularityScene) => void | Promise<void> };
 const axisNames = ["x", "y", "z"];
 const download = (name: string, body: string) => {
   const url = URL.createObjectURL(new Blob([body], { type: "application/json" }));
@@ -16,7 +19,7 @@ const download = (name: string, body: string) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample }: Props) {
+export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample, onSaveSingularity }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
   const ambientRef = record?.definition.kind === "ideal" ? record.definition.ambientRing : null;
   const ambient = ambientRef
@@ -31,13 +34,17 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
   const [maxSamples, setMaxSamples] = useState("50000");
   const [preview, setPreview] = useState<{ signature: string; scene: SageAlgebraicLocusScene } | null>(null);
   const [sampled, setSampled] = useState<{ signature: string; sample: SageAlgebraicLocusSample } | null>(null);
+  const [point, setPoint] = useState(["0", "0", "0"]);
+  const [inspected, setInspected] = useState<{ signature: string; analysis: SageAlgebraicSingularityScene } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const signature = JSON.stringify({ target, polynomial, bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
   const scene = preview?.signature === signature ? preview.scene : null;
   const sample = sampled?.signature === signature ? sampled.sample : null;
+  const analysisSignature = `${signature}/${JSON.stringify(point.slice(0, variables.length))}`;
+  const analysis = inspected?.signature === analysisSignature ? inspected.analysis : null;
   const prepare = (event: FormEvent) => {
-    event.preventDefault(); setMessage(""); setPreview(null); setSampled(null);
+    event.preventDefault(); setMessage(""); setPreview(null); setSampled(null); setInspected(null);
     try {
       const prepared = buildSageAlgebraicLocusScene(project, target, {
         ...(record?.definition.kind === "polynomial-ring" ? { polynomial } : {}),
@@ -63,6 +70,20 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
     if (!sample || busy) return;
     setBusy(true); setMessage("");
     try { await onSaveSample(sample); setMessage("Saved bounded real-locus sample to Project Geometry."); }
+    catch (error) { setMessage(String((error as Error).message ?? error)); }
+    finally { setBusy(false); }
+  };
+  const inspect = () => {
+    if (!scene || busy) return;
+    setMessage(""); setInspected(null);
+    try { setInspected({ signature: analysisSignature,
+      analysis: analyzeSageAlgebraicSingularity(scene, point.slice(0, variables.length)) }); }
+    catch (error) { setMessage(String((error as Error).message ?? error)); }
+  };
+  const saveAnalysis = async () => {
+    if (!analysis || busy) return;
+    setBusy(true); setMessage("");
+    try { await onSaveSingularity(analysis); setMessage("Saved exact tangent and singular-locus view to Project Geometry."); }
     catch (error) { setMessage(String((error as Error).message ?? error)); }
     finally { setBusy(false); }
   };
@@ -118,6 +139,27 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
             canonicalJsonStringify(sampledAlgebraicLocusGeometryDocument(sample)))}>Export sampled Geometry JSON</button>
         </div>
       </div>}
+      <div style={{ display: "grid", gap: 5, borderTop: "1px solid #dbe2ea", paddingTop: 8 }}>
+        <strong>Exact tangent and singular-locus inspection</strong>
+        <div>Inspect one rational point. The hypersurface Jacobian equations remain unsolved globally.</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {variables.map((variable, index) => <label key={variable}>{variable} point
+            <input aria-label={`${variable} inspection point`} value={point[index]}
+              onChange={(event) => setPoint((current) => current.map((item, at) =>
+                at === index ? event.target.value : item))} style={{ width: 75 }} /></label>)}
+          <button type="button" disabled={busy} onClick={inspect}>Inspect tangent and singular locus</button>
+        </div>
+        {analysis && <div style={{ display: "grid", gap: 6 }}>
+          <SageAlgebraicSingularityView analysis={analysis} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" disabled={busy} onClick={() => { void saveAnalysis(); }}>Save tangent view to Project</button>
+            <button type="button" onClick={() => download(`math3d-locus-tangent-${scene.source.target.revision}.json`,
+              canonicalJsonStringify(analysis))}>Export tangent scene JSON</button>
+            <button type="button" onClick={() => download(`math3d-locus-tangent-geometry-${scene.source.target.revision}.json`,
+              canonicalJsonStringify(algebraicSingularityGeometryDocument(analysis)))}>Export tangent Geometry JSON</button>
+          </div>
+        </div>}
+      </div>
     </div>}
   </section>;
 }

@@ -19,6 +19,9 @@ import { SAGE_LOCUS_GEOMETRY_EXTENSION, algebraicLocusGeometryDocument,
 import { SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
   parseSageAlgebraicLocusSample, sampledAlgebraicLocusGeometryDocument,
   type SageAlgebraicLocusSample } from "./sageAlgebraicLocusSampling";
+import { SAGE_LOCUS_SINGULARITY_EXTENSION, algebraicSingularityGeometryDocument,
+  parseAlgebraicSingularityGeometryDocument, parseSageAlgebraicSingularityScene,
+  type SageAlgebraicSingularityScene } from "./sageAlgebraicSingularity";
 
 export const MATH3D_PROJECT_FORMAT = "math3d.project" as const;
 export const MATH3D_PROJECT_SCHEMA_VERSION = 1 as const;
@@ -144,7 +147,9 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
         SAGE_LOCUS_GEOMETRY_EXTENSION in entry.checkpoint.source.extensions) {
       if (entry.replay !== null) throw new TypeError("Algebraic-locus Geometry checkpoints cannot carry replay code.");
       const projectContext = { identity: value.identity as DocumentIdentity, algebraObjects } as Math3DProject;
-      if (SAGE_LOCUS_SAMPLE_EXTENSION in entry.checkpoint.source.extensions)
+      if (SAGE_LOCUS_SINGULARITY_EXTENSION in entry.checkpoint.source.extensions)
+        parseAlgebraicSingularityGeometryDocument(entry.checkpoint, projectContext);
+      else if (SAGE_LOCUS_SAMPLE_EXTENSION in entry.checkpoint.source.extensions)
         parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, projectContext);
       else parseAlgebraicLocusGeometryDocument(entry.checkpoint, projectContext);
     }
@@ -286,6 +291,22 @@ export const upsertMath3DProjectAlgebraicLocusSample = (project: Math3DProject,
   if (sageAlgebraicLocusSceneStatus(sample.scene, current) !== "current")
     throw new TypeError("Rebuild the locus sample from a current, fresh source before saving it.");
   const geometry = sampledAlgebraicLocusGeometryDocument(sample);
+  const entries = [...current.workspace.entries.filter((entry) => entry.expected.id !== geometry.identity.id),
+    { module: "geometry" as const, checkpoint: geometry, expected: geometry.identity, replay: null }];
+  const activeDocumentIds = [...current.workspace.activeDocumentIds.filter((id) => id !== geometry.identity.id),
+    geometry.identity.id];
+  const { format: _format, schemaVersion: _version, ...workspace } = current.workspace;
+  return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...workspace, entries,
+    activeDocumentIds }));
+};
+/** Saves a revision-pinned exact Jacobian and local tangent scene as a Geometry checkpoint. */
+export const upsertMath3DProjectAlgebraicSingularityScene = (project: Math3DProject,
+  input: SageAlgebraicSingularityScene): Math3DProject => {
+  const current = requireProject(project);
+  const analysis = parseSageAlgebraicSingularityScene(input, current);
+  if (sageAlgebraicLocusSceneStatus(analysis.scene, current) !== "current")
+    throw new TypeError("Rebuild the tangent view from a current, fresh source before saving it.");
+  const geometry = algebraicSingularityGeometryDocument(analysis);
   const entries = [...current.workspace.entries.filter((entry) => entry.expected.id !== geometry.identity.id),
     { module: "geometry" as const, checkpoint: geometry, expected: geometry.identity, replay: null }];
   const activeDocumentIds = [...current.workspace.activeDocumentIds.filter((id) => id !== geometry.identity.id),

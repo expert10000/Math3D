@@ -557,6 +557,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-F02](evidence/sage-f02-bounded-real-locus-2026-11-05.md) renders bounded numerical real roots, planar curves, three-dimensional implicit surfaces and a linear-plane section of a second equation. The sphere/plane ideal fixture produces a sampled curve. Exact F01 source records remain attached to the versioned sample and Geometry checkpoint; samples declare their algorithm, count, warning and potentially incomplete status. The next feature is **SAGE-F03** singular-locus and tangent views.
 
+[SAGE-F03](evidence/sage-f03-singular-locus-tangent-2026-11-05.md) adds exact Jacobian equations and tangent-cone scenes for one saved `QQ` hypersurface equation. Rational-point inspection distinguishes the node and cusp fixtures, displays the smooth sphere tangent plane, and saves revision-pinned Geometry evidence that independently reopens. Multi-equation ideals report the need for a dimension-aware minors workflow. The next feature is **SAGE-F04** typed algebra object Workbook cells.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,

@@ -3,7 +3,8 @@ import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQ
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
-  type SageAlgebraicLocusScene, type SageAlgebraicLocusSample } from "@math3d/core";
+  type SageAlgebraicLocusScene, type SageAlgebraicLocusSample,
+  type SageAlgebraicSingularityScene } from "@math3d/core";
 import type { SageGaloisResult, SageModuleInvariantResult, SageChainHomologyResult } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
@@ -32,6 +33,7 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
   onSaveLocusScene?: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveLocusSample?: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
+  onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
   onOpenProjects: () => void;
@@ -52,7 +54,7 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 };
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
-  onSaveLocusScene, onSaveLocusSample, onAppendRecipeEvidence, onOpenProjects, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
+  onSaveLocusScene, onSaveLocusSample, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
   const [selectionFocus, setSelectionFocus] = useState(0);
@@ -256,11 +258,12 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           <dt>Relation checks</dt><dd>{facts.baseRelation}; {facts.extensionRelation}</dd></>;
       })()}
     </dl>
-    {onSaveLocusScene && onSaveLocusSample && (chosen.record.definition.kind === "ideal" ||
+    {onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity && (chosen.record.definition.kind === "ideal" ||
       chosen.record.definition.kind === "polynomial-ring") &&
       <SageAlgebraicLocusBuilder key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} target={{ objectId: chosen.record.id, revision: chosen.record.revision }}
-        onSave={onSaveLocusScene} onSaveSample={onSaveLocusSample} />}
+        onSave={onSaveLocusScene} onSaveSample={onSaveLocusSample}
+        onSaveSingularity={onSaveLocusSingularity} />}
     {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       <label>Quotient name <input aria-label="Quotient name" value={quotientName}
         onChange={(event) => setQuotientName(event.target.value)} placeholder={`${chosen.record.label} quotient`} /></label>
