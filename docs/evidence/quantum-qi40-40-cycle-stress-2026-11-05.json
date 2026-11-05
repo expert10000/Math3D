@@ -1,0 +1,577 @@
+{
+  "schema": "math3d.quantum-stress/v1",
+  "cycles": 40,
+  "baseline": {
+    "heapBytes": 25469284,
+    "workingSetKiB": 522328,
+    "canvasCount": 0
+  },
+  "samples": [
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 29654016,
+        "workingSetKiB": 653172,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 27660060,
+        "workingSetKiB": 648236,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 28457328,
+        "workingSetKiB": 675500,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 27760132,
+        "workingSetKiB": 673940,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 28237932,
+        "workingSetKiB": 695868,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28116584,
+        "workingSetKiB": 695284,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 27799324,
+        "workingSetKiB": 699988,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28035076,
+        "workingSetKiB": 699012,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "observed"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 28261300,
+        "workingSetKiB": 700124,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28149136,
+        "workingSetKiB": 699276,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 28043144,
+        "workingSetKiB": 701284,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28101744,
+        "workingSetKiB": 700536,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 28335388,
+        "workingSetKiB": 702068,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28233188,
+        "workingSetKiB": 701440,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 27936396,
+        "workingSetKiB": 711396,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 27250052,
+        "workingSetKiB": 709912,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 28429616,
+        "workingSetKiB": 717160,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28331712,
+        "workingSetKiB": 716248,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 28063920,
+        "workingSetKiB": 719220,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28289584,
+        "workingSetKiB": 717212,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 28529904,
+        "workingSetKiB": 719624,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28432748,
+        "workingSetKiB": 718500,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 28104440,
+        "workingSetKiB": 720312,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 27446644,
+        "workingSetKiB": 716884,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 28593240,
+        "workingSetKiB": 719948,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 28501000,
+        "workingSetKiB": 719144,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 29405652,
+        "workingSetKiB": 723484,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29638276,
+        "workingSetKiB": 722952,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 29860996,
+        "workingSetKiB": 724072,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29762716,
+        "workingSetKiB": 723500,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 30115152,
+        "workingSetKiB": 724616,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29699252,
+        "workingSetKiB": 723308,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 29911612,
+        "workingSetKiB": 724984,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29812264,
+        "workingSetKiB": 724204,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 29520700,
+        "workingSetKiB": 724712,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29750884,
+        "workingSetKiB": 723860,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 32069264,
+        "workingSetKiB": 728580,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29874996,
+        "workingSetKiB": 725408,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 29581528,
+        "workingSetKiB": 727292,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29809564,
+        "workingSetKiB": 726820,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 32130292,
+        "workingSetKiB": 729920,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29938668,
+        "workingSetKiB": 726976,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 29641988,
+        "workingSetKiB": 727820,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29871080,
+        "workingSetKiB": 727312,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 32199760,
+        "workingSetKiB": 728964,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29998100,
+        "workingSetKiB": 725596,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 29702632,
+        "workingSetKiB": 728548,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29932016,
+        "workingSetKiB": 728296,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 30158080,
+        "workingSetKiB": 728852,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 30054740,
+        "workingSetKiB": 727800,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 31128456,
+        "workingSetKiB": 731248,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 29989060,
+        "workingSetKiB": 729288,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 31360372,
+        "workingSetKiB": 731444,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31256032,
+        "workingSetKiB": 730708,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 33286792,
+        "workingSetKiB": 729288,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31191864,
+        "workingSetKiB": 726084,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 31421128,
+        "workingSetKiB": 727976,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31315800,
+        "workingSetKiB": 726864,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 31013716,
+        "workingSetKiB": 744288,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31241360,
+        "workingSetKiB": 743420,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 31469732,
+        "workingSetKiB": 744828,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31363320,
+        "workingSetKiB": 743748,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 32440544,
+        "workingSetKiB": 746256,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31299048,
+        "workingSetKiB": 742484,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 31529696,
+        "workingSetKiB": 745024,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31422212,
+        "workingSetKiB": 744276,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 32490416,
+        "workingSetKiB": 747556,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31356468,
+        "workingSetKiB": 743964,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 31588400,
+        "workingSetKiB": 746424,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31480020,
+        "workingSetKiB": 745272,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 31187452,
+        "workingSetKiB": 747052,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 30499948,
+        "workingSetKiB": 743684,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 31648788,
+        "workingSetKiB": 747184,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31539496,
+        "workingSetKiB": 746060,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 32612376,
+        "workingSetKiB": 749068,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31475856,
+        "workingSetKiB": 746800,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 33804300,
+        "workingSetKiB": 749836,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31600048,
+        "workingSetKiB": 746588,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 31446604,
+        "workingSetKiB": 747876,
+        "canvasCount": 2
+      },
+      "closed": {
+        "heapBytes": 31544880,
+        "workingSetKiB": 747180,
+        "canvasCount": 0
+      },
+      "simulatedContextLoss": "not attempted"
+    }
+  ],
+  "final": {
+    "heapBytes": 30628324,
+    "workingSetKiB": 745924,
+    "canvasCount": 0
+  },
+  "contextLoss": "observed"
+}
