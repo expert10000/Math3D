@@ -327,6 +327,7 @@ export type WorkbookBlock = {
   documentContent?: WorkbookDocumentContent;
   claim?: WorkbookClaim;
   notebookReference?: NotebookReference;
+  algebraResult?: import("./workbookAlgebraResult").WorkbookAlgebraResult;
   scientificRegionReport?: { schemaVersion: 1; kind: "scientific-subrectangle-report/v1" |
     "scientific-trajectory-report/v1" | "scientific-equilibrium-report/v1";
     previousResultId?: string };

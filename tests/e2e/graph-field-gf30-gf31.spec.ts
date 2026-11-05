@@ -78,6 +78,10 @@ test("GF-30–31 pinned-time surfaces and saved spectra", async () => {
       return panel.getByTestId("gf30-moving-isosurfaces")
         .getByRole("button", { name: "Save this frame as Mesh" }).count();
     }, { timeout: 75_000 }).toBe(2);
+    await expect(panel.getByTestId("gf33-moving-playback"))
+      .toContainText("Frames 1–2:");
+    await panel.getByRole("checkbox", { name: "Show validated midpoints when correspondence is stable" })
+      .check();
     await panel.getByTestId("gf33-moving-playback")
       .getByRole("button", { name: "Play verified frames" }).click();
     await expect(panel.getByTestId("gf33-moving-playback"))

@@ -13,6 +13,7 @@ import { runTemporalMovingIsosurfaces, type TemporalMovingIsosurfaceFrame } from
   "./runTemporalMovingIsosurfaces";
 import { playTemporalMovingIsosurfaces, temporalSurfaceResidentBytes } from
   "./playTemporalMovingIsosurfaces";
+import { validateTemporalSurfacePair } from "./validateTemporalSurfacePair";
 
 export function VectorField3DTimeSourcePanel({ document, project, onSave, onSavePathline,
   onSaveStreakline, onSaveSpectrum, onOpenSpectrum, onPromoteMovingIsosurface,
@@ -56,9 +57,10 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const movingAbort = useRef<AbortController | null>(null);
   const movingTemporal = useRef<TemporalFieldSourceDocument | null>(null);
   const playbackAbort = useRef<AbortController | null>(null);
-  const playbackTransfers = useRef<VerifiedTemporalTransfers | undefined>();
+  const playbackTransfers = useRef<VerifiedTemporalTransfers | undefined>(undefined);
   const [playbackBusy, setPlaybackBusy] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState("");
+  const [interpolateSurfaces, setInterpolateSurfaces] = useState(false);
   const [spectrumComponent, setSpectrumComponent] = useState<"magnitude" | "x" | "y" | "z">("magnitude");
   const [spectrumCount, setSpectrumCount] = useState<16 | 32 | 64>(32);
   const [spectrumWindow, setSpectrumWindow] = useState<"rectangular" | "hann">("hann");
@@ -237,6 +239,14 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
           playbackTransfers.current = transfers; return transfers; },
         intervalMs: 500, timeBudgetMs: 10_000,
         memoryBudgetBytes: 64 * 1024 * 1024,
+        interpolate: interpolateSurfaces,
+        onInterpolated: (surface, from, to) => {
+          onPreviewMovingIsosurface?.(surface);
+          setPlaybackStatus(`Validated midpoint between ${from} and ${to} ` +
+            `${temporal.source.timeAxis.unit}; preview only.`);
+        },
+        onInterpolationUnavailable: (index, reason) =>
+          setPlaybackStatus(`Frames ${index + 1}–${index + 2}: exact playback; ${reason}`),
         onFrame: (frame, index) => {
           onPreviewMovingIsosurface?.(frame.surface);
           setPlaybackStatus(`Frame ${index + 1}/${movingFrames.length}: ${frame.time} ` +
@@ -393,8 +403,18 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
           Cancel moving isosurfaces</button>}
         {movingProgress && <p role="status">Moving isosurfaces {movingProgress}</p>}
         {movingFrames.length > 0 && <div data-testid="gf33-moving-playback">
-          <p>Exact pinned frames · 500 ms display cadence · no surface interpolation or topology correspondence ·
+          <p>Exact pinned frames · 500 ms display cadence ·
             {" "}{temporalSurfaceResidentBytes(movingFrames)} geometry bytes / 64 MiB budget.</p>
+          <label><input type="checkbox" checked={interpolateSurfaces}
+            onChange={event => setInterpolateSurfaces(event.target.checked)} />
+            Show validated midpoints when correspondence is stable</label>
+          {movingFrames.slice(0, -1).map((frame, index) => {
+            const review = validateTemporalSurfacePair(frame.surface,
+              movingFrames[index + 1]!.surface);
+            return <p key={index} role="status">Frames {index + 1}–{index + 2}: {
+              review.status === "compatible" ? "interpolation available" :
+                `exact playback only — ${review.reason}`}</p>;
+          })}
           <button type="button" disabled={playbackBusy || !onPreviewMovingIsosurface}
             onClick={() => void playMoving()}>Play verified frames</button>
           {playbackBusy && <button type="button" onClick={() => playbackAbort.current?.abort()}>

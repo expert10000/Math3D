@@ -1037,6 +1037,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               <p>Density and winding are shown as supplied. Math3D does not infer edge/bulk classification, band inversion, or node claims.</p>
               {sshError && <p role="alert">SSH view link refused: {sshError}</p>}
             </section>}
+            {scene.provenance.model === "qec_repetition_ideal" && <section data-testid="qec-repetition-profile"
+              style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
+              <h3 style={{ margin: 0 }}>Ideal repetition-code record</h3>
+              <p>Discrete rounds are on the horizontal axis. Blue shows recorded Z₀Z₁ and Z₁Z₂ parity bits,
+                orange shows changes since the preceding round, and teal shows the three data bits.
+                Marker height is the exact stored 0 or 1 value; the lanes are display positions.</p>
+              <p>{scene.annotations.find(note => note.id === "decoder")?.text}</p>
+              <p>Math3D verifies and displays the supplied scene; it does not decode errors or run a worker.
+                This is an ideal three-bit example, not a surface-code or fault-tolerance result.</p>
+            </section>}
             <h3 style={{ marginTop: 0 }}>Source and coordinates</h3>
             <div><b>{scene.provenance.model==="rice_mele_convergence_study"?"Study:":"Run:"}</b> {scene.provenance.runId}</div>
             <div><b>{scene.provenance.model==="rice_mele_convergence_study"?"Study SHA-256:":"Result SHA-256:"}</b> <code style={{ overflowWrap: "anywhere" }}>{scene.provenance.resultSha256}</code></div>
@@ -1045,7 +1055,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               {locating ? "Re-verifying source…" : "Reveal verified bundle"}
             </button>
             {locateStatus && <p role="status" data-testid="quantum-reveal-status">{locateStatus}</p>}
-            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && scene.provenance.model!=="hofstadter_bulk_edge_study" && scene.provenance.model!=="rice_mele_convergence_study" && <>
+            {scene.provenance.kind !== "geometry-fixture" && scene.provenance.model!=="hofstadter_flux_sweep" && scene.provenance.model!=="hofstadter_bulk_edge_study" && scene.provenance.model!=="rice_mele_convergence_study" && scene.provenance.model!=="qec_repetition_ideal" && <>
               <button type="button" data-testid="quantum-open-source-run" disabled={openingRun}
                 onClick={() => void openSourceRun()}>
                 {openingRun ? "Re-verifying source…" : "Open source run in Theory Lab"}
@@ -1054,7 +1064,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 onClick={() => void openSourceRun("fork")}>Fork as new Theory Lab run…</button>
               {runStatus && <p role="status" data-testid="quantum-source-run-status">{runStatus}</p>}
             </>}
-            <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there. A pinned example may not have that run in your Lab profile; its scene remains available for read-only inspection. Math3D does not call a worker.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>
+            {scene.provenance.model === "qec_repetition_ideal" ?
+              <p>Bundle reveal locates this export. Reopen its immutable run from Theory Lab’s Backend page in the originating profile; the generic source-run fork route does not apply to this separate ideal-example record.</p> :
+              <p>Bundle reveal locates this export. Opening an original run requires a selected Theory Lab installation or built checkout and a matching hash-verified saved run there. A pinned example may not have that run in your Lab profile; its scene remains available for read-only inspection. Math3D does not call a worker.{scene.provenance.model==="rice_mele_convergence_study"?" Select a convergence point to open its corresponding saved run.":""}</p>}
             <div><b>Engine:</b> {scene.provenance.engine} {scene.provenance.engineVersion}</div>
             {scene.provenance.parameters && <><h3>Stored model inputs</h3><dl data-testid="quantum-scene-parameters" style={{ margin: 0 }}>
               {Object.entries(scene.provenance.parameters).map(([key, value]) => <div key={key} style={{ display: "flex", gap: 8 }}>

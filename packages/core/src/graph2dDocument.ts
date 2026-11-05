@@ -4,7 +4,8 @@ import {
   type CanonicalJsonValue, type DocumentIdentity,
 } from "./documentIdentity";
 import type { ValidationResult } from "./validation";
-import { parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { formatGraph2DExpressionAst, parseGraph2DExpression, type Graph2DExpressionAst } from "./graph2dExpression";
+import { differentiateGraph2DExpression } from "./graph2dDerivatives";
 import { GRAPH2D_PARAMETERS_CAPABILITY, GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY, isGraph2DParameter, type Graph2DParameter } from "./graph2dParameterTypes";
 import { graph2DParameterExpressionsCurrent } from "./graph2dParameterExpressions";
 import { isGraph2DFieldReference, isGraph2DFieldLocator,
@@ -25,6 +26,7 @@ export const GRAPH2D_SCALES_CAPABILITY = "graph2d.scales.v1" as const;
 export const GRAPH2D_DOCUMENT_FORMAT = "math3d.graph2d-document" as const;
 export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
+export const GRAPH2D_LINKED_DERIVATIVE_CAPABILITY = "graph2d.linked-derivative.v1" as const;
 export const GRAPH2D_PROBES_CAPABILITY = "graph2d.probes.v1" as const;
 export const GRAPH2D_PROBE_VISIBILITY_CAPABILITY = "graph2d.probe-visibility.v1" as const;
 export const GRAPH2D_MAX_PINNED_PROBES = 8;
@@ -58,6 +60,8 @@ export type Graph2DExplicitObject = Readonly<{
   label: string;
   expression: Readonly<{ source: string; variable: "x"; ast: Graph2DExpressionAst }>;
   domain: Graph2DDomain;
+  derivativeOrigin?: Readonly<{ sourceObjectId: string; sourceExpressionHash: string;
+    order: 1 }>;
 }>;
 export type Graph2DParametricObject = Readonly<{
   id: string;
@@ -305,6 +309,8 @@ export type Graph2DSource = Readonly<{
 }>;
 export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pick<Graph2DDisplay, "pinnedProbes"> & Partial<Pick<Graph2DDisplay, "viewport" | "axes">>): Graph2DDocument["requiredCapabilities"] =>
   [GRAPH2D_EXPLICIT_CAPABILITY,
+    ...(source.objects.some(object => object.kind === "explicit-cartesian" &&
+      object.derivativeOrigin) ? [GRAPH2D_LINKED_DERIVATIVE_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "parametric") ? [GRAPH2D_PARAMETRIC_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "polar") ? [GRAPH2D_POLAR_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
@@ -372,7 +378,7 @@ export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
+  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_LINKED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
     typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PARAMETER_STUDY_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
@@ -390,8 +396,9 @@ export const GRAPH2D_DOCUMENT_FIELD_POLICY = defineDocumentFieldPolicy({
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
-const exact = (value: Record<string, unknown>, keys: readonly string[]) =>
-  Object.keys(value).length === keys.length && keys.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+const exact = (value: Record<string, unknown>, keys: readonly string[], optional: readonly string[] = []) =>
+  keys.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+  Object.keys(value).every(key => keys.includes(key) || optional.includes(key));
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const bounded = (value: unknown, max: number): value is string =>
   typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value;
@@ -412,8 +419,14 @@ const validDomain = (value: unknown): value is Graph2DDomain => record(value) &&
   exact(value, ["min", "max", "includeMin", "includeMax"]) && finite(value.min) && finite(value.max) &&
   value.min < value.max && typeof value.includeMin === "boolean" && typeof value.includeMax === "boolean";
 const validObject = (value: unknown, variables: readonly string[]): value is Graph2DExplicitObject => record(value) &&
-  exact(value, ["id", "kind", "label", "expression", "domain"]) && objectId(value.id) &&
-  value.kind === "explicit-cartesian" && bounded(value.label, 160) && validExpression(value.expression, variables) && validDomain(value.domain);
+  exact(value, ["id", "kind", "label", "expression", "domain"], ["derivativeOrigin"]) && objectId(value.id) &&
+  value.kind === "explicit-cartesian" && bounded(value.label, 160) && validExpression(value.expression, variables) && validDomain(value.domain) &&
+  (value.derivativeOrigin === undefined || record(value.derivativeOrigin) &&
+    exact(value.derivativeOrigin, ["sourceObjectId", "sourceExpressionHash", "order"]) &&
+    objectId(value.derivativeOrigin.sourceObjectId) &&
+    typeof value.derivativeOrigin.sourceExpressionHash === "string" &&
+    /^sha256:[0-9a-f]{64}$/.test(value.derivativeOrigin.sourceExpressionHash) &&
+    value.derivativeOrigin.order === 1);
 const validParametricObject = (value: unknown, variables: readonly string[]): value is Graph2DParametricObject => record(value) &&
   exact(value, ["id", "kind", "label", "xExpression", "yExpression", "domain"]) && objectId(value.id) &&
   value.kind === "parametric" && bounded(value.label, 160) &&
@@ -895,6 +908,21 @@ const validSource = (value: unknown): value is Graph2DSource => {
     validTimeOdeObject(entry, ["t", "x", ...names]) ||
     validPhasePortraitObject(entry, ["x", "y", ...names])) &&
     new Set(value.objects.map((entry: Graph2DGraphObject) => entry.id)).size === value.objects.length &&
+    (value.objects as Graph2DGraphObject[]).every((entry) =>
+      entry.kind !== "explicit-cartesian" || !entry.derivativeOrigin ||
+      (value.objects as Graph2DGraphObject[]).some(source => {
+        if (source.kind !== "explicit-cartesian" || source.derivativeOrigin ||
+            source.id !== entry.derivativeOrigin!.sourceObjectId || source.id === entry.id ||
+            structuralHash(source.expression.ast) !== entry.derivativeOrigin!.sourceExpressionHash ||
+            canonicalJsonStringify(source.domain) !== canonicalJsonStringify(entry.domain))
+          return false;
+        const derivative = differentiateGraph2DExpression(source.expression.ast, 1);
+        if (!derivative.ok) return false;
+        const expected = parseGraph2DExpression(formatGraph2DExpressionAst(derivative.ast),
+          ["x", ...names]);
+        return expected.ok && canonicalJsonStringify(expected.ast) ===
+          canonicalJsonStringify(entry.expression.ast);
+      })) &&
     (value.objects as Graph2DGraphObject[]).every((entry) => entry.kind !== "trajectory" ||
       (value.objects as Graph2DGraphObject[]).some((source) => source.kind === "slope-field" &&
         source.id === entry.sourceFieldId && entry.seed.x >= source.domain.min && entry.seed.x <= source.domain.max &&

@@ -1,5 +1,5 @@
 import { _electron as electron } from "playwright";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 
@@ -58,7 +58,12 @@ try {
     process.stdout.write(`${record.number}/${examples.length} ${record.id} ${record.error ? "FAILED" : "captured"}\n`);
   }
   await writeFile(join(output, "capture-index.json"), JSON.stringify(records, null, 2));
-  if (records.filter(item => item.file).length < 30) throw new Error("Fewer than 30 verified scene screenshots captured.");
+  const failures = records.filter(item => item.error || !item.file);
+  if (records.length !== examples.length || failures.length)
+    throw new Error(`Quantum review incomplete: ${records.length - failures.length}/${examples.length} scenes captured; failed: ${failures.map(item => item.id).join(", ")}.`);
+  for (const record of records)
+    for (const file of [record.file, ...(record.variants ?? [])])
+      await access(join(output, file));
 } finally {
   await app.close();
   if (!profile.startsWith(resolve(tmpdir()) + sep) || !profile.includes("math3d-quantum-review-"))
