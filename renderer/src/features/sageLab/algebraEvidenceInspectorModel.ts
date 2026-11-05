@@ -94,6 +94,10 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     structure.push(fact("Base ring", formatRef(source.definition.baseRing)),
       fact("Ambient generators", source.definition.generators),
       fact("Relation matrix", source.definition.relationMap.matrix));
+  } else if (source?.definition.kind === "chain-complex") {
+    structure.push(fact("Coefficient ring", formatRef(source.definition.coefficientRing)),
+      fact("Chain modules C0, C1, C2", source.definition.modules.map(formatRef)),
+      fact("Boundary maps d1, d2", source.definition.boundaries.map(formatRef)));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;
@@ -108,6 +112,25 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.chain.homology": {
+      const groups = result.groups as { degree: number; freeRank: number; torsionOrders: string[] }[];
+      const notation = (group: typeof groups[number]) => {
+        const parts = [...Array.from({ length: group.freeRank }, () => "ZZ"),
+          ...group.torsionOrders.map((order) => `ZZ/${order}ZZ`)];
+        return parts.length ? parts.join(" ⊕ ") : "0";
+      };
+      facts.push(...groups.map((group) => fact(`H${group.degree}`, notation(group))),
+        fact("Chain ranks C0, C1, C2", list(result.dimensions)),
+        fact("Boundary ranks d1, d2", [
+          String((result.boundary1Smith as { diagonal: string[] }).diagonal.filter((entry) => entry !== "0").length),
+          String((result.restrictedBoundary2Smith as { diagonal: string[] } | null)?.diagonal.filter((entry) => entry !== "0").length ?? 0)]),
+        fact("Boundary d1 Smith diagonal", (result.boundary1Smith as { diagonal: string[] }).diagonal),
+        fact("Restricted d2 Smith diagonal", (result.restrictedBoundary2Smith as { diagonal: string[] } | null)?.diagonal ?? "Zero kernel rank"));
+      checks.push(check("Exact chain condition", "checked", "Pinned integer boundary matrices satisfy d1·d2=0."),
+        check("Homology witnesses", "checked", "Unimodular Smith matrices, kernel-basis inverse, restricted image, free ranks and torsion factors verify exactly."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.module.invariantFactors": {
       const torsion = result.torsionOrders as string[];
       const smith = result.smith as { form: string[][]; diagonal: string[] } | null;

@@ -12,6 +12,7 @@ import { requireBiquadraticGenerator, requireBiquadraticRadicand } from "./biqua
 import { parseFiniteGroupDefinition, type FiniteGroupDefinition } from "./finiteGroup";
 import { parseModuleDefinition, parseModuleMapDefinition,
   type ModuleDefinition, type ModuleMapDefinition } from "./modulePresentations";
+import { parseChainComplexDefinition, type ChainComplexDefinition } from "./chainComplex";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
@@ -29,7 +30,8 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
   | FiniteGroupDefinition
   | ModuleDefinition
-  | ModuleMapDefinition;
+  | ModuleMapDefinition
+  | ChainComplexDefinition;
 
 export type AlgebraObjectKind = AlgebraObjectDefinition["kind"];
 export type AlgebraMonomialOrder = "lex" | "deglex" | "degrevlex";
@@ -185,6 +187,8 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       return { ...parsed, sourceModule: requireRef(parsed.sourceModule, "definition.sourceModule"),
         targetModule: requireRef(parsed.targetModule, "definition.targetModule") };
     }
+    case "chain-complex":
+      return parseChainComplexDefinition(definition, requireRef);
     default:
       throw new TypeError(`Unsupported algebra object kind '${String(definition.kind)}'.`);
   }
@@ -197,7 +201,8 @@ const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraOb
       : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal]
         : definition.kind === "finite-group" && definition.source ? [definition.source.ring]
         : definition.kind === "module" ? [definition.baseRing]
-          : definition.kind === "module-map" ? [definition.sourceModule, definition.targetModule] : [];
+          : definition.kind === "module-map" ? [definition.sourceModule, definition.targetModule]
+            : definition.kind === "chain-complex" ? [definition.coefficientRing, ...definition.modules, ...definition.boundaries] : [];
 
 const definitionHash = (definition: AlgebraObjectDefinition): StructuralHash =>
   structuralHash({ schemaVersion: ALGEBRA_OBJECT_SCHEMA_VERSION, definition });

@@ -6,7 +6,7 @@ import time
 from fractions import Fraction
 from pathlib import Path
 
-from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
+from sage.all import ChainComplex, GF, I, QQ, SR, ZZ, PolynomialRing, cos, e, exp, gcd, identity_matrix, inverse_mod, latex, log, matrix, pi, sin, solve, sqrt, tan, var
 from sage.env import SAGE_VERSION
 if __package__:
     from .algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
@@ -341,6 +341,72 @@ def _module_invariant_factors(operation, params):
                 "left": [[str(x) for x in row] for row in left.rows()],
                 "right": [[str(x) for x in row] for row in right.rows()]}}}
     return _success(operation, result, latex(smith))
+
+
+def _chain_homology(operation, params):
+    required = {"format", "schemaVersion", "projectId", "target", "targetHash", "definition",
+        "dimensions", "boundary1", "boundary2"}
+    if set(params) != required or params.get("format") != "math3d.sage-chain-homology" or \
+            type(params.get("schemaVersion")) is not int or params["schemaVersion"] != 1:
+        raise SageRequestError("Chain homology requires the versioned pinned ZZ schema.")
+    dims = params["dimensions"]
+    if not isinstance(dims, list) or len(dims) != 3 or any(type(n) is not int or not 1 <= n <= 6 for n in dims):
+        raise SageRequestError("Chain groups C0, C1, C2 require ranks 1 to 6.")
+    n0, n1, n2 = dims
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,17})$")
+    def checked_matrix(value, rows, columns):
+        if not isinstance(value, list) or len(value) != rows or any(not isinstance(row, list) or
+                len(row) != columns or any(not isinstance(entry, str) or not canonical.fullmatch(entry)
+                    for entry in row) for row in value):
+            raise SageRequestError("Chain boundary matrices require exact bounded ZZ entries and compatible dimensions.")
+        return matrix(ZZ, [[ZZ(entry) for entry in row] for row in value])
+    if not isinstance(params["projectId"], str) or not params["projectId"] or \
+            not isinstance(params["targetHash"], str) or not params["targetHash"] or \
+            not isinstance(params["definition"], dict) or params["definition"].get("kind") != "chain-complex" or \
+            not isinstance(params["target"], dict):
+        raise SageRequestError("Chain object and revisions must be pinned.")
+    d1 = checked_matrix(params["boundary1"], n0, n1)
+    d2 = checked_matrix(params["boundary2"], n1, n2)
+    if not (d1 * d2).is_zero():
+        raise SageRequestError("Exact chain condition d1*d2 = 0 failed.")
+    def smith_witness(mat):
+        raw = mat.smith_form()
+        if not isinstance(raw, tuple) or len(raw) != 3:
+            raise SageRequestError("This Sage runtime did not return Smith transformation witnesses.")
+        form, left, right = raw
+        if left.det() not in (1, -1) or right.det() not in (1, -1) or left * mat * right != form:
+            raise SageRequestError("Smith transformation identity failed.")
+        diagonal = [form[i, i] for i in range(min(mat.nrows(), mat.ncols()))]
+        nonzero = [entry for entry in diagonal if entry != 0]
+        if any(entry < 0 for entry in diagonal) or any(nonzero[i + 1] % nonzero[i] != 0
+                for i in range(len(nonzero) - 1)):
+            raise SageRequestError("Smith invariant-factor divisibility failed.")
+        return {"form": [[str(x) for x in row] for row in form.rows()],
+            "diagonal": [str(x) for x in diagonal], "transformations": {"status": "verified",
+                "left": [[str(x) for x in row] for row in left.rows()],
+                "right": [[str(x) for x in row] for row in right.rows()]}}, right
+    d1_smith, right = smith_witness(d1)
+    inverse = right.inverse()
+    if right * inverse != identity_matrix(ZZ, n1) or inverse * right != identity_matrix(ZZ, n1):
+        raise SageRequestError("Smith kernel basis inverse failed.")
+    r1 = d1.rank()
+    transformed = inverse * d2
+    if any(transformed[i, j] != 0 for i in range(r1) for j in range(n2)):
+        raise SageRequestError("d2 is not in the kernel of d1.")
+    k = n1 - r1
+    restricted = matrix(ZZ, [[transformed[i, j] for j in range(n2)] for i in range(r1, n1)]) if k else None
+    restricted_smith, _ = smith_witness(restricted) if restricted is not None else (None, None)
+    r2 = restricted.rank() if restricted is not None else 0
+    def torsion(smith):
+        return [entry for entry in smith["diagonal"] if int(entry) > 1]
+    groups = [{"degree": 0, "freeRank": n0 - r1, "torsionOrders": torsion(d1_smith)},
+        {"degree": 1, "freeRank": k - r2, "torsionOrders": torsion(restricted_smith) if restricted_smith else []},
+        {"degree": 2, "freeRank": n2 - r2, "torsionOrders": []}]
+    result = {"format": "math3d.sage-chain-homology-result", "schemaVersion": 1,
+        "coefficientDomain": "ZZ", "dimensions": dims, "boundary1Smith": d1_smith,
+        "inverseRight": [[str(x) for x in row] for row in inverse.rows()],
+        "restrictedBoundary2Smith": restricted_smith, "groups": groups}
+    return _success(operation, result)
 
 
 def _polynomial_factor(operation, params):
@@ -855,6 +921,7 @@ OPERATIONS = {
     "sage.matrix.linear_dossier": _matrix_linear_dossier,
     "sage.matrix.integer_forms": _integer_matrix_forms,
     "sage.module.invariantFactors": _module_invariant_factors,
+    "sage.chain.homology": _chain_homology,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
     "sage.polynomial.dossier": _polynomial_dossier,

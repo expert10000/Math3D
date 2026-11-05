@@ -340,6 +340,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **E05 implementation update (2026-11-05):** The [E05 acceptance record](evidence/sage-e05-module-invariant-factors-2026-11-05.md) adds a typed Smith operation for saved `ZZ` modules with pinned module and ring snapshots. Exact unimodular transformations certify the free rank and torsion factors before Project evidence is saved. WSL Sage 9.5, Docker Sage 10.10, core rejection, desktop build and actual Project-package export/fresh-profile import gates pass. The next feature is **SAGE-E06**, chain complexes and homology.
 
+**E06 implementation update (2026-11-05):** The [E06 acceptance record](evidence/sage-e06-chain-complex-homology-2026-11-05.md) adds a versioned three-degree chain object pinned to saved free `ZZ` modules and maps. Exact registry checks enforce map typing and `d₁d₂=0`; independently checked Smith witnesses certify the saved `H₀`, `H₁`, `H₂` free and torsion factors. WSL Sage 9.5, Docker Sage 10.10, core rejection/staleness, desktop build and actual Project-package export/fresh-profile import gates pass. The next feature is **SAGE-F01**, an algebraic-locus scene contract.
+
 ---
 
 ## 3. P0 — Algebra object registry

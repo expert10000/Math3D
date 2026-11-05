@@ -37,13 +37,14 @@ const determinant = (value: readonly (readonly bigint[])[]): bigint => {
 };
 const reason = (value: unknown): value is string => typeof value === "string" && !!value.trim() && value.length <= 512;
 
-export const parseSageIntegerMatrixFormsInput = (value: unknown): SageIntegerMatrixFormsInput => {
+export const parseSageIntegerMatrixFormsInput = (value: unknown, digits = 18): SageIntegerMatrixFormsInput => {
+  const bound = digits === 128 ? 128 : 18;
   if (!record(value) || !exact(value, ["format", "schemaVersion", "matrix"]) ||
     value.format !== "math3d.sage-integer-matrix-forms" || value.schemaVersion !== 1 ||
     !Array.isArray(value.matrix) || value.matrix.length < 1 || value.matrix.length > 6 ||
     !Array.isArray(value.matrix[0]) || value.matrix[0].length < 1 || value.matrix[0].length > 6 ||
-    !matrixOf(value.matrix, value.matrix.length, value.matrix[0].length, 18)) {
-    throw new TypeError("Integer matrix forms require a 1–6 by 1–6 matrix of canonical signed decimals (18 digits max).");
+    !matrixOf(value.matrix, value.matrix.length, value.matrix[0].length, bound)) {
+    throw new TypeError(`Integer matrix forms require a 1–6 by 1–6 matrix of canonical signed decimals (${bound} digits max).`);
   }
   return Object.freeze({ format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,
     matrix: freezeMatrix(value.matrix) });
@@ -51,12 +52,13 @@ export const parseSageIntegerMatrixFormsInput = (value: unknown): SageIntegerMat
 
 /** Verifies invariant divisibility, cokernel ranks, and every supplied unimodular identity. */
 export const parseSageIntegerMatrixFormsResult = (value: unknown,
-  input: SageIntegerMatrixFormsInput): SageIntegerMatrixFormsResult => {
+  input: SageIntegerMatrixFormsInput, sourceDigits = 18): SageIntegerMatrixFormsResult => {
+  const sourceBound = sourceDigits === 128 ? 128 : 18;
   const source = input.matrix, rows = source.length, columns = source[0].length, diagonalLength = Math.min(rows, columns);
   if (!record(value) || !exact(value, ["format", "schemaVersion", "coefficientDomain", "sourceMatrix", "inputShape",
     "rank", "smith", "hermite", "cokernel"]) || value.format !== "math3d.sage-integer-matrix-forms-result" ||
     value.schemaVersion !== 1 || value.coefficientDomain !== "ZZ" ||
-    !matrixOf(value.sourceMatrix, rows, columns, 18) ||
+    !matrixOf(value.sourceMatrix, rows, columns, sourceBound) ||
     source.some((row, i) => row.some((entry, j) => (value.sourceMatrix as string[][])[i][j] !== entry)) ||
     !Array.isArray(value.inputShape) || value.inputShape.length !== 2 || value.inputShape[0] !== rows ||
     value.inputShape[1] !== columns || !Number.isSafeInteger(value.rank) || (value.rank as number) < 0 ||

@@ -38,6 +38,7 @@ export type Math3DWorkerOperationId =
   | "galois.analyze"
   | "group.dossier"
   | "module.invariant-factors"
+  | "chain.homology"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -329,6 +330,10 @@ const definitions = [
   },
   {
     id: "module.invariant-factors", title: "Exact ZZ module invariant factors", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "chain.homology", title: "Pinned ZZ chain-complex homology", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

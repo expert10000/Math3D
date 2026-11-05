@@ -3,6 +3,7 @@ import { createAlgebraObjectRecord, createProjectAlgebraObjectId, inspectProject
   analyzeBiquadraticExtensionFromDefinition,
   analyzeFiniteGroup,
   modulePresentationLabel,
+  chainComplexLabel,
   type AlgebraObjectDefinition, type AlgebraObjectRecord, type AlgebraObjectRef,
   type Math3DProject, type ProjectAlgebraObjectEntry } from "@math3d/core";
 
@@ -85,6 +86,7 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
     const target = selectedStructure(project, definition.targetModule)?.record;
     return `${source?.label ?? "M"} → ${target?.label ?? "N"} · ${definition.codomainRank}×${definition.domainRank} matrix`;
   }
+  if (definition.kind === "chain-complex") return chainComplexLabel(definition, project.algebraObjects ?? []);
   if (definition.kind === "ideal") {
     const ambient = selectedStructure(project, definition.ambientRing)?.record;
     return `⟨${definition.generators.join(", ")}⟩ ⊂ ${ambient?.label ?? definition.ambientRing.objectId}`;
@@ -129,7 +131,7 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
   if (definition.kind === "field-extension") return { presentation, characteristic: "0", field: "yes",
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
   if (definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group" ||
-      definition.kind === "module" || definition.kind === "module-map")
+      definition.kind === "module" || definition.kind === "module-map" || definition.kind === "chain-complex")
     throw new TypeError("Ideal, quotient and finite-group objects need dedicated exact analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   if (!parent) throw new TypeError("The polynomial coefficient domain is missing from the Project.");

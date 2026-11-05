@@ -2,6 +2,7 @@ import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectR
 import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTower";
 import { validateModuleMatrixScalars, type ModuleScalarRing } from "./modulePresentations";
+import { resolveChainComplex } from "./chainComplex";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 
@@ -96,6 +97,7 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
         throw new TypeError(`Module map ${key} has an unsupported base ring.`);
       validateModuleMatrixScalars(record.definition.matrix, ring.definition as ModuleScalarRing);
     }
+    if (record.definition.kind === "chain-complex") resolveChainComplex(record.definition, entries);
     for (const ref of record.dependencies) {
       const parent = byId.get(ref.objectId)?.revisions[ref.revision - 1];
       if (!parent || parent.revision !== ref.revision) {

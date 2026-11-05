@@ -25,6 +25,8 @@ export * from "./sageGaloisAnalysis";
 export * from "./finiteGroup";
 export * from "./sageFiniteGroupOperations";
 export * from "./sageModuleInvariantFactors";
+export * from "./chainComplex";
+export * from "./sageChainHomology";
 export * from "./sageFiniteGroupScenes";
 export * from "./modulePresentations";
 export * from "./sageNumberFieldOperations";

@@ -16,6 +16,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   if (id === "sage.algebra.reconstruct") return {};
   if (id === "sage.group.dossier") return {};
   if (id === "sage.module.invariantFactors") return {};
+  if (id === "sage.chain.homology") return {};
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
       id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
@@ -163,7 +164,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
         <select style={field} value={other?.id ?? ""} onChange={(event) => setOtherId(event.target.value)}>
           {otherOptions.map((item) => <option key={item.id} value={item.id}>{item.record.label}@{item.record.revision}</option>)}
         </select></label>}
-      {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.module.invariantFactors" && selected !== "sage.algebra.inspectDomains" &&
+      {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.module.invariantFactors" && selected !== "sage.chain.homology" && selected !== "sage.algebra.inspectDomains" &&
         selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
         selected !== "sage.ideal.syzygies" && selected !== "sage.ideal.hilbertSeries" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
