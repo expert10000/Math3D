@@ -567,6 +567,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-F07](evidence/sage-f07-bounded-worker-2026-11-05.md) bounds the Docker worker to two running and four queued jobs with a 10-second queue wait, 30-second wall/CPU caps, 4 GiB address space and input/output caps. Cancelling a queued job prevents launch; timeout kills the Sage process group and cleans temporary files. The rebuilt Sage 10.10 worker passes process and descendant cancellation tests and a real GCD request. Compute → Runtimes reports the policy. The next feature is **SAGE-F08** end-to-end real-backend regression.
 
+[SAGE-F08](evidence/sage-f08-real-backend-regression-2026-11-05.md) adds an opt-in real WSL/Docker desktop suite for the 20-review M0 baseline. It covers exact UI operations, typed errors, runtime controls, Number Theory, independent Workbook import, trusted Console and Workbook code cells. The matrix gate also fixed numeric zero parsing in the Docker worker. The next roadmap feature is **SAGE-G01** finite-field exploration.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,

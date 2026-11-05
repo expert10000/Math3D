@@ -358,6 +358,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F07 implementation update (2026-11-05):** The [F07 acceptance record](evidence/sage-f07-bounded-worker-2026-11-05.md) bounds Docker Sage admission, queue wait, wall/CPU time, memory, input and output. Queued cancellation never launches Sage; deadline cancellation kills the process group and cleans temporary files. The rebuilt Sage 10.10 service passes the worker gates and a real GCD request, and Compute → Runtimes displays its policy. The next feature is **SAGE-F08**, the real-backend regression suite.
 
+**F08 implementation update (2026-11-05):** The [F08 acceptance record](evidence/sage-f08-real-backend-regression-2026-11-05.md) maps all 20 M0 review flows to a real WSL/Docker desktop suite. Its CAS gate checks exact matrix, polynomial and Gröbner results, while the existing Number Theory, Workbook, Console and code-cell gates verify persistence and trust. The suite found and fixed numeric zero matrix parsing. The next feature is **SAGE-G01**, finite-field exploration.
+
 ---
 
 ## 3. P0 — Algebra object registry
