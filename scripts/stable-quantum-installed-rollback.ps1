@@ -1,0 +1,112 @@
+param(
+  [Parameter(Mandatory = $true)][string]$CandidateDirectory,
+  [Parameter(Mandatory = $true)][string]$RollbackDirectory,
+  [string]$InstallRoot = "",
+  [string]$EvidencePath = ""
+)
+
+$ErrorActionPreference = "Stop"
+$repo = Split-Path -Parent $PSScriptRoot
+$temporaryBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) { $InstallRoot = Join-Path $temporaryBase 'stable-quantum-installed-rollback' }
+if ([string]::IsNullOrWhiteSpace($EvidencePath)) { $EvidencePath = Join-Path $repo 'test-results/stable-quantum-installed-rollback.json' }
+$tempRoot = [IO.Path]::GetFullPath($temporaryBase).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+$root = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\', '/')
+if (-not $root.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+  throw "InstallRoot must be a fresh child of the temporary directory: $root"
+}
+if (Test-Path -LiteralPath $root) { throw "InstallRoot already exists: $root" }
+
+$candidateRoot = (Resolve-Path -LiteralPath $CandidateDirectory).Path
+$rollbackRoot = (Resolve-Path -LiteralPath $RollbackDirectory).Path
+$candidateManifestFile = Join-Path $candidateRoot 'candidate-manifest.json'
+$rollbackManifestFile = Join-Path $rollbackRoot 'candidate-manifest.json'
+$candidateManifest = Get-Content -LiteralPath $candidateManifestFile -Raw | ConvertFrom-Json
+$rollbackManifest = Get-Content -LiteralPath $rollbackManifestFile -Raw | ConvertFrom-Json
+$candidate = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $candidateManifest.math3d.installerName)).Path
+$rollback = (Resolve-Path -LiteralPath (Join-Path $rollbackRoot $rollbackManifest.math3d.installerName)).Path
+$candidateSha = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+$rollbackSha = (Get-FileHash -LiteralPath $rollback -Algorithm SHA256).Hash.ToLowerInvariant()
+$install = Join-Path $root 'Math3D'
+$executable = Join-Path $install 'Math3D.exe'
+$profile = Join-Path $root 'profile'
+$evidence = [ordered]@{
+  schema = 'math3d/stable-quantum-installed-rollback/v1'
+  checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+  environment = 'fresh Windows rollback VM'
+  status = 'started'
+  candidate = [ordered]@{ commit = $candidateManifest.math3d.commit; version = $candidateManifest.math3d.version;
+    installerSha256 = $candidateSha; manifestSha256 = (Get-FileHash -LiteralPath $candidateManifestFile -Algorithm SHA256).Hash.ToLowerInvariant() }
+  rollback = [ordered]@{ commit = $rollbackManifest.math3d.commit; version = $rollbackManifest.math3d.version;
+    installerSha256 = $rollbackSha; manifestSha256 = (Get-FileHash -LiteralPath $rollbackManifestFile -Algorithm SHA256).Hash.ToLowerInvariant() }
+  checks = [ordered]@{ exactBytes = 'pending'; candidateInstall = 'pending'; candidateQec = 'pending';
+    rollbackInstall = 'pending'; v1v2Readers = 'pending' }
+  failure = $null
+}
+
+function Invoke-Installer([string]$file, [string]$phase) {
+  Write-Host "Starting $phase installer: $([IO.Path]::GetFileName($file))"
+  $process = Start-Process -FilePath $file -ArgumentList @('/S', '/CURRENTUSER', "/D=$install") -WindowStyle Hidden -PassThru
+  if (-not $process.WaitForExit(180000)) {
+    try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
+    throw "$phase installer did not exit within 180 seconds"
+  }
+  if ($process.ExitCode -ne 0) {
+    $hexCode = '0x{0:X8}' -f ($process.ExitCode -band 0xffffffffL)
+    $evidence.installerFailure = [ordered]@{ phase = $phase; exitCode = $process.ExitCode; exitCodeHex = $hexCode }
+    throw "$phase installer exited with code $($process.ExitCode) ($hexCode)"
+  }
+}
+
+function Invoke-Phase([string]$phase, [string]$path) {
+  $env:MATH3D_E2E_INSTALLED_EXE = $executable
+  $env:MATH3D_ROLLBACK_PROFILE_ROOT = $profile
+  $env:MATH3D_ROLLBACK_PHASE = $phase
+  $env:MATH3D_ROLLBACK_PHASE_RESULT_PATH = $path
+  Push-Location $repo
+  try {
+    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test tests/e2e/quantum-installed-rollback.spec.ts --reporter=list
+    $result = $LASTEXITCODE
+  } finally { Pop-Location }
+  if ($result -ne 0) { throw "Installed $phase scene test failed (exit $result)" }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Installed $phase test passed without evidence" }
+  return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+}
+
+try {
+  if ($candidateManifest.schema -ne 'math3d/two-app-candidate/v1' -or
+      $rollbackManifest.schema -ne 'math3d/two-app-candidate/v1' -or
+      $candidateManifest.math3d.commit -ne (& git -C $repo rev-parse HEAD).Trim() -or
+      $candidateManifest.math3d.version -ne '1.7.0' -or
+      $rollbackManifest.math3d.version -ne '1.7.0' -or
+      $rollbackManifest.math3d.commit -ne '55a0196fe63ca16f49c97ff1aead7e41105e0ede' -or
+      $candidateSha -ne $candidateManifest.math3d.installerSha256 -or
+      $rollbackSha -ne $rollbackManifest.math3d.installerSha256 -or
+      $rollbackSha -ne 'b515f926f0794679f19b4cbe3adb5133b3d15b95f2b31e3856ff14ee5a4b46ac') {
+    throw 'Candidate or rollback installer identity differs from pinned manifests and hashes'
+  }
+  $evidence.checks.exactBytes = 'passed'
+  New-Item -ItemType Directory -Path $root | Out-Null
+  Invoke-Installer $candidate 'QEC candidate'
+  if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Candidate Math3D executable missing' }
+  $evidence.checks.candidateInstall = 'passed'
+  $evidence.candidateScene = Invoke-Phase 'candidate' (Join-Path $root 'candidate-scene.json')
+  $evidence.checks.candidateQec = 'passed'
+
+  $active = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $executable })
+  if ($active.Count -gt 0) { throw 'Candidate Math3D still running before rollback installer' }
+  Invoke-Installer $rollback 'Pre-QEC rollback'
+  if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Rolled-back Math3D executable missing' }
+  $evidence.checks.rollbackInstall = 'passed'
+  $evidence.rollbackScenes = Invoke-Phase 'rolled-back' (Join-Path $root 'rollback-scenes.json')
+  $evidence.checks.v1v2Readers = 'passed'
+  $evidence.status = 'passed'
+} catch {
+  $evidence.status = 'failed'
+  $evidence.failure = $_.Exception.Message
+  throw
+} finally {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $EvidencePath) -Force | Out-Null
+  $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $EvidencePath -Encoding UTF8
+  Write-Host "Installed rollback evidence: $EvidencePath"
+}
