@@ -1,7 +1,9 @@
-import { readQuantumSceneBundle } from "./bundle";
+import { boundedRead, readQuantumSceneBundle } from "./bundle";
 import { type QuantumScene, type ScenePayload, verifyScenePayload } from "./index";
 import { createHash } from "node:crypto";
 import { buildTopologyDisplay } from "./topologyDisplay";
+import { join } from "node:path";
+import { openQuantumSceneStream } from "./streamBundle";
 
 export interface ImportedQuantumScene {
   /** A regular Math3D SceneDocument; no worker or executable expression is added. */
@@ -12,6 +14,7 @@ export interface ImportedQuantumScene {
   mappedObjectIds: string[];
   deferredObjectIds: string[];
   deferredFieldIds: string[];
+  stream?: { manifestSha256: string; level: number; levels: { id: string; label: string; bytes: number }[] };
 }
 
 export type VerifiedLatticeSample = { sampleIndex: number; cell: [number, number, number]; basisIndex: number };
@@ -161,6 +164,17 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
     deferredFieldIds: (scene.fields ?? []).map(field => field.id) };
 }
 
-export async function importQuantumSceneBundle(directory: string): Promise<ImportedQuantumScene> {
-  return adaptQuantumScene(await readQuantumSceneBundle(directory));
+export async function importQuantumSceneBundle(directory: string, streamLevel = 0,
+  signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<ImportedQuantumScene> {
+  const envelope = JSON.parse((await boundedRead(join(directory, "bundle.json"))).toString("utf8")) as { schema?: unknown };
+  if (envelope.schema !== "quantum-scene-stream-bundle/v1") {
+    if (streamLevel !== 0) throw new Error("This quantum scene has no LOD levels");
+    return adaptQuantumScene(await readQuantumSceneBundle(directory));
+  }
+  const source = await openQuantumSceneStream(directory);
+  const imported = await adaptQuantumScene(await source.load(streamLevel, signal, progress));
+  imported.stream = { manifestSha256: source.manifestSha256, level: streamLevel,
+    levels: source.manifest.levels.map(item => ({ id: item.id, label: item.label,
+      bytes: item.scene.datasets.reduce((sum, dataset) => sum + dataset.bytes, 0) })) };
+  return imported;
 }

@@ -42,7 +42,8 @@ export type QuantumSceneOpenResponse =
       title: string; geometry: GeometryScene;
       cameras: { position: Vector3; target: Vector3; up: Vector3 }[];
       extensions: Record<string, unknown>;
-    }; remembered: boolean; mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[] }
+    }; remembered: boolean; mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[];
+    stream?: { level: number; levels: { id: string; label: string; bytes: number }[] } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
@@ -67,6 +68,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const [streamBusy, setStreamBusy] = useState(false);
+  const [streamStatus, setStreamStatus] = useState("");
+  useEffect(() => { setStreamBusy(false); setStreamStatus(""); }, [opened.reference.sceneFingerprint, opened.stream?.level]);
   const [timeFrameIndex, setTimeFrameIndex] = useState(0);
   const [timePlaying, setTimePlaying] = useState(false);
   const [timeFrames, setTimeFrames] = useState<Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["timeFrames"]>> | null>(null);
@@ -545,8 +549,27 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
         <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
-          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · Save a workspace or attach it to a Project to retain this source</div></div>
-          <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
+          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · {opened.stream ?
+            `Stream ${opened.stream.level + 1}/${opened.stream.levels.length}: ${opened.stream.levels[opened.stream.level].label}` :
+            "Save a workspace or attach it to a Project to retain this source"}</div>
+            {streamStatus && <small role="status" data-testid="quantum-stream-status">{streamStatus}</small>}</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {opened.stream && opened.stream.level < opened.stream.levels.length - 1 && <button type="button"
+              data-testid="quantum-stream-load-full" disabled={streamBusy} onClick={() => { void (async () => {
+                setStreamBusy(true); setStreamStatus("Loading and verifying the full source level…");
+                try { const result = await window.quantumScenes!.loadStreamLevel(opened.reference.sceneFingerprint,
+                  opened.stream!.levels.length - 1);
+                  if (!result.ok) throw new Error(result.canceled ? "Loading canceled" : result.error);
+                  onOpenRelated?.(result);
+                } catch (error) { setStreamStatus(`Full level unavailable: ${String((error as Error).message)}`); }
+                finally { setStreamBusy(false); }
+              })(); }}>Load full verified level</button>}
+            {streamBusy && <button type="button" data-testid="quantum-stream-cancel" onClick={() => {
+              void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint);
+              setStreamStatus("Canceling full-level load…");
+            }}>Cancel load</button>}
+            <button type="button" onClick={() => { if (streamBusy) void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onClose(); }} data-testid="quantum-scene-close">Close</button>
+          </div>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">

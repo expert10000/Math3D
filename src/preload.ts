@@ -580,6 +580,9 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
+  loadStreamLevel: (fingerprint: string, level: number): Promise<QuantumSceneOpenResponse> =>
+    ipcRenderer.invoke("quantumScenes:loadStreamLevel", fingerprint, level),
+  cancelStreamLevel: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:cancelStreamLevel", fingerprint),
   verifyActive: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:verifyActive", fingerprint),
   bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
   scalarSample: (request: ScalarSampleRequest): Promise<ScalarSample> => ipcRenderer.invoke("quantumScenes:scalarSample", request),

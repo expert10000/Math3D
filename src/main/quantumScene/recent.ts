@@ -10,7 +10,7 @@ type RecentRecord = { schema: typeof SCHEMA; directory: string; sceneFingerprint
 export type QuantumSceneWorkspaceReference = Pick<RecentRecord, "directory" | "sceneFingerprint">;
 
 export const sceneFingerprint = (imported: ImportedQuantumScene): string =>
-  createHash("sha256").update(JSON.stringify(imported.source)).digest("hex");
+  imported.stream?.manifestSha256 ?? createHash("sha256").update(JSON.stringify(imported.source)).digest("hex");
 
 const recordPath = (userData: string) => join(userData, FILE);
 
