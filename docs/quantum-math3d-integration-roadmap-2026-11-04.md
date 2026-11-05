@@ -930,17 +930,23 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Fallback modes, bounding-box metadata and GPU capability tests.
 
+**Implementation note (2026-11-05):** The verified quantum Volume view now exposes source-derived amplitude, transfer presets, direct volume and maximum projections, two simultaneous density thresholds, central clipping and physical grid bounds. Its renderer reports the actual GPU plan or CPU slice fallback. Display controls do not alter the saved source. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
+
 ### QI-29 — Topological geometry overlays
 
 **Commit:** `feat(topology): render reciprocal geometry and integration objects`
 
 - BZ, k-path, integration surfaces, Weyl charge and gap-closing markers.
 
+**Implementation note (2026-11-05):** Math3D inventories verified BZ boundaries, k-paths, enclosing integration surfaces and node/gap markers as separately switchable geometry layers. It displays only producer-supplied charge or gap invariants and does not infer charge from a marker. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
+
 ### QI-30 — Quantum dynamics workspace
 
 **Commit:** `feat(dynamics): link Bloch, density, spectra and observable panels`
 
 - Record-aware time synchronization, solver-output termination and uncertainty.
+
+**Implementation note (2026-11-05):** Theory Lab's saved-run plot, Bloch, density matrix and observable panels share one exact time sample. A Hann-windowed DFT of the stored P₁ series adds a clearly labeled sampled response spectrum. The workspace reports the completed stored interval, final-sample boundary and absent termination/uncertainty metadata without extrapolation. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
 
 ### QI-31 — QEC/syndrome and decoder visualizations
 

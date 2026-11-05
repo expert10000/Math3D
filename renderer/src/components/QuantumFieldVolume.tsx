@@ -3,6 +3,7 @@ import { VolumeViewer } from "./VolumeViewer";
 import type { QuantumField } from "./QuantumFieldSlice";
 import { adaptQuantumFieldVolume, type QuantumFieldVolume as VolumeArtifact } from "../volume/quantumFieldVolumeAdapter";
 import { fitVisibleQuantumField } from "../volume/quantumFieldFit";
+import { getVolumeTransferPreset, VOLUME_TRANSFER_PRESETS, type VolumeDirectRenderStatus } from "../volume/transferFunction";
 
 export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: string; fields: QuantumField[] }) {
   const [fieldId, setFieldId] = useState(fields[0]?.id ?? "");
@@ -13,8 +14,13 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
   const [error, setError] = useState("");
   const [axis, setAxis] = useState<"x" | "y" | "z">("z");
   const [index, setIndex] = useState(() => Math.floor((fields[0]?.grid.shape[2] ?? 1) / 2));
-  const [mode, setMode] = useState<"slice" | "isosurface">("slice");
+  const [mode, setMode] = useState<"slice" | "isosurface" | "dvr" | "mip">("slice");
   const [level, setLevel] = useState(0.1);
+  const [secondSurface, setSecondSurface] = useState(false);
+  const [transferId, setTransferId] = useState("fire");
+  const [clipFraction, setClipFraction] = useState(1);
+  const [renderStatus, setRenderStatus] = useState<VolumeDirectRenderStatus | null>(null);
+  const transferFunction = useMemo(() => getVolumeTransferPreset(transferId), [transferId]);
   const [fitCommand, setFitCommand] = useState<{ token: number; kind: "fit-volume" | "fit-mesh" | "fit-crop" } | null>(null);
   const generation = useRef(0);
   const maximumIndex = field ? field.grid.shape[{ x: 0, y: 1, z: 2 }[axis]] - 1 : 0;
@@ -42,6 +48,13 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
     return [min, max] as const;
   }, [artifact]);
   const isoValue = range[0] + level * (range[1] - range[0]);
+  const secondaryIsoValue = range[0] + Math.min(0.85, level + 0.3) * (range[1] - range[0]);
+  const bounds = artifact ? artifact.origin.map((origin, dimension) => {
+    const end = origin + artifact.spacing[dimension] * (artifact.shape[dimension] - 1);
+    return [Math.min(origin, end), Math.max(origin, end)] as const;
+  }) : null;
+  const cropCenter = bounds?.map(pair => (pair[0] + pair[1]) / 2) as [number, number, number] | undefined;
+  const cropExtents = bounds?.map(pair => (pair[1] - pair[0]) * clipFraction / 2) as [number, number, number] | undefined;
   if (!field) return <p>No verified grid is available.</p>;
   return <section data-testid="quantum-field-volume" style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column" }}>
     <div style={{ padding: 8, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
@@ -54,22 +67,33 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
       <label>Quantity <select aria-label="Volume quantity" value={safeQuantity} onChange={event => {
         setQuantity(event.target.value as VolumeArtifact["quantity"]); setMode("slice"); setFitCommand(null);
       }}>
-        {(field.kind === "scalar-field" ? ["real"] : ["density", "real", "imaginary", "phase"]).map(candidate =>
-          <option key={candidate} value={candidate}>{candidate === "density" ? "|ψ|²" : candidate}</option>)}</select></label>
+        {(field.kind === "scalar-field" ? ["real"] : ["density", "amplitude", "real", "imaginary", "phase"]).map(candidate =>
+          <option key={candidate} value={candidate}>{candidate === "density" ? "|ψ|²" : candidate === "amplitude" ? "|ψ|" : candidate}</option>)}</select></label>
       <label>View <select aria-label="Volume view" value={safeMode} onChange={event => {
         setMode(event.target.value as typeof mode); setFitCommand(null);
       }}>
-        <option value="slice">Slice</option>{safeQuantity !== "phase" && <option value="isosurface">Isosurface</option>}</select></label>
+        <option value="slice">Slice</option>{safeQuantity !== "phase" && <><option value="isosurface">Isosurfaces</option>
+          <option value="dvr">Direct volume</option><option value="mip">Maximum projection</option></>}</select></label>
       {safeMode === "slice" ? <>
         <label>Normal <select aria-label="Volume normal" value={axis} onChange={event => {
           const next = event.target.value as typeof axis; setAxis(next); setIndex(Math.floor((artifact?.shape[{ x: 0, y: 1, z: 2 }[next]] ?? 1) / 2));
         }}><option>x</option><option>y</option><option>z</option></select></label>
         <label>Slice <input aria-label="Volume slice" type="range" min={0} max={maximumIndex} value={safeIndex}
           onChange={event => setIndex(Number(event.target.value))} />{safeIndex}/{maximumIndex}</label>
-      </> : <label>Threshold <select aria-label="Volume threshold" value={level} onChange={event => setLevel(Number(event.target.value))}>
+      </> : safeMode === "isosurface" ? <label>Threshold <select aria-label="Volume threshold" value={level} onChange={event => setLevel(Number(event.target.value))}>
         <option value={0.05}>5% of range</option><option value={0.1}>10% of range</option>
         <option value={0.2}>20% of range</option><option value={0.5}>50% of range</option>
+      </select></label> : null}
+      {safeMode === "isosurface" && <label><input type="checkbox" aria-label="Second isosurface"
+        checked={secondSurface} onChange={event => setSecondSurface(event.target.checked)}/> Second level</label>}
+      {(safeMode === "dvr" || safeMode === "mip") && <label>Transfer <select aria-label="Volume transfer function"
+        value={transferId} onChange={event => setTransferId(event.target.value)}>
+        {VOLUME_TRANSFER_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
       </select></label>}
+      <label>Clip <select aria-label="Volume clip fraction" value={clipFraction}
+        onChange={event => setClipFraction(Number(event.target.value))}>
+        <option value={1}>Full grid</option><option value={0.75}>Central 75%</option><option value={0.5}>Central 50%</option>
+      </select></label>
       {safeMode === "slice" && <button type="button" aria-label="Fit visible field" disabled={!visibleFit}
         onClick={() => setFitCommand(previous => ({ token: (previous?.token ?? 0) + 1, kind: "fit-crop" }))}>
         Fit visible field
@@ -86,15 +110,23 @@ export function QuantumFieldVolume({ fingerprint, fields }: { fingerprint: strin
     <p style={{ margin: "0 8px 6px", fontSize: 12 }}>Volume uses the complete verified grid in source coordinates. Fit visible field frames the signal on this slice; Fit grid restores full context. Neither changes samples or units. An isosurface is a derived threshold.</p>
     <div style={{ minHeight: 0, flex: 1 }}>{adapted ? <VolumeViewer key={adapted.document.identity.id} dataset={adapted.dataset}
       axis={axis} index={safeIndex} opacity={0.9} renderMode={safeMode} showIsosurface={safeMode === "isosurface"}
-      isoValue={isoValue} showPrimarySlice={safeMode === "slice"} cameraCommand={fitCommand ?? undefined}
-      cropCenter={fitCommand?.kind === "fit-crop" ? visibleFit?.center : undefined}
-      cropExtents={fitCommand?.kind === "fit-crop" ? visibleFit?.extents : undefined}
+      isoValue={isoValue} secondaryIsoValue={secondSurface ? secondaryIsoValue : null}
+      transferFunction={transferFunction} onVolumeRenderStatus={setRenderStatus}
+      showPrimarySlice={safeMode === "slice"} cameraCommand={fitCommand ?? undefined}
+      showCropBox={clipFraction < 1} clipToCrop={clipFraction < 1}
+      cropCenter={fitCommand?.kind === "fit-crop" && visibleFit ? visibleFit.center : cropCenter}
+      cropExtents={fitCommand?.kind === "fit-crop" && visibleFit ? visibleFit.extents : cropExtents}
       autoFitIsosurface={fitCommand?.kind !== "fit-crop"} /> : <p role="status" style={{ padding: 16 }}>
       {error || "Converting verified grid for Math3D Volume…"}</p>}</div>
     {artifact && <div data-testid="quantum-volume-source" style={{ padding: 8, fontSize: 12 }}>
       Read-only Volume source {adapted?.document.identity.id} · {artifact.shape.join(" × ")} point grid · {artifact.layout} · {artifact.valueUnit}
       {safeMode === "isosurface" ? ` · threshold ${isoValue.toPrecision(5)} ${artifact.valueUnit}` : ""}<br />
       Coordinates {artifact.axes.map((name, i) => `${name}: ${artifact.coordinateUnits[i]}`).join(", ")} · source encoding {artifact.encoding}.
+      {bounds && <><br /><span data-testid="quantum-volume-bounds">Bounds: {bounds.map((pair, dimension) =>
+        `${artifact.axes[dimension]} ${pair[0].toPrecision(5)}…${pair[1].toPrecision(5)} ${artifact.coordinateUnits[dimension]}`).join(" · ")}</span></>}
+      {renderStatus && (safeMode === "dvr" || safeMode === "mip") && <><br /><span data-testid="quantum-volume-capability">
+        {renderStatus.plan.path}: {renderStatus.message} {renderStatus.plan.message}</span></>}
+      {safeMode === "isosurface" && secondSurface && <> · second threshold {secondaryIsoValue.toPrecision(5)} {artifact.valueUnit}</>}
       {safeMode === "slice" && <><br /><span data-testid="quantum-volume-fit-details">{visibleFit
         ? `Visible-field framing: ${artifact.quantity === "density" ? "1% of the selected plane's maximum density" : "10% of the selected plane's maximum component magnitude"}; source-grid window u ${visibleFit.gridBounds[0]}–${visibleFit.gridBounds[2] - 1}, v ${visibleFit.gridBounds[1]}–${visibleFit.gridBounds[3] - 1}. Camera only; the full grid remains available.`
         : artifact.quantity === "phase" ? "Visible-field fit is unavailable for phase because phase alone does not measure amplitude; choose density or a component." : "No nonzero signal on this slice; use Fit grid."}</span></>}
