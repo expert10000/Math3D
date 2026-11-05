@@ -84,7 +84,14 @@ function Invoke-CandidateUninstall {
     throw 'Candidate uninstaller did not exit within 180 seconds; inspect installerProcesses'
   }
   if ($process.ExitCode -ne 0) { throw "Candidate uninstaller exited with code $($process.ExitCode)" }
-  if (Test-Path -LiteralPath $executable -PathType Leaf) { throw 'Candidate executable remains after uninstall' }
+  $deadline = (Get-Date).AddSeconds(120)
+  while ((Test-Path -LiteralPath $executable -PathType Leaf) -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 2
+  }
+  if (Test-Path -LiteralPath $executable -PathType Leaf) {
+    $evidence.installerProcesses = Get-InstallerProcessSnapshot
+    throw 'Candidate executable remains 120 seconds after uninstaller exit; inspect installerProcesses'
+  }
 }
 
 function Invoke-Phase([string]$phase, [string]$path) {
