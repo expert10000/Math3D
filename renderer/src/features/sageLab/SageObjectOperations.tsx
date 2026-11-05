@@ -14,6 +14,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   budgetProfile: SageIdealBudgetProfile):
   AlgebraOperationArguments[AlgebraOperationId] => {
   if (id === "sage.algebra.reconstruct") return {};
+  if (id === "sage.group.dossier") return {};
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
       id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
@@ -69,8 +70,6 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
   const targetStale = inspectProjectAlgebraFreshness(project).find((item) => item.objectId === target.objectId)?.status === "stale";
   const idealSelection = selected?.startsWith("sage.ideal.") ?? false;
   const targetRecord = project.algebraObjects?.find((item) => item.id === target.objectId)?.revisions[target.revision - 1];
-  if (targetRecord?.kind === "finite-group") return <section data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
-    This finite group has an exact saved definition. Runtime group calculations are not available yet.</section>;
   const idealRef = targetRecord?.definition.kind === "quotient-ring" ? targetRecord.definition.ideal : target;
   const ideal = project.algebraObjects?.find((item) => item.id === idealRef.objectId)?.revisions[idealRef.revision - 1];
   const ringRef = ideal?.definition.kind === "ideal" ? ideal.definition.ambientRing : null;
@@ -160,7 +159,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
         <select style={field} value={other?.id ?? ""} onChange={(event) => setOtherId(event.target.value)}>
           {otherOptions.map((item) => <option key={item.id} value={item.id}>{item.record.label}@{item.record.revision}</option>)}
         </select></label>}
-      {selected !== "sage.algebra.reconstruct" && selected !== "sage.algebra.inspectDomains" &&
+      {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.algebra.inspectDomains" &&
         selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
         selected !== "sage.ideal.syzygies" && selected !== "sage.ideal.hilbertSeries" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :

@@ -17,12 +17,15 @@ import { buildSageNumberFieldInput, parseSageNumberFieldInput, parseSageNumberFi
   type SageNumberFieldOperation, type SageNumberFieldResult } from "./sageNumberFieldOperations";
 import { buildSageGaloisInput, parseSageGaloisInput, parseSageGaloisResult,
   type SageGaloisResult } from "./sageGaloisAnalysis";
+import { buildSageFiniteGroupInput, finiteGroupAction, parseSageFiniteGroupInput,
+  parseSageFiniteGroupResult, type SageFiniteGroupResult } from "./sageFiniteGroupOperations";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   SageNumberFieldOperation |
   "sage.numberTheory.gcd" | "sage.numberTheory.modInverse" | "sage.polynomial.factor" |
   "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
   "sage.galois.analyze" |
+  "sage.group.dossier" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" | SageIdealOperation;
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
@@ -36,6 +39,7 @@ export type AlgebraOperationArguments = {
   "sage.polynomial.roots_exact": Readonly<{ polynomial: string }>;
   "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
   "sage.galois.analyze": Readonly<{ polynomial: string }>;
+  "sage.group.dossier": Readonly<Record<string, never>>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
   "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
@@ -48,6 +52,7 @@ export type AlgebraOperationArguments = {
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult | SageGaloisResult |
+  SageFiniteGroupResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -90,6 +95,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
   definition("sage.galois.analyze", "Galois group and fixed fields", "polynomial", POLY,
     "QQ-univariate-polynomial", "galois.analyze", ["docker"],
     "math3d.sage-galois-analysis/v1", "math3d.sage-galois-analysis-result/v1"),
+  definition("sage.group.dossier", "GAP group invariants", "structure", ["finite-group"], "any",
+    "group.dossier", ["docker"], "math3d.sage-finite-group-operation/v1", "math3d.sage-finite-group-result/v1"),
   definition("sage.groebner.compute", "Gröbner basis over QQ", "polynomial", POLY, "QQ-polynomial", "algebra.groebner",
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
   definition("sage.matrix.linear_dossier", "Exact QQ matrix analysis", "matrix", ["rational-field"], "any", "matrix.linear-dossier",
@@ -131,6 +138,8 @@ const currentRecord = (project: Math3DProject, ref: AlgebraObjectRef): { record:
 const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
   operation: AlgebraOperationDefinition): string | null => {
   if (!operation.accepts.includes(record.kind)) return `${operation.label} does not accept ${record.kind} objects.`;
+  if (operation.id === "sage.group.dossier") try { finiteGroupAction(record.definition as import("./finiteGroup").FiniteGroupDefinition); }
+  catch (error) { return String((error as Error).message ?? error); }
   if (operation.category === "ideal") {
     const idealRef = record.definition.kind === "quotient-ring" ? record.definition.ideal : { objectId: record.id, revision: record.revision };
     const ideal = project.algebraObjects?.find((item) => item.id === idealRef.objectId)?.revisions[idealRef.revision - 1];
@@ -233,6 +242,9 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
   } else if (id === "sage.galois.analyze") {
     if (!exact(input, ["polynomial"])) throw new TypeError("Galois analysis requires one bounded QQ polynomial.");
     params = buildSageGaloisInput(project, target, input.polynomial as string) as unknown as Record<string, unknown>;
+  } else if (id === "sage.group.dossier") {
+    if (!exact(input, [])) throw new TypeError("GAP group dossier takes no freeform arguments.");
+    params = buildSageFiniteGroupInput(project, target) as unknown as Record<string, unknown>;
   } else if (id === "sage.matrix.linear_dossier") {
     if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
     params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
@@ -282,6 +294,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     return parseSageNumberFieldResult(value, parseSageNumberFieldInput(request.params, request.operation), request.operation);
   if (request.operation === "sage.galois.analyze")
     return parseSageGaloisResult(value, parseSageGaloisInput(request.params));
+  if (request.operation === "sage.group.dossier")
+    return parseSageFiniteGroupResult(value, parseSageFiniteGroupInput(request.params));
   if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
     parseSageMatrixDossierInput(request.params));
   if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,

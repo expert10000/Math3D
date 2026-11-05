@@ -7,6 +7,7 @@ import { validateSageIdealSnapshot, type SageIdealInput, type SageIdealOperation
 import { parseSageNumberFieldInput, validateSageNumberFieldSnapshot,
   type SageNumberFieldOperation } from "./sageNumberFieldOperations";
 import { parseSageGaloisInput, validateSageGaloisSnapshot } from "./sageGaloisAnalysis";
+import { parseSageFiniteGroupInput, validateSageFiniteGroupSnapshot } from "./sageFiniteGroupOperations";
 
 export const MAX_PROJECT_ALGEBRA_EVIDENCE = 128;
 export type ProjectAlgebraEvidence = Readonly<{
@@ -76,6 +77,8 @@ export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDoc
       request.operation as SageNumberFieldOperation), objects);
   if (request.operation === "sage.galois.analyze")
     validateSageGaloisSnapshot(parseSageGaloisInput(request.params), projectId, objects);
+  if (request.operation === "sage.group.dossier")
+    validateSageFiniteGroupSnapshot(parseSageFiniteGroupInput(request.params), projectId, objects);
   const result = parseAlgebraOperationResult(request, value.result);
   if (structuralHash(result) !== value.resultHash) throw new TypeError("Algebra evidence result hash does not match.");
   return JSON.parse(canonicalJsonStringify(value)) as ProjectAlgebraEvidence;

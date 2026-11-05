@@ -543,6 +543,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-E01](evidence/sage-e01-finite-group-objects-2026-11-05.md) adds Project finite-group records with exact bounded permutation and abelian presentations. The five small fixtures roundtrip with stable IDs and revisions; Structures can preview and save them without Sage. The next feature is **SAGE-E02**, GAP-backed group operations. B08 is closed for its 16-case matrix; live Docker D06 parity remains pending.
 
+[SAGE-E02](evidence/sage-e02-gap-group-operations-2026-11-05.md) adds a capability-advertised GAP dossier of order, center, conjugacy and complete subgroups for saved finite groups. Live Sage 9.5 and Docker Sage 10.10 fixtures for C4, V4, S3, D4 and Q8, exact D4 cross-runtime invariants, independent app checks, Docker HTTP dispatch, and desktop Project export/fresh-profile reopen pass. The next feature is **SAGE-E03** Cayley and subgroup graph scenes.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,

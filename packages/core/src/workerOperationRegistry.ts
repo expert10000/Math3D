@@ -36,6 +36,7 @@ export type Math3DWorkerOperationId =
   | "polynomial.factor"
   | "polynomial.dossier"
   | "galois.analyze"
+  | "group.dossier"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -320,6 +321,10 @@ const definitions = [
     id: "galois.analyze",
     title: "Bounded Galois group and fixed-field correspondence",
     canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "group.dossier", title: "Bounded GAP finite-group invariants", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
     id: "polynomial.roots.exact",

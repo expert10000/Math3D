@@ -6,7 +6,7 @@ import { FINITE_GROUP_PRESETS, analyzeFiniteGroup, createAlgebraObjectRecord,
 type Props = { project: Math3DProject; onCreate: (record: AlgebraObjectRecord) => void | Promise<void>;
   onCreated: (ref: AlgebraObjectRef) => void; onCancel: () => void };
 
-/** A local exact preview; runtime GAP operations are introduced by the later capability gate. */
+/** Local exact preview; saved groups can subsequently run the bounded GAP dossier when advertised. */
 export default function SageFiniteGroupBuilder({ project, onCreate, onCreated, onCancel }: Props) {
   const [presetId, setPresetId] = useState<(typeof FINITE_GROUP_PRESETS)[number]["id"]>("D4");
   const [label, setLabel] = useState("D4");

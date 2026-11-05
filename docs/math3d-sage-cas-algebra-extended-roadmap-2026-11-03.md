@@ -330,6 +330,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **E01 implementation update (2026-11-05):** The [E01 acceptance record](evidence/sage-e01-finite-group-objects-2026-11-05.md) adds versioned finite-group Project definitions for bounded permutation generators with verified relation words and finite abelian invariant-factor presentations. Structures previews and saves `C4`, `V4`, `S3`, `D4` and `Q8`; exact core and independent Project reopen gates pass. The next feature is **SAGE-E02**, capability-gated GAP operations.
 
+**E02 implementation update (2026-11-05):** The [E02 acceptance record](evidence/sage-e02-gap-group-operations-2026-11-05.md) adds an advertised GAP-backed dossier for saved finite groups, pinned to their exact definition revision. Bounded order, center, conjugacy and complete subgroup/normality results are independently checked before Project evidence is saved. Five Sage 9.5/GAP 4.11.1 and Docker Sage 10.10/GAP 4.15.1 live fixtures, exact D4 cross-runtime invariants, forged-result rejection, live Docker HTTP dispatch, and desktop export/fresh-profile reopen pass. The next feature is **SAGE-E03**, Cayley and subgroup graph scenes.
+
 ---
 
 ## 3. P0 — Algebra object registry

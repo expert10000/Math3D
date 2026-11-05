@@ -84,6 +84,11 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
   } else if (source?.definition.kind === "quotient-ring") {
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Ideal", formatRef(source.definition.ideal)));
+  } else if (source?.definition.kind === "finite-group") {
+    structure.push(fact("Representation", source.definition.representation),
+      fact("Generators", source.definition.representation === "permutation"
+        ? source.definition.generators.map((item) => `${item.name}: (${item.images.join(", ")})`)
+        : source.definition.generators.map((name, index) => `${name}: C${source.definition.invariantFactors[index]}`)));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;
@@ -98,6 +103,19 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.group.dossier": {
+      const subgroups = result.subgroups as { members: number[]; normal: boolean }[];
+      facts.push(fact("Group order", text(result.order)), fact("Action degree", text(result.actionDegree)),
+        fact("Center order", String((result.center as number[]).length)),
+        fact("Center element indices", list(result.center)),
+        fact("Conjugacy classes", (result.conjugacyClasses as number[][]).map((items) => items.join(", "))),
+        fact("Subgroups", subgroups.map((item) => `{${item.members.join(", ")}}${item.normal ? " · normal" : ""}`)),
+        fact("GAP version", text(result.gapVersion)), fact("Enumeration", "Complete"));
+      checks.push(check("Finite group invariants", "checked",
+        "The app independently rebuilds the exact action, center, conjugacy partition and complete bounded subgroup list."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.algebra.reconstruct":
       facts.push(fact("Presentation", text(result.text)), fact("Characteristic", text(result.characteristic)),
         fact("Field", result.isField ? "Yes" : "No"), fact("Base ring", text(result.baseRing)),
