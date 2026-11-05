@@ -65,8 +65,9 @@ more.addEventListener("click", () => { shown += 24; render(); });
 Promise.all([
   getJson("./assets/release-current/manifest.json"),
   getJson("./assets/release-field-current/manifest.json"),
+  getJson("./assets/release-analysis-current/manifest.json"),
   getJson("./assets/release-quantum-current/capture-index.json"),
-]).then(([web, field, quantum]) => {
+]).then(([web, field, analysis, quantum]) => {
   const browserItems = web.entries.map(entry => ({
     src: imagePath("release-current", entry.file),
     title: entry.title,
@@ -83,6 +84,14 @@ Promise.all([
     runtime: "Desktop",
     categories: entry.view === "Analysis" ? ["Field Explorer", "Analysis"] : ["Field Explorer"],
   }));
+  const analysisItems = analysis.entries.map(entry => ({
+    src: imagePath("release-analysis-current", entry.file),
+    title: entry.title,
+    module: entry.module,
+    view: `${entry.view} · ${entry.panel}${entry.fullHeight ? " · full height" : ""}`,
+    runtime: entry.runtime,
+    categories: ["Analysis", "Features"],
+  }));
   const quantumItems = quantum.flatMap(entry => [entry.file, ...(entry.variants || [])].filter(Boolean).map(file => ({
     src: imagePath("release-quantum-current", file),
     title: file === entry.file ? entry.label : `${entry.label} · ${file.includes("volume") ? "volume" : file.includes("density") ? "density surface" : "source guidance"}`,
@@ -91,6 +100,6 @@ Promise.all([
     runtime: "Desktop",
     categories: ["Quantum"],
   })));
-  allItems = [...browserItems, ...fieldItems, ...quantumItems];
+  allItems = [...browserItems, ...fieldItems, ...analysisItems, ...quantumItems];
   render();
 }).catch(error => { status.textContent = `Gallery unavailable: ${error.message}`; });
