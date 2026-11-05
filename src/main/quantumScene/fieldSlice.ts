@@ -1,7 +1,7 @@
 import type { ImportedQuantumScene } from "./importer";
 import type { SceneField } from "./index";
 
-export type FieldQuantity = "density" | "real" | "imaginary" | "phase";
+export type FieldQuantity = "density" | "amplitude" | "real" | "imaginary" | "phase";
 export type FieldSliceRequest = { fingerprint: string; fieldId: string; axis: 0 | 1 | 2; index: number; quantity: FieldQuantity };
 export type FieldSampleRequest = FieldSliceRequest & { u: number; v: number };
 export type FieldSlice = {
@@ -16,7 +16,7 @@ export type FieldSample = {
   value: number | null; unit: string; undefinedNearNode: boolean;
 };
 
-const quantities: readonly FieldQuantity[] = ["density", "real", "imaginary", "phase"];
+const quantities: readonly FieldQuantity[] = ["density", "amplitude", "real", "imaginary", "phase"];
 
 function source(imported: ImportedQuantumScene, request: FieldSliceRequest) {
   const field = imported.source.fields?.find(candidate => candidate.id === request.fieldId);
@@ -49,6 +49,7 @@ function valueAt(real: Float64Array, imaginary: Float64Array | undefined, index:
   if (quantity === "real") return re;
   if (quantity === "imaginary") return im;
   if (quantity === "density") return re * re + im * im;
+  if (quantity === "amplitude") return Math.hypot(re, im);
   return Math.atan2(im, re);
 }
 
@@ -69,7 +70,7 @@ function color(value: number, quantity: FieldQuantity, maximum: number): [number
       [Math.round(255 * part), 0, 255]];
     return colors[sector];
   }
-  if (quantity === "density") {
+  if (quantity === "density" || quantity === "amplitude") {
     const t = maximum ? Math.sqrt(Math.max(0, value) / maximum) : 0;
     return [Math.round(12 + 130 * t), Math.round(28 + 205 * t), Math.round(48 + 190 * t)];
   }
@@ -86,9 +87,10 @@ export function renderVerifiedFieldSlice(imported: ImportedQuantumScene, request
   const rgba = new Uint8Array(width * height * 4);
   let maximum = 0;
   if (request.quantity === "density" || request.quantity === "phase") maximum = densityMaximum(real, imaginary);
+  else if (request.quantity === "amplitude") maximum = Math.sqrt(densityMaximum(real, imaginary));
   else for (const value of request.quantity === "real" ? real : imaginary!) maximum = Math.max(maximum, Math.abs(value));
   const range: [number, number] = request.quantity === "phase" ? [-Math.PI, Math.PI]
-    : request.quantity === "density" ? [0, maximum] : [maximum ? -maximum : 0, maximum];
+    : request.quantity === "density" || request.quantity === "amplitude" ? [0, maximum] : [maximum ? -maximum : 0, maximum];
   let planeMaximum = 0;
   for (let v = 0; v < height; v++) for (let u = 0; u < width; u++) {
     const grid = [0, 0, 0]; grid[request.axis] = request.index; grid[planeAxes[0]] = u; grid[planeAxes[1]] = v;

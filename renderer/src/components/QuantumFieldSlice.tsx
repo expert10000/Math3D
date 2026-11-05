@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { projectSpatialCursor, scientificCursorBus } from "./scientificCursor";
 import type { QuantumFieldDocument } from "@math3d/core";
 
-export type FieldQuantity = "density" | "real" | "imaginary" | "phase";
+export type FieldQuantity = "density" | "amplitude" | "real" | "imaginary" | "phase";
 export type FieldSliceRequest = { fingerprint: string; fieldId: string; axis: 0 | 1 | 2; index: number; quantity: FieldQuantity };
 export type FieldSampleRequest = FieldSliceRequest & { u: number; v: number };
 export type FieldSlice = FieldSliceRequest & { width: number; height: number; rgba: Uint8Array;
@@ -122,8 +122,8 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
         const next = event.target.value as FieldQuantity; setQuantity(next);
         onViewChange?.({ normalAxis: axis, fixedIndex: safeIndex, quantity: next });
       }}>
-        {(field.kind === "scalar-field" ? ["real"] : ["density", "real", "imaginary", "phase"]).map(value =>
-          <option key={value} value={value}>{value === "density" ? "|ψ|² density (derived)" : value === "phase" ? "Phase (derived)" : value}</option>)}</select></label>
+        {(field.kind === "scalar-field" ? ["real"] : ["density", "amplitude", "real", "imaginary", "phase"]).map(value =>
+          <option key={value} value={value}>{value === "density" ? "|ψ|² density (derived)" : value === "amplitude" ? "|ψ| amplitude (derived)" : value === "phase" ? "Phase (derived)" : value === "real" ? "Signed real amplitude" : "Signed imaginary amplitude"}</option>)}</select></label>
       <label>Normal <select aria-label="Quantum slice normal" value={axis} onChange={event => {
         const next = Number(event.target.value) as 0 | 1 | 2;
         const nextIndex = Math.floor(field.grid.shape[next] / 2);
@@ -143,9 +143,10 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
     {error ? <p role="alert">{error}</p> : slice ? <div style={{ fontSize: 12, textAlign: "center" }}>
       <span data-testid="quantum-field-legend">{axes[plane[0]]} → · {axes[plane[1]]} ↑ · {slice.range[0].toPrecision(5)} to {slice.range[1].toPrecision(5)} {slice.unit}</span>
       <div>{safeQuantity === "phase" ? "Cyclic hue: −π and +π match; transparent pixels are phase-undefined nodes"
-        : safeQuantity === "density" ? "Dark → bright: low → high sampled density"
+        : safeQuantity === "density" || safeQuantity === "amplitude" ? "Dark → bright: low → high sampled magnitude"
           : "Blue → white → red: negative → zero → positive component"}</div>
-      <div>Verified {field.grid.order} grid · {safeQuantity === "density" || safeQuantity === "phase" ? "display quantity derived from supplied amplitudes" : "supplied component"}</div>
+      <div>Verified {field.grid.order} grid · {safeQuantity === "density" || safeQuantity === "amplitude" || safeQuantity === "phase" ? "display quantity derived from supplied amplitudes" : "supplied component"}</div>
+      {field.kind === "complex-field" && <div>Absolute phase and signed components depend on arbitrary global phase. Phase is undefined at complex nodes.</div>}
       <div data-testid="quantum-field-viewport">{viewport ? `Fit to field: source-grid window u ${viewport[0]}–${viewport[2] - 1}, v ${viewport[1]}–${viewport[3] - 1}` : "Full source grid"} · display-only framing; source coordinates and samples are unchanged. Click to inspect an exact stored grid point.</div>
       <div>Grid {field.grid.shape.join(" × ")} · origin [{field.grid.origin.map(value => value.toPrecision(5)).join(", ")}] · spacing [{field.grid.spacing.map(value => value.toPrecision(5)).join(", ")}]</div>
       {sample && <div data-testid="quantum-field-sample">Grid [{sample.grid.join(", ")}] · {sample.position.map((value, coordinate) =>

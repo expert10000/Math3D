@@ -903,6 +903,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Link inputs, figures, exact hashes, numerical settings and validation reports.
 
+**Implementation note (2026-11-05):** Theory Lab exports a `.qreport` directory from a reopened verified run: exact input/result and optional artifact bytes, a full-sample SVG figure, numerical settings, source and file hashes, and a validation summary that marks unperformed checks as such. The Markdown report is portable and does not execute notebook code. See [QI-25–27 implementation details](quantum-qi25-27-reports-templates-complex-fields.md).
+
 ## Wave D — Extended integrations and product quality
 
 ### QI-26 — `QuantumStudyDocument` layout templates
@@ -912,11 +914,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - QWZ, SSH, Rice–Mele, Hofstadter and hydrogen templates.
 - Validate layout is separate from scientific source.
 
+**Implementation note (2026-11-05):** Math3D defines QWZ, SSH, Rice–Mele, Hofstadter and hydrogen Study layouts. A template binds only to admitted scene documents from the same run and result hash, and validates the required view roles. Hydrogen uses density and phase panels over one verified complex scene. Template choice, layout and selections remain separate from source datasets; existing Study documents still open. See [QI-25–27 implementation details](quantum-qi25-27-reports-templates-complex-fields.md).
+
 ### QI-27 — Generic complex-field renderer
 
 **Commit:** `feat(field): render amplitude phase and complex-derived observables`
 
 - Phase maps, signed amplitude, nodal surfaces, explicit arbitrary global-phase note.
+
+**Implementation note (2026-11-05):** Theory Lab's verified complex-grid viewer now shows `|ψ|`, `|ψ|²`, signed real/imaginary components, cyclic phase, and separate zero surfaces for the two components. It masks phase near nodes and explains arbitrary global phase. Math3D Field Explorer also adds an independently derived amplitude slice and saves that view choice. See [QI-25–27 implementation details](quantum-qi25-27-reports-templates-complex-fields.md).
 
 ### QI-28 — Advanced volume pipeline
 
