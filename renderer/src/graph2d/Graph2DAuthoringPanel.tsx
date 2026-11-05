@@ -176,6 +176,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
     const object = document.source.objects.find((entry) => entry.id === id);
     const style = document.display.objects.find((entry) => entry.objectId === id);
     if (!object || !style) return;
+    if (object.kind === "derivative-curve") {
+      setMessage("Edit the source function to update this saved derivative recipe.");
+      return;
+    }
     setEditingId(id);
     setPresetId("");
     if (object.kind === "explicit-cartesian") {
@@ -338,7 +342,10 @@ export function Graph2DAuthoringPanel({ document, onCommit, onSelect, palette, o
         const style = document.display.objects[index]!;
         return <li key={object.id} data-graph2d-id={object.id}>
           <div className="graph2d-function-summary"><span className="graph2d-function-swatch" style={{ background: style.color }} />
-            <div><strong>{object.label}</strong><code>{object.kind === "explicit-cartesian" ?
+            <div><strong>{object.label}</strong><code>{object.kind === "derivative-curve" ?
+              `d${object.order}y/dx${object.order} · ${object.method === "finite-difference" ?
+                "approximate numerical fallback" : "symbolic rules"}` :
+              object.kind === "explicit-cartesian" ?
               `y = ${object.expression.source}` : object.kind === "parametric" ?
                 `x(t) = ${object.xExpression.source}; y(t) = ${object.yExpression.source}` :
                 object.kind === "polar" ? `r(θ) = ${object.rExpression.source}` :

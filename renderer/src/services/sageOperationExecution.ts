@@ -1,6 +1,7 @@
 import {
   createScientificJobRequest,
   createStableDocumentId,
+  canonicalJsonStringify,
   structuralHash,
   parseSageAlgebraReconstructionInput,
   parseSageAlgebraDomainInput,
@@ -88,12 +89,70 @@ export const SAGE_CONSOLE_OPERATION = "sage.console.execute";
 export const SAGE_CONSOLE_LIMITS = { maxInputBytes: 16 * 1024, maxOutputBytes: 64 * 1024,
   maxMemoryBytes: 4 * 1024 * 1024 * 1024, maxWorkUnits: 1 } as const;
 
+export type SageCapabilityManifest = Readonly<{
+  schemaVersion: 1; kind: "sage-capability-manifest/v1"; engine: "sagemath";
+  route: SageBackend; backendId: string; adapterVersion: "1"; sageVersion: string | null;
+  availability: "available" | "unavailable"; unavailableReason: string | null;
+  reportedOperations: readonly string[];
+  operations: readonly Readonly<{ id: string; operationType: string;
+    mode: "bounded" | "trusted-code"; supported: boolean;
+    reasonCode: "runtime-unavailable" | "route-excluded" | "worker-unadvertised" | "console-unavailable" | null;
+    reason: string | null; limits: Readonly<{ maxInputBytes: number; maxOutputBytes: number;
+      maxMemoryBytes: number; maxWorkUnits: number }> | null }>[];
+  contentHash: string;
+}>;
+
+/** Derived from a live health probe and this adapter's route policy; no static support claims. */
+export const createSageCapabilityManifest = (backend: SageBackend, health: SageHealthResponse,
+  consoleAvailable = false): SageCapabilityManifest => {
+  const limits = backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS;
+  const available = health.available && health.engine === "sagemath";
+  const unavailableReason = available ? null : health.engine !== "sagemath"
+    ? `Unexpected runtime engine ${health.engine}.` : health.status;
+  const reportedOperations = [...new Set(health.operations)].sort();
+  const definitions = Object.entries(SAGE_JOB_OPERATIONS)
+    .map(([id, item]) => ({ id, operationType: item.type, mode: "bounded" as const }))
+    .concat([{ id: SAGE_CONSOLE_OPERATION, operationType: SAGE_CONSOLE_OPERATION,
+      mode: "trusted-code" as const }]).sort((a, b) => a.id.localeCompare(b.id));
+  const operations = definitions.map((item) => {
+    const routeAllowed = item.id === SAGE_CONSOLE_OPERATION ? backend === "local"
+      : backend === "docker" || backend === "local" && isLocalSageOperation(item.id)
+        || backend === "private" && item.id.startsWith("sage.numberTheory.");
+    const reasonCode = !available ? "runtime-unavailable" as const
+      : !routeAllowed ? "route-excluded" as const
+      : item.id === SAGE_CONSOLE_OPERATION && !consoleAvailable ? "console-unavailable" as const
+      : item.id !== SAGE_CONSOLE_OPERATION && !reportedOperations.includes(item.id)
+        ? "worker-unadvertised" as const : null;
+    const reason = reasonCode === "runtime-unavailable" ? `Runtime unavailable: ${unavailableReason}`
+      : reasonCode === "route-excluded" ? `${backend} route does not offer ${item.id}.`
+      : reasonCode === "console-unavailable" ? "Trusted local desktop Console is unavailable."
+      : reasonCode === "worker-unadvertised" ? `Worker did not advertise ${item.id}.` : null;
+    return { ...item, supported: reasonCode === null, reasonCode, reason,
+      limits: reasonCode === null ? item.mode === "trusted-code" ? SAGE_CONSOLE_LIMITS : limits : null };
+  });
+  const body = { schemaVersion: 1 as const, kind: "sage-capability-manifest/v1" as const,
+    engine: "sagemath" as const, route: backend, backendId: sageBackendId(backend),
+    adapterVersion: "1" as const, sageVersion: health.engineVersion ?? null,
+    availability: available ? "available" as const : "unavailable" as const,
+    unavailableReason, reportedOperations, operations };
+  return { ...body, contentHash: structuralHash(body as CanonicalJsonValue) };
+};
+
+export const validateSageCapabilityManifest = (manifest: unknown,
+  backend: SageBackend, health: SageHealthResponse, consoleAvailable = false): SageCapabilityManifest => {
+  const expected = createSageCapabilityManifest(backend, health, consoleAvailable);
+  if (canonicalJsonStringify(manifest) !== canonicalJsonStringify(expected))
+    throw new TypeError("Sage capability manifest differs from the probed runtime or route policy.");
+  return expected;
+};
+
 export type SageRuntimeProbe = Readonly<{
   backend: Backend;
   backendId: string;
   backendVersion: string;
   transport: "worker" | "remote";
   health: SageHealthResponse;
+  manifest: SageCapabilityManifest;
   limits: typeof SAGE_LIMITS | typeof PRIVATE_SAGE_LIMITS;
   operations: readonly ScientificOperationCapability[];
 }>;
@@ -270,20 +329,15 @@ export class SageExecutionRegistry {
       health = { engine: "sagemath", available: false, operations: [],
         status: error instanceof Error ? error.message : "SageMath state check failed." };
     }
-    const operations: ScientificOperationCapability[] = (Object.entries(SAGE_JOB_OPERATIONS) as [BrokeredSageOperation, typeof SAGE_JOB_OPERATIONS[BrokeredSageOperation]][])
-      .filter(([operation]) => health.available && health.operations.includes(operation) && (backend === "docker" ||
-        (backend === "private" && operation.startsWith("sage.numberTheory.")) ||
-        (backend === "local" && isLocalSageOperation(operation))))
-      .map(([, definition]) => ({ operationType: definition.type, retrySafety: "never" as const,
-        ...(backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS) }))
-      .sort((left, right) => left.operationType.localeCompare(right.operationType));
-    if (backend === "local" && health.available && this.#consoleAvailable()) {
-      operations.push({ operationType: SAGE_CONSOLE_OPERATION, retrySafety: "never", ...SAGE_CONSOLE_LIMITS });
-    }
+    const manifest = createSageCapabilityManifest(backend, health,
+      backend === "local" && health.available && this.#consoleAvailable());
+    const operations: ScientificOperationCapability[] = manifest.operations.filter((item) => item.supported)
+      .map((item) => ({ operationType: item.operationType, retrySafety: "never" as const,
+        ...item.limits! })).sort((left, right) => left.operationType.localeCompare(right.operationType));
     return {
       backend, backendId: sageBackendId(backend),
       backendVersion: "1", transport: backend === "local" ? "worker" : "remote",
-      health, limits: backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS, operations,
+      health, manifest, limits: backend === "private" ? PRIVATE_SAGE_LIMITS : SAGE_LIMITS, operations,
     };
   }
 

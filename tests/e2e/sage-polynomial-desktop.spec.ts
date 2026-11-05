@@ -119,10 +119,16 @@ test("desktop Sage backend selector sends shared operations to the Docker servic
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Reported status: ok");
     await expect(runtimes.getByTestId("sage-runtime-version-docker")).toContainText("SageMath 10.6");
+    await expect(runtimes.getByTestId("sage-runtime-manifest-docker")).toContainText("Capability manifest: v1");
+    await runtimes.getByTestId("sage-runtime-capabilities-docker").locator("summary").click();
+    await expect(runtimes.getByTestId("sage-runtime-capabilities-docker"))
+      .toContainText("sage.algebra.reconstruct: worker-unadvertised");
     await expect(runtimes.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB · output 256 KiB · memory 512 MiB");
     serviceAvailable = false;
     await runtimes.getByTestId("sage-runtime-docker").getByRole("button", { name: "Check Docker" }).click();
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("service stopped");
+    await expect(runtimes.getByTestId("sage-runtime-capabilities-docker"))
+      .toContainText("sage.polynomial.factor: runtime-unavailable");
     await expect(runtimes.getByTestId("sage-runtime-docker")).toContainText("Next: Start the service with docker compose");
     await expect(runtimes.getByTestId("sage-runtime-limits-docker")).toContainText("input 64 KiB");
     serviceAvailable = true;

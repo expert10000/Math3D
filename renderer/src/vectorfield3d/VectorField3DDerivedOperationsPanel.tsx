@@ -5,7 +5,8 @@ import { projectDerivedFieldsForDocument, type DerivedFieldOperation,
 const operations = ["vector-magnitude", "scalar-gradient", "scalar-hessian",
   "directional-derivative", "vector-jacobian", "jacobian-symmetric",
   "jacobian-antisymmetric", "vector-dot", "vector-cross", "vector-difference",
-  "vorticity", "helicity", "enstrophy"] as const;
+  "vorticity", "helicity", "enstrophy", "q-criterion", "lambda2",
+  "swirling-strength"] as const;
 
 export function VectorField3DDerivedOperationsPanel({ document, project, onAppend }: {
   document: VectorField3DDocument; project?: Math3DProject | null;

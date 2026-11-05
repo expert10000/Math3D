@@ -354,6 +354,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F05 implementation update (2026-11-05):** The [F05 acceptance record](evidence/sage-f05-execution-certificates-2026-11-05.md) adds a versioned, validated execution certificate to new object-linked Project algebra evidence. It pins operation schemas, request/result hashes and sizes, target and parent definitions, backend route, Sage version, elapsed time, warnings, known GAP subsystem version and declared ideal budgets. The Inspector displays it separately from mathematical Verification. Unknown algorithm, proof mode and memory remain unclaimed; legacy evidence still imports. The next feature is **SAGE-F06**, versioned capability manifests.
 
+**F06 implementation update (2026-11-05):** The [F06 acceptance record](evidence/sage-f06-capability-manifests-2026-11-05.md) adds a hashed v1 capability manifest to each Sage route probe. Compute → Runtimes shows the reported version and operation-level support or deterministic unavailable reason. Broker discovery uses that same route-filtered manifest, so the displayed decision matches executable capability. Live Sage 9.5 WSL and Docker Sage 10.10 checks confirm their distinct operation sets. The next feature is **SAGE-F07**, bounded queue cancellation and budgets.
+
 ---
 
 ## 3. P0 — Algebra object registry

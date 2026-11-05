@@ -5,7 +5,8 @@ import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, build
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
 import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
-import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
+import { createSageExecutionRegistry, SAGE_CONSOLE_OPERATION, SAGE_JOB_OPERATIONS,
+  validateSageCapabilityManifest, type BrokeredSageOperation, type SageExecutionRegistryOptions } from "./sageOperationExecution";
 
 const health: NonNullable<SageExecutionRegistryOptions["health"]> = async () => ({
   engine: "sagemath", engineVersion: "10.6", status: "ok", available: true, operations: SAGE_OPERATIONS,
@@ -95,6 +96,46 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : { expression: "x^2+y^2+z^2", variables: ["x", "y", "z"] };
 
 describe("Sage scientific execution contract", () => {
+  it("publishes versioned, route-filtered manifests with deterministic unsupported reasons", async () => {
+    const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true });
+    const [local, docker, gateway] = await Promise.all([registry.probeBackend("local"),
+      registry.probeBackend("docker"), registry.probeBackend("private")]);
+    for (const probe of [local, docker, gateway]) {
+      expect(probe.manifest).toMatchObject({ schemaVersion: 1,
+        kind: "sage-capability-manifest/v1", sageVersion: "10.6" });
+      expect(validateSageCapabilityManifest(JSON.parse(JSON.stringify(probe.manifest)),
+        probe.backend, probe.health, true)).toEqual(probe.manifest);
+      expect(probe.manifest.operations.filter((item) => item.supported)
+        .map((item) => item.operationType).sort())
+        .toEqual(probe.operations.map((item) => item.operationType).sort());
+    }
+    expect(local.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: false, reasonCode: "route-excluded" });
+    expect(local.manifest.operations.find((item) => item.id === SAGE_CONSOLE_OPERATION))
+      .toMatchObject({ supported: true, mode: "trusted-code" });
+    expect(docker.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: true, mode: "bounded" });
+    expect(gateway.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: false, reasonCode: "route-excluded" });
+    const forged = { ...docker.manifest, operations: docker.manifest.operations.map((item) =>
+      item.id === "sage.group.dossier" ? { ...item, supported: false } : item) };
+    expect(() => validateSageCapabilityManifest(forged, "docker", docker.health, true)).toThrow(/differs/);
+  });
+
+  it("distinguishes a missing worker operation from an unavailable runtime", async () => {
+    const partial = createSageExecutionRegistry({ health: async () => ({ engine: "sagemath",
+      engineVersion: "10.10", status: "ok", available: true,
+      operations: ["sage.numberTheory.gcd"] }), consoleAvailable: () => false });
+    const docker = await partial.probeBackend("docker");
+    expect(docker.manifest.operations.find((item) => item.id === "sage.algebra.reconstruct"))
+      .toMatchObject({ supported: false, reasonCode: "worker-unadvertised",
+        reason: "Worker did not advertise sage.algebra.reconstruct." });
+    const offline = await createSageExecutionRegistry({ health: async () => ({ engine: "sagemath",
+      status: "WSL missing", available: false, operations: SAGE_OPERATIONS }) }).probeBackend("local");
+    expect(offline.manifest.operations.find((item) => item.id === "sage.polynomial.factor"))
+      .toMatchObject({ supported: false, reasonCode: "runtime-unavailable",
+        reason: "Runtime unavailable: WSL missing" });
+  });
   it("discovers trusted local console execution and records output provenance through the shared service", async () => {
     const calls: { jobId: string; code: string; scope?: string }[] = [];
     const registry = createSageExecutionRegistry({ health, consoleAvailable: () => true,

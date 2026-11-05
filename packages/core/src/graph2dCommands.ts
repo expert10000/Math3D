@@ -7,7 +7,7 @@ import { isGraph2DViewport, type Graph2DViewport } from "./graph2dViewport";
 
 export const GRAPH2D_COMMAND_TYPES = { setViewport: "graph2d.viewport.set", replaceScene: "graph2d.scene.replace",
   setSelection: "graph2d.selection.set", setConstructions: "graph2d.constructions.set" } as const;
-export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-derivative-curve", "create-parametric", "edit-parametric",
+export const GRAPH2D_SCENE_OPERATIONS = ["create", "edit", "create-derivative-curve", "create-saved-derivative", "create-parametric", "edit-parametric",
   "create-polar", "edit-polar", "create-implicit", "edit-implicit",
   "create-inequality", "edit-inequality", "create-point-series", "create-point-series-pair",
   "create-point-series-group",

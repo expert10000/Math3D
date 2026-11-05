@@ -34,6 +34,16 @@ export const pickGraph2DProbe = (input: Readonly<{
     if (object.kind === "slope-field" || object.kind === "trajectory" || object.kind === "phase-portrait" || object.kind === "time-ode") return;
     const artifact = artifacts.get(object.id);
     if (!artifact) return;
+    if (object.kind === "derivative-curve") {
+      for (const segment of artifact.segments) for (const point of segment.points) {
+        if (point.x < left || point.x > right) continue;
+        const screen = graph2DWorldToScreen(input.viewport, input.size, point);
+        const distancePx = Math.hypot(screen.x - input.screen.x, screen.y - input.screen.y);
+        if (distancePx <= radius) candidates.push({ objectId: object.id,
+          x: point.x, y: point.y, distancePx, order });
+      }
+      return;
+    }
     if (object.kind === "point-series") {
       for (const segment of artifact.segments) for (const point of segment.points) {
         if (!point.rowId) continue;
@@ -222,6 +232,8 @@ export const selectionForGraph2DObject = (
     const exact = evaluateGraph2DPiecewise(object, variables, point.x);
     return { objectId, probe: exact ? { objectId, x: exact.x, y: exact.y } : null };
   }
+  if (object.kind === "derivative-curve")
+    return { objectId, probe: { objectId, x: point.x, y: point.y } };
   const exact = evaluateGraph2DExpression(object.expression.ast, { ...variables, x: point.x });
   return { objectId, probe: { objectId, x: point.x, y: exact.ok ? exact.value : point.y } };
 };

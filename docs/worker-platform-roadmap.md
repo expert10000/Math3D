@@ -563,6 +563,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-F05](evidence/sage-f05-execution-certificates-2026-11-05.md) adds a versioned execution certificate to saved object-linked Sage algebra evidence. It records pinned definitions, operation schemas, request/result hashes and sizes, route and version, warnings, declared budget and honest verifier scope; the Inspector shows the certificate while legacy evidence still imports. The next feature is **SAGE-F06** runtime capability manifests.
 
+[SAGE-F06](evidence/sage-f06-capability-manifests-2026-11-05.md) makes WSL, Docker and private Sage probes emit a hashed v1 capability manifest. Compute → Runtimes lists bounded and trusted operation support with exact route, worker and availability reasons; broker discovery uses the same decisions. Live WSL and Docker version checks pass. The next feature is **SAGE-F07** queue cancellation and budgets.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,

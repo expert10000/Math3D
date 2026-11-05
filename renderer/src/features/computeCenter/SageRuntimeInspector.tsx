@@ -106,6 +106,17 @@ export default function SageRuntimeInspector() {
             <div><strong>Route:</strong> {probe.backendId} · {probe.transport}</div>
             <div><strong>Reported status:</strong> {probe.health.status}</div>
             <div><strong>Operations:</strong> {probe.operations.length} available through this route</div>
+            <div data-testid={`sage-runtime-manifest-${id}`}>
+              <strong>Capability manifest:</strong> v{probe.manifest.schemaVersion} · {probe.manifest.contentHash}
+            </div>
+            <details data-testid={`sage-runtime-capabilities-${id}`}>
+              <summary>Operation support and reasons</summary>
+              <ul style={{ margin: "5px 0", paddingLeft: 18, maxHeight: 230, overflow: "auto" }}>
+                {probe.manifest.operations.map((item) => <li key={item.id}>
+                  {item.id}: {item.supported ? `${item.mode} · supported` : `${item.reasonCode} · ${item.reason}`}
+                </li>)}
+              </ul>
+            </details>
             <div data-testid={`sage-runtime-algebra-${id}`} role="status">
               <strong>Algebra reconstruction:</strong> {describeAlgebraRuntime(probe).detail}
             </div>
