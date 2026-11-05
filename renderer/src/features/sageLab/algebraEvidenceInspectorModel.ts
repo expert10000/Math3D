@@ -84,6 +84,12 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
   } else if (source?.definition.kind === "quotient-ring") {
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Ideal", formatRef(source.definition.ideal)));
+  } else if (source?.definition.kind === "finite-group") {
+    const group = source.definition;
+    structure.push(fact("Representation", group.representation),
+      fact("Generators", group.representation === "permutation"
+        ? group.generators.map((item) => `${item.name}: (${item.images.join(", ")})`)
+        : group.generators.map((name, index) => `${name}: C${group.invariantFactors[index]}`)));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;
@@ -98,6 +104,19 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.group.dossier": {
+      const subgroups = result.subgroups as { members: number[]; normal: boolean }[];
+      facts.push(fact("Group order", text(result.order)), fact("Action degree", text(result.actionDegree)),
+        fact("Center order", String((result.center as number[]).length)),
+        fact("Center element indices", list(result.center)),
+        fact("Conjugacy classes", (result.conjugacyClasses as number[][]).map((items) => items.join(", "))),
+        fact("Subgroups", subgroups.map((item) => `{${item.members.join(", ")}}${item.normal ? " · normal" : ""}`)),
+        fact("GAP version", text(result.gapVersion)), fact("Enumeration", "Complete"));
+      checks.push(check("Finite group invariants", "checked",
+        "The app independently rebuilds the exact action, center, conjugacy partition and complete bounded subgroup list."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.algebra.reconstruct":
       facts.push(fact("Presentation", text(result.text)), fact("Characteristic", text(result.characteristic)),
         fact("Field", result.isField ? "Yes" : "No"), fact("Base ring", text(result.baseRing)),
@@ -206,6 +225,28 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Rational roots", roots.length ? roots.map((item) => `${item.value} × ${item.multiplicity}`) : "None"),
         fact("Discriminant", text(result.discriminant)));
       checks.push(check("Dossier identities", "reported", "The typed dossier matches its source and QQ[x] domain; factor and derivative identities are not independently recorded."));
+      break;
+    }
+    case "sage.galois.analyze": {
+      const group = result.group as Record<string, unknown>;
+      const splitting = result.splittingField as Record<string, unknown>;
+      const subgroups = result.subgroups as Record<string, unknown>[];
+      facts.push(fact("Source polynomial", text(result.sourcePolynomial)),
+        fact("Transitive group", text(group.transitiveId)),
+        fact("Group classification", text(group.classification)),
+        fact("Notation convention", text(group.convention)),
+        fact("Group order", text(group.order)),
+        fact("Splitting field degree", text(splitting.degree)),
+        fact("Splitting field polynomial", text(splitting.definingPolynomial)),
+        fact("Regular permutation degree", text(group.regularDegree)),
+        fact("Generator indices", list(group.generators)),
+        fact("Solvable", group.solvable ? "Yes" : "No"),
+        fact("Subgroups", String(subgroups.length)), fact("Lattice", result.complete ? "Complete" : "Truncated"));
+      checks.push(check("Permutation group", "checked",
+        "The app verifies closure, identity, generators and the complete bounded subgroup enumeration."),
+      check("Galois correspondence", "checked",
+        "Subgroup normality and index/degree products are checked; Sage verifies each fixed-field defining relation."));
+      if (mode !== "FAILED") mode = "CHECKED";
       break;
     }
     case "sage.groebner.compute":

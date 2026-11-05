@@ -9,6 +9,7 @@ import {
 import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { analyzeQuadraticNumberField } from "./quadraticNumberField";
 import { requireBiquadraticGenerator, requireBiquadraticRadicand } from "./biquadraticFieldTower";
+import { parseFiniteGroupDefinition, type FiniteGroupDefinition } from "./finiteGroup";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
@@ -23,7 +24,8 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "field-extension"; baseField: AlgebraObjectRef; radicand: string; generator: string }>
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
   | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
-  | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>;
+  | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
+  | FiniteGroupDefinition;
 
 export type AlgebraObjectKind = AlgebraObjectDefinition["kind"];
 export type AlgebraMonomialOrder = "lex" | "deglex" | "degrevlex";
@@ -168,6 +170,8 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       requireKeys(definition, ["kind", "ambientRing", "ideal"], "definition");
       return { kind: "quotient-ring", ambientRing: requireRef(definition.ambientRing, "definition.ambientRing"),
         ideal: requireRef(definition.ideal, "definition.ideal") };
+    case "finite-group":
+      return parseFiniteGroupDefinition(definition);
     default:
       throw new TypeError(`Unsupported algebra object kind '${String(definition.kind)}'.`);
   }

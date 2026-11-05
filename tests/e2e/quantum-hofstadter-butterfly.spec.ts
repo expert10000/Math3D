@@ -17,12 +17,14 @@ test("verified butterfly reopens after restart with exact flux, energy and sourc
       const page=await app.firstWindow();
       const profile=page.getByTestId("hofstadter-butterfly-profile");
       await expect(profile).toContainText("verified flux sweep");
+      await expect(page.getByTestId("hofstadter-linked-sweep")).toContainText("verified samples shown");
       await expect(profile).toContainText(producer.points[1].resultSha256);
       await page.getByRole("button",{name:"Inspect first sample of flux-1"}).click();
       const sample=page.getByTestId("quantum-scalar-selection");
       await expect(sample).toContainText(`Value: ${producer.points[1].energies[0][0].toPrecision(10)} hopping energy`);
       await expect(sample).toContainText("flux p/q: 0.25000000 flux quanta per plaquette");
       await expect(page.getByTestId("hofstadter-butterfly-selection")).toContainText(producer.points[1].runId);
+      await expect(page.getByRole("button",{name:"Open selected flux run in Theory Lab"})).toBeVisible();
     }finally{await app.close();}
   }}finally{if(!root.startsWith(resolve(tmpdir())+sep)||!root.includes("m3d-hof-butterfly-"))throw new Error("Unsafe cleanup");await rm(root,{recursive:true,force:true});}
 });

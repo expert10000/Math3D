@@ -13,6 +13,8 @@ export type SageOperation =
   | "sage.polynomial.roots_exact"
   | "sage.polynomial.factor"
   | "sage.polynomial.dossier"
+  | "sage.galois.analyze"
+  | "sage.group.dossier"
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
@@ -31,6 +33,8 @@ export type SageOperation =
 
 export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.integer_homology" | "sage.complex.analyze" |
   "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
+  "sage.galois.analyze" |
+  "sage.group.dossier" |
   "sage.numberField.elementDossier" | "sage.numberField.primeDecomposition" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" |
   "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension" |
@@ -85,6 +89,8 @@ export const SAGE_SYMBOLIC_OPERATIONS: SageSymbolicOperation[] = [
 export const SAGE_OPERATIONS: SageOperation[] = [
   ...SAGE_SYMBOLIC_OPERATIONS,
   "sage.polynomial.dossier",
+  "sage.galois.analyze",
+  "sage.group.dossier",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.algebra.reconstruct",

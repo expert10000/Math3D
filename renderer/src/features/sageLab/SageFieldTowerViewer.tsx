@@ -1,10 +1,11 @@
 import { buildProjectFieldTower, type AlgebraObjectRef, type Math3DProject } from "@math3d/core";
 
-type Props = { project: Math3DProject; selected: AlgebraObjectRef | null; onSelect: (ref: AlgebraObjectRef) => void };
+type Props = { project: Math3DProject; selected: AlgebraObjectRef | null;
+  onSelect: (ref: AlgebraObjectRef) => void; onInspectEvidence: (id: string) => void };
 const key = (ref: AlgebraObjectRef) => `${ref.objectId}@${ref.revision}`;
 
 /** Pinned, accessible field-inclusion diagram; every edge comes from a validated constructor. */
-export default function SageFieldTowerViewer({ project, selected, onSelect }: Props) {
+export default function SageFieldTowerViewer({ project, selected, onSelect, onInspectEvidence }: Props) {
   const tower = buildProjectFieldTower(project);
   if (!tower.edges.length) return null;
   const selectedKey = selected ? key(selected) : null;
@@ -20,7 +21,7 @@ export default function SageFieldTowerViewer({ project, selected, onSelect }: Pr
         return <div key={depth} style={{ display: "grid", justifyItems: "center", gap: 5 }}>
           <div style={{ fontSize: 10, color: "#526477" }}>Absolute degree {depth === 2 ? 4 : depth === 1 ? 2 : 1}</div>
           <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 7 }}>
-            {nodes.map((node) => <button key={key(node.ref)} type="button"
+            {nodes.map((node) => <div key={key(node.ref)} style={{ display: "grid", gap: 4, justifyItems: "center" }}><button type="button"
               data-testid={`field-tower-node-${node.ref.objectId}-${node.ref.revision}`} aria-current={key(node.ref) === selectedKey}
               onClick={() => onSelect(node.ref)}
               style={{ border: key(node.ref) === selectedKey
@@ -28,7 +29,15 @@ export default function SageFieldTowerViewer({ project, selected, onSelect }: Pr
                 color: "#183b70", padding: "6px 10px", minWidth: 88, cursor: "pointer" }}>
               <strong>{node.label}</strong> <span>@{node.ref.revision}</span>
               <div style={{ fontSize: 10 }}>[{node.label}:QQ] = {node.absoluteDegree} · {node.status}</div>
-            </button>)}
+            </button>
+              {(project.algebraEvidence ?? []).filter((item) => key(item.request.target) === key(node.ref)).map((item) =>
+                <button key={item.id} type="button" onClick={() => onInspectEvidence(item.id)}
+                  data-testid="field-tower-evidence" title={`${item.request.operation} · ${item.runtime.backend} · ${item.targetHash}`}
+                  style={{ fontSize: 10, maxWidth: 180, overflowWrap: "anywhere" }}>
+                  Pinned Sage evidence · {item.request.operation.split(".").at(-1)} · {item.runtime.version}
+                  {node.status === "current" ? " · current source" : ` · ${node.status} source`}
+                </button>)}
+            </div>)}
           </div>
           {depth > 0 && <div aria-hidden="true" style={{ fontSize: 20, color: "#4878a8", lineHeight: 1 }}>↓</div>}
         </div>;

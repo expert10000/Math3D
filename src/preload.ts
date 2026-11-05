@@ -7,6 +7,7 @@ import type { BandSample, BandSampleRequest } from "./main/quantumScene/bandSele
 import type { QwzCursorProjection, QwzCursorProjectionRequest } from "./main/quantumScene/cursorProjection";
 import type { ScalarSample, ScalarSampleRequest } from "./main/quantumScene/scalarSelection";
 import type { StudySourceRunRequest } from "./main/quantumScene/studySourceRun";
+import type { FluxSourceRunRequest } from "./main/quantumScene/fluxSourceRun";
 import type { QuantumSceneExampleSummary } from "./main/quantumScene/examples";
 import type { ScientificSceneOpenResponse, ScientificGraphDatasetOpenResponse, ScientificGraphReferenceOpenResponse, ScientificGraphRelinkPickResponse, Graph2DFieldLocator,
   PythonPublisherPrepareResponse } from "./main/ipc/scientificSceneIpc";
@@ -580,6 +581,9 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
   reopenRecent: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:reopenRecent"),
   consumeLaunch: (): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:consumeLaunch"),
   openReference: (reference: unknown): Promise<QuantumSceneOpenResponse> => ipcRenderer.invoke("quantumScenes:openReference", reference),
+  loadStreamLevel: (fingerprint: string, level: number): Promise<QuantumSceneOpenResponse> =>
+    ipcRenderer.invoke("quantumScenes:loadStreamLevel", fingerprint, level),
+  cancelStreamLevel: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:cancelStreamLevel", fingerprint),
   verifyActive: (fingerprint: string): Promise<boolean> => ipcRenderer.invoke("quantumScenes:verifyActive", fingerprint),
   bandSample: (request: BandSampleRequest): Promise<BandSample> => ipcRenderer.invoke("quantumScenes:bandSample", request),
   scalarSample: (request: ScalarSampleRequest): Promise<ScalarSample> => ipcRenderer.invoke("quantumScenes:scalarSample", request),
@@ -607,6 +611,10 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     { ok: true; canceled: false; runId: string; resultSha256: string } |
     { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
     ipcRenderer.invoke("quantumScenes:openStudySourceRun", request),
+  openFluxSourceRun: (request: FluxSourceRunRequest): Promise<
+    { ok: true; canceled: false; runId: string; resultSha256: string } |
+    { ok: false; canceled: true } | { ok: false; canceled: false; error: string }> =>
+    ipcRenderer.invoke("quantumScenes:openFluxSourceRun", request),
 }));
 
 contextBridge.exposeInMainWorld("scientificScenes", Object.freeze({

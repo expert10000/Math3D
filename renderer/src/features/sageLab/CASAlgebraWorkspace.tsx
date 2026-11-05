@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { analyzeBiquadraticExtensionFromDefinition, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness,
+import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
+import type { SageGaloisResult } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
+import SageGaloisViewer from "./SageGaloisViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
+import SageFiniteGroupBuilder from "./SageFiniteGroupBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
@@ -46,7 +49,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
-  const [builder, setBuilder] = useState<"ring" | "ideal" | null>(null);
+  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | null>(null);
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
 
@@ -96,7 +99,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         ? selectedStructure(project, chosen.record.definition.ambientRing)?.record : null;
   const idealParent = chosen?.record.definition.kind === "quotient-ring"
     ? selectedStructure(project, chosen.record.definition.ideal)?.record : null;
-  const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring"
+  const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring" &&
+    chosen.record.kind !== "finite-group"
     ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
@@ -105,6 +109,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <div style={{ display: "flex", gap: 6 }}>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ring")}>+ New structure</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ideal")}>+ New ideal</button>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("group")}>+ New group</button>
       </div>
     </div>
     {!project && <div role="status" style={{ fontSize: 12 }}>Open or create a Project to save algebra structures.
@@ -124,12 +129,14 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           </button>;
         }) : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>No structures in this Project yet.</div>}
     </div>}
-    {project && <SageFieldTowerViewer project={project} selected={selection} onSelect={select} />}
+    {project && <SageFieldTowerViewer project={project} selected={selection} onSelect={select} onInspectEvidence={inspectEvidence} />}
   </div>;
 
   const dossier = builder === "ring" && project ? <SageRingFieldBuilder key={project.identity.id} project={project}
     onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : builder === "ideal" && project ? <SageIdealBuilder key={project.identity.id} project={project}
+      onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : builder === "group" && project ? <SageFiniteGroupBuilder key={project.identity.id} project={project}
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : chosen && project ? <div data-testid="cas-selected-structure" style={{ display: "grid", gap: 14 }}>
     <div><div style={{ fontSize: 11, color: "#64748b" }}>Structure dossier</div>
@@ -142,7 +149,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       </select>
     </label>
     <dl className="sage-structure-facts">
-      <dt>Kind</dt><dd>{chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
+      <dt>Kind</dt><dd>{chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
         ? "Quotient ring" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
       <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
@@ -158,6 +165,18 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       {chosen.record.definition.kind === "modular-ring" && <><dt>Modulus</dt><dd>{chosen.record.definition.modulus}</dd></>}
       {chosen.record.definition.kind === "finite-field" && <><dt>Degree</dt><dd>{chosen.record.definition.degree}</dd>
         <dt>Generator</dt><dd>{chosen.record.definition.generator}</dd><dt>Construction</dt><dd>Canonical Sage finite field</dd></>}
+      {chosen.record.definition.kind === "finite-group" && (() => {
+        const facts = analyzeFiniteGroup(chosen.record.definition);
+        return <><dt>Order</dt><dd>{facts.order}</dd><dt>Elements of order 2</dt><dd>{facts.involutionCount}</dd>
+          <dt>Representation</dt><dd>{facts.representation}</dd>
+          <dt>Presentation</dt><dd>{facts.presentation}</dd>
+          <dt>Generators</dt><dd>{facts.generatorOrders.map((item) => `${item.name}: order ${item.order}`).join("; ")}</dd>
+          <dt>Checked relations</dt><dd>{facts.checkedRelations.join("; ") || "None"}</dd>
+          {chosen.record.definition.representation === "permutation" && <><dt>Permutation degree</dt><dd>{chosen.record.definition.degree}</dd>
+            <dt>Generator images</dt><dd>{chosen.record.definition.generators.map((item) => `${item.name}: [${item.images.join(", ")}]`).join("; ")}</dd></>}
+          {chosen.record.definition.representation === "abelian" && <><dt>Invariant factors</dt><dd>{chosen.record.definition.invariantFactors.join(" | ")}</dd></>}
+        </>;
+      })()}
       {chosen.record.definition.kind === "number-field" && (() => {
         const facts = analyzeQuadraticNumberField(chosen.record.definition.definingPolynomial,
           chosen.record.definition.generator);
@@ -210,6 +229,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Defining coefficients</dt><dd>{chosen.record.definition.definingPolynomial.join(", ")}</dd></>}
     {chosen.record.definition.kind === "field-extension" && <><dt>Base field</dt><dd>{parent?.label}@{parent?.revision}</dd>
       <dt>Adjoined radicand</dt><dd>{chosen.record.definition.radicand}</dd></>}
+    {chosen.record.definition.kind === "finite-group" && <><dt>Exact group order</dt><dd>{analyzeFiniteGroup(chosen.record.definition).order}</dd>
+      <dt>Representation</dt><dd>{chosen.record.definition.representation}</dd></>}
     <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
     {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}
@@ -226,7 +247,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       explorer, dossier, inspector,
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
-        result: <SageAlgebraEvidenceInspector model={evidenceModel} section="result" />,
+        result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />
+          {selectedEvidence.request.operation === "sage.galois.analyze" &&
+            <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput,
+import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput, buildSageGaloisInput,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
@@ -23,6 +23,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.algebra.inspectDomains",
   "sage.numberField.elementDossier", "sage.numberField.primeDecomposition",
   "sage.polynomial.dossier",
+  "sage.galois.analyze",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
@@ -53,11 +54,25 @@ const numberFieldParams = (operation: "sage.numberField.elementDossier" | "sage.
   return buildSageNumberFieldInput(project, { objectId: k.id, revision: 1 }, operation,
     operation === "sage.numberField.elementDossier" ? ["1", "1"] : 5) as unknown as Record<string, unknown>;
 };
+const galoisParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-d06-broker" });
+  const q = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "Q"),
+    label: "Q", revision: 1, definition: { kind: "rational-field" } });
+  project = upsertMath3DProjectAlgebraObject(project, q);
+  const ring = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "R"),
+    label: "R", revision: 1, definition: { kind: "polynomial-ring",
+      coefficientDomain: { objectId: q.id, revision: 1 }, variables: ["x"], monomialOrder: "lex" } });
+  project = upsertMath3DProjectAlgebraObject(project, ring);
+  return buildSageGaloisInput(project, { objectId: ring.id, revision: 1 }, "x^4-2") as unknown as Record<string, unknown>;
+};
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
   operation === "sage.algebra.reconstruct" ? algebraParams()
     : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
     : operation === "sage.numberField.elementDossier" || operation === "sage.numberField.primeDecomposition"
       ? numberFieldParams(operation)
+    : operation === "sage.galois.analyze" ? galoisParams()
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
       matrix: [["1", "2"], ["2", "4"]] }
     : operation === "sage.matrix.integer_forms" ? { format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,

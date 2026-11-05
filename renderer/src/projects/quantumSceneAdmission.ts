@@ -25,25 +25,29 @@ export const quantumSceneDocumentFromVerifiedOpen = (opened: Extract<QuantumScen
   return createQuantumSceneDocument(source, opened.reference.directory, scene.title);
 };
 
-/** SSR-compatible hydrogen grid, still backed by the verified .qscene reader. */
+/** A single verified 3D grid becomes an independent, source-backed Field Explorer document. */
 export const quantumFieldDocumentFromVerifiedOpen = (opened: Extract<QuantumSceneOpenResponse, { ok: true }>): QuantumFieldDocument => {
+  if (opened.stream && opened.stream.level !== 0)
+    throw new TypeError("A full stream level cannot be pinned as the preview-level Project source.");
   const sceneDocument = quantumSceneDocumentFromVerifiedOpen(opened);
   const scene = (opened.document.extensions[sceneDocument.source.sceneSchema] as { scene?: {
-    fields?: { id: string; label: string; kind: "complex-field"; real: string; imaginary: string;
+    fields?: { id: string; label: string; kind: "scalar-field" | "complex-field"; real: string; imaginary?: string;
       grid: { shape: [number, number, number]; origin: [number, number, number]; spacing: [number, number, number]; order: string } }[];
     objects: unknown[]; datasets: unknown[]; coordinates: { axes: [string, string, string]; units: [string, string, string] };
   } })?.scene;
   const field = scene?.fields?.[0];
-  if (sceneDocument.source.sceneSchema !== "quantum-scene/v1" || scene?.objects.length !== 0 ||
-      scene?.datasets.length !== 2 || scene.fields?.length !== 1 || field?.kind !== "complex-field" ||
+  if (scene?.objects.length !== 0 || scene?.datasets.length !== (field?.kind === "complex-field" ? 2 : 1) ||
+      scene.fields?.length !== 1 || !field || !["scalar-field", "complex-field"].includes(field.kind) ||
       field.grid.order !== "xyz-z-fastest" || scene.coordinates.axes.join(",") !== "x,y,z")
-    throw new TypeError("Only a single regular hydrogen complex field has an approved SSR mapping.");
+    throw new TypeError("Only one regular 3D scalar or complex field has an approved Field Explorer mapping.");
   const real = sceneDocument.source.datasets.find(dataset => dataset.id === field.real);
-  if (!real || !sceneDocument.source.datasets.some(dataset => dataset.id === field.imaginary && dataset.unit === real.unit))
-    throw new TypeError("Verified hydrogen components or units are unavailable.");
+  if (!real || field.kind === "complex-field" && !sceneDocument.source.datasets.some(dataset =>
+    dataset.id === field.imaginary && dataset.unit === real.unit))
+    throw new TypeError("Verified field components or units are unavailable.");
   return createQuantumFieldDocument({ scene: sceneDocument.source,
     field: { id: field.id, label: field.label, kind: field.kind, real: field.real,
-      imaginary: field.imaginary, shape: field.grid.shape, origin: field.grid.origin,
+      ...(field.kind === "complex-field" ? { imaginary: field.imaginary! } : {}),
+      shape: field.grid.shape, origin: field.grid.origin,
       spacing: field.grid.spacing, amplitudeUnit: real.unit },
     mapping: { schema: "scientific-scene/v1", coordinateSystemId: "field-grid", order: "last-axis-fastest",
       axes: scene.coordinates.axes, units: scene.coordinates.units } }, opened.reference.directory, field.label);

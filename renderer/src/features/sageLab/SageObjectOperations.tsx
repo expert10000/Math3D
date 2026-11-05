@@ -14,6 +14,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   budgetProfile: SageIdealBudgetProfile):
   AlgebraOperationArguments[AlgebraOperationId] => {
   if (id === "sage.algebra.reconstruct") return {};
+  if (id === "sage.group.dossier") return {};
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
       id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
@@ -127,7 +128,9 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       <button type="button" disabled={!item.readyBackend || running} title={item.reason ?? item.runtimeReason ?? undefined}
         aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id);
           setInput(item.definition.id === "sage.numberField.elementDossier" ? "1, 1"
-            : item.definition.id === "sage.numberField.primeDecomposition" ? "5" : "");
+            : item.definition.id === "sage.numberField.primeDecomposition" ? "5"
+              : item.definition.id === "sage.galois.analyze" && targetRecord?.definition.kind === "polynomial-ring"
+                ? `${targetRecord.definition.variables[0]}^4-2` : "");
           setBudgetProfile("standard"); setExpandedAcknowledged(false); setMessage(""); }}
         style={{ textAlign: "left", fontWeight: 600 }}>{item.definition.label}</button>
       <span style={{ color: item.readyBackend ? "#16703b" : "#9a3412", fontSize: 11 }}>
@@ -156,7 +159,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
         <select style={field} value={other?.id ?? ""} onChange={(event) => setOtherId(event.target.value)}>
           {otherOptions.map((item) => <option key={item.id} value={item.id}>{item.record.label}@{item.record.revision}</option>)}
         </select></label>}
-      {selected !== "sage.algebra.reconstruct" && selected !== "sage.algebra.inspectDomains" &&
+      {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.algebra.inspectDomains" &&
         selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
         selected !== "sage.ideal.syzygies" && selected !== "sage.ideal.hilbertSeries" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
@@ -165,6 +168,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
           selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :
           selected === "sage.numberField.primeDecomposition" ? "Rational prime p (2–97)" :
+          selected === "sage.galois.analyze" ? "Monic irreducible QQ polynomial (degree 2–4; coefficients ≤ 100)" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}
           {selected?.startsWith("sage.matrix.") || selected === "sage.groebner.compute" ?

@@ -1,4 +1,4 @@
-import { createMixedWorkspaceDocument, createQuantumStudyDocument, linkQuantumSceneDocuments, replaceMath3DProjectWorkspace,
+import { createMixedWorkspaceDocument, createQuantumStudyDocument, normalizeQuantumStudyDocument, linkQuantumSceneDocuments, replaceMath3DProjectWorkspace,
   upsertMath3DProjectQuantumScene, type Math3DProject, type ProjectQuantumSceneReference,
   type QuantumSceneDocument } from "@math3d/core";
 
@@ -33,10 +33,16 @@ export async function admitVerifiedQwzStudy(base: Math3DProject, handoff: Verifi
   const roles = handoff.roles ?? (model === "qwz" ? ["curvature", "bands"] : ["bands", "strip"]);
   if (roles.length !== documents.length || new Set(roles).size !== roles.length)
     throw new TypeError("Study panel roles are invalid.");
-  const study = createQuantumStudyDocument(handoff.title ?? `${model} study · ${handoff.runId}`,
-    { model, runId: handoff.runId, resultSha256: handoff.resultSha256 }, documents.map((document, index) => ({
-      role: roles[index], sceneFingerprint: document.source.sceneFingerprint,
-      selectedObjectId: null, sampleIndex: null })));
+  const templateId = model === "qwz" && roles[0] === "curvature" && roles[1] === "bands" ? "qwz" :
+    model === "hofstadter" && roles[0] === "bands" && roles[1] === "strip" ? "hofstadter" : undefined;
+  const title = handoff.title ?? `${model} study · ${handoff.runId}`;
+  const source = { model, runId: handoff.runId, resultSha256: handoff.resultSha256 };
+  const panels = documents.map((document, index) => ({
+    role: roles[index], sceneFingerprint: document.source.sceneFingerprint,
+    selectedObjectId: null, sampleIndex: null }));
+  const templated = createQuantumStudyDocument(title, source, panels, templateId);
+  const study = templateId && normalizeQuantumStudyDocument(templated, documents).ok ? templated :
+    createQuantumStudyDocument(title, source, panels);
   const workspace = createMixedWorkspaceDocument({ ...next.workspace,
     quantumStudies: [...(next.workspace.quantumStudies ?? []).filter(item => item.id !== study.id), study],
     entries: staged.map(entry => entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document"

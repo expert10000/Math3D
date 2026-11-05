@@ -524,6 +524,8 @@ declare global {
     | "sage.polynomial.roots_exact"
     | "sage.polynomial.factor"
     | "sage.polynomial.dossier"
+    | "sage.galois.analyze"
+    | "sage.group.dossier"
     | "sage.groebner.compute"
     | "sage.ideal.groebner"
     | "sage.ideal.eliminate"
@@ -745,6 +747,8 @@ declare global {
       reopenRecent: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       consumeLaunch: () => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
       openReference: (reference: unknown) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      loadStreamLevel: (fingerprint: string, level: number) => Promise<import("./components/QuantumScenePreview").QuantumSceneOpenResponse>;
+      cancelStreamLevel: (fingerprint: string) => Promise<boolean>;
       verifyActive: (fingerprint: string) => Promise<boolean>;
       bandSample: (request: { fingerprint: string; objectId: string; sampleIndex: number }) => Promise<{
         objectId: string; bandIndex: number; bandId: string; bandLabel: string; sampleIndex: number; sampleId: string;
@@ -790,6 +794,10 @@ declare global {
         { ok: true; canceled: false; runId: string; resultSha256: string } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
       openStudySourceRun: (request: { fingerprint: string; series: "periodic" | "chain"; sampleIndex: number;
+        runId: string; resultSha256: string }) => Promise<
+        { ok: true; canceled: false; runId: string; resultSha256: string } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      openFluxSourceRun: (request: { fingerprint: string; objectId: string; sampleIndex: number;
         runId: string; resultSha256: string }) => Promise<
         { ok: true; canceled: false; runId: string; resultSha256: string } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;

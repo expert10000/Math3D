@@ -837,13 +837,19 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 ### QI-19 — Large data LOD and chunking
 
+**Status (2026-11-05): Partial.** Theory Lab progressively loads a 97³ field fixture with measured buffer bounds. Math3D now independently verifies stream bundles, opens the bounded preview level first, and can load or cancel a fuller verified level. It rejects a changed source revision and enforces per-level and total byte limits. Math3D Project pinning and portable packs for multi-level streams remain open.
+
 **Commit:** `perf(viewer): progressively load and render large scientific fields`
 
 - Chunked fields, preview LOD, bounded memory, verification at transport boundaries.
 
 **Done when:** datasets over the chosen fixture size load progressively without unbounded main-thread memory spikes.
 
+**Implementation note (2026-11-05):** Theory Lab's stream viewer opens a coarse field preview first, then loads verified chunks progressively. The loader yields between chunk batches, enforces a 4 MiB chunk cache and 16 MiB scene ceiling, and reports tracked peak resident buffer bytes. A 97³ field fixture verifies preview size, progressive events, byte equality at full resolution and buffer bounds. Math3D's scene and Study validators now admit up to one million samples; its independent viewer supports both complete verified scene bundles and bounded preview/full stream levels. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
+
 ### QI-20 — Parameter sweeps
+
+**Status (2026-11-05): Complete for the supported QWZ and Hofstadter producers.** QWZ saved phase diagrams pin each cell to a verified run and related scenes. A verified Hofstadter flux sweep has a linked flux–energy plot whose supplied points resolve to exact saved Lab run IDs and result hashes. Navigation re-verifies the source. Other model families need producer-backed adapters.
 
 **Commit:** `feat(science): represent phase diagrams as linked sweep datasets`
 
@@ -851,13 +857,19 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Done when:** selecting a phase-diagram point opens the exact source run and related scenes.
 
+**Implementation note (2026-11-05):** Theory Lab can save a QWZ phase diagram from existing runs across mass and grid resolution. Each heatmap cell pins the run ID, result SHA-256, numerical checks and bands/curvature scene IDs. Selecting a cell re-verifies the source before opening its run or related scenes. Empty parameter combinations stay visibly unresolved. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
+
 ### QI-21 — Native Math3D promotion commands
+
+**Status (2026-11-05): Complete for supported mapped primitives.** A single verified regular 3D scalar or complex field promotes to a source-backed Field Explorer document, preserving its grid, units, and provenance while editing only its display state. Verified Project scenes can produce native Geometry, Curve, Graph2D, Mesh, and mesh-backed Surface copies with `derived-from` provenance. Unsupported primitives are refused.
 
 **Commit:** `feat(project): promote quantum datasets to native documents`
 
 - Field, Surface, Curve, Geometry, Mesh and Graph conversions with provenance.
 
 **Done when:** promoted documents remain editable where appropriate without overwriting scientific inputs.
+
+**Implementation note (2026-11-05):** Math3D can promote a verified Project quantum scene into native Geometry, Curve, Graph2D, Mesh or mesh-backed Surface copies, preserving a read-only quantum source and a `derived-from` provenance relation. Field promotion already exists in Field Explorer. Mesh byte resources are retained with the Project; graph point rows use its point-table sidecar. See [QI-19–21 implementation details](quantum-qi19-21-large-scene-phase-promotion.md).
 
 ## Wave C — Runtime maturity and advanced visualization (P2)
 
@@ -867,11 +879,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Version-aware capabilities, unavailable-feature explanations and tested fallbacks.
 
+**Implementation note (2026-11-05):** Theory Lab derives operation and engine decisions from its validated worker handshake, checks protocol 1 and worker 0.1.x, explains unavailable operations and suggests available alternative engines without switching jobs silently. The backend panel shows these decisions and the scene formats understood by its viewer. Every worker run/start request enforces the same decision. See [QI-22–24 implementation details](quantum-qi22-24-runtime-capabilities-transports-acceleration.md).
+
 ### QI-23 — WSL, Docker and remote adapters
 
 **Commit:** `feat(runtime): execute scientific jobs through transport adapters`
 
 - Same job semantics, explicit environment identity, secure artifacts and cancellation.
+
+**Implementation note (2026-11-05):** Theory Lab now selects exactly one local, SSH, WSL or Docker worker transport. Each uses the same supervised JSON-RPC job and cancellation path, exposes its target identity, and checks artifact size and SHA-256 before publication. SSH remains authenticated with strict host-key checking. WSL handshake, health and resources passed on the verification host; its Python installation lacks the pinned worker dependencies, and Docker's daemon was unavailable there, so their full job acceptance commands remain to be run in provisioned environments. See [QI-22–24 implementation details](quantum-qi22-24-runtime-capabilities-transports-acceleration.md).
 
 ### QI-24 — GPU/accelerated engines
 
@@ -879,11 +895,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Benchmark correctness before speed; preserve deterministic and tolerance reporting.
 
+**Implementation note (2026-11-05):** The optional Dynamiqs GPU engine now passes an analytic population/norm probe before registration. A fixed GPU-versus-native benchmark reports numerical and repeat-run errors at a declared tolerance, and gives a speed ratio only after those checks pass. The verification host has no Dynamiqs GPU stack, so the actual GPU benchmark reports unavailable. See [QI-22–24 implementation details](quantum-qi22-24-runtime-capabilities-transports-acceleration.md).
+
 ### QI-25 — Notebook/report export
 
 **Commit:** `feat(reports): export reproducible quantum study summaries`
 
 - Link inputs, figures, exact hashes, numerical settings and validation reports.
+
+**Implementation note (2026-11-05):** Theory Lab exports a `.qreport` directory from a reopened verified run: exact input/result and optional artifact bytes, a full-sample SVG figure, numerical settings, source and file hashes, and a validation summary that marks unperformed checks as such. The Markdown report is portable and does not execute notebook code. See [QI-25–27 implementation details](quantum-qi25-27-reports-templates-complex-fields.md).
 
 ## Wave D — Extended integrations and product quality
 
@@ -894,11 +914,15 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - QWZ, SSH, Rice–Mele, Hofstadter and hydrogen templates.
 - Validate layout is separate from scientific source.
 
+**Implementation note (2026-11-05):** Math3D defines QWZ, SSH, Rice–Mele, Hofstadter and hydrogen Study layouts. A template binds only to admitted scene documents from the same run and result hash, and validates the required view roles. Hydrogen uses density and phase panels over one verified complex scene. Template choice, layout and selections remain separate from source datasets; existing Study documents still open. See [QI-25–27 implementation details](quantum-qi25-27-reports-templates-complex-fields.md).
+
 ### QI-27 — Generic complex-field renderer
 
 **Commit:** `feat(field): render amplitude phase and complex-derived observables`
 
 - Phase maps, signed amplitude, nodal surfaces, explicit arbitrary global-phase note.
+
+**Implementation note (2026-11-05):** Theory Lab's verified complex-grid viewer now shows `|ψ|`, `|ψ|²`, signed real/imaginary components, cyclic phase, and separate zero surfaces for the two components. It masks phase near nodes and explains arbitrary global phase. Math3D Field Explorer also adds an independently derived amplitude slice and saves that view choice. See [QI-25–27 implementation details](quantum-qi25-27-reports-templates-complex-fields.md).
 
 ### QI-28 — Advanced volume pipeline
 

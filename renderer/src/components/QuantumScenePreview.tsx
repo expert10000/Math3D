@@ -42,7 +42,8 @@ export type QuantumSceneOpenResponse =
       title: string; geometry: GeometryScene;
       cameras: { position: Vector3; target: Vector3; up: Vector3 }[];
       extensions: Record<string, unknown>;
-    }; remembered: boolean; mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[] }
+    }; remembered: boolean; mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[];
+    stream?: { level: number; levels: { id: string; label: string; bytes: number }[] } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
@@ -67,6 +68,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const fluxPoints = scene.provenance.model === "hofstadter_flux_sweep" ?
+    (document.geometry.points ?? []).flatMap(point => {
+      const id = point.id?.match(/^(flux-\d+):site:(\d+)$/);
+      return id ? [{ objectId: id[1], sampleIndex: Number(id[2]), x: point.x, energy: point.y,
+        color: `#${(point.color ?? 0x79d9c1).toString(16).padStart(6, "0")}` }] : [];
+    }) : [];
+  const [streamBusy, setStreamBusy] = useState(false);
+  const [streamStatus, setStreamStatus] = useState("");
+  useEffect(() => { setStreamBusy(false); setStreamStatus(""); }, [opened.reference.sceneFingerprint, opened.stream?.level]);
   const [timeFrameIndex, setTimeFrameIndex] = useState(0);
   const [timePlaying, setTimePlaying] = useState(false);
   const [timeFrames, setTimeFrames] = useState<Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["timeFrames"]>> | null>(null);
@@ -204,12 +214,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
   const [locating, setLocating] = useState(false);
   const [openingRun, setOpeningRun] = useState(false);
   const [runStatus, setRunStatus] = useState("");
+  const [openingFluxRun, setOpeningFluxRun] = useState(false);
+  const [fluxRunStatus, setFluxRunStatus] = useState("");
   const locateGeneration = useRef(0);
   const runGeneration = useRef(0);
   useEffect(() => {
     locateGeneration.current += 1; setLocateStatus(""); setLocating(false);
     runGeneration.current += 1;
     setOpeningRun(false); setRunStatus("");
+    setOpeningFluxRun(false); setFluxRunStatus("");
   }, [opened.reference.sceneFingerprint]);
   const revealSource = async () => {
     const current = ++locateGeneration.current;
@@ -233,6 +246,21 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     } catch (error) {
       if (runGeneration.current === current) setRunStatus(`Source run unavailable: ${String((error as Error)?.message ?? error)}`);
     } finally { if (runGeneration.current === current) setOpeningRun(false); }
+  };
+  const openSelectedFluxRun = async () => {
+    const sample = pickedScalarSample;
+    if (!sample || sample.fingerprint !== opened.reference.sceneFingerprint || !/^flux-\d+$/.test(sample.objectId)) return;
+    const annotation = scene.annotations.find(item => item.id === `source-${sample.objectId.slice(5)}`);
+    const identity = annotation?.text.match(/ · run ([A-Za-z0-9_-]{1,100}) · SHA-256 ([a-f0-9]{64}) · /);
+    if (!identity) { setFluxRunStatus("Selected flux point has no exact source-run identity."); return; }
+    setOpeningFluxRun(true); setFluxRunStatus("Re-verifying the selected flux run…");
+    try {
+      const result = await window.quantumScenes!.openFluxSourceRun({ fingerprint: opened.reference.sceneFingerprint,
+        objectId: sample.objectId, sampleIndex: sample.sampleIndex, runId: identity[1], resultSha256: identity[2] });
+      setFluxRunStatus(result.ok ? `Theory Lab launch sent for ${result.runId}; Lab verifies its saved result hash before opening the run and related scenes.` :
+        result.canceled ? "Theory Lab selection canceled." : `Flux source unavailable: ${result.error}`);
+    } catch (error) { setFluxRunStatus(`Flux source unavailable: ${String((error as Error).message)}`); }
+    finally { setOpeningFluxRun(false); }
   };
   const camera = document.cameras[0];
   const [pickedBandSample, setPickedBandSample] = useState<PickedBandSample | null>(null);
@@ -545,8 +573,27 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
         <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
-          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · Save a workspace or attach it to a Project to retain this source</div></div>
-          <button type="button" onClick={onClose} data-testid="quantum-scene-close">Close</button>
+          <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · {opened.stream ?
+            `Stream ${opened.stream.level + 1}/${opened.stream.levels.length}: ${opened.stream.levels[opened.stream.level].label}` :
+            "Save a workspace or attach it to a Project to retain this source"}</div>
+            {streamStatus && <small role="status" data-testid="quantum-stream-status">{streamStatus}</small>}</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {opened.stream && opened.stream.level < opened.stream.levels.length - 1 && <button type="button"
+              data-testid="quantum-stream-load-full" disabled={streamBusy} onClick={() => { void (async () => {
+                setStreamBusy(true); setStreamStatus("Loading and verifying the full source level…");
+                try { const result = await window.quantumScenes!.loadStreamLevel(opened.reference.sceneFingerprint,
+                  opened.stream!.levels.length - 1);
+                  if (!result.ok) throw new Error(result.canceled ? "Loading canceled" : result.error);
+                  onOpenRelated?.(result);
+                } catch (error) { setStreamStatus(`Full level unavailable: ${String((error as Error).message)}`); }
+                finally { setStreamBusy(false); }
+              })(); }}>Load full verified level</button>}
+            {streamBusy && <button type="button" data-testid="quantum-stream-cancel" onClick={() => {
+              void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint);
+              setStreamStatus("Canceling full-level load…");
+            }}>Cancel load</button>}
+            <button type="button" onClick={() => { if (streamBusy) void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onClose(); }} data-testid="quantum-scene-close">Close</button>
+          </div>
         </header>
         <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
@@ -594,7 +641,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               {availableView("slice") && <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>}
               {availableView("volume") && <button type="button" onClick={() => setView("volume")} aria-pressed={view === "volume"}>Volume</button>}
               {availableView("surface") && <button type="button" onClick={() => setView("surface")} aria-pressed={view === "surface"}>Density surface</button>}
-              {scene.provenance.model === "hydrogenic" && scene.fields?.length === 1 && <button type="button"
+              {scene.fields?.length === 1 && scene.objects.length === 0 &&
+                scene.datasets.length === (scene.fields[0].kind === "complex-field" ? 2 : 1) && <button type="button"
                 data-testid="quantum-promote-field" disabled={promotingField} onClick={() => { void (async () => { try {
                   setPromotingField(true);
                   const field = await onPromoteField?.();
@@ -690,8 +738,32 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               <h3 style={{margin:0}}>Hofstadter · verified flux sweep</h3>
               <p>Study <code>{scene.provenance.runId}</code> · result SHA-256 <code>{scene.provenance.resultSha256}</code>. Hopping t={scene.provenance.parameters?.hopping}; momentum grid {scene.provenance.parameters?.grid} × {scene.provenance.parameters?.grid}; reduced denominators through {scene.provenance.parameters?.maxDenominator}; filling {scene.provenance.parameters?.occupiedBands}.</p>
               <p>Each colored column is an independent hash-verified periodic Harper run. Teal means a producer-supplied Hall value at a resolved global gap; amber means no conditional Hall value. Click a point or use Inspect first below to read exact flux, energy, sample index and source hash. Source labels use S:Y/N for sampling convergence; gap codes D, C, U mean defined, closed and mesh-unresolved; H is the conditional Hall value in e²/h.</p>
+              {fluxPoints.length > 0 && (() => {
+                const low = Math.min(...fluxPoints.map(point => point.energy));
+                const high = Math.max(...fluxPoints.map(point => point.energy));
+                const stride = Math.max(1, Math.ceil(fluxPoints.length / 1600));
+                return <div data-testid="hofstadter-linked-sweep">
+                  <svg role="img" aria-label="Verified flux versus energy samples" viewBox="0 0 300 150"
+                    style={{ width: "100%", height: 150, background: "#0f172a" }}>
+                    <line x1="20" y1="130" x2="290" y2="130" stroke="#94a3b8" />
+                    <line x1="20" y1="12" x2="20" y2="130" stroke="#94a3b8" />
+                    {fluxPoints.filter((_, index) => index % stride === 0).map(point => <circle
+                      key={`${point.objectId}:${point.sampleIndex}`} cx={20 + 270 * point.x}
+                      cy={130 - 118 * (point.energy - low) / (high - low || 1)} r="2.2" fill={point.color}
+                      role="button" tabIndex={0} aria-label={`Inspect ${point.objectId} sample ${point.sampleIndex}`}
+                      onClick={() => selectScalarSample(point.objectId, point.sampleIndex)}
+                      onKeyDown={event => { if (event.key === "Enter" || event.key === " ") selectScalarSample(point.objectId, point.sampleIndex); }} />)}
+                    <text x="20" y="146" fill="#cbd5e1" fontSize="9">0</text><text x="268" y="146" fill="#cbd5e1" fontSize="9">p/q</text>
+                  </svg>
+                  <small>{Math.ceil(fluxPoints.length / stride)} of {fluxPoints.length} verified samples shown; display thinning does not interpolate. Energy {low.toPrecision(4)}–{high.toPrecision(4)} hopping energy.</small>
+                </div>;
+              })()}
               <div data-testid="hofstadter-butterfly-sources">{scene.annotations.map(note=><p key={note.id}>{note.text}</p>)}</div>
-              {pickedScalarSample?.objectId.startsWith("flux-")&&<p data-testid="hofstadter-butterfly-selection">{scene.annotations.find(note=>note.id===`source-${pickedScalarSample.objectId.slice(5)}`)?.text}</p>}
+              {pickedScalarSample?.fingerprint === opened.reference.sceneFingerprint && pickedScalarSample.objectId.startsWith("flux-") && <div data-testid="hofstadter-butterfly-selection">
+                <p>{scene.annotations.find(note=>note.id===`source-${pickedScalarSample.objectId.slice(5)}`)?.text}</p>
+                <button type="button" disabled={openingFluxRun} onClick={() => { void openSelectedFluxRun(); }}>Open selected flux run in Theory Lab</button>
+                {fluxRunStatus && <p role="status" data-testid="hofstadter-flux-run-status">{fluxRunStatus}</p>}
+              </div>}
               <p>The third coordinate is a display plane. This is an ideal clean-model spectrum and conditional bulk Hall map. No experimental plateau or individual finite-strip edge classification is supplied; Math3D calculates no Harper result.</p>
             </section>}
             {scene.provenance.model==="hofstadter_bulk_edge_study"&&<section data-testid="hofstadter-bulk-edge-profile" style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>

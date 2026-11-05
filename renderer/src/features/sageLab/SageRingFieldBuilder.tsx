@@ -61,6 +61,7 @@ export default function SageRingFieldBuilder({ project, onCreate, onCreated, onC
   const freshness = inspectProjectAlgebraFreshness(project);
   const parentOptions = (project.algebraObjects ?? []).filter((entry) => !entry.archived &&
     entry.revisions.at(-1)?.kind !== "ideal" && entry.revisions.at(-1)?.kind !== "quotient-ring" &&
+    entry.revisions.at(-1)?.kind !== "finite-group" &&
     freshness.find((item) => item.objectId === entry.id)?.status === "fresh")
     .map((entry) => entry.revisions[entry.revisions.length - 1]);
   const parent = parentOptions.find((item) => item.id === parentId);

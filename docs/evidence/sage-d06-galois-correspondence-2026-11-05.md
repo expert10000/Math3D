@@ -1,0 +1,13 @@
+# SAGE-D06 Galois group and subgroup views — 2026-11-05
+
+CAS → Algebra → Operations now offers **Galois group and fixed fields** for a saved, current `QQ[x]` object. The typed request pins the polynomial-ring revision and its exact `QQ` parent. The bounded worker accepts monic irreducible, squarefree integral polynomials of degree 2–4 with coefficients at most 100. It first checks the root-action group order and stops above eight before computing the complete splitting-field correspondence. A group with more than 16 subgroups is rejected with an explicit bound instead of being presented as a complete lattice.
+
+The versioned result records the splitting field and degree, Sage's transitive group ID, exact regular-action permutation elements and generators, solvability, every subgroup's members and normality, and each fixed field's degree, defining polynomial and generator image in the splitting field. The worker checks each embedded generator against its defining polynomial. Before saving evidence, core independently checks permutation identity, closure and generation; the complete subgroup enumeration; subgroup closure and normality; and `[L^H:QQ]=|G|/|H|`. The `D4` label is accepted only with five involutions, two order-four elements and the explicit convention **symmetries of a square, order 8**.
+
+The Inspector displays linked subgroup and intermediate-field Hasse diagrams. Selecting either node highlights the corresponding pair and shows subgroup order, fixed-field degree, normal/Galois status, the degree product, defining polynomial and generator image. Saved evidence remains pinned to the source ring and reopens with the Project.
+
+**Acceptance:** Real local Sage 9.5 computes `x^4−2` as transitive group `4T3`, dihedral order eight, splitting degree eight, ten subgroups and fixed-field degrees `8, 4×5, 2×3, 1`. The exact fixture is checked by core and worker tests, including rejection of reducible, oversized and mismatched inputs and forged permutation/subgroup/degree metadata. A controlled desktop route checks selection, saved evidence, both linked lattices, export and fresh-profile Project reopen. The controlled route is not a live Docker D06 calculation.
+
+The previously open **B08** live comparison was closed by the independent [2026-11-05 runtime record](sage-b08-live-2026-11-05.md): 16/16 Sage 9.5 and 16/16 Docker Sage 10.10 cases, zero differences for the bounded B08 matrix. Docker was not running during this D06 session, so D06 has a real local Sage 9.5 gate and a controlled desktop route; a live Docker D06 parity run remains a separate follow-up.
+
+**Next:** SAGE-E01 finite group objects and operation registry.
