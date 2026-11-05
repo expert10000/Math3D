@@ -7,6 +7,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   upsertMath3DProjectWorkbook, upsertMath3DProjectNote, updateProjectNote,
   relinkMath3DProjectQuantumScene, upsertMath3DProjectQuantumScene, type ProjectQuantumSceneReference,
   linkQuantumSceneDocuments,
+  createQuantumStudyFromTemplate, QUANTUM_STUDY_TEMPLATES, type QuantumStudyTemplateId,
   createDocumentRelation, viewerSourceFromDocument,
   relinkMath3DProjectScientificScene, upsertMath3DProjectScientificScene, type ProjectScientificSceneReference,
   upsertMath3DProjectComposition, upsertMath3DProjectSavedMeshComparison, inspectProjectCompositionAvailability,
@@ -769,6 +770,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setQuantumSceneMessage(`${target} copy staged with exact quantum source relation. Save Project to retain it.`);
     } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
+  };
+  const stageQuantumStudyTemplate = (anchor: QuantumSceneDocument, templateId: QuantumStudyTemplateId) => {
+    const current = projectStateRef.current;
+    if (!current || busy || preview || managed) return;
+    try {
+      const documents = current.workspace.entries.filter(entry => entry.module === "quantum" &&
+        entry.checkpoint.format === "math3d.quantum-scene-document")
+        .map(entry => entry.checkpoint as QuantumSceneDocument);
+      const study = createQuantumStudyFromTemplate(templateId, anchor, documents);
+      const workspace = createMixedWorkspaceDocument({ ...current.workspace,
+        quantumStudies: [...(current.workspace.quantumStudies ?? []).filter(item => item.id !== study.id), study] });
+      const next = replaceMath3DProjectWorkspace(current, workspace);
+      setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
+      setQuantumSceneMessage(`${QUANTUM_STUDY_TEMPLATES[templateId].label} layout staged. Save Project to retain it.`);
+    } catch (error) { setQuantumSceneMessage(`Study template refused: ${String((error as Error).message)}`); }
   };
   const save = async () => {
     if (busy) return; setBusy(true);
@@ -1995,6 +2011,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                     Linked views from the same verified run: {entry.checkpoint.linkedViews.length}</small> : null)}
                 <button type="button" data-testid={`project-open-quantum-scene-${item.sceneFingerprint}`} disabled={busy || !onOpenQuantumScene}
                   onClick={() => { void openLinkedQuantumScene(item); }}>Verify and view scene</button>
+                {project.workspace.entries.filter(entry => entry.module === "quantum" &&
+                  entry.checkpoint.format === "math3d.quantum-scene-document" &&
+                  entry.checkpoint.source.sceneFingerprint === item.sceneFingerprint).map(entry => {
+                    const document = entry.checkpoint as QuantumSceneDocument;
+                    const templateId = (Object.entries(QUANTUM_STUDY_TEMPLATES) as [QuantumStudyTemplateId, typeof QUANTUM_STUDY_TEMPLATES[QuantumStudyTemplateId]][])
+                      .find(([, template]) => template.model === document.source.provenance.model)?.[0];
+                    return templateId ? <button type="button" key="template" data-testid={`quantum-study-template-${item.sceneFingerprint}`}
+                      disabled={busy || preview || !!managed} onClick={() => stageQuantumStudyTemplate(document, templateId)}>
+                      Build {QUANTUM_STUDY_TEMPLATES[templateId].label} Study</button> : null;
+                  })}
                 <div aria-label="Promote verified quantum scene to native Project documents" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                   {(["geometry", "curve", "graph2d", "mesh", "surface"] as const).map(target =>
                     <button type="button" key={target} data-testid={`quantum-promote-${target}-${item.sceneFingerprint}`}

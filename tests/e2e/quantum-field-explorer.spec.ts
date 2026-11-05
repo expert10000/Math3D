@@ -25,6 +25,9 @@ test("hydrogen field promotes to a source-backed Explorer document with exact sp
     await expect(page.getByTestId("quantum-field-sample")).toContainText("Grid [");
     await page.getByLabel("Quantum slice normal").selectOption("0");
     await expect(page.getByTestId("quantum-spatial-cursor-status")).toContainText("exact verified field sample");
+    await page.getByLabel("Quantum field quantity").selectOption("amplitude");
+    await expect(page.getByTestId("quantum-field-legend")).toBeVisible();
+    await expect(page.getByText("Absolute phase and signed components depend on arbitrary global phase.", { exact: false })).toBeVisible();
     await page.getByLabel("Quantum field quantity").selectOption("phase");
     await expect(page.getByTestId("quantum-field-legend")).toContainText("y → · z ↑");
     await page.getByRole("button", { name: "Density surface" }).click();

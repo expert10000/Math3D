@@ -22,7 +22,7 @@ export type QuantumFieldDocument = Readonly<{
   metadata: Readonly<{ title: string }>;
   derivations?: readonly QuantumDerivationRecord[];
   view: Readonly<{ normalAxis: 0 | 1 | 2; fixedIndex: number;
-    quantity: "real" | "imaginary" | "density" | "phase" }>;
+    quantity: "real" | "imaginary" | "density" | "amplitude" | "phase" }>;
 }>;
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -68,7 +68,7 @@ export function normalizeQuantumFieldDocument(value: unknown): ValidationResult<
       return { ok: false, errors: ["Quantum field source datasets changed."] };
     if (![0, 1, 2].includes(value.view.normalAxis as number) || !Number.isSafeInteger(value.view.fixedIndex) ||
         Number(value.view.fixedIndex) < 0 || Number(value.view.fixedIndex) >= field.shape[value.view.normalAxis as 0 | 1 | 2] ||
-        !["real", "imaginary", "density", "phase"].includes(String(value.view.quantity)) ||
+        !["real", "imaginary", "density", "amplitude", "phase"].includes(String(value.view.quantity)) ||
         field.kind === "scalar-field" && value.view.quantity !== "real")
       return { ok: false, errors: ["Invalid quantum field display state."] };
     if (value.identity.id !== createStableDocumentId("quantum-field", { sceneFingerprint: source.scene.sceneFingerprint, fieldId: field.id }) ||

@@ -83,6 +83,10 @@ describe("SSR-02 verified quantum field compatibility", () => {
     expect(field.source.field.shape).toEqual([21, 21, 21]);
     const exact = inspectVerifiedFieldSample(imported, { fingerprint, fieldId: "wavefunction", axis: 2,
       index: 10, u: 10, v: 11, quantity: "density" });
+    const amplitude = inspectVerifiedFieldSample(imported, { fingerprint, fieldId: "wavefunction", axis: 2,
+      index: 10, u: 10, v: 11, quantity: "amplitude" });
+    expect(amplitude.value).toBeCloseTo(Math.sqrt(exact.value!));
+    expect(normalizeQuantumFieldDocument({ ...field, view: { ...field.view, quantity: "amplitude" } }).ok).toBe(true);
     expect(exact.grid).toEqual([10, 11, 10]);
     expect(exact.position[0]).toBeCloseTo(0);
     expect(exact.position[1]).toBeCloseTo(1.6);
