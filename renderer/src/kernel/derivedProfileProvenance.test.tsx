@@ -84,7 +84,7 @@ describe("GF-05 shared derived profile provenance", () => {
     expect(record).not.toHaveProperty("coverage");
   });
 
-  it("shows coverage only from a matching verified scientific transfer", () => {
+  it("shows coverage only from a matching verified scientific transfer", async () => {
     const directory = new URL("../../../tests/fixtures/scientific-scene/vortex-volume.sscene/", import.meta.url);
     const manifestJson = readFileSync(new URL("manifest.json", directory), "utf8");
     const fingerprint = sha256Checksum(new TextEncoder().encode(manifestJson)).slice(7);
@@ -128,15 +128,21 @@ describe("GF-05 shared derived profile provenance", () => {
     const slice = sampleVectorField3DSlice(source, 2, 3, { manifestJson, fingerprint, volumes });
     const generation = { documentId: source.identity.id, revision: source.identity.revision,
       structuralHash: source.identity.structuralHash, generation: source.identity.revision };
-    const record = buildDerivedProfileProvenance(project, parentId, { verifySource: () => true,
+    const job = createDerivedFieldProfileJob({ project: () => project, verifySource: () => true,
+      loadBundle: async () => ({ manifestJson, fingerprint, volumes }) });
+    const outcome = await job.submit(parentId).promise;
+    expect(outcome.publication).toBe("published");
+    const result = outcome.result!;
+    const record = buildDerivedProfileProvenance(project, parentId, { verifySource: () => true, result,
       transfer: { source: generation, components: slice.verifiedSamples! } });
     expect(record.coverage).toHaveLength(3);
     expect(renderToStaticMarkup(<DerivedProfileProvenanceCard view="graphs" provenance={record} />))
       .toContain("Verified transfer coverage");
-    expect(buildDerivedProfileProvenance(project, parentId, { verifySource: () => false,
+    expect(buildDerivedProfileProvenance(project, parentId, { verifySource: () => false, result,
       transfer: { source: generation, components: slice.verifiedSamples! } })).not.toHaveProperty("coverage");
-    expect(buildDerivedProfileProvenance(project, parentId, { verifySource: () => true,
+    expect(buildDerivedProfileProvenance(project, parentId, { verifySource: () => true, result,
       transfer: { source: { ...generation, generation: generation.generation + 1 },
         components: slice.verifiedSamples! } })).not.toHaveProperty("coverage");
+    job.dispose();
   });
 });

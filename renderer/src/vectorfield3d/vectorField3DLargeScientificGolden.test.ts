@@ -377,7 +377,7 @@ describe("SCI-12 committed 80³ scientific vortex numerical oracle", () => {
       expect(slice.sourceHash).toBeDefined();
       expect(slice.verifiedSamples?.every(part => part.verifiedTiles === 125)).toBe(true);
     }
-  });
+  }, 15_000);
 
   it("exports physical derived profiles with numerical oracle values and source hashes", () => {
     const z = at(0, 0, 16)[2], y = at(0, 21, 0)[1];

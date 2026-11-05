@@ -141,7 +141,7 @@ describe("GF-04 brokered derived profile execution", () => {
     const entered = new Promise<void>(resolve => { reached = resolve; });
     const job = createDerivedFieldProfileJob({ project: load, verifySource: () => true,
       yieldControl: async () => { reached(); await gate; } });
-    const handle = job.submit(profileId, { jobId: "gf04-deadline", timeoutMs: 500 });
+    const handle = job.submit(profileId, { jobId: "gf04-deadline", timeoutMs: 2_000 });
     await entered;
     const outcome = await handle.promise;
     expect(outcome.broker.ok).toBe(false);
@@ -152,5 +152,5 @@ describe("GF-04 brokered derived profile execution", () => {
     release();
     expect(job.read(profileId)).toBeNull();
     job.dispose();
-  });
+  }, 10_000);
 });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 
-const fixture = (name: string) => JSON.parse(readFileSync(resolve("tests/fixtures/quantum-scene", name, "scene.json"), "utf8"));
+const fixture = (name: string) => JSON.parse(readFileSync(
+  new URL(`../../../tests/fixtures/quantum-scene/${name}/scene.json`, import.meta.url), "utf8"));
 
 describe("source-linked topology overlays", () => {
   it("uses only supplied BZ and path objects and hides selected source geometry", () => {
