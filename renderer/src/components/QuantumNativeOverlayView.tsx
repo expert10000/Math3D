@@ -49,8 +49,10 @@ export function QuantumNativeOverlayView({ project, reference, readResource, onC
       const qualification = qualifyQuantumNativeOverlay(coordinates, native.coordinates, frame);
       if (!qualification.ok) throw new TypeError(qualification.reason);
       const quantum = buildGeometryRenderData(opened.document.geometry, { label: opened.document.title });
-      const count = (quantum.mesh?.positions.length ?? 0) / 3 + native.meshes.reduce((sum, mesh) => sum + mesh.positions.length / 3, 0);
-      if (count > 500_000) throw new TypeError("Overlay exceeds the 500,000-vertex preview limit.");
+      const count = (quantum.mesh?.positions.length ?? 0) / 3 + native.meshes.reduce((sum, mesh) => sum + mesh.positions.length / 3, 0) +
+        [...quantum.overlayPointSets, ...native.points].reduce((sum, group) => sum + group.points.length, 0) +
+        [...quantum.overlayPolylineGroups, ...native.lines].reduce((sum, group) => sum + group.lines.length * 2, 0);
+      if (count > 500_000) throw new TypeError("Overlay exceeds the 500,000-point preview limit.");
       const meshes = [
         ...(visible[0] && quantum.mesh ? [{ ...clipOverlayMesh(quantum.mesh, minimum, maximum), id: `quantum:${reference.sceneFingerprint}`, color: 0x3d86d1, opacity: opacity[0] }] : []),
         ...(visible[1] ? native.meshes.map(mesh => ({ ...clipOverlayMesh(mesh, minimum, maximum), opacity: opacity[1] })) : []),
