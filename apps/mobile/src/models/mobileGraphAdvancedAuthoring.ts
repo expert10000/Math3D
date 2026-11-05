@@ -2,7 +2,8 @@ import { GRAPH2D_OBJECT_KINDS, Graph2DPointTableStore, graph2DPointDomain, previ
   type Graph2DAuthoringAction, type Graph2DDocument, type Graph2DObjectKind, type Graph2DPointTableReference } from "@math3d/core";
 import { mobileGraphFunctionDraft, type MobileGraphFunctionDraft } from "./mobileGraphAuthoring";
 
-export const MOBILE_GRAPH_KINDS = GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "trajectory");
+export const MOBILE_GRAPH_KINDS = GRAPH2D_OBJECT_KINDS.filter(kind =>
+  kind !== "trajectory" && kind !== "derivative-curve");
 type Piece = { expression: string; min: string; max: string; includeMin: boolean; includeMax: boolean };
 type Clause = { expression: string; comparator: "<" | "<=" | ">" | ">=" };
 export type MobileGraphAdvancedEditor = { objectId: string | null; kind: Graph2DObjectKind;
@@ -12,6 +13,8 @@ export type MobileGraphAdvancedEditor = { objectId: string | null; kind: Graph2D
 export const mobileGraphKindEditor = (document: Graph2DDocument, kind: Graph2DObjectKind, objectId: string | null = null,
   sourceFieldId = ""): MobileGraphAdvancedEditor => {
   const object = document.source.objects.find((entry) => entry.id === objectId);
+  if (kind === "derivative-curve")
+    throw new TypeError("Edit the source function on desktop to update this saved derivative.");
   const style = document.display.objects.find((entry) => entry.objectId === objectId);
   if (objectId && (!object || object.kind !== kind || !style)) throw new TypeError("Unsupported graph editor.");
   const draft: MobileGraphAdvancedEditor["draft"] = { ...mobileGraphFunctionDraft(document, null), label: `${kind} ${document.source.objects.length + 1}`,
@@ -84,4 +87,5 @@ export const mobileGraphKindAction = (editor: MobileGraphAdvancedEditor, tables:
       return action("-point-series", { ...base, domain: graph2DPointDomain(preview.rows), table: tables.publish(preview.rows), mode: d.mode });
     }
   }
+  throw new TypeError("This saved Graph object has no mobile authoring action.");
 };

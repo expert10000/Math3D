@@ -1,5 +1,6 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNoteAnchor, isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
+import { projectVectorField3DTopologyStatus, reviewProjectDerivedField } from "@math3d/core";
 import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 import { mobileProjectRefreshOptions } from "./mobileProjectRefresh";
@@ -76,10 +77,46 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     project.workspace.entries.find(entry => entry.expected.id === id)?.replay?.payload as import("@math3d/kernel").CurveReplayBundle | undefined);
   const surfaceReason = (id: string) => mobileSurfaceUnavailableReason(resolved.get(id)! as import("@math3d/core").SurfaceDocument,
     project.workspace.entries.find(entry => entry.expected.id === id)?.replay?.payload as import("@math3d/kernel").SurfaceReplayBundle | undefined);
+  const tensorOperations = new Set(["q-criterion", "lambda2", "swirling-strength"]);
+  const scientificContracts = [
+    ...(project.workspace.derivedFields ?? []).filter(item => tensorOperations.has(item.operation.kind))
+      .map(item => ({ id: item.identity.id, title: item.metadata.title,
+        kind: `Derived ${item.operation.kind}`, sourceId: item.input.documentId,
+        status: reviewProjectDerivedField(project, item.identity.id,
+          source => source.source.field.kind === "expressions", resolved).status,
+        detail: `Operation ${item.operation.kind}; unit ${item.output.unit}; values are not evaluated on mobile.` })),
+    ...(project.workspace.timeSources ?? []).map(item => ({ id: item.identity.id,
+      title: "Pinned time source", kind: "Moving-surface frame source",
+      sourceId: item.source.frames[0]!.documentId, status: "unverified",
+      detail: `${item.source.frames.length} pinned frames; external frame bytes are not verified on mobile.` })),
+    ...[...resolved.values()].filter((item): item is import("@math3d/core").Graph2DDocument =>
+      item.format === "math3d.graph2d-document").flatMap(graph => graph.source.objects.flatMap(item =>
+      item.kind === "derivative-curve" ? [{ id: item.id, title: item.label,
+        kind: "Saved derivative curve", sourceId: item.sourceObjectId,
+        status: "recipe retained", detail: `Order ${item.order}; ${item.method === "finite-difference" ?
+          "approximate finite difference" : "symbolic rules"}; fallback ${item.fallback}.` }] :
+      item.kind === "point-series" && item.poincareOrigin ? [{ id: item.id,
+        title: item.label, kind: "Poincaré Graph row",
+        sourceId: item.poincareOrigin.sourceDocumentId, status: "unverified",
+        detail: "Crossing values withheld until the Project source and point table are verified on desktop." }] : [])),
+    ...project.workspace.results.filter(item => ["vector3d.basin-map",
+      "vector3d.poincare-section"].includes(item.provenance.operation.type))
+      .map(item => ({ id: item.resultId,
+        title: item.provenance.operation.type === "vector3d.basin-map" ?
+          "Basin map" : "Poincaré section", kind: "Saved topology recipe",
+        sourceId: item.provenance.source.documentId,
+        status: projectVectorField3DTopologyStatus(project, item).status === "current" ?
+          "recipe retained" : "withheld",
+        detail: `Recipe retained; ${item.summary.evaluations} bounded evaluations. ` +
+          (projectVectorField3DTopologyStatus(project, item).reason ?
+            `Values withheld: ${projectVectorField3DTopologyStatus(project, item).reason}.` :
+            "Values are not recomputed on mobile.") })),
+  ];
   return {
     projectId: project.identity.id,
     title: project.metadata.title,
     workbooks, notes,
+    scientificContracts,
     refreshOptions: mobileProjectRefreshOptions({ projectType: "project-preview", id: project.identity.id, title: project.metadata.title,
       serializedProject: raw, projectResources: [...sidecars], updatedAt: 0, lastOpenedAt: 0 }),
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),
@@ -96,6 +133,8 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     results: project.workspace.results.map(result => ({ id: result.resultId, operation: result.provenance.operation.type,
       sourceDocumentId: result.provenance.source.documentId, sourceRevision: result.provenance.source.revision,
       authority: result.status, freshness: !sources.has(result.provenance.source.documentId) || result.artifacts.length ? "unavailable" :
+        resolved.get(result.provenance.source.documentId)?.format === "math3d.vector-field3d-document" &&
+        (resolved.get(result.provenance.source.documentId) as import("@math3d/core").VectorField3DDocument).source.field.kind === "scientific-bundle" ? "unverified" :
         isAnalysisResultCurrent(result, sources.get(result.provenance.source.documentId)!) && !relations.some(relation => relation.freshness !== "current" &&
           (relation.target.type === "document" ? relation.target.generation.documentId === result.provenance.source.documentId : relation.target.type === "result" && relation.target.resultId === result.resultId)) ? "current" : "stale" })),
   };

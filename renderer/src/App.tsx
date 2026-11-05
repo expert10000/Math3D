@@ -818,6 +818,7 @@ import {
   upsertProjectTrajectoryCurve,
   upsertProjectLocalSeparatrix,
   upsertProjectVectorField3DComparison,
+  upsertProjectVectorField3DTopologyStudy,
   upsertProjectTemporalFieldSource,
   upsertProjectTemporalPathline,
   projectTemporalPathlineStatus,
@@ -90885,6 +90886,13 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectVectorField3DComparison(active, result, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTopologyStudy={result => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectVectorField3DTopologyStudy(active, result);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}

@@ -5,6 +5,7 @@ import { sampleGraph2DScene, resolveGraph2DConstructions, isGraph2DConstructionA
   type Graph2DDocument, type Graph2DSampledSeries, type Graph2DViewport, type Graph2DScreenSize,
   type Graph2DPointTableStore, type Graph2DConstructionArtifact } from "@math3d/core";
 import { mobileGraphPointTables } from "./services/mobileGraphPointTables";
+import { mobileScientificGraphRowWithheld } from "./models/mobileScientificGraphRows";
 import { MobileGraphSamplingJobs } from "./models/mobileGraphSamplingJobs";
 import { INITIAL_MOBILE_GRAPH_PERFORMANCE, MobileGraphSamplingEpoch, boundMobileGraphArtifacts, measureMobileGraphPerformance,
   mobileGraphBudget, mobileGraphTableRowAllowance, mobileGraphCanReadPointTable, pressureMobileGraphPerformance, type MobileGraphSamplingPhase } from "./models/mobileGraphPerformance";
@@ -57,6 +58,7 @@ export const useMobileGraphSampling = (document: Graph2DDocument, viewport: Grap
         const visible = new Set(document.display.objects.filter((style) => style.visible).map((style) => style.objectId));
         const pointTables = Object.fromEntries(document.source.objects.flatMap((object) =>
           object.kind === "point-series" && visible.has(object.id) &&
+          !mobileScientificGraphRowWithheld(object) &&
           mobileGraphCanReadPointTable(object, allowance, budget.sampling.maxSamples)
             ? [[object.table.id, tableStore.resolve(object.table)]] : []));
         // Native JS work is cooperative, not preemptive: samplers check their shared deadline.

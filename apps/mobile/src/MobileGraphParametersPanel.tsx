@@ -75,7 +75,10 @@ export function MobileGraphParametersPanel({ document, onPreview, onCommit, sett
       const recipe = plan(); stop(); cancelExport(); const token = ++generation.current;
       const current = () => mounted.current && generation.current === token;
       const builder = new Graph2DAnimationExportBuilder({ plan: recipe, publication: { document, size: { width: 640, height: 480 },
-        pointTables: Object.fromEntries(document.source.objects.flatMap(o => o.kind === "point-series" && o.table.rowCount <= graph2DPublicationTableAllowance(document) && document.display.objects.some(s => s.objectId === o.id && s.visible)
+        pointTables: Object.fromEntries(document.source.objects.flatMap(o => o.kind === "point-series" && !(
+          o.origin || o.analyticOrigin || o.derivedOrigin || o.projectProfileOrigin ||
+          o.comparisonProfileOrigin || o.temporalSpectrumOrigin || o.poincareOrigin ||
+          o.linkedOrigin) && o.table.rowCount <= graph2DPublicationTableAllowance(document) && document.display.objects.some(s => s.objectId === o.id && s.visible)
           ? [[o.table.id, mobileGraphPointTables.resolve(o.table)]] : [])) } });
       phase.current = "preparing"; setBusy(true); setMessage("Preparing frame sequence…");
       const started = Date.now();
