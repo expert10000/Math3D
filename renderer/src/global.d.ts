@@ -526,6 +526,7 @@ declare global {
     | "sage.polynomial.dossier"
     | "sage.galois.analyze"
     | "sage.group.dossier"
+    | "sage.module.invariantFactors"
     | "sage.groebner.compute"
     | "sage.ideal.groebner"
     | "sage.ideal.eliminate"

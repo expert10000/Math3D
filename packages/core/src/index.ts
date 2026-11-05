@@ -24,6 +24,7 @@ export * from "./projectFieldTower";
 export * from "./sageGaloisAnalysis";
 export * from "./finiteGroup";
 export * from "./sageFiniteGroupOperations";
+export * from "./sageModuleInvariantFactors";
 export * from "./sageFiniteGroupScenes";
 export * from "./modulePresentations";
 export * from "./sageNumberFieldOperations";

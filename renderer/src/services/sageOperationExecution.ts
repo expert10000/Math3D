@@ -9,6 +9,7 @@ import {
   parseSageNumberFieldInput,
   parseSageGaloisInput,
   parseSageFiniteGroupInput,
+  parseSageModuleInvariantInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -50,6 +51,7 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.numberField.primeDecomposition": { type: "number-field.prime-decomposition", label: "prime ideal decomposition", cancelled: "Sage number-field job cancelled." },
   "sage.galois.analyze": { type: "galois.analyze", label: "Galois analysis", cancelled: "Sage Galois job cancelled." },
   "sage.group.dossier": { type: "group.dossier", label: "GAP group invariants", cancelled: "Sage GAP job cancelled." },
+  "sage.module.invariantFactors": { type: "module.invariant-factors", label: "ZZ module invariant factors", cancelled: "Sage module job cancelled." },
   "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
   "sage.algebra.inspectDomains": { type: "algebra.domains.inspect", label: "algebra parent inspection", cancelled: "Sage algebra domain inspection cancelled." },
   "sage.ideal.groebner": { type: "ideal.groebner", label: "saved ideal Gröbner basis", cancelled: "Sage ideal job cancelled." },
@@ -135,6 +137,8 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       ? request.backend === "docker" && !!parseSageGaloisInput(params)
     : request.operation === "sage.group.dossier"
       ? request.backend === "docker" && !!parseSageFiniteGroupInput(params)
+    : request.operation === "sage.module.invariantFactors"
+      ? request.backend === "docker" && !!parseSageModuleInvariantInput(params)
     : request.operation === "sage.matrix.linear_dossier"
       ? request.backend === "docker" && !!parseSageMatrixDossierInput(params)
     : request.operation === "sage.matrix.integer_forms"

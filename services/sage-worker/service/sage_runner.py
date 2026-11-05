@@ -298,6 +298,51 @@ def _integer_matrix_forms(operation, params):
     return _success(operation, result, latex(smith))
 
 
+def _module_invariant_factors(operation, params):
+    required = {"format", "schemaVersion", "projectId", "target", "targetHash", "baseRing",
+        "baseRingHash", "ambientRank", "relationRank", "matrix"}
+    if set(params) != required or params.get("format") != "math3d.sage-module-invariant-factors" or \
+            type(params.get("schemaVersion")) is not int or params["schemaVersion"] != 1:
+        raise SageRequestError("Module invariant factors require the versioned pinned ZZ presentation.")
+    n, m, rows = params["ambientRank"], params["relationRank"], params["matrix"]
+    canonical = re.compile(r"^(?:0|-?[1-9][0-9]{0,17})$")
+    if type(n) is not int or not 1 <= n <= 6 or type(m) is not int or not 0 <= m <= 6 or \
+            not isinstance(rows, list) or len(rows) != n or any(not isinstance(row, list) or
+            len(row) != m or any(not isinstance(entry, str) or not canonical.fullmatch(entry)
+                for entry in row) for row in rows):
+        raise SageRequestError("ZZ module relation matrix must have bounded canonical integer rows.")
+    if not all(isinstance(params[key], str) and params[key] for key in ("projectId", "targetHash", "baseRingHash")) or \
+            any(not isinstance(params[key], dict) or set(params[key]) != {"objectId", "revision"} or
+                not isinstance(params[key]["objectId"], str) or type(params[key]["revision"]) is not int or
+                params[key]["revision"] < 1 for key in ("target", "baseRing")):
+        raise SageRequestError("Module and ZZ parent revisions must be pinned.")
+    if m == 0:
+        result = {"format": "math3d.sage-module-invariant-factors-result", "schemaVersion": 1,
+            "coefficientDomain": "ZZ", "freeRank": n, "torsionOrders": [], "smith": None}
+        return _success(operation, result)
+    mat = matrix(ZZ, [[ZZ(entry) for entry in row] for row in rows])
+    smith_raw = mat.smith_form()
+    if not isinstance(smith_raw, tuple) or len(smith_raw) != 3:
+        raise SageRequestError("This Sage runtime did not return Smith transformation witnesses.")
+    smith, left, right = smith_raw
+    if left.det() not in (1, -1) or right.det() not in (1, -1) or left * mat * right != smith:
+        raise SageRequestError("Smith transformations failed U·A·V=D with unimodular U and V.")
+    diagonal = [smith[i, i] for i in range(min(n, m))]
+    nonzero = [entry for entry in diagonal if entry != 0]
+    if any(entry < 0 for entry in diagonal) or any(nonzero[i + 1] % nonzero[i] != 0
+            for i in range(len(nonzero) - 1)) or any(smith[i, j] != 0 for i in range(n)
+                for j in range(m) if i != j):
+        raise SageRequestError("Smith diagonal violates invariant-factor divisibility.")
+    result = {"format": "math3d.sage-module-invariant-factors-result", "schemaVersion": 1,
+        "coefficientDomain": "ZZ", "freeRank": n - len(nonzero),
+        "torsionOrders": [str(entry) for entry in nonzero if entry > 1],
+        "smith": {"form": [[str(x) for x in row] for row in smith.rows()],
+            "diagonal": [str(x) for x in diagonal], "transformations": {"status": "verified",
+                "left": [[str(x) for x in row] for row in left.rows()],
+                "right": [[str(x) for x in row] for row in right.rows()]}}}
+    return _success(operation, result, latex(smith))
+
+
 def _polynomial_factor(operation, params):
     ring, _variables_list = _polynomial_ring(params)
     poly = ring(_validate_expression(params.get("polynomial") or params.get("expression")))
@@ -809,6 +854,7 @@ OPERATIONS = {
     "sage.matrix.charpoly": _matrix_charpoly,
     "sage.matrix.linear_dossier": _matrix_linear_dossier,
     "sage.matrix.integer_forms": _integer_matrix_forms,
+    "sage.module.invariantFactors": _module_invariant_factors,
     "sage.polynomial.roots_exact": _polynomial_roots_exact,
     "sage.polynomial.factor": _polynomial_factor,
     "sage.polynomial.dossier": _polynomial_dossier,
