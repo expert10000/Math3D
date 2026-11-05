@@ -10,6 +10,7 @@ import { normalizeWorkbookSavedMeshComparisonReference } from "./workbookSavedMe
 import { normalizeWorkbookSavedMeshReviewReference } from "./workbookSavedMeshReviewReference";
 import { normalizeWorkbookCoordinateReviewReference } from "./workbookCoordinateReviewReference";
 import { normalizeWorkbookAlgebraResult } from "./workbookAlgebraResult";
+import { parseWorkbookAlgebraObjectCell } from "./workbookAlgebraObject";
 
 /** Dependency edges record provenance and ordering. They do not execute or copy target content. */
 export type WorkbookDependency = Readonly<{
@@ -39,6 +40,11 @@ export function validateWorkbookDependencies(workbook: Workbook): void {
     normalizeWorkbookAlgebraResult(block.algebraResult);
   }
   if (workbook.namedParameters !== undefined) normalizeWorkbookNamedParameters(workbook.namedParameters);
+  for (const block of blocksOf(workbook)) {
+    if (block.type === "algebra-object" && block.algebraObject !== undefined) parseWorkbookAlgebraObjectCell(block.algebraObject);
+    else if (block.type !== "algebra-object" && block.algebraObject !== undefined)
+      throw new TypeError("Typed algebra object output belongs to an Algebra object block.");
+  }
   for (const block of blocksOf(workbook)) if (block.claim !== undefined) {
     if (block.type !== "assert") throw new TypeError("Evidence claims belong to assert blocks.");
     normalizeWorkbookClaim(block.claim);
@@ -158,6 +164,8 @@ export function workbookBlockSourceHash(block: WorkbookBlock): StructuralHash {
     sageCode: block.sageCode ? { code: block.sageCode.code,
       lastRun: block.sageCode.runs.at(-1)?.sourceHash ?? null,
       outputHash: block.sageCode.runs.at(-1)?.output ? structuralHash(JSON.parse(JSON.stringify(block.sageCode.runs.at(-1)!.output))) : null } : null,
+    algebraObject: block.algebraObject ? { source: block.algebraObject.source,
+      outputHash: block.algebraObject.runs.at(-1)?.outputHash ?? null } : null,
     compute: block.compute ? { operatorId: block.compute.operatorId ?? null,
       inputHash: block.compute.lastRun?.inputHash ?? null, outputHash: block.compute.outputHash ?? null,
       status: block.compute.lastRun?.status ?? null } : null,

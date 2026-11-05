@@ -29,6 +29,12 @@ With `QLAB_E2E_CHECKOUT` pointing to this built Theory Lab checkout, the live Q0
 
 The gate decisions apply to this checkout and test environment, not to a distributable installer or another operating system. No numeric performance threshold is asserted without a measured baseline. QI-40 remains open until the partial and blocked gates are closed and a release candidate is reviewed.
 
+## Cross-repository source-checkout gate
+
+The [QI-40 cross-app report](quantum-qi40-cross-app-2026-11-05.json) pins Math3D `6ac43b79` and Theory Lab `ad3d9da2`. On Windows, all seven recorded gates passed: Math3D's 38-scene/Electron release matrix, Theory Lab typecheck, TypeScript tests, Python worker tests, scene smoke, Lab build, and the live Lab → Math3D handoff. The Python worker suite ran under its pinned `unittest` command, including the repetition-code tests. The report records each gate's exit code and duration, and omits checkout paths, run parameters, and scientific arrays.
+
+Run the same source-checkout gate with `npm run test:quantum:release:cross-app -- --lab <absolute Theory Lab checkout> --live --report <output JSON>`. Omitting `--live` runs the static checks only. The optional `--installed-lab` and `--installed-math3d` paths add an installed five-run return test; that gate was **not run** in this report. Neither this runner nor the passing source-checkout result changes the partial release assessment above.
+
 ## Reproduce
 
 In Theory Lab: `npm run setup:python`, `npm run typecheck`, `npm test`, `npm run test:worker`, `npm run build`.

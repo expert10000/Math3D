@@ -10126,6 +10126,7 @@ const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
   visualize: "Visualize",
   compute: "Compute",
   "sage-code": "Sage code",
+  "algebra-object": "Algebra object",
   interaction: "Interact",
   assert: "Assert",
 };
@@ -10270,6 +10271,14 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
           if (block.compute?.lastRun?.status) lines.push(`Status: ${block.compute.lastRun.status}`);
           if (block.compute?.summary) lines.push(`Summary: ${block.compute.summary}`);
+        } else if (block.type === "algebra-object") {
+          const latest = block.algebraObject?.runs.at(-1);
+          lines.push(`Source freshness at export: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
+          if (latest) lines.push(`Project: ${latest.source.projectId}`, `Object: ${latest.source.objectId}`,
+            `Revision: ${latest.source.revision}`, `Definition hash: ${latest.source.contentHash}`,
+            `Output hash: ${latest.outputHash}`, "```json",
+            JSON.stringify(latest.output, null, 2), "```");
+          else lines.push("_(No algebra object run saved)_");
         } else if (block.type === "sage-code") {
           lines.push("```sage", block.sageCode?.code ?? "", "```");
           lines.push(`Source freshness at export: ${resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing"}`);
@@ -10518,6 +10527,13 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
             ${block.compute?.lastRun?.status ? `<div>Status: ${escapeHtml(block.compute.lastRun.status)}</div>` : ""}
             ${block.compute?.summary ? `<div>Summary: ${escapeHtml(block.compute.summary)}</div>` : ""}
           </div>`;
+        } else if (block.type === "algebra-object") {
+          const latest = block.algebraObject?.runs.at(-1);
+          body = `<div class="block-body">
+            <div>Source freshness at export: ${escapeHtml(resolveWorkbookFreshness(workbook, project).get(block.id)?.status ?? "missing")}</div>
+            ${latest ? `<div>Project: ${escapeHtml(latest.source.projectId)} · Object: ${escapeHtml(latest.source.objectId)} · revision ${latest.source.revision}</div>
+              <div>Definition hash: ${escapeHtml(latest.source.contentHash)} · output hash: ${escapeHtml(latest.outputHash)}</div>
+              <pre>${escapeHtml(JSON.stringify(latest.output, null, 2))}</pre>` : "No algebra object run saved."}</div>`;
         } else if (block.type === "sage-code") {
           const run = block.sageCode?.runs.at(-1);
           body = `<div class="block-body"><pre>${escapeHtml(block.sageCode?.code ?? "")}</pre>
@@ -11433,6 +11449,7 @@ const DEFAULT_BLOCK_PORTS: Record<WorkbookBlockType, { inputs: WorkbookPort[]; o
   },
   compute: { inputs: BASE_COMPUTE_INPUTS, outputs: [] },
   "sage-code": { inputs: [], outputs: [{ id: "text", label: "Output", type: "text" }] },
+  "algebra-object": { inputs: [], outputs: [{ id: "object", label: "Algebra object", type: "algebra-object" }] },
   interaction: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
   assert: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
 };
@@ -53279,6 +53296,7 @@ case "mobius":
         compute: { status: "idle", inputs: [], outputs: undefined, lastRun: undefined, runHistory: [], cache: {} },
       });
     if (type === "sage-code") return applyDefaultPorts({ ...base, title: "Sage code", sageCode: { code: "", runs: [] } });
+    if (type === "algebra-object") return applyDefaultPorts({ ...base, title: "Algebra object" });
     if (type === "interaction") {
       return applyDefaultPorts({
         ...base,

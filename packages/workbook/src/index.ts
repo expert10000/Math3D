@@ -1,6 +1,7 @@
 export * from "./operatorRegistry";
 export * from "./workbookModel";
 export * from "./workbookSageCode";
+export * from "./workbookAlgebraObject";
 export * from "./notebookReferences";
 export * from "./workbookAlgebraResult";
 export * from "./workbookDependencies";
