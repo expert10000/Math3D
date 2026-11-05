@@ -14,9 +14,10 @@ const download = (name: string, body: string) => {
 
 export default function SageAlgebraicLocusBuilder({ project, target, onSave }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
-  const ambient = record?.definition.kind === "ideal"
-    ? project.algebraObjects?.find((entry) => entry.id === record.definition.ambientRing.objectId)
-      ?.revisions[record.definition.ambientRing.revision - 1]
+  const ambientRef = record?.definition.kind === "ideal" ? record.definition.ambientRing : null;
+  const ambient = ambientRef
+    ? project.algebraObjects?.find((entry) => entry.id === ambientRef.objectId)
+      ?.revisions[ambientRef.revision - 1]
     : record?.definition.kind === "polynomial-ring" ? record : null;
   const variables = ambient?.definition.kind === "polynomial-ring" ? ambient.definition.variables : [];
   const [polynomial, setPolynomial] = useState(() => `${variables.map((variable) => `${variable}^2`).join("+")}-1`);
