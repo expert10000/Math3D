@@ -17,6 +17,7 @@ import { nearestRecordedFrame } from "./quantumDynamicsSelection";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
+import { quantumSceneValidation } from "./quantumSceneValidation";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -1000,6 +1001,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             </dl></>}
             <div><b>Source axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Source coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
+            <details data-testid="quantum-validation-dashboard"><summary>Numerical validation dashboard</summary>
+              <p>Scene checks report source evidence and limits. Producer-run physical diagnostics require reopening that run.</p>
+              {quantumSceneValidation(scene, { fingerprint: opened.reference.sceneFingerprint,
+                mappedObjectIds: opened.mappedObjectIds, deferredObjectIds: opened.deferredObjectIds,
+                deferredFieldIds: opened.deferredFieldIds }).map((check, index) => <div key={`${check.name}-${index}`}>
+                <strong>{check.name}</strong> · {check.status} · {check.detail}</div>)}
+            </details>
             {scene.reciprocal && <section data-testid="quantum-reciprocal-inspector">
               <h3>Supplied reciprocal geometry</h3>
               <div>Reciprocal coordinates: {(scene.reciprocal.basis.length===1 ? ["k"] : ["kx", "ky", "kz"].slice(0, scene.reciprocal.basis.length)).join(", ")} · {scene.reciprocal.reciprocalUnit}</div>

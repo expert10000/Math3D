@@ -552,8 +552,8 @@ contextBridge.exposeInMainWorld("quantumScenes", Object.freeze({
     ipcRenderer.invoke("quantumScenes:projectStudySample", source, sourceObjectId, sourceSampleIndex, target, targetObjectId),
   timeFrames: (reference: { directory: string; sceneFingerprint: string }) =>
     ipcRenderer.invoke("quantumScenes:timeFrames", reference),
-  compare: (a: { directory: string; sceneFingerprint: string }, b: { directory: string; sceneFingerprint: string }) =>
-    ipcRenderer.invoke("quantumScenes:compare", a, b),
+  compare: (a: { directory: string; sceneFingerprint: string }, b: { directory: string; sceneFingerprint: string }, policy:"exact"|"linear-1d") =>
+    ipcRenderer.invoke("quantumScenes:compare", a, b, policy),
   consumeStudyLaunch: (): Promise<
     { ok: true; canceled: false; mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string; resultSha256: string;
       references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |

@@ -74,6 +74,9 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-scene-preview")).toContainText("run-ipc");
     await expect(page.getByTestId("quantum-scene-geometry")).toBeVisible();
     await expect(page.getByTestId("quantum-source-directory")).toHaveText(directory);
+    await page.getByTestId("quantum-validation-dashboard").locator("summary").click();
+    await expect(page.getByTestId("quantum-validation-dashboard")).toContainText("Source identity");
+    await expect(page.getByTestId("quantum-validation-dashboard")).toContainText("Hermiticity · unavailable");
     await app.evaluate(({shell})=>{
       const state=globalThis as any;
       state.__originalQuantumReveal=shell.showItemInFolder;

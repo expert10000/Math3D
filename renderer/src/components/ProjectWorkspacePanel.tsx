@@ -203,6 +203,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [comparisonA, setComparisonA] = useState("");
   const [comparisonB, setComparisonB] = useState("");
   const [quantumComparison, setQuantumComparison] = useState<Awaited<ReturnType<NonNullable<Window["quantumScenes"]>["compare"]>> | null>(null);
+  const [comparisonPolicy,setComparisonPolicy]=useState<"exact"|"linear-1d">("exact");
   const [studySampleDraft, setStudySampleDraft] = useState<Record<string, string>>({});
   const [studyProjection, setStudyProjection] = useState("");
   const [studyLaunch, setStudyLaunch] = useState<{ mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string;
@@ -1964,21 +1965,24 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                   <option value="">Select A</option>{project.quantumScenes.map(item => <option key={item.sceneFingerprint} value={item.sceneFingerprint}>{item.title}</option>)}
                 </select><select aria-label="Comparison B" value={comparisonB} onChange={event => setComparisonB(event.target.value)}>
                   <option value="">Select B</option>{project.quantumScenes.map(item => <option key={item.sceneFingerprint} value={item.sceneFingerprint}>{item.title}</option>)}
+                </select><select aria-label="Quantum comparison alignment" value={comparisonPolicy} onChange={event=>{setComparisonPolicy(event.target.value as "exact"|"linear-1d");setQuantumComparison(null);}}>
+                  <option value="exact">Exact samples</option><option value="linear-1d">Linear interpolation on A's 1D path</option>
                 </select><button type="button" disabled={busy || !comparisonA || !comparisonB || comparisonA === comparisonB}
                   onClick={() => { const a = project.quantumScenes?.find(item => item.sceneFingerprint === comparisonA);
                     const b = project.quantumScenes?.find(item => item.sceneFingerprint === comparisonB);
                     if (!a || !b) return;
                     setBusy(true); setQuantumComparison(null);
                     void window.quantumScenes!.compare({ directory: a.directory, sceneFingerprint: a.sceneFingerprint },
-                      { directory: b.directory, sceneFingerprint: b.sceneFingerprint })
+                      { directory: b.directory, sceneFingerprint: b.sceneFingerprint },comparisonPolicy)
                       .then(setQuantumComparison).catch(error => setQuantumSceneMessage(`Comparison refused: ${String(error)}`))
                       .finally(() => setBusy(false)); }}>Compare A/B</button></div>
                 {quantumComparison && <div role="status">{quantumComparison.status === "compatible"
-                  ? `${quantumComparison.quantity}: ${quantumComparison.samples} aligned samples, mean absolute ${quantumComparison.meanAbsolute}, RMS ${quantumComparison.rootMeanSquare}, maximum ${quantumComparison.maximumAbsolute} ${quantumComparison.unit}`
+                  ? `${quantumComparison.quantity}: ${quantumComparison.samples} ${quantumComparison.alignment} samples, mean absolute ${quantumComparison.meanAbsolute}, RMS ${quantumComparison.rootMeanSquare}, maximum ${quantumComparison.maximumAbsolute} ${quantumComparison.unit}`
                   : `Incompatible: ${quantumComparison.reasons.join(" ")}`}
                   {!!quantumComparison.metadataDiffs.length && <p>Parameter differences: {quantumComparison.metadataDiffs.map(item => `${item.key}: ${item.a} → ${item.b}`).join("; ")}</p>}
                   {quantumComparison.convergence && <p>Bulk-gap change across grids {quantumComparison.convergence.gridA.join("×")} → {quantumComparison.convergence.gridB.join("×")}: {quantumComparison.convergence.absoluteChange}.</p>}
                   {quantumComparison.warnings.map(warning => <p key={warning}>{warning}</p>)}
+                  <p>Eigenstate matching: unavailable without source eigenvectors and a validated overlap or gauge policy.</p>
                 </div>}
               </div>}
               <div><button type="button" data-testid="project-export-quantum-pack" disabled={busy || preview || !!managed || !project?.quantumScenes?.length || !window.quantumScenes?.exportPortableProject}
