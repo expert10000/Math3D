@@ -23,5 +23,7 @@ describe("QI-37/38 quantum inspector and support diagnostics", () => {
     expect(bundle.metrics).toEqual({ importMs: 24, datasetBytes: 128 });
     expect(bundle.correlation.jobId).toBeNull();
     expect(JSON.stringify(bundle)).not.toMatch(/directory|path|parameter|sampleValue|token/i);
+    const unsafe = new QuantumViewerTrace({ runId: "C:\\private\\run", resultSha256: "x", sceneFingerprint: "y", model: "../model" }, () => 0);
+    expect(JSON.stringify(unsafe.supportBundle())).not.toMatch(/private|\.\.\/|C:\\/);
   });
 });

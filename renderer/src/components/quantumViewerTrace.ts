@@ -2,6 +2,8 @@ export type QuantumTraceIdentity = Readonly<{ runId: string; resultSha256: strin
 export type QuantumTraceEvent = "opened" | "view" | "sample" | "error" | "first-frame" | "closed";
 type Entry = Readonly<{ event: QuantumTraceEvent; elapsedMs: number }>;
 const MAX_EVENTS = 64;
+const safeId = (value: string) => /^[A-Za-z0-9_.-]{1,160}$/.test(value) ? value : "redacted";
+const safeHash = (value: string) => /^[a-f0-9]{64}$/.test(value) ? value : "redacted";
 
 /** Keeps only fixed event names and immutable source IDs. Never records paths, labels, parameters or sample values. */
 export class QuantumViewerTrace {
@@ -24,8 +26,8 @@ export class QuantumViewerTrace {
   }
   supportBundle() {
     return { schema: "math3d.quantum-viewer-support/v1", correlation: {
-      jobId: null, runId: this.identity.runId, resultSha256: this.identity.resultSha256,
-      sceneFingerprint: this.identity.sceneFingerprint, model: this.identity.model,
+      jobId: null, runId: safeId(this.identity.runId), resultSha256: safeHash(this.identity.resultSha256),
+      sceneFingerprint: safeHash(this.identity.sceneFingerprint), model: safeId(this.identity.model),
     }, metrics: { ...this.metrics }, events: [...this.events] };
   }
 }

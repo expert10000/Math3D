@@ -21,7 +21,8 @@ export type QuantumInspectorSummaryData = {
     engine: string; engineVersion: string };
 };
 
-export function QuantumInspectorSummary({ data, onExportSupport }: { data: QuantumInspectorSummaryData; onExportSupport: () => void }) {
+export function QuantumInspectorSummary({ data, onExportSupport, supportStatus }: { data: QuantumInspectorSummaryData;
+  onExportSupport: () => void | Promise<void>; supportStatus?: string }) {
   const [active, setActive] = useState<QuantumInspectorTab>("View");
   const [shown, setShown] = useState(16);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -53,7 +54,8 @@ export function QuantumInspectorSummary({ data, onExportSupport }: { data: Quant
         <dt>Run ID</dt><dd><code>{data.provenance.runId}</code></dd>
         <dt>Result SHA-256</dt><dd><code>{data.provenance.resultSha256}</code></dd>
         <dt>Scene fingerprint</dt><dd><code>{data.provenance.fingerprint}</code></dd></dl>
-        <button type="button" onClick={onExportSupport}>Download redacted support bundle</button></>}
+        <button type="button" onClick={() => void onExportSupport()}>Download redacted support bundle</button>
+        {supportStatus && <p role={supportStatus.startsWith("Support export refused") ? "alert" : "status"}>{supportStatus}</p>}</>}
     </div>
   </section>;
 }
