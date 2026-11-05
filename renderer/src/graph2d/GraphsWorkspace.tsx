@@ -73,6 +73,8 @@ import {
   computeTemporalSpectrum, createTemporalSpectrumGraphOrigin,
   projectTemporalSpectrumGraphStatus, projectTemporalSpectrumStatus,
   temporalSpectrumGraphRows,
+  computeVectorField3DPoincareSection, createPoincareGraphOrigin,
+  poincareGraphRows, projectPoincareGraphStatus,
   type VerifiedTemporalTransfers, type TemporalSpectrumRecipe,
   graph2DParameterStudyStatus,
 } from "@math3d/core";
@@ -270,6 +272,7 @@ type Props = {
   onPromoteVectorField3DLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
   onSaveVectorField3DComparisonResult?: (result: import("@math3d/core").AnalysisResultEnvelope,
     transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
+  onSaveVectorField3DTopologyStudy?: (result: import("@math3d/core").AnalysisResultEnvelope) => void;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -314,6 +317,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
   onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
   onPromoteVectorField3DLocalSeparatrix, onSaveVectorField3DComparisonResult,
+  onSaveVectorField3DTopologyStudy,
   onSaveVectorField3DTemporalSource, onSaveVectorField3DTemporalPathline,
   onSaveVectorField3DTemporalStreakline,
   onSaveVectorField3DTemporalSpectrum,
@@ -477,6 +481,39 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           color: SCIENTIFIC_GRID_LINE_COLORS[1], lineWidth: 2,
           lineStyle: "solid", visible: true })] });
       setSpectrumVerified(previous => ({ ...previous, [result.resultId]: transfers }));
+      setVectorField3DOpen(false);
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const openPoincareSection = (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit ||
+          result.provenance.operation.type !== "vector3d.poincare-section")
+        throw new TypeError("Open a saved Poincaré Project result and Graph editor first.");
+      const existing = document.source.objects.find(item => item.kind === "point-series" &&
+        item.poincareOrigin?.resultId === result.resultId);
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null });
+        setVectorField3DOpen(false); return; }
+      const source = project.workspace.entries.find(item => item.module === "vector3d" &&
+        item.expected.id === result.provenance.source.documentId)?.checkpoint;
+      if (source?.format !== "math3d.vector-field3d-document")
+        throw new TypeError("The pinned section source is missing.");
+      const study = computeVectorField3DPoincareSection(source,
+        result.provenance.operation.parameters.recipe as unknown as
+          import("@math3d/core").PoincareSectionRecipe);
+      if (study.publication.resultId !== result.resultId ||
+          structuralHash(study.publication.summary) !== structuralHash(result.summary))
+        throw new TypeError("Section values changed; recompute the saved recipe.");
+      const origin = createPoincareGraphOrigin(project, study);
+      const rows = poincareGraphRows(study);
+      onAuthoringCommit({ type: "create-point-series", draft: {
+        label: "Poincaré crossings", table: pointTableStore.publish(rows),
+        mode: "points", domain: { min: 0,
+          max: (result.provenance.operation.parameters.recipe as unknown as
+            import("@math3d/core").PoincareSectionRecipe).solver.maxTime,
+          includeMin: true, includeMax: true }, poincareOrigin: origin,
+        style: { color: SCIENTIFIC_GRID_LINE_COLORS[0], lineWidth: 2,
+          lineStyle: "solid", visible: true } } });
       setVectorField3DOpen(false);
     } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
   };
@@ -1568,6 +1605,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         pointTableStore.resolve(object.table),
         spectrumVerified[object.temporalSpectrumOrigin.resultId])]] : [])),
     [document, project, spectrumVerified]);
+  const poincareStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.poincareOrigin ? [[object.id,
+      projectPoincareGraphStatus(project, object.poincareOrigin,
+        pointTableStore.resolve(object.table))]] : [])), [document, project]);
   const parameterStudyStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
     object.kind === "point-series" && object.parameterStudyOrigin ? [[object.id,
       graph2DParameterStudyStatus(document, object.parameterStudyOrigin,
@@ -1586,13 +1627,15 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
               return !rows || structuralHash(rows) !==
                 object.comparisonProfileOrigin.rowsSha256; })()) ||
         object.temporalSpectrumOrigin && spectrumStates[object.id]?.status !== "current" ||
+        object.poincareOrigin && poincareStates[object.id]?.status !== "current" ||
         object.parameterStudyOrigin && parameterStudyStates[object.id]?.status !== "current" ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
           linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
-    projectProfileStates, comparisonProfileStates, spectrumStates, parameterStudyStates]);
+    projectProfileStates, comparisonProfileStates, spectrumStates, poincareStates,
+    parameterStudyStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1816,6 +1859,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     selectedObject.comparisonProfileOrigin : undefined;
   const selectedSpectrum = selectedObject?.kind === "point-series" ?
     selectedObject.temporalSpectrumOrigin : undefined;
+  const selectedPoincare = selectedObject?.kind === "point-series" ?
+    selectedObject.poincareOrigin : undefined;
   const selectedProjectProfileState = selectedProjectProfile && selectedObject ?
     projectProfileStates[selectedObject.id] : null;
   const selectedProjectProfileRowsReady = selectedProjectProfile && selectedObject?.kind === "point-series" ?
@@ -1947,6 +1992,15 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       disabled={!onAuthoringCommit} onClick={() => void refreshTemporalSpectrum()}>
       Verify and refresh spectral rows</button>
   </section>;
+  const poincareGraphInspector = selectedPoincare && selectedObject && <section
+    aria-label="Saved Poincaré crossings" data-testid="gf42-graph-section-status">
+    <h3>Poincaré crossings · {poincareStates[selectedObject.id]?.status === "current" ?
+      "current" : "values withheld"}</h3>
+    {poincareStates[selectedObject.id]?.reason && <p role="status">Values withheld: {
+      poincareStates[selectedObject.id]?.reason}. Recompute the section from the current source and open a new row.</p>}
+    <p>Project result {selectedPoincare.resultId} · {selectedPoincare.crossingCount}
+      {" "}crossings · {selectedPoincare.axisUnit} → {selectedPoincare.valueUnit}</p>
+  </section>;
   const selectedSageExpression = selectedObject?.kind === "explicit-cartesian"
     ? selectedObject.expression.source : undefined;
   const selectedSageSource = selectedObject?.kind === "explicit-cartesian"
@@ -1976,6 +2030,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         return !!rows && structuralHash(rows) ===
           selectedObject.comparisonProfileOrigin.rowsSha256; })()) &&
     (!selectedObject.temporalSpectrumOrigin || spectrumStates[selectedObject.id]?.status === "current") &&
+    (!selectedObject.poincareOrigin || poincareStates[selectedObject.id]?.status === "current") &&
     (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
@@ -4163,6 +4218,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onPromoteLocalSeparatrix={onPromoteVectorField3DLocalSeparatrix}
           onSaveComparisonResult={onSaveVectorField3DComparisonResult}
           onOpenComparisonProfile={result => void openComparisonProfile(result)}
+          onSaveTopologyStudy={onSaveVectorField3DTopologyStudy}
+          onOpenPoincare={openPoincareSection}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
@@ -4588,7 +4645,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+            {inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{poincareGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
             {profileCards}{studyPanel}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
@@ -4641,7 +4698,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{poincareGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
         {profileCards}{studyPanel}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}

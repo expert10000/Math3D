@@ -28,6 +28,7 @@ export const GRAPH2D_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const GRAPH2D_EXPLICIT_CAPABILITY = "graph2d.explicit.v1" as const;
 export const GRAPH2D_LINKED_DERIVATIVE_CAPABILITY = "graph2d.linked-derivative.v1" as const;
 export const GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY = "graph2d.extended-derivative.v1" as const;
+export const GRAPH2D_POINCARE_SERIES_CAPABILITY = "graph2d.poincare-series.v1" as const;
 export const GRAPH2D_PROBES_CAPABILITY = "graph2d.probes.v1" as const;
 export const GRAPH2D_PROBE_VISIBILITY_CAPABILITY = "graph2d.probe-visibility.v1" as const;
 export const GRAPH2D_MAX_PINNED_PROBES = 8;
@@ -177,6 +178,11 @@ export type Graph2DTemporalSpectrumOrigin = Readonly<{
   window: "rectangular" | "hann"; detrend: "none" | "mean";
   interpolation: "none" | "linear";
 }>;
+export type Graph2DPoincareOrigin = Readonly<{
+  kind: "project-poincare-section/v1"; projectId: string; resultId: string;
+  summaryHash: string; rowsSha256: string; sourceDocumentId: string;
+  axisUnit: string; valueUnit: string; crossingCount: number;
+}>;
 type Graph2DLinkedOverlayCommon = Readonly<{
   pairId: string;
   vectorDocumentJson: string;
@@ -256,6 +262,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
   comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
   temporalSpectrumOrigin?: Graph2DTemporalSpectrumOrigin;
+  poincareOrigin?: Graph2DPoincareOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
 }>;
@@ -326,6 +333,8 @@ export const graph2DRequiredCapabilities = (source: Graph2DSource, display?: Pic
     ...(source.objects.some((object) => object.kind === "implicit") ? [GRAPH2D_IMPLICIT_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "inequality") ? [GRAPH2D_INEQUALITY_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series") ? [GRAPH2D_POINT_SERIES_CAPABILITY] : []),
+    ...(source.objects.some((object) => object.kind === "point-series" && object.poincareOrigin) ?
+      [GRAPH2D_POINCARE_SERIES_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin) ? [GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY] : []),
     ...(source.objects.some((object) => object.kind === "point-series" && object.origin?.slice) ?
       [GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY] : []),
@@ -388,7 +397,7 @@ export type Graph2DDocument = Readonly<{
   format: typeof GRAPH2D_DOCUMENT_FORMAT;
   schemaVersion: typeof GRAPH2D_DOCUMENT_SCHEMA_VERSION;
   identity: DocumentIdentity;
-  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_LINKED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
+  requiredCapabilities: readonly (typeof GRAPH2D_EXPLICIT_CAPABILITY | typeof GRAPH2D_LINKED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_EXTENDED_DERIVATIVE_CAPABILITY | typeof GRAPH2D_POINCARE_SERIES_CAPABILITY | typeof GRAPH2D_PARAMETRIC_CAPABILITY |
     typeof GRAPH2D_POLAR_CAPABILITY | typeof GRAPH2D_IMPLICIT_CAPABILITY |
     typeof GRAPH2D_INEQUALITY_CAPABILITY | typeof GRAPH2D_POINT_SERIES_CAPABILITY |
     typeof GRAPH2D_PIECEWISE_CAPABILITY | typeof GRAPH2D_SLOPE_FIELD_CAPABILITY | typeof GRAPH2D_TRAJECTORY_CAPABILITY | typeof GRAPH2D_PHASE_PORTRAIT_CAPABILITY | typeof GRAPH2D_TIME_ODE_CAPABILITY | typeof GRAPH2D_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CANDIDATE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_CURVATURE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_OSCULATING_CIRCLE_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_INTEGRAL_CONSTRUCTIONS_CAPABILITY | typeof GRAPH2D_PARAMETER_STUDY_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY | typeof GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY | typeof GRAPH2D_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY | typeof GRAPH2D_PROBES_CAPABILITY | typeof GRAPH2D_PROBE_VISIBILITY_CAPABILITY | typeof GRAPH2D_PARAMETERS_CAPABILITY | typeof GRAPH2D_PARAMETER_EXPRESSIONS_CAPABILITY | typeof GRAPH2D_SCALES_CAPABILITY | typeof GRAPH2D_GRID_CAPABILITY)[];
@@ -635,6 +644,16 @@ export const validGraph2DTemporalSpectrumOrigin = (value: unknown):
   ["rectangular", "hann"].includes(String(value.window)) &&
   ["none", "mean"].includes(String(value.detrend)) &&
   ["none", "linear"].includes(String(value.interpolation));
+export const validGraph2DPoincareOrigin = (value: unknown):
+  value is Graph2DPoincareOrigin => record(value) && exact(value,
+    ["kind", "projectId", "resultId", "summaryHash", "rowsSha256",
+      "sourceDocumentId", "axisUnit", "valueUnit", "crossingCount"]) &&
+  value.kind === "project-poincare-section/v1" &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStableDocumentId(value.sourceDocumentId) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  bounded(value.axisUnit, 80) && bounded(value.valueUnit, 80) &&
+  integerWithin(value.crossingCount, 1, 64);
 export const validGraph2DLinkedOverlayOrigin = (value: unknown): value is Graph2DLinkedOverlayOrigin => {
   if (record(value) && value.kind === "vector-derived-linked-region/v1") {
     if (!exact(value, ["kind", "pairId", "series", "vectorDocumentJson", "region",
@@ -861,12 +880,14 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     ...(value.projectProfileOrigin === undefined ? [] : ["projectProfileOrigin"]),
     ...(value.comparisonProfileOrigin === undefined ? [] : ["comparisonProfileOrigin"]),
     ...(value.temporalSpectrumOrigin === undefined ? [] : ["temporalSpectrumOrigin"]),
+    ...(value.poincareOrigin === undefined ? [] : ["poincareOrigin"]),
     ...(value.parameterStudyOrigin === undefined ? [] : ["parameterStudyOrigin"]),
     ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
   value.kind === "point-series" && bounded(value.label, 160) && validPointTableReference(value.table) &&
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
   [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin,
     value.projectProfileOrigin, value.comparisonProfileOrigin, value.temporalSpectrumOrigin,
+    value.poincareOrigin,
     value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
   (value.analyticOrigin === undefined || validGraph2DAnalyticFieldOrigin(value.analyticOrigin)) &&
@@ -876,6 +897,8 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     validGraph2DComparisonProfileOrigin(value.comparisonProfileOrigin)) &&
   (value.temporalSpectrumOrigin === undefined ||
     validGraph2DTemporalSpectrumOrigin(value.temporalSpectrumOrigin)) &&
+  (value.poincareOrigin === undefined ||
+    validGraph2DPoincareOrigin(value.poincareOrigin)) &&
   (value.parameterStudyOrigin === undefined || isGraph2DParameterStudyOrigin(value.parameterStudyOrigin)) &&
   (value.linkedOrigin === undefined || validGraph2DLinkedOverlayOrigin(value.linkedOrigin));
 const validPiecewiseObject = (value: unknown, variables: readonly string[]): value is Graph2DPiecewiseObject => {

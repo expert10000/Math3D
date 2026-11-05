@@ -14,6 +14,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
   const [noteId, setNoteId] = useState<string | null>(null);
   const [complexId, setComplexId] = useState<string | null>(null);
   const [vector3dId, setVector3dId] = useState<string | null>(null);
+  const [scientificId, setScientificId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<MobileProjectNoteInput | null>(null);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteMessage, setNoteMessage] = useState("");
@@ -21,7 +22,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     try { return { explorer: buildMobileProjectExplorer(raw, resources), error: null }; }
     catch (error) { return { explorer: null, error: (error as Error).message }; }
   }, [raw, resources]);
-  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
+  useEffect(() => { setWorkbookId(null); setNoteId(null); setComplexId(null); setVector3dId(null); setScientificId(null); setNoteDraft(null); }, [state.explorer?.projectId]);
   if (!state.explorer) return <Text accessibilityRole="alert" style={styles.note}>{state.error}</Text>;
   const { groups, relations, results, workbooks, notes } = state.explorer;
   const selectedWorkbook = workbooks.find(item => item.id === workbookId);
@@ -86,6 +87,20 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
       <Pressable accessibilityRole="button" style={styles.secondaryBtn} onPress={() => setNoteDraft(null)}><Text style={styles.secondaryBtnText}>Cancel</Text></Pressable>
     </View>}
     {!!noteMessage && <Text accessibilityRole="alert" style={styles.note}>{noteMessage}</Text>}
+    <Text accessibilityRole="header" style={styles.itemTitle}>Scientific recipes ({state.explorer.scientificContracts.length})</Text>
+    {state.explorer.scientificContracts.map(item => <View key={item.id}>
+      <Pressable testID={`mobile-scientific-contract-${item.id}`} accessibilityRole="button"
+        accessibilityLabel={`${item.kind}: ${item.title}; ${item.status}`}
+        accessibilityState={{ expanded: scientificId === item.id }}
+        onPress={() => setScientificId(scientificId === item.id ? null : item.id)}
+        style={styles.secondaryBtn}>
+        <Text style={styles.secondaryBtnText}>{item.title} · {item.status}</Text>
+      </Pressable>
+      {scientificId === item.id && <Text accessibilityLiveRegion="polite"
+        testID="mobile-scientific-contract-detail" style={styles.note}>
+        {item.kind} · ID {item.id} · source {item.sourceId}. {item.detail}
+      </Text>}
+    </View>)}
     <Text accessibilityRole="header" style={styles.itemTitle}>Documents and relations</Text>
     {groups.filter(group => group.documents.length).map(group => <View key={group.module}>
       <Text accessibilityRole="header" style={styles.itemTitle}>{group.title} ({group.documents.length})</Text>

@@ -72,7 +72,7 @@ def _failure(operation, message, elapsed_ms=0):
 
 
 def _validate_expression(expr):
-    text = str(expr or "").strip()
+    text = str(expr if expr is not None and not isinstance(expr, bool) else "").strip()
     if not text:
         raise SageRequestError("Expression is required.")
     if len(text) > MAX_EXPR_LEN:

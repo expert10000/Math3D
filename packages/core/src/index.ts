@@ -160,6 +160,8 @@ export * from "./vectorField3DLineIntegral";
 export * from "./vectorField3DRegionIntegrals";
 export * from "./vectorField3DTrajectoryPromotion";
 export * from "./vectorField3DLocalSeparatrices";
+export * from "./vectorField3DTopologyStudies";
+export * from "./projectPoincareGraph";
 export * from "./vectorField3DComparison";
 export * from "./derivedFieldDocument";
 export * from "./advancedTensorMeasures";

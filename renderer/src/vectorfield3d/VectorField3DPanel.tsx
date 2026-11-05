@@ -95,6 +95,7 @@ import { VectorField3DDerivedOperationsPanel } from "./VectorField3DDerivedOpera
 import { VectorField3DDerivedIsosurfacePanel } from "./VectorField3DDerivedIsosurfacePanel";
 import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfacePanel";
 import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPanel";
+import { VectorField3DTopologyStudiesPanel } from "./VectorField3DTopologyStudiesPanel";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
@@ -148,6 +149,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
   onSaveComparisonResult, onOpenComparisonProfile,
+  onSaveTopologyStudy, onOpenPoincare,
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
   onSaveTemporalSpectrum, onRebaseDerivedSource,
   onOpenTemporalSpectrum,
@@ -212,6 +214,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveComparisonResult?: (result: AnalysisResultEnvelope,
     transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
   onOpenComparisonProfile?: (result: AnalysisResultEnvelope) => void;
+  onSaveTopologyStudy?: (result: AnalysisResultEnvelope) => void;
+  onOpenPoincare?: (result: AnalysisResultEnvelope) => void;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -2789,6 +2793,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       <VectorField3DLocalTopologyPanel document={document} search={equilibriumSearch}
         selectedIndex={selectedEquilibrium} project={project}
         onPromote={onPromoteLocalSeparatrix} />
+      <VectorField3DTopologyStudiesPanel document={document} project={project}
+        onSave={onSaveTopologyStudy} onOpenPoincare={onOpenPoincare} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />

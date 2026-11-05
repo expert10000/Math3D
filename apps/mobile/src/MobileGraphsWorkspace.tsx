@@ -39,6 +39,7 @@ import { mobileGraphAnalysisDraft, mobileGraphAnalysisInputHash, mobileGraphRegr
   runMobileGraphAnalysis, isMobileGraphAnalysisCurrent, mobileGraphAnalysisProbe,
   type MobileGraphRegressionAnalysis } from "./models/mobileGraphAnalysis";
 import { mobileGraphToolUnavailable, mobileGraphTangentDraft } from "./models/mobileGraphTools";
+import { mobileWithheldScientificRows } from "./models/mobileScientificGraphRows";
 import { clipMobileGraphLine, projectMobileGraphGrid, projectMobileGraphLines, type MobileGraphLine } from "./viewer/mobileGraphProjection";
 
 const touches = (event: GestureResponderEvent): GraphTouch[] => event.nativeEvent.touches.map((touch) =>
@@ -58,6 +59,7 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
   const [fallbackAdapter] = useState(() => new Graph2DCommandAdapter(document));
   const adapter = sessionAdapter ?? fallbackAdapter;
   const tableStore = pointTables ?? mobileGraphPointTables;
+  const withheldScientificRows = mobileWithheldScientificRows(document);
   const gesture = useRef(new MobileGraphGesture());
   const [size, setSize] = useState({ width: 320, height: 320 });
   const [preview, setPreview] = useState<Graph2DViewport | null>(null);
@@ -393,6 +395,9 @@ export const MobileGraphsWorkspace = ({ document, onChange, onSave, message, onH
       })}
       {button("Display", () => { cancel(); cancelParameter(); setMoreOpen(false); setDestination(destination === "Display" ? "Graph" : "Display"); })}
       {compactLandscape && button("More", () => setMoreOpen(value => !value))}</View>}
+    {!presentation && withheldScientificRows.length > 0 &&
+      <Text accessibilityLiveRegion="polite" testID="mobile-scientific-rows-withheld"
+        style={s.readout}>Values withheld for {withheldScientificRows.length} source-linked scientific {withheldScientificRows.length === 1 ? "row" : "rows"}. Mobile has not verified the pinned source for these rows; the saved recipes and IDs remain available.</Text>}
     {!presentation && <>{!compactLandscape && <View style={s.toolbar}>
       {button("Fit selection", () => fit("selection"), !document.selection.objectId, true)}
       {button("Fit all", () => fit("all"), false, true)}

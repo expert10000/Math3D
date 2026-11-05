@@ -68,7 +68,7 @@ function ConstructionCard({ document, object, resolved, onAction }: { document: 
       <Text testID="mobile-graph-saved-curvature">κ = {resolved.measurement.value.toPrecision(8)} · {resolved.measurement.method} · {resolved.measurement.convention} · no certified error bound</Text>}
     {object.kind === "osculating-circle" && resolved?.circle &&
       <Text testID="mobile-graph-saved-osculating-circle">Center ({resolved.circle.center.x.toPrecision(8)}, {resolved.circle.center.y.toPrecision(8)}) · radius {resolved.circle.radius.toPrecision(8)} · approximate · no certified error bound. The dashed circle and center marker may overlap the source curve; use Fit to inspect them.</Text>}
-    {object.anchor && "interval" in object.anchor && <Text>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</Text>}
+    {object.anchor && "seedX" in object.anchor && <Text>Original x {object.anchor.seedX.toPrecision(7)} · match ±{object.anchor.matchRadius.toPrecision(3)} · scan [{object.anchor.interval.min.toPrecision(5)}, {object.anchor.interval.max.toPrecision(5)}] · {object.anchor.method} · residual {object.anchor.residual.toExponential(2)} · saved {object.anchor.confidence}</Text>}
     {resolved?.reason && <Text>{resolved.reason}</Text>}
     <Button label={`Delete ${object.label}`} onPress={() => onAction({ type: "delete", objectId: object.id })} />
   </View>;
