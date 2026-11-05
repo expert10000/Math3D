@@ -332,6 +332,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **E02 implementation update (2026-11-05):** The [E02 acceptance record](evidence/sage-e02-gap-group-operations-2026-11-05.md) adds an advertised GAP-backed dossier for saved finite groups, pinned to their exact definition revision. Bounded order, center, conjugacy and complete subgroup/normality results are independently checked before Project evidence is saved. Five Sage 9.5/GAP 4.11.1 and Docker Sage 10.10/GAP 4.15.1 live fixtures, exact D4 cross-runtime invariants, forged-result rejection, live Docker HTTP dispatch, and desktop export/fresh-profile reopen pass. The next feature is **SAGE-E03**, Cayley and subgroup graph scenes.
 
+**E01–E02 → D06 integration (2026-11-05):** The [linked Galois acceptance record](evidence/sage-d06-linked-group-partial-2026-11-05.md) makes the D06 group a revisioned E01 object pinned to polynomial-ring and result evidence. The existing E02 dossier can run on that group. `x⁴−2` remains a complete ten-subgroup order-eight view; an order-twelve quartic now has an explicitly partial eight-of-ten view. Core, local Sage 9.5, Docker Sage 10.10 and controlled desktop export/reopen gates pass. The next visualization milestone remains **E03**.
+
 ---
 
 ## 3. P0 — Algebra object registry

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../fixtures/sage-galois-x4-minus-2-sage95.json";
 import cubicFixture from "../fixtures/sage-galois-x3-minus-2-sage95.json";
+import partialFixture from "../fixtures/sage-galois-a4-partial-sage95.json";
 import { addMath3DProjectAlgebraEvidence, algebraOperationsFor, buildAlgebraOperationRequest,
-  createAlgebraObjectRecord, createMath3DProject, createMixedWorkspaceDocument,
+  createAlgebraObjectRecord, createGaloisGroupObject, createMath3DProject, createMixedWorkspaceDocument,
   createProjectAlgebraEvidence, createProjectAlgebraObjectId, parseMath3DProject,
-  parseSageGaloisResult, sageGaloisCovers, serializeMath3DProject,
+  inspectProjectAlgebraFreshness, parseSageGaloisResult, sageGaloisCovers, serializeMath3DProject,
   upsertMath3DProjectAlgebraObject } from "../../packages/core/src/index";
 
 const setup = () => {
@@ -24,6 +25,40 @@ const setup = () => {
 };
 
 describe("SAGE-D06 bounded Galois analysis", () => {
+  it("reopens a pinned finite group and marks it stale when the source ring advances", () => {
+    const { project, q, r, request } = setup();
+    const evidence = createProjectAlgebraEvidence(project.identity.id, project.algebraObjects!, request, fixture,
+      { engine: "sagemath", version: "9.5", backend: "docker", jobId: "d06-group", elapsedMs: 1, warnings: [] });
+    let saved = addMath3DProjectAlgebraEvidence(project, evidence);
+    const group = createGaloisGroupObject(saved, evidence);
+    expect(group.definition).toMatchObject({ kind: "finite-group", representation: "permutation", degree: 8,
+      source: { evidenceId: evidence.id, ring: { objectId: r.id, revision: 1 } } });
+    expect(group.dependencies).toEqual([{ objectId: r.id, revision: 1 }]);
+    saved = upsertMath3DProjectAlgebraObject(saved, group);
+    const reopened = parseMath3DProject(serializeMath3DProject(saved));
+    expect(reopened.algebraObjects?.find((item) => item.id === group.id)?.revisions[0]).toEqual(group);
+    const gapRequest = buildAlgebraOperationRequest(reopened, { objectId: group.id, revision: 1 },
+      "sage.group.dossier", "docker", {});
+    expect(gapRequest.params).toMatchObject({ target: { objectId: group.id, revision: 1 },
+      definition: { source: { evidenceId: evidence.id } } });
+    const revised = upsertMath3DProjectAlgebraObject(reopened, createAlgebraObjectRecord({ id: r.id,
+      revision: 2, label: "R", definition: { kind: "polynomial-ring",
+        coefficientDomain: { objectId: q.id, revision: 1 }, variables: ["t"], monomialOrder: "lex" } }));
+    expect(inspectProjectAlgebraFreshness(revised).find((item) => item.objectId === group.id)?.status).toBe("stale");
+    expect(() => buildAlgebraOperationRequest(revised, { objectId: group.id, revision: 1 },
+      "sage.group.dossier", "docker", {})).toThrow(/stale/);
+  });
+  it("marks the order-twelve quartic correspondence partial and rejects a forged complete claim", () => {
+    const { project, target } = setup();
+    const request = buildAlgebraOperationRequest(project, target, "sage.galois.analyze", "docker",
+      { polynomial: "x^4-3*x^3+3*x^2+2*x+1" });
+    const result = parseSageGaloisResult(partialFixture, request.params as never);
+    expect(result).toMatchObject({ complete: false, omittedCount: 2, group: { order: 12 } });
+    expect(result.subgroups.map((item) => item.order * item.fixedField.degree))
+      .toEqual(Array(result.subgroups.length).fill(12));
+    expect(() => parseSageGaloisResult({ ...partialFixture, complete: true },
+      request.params as never)).toThrow(/schema|bound/);
+  });
   it("checks a distinct cubic S3 correspondence without a D4 label", () => {
     const { project, target } = setup();
     const request = buildAlgebraOperationRequest(project, target, "sage.galois.analyze", "docker", { polynomial: "x^3-2" });

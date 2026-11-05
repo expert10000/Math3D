@@ -12,6 +12,16 @@ def request(definition):
 
 
 class FiniteGroupOperationTests(unittest.TestCase):
+    def test_linked_galois_source_preserves_gap_dossier(self):
+        definition = {"kind": "finite-group", "representation": "permutation", "degree": 4,
+            "generators": [{"name": "r", "images": [2, 3, 4, 1]},
+                {"name": "s", "images": [1, 4, 3, 2]}], "relations": [],
+            "source": {"ring": {"objectId": "math3d:algebra:test", "revision": 1},
+                "polynomial": "x^4-2", "splittingPolynomial": "x^8+4", "evidenceId": "evidence-test"}}
+        response = run_payload(request(definition))
+        self.assertTrue(response["success"])
+        self.assertEqual((response["result"]["order"], len(response["result"]["subgroups"])), (8, 10))
+
     def test_capability_and_exact_small_groups(self):
         self.assertIn("sage.group.dossier", OPERATIONS)
         definitions = [

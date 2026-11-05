@@ -24,7 +24,8 @@ def _input(params):
     if type(definition) is not dict or definition.get("kind") != "finite-group":
         raise ValueError("Finite-group definition is missing.")
     if definition.get("representation") == "permutation":
-        if set(definition) != {"kind", "representation", "degree", "generators", "relations"} or \
+        if set(definition) not in ({"kind", "representation", "degree", "generators", "relations"},
+                {"kind", "representation", "degree", "generators", "relations", "source"}) or \
                 type(definition["degree"]) is not int or not 2 <= definition["degree"] <= 8 or \
                 type(definition["generators"]) is not list or not 1 <= len(definition["generators"]) <= 3 or \
                 type(definition["relations"]) is not list or len(definition["relations"]) > 8:
@@ -58,7 +59,8 @@ def _input(params):
             if product != Permutations(degree)(list(range(1, degree + 1))):
                 raise ValueError("A saved group relation is false.")
     elif definition.get("representation") == "abelian":
-        if set(definition) != {"kind", "representation", "invariantFactors", "generators"} or \
+        if set(definition) not in ({"kind", "representation", "invariantFactors", "generators"},
+                {"kind", "representation", "invariantFactors", "generators", "source"}) or \
                 type(definition["invariantFactors"]) is not list or \
                 not 1 <= len(definition["invariantFactors"]) <= 4 or \
                 any(type(factor) is not int or not 2 <= factor <= 64 for factor in definition["invariantFactors"]) or \

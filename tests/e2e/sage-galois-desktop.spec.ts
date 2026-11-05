@@ -6,6 +6,7 @@ import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState,
 
 const core = require(resolve("packages/core/src/index.ts"));
 const fixture = require(resolve("tests/fixtures/sage-galois-x4-minus-2-sage95.json"));
+const partialFixture = require(resolve("tests/fixtures/sage-galois-a4-partial-sage95.json"));
 
 test("SAGE-D06 saves and independently reopens linked D4 subgroup and fixed-field lattices", async () => {
   test.setTimeout(180_000);
@@ -21,7 +22,7 @@ test("SAGE-D06 saves and independently reopens linked D4 subgroup and fixed-fiel
     req.on("end", () => {
       const request = JSON.parse(body);
       res.end(JSON.stringify({ engine: "sagemath", engineVersion: "9.5", operation: request.operation,
-        success: true, latex: "", warnings: [], result: fixture }));
+        success: true, latex: "", warnings: [], result: request.params?.polynomial === "x^4-2" ? fixture : partialFixture }));
     });
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
@@ -59,6 +60,7 @@ test("SAGE-D06 saves and independently reopens linked D4 subgroup and fixed-fiel
       await ctx!.page.getByTestId("workspace-nav-cas").click();
     };
     ctx = await launchSurfaceApp({ MATH3D_SAGE_SERVICE_URL: `http://127.0.0.1:${address.port}` });
+    ctx.page.on("pageerror", (error) => { process.stderr.write(`[sage-galois pageerror] ${error.stack ?? error.message}\n`); });
     await resetSurfaceAppState(ctx.page);
     await install(core.serializeMath3DProject(project));
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
@@ -77,6 +79,9 @@ test("SAGE-D06 saves and independently reopens linked D4 subgroup and fixed-fiel
     await viewer.getByTestId("galois-subgroup-H1").focus();
     await viewer.getByTestId("galois-subgroup-H1").press("Enter");
     await expect(viewer.getByTestId("cas-galois-selection")).toContainText("2 × 4 = 8");
+    await viewer.getByRole("button", { name: "Save finite group object" }).click();
+    await expect(cas.getByTestId("cas-selected-structure")).toContainText("Gal(x^4-2/QQ)");
+    await expect(cas.getByTestId("cas-selected-structure")).toContainText("Order");
     await cas.getByRole("button", { name: "Back to workspace" }).click();
     await ctx.page.getByTestId("projects-toggle").click();
     await ctx.page.getByTestId("project-explorer-panel").getByTestId("project-save").click();
@@ -91,10 +96,20 @@ test("SAGE-D06 saves and independently reopens linked D4 subgroup and fixed-fiel
     await reopened.getByRole("button", { name: "Operations", exact: true }).click();
     await reopened.getByRole("button", { name: "Inspect saved result" }).click();
     await expect(reopened.getByTestId("cas-galois-viewer")).toContainText("complete 10 subgroups");
+    await expect(reopened.getByTestId("cas-galois-viewer")).toContainText("Open saved group");
     const imported = core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1")));
     expect(imported.algebraObjects.find((item: { id: string }) => item.id === ring.id).revisions[0]).toEqual(ring);
     expect(imported.algebraEvidence).toHaveLength(1);
     expect(imported.algebraEvidence[0].result.group).toMatchObject({ order: 8, classification: "D4" });
     expect(imported.algebraEvidence[0].request.params.targetHash).toBe(ring.contentHash);
+    expect(imported.algebraObjects.find((item: { revisions: { kind: string }[] }) =>
+      item.revisions[0].kind === "finite-group")?.revisions[0].definition.source.evidenceId)
+      .toBe(imported.algebraEvidence[0].id);
+    await reopened.getByRole("button", { name: "Operations", exact: true }).click();
+    await reopened.getByRole("button", { name: "Select Galois group and fixed fields" }).click();
+    await reopened.getByLabel(/Monic irreducible QQ polynomial/).fill("x^4-3*x^3+3*x^2+2*x+1");
+    await reopened.getByRole("button", { name: "Run and save evidence" }).click();
+    await expect(reopened.getByTestId("cas-galois-viewer")).toContainText("partial 8 shown; 2 omitted");
+    await expect(reopened.getByTestId("cas-galois-viewer")).toContainText("may skip omitted intermediate subgroups");
   } finally { await closeSurfaceApp(ctx); await new Promise<void>((done) => server.close(() => done())); }
 });
