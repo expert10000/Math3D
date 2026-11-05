@@ -27,7 +27,7 @@ The bounded ideal QEC path also passed a live two-app test: Theory Lab computed,
 | E · User workflows | Real Lab → Math3D launch and fixture study handoff pass. | Pass for tested Windows paths. |
 | F · Portable | Moved pack opens with the same fingerprint; altered blob is refused. | Pass for tested path and tamper case. |
 | G · Hardening | Size/path/schema negative tests and bounded large-field stream tests pass. A separate 24-cycle Electron open/close run observed a simulated WebGL context-loss event and completed later views. | Partial: working set remains above idle after close; no long-duration RAM/VRAM budget or genuine GPU-device-loss signoff. |
-| H · Release | Reproducible source-checkout commands, 38-scene current capture, a tested pre-QEC source rollback, and this evidence record. | Partial: fresh-VM installer matrix is running; manual visual signoff and installed-app rollback remain open. |
+| H · Release | Reproducible source-checkout commands, 38-scene current capture, a tested pre-QEC source rollback, and an earlier pinned candidate's clean-install and upgrade evidence. | Partial: the newer pinned installer matrix is running; manual visual signoff and installed-app rollback remain open. |
 
 The gate decisions apply to this checkout and test environment, not to a distributable installer or another operating system. No numeric performance threshold is asserted without a measured baseline. QI-40 remains open until the partial and blocked gates are closed and a release candidate is reviewed.
 
@@ -46,6 +46,10 @@ The [current cross-app rerun](quantum-qi40-cross-app-current-2026-11-05.json) pi
 ## Source-level adapter rollback check
 
 An isolated Math3D worktree at `72618a084deeb202e5056f6028a68691c927ca79`, immediately before the QEC scene-adapter commit, built its main and renderer bundles successfully. Its pinned matrix checked all 38 v1/v2 fixtures and importer fingerprints; `tests/e2e/quantum-qi01-baseline.spec.ts` passed in Electron, opening the saved-run QWZ curvature and bands scenes. This shows that removing the newer QEC adapter at the source level preserves the earlier pinned readers and baseline route. It does **not** exercise downgrading an installed app, restoring user settings or Projects, or an installer rollback. Those remain Gate H release work.
+
+## Earlier pinned installed-app candidate
+
+[Windows workflow 42035098178](https://github.com/expert10000/Math3D/actions/runs/42035098178) completed successfully for Math3D commit `55a0196fe63ca16f49c97ff1aead7e41105e0ede` and Theory Lab commit `27c78c0a158e6001e85e12a0c183c8c3bcc52d89`. Its [fresh-install evidence](quantum-qi40-installed-fresh-2026-11-05-55a0196f.json) pins the stable-channel Math3D installer SHA-256 `b515f926f0794679f19b4cbe3adb5133b3d15b95f2b31e3856ff14ee5a4b46ac` and Lab installer SHA-256 `b7c6b949e56e0f30049357f645760c3dff1364c9d57da123b40e3370e4b923e0`; the installed UI produced a verified scene and Math3D reopened its exact saved run. Its [upgrade evidence](quantum-qi40-installed-upgrade-2026-11-05-55a0196f.json) records installation over the published v1.6.0 installer, retained Project and setting, and another installed-app handoff. The evidence applies to those exact installer bytes. It does not certify the newer QEC-aware Math3D commit or any later `main` commit. A separate candidate workflow for Math3D `8a7d0fa3e0bb68fb5ecb23465de3192bee5fbd61` is [running](https://github.com/expert10000/Math3D/actions/runs/42041770604).
 
 Run the same source-checkout gate with `npm run test:quantum:release:cross-app -- --lab <absolute Theory Lab checkout> --live --report <output JSON>`. Omitting `--live` runs the static checks only. The optional `--installed-lab` and `--installed-math3d` paths add an installed five-run return test; that gate was **not run** in this report. Neither this runner nor the passing source-checkout result changes the partial release assessment above.
 
