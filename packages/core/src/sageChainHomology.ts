@@ -129,7 +129,7 @@ export const parseSageChainHomologyResult = (value: unknown,
   if (!kernelRank && value.restrictedBoundary2Smith !== null)
     throw new TypeError("A zero-rank kernel has no restricted boundary matrix.");
   const r2 = restricted ? rankOf(restricted) : 0;
-  const expected = [
+  const expected: SageChainHomologyResult["groups"] = [
     { degree: 0, freeRank: n0 - r1, torsionOrders: torsionOf(d1Smith) },
     { degree: 1, freeRank: kernelRank - r2, torsionOrders: restricted ? torsionOf(restricted) : [] },
     { degree: 2, freeRank: n2 - r2, torsionOrders: [] },
@@ -139,5 +139,5 @@ export const parseSageChainHomologyResult = (value: unknown,
     throw new TypeError("Homology groups disagree with verified kernels, images and Smith factors.");
   return { format: SAGE_CHAIN_RESULT_FORMAT, schemaVersion: 1, coefficientDomain: "ZZ",
     dimensions: source.dimensions, boundary1Smith: d1Smith, inverseRight: value.inverseRight,
-    restrictedBoundary2Smith: restricted, groups: expected as SageChainHomologyResult["groups"] };
+    restrictedBoundary2Smith: restricted, groups: expected };
 };

@@ -13,7 +13,8 @@ function source(opened: Opened) {
   const extension = opened.document.extensions["quantum-scene/v2"] ?? opened.document.extensions["quantum-scene/v1"];
   if (!extension || typeof extension !== "object") throw new Error("Verified quantum scene metadata is missing");
   const scene = (extension as { scene: { objects: { id: string; kind: string; label: string }[];
-    coordinates: { units: [string, string, string] }; provenance: { runId: string; resultSha256: string } } }).scene;
+    coordinates: { axes: [string, string, string]; units: [string, string, string]; handedness: string };
+    provenance: { runId: string; resultSha256: string } } }).scene;
   return scene;
 }
 function pointsOf(opened: Opened) {
@@ -47,13 +48,22 @@ export function promoteQuantumNative(opened: Opened, target: QuantumNativeTarget
   const scene = source(opened), fingerprint = opened.reference.sceneFingerprint;
   const provenance = { sceneFingerprint: fingerprint, runId: scene.provenance.runId,
     resultSha256: scene.provenance.resultSha256, conversion: target };
+  const coordinates = scene.coordinates;
+  const frame = Array.isArray(coordinates.axes) && coordinates.axes.length === 3 &&
+    Array.isArray(coordinates.units) && coordinates.units.length === 3 &&
+    coordinates.units.every(unit => unit === coordinates.units[0]) &&
+    new Set(coordinates.axes).size === 3 && ["left", "right"].includes(coordinates.handedness) ? {
+      format: "math3d.coordinate-frame/v1", frame: `quantum:${fingerprint}`,
+      unit: coordinates.units[0], axes: coordinates.axes, handedness: coordinates.handedness,
+    } : null;
   if (target === "geometry") {
     const geometry = opened.document.geometry;
     const count = (geometry.points?.length ?? 0) + (geometry.segments?.length ?? 0) + (geometry.triangles?.length ?? 0);
     if (!count || count > 5000) throw new Error("Geometry promotion requires 1–5000 mapped primitives");
     return { documents: [createGeometryDocument({ stableKey: provenance,
       source: { geometry: geometry as GeometryDocument["source"]["geometry"], objects: [], surfaces: [],
-        constructions: [], relationships: [], parameters: {}, extensions: { "quantum.promotion/v1": provenance } },
+        constructions: [], relationships: [], parameters: {}, extensions: { "quantum.promotion/v1": provenance,
+          ...(frame ? { math3dCoordinateFrame: frame } : {}) } },
       metadata: { title: `${opened.document.title} · geometry copy` } })] };
   }
   if (target === "curve" || target === "graph2d") {
@@ -82,7 +92,8 @@ export function promoteQuantumNative(opened: Opened, target: QuantumNativeTarget
     source: { objectId: `mesh-object:${checksum.slice(7, 39)}`,
       resource: { id, checksum, vertexCount: positions.length / 3, indexCount: 0,
         hasNormals: false, hasUvs: false, encoding: "math3d.mesh-buffers.v1" },
-      origin: { kind: "quantum-promotion", ...provenance, objectId: object.id, precision: "float32-display-copy" } } });
+      origin: { kind: "quantum-promotion", ...provenance, objectId: object.id, precision: "float32-display-copy",
+        ...(frame ? { math3dCoordinateFrame: frame } : {}) } } });
   if (target === "mesh") return { documents: [mesh], meshBytes: { id, bytes } };
   const surface = createSurfaceDocument({ stableKey: { ...provenance, objectId: object.id },
     metadata: { title: `${object.label} · surface copy` },

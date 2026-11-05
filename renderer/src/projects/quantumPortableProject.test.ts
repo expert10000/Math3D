@@ -58,8 +58,14 @@ describe("content-addressed portable QWZ Project", () => {
       const files = manifest.scenes.flatMap((scene: { files: { sha256: string }[] }) => scene.files);
       expect(new Set(files.map((file: { sha256: string }) => file.sha256)).size).toBeLessThan(files.length);
       await cp(packA, packB, { recursive: true });
-      const opened = await openQuantumProjectPack(packB, join(root, "new-host-cache"));
+      if (process.env.MATH3D_QPACK_EVIDENCE) await cp(packA, process.env.MATH3D_QPACK_EVIDENCE, { recursive: true });
+      const priorWorker = process.env.QLAB_PYTHON;
+      process.env.QLAB_PYTHON = join(root, "missing-worker");
+      let opened: Awaited<ReturnType<typeof openQuantumProjectPack>>;
+      try { opened = await openQuantumProjectPack(packB, join(root, "new-host-cache")); }
+      finally { if (priorWorker === undefined) delete process.env.QLAB_PYTHON; else process.env.QLAB_PYTHON = priorWorker; }
       expect(opened.projectJson).not.toContain(fixtureRoot);
+      expect(opened.projectJson).not.toMatch(/[A-Za-z]:\\\\[^"\s]*\.qscene/);
       let restored = parseMath3DProject(opened.projectJson);
       for (const reference of opened.references) restored = relinkMath3DProjectQuantumScene(restored,
         reference.sceneFingerprint, reference.directory);
