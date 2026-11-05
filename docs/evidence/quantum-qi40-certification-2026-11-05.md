@@ -41,6 +41,8 @@ The existing `npm run measure:ssr:lifecycle` passed three scalar view cycles and
 
 The [QI-40 cross-app report](quantum-qi40-cross-app-2026-11-05.json) pins Math3D `6ac43b79` and Theory Lab `ad3d9da2`. On Windows, all seven recorded gates passed: Math3D's 38-scene/Electron release matrix, Theory Lab typecheck, TypeScript tests, Python worker tests, scene smoke, Lab build, and the live Lab → Math3D handoff. The Python worker suite ran under its pinned `unittest` command, including the repetition-code tests. The report records each gate's exit code and duration, and omits checkout paths, run parameters, and scientific arrays.
 
+The [current cross-app rerun](quantum-qi40-cross-app-current-2026-11-05.json) pins Math3D `8a7d0fa3` and Theory Lab `27c78c0a` after the QEC saved-run integration. All seven source-checkout gates passed again. The focused QEC saved-scene test and real two-app Electron test also passed on those same source revisions. The report deliberately retains `releaseCertification: partial`; no installed-app result is inferred from these tests.
+
 Run the same source-checkout gate with `npm run test:quantum:release:cross-app -- --lab <absolute Theory Lab checkout> --live --report <output JSON>`. Omitting `--live` runs the static checks only. The optional `--installed-lab` and `--installed-math3d` paths add an installed five-run return test; that gate was **not run** in this report. Neither this runner nor the passing source-checkout result changes the partial release assessment above.
 
 ## Reproduce
