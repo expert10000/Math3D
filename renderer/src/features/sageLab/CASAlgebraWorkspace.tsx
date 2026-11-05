@@ -10,6 +10,7 @@ import SageGaloisViewer from "./SageGaloisViewer";
 import SageFiniteGroupViewer from "./SageFiniteGroupViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageFiniteGroupBuilder from "./SageFiniteGroupBuilder";
+import SageModuleBuilder from "./SageModuleBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
@@ -50,7 +51,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
-  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | null>(null);
+  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | null>(null);
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
 
@@ -97,20 +98,27 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     : chosen?.record.definition.kind === "ideal"
       ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
       : chosen?.record.definition.kind === "quotient-ring"
-        ? selectedStructure(project, chosen.record.definition.ambientRing)?.record : null;
+        ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
+        : chosen?.record.definition.kind === "module"
+          ? selectedStructure(project, chosen.record.definition.baseRing)?.record : null;
   const idealParent = chosen?.record.definition.kind === "quotient-ring"
     ? selectedStructure(project, chosen.record.definition.ideal)?.record : null;
+  const mapSource = chosen?.record.definition.kind === "module-map"
+    ? selectedStructure(project, chosen.record.definition.sourceModule)?.record : null;
+  const mapTarget = chosen?.record.definition.kind === "module-map"
+    ? selectedStructure(project, chosen.record.definition.targetModule)?.record : null;
   const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring" &&
-    chosen.record.kind !== "finite-group"
+    chosen.record.kind !== "finite-group" && chosen.record.kind !== "module" && chosen.record.kind !== "module-map"
     ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ring")}>+ New structure</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("ideal")}>+ New ideal</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("group")}>+ New group</button>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("module")}>+ New module</button>
       </div>
     </div>
     {!project && <div role="status" style={{ fontSize: 12 }}>Open or create a Project to save algebra structures.
@@ -139,6 +147,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : builder === "group" && project ? <SageFiniteGroupBuilder key={project.identity.id} project={project}
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : builder === "module" && project ? <SageModuleBuilder key={project.identity.id} project={project}
+      onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : chosen && project ? <div data-testid="cas-selected-structure" style={{ display: "grid", gap: 14 }}>
     <div><div style={{ fontSize: 11, color: "#64748b" }}>Structure dossier</div>
       <h2 style={{ margin: "3px 0", fontSize: 21 }}>{chosen.record.label}</h2>
@@ -150,13 +160,15 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       </select>
     </label>
     <dl className="sage-structure-facts">
-      <dt>Kind</dt><dd>{chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
+      <dt>Kind</dt><dd>{chosen.record.kind === "module" ? "Presented module" : chosen.record.kind === "module-map" ? "Module map" : chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
         ? "Quotient ring" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
       <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>{chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "module" ? "Base ring" : chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {mapSource && <><dt>Source module</dt><dd><button type="button" style={action} onClick={() => select({ objectId: mapSource.id, revision: mapSource.revision })}>{mapSource.label}@{mapSource.revision}</button></dd></>}
+      {mapTarget && <><dt>Target module</dt><dd><button type="button" style={action} onClick={() => select({ objectId: mapTarget.id, revision: mapTarget.revision })}>{mapTarget.label}@{mapTarget.revision}</button></dd></>}
       {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}
       {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
         <dt>Validation</dt><dd>Bounded exact polynomial syntax</dd></>}
@@ -178,6 +190,20 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           {chosen.record.definition.representation === "abelian" && <><dt>Invariant factors</dt><dd>{chosen.record.definition.invariantFactors.join(" | ")}</dd></>}
         </>;
       })()}
+      {chosen.record.definition.kind === "module" && <>
+        <dt>Ambient free module</dt><dd>R^{chosen.record.definition.ambientRank}</dd>
+        <dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
+        <dt>Relation map</dt><dd>A: R^{chosen.record.definition.relationMap.domainRank} → R^{chosen.record.definition.ambientRank}</dd>
+        <dt>Relation matrix</dt><dd>{chosen.record.definition.relationMap.domainRank === 0 ? "Zero map (free module)" :
+          chosen.record.definition.relationMap.matrix.map((row) => `[${row.join(", ")}]`).join("; ")}</dd>
+        <dt>Interpretation</dt><dd>{chosen.record.definition.relationMap.domainRank === 0 ? "Free module" :
+          "Presented quotient R^n / im(A); no classification asserted"}</dd>
+      </>}
+      {chosen.record.definition.kind === "module-map" && <>
+        <dt>Map dimensions</dt><dd>R^{chosen.record.definition.domainRank} → R^{chosen.record.definition.codomainRank}</dd>
+        <dt>Matrix</dt><dd>{chosen.record.definition.matrix.map((row) => `[${row.join(", ")}]`).join("; ")}</dd>
+        <dt>Typing</dt><dd>Source and target are free modules over the same pinned ring</dd>
+      </>}
       {chosen.record.definition.kind === "number-field" && (() => {
         const facts = analyzeQuadraticNumberField(chosen.record.definition.definingPolynomial,
           chosen.record.definition.generator);
@@ -232,6 +258,12 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Adjoined radicand</dt><dd>{chosen.record.definition.radicand}</dd></>}
     {chosen.record.definition.kind === "finite-group" && <><dt>Exact group order</dt><dd>{analyzeFiniteGroup(chosen.record.definition).order}</dd>
       <dt>Representation</dt><dd>{chosen.record.definition.representation}</dd></>}
+    {chosen.record.definition.kind === "module" && <><dt>Base ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Ambient rank</dt><dd>{chosen.record.definition.ambientRank}</dd>
+      <dt>Relation rank</dt><dd>{chosen.record.definition.relationMap.domainRank}</dd></>}
+    {chosen.record.definition.kind === "module-map" && <><dt>Source</dt><dd>{mapSource?.label}@{mapSource?.revision}</dd>
+      <dt>Target</dt><dd>{mapTarget?.label}@{mapTarget?.revision}</dd>
+      <dt>Matrix dimensions</dt><dd>{chosen.record.definition.codomainRank} × {chosen.record.definition.domainRank}</dd></>}
     <dt>Current dependents</dt><dd>{status?.directDependents.length ? status.directDependents.length : "None"}</dd>
     {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd><dt>Field</dt><dd>{summary.field}</dd>
       <dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd><dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd></>}

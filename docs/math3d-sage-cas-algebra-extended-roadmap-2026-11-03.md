@@ -334,6 +334,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **E03 implementation update (2026-11-05):** The [E03 acceptance record](evidence/sage-e03-finite-group-scenes-2026-11-05.md) adds interactive Cayley and subgroup cover diagrams derived from pinned E02 group evidence. Versioned scene JSON and SVG exports retain source hashes, runtime versions and a deterministic layout; standalone scene import rebuilds and verifies every node and edge. D4 exact topology, tamper rejection, desktop downloads, SVG metadata, visual layout and fresh-profile Project reopen pass. The next feature is **SAGE-E04**, module presentations.
 
+**E04 implementation update (2026-11-05):** The [E04 acceptance record](evidence/sage-e04-module-presentations-2026-11-05.md) adds versioned free and presented modules with pinned `ZZ`, `QQ` or bounded `QQ` polynomial parents, an exact typed relation map `A:R^m→R^n`, and separate dimension-checked maps between saved free modules. Registry validation rejects wrong scalar domains, ranks and parent references; revision freshness tracks dependent modules. Core and actual desktop Project-package export/fresh-profile import gates pass. The next feature is **SAGE-E05**, module invariant factors.
+
 ---
 
 ## 3. P0 — Algebra object registry

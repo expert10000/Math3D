@@ -2,6 +2,7 @@ import { createAlgebraObjectRecord, createProjectAlgebraObjectId, inspectProject
   analyzeQuadraticNumberField, buildSageAlgebraReconstructionInput, upsertMath3DProjectAlgebraObject,
   analyzeBiquadraticExtensionFromDefinition,
   analyzeFiniteGroup,
+  modulePresentationLabel,
   type AlgebraObjectDefinition, type AlgebraObjectRecord, type AlgebraObjectRef,
   type Math3DProject, type ProjectAlgebraObjectEntry } from "@math3d/core";
 
@@ -75,6 +76,15 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
     const facts = analyzeFiniteGroup(definition);
     return `${facts.presentation}, order ${facts.order}`;
   }
+  if (definition.kind === "module") {
+    const ring = selectedStructure(project, definition.baseRing)?.record;
+    return modulePresentationLabel(definition, ring ? structureDisplay(ring, project) : "R");
+  }
+  if (definition.kind === "module-map") {
+    const source = selectedStructure(project, definition.sourceModule)?.record;
+    const target = selectedStructure(project, definition.targetModule)?.record;
+    return `${source?.label ?? "M"} → ${target?.label ?? "N"} · ${definition.codomainRank}×${definition.domainRank} matrix`;
+  }
   if (definition.kind === "ideal") {
     const ambient = selectedStructure(project, definition.ambientRing)?.record;
     return `⟨${definition.generators.join(", ")}⟩ ⊂ ${ambient?.label ?? definition.ambientRing.objectId}`;
@@ -118,7 +128,8 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
   if (definition.kind === "field-extension") return { presentation, characteristic: "0", field: "yes",
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
-  if (definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group")
+  if (definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group" ||
+      definition.kind === "module" || definition.kind === "module-map")
     throw new TypeError("Ideal, quotient and finite-group objects need dedicated exact analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   if (!parent) throw new TypeError("The polynomial coefficient domain is missing from the Project.");
