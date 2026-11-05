@@ -1,6 +1,7 @@
 import { canonicalJsonStringify, createDocumentIdentity, isDocumentIdentity, structuralHash } from "./documentIdentity";
 import {
   GRAPH2D_DOCUMENT_FORMAT, GRAPH2D_DOCUMENT_SCHEMA_VERSION, GRAPH2D_EXPLICIT_CAPABILITY,
+  GRAPH2D_LINKED_DERIVATIVE_CAPABILITY,
   GRAPH2D_PARAMETRIC_CAPABILITY,
   GRAPH2D_POLAR_CAPABILITY,
   GRAPH2D_IMPLICIT_CAPABILITY,
@@ -50,7 +51,8 @@ export const inspectGraph2DCompatibility = (value: unknown): Graph2DCompatibilit
   if (version > GRAPH2D_DOCUMENT_SCHEMA_VERSION)
     return { status: "unsupported", schemaVersion: version, title, unsupportedCapabilities: [], reason: "Future Graph2D schema version." };
   const required = Array.isArray(value.requiredCapabilities) ? value.requiredCapabilities : [];
-  const supported = [GRAPH2D_EXPLICIT_CAPABILITY, GRAPH2D_PARAMETRIC_CAPABILITY,
+  const supported = [GRAPH2D_EXPLICIT_CAPABILITY, GRAPH2D_LINKED_DERIVATIVE_CAPABILITY,
+    GRAPH2D_PARAMETRIC_CAPABILITY,
     GRAPH2D_POLAR_CAPABILITY, GRAPH2D_IMPLICIT_CAPABILITY, GRAPH2D_INEQUALITY_CAPABILITY,
     GRAPH2D_POINT_SERIES_CAPABILITY, GRAPH2D_SCIENTIFIC_DATASET_CAPABILITY, GRAPH2D_SCIENTIFIC_DATASET_SLICE_CAPABILITY,
     GRAPH2D_FIELD_REFERENCE_CAPABILITY, GRAPH2D_VECTOR_FIELD_REFERENCE_CAPABILITY,
