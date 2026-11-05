@@ -115,6 +115,11 @@ export type SurfaceMeshSource =
         triangleBudget: number; timeBudgetMs: number;
         gridShape: readonly [number, number, number] };
       complete: boolean; limitReason: string | null }
+  | { kind: "vector3d.local-manifold-patch"; resultId: string;
+      source: import("@math3d/core").AnalysisResultEnvelope["provenance"]["source"];
+      recipe: import("@math3d/core").LocalManifoldRecipe;
+      constructionHash: string; geometryHash: string;
+      branch: "stable" | "unstable"; localClassification: string }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }
   | { kind: "csg" }
@@ -162,6 +167,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return `source-linked speed isosurface |F| = ${source.recipe.level} ${source.recipe.unit}`;
     case "derivedScalarFieldIsosurface":
       return `source-linked derived scalar isosurface ${source.recipe.level} ${source.recipe.unit}`;
+    case "vector3d.local-manifold-patch":
+      return `local ${source.branch} manifold patch from ${source.source.documentId}`;
     case "halfspaceIntersection":
       return "halfspace intersection";
     case "convexHull":

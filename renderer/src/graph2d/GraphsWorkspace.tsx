@@ -75,6 +75,8 @@ import {
   temporalSpectrumGraphRows,
   computeVectorField3DPoincareSection, createPoincareGraphOrigin,
   poincareGraphRows, projectPoincareGraphStatus,
+  computeVectorField3DPoincareReturnMap, createPoincareReturnGraphOrigin,
+  poincareReturnGraphRows,
   type VerifiedTemporalTransfers, type TemporalSpectrumRecipe,
   graph2DParameterStudyStatus,
 } from "@math3d/core";
@@ -273,6 +275,9 @@ type Props = {
   onSaveVectorField3DComparisonResult?: (result: import("@math3d/core").AnalysisResultEnvelope,
     transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
   onSaveVectorField3DTopologyStudy?: (result: import("@math3d/core").AnalysisResultEnvelope) => void;
+  onSaveVectorField3DPoincareReturn?: (study: import("@math3d/core").PoincareReturnStudy) => void;
+  onSaveVectorField3DLyapunov?: (study: import("@math3d/core").LyapunovStudy) => void;
+  onPromoteVectorField3DManifoldPatch?: (patch: import("@math3d/core").LocalManifoldPatch) => void;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -317,7 +322,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
   onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
   onPromoteVectorField3DLocalSeparatrix, onSaveVectorField3DComparisonResult,
-  onSaveVectorField3DTopologyStudy,
+  onSaveVectorField3DTopologyStudy, onSaveVectorField3DPoincareReturn,
+  onSaveVectorField3DLyapunov, onPromoteVectorField3DManifoldPatch,
   onSaveVectorField3DTemporalSource, onSaveVectorField3DTemporalPathline,
   onSaveVectorField3DTemporalStreakline,
   onSaveVectorField3DTemporalSpectrum,
@@ -513,6 +519,41 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             import("@math3d/core").PoincareSectionRecipe).solver.maxTime,
           includeMin: true, includeMax: true }, poincareOrigin: origin,
         style: { color: SCIENTIFIC_GRID_LINE_COLORS[0], lineWidth: 2,
+          lineStyle: "solid", visible: true } } });
+      setVectorField3DOpen(false);
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const openPoincareReturnMap = (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit ||
+          result.provenance.operation.type !== "vector3d.poincare-return-map")
+        throw new TypeError("Open a saved return-map Project result and Graph editor first.");
+      const existing = document.source.objects.find(item => item.kind === "point-series" &&
+        item.poincareOrigin?.resultId === result.resultId);
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null });
+        setVectorField3DOpen(false); return; }
+      const recipe = result.provenance.operation.parameters.recipe as unknown as
+        { sectionResultId: string; convergenceTolerance: number };
+      const study = computeVectorField3DPoincareReturnMap(project,
+        recipe.sectionResultId, recipe.convergenceTolerance);
+      if (study.status !== "ready" || !study.publication ||
+          study.publication.resultId !== result.resultId ||
+          structuralHash(study.publication.summary) !== structuralHash(result.summary))
+        throw new TypeError("Return-map values changed; recompute the saved recipe.");
+      const origin = createPoincareReturnGraphOrigin(project, study);
+      const section = project.workspace.results.find(item => item.resultId ===
+        recipe.sectionResultId)!;
+      const geometry = (section.provenance.operation.parameters.recipe as unknown as
+        import("@math3d/core").PoincareSectionRecipe).section;
+      const length = Math.hypot(...geometry.start.map((value, index) =>
+        geometry.end[index]! - value));
+      onAuthoringCommit({ type: "create-point-series", draft: {
+        label: "Poincaré return map", table: pointTableStore.publish(
+          poincareReturnGraphRows(study)), mode: "points",
+        domain: { min: 0, max: length, includeMin: true, includeMax: true },
+        poincareOrigin: origin,
+        style: { color: SCIENTIFIC_GRID_LINE_COLORS[1], lineWidth: 2,
           lineStyle: "solid", visible: true } } });
       setVectorField3DOpen(false);
     } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
@@ -1993,11 +2034,12 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       Verify and refresh spectral rows</button>
   </section>;
   const poincareGraphInspector = selectedPoincare && selectedObject && <section
-    aria-label="Saved Poincaré crossings" data-testid="gf42-graph-section-status">
-    <h3>Poincaré crossings · {poincareStates[selectedObject.id]?.status === "current" ?
+    aria-label="Saved Poincaré series" data-testid="gf42-graph-section-status">
+    <h3>{selectedPoincare.kind === "project-poincare-return/v1" ?
+      "Poincaré return map" : "Poincaré crossings"} · {poincareStates[selectedObject.id]?.status === "current" ?
       "current" : "values withheld"}</h3>
     {poincareStates[selectedObject.id]?.reason && <p role="status">Values withheld: {
-      poincareStates[selectedObject.id]?.reason}. Recompute the section from the current source and open a new row.</p>}
+      poincareStates[selectedObject.id]?.reason}. Recompute the saved recipe from the current source and open a new row.</p>}
     <p>Project result {selectedPoincare.resultId} · {selectedPoincare.crossingCount}
       {" "}crossings · {selectedPoincare.axisUnit} → {selectedPoincare.valueUnit}</p>
   </section>;
@@ -4220,6 +4262,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onOpenComparisonProfile={result => void openComparisonProfile(result)}
           onSaveTopologyStudy={onSaveVectorField3DTopologyStudy}
           onOpenPoincare={openPoincareSection}
+          onSavePoincareReturn={onSaveVectorField3DPoincareReturn}
+          onOpenPoincareReturn={openPoincareReturnMap}
+          onSaveLyapunov={onSaveVectorField3DLyapunov}
+          onPromoteManifoldPatch={onPromoteVectorField3DManifoldPatch}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}

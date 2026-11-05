@@ -179,7 +179,8 @@ export type Graph2DTemporalSpectrumOrigin = Readonly<{
   interpolation: "none" | "linear";
 }>;
 export type Graph2DPoincareOrigin = Readonly<{
-  kind: "project-poincare-section/v1"; projectId: string; resultId: string;
+  kind: "project-poincare-section/v1" | "project-poincare-return/v1";
+  projectId: string; resultId: string;
   summaryHash: string; rowsSha256: string; sourceDocumentId: string;
   axisUnit: string; valueUnit: string; crossingCount: number;
 }>;
@@ -648,7 +649,7 @@ export const validGraph2DPoincareOrigin = (value: unknown):
   value is Graph2DPoincareOrigin => record(value) && exact(value,
     ["kind", "projectId", "resultId", "summaryHash", "rowsSha256",
       "sourceDocumentId", "axisUnit", "valueUnit", "crossingCount"]) &&
-  value.kind === "project-poincare-section/v1" &&
+  ["project-poincare-section/v1", "project-poincare-return/v1"].includes(String(value.kind)) &&
   isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
   isStableDocumentId(value.sourceDocumentId) &&
   isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&

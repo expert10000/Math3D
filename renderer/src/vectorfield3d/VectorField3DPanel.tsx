@@ -96,6 +96,7 @@ import { VectorField3DDerivedIsosurfacePanel } from "./VectorField3DDerivedIsosu
 import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfacePanel";
 import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPanel";
 import { VectorField3DTopologyStudiesPanel } from "./VectorField3DTopologyStudiesPanel";
+import { VectorField3DAdvancedTopologyPanel } from "./VectorField3DAdvancedTopologyPanel";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
@@ -149,7 +150,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
   onSaveComparisonResult, onOpenComparisonProfile,
-  onSaveTopologyStudy, onOpenPoincare,
+  onSaveTopologyStudy, onOpenPoincare, onSavePoincareReturn,
+  onOpenPoincareReturn, onSaveLyapunov, onPromoteManifoldPatch,
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
   onSaveTemporalSpectrum, onRebaseDerivedSource,
   onOpenTemporalSpectrum,
@@ -216,6 +218,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onOpenComparisonProfile?: (result: AnalysisResultEnvelope) => void;
   onSaveTopologyStudy?: (result: AnalysisResultEnvelope) => void;
   onOpenPoincare?: (result: AnalysisResultEnvelope) => void;
+  onSavePoincareReturn?: (study: import("@math3d/core").PoincareReturnStudy) => void;
+  onOpenPoincareReturn?: (result: AnalysisResultEnvelope) => void;
+  onSaveLyapunov?: (study: import("@math3d/core").LyapunovStudy) => void;
+  onPromoteManifoldPatch?: (patch: import("@math3d/core").LocalManifoldPatch) => void;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -2795,6 +2801,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onPromote={onPromoteLocalSeparatrix} />
       <VectorField3DTopologyStudiesPanel document={document} project={project}
         onSave={onSaveTopologyStudy} onOpenPoincare={onOpenPoincare} />
+      <VectorField3DAdvancedTopologyPanel document={document} project={project}
+        onSaveReturn={onSavePoincareReturn} onOpenReturn={onOpenPoincareReturn}
+        onSaveLyapunov={onSaveLyapunov}
+        onPromoteManifold={onPromoteManifoldPatch} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
