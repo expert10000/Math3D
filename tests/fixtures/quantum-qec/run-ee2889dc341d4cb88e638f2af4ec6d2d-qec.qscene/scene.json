@@ -1,0 +1,194 @@
+{
+  "schema": "quantum-scene/v1",
+  "id": "run-ee2889dc341d4cb88e638f2af4ec6d2d-qec",
+  "title": "Three-bit repetition code · ideal recorded syndromes",
+  "provenance": {
+    "kind": "numerical-result",
+    "runId": "run-ee2889dc341d4cb88e638f2af4ec6d2d",
+    "jobId": "job-28aeb929bc1d43f5bfa379a627f322ed",
+    "model": "qec_repetition_ideal",
+    "engine": "native",
+    "engineVersion": "0.1.0",
+    "computedAt": "2026-11-05T13:57:49.725Z",
+    "resultSha256": "55bf1afc2d025f332536b87cb52a3afc3d412145fff4f749339941d688ea3a7e",
+    "adapter": "qvis/1",
+    "parameters": {
+      "rounds": 3
+    }
+  },
+  "coordinates": {
+    "handedness": "right",
+    "axes": [
+      "round",
+      "record lane",
+      "recorded bit"
+    ],
+    "units": [
+      "round",
+      "lane",
+      "bit"
+    ]
+  },
+  "camera": {
+    "position": [
+      9.5,
+      -15,
+      9
+    ],
+    "target": [
+      1,
+      0,
+      0
+    ],
+    "up": [
+      0,
+      0,
+      1
+    ]
+  },
+  "datasets": [
+    {
+      "id": "qec-syndrome",
+      "path": "qec-syndrome.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 6,
+      "unit": "bit",
+      "bytes": 48,
+      "sha256": "503fdbbad6a3d8b5c572acc6bb9c210e1d179f81d6c690707d98063fad931542"
+    },
+    {
+      "id": "qec-defects",
+      "path": "qec-defects.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 6,
+      "unit": "bit",
+      "bytes": 48,
+      "sha256": "b5cb22dba03c3d540eb41bd3909eef5d11472f7c081e595d3e9a70816434ba76"
+    },
+    {
+      "id": "qec-data-bits",
+      "path": "qec-data-bits.f64",
+      "format": "f64le",
+      "components": 1,
+      "count": 9,
+      "unit": "bit",
+      "bytes": 72,
+      "sha256": "4b03686625f20175c74eb8d291024fc293023dd354359bd9e73ee7064e073ecb"
+    },
+    {
+      "id": "qec-syndrome-position",
+      "path": "qec-syndrome-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 6,
+      "unit": "display position",
+      "bytes": 144,
+      "sha256": "c8e15e3925b5d3f356c04db17cd9a697212de547923da3de3e34c802a39c4eba"
+    },
+    {
+      "id": "qec-defect-position",
+      "path": "qec-defect-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 6,
+      "unit": "display position",
+      "bytes": 144,
+      "sha256": "132466545bc9180cdac967ae9cc656a3f52102ea9dd0cb1d9275920b7b2c395c"
+    },
+    {
+      "id": "qec-bit-position",
+      "path": "qec-bit-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 9,
+      "unit": "display position",
+      "bytes": 216,
+      "sha256": "cfcc7e9908211bfe8f223dab687c9c8e4cfd0cbc5d13b3b4e5a672c518c53b9c"
+    },
+    {
+      "id": "qec-correction-position",
+      "path": "qec-correction-position.f64",
+      "format": "f64le",
+      "components": 3,
+      "count": 1,
+      "unit": "display position",
+      "bytes": 24,
+      "sha256": "cdf601f9ef942a6e689cc587332bcf7ff3210a674aba4864b8ff6af33483ae25"
+    }
+  ],
+  "objects": [
+    {
+      "id": "syndrome",
+      "label": "Recorded Z parity checks by round",
+      "kind": "point-cloud",
+      "positions": "qec-syndrome-position",
+      "visible": true,
+      "style": {
+        "color": "#397ec6",
+        "opacity": 1,
+        "size": 0.32
+      },
+      "scalars": "qec-syndrome"
+    },
+    {
+      "id": "defects",
+      "label": "Changes in measured parity by round",
+      "kind": "point-cloud",
+      "positions": "qec-defect-position",
+      "visible": true,
+      "style": {
+        "color": "#e7824d",
+        "opacity": 1,
+        "size": 0.32
+      },
+      "scalars": "qec-defects"
+    },
+    {
+      "id": "data-bits",
+      "label": "Recorded data-bit state by round",
+      "kind": "point-cloud",
+      "positions": "qec-bit-position",
+      "visible": true,
+      "style": {
+        "color": "#79d9c1",
+        "opacity": 1,
+        "size": 0.32
+      },
+      "scalars": "qec-data-bits"
+    },
+    {
+      "id": "correction",
+      "label": "Final decoder correction",
+      "kind": "point-cloud",
+      "positions": "qec-correction-position",
+      "visible": true,
+      "style": {
+        "color": "#f2b36f",
+        "opacity": 1,
+        "size": 0.4
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "id": "scope",
+      "text": "Ideal parity checks and prescribed X flips only. Discrete rounds are not physical time; no surface-code or fault-tolerance claim.",
+      "position": [
+        0,
+        5,
+        0
+      ]
+    },
+    {
+      "id": "decoder",
+      "text": "Final minimum-weight correction bit 2; logical result 1; multiple-error ambiguity true.",
+      "position": [
+        2,
+        5,
+        1
+      ]
+    }
+  ]
+}
