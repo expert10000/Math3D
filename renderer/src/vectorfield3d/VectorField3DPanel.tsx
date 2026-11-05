@@ -148,7 +148,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
   onSaveComparisonResult, onOpenComparisonProfile,
-  onSaveTemporalSource, onSaveTemporalPathline, onRebaseDerivedSource,
+  onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
+  onSaveTemporalSpectrum, onRebaseDerivedSource,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
@@ -214,6 +215,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalStreakline?: (curve: import("@math3d/core").CurveDocument,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSpectrum?: (result: import("@math3d/core").AnalysisResultEnvelope,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onRebaseDerivedSource?: (replacement: VectorField3DDocument,
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
@@ -221,7 +226,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
-    surface: VectorField3DIsosurface) => void;
+    surface: VectorField3DIsosurface,
+    temporal?: import("@math3d/core").TemporalFieldSourceDocument, time?: number) => void;
   libraryEntries?: readonly ExplorerLibraryEntry[];
   libraryBusy?: boolean;
   libraryError?: string;
@@ -2785,7 +2791,10 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
       <VectorField3DTimeSourcePanel document={document} project={project}
-        onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline} />
+        onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline}
+        onSaveStreakline={onSaveTemporalStreakline}
+        onSaveSpectrum={onSaveTemporalSpectrum}
+        onPromoteMovingIsosurface={onPromoteIsosurface} />
     </section>
     {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">
       <h5>Slice appearance and verification</h5>

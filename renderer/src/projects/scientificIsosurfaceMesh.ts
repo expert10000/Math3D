@@ -1,19 +1,45 @@
 import { canonicalJsonStringify, createDocumentRelation, createMixedWorkspaceDocument,
   createScientificDatasetLink, parseScientificSceneManifest,
   scientificTileLayout, sha256Checksum, viewerSourceFromDocument,
-  withDocumentRelationStatus, type CanonicalJsonValue,
+  withDocumentRelationStatus, verifiedVectorFieldSampler, type CanonicalJsonValue,
   type MixedWorkspaceDocument, type VectorField3DDocument,
-  type VectorField3DIsosurface } from "@math3d/core";
+  type VectorField3DIsosurface, type TemporalFieldSourceDocument } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import type { SurfaceMeshSource } from "../mesh/surfaceMesh";
 import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
+import { loadVerifiedVectorFieldTransfer } from "../vectorfield3d/loadVerifiedVectorFieldTransfer";
 
 export const SCIENTIFIC_ISOSURFACE_MESH_OPERATION = "vector3d.speed-isosurface-mesh";
 export type IsosurfaceMeshOrigin = Extract<SurfaceMeshSource,
   { kind: "derivedVectorFieldIsosurface" }>;
 
+const temporalOriginMatches = (origin: IsosurfaceMeshOrigin,
+  workspace?: MixedWorkspaceDocument) => {
+  if (!origin.temporal) return true;
+  const temporal = workspace?.timeSources?.find(item => item.identity.id === origin.temporal!.id);
+  return !!temporal && temporal.identity.revision === origin.temporal.revision &&
+    temporal.identity.structuralHash === origin.temporal.structuralHash &&
+    temporal.source.generationHash === origin.temporal.generationHash &&
+    canonicalJsonStringify(temporal.source.frames.map(frame => ({ documentId: frame.documentId,
+      revision: frame.revision, structuralHash: frame.structuralHash }))) ===
+      canonicalJsonStringify(origin.temporal.frames) &&
+    temporal.source.frames.some(frame => frame.time === origin.temporal!.time &&
+      frame.documentId === origin.source.documentId) &&
+    temporal.source.frames.every(frame => workspace?.entries.some(item =>
+      item.module === "vector3d" && item.expected.id === frame.documentId &&
+      item.expected.revision === frame.revision &&
+      item.expected.structuralHash === frame.structuralHash));
+};
+
 export function promoteScientificIsosurfaceMesh(workspace: MixedWorkspaceDocument,
-  field: VectorField3DDocument, surface: VectorField3DIsosurface) {
+  field: VectorField3DDocument, surface: VectorField3DIsosurface,
+  temporal?: TemporalFieldSourceDocument, time?: number) {
+  if (temporal && (!temporal.source.frames.some(frame => frame.time === time &&
+      frame.documentId === field.identity.id && frame.revision === field.identity.revision &&
+      frame.structuralHash === field.identity.structuralHash) ||
+      !workspace.timeSources?.some(item => item.identity.id === temporal.identity.id &&
+        item.identity.structuralHash === temporal.identity.structuralHash)))
+    throw new TypeError("The promoted frame does not match the saved temporal source.");
   if (surface.source.documentId !== field.identity.id ||
       surface.source.revision !== field.identity.revision ||
       surface.source.structuralHash !== field.identity.structuralHash ||
@@ -28,6 +54,13 @@ export function promoteScientificIsosurfaceMesh(workspace: MixedWorkspaceDocumen
       clipBounds: surface.clipBounds, triangleBudget: surface.triangleBudget,
       gridShape: surface.gridShape },
     topology: surface.topology, complete: surface.complete, clipped: surface.clipped,
+    ...(temporal ? { temporal: { id: temporal.identity.id,
+      revision: temporal.identity.revision,
+      structuralHash: temporal.identity.structuralHash,
+      generationHash: temporal.source.generationHash, time: time!,
+      timeUnit: temporal.source.timeAxis.unit,
+      frames: temporal.source.frames.map(frame => ({ documentId: frame.documentId,
+        revision: frame.revision, structuralHash: frame.structuralHash })) } } : {}),
     verifiedTiles: surface.verifiedTiles ?? null,
   };
   const adapter = MeshDocumentAdapter.fromMesh({ label: `|F| = ${surface.level} ${surface.unit}`,
@@ -48,7 +81,10 @@ export function promoteScientificIsosurfaceMesh(workspace: MixedWorkspaceDocumen
     target: { type: "document", generation: viewerSourceFromDocument(mesh) },
     operation: SCIENTIFIC_ISOSURFACE_MESH_OPERATION,
     parameters: { level: surface.level, clipBounds: surface.clipBounds,
-      triangleBudget: surface.triangleBudget, topology: surface.topology } });
+      triangleBudget: surface.triangleBudget, topology: surface.topology,
+      ...(temporal ? { temporalId: temporal.identity.id,
+        temporalHash: temporal.identity.structuralHash, time: time!,
+        timeUnit: temporal.source.timeAxis.unit } : {}) } });
   const next = createMixedWorkspaceDocument({ ...workspace, entries,
     activeDocumentIds: [...new Set([...workspace.activeDocumentIds,
       field.identity.id, mesh.identity.id])],
@@ -64,6 +100,8 @@ export function rebuildScientificIsosurfaceMesh(workspace: MixedWorkspaceDocumen
   const origin = previous.source.origin as IsosurfaceMeshOrigin;
   if (origin.kind !== "derivedVectorFieldIsosurface")
     throw new TypeError("This Mesh has no saved Field Explorer extraction recipe.");
+  if (!temporalOriginMatches(origin, workspace))
+    throw new TypeError("The saved temporal source changed; the Mesh must be recreated from verified frames.");
   if (field.identity.id !== origin.source.documentId ||
       field.identity.revision !== origin.source.revision ||
       field.identity.structuralHash !== origin.source.structuralHash ||
@@ -121,7 +159,21 @@ export function rebuildScientificIsosurfaceMesh(workspace: MixedWorkspaceDocumen
 /** Recheck exactly the v3 tiles named by the saved mesh before declaring it current. */
 export async function reverifyScientificIsosurfaceMesh(origin: IsosurfaceMeshOrigin,
   field: VectorField3DDocument,
-  bridge?: Window["scientificScenes"]): Promise<"current" | "stale"> {
+  bridge?: Window["scientificScenes"],
+  workspace?: MixedWorkspaceDocument): Promise<"current" | "stale"> {
+  if (!temporalOriginMatches(origin, workspace)) return "stale";
+  if (origin.temporal) {
+    try {
+      for (const frame of origin.temporal.frames) {
+        const document = workspace?.entries.find(item => item.module === "vector3d" &&
+          item.expected.id === frame.documentId)?.checkpoint;
+        if (document?.format !== "math3d.vector-field3d-document" ||
+            document.source.field.kind !== "scientific-bundle") return "stale";
+        verifiedVectorFieldSampler(document,
+          await loadVerifiedVectorFieldTransfer(document, bridge));
+      }
+    } catch { return "stale"; }
+  }
   if (field.identity.id !== origin.source.documentId ||
       field.identity.revision !== origin.source.revision ||
       field.identity.structuralHash !== origin.source.structuralHash)

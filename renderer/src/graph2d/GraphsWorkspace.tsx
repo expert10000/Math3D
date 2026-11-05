@@ -269,6 +269,10 @@ type Props = {
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalStreakline?: (curve: import("@math3d/core").CurveDocument,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalSpectrum?: (result: import("@math3d/core").AnalysisResultEnvelope,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onRebaseVectorField3DDerivedSource?: (replacement: VectorField3DDocument,
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendVectorField3DDerivedOperation?: (inputId: string,
@@ -277,7 +281,8 @@ type Props = {
   onPromoteVectorField3DDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
-    surface: import("@math3d/core").VectorField3DIsosurface) => void;
+    surface: import("@math3d/core").VectorField3DIsosurface,
+    temporal?: import("@math3d/core").TemporalFieldSourceDocument, time?: number) => void;
   savedVectorField2D?: VectorField2DDocument | null;
   openVectorField2DRequest?: { document: VectorField2DDocument; token: number } | null;
   onSaveVectorField2D?: (document: VectorField2DDocument) => void;
@@ -305,6 +310,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
   onPromoteVectorField3DLocalSeparatrix, onSaveVectorField3DComparisonResult,
   onSaveVectorField3DTemporalSource, onSaveVectorField3DTemporalPathline,
+  onSaveVectorField3DTemporalStreakline,
+  onSaveVectorField3DTemporalSpectrum,
   onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onPromoteVectorField3DIsosurface,
@@ -3985,6 +3992,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onOpenComparisonProfile={result => void openComparisonProfile(result)}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
+          onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
+          onSaveTemporalSpectrum={onSaveVectorField3DTemporalSpectrum}
           onRebaseDerivedSource={onRebaseVectorField3DDerivedSource}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
           onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import type { CanonicalJsonValue } from "@math3d/core";
+import type { CanonicalJsonValue, CurveDocument } from "@math3d/core";
 import type { CameraSyncState, ProbeInfo } from "../components/SurfaceViewer";
 import type { PrincipalCurvatureScalars } from "../math/principalCurvature";
 import { SurfaceDocumentInspector } from "../surfaceAnalysis/SurfaceDocumentInspector";
@@ -12,14 +12,16 @@ import { DocumentViewport } from "./DocumentViewport";
 import { surfaceDocumentBinding } from "./surfaceDocumentBinding";
 import { documentPresentationKey, readDocumentPresentation, saveDocumentPresentation } from "./documentPresentation";
 
-export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, moduleView, customView = false, onSelectView, children }:
+export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, projectTitle, documentTitle, related, onOpenRelated, onChange, onClose, onOpenProject, onVerifyScientificPathline, moduleView, customView = false, onSelectView, children }:
   { session: AdditionalProjectSession; workspaceVersion: number; projectId?: string; projectTitle?: string; documentTitle?: string;
     related?: ReturnType<typeof import("./relatedDocuments").relatedDocuments>; onOpenRelated?: (id: string, module: import("@math3d/core").KernelWorkspaceModule) => void;
-    onChange: () => void; onClose: () => void; onOpenProject: () => void; children?: React.ReactNode;
+    onChange: () => void; onClose: () => void; onOpenProject: () => void;
+    onVerifyScientificPathline?: (curve: CurveDocument) => Promise<void>; children?: React.ReactNode;
     moduleView?: { viewport: React.ReactNode; inspector: React.ReactNode; tools: React.ReactNode }; customView?: boolean; onSelectView?: (view: "surface" | "custom") => void }) {
   const uiKey = documentPresentationKey(projectId ?? "project", session.original.expected.id);
   const [version, setVersion] = useState(0), [draft, setDraft] = useState(() => session.sourceDraft ?? JSON.stringify(session.document().source, null, 2));
-  const [error, setError] = useState<string | null>(null), [presentation, setPresentation] = useState(session.presentation);
+  const [error, setError] = useState<string | null>(null), [verifying, setVerifying] = useState(false),
+    [presentation, setPresentation] = useState(session.presentation);
   const [wireframe, setWireframe] = useState(session.wireframe), [probe, setProbe] = useState(false), [probeResult, setProbeResult] = useState<unknown>(null);
   const [surfaceView, setSurfaceView] = useState(session.surfaceView);
   const [probeInfo, setProbeInfo] = useState<{ hash: string; value: ProbeInfo } | null>(null);
@@ -49,6 +51,13 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
   useEffect(() => { setProbeInfo(null); setCurvature(null); setProbeResult(null); setProbeUV(null); }, [document.identity.structuralHash, presentation]);
   const updateDraft = (text: string) => { session.sourceDraft = text; setDraft(text); };
   const changed = () => { setVersion(value => value + 1); };
+  const verifyScientificPathline = async () => {
+    if (document.format !== "math3d.curve-document" || !onVerifyScientificPathline) return;
+    setVerifying(true); setError(null);
+    try { await onVerifyScientificPathline(document); changed(); onChange(); }
+    catch (failure) { setError((failure as Error).message); changed(); }
+    finally { setVerifying(false); }
+  };
   const action = (fn: () => void) => {
     try { fn(); updateDraft(JSON.stringify(session.document().source, null, 2)); setError(null); changed(); onChange(); }
     catch (failure) { setError((failure as Error).message); }
@@ -83,9 +92,23 @@ export function SavedDocumentWorkbench({ session, workspaceVersion, projectId, p
     </>}
     viewport={showModule ? <div style={{ width: "100%", height: "100%" }} data-testid="document-viewport" data-view="surface" data-workbench="module" data-document-id={document.identity.id} data-source-hash={document.identity.structuralHash}>{moduleView!.viewport}</div> : prepared.view ? <DocumentViewport view={prepared.view} binding={prepared.binding} presentation={presentation} camera={session.camera} cameraToken={version}
       rememberCamera={rememberCamera} wireframe={wireframe} probe={probe} surfaceView={surfaceView} probeUV={probeUV?.hash === document.identity.structuralHash ? probeUV.uv : null} probeToken={probeToken} resetToken={resetToken}
-      onProbe={handleProbe} onCurvature={handleCurvature} /> : <div role="alert">Saved dependency unavailable: {prepared.error}</div>}
+      onProbe={handleProbe} onCurvature={handleCurvature} /> : <div role="alert" style={{ padding: 16 }}>
+        Saved dependency unavailable: {prepared.error}
+        {document.format === "math3d.curve-document" &&
+          ["vector3d.temporal-pathline", "vector3d.temporal-streakline"].includes(document.source.definition.familyId) &&
+          <div><button type="button" data-testid="scientific-pathline-verify-preview"
+            disabled={verifying || !onVerifyScientificPathline}
+            onClick={verifyScientificPathline}>{verifying ? "Verifying source…" :
+              "Verify scientific source and show Curve"}</button></div>}
+      </div>}
     source={<>
       <h2>Source / Object</h2>
+      {document.format === "math3d.curve-document" &&
+        ["vector3d.temporal-pathline", "vector3d.temporal-streakline"].includes(document.source.definition.familyId) &&
+        <div style={{ padding: 10 }}><button data-testid="scientific-pathline-verify" disabled={verifying || !onVerifyScientificPathline}
+          onClick={verifyScientificPathline}>{verifying ? "Verifying source…" : "Verify scientific source and show Curve"}</button>
+          <p role="status">{prepared.error ? `Curve values withheld: ${prepared.error}` :
+            "Pinned scientific frames verified for this preview."}</p></div>}
       {document.format === "math3d.surface-document" && <SurfaceFormulaControls key={`${document.identity.revision}:${document.identity.structuralHash}`} document={document} onApply={source => action(() => session.commit(source as unknown as CanonicalJsonValue))} />}
       <details data-testid="project-source-json" style={{ padding: 10 }}><summary>Edit source definition · Advanced JSON</summary>
         <textarea aria-label="Saved source definition" data-testid="project-source-definition" value={draft} onChange={event => updateDraft(event.target.value)} rows={12} style={{ width: "100%", boxSizing: "border-box", font: "12px Consolas, monospace" }} />

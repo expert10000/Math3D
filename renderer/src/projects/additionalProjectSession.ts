@@ -17,7 +17,8 @@ export class AdditionalProjectSession {
   wireframe = false;
   surfaceView = { ...DEFAULT_SURFACE_DOCUMENT_VIEW };
   presentationLoaded = false;
-  private cachedView: { generations: string; resources: RepresentationContext["resources"]; view: RepresentationView } | null = null;
+  private cachedView: { generations: string; resources: RepresentationContext["resources"];
+    verifiedTemporalTransfers: RepresentationContext["verifiedTemporalTransfers"]; view: RepresentationView } | null = null;
   readonly adapter: CurveDocumentAdapter | SurfaceDocumentAdapter | GeometryDocumentAdapter | TopologyDiagramCommandAdapter;
   readonly original: MixedWorkspaceEntry;
   readonly context: () => RepresentationContext;
@@ -28,11 +29,22 @@ export class AdditionalProjectSession {
     else if (current.format === "math3d.surface-document") this.adapter = replay ? SurfaceDocumentAdapter.fromReplayBundle(replay as unknown as SurfaceReplayBundle) : new SurfaceDocumentAdapter(current);
     else if (current.format === "math3d.geometry-document") this.adapter = replay ? GeometryDocumentAdapter.restore(replay as unknown as GeometryReplayBundle) : new GeometryDocumentAdapter(current);
     else this.adapter = replay ? TopologyDiagramCommandAdapter.restore(replay as unknown as TopologyReplayBundle) : TopologyDiagramCommandAdapter.fromDocument(current);
-    this.view();
+    // Scientific Curve previews begin withheld until an explicit fresh bundle check.
+    if (current.format !== "math3d.curve-document" ||
+        !["vector3d.temporal-pathline", "vector3d.temporal-streakline"].includes(
+          current.source.definition.familyId)) this.view();
     // Every retained undo/redo source must have a qualified view before activation.
     if (replay) {
       const bundle = replay as any;
-      this.preview((bundle.checkpoint.document ?? bundle.checkpoint).source);
+      const scientificTemporalCurve = current.format === "math3d.curve-document" &&
+        ["vector3d.temporal-pathline", "vector3d.temporal-streakline"].includes(
+          current.source.definition.familyId);
+      if (scientificTemporalCurve && bundle.transactions.length)
+        throw new TypeError("Scientific temporal Curve command history needs a dedicated verifier.");
+      if (scientificTemporalCurve)
+        replaceAdditionalSource(this.document(),
+          (bundle.checkpoint.document ?? bundle.checkpoint).source);
+      else this.preview((bundle.checkpoint.document ?? bundle.checkpoint).source);
       for (const transaction of bundle.transactions) for (const envelope of transaction.forward ? [transaction.forward, transaction.inverse] : [...transaction.commands, ...transaction.inverseCommands]) {
         if (["curve.source.replace", "surface.source.replace", "geometry.source.replace", "topology.source.replace"].includes(envelope.command.type)) this.preview(envelope.command.payload);
       }
@@ -45,9 +57,11 @@ export class AdditionalProjectSession {
     const generations = JSON.stringify([document.identity,
       [...context.documents].map(([id, value]) => [id, value.identity]).sort(([a], [b]) => String(a).localeCompare(String(b))),
       [...(context.capturedCurves ?? [])].map(([id, value]) => [id, value.identity]).sort(([a], [b]) => String(a).localeCompare(String(b)))]);
-    if (this.cachedView?.generations === generations && this.cachedView.resources === context.resources) return this.cachedView.view;
+    if (this.cachedView?.generations === generations && this.cachedView.resources === context.resources &&
+        this.cachedView.verifiedTemporalTransfers === context.verifiedTemporalTransfers) return this.cachedView.view;
     const view = additionalRepresentationView(document, context);
-    this.cachedView = { generations, resources: context.resources, view };
+    this.cachedView = { generations, resources: context.resources,
+      verifiedTemporalTransfers: context.verifiedTemporalTransfers, view };
     return view;
   }
   preview(source: CanonicalJsonValue) {
