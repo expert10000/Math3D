@@ -3,6 +3,9 @@ import { canonicalJsonStringify, isStableDocumentId, isStructuralHash,
 import type { AlgebraObjectRef } from "./algebraObjects";
 import type { Math3DProject } from "./math3dProject";
 import type { ProjectAlgebraObjectEntry } from "./projectAlgebraRegistry";
+import { createProjectAlgebraObjectId } from "./projectAlgebraRegistry";
+import { createAlgebraObjectRecord, type AlgebraObjectRecord } from "./algebraObjects";
+import type { ProjectAlgebraEvidence } from "./projectAlgebraEvidence";
 
 export const SAGE_GALOIS_FORMAT = "math3d.sage-galois-analysis";
 export const SAGE_GALOIS_RESULT_FORMAT = "math3d.sage-galois-analysis-result";
@@ -19,7 +22,8 @@ export type SageGaloisResult = Readonly<{ format: typeof SAGE_GALOIS_RESULT_FORM
   group: Readonly<{ order: number; regularDegree: number; transitiveId: string;
     classification: "D4" | "unclassified"; convention: string; solvable: boolean;
     elements: readonly (readonly number[])[]; generators: readonly number[] }>;
-  subgroups: readonly SageGaloisSubgroup[]; complete: true }>;
+  subgroups: readonly SageGaloisSubgroup[]; complete: boolean;
+  partialReason?: string; omittedCount?: number }>;
 export type SageGaloisCover = Readonly<{ lower: string; upper: string }>;
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" &&
@@ -92,19 +96,27 @@ export const buildSageGaloisInput = (project: Math3DProject, target: AlgebraObje
 /** Independent finite-permutation and subgroup checks before retaining Sage's fixed-field claims. */
 export const parseSageGaloisResult = (value: unknown, input: SageGaloisInput): SageGaloisResult => {
   const source = parseSageGaloisInput(input);
-  if (!object(value) || !exact(value, ["format", "schemaVersion", "sourcePolynomial", "variable",
+  if (!object(value) || !(exact(value, ["format", "schemaVersion", "sourcePolynomial", "variable",
     "coefficientDomain", "irreducible", "squareFree", "splittingField", "group", "subgroups", "complete"]) ||
+    exact(value, ["format", "schemaVersion", "sourcePolynomial", "variable", "coefficientDomain",
+      "irreducible", "squareFree", "splittingField", "group", "subgroups", "complete",
+      "partialReason", "omittedCount"])) ||
     value.format !== SAGE_GALOIS_RESULT_FORMAT || value.schemaVersion !== 1 ||
     value.sourcePolynomial !== source.polynomial || value.variable !== source.variable ||
     value.coefficientDomain !== "QQ" || value.irreducible !== true || value.squareFree !== true ||
-    value.complete !== true || !object(value.splittingField) ||
+    (value.complete !== true && value.complete !== false) ||
+    (value.complete === false && (typeof value.partialReason !== "string" ||
+      !value.partialReason || value.partialReason.length > 200 ||
+      !Number.isSafeInteger(value.omittedCount) || (value.omittedCount as number) < 1)) ||
+    (value.complete === true && ("partialReason" in value || "omittedCount" in value)) ||
+    !object(value.splittingField) ||
     !exact(value.splittingField, ["degree", "definingPolynomial"]) ||
     !short(value.splittingField.definingPolynomial) || !object(value.group) ||
     !exact(value.group, ["order", "regularDegree", "transitiveId", "classification", "convention",
       "solvable", "elements", "generators"])) throw new TypeError("Invalid bounded Galois result schema.");
   const group = value.group;
   const n = group.order;
-  if (!Number.isSafeInteger(n) || (n as number) < 2 || (n as number) > 8 ||
+  if (!Number.isSafeInteger(n) || (n as number) < 2 || (n as number) > (value.complete ? 8 : 16) ||
     group.regularDegree !== n || value.splittingField.degree !== n ||
     typeof group.transitiveId !== "string" || !/^[2-4]T[1-9][0-9]?$/.test(group.transitiveId) ||
     !["D4", "unclassified"].includes(String(group.classification)) ||
@@ -136,7 +148,7 @@ export const parseSageGaloisResult = (value: unknown, input: SageGaloisInput): S
     throw new TypeError("Galois generators do not generate the reported group.");
   const orderOf = (element: number[]): number => {
     let power = elements[0], count = 0;
-    do { power = compose(power, element); count += 1; } while (permutationKey(power) !== keys[0] && count <= 8);
+    do { power = compose(power, element); count += 1; } while (permutationKey(power) !== keys[0] && count <= 16);
     return count;
   };
   const isD4 = n === 8 && elements.filter((item) => orderOf(item) === 2).length === 5 &&
@@ -177,16 +189,20 @@ export const parseSageGaloisResult = (value: unknown, input: SageGaloisInput): S
     if (subgroup.normal !== normal) throw new TypeError("Galois subgroup normality does not match its permutations.");
     sets.push(members);
   }
-  const all = new Set<string>();
-  for (let mask = 1; mask < (1 << (n as number)); mask += 1) {
-    if (!(mask & 1)) continue;
-    const members = Array.from({ length: n as number }, (_, index) => index).filter((index) => mask & (1 << index));
-    if (members.every((a) => members.every((b) =>
-      members.includes(lookup.get(permutationKey(compose(elements[a], elements[b])))!)))) all.add(members.join(","));
+  if (new Set(sets.map((item) => item.join(","))).size !== sets.length ||
+      !sets.some((item) => item.length === 1) || !sets.some((item) => item.length === n))
+    throw new TypeError("Galois subgroup view must have distinct trivial and whole groups.");
+  if (value.complete) {
+    const all = new Set<string>();
+    for (let mask = 1; mask < (1 << (n as number)); mask += 1) {
+      if (!(mask & 1)) continue;
+      const members = Array.from({ length: n as number }, (_, index) => index).filter((index) => mask & (1 << index));
+      if (members.every((a) => members.every((b) =>
+        members.includes(lookup.get(permutationKey(compose(elements[a], elements[b])))!)))) all.add(members.join(","));
+    }
+    if (all.size !== sets.length || sets.some((item) => !all.has(item.join(","))))
+      throw new TypeError("Galois subgroup enumeration is incomplete or duplicated.");
   }
-  if (all.size !== sets.length || new Set(sets.map((item) => item.join(","))).size !== all.size ||
-      sets.some((item) => !all.has(item.join(","))))
-    throw new TypeError("Galois subgroup enumeration is incomplete or duplicated.");
   return JSON.parse(canonicalJsonStringify(value)) as SageGaloisResult;
 };
 
@@ -197,4 +213,20 @@ export const sageGaloisCovers = (result: SageGaloisResult): readonly SageGaloisC
     subset(lower.members, upper.members) && !subgroups.some((middle) => lower.order < middle.order &&
       middle.order < upper.order && subset(lower.members, middle.members) && subset(middle.members, upper.members)))
     .map((upper) => ({ lower: lower.id, upper: upper.id })));
+};
+
+/** Saves the exact regular action as a revisioned Project group linked to its pinned polynomial evidence. */
+export const createGaloisGroupObject = (project: Math3DProject,
+  evidence: ProjectAlgebraEvidence): AlgebraObjectRecord => {
+  if (evidence.request.operation !== "sage.galois.analyze")
+    throw new TypeError("Select saved Galois analysis evidence first.");
+  const result = parseSageGaloisResult(evidence.result, parseSageGaloisInput(evidence.request.params));
+  const source = { ring: evidence.request.target, polynomial: result.sourcePolynomial,
+    evidenceId: evidence.id, splittingPolynomial: result.splittingField.definingPolynomial };
+  const label = `Gal(${result.sourcePolynomial}/QQ)`;
+  return createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id,
+    { kind: "galois-group", evidenceId: evidence.id }), label, revision: 1,
+  definition: { kind: "finite-group", representation: "permutation", degree: result.group.regularDegree,
+    generators: result.group.generators.map((index, position) => ({
+      name: `g${position + 1}`, images: result.group.elements[index] })), relations: [], source } });
 };

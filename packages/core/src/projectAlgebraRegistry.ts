@@ -103,6 +103,8 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       }
       if (record.definition.kind === "number-field" && parent.kind !== "rational-field")
         throw new TypeError(`Number field ${key} requires a pinned QQ base field.`);
+      if (record.definition.kind === "finite-group" && parent.kind !== "polynomial-ring")
+        throw new TypeError(`Finite group ${key} requires a pinned polynomial source ring.`);
       if (record.definition.kind === "field-extension") {
         if (parent.definition.kind !== "number-field")
           throw new TypeError(`Field extension ${key} requires a pinned quadratic number-field parent.`);

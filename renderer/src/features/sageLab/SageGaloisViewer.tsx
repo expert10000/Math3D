@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { sageGaloisCovers, type SageGaloisResult, type SageGaloisSubgroup } from "@math3d/core";
 
-type Props = { result: SageGaloisResult };
+type Props = { result: SageGaloisResult; groupLabel?: string;
+  onSaveGroup?: () => void; onOpenGroup?: () => void; saveError?: string };
 type Position = { x: number; y: number };
 const WIDTH = 400;
 const gap = 72;
 
 /** Two linked Hasse diagrams: subgroup containment and the reversed fixed-field inclusion. */
-export default function SageGaloisViewer({ result }: Props) {
+export default function SageGaloisViewer({ result, groupLabel, onSaveGroup, onOpenGroup, saveError }: Props) {
   const [selectedId, setSelectedId] = useState(result.subgroups[0]?.id ?? "");
   const selected = result.subgroups.find((item) => item.id === selectedId) ?? result.subgroups[0];
   const covers = sageGaloisCovers(result);
@@ -52,7 +53,14 @@ export default function SageGaloisViewer({ result }: Props) {
   };
   return <section data-testid="cas-galois-viewer" aria-label="Galois correspondence" style={{ display: "grid", gap: 8,
     border: "1px solid #c7d9ed", borderRadius: 8, padding: 10, marginTop: 10, background: "#f8fbff" }}>
-    <strong>Galois correspondence · complete {result.subgroups.length} subgroups</strong>
+    <strong>Galois correspondence · {result.complete ? `complete ${result.subgroups.length} subgroups`
+      : `partial ${result.subgroups.length} shown; ${result.omittedCount} omitted`}</strong>
+    {!result.complete && <div role="status" style={{ color: "#9a3412", fontSize: 12 }}>
+      {result.partialReason} Displayed links are within the sample and may skip omitted intermediate subgroups.</div>}
+    <div style={{ fontSize: 12 }}>Polynomial: {result.sourcePolynomial} · splitting field: {result.splittingField.definingPolynomial} · degree {result.splittingField.degree} · group order {result.group.order}</div>
+    {groupLabel ? <button type="button" onClick={onOpenGroup}>Open saved group: {groupLabel}</button>
+      : onSaveGroup ? <button type="button" onClick={onSaveGroup}>Save finite group object</button> : null}
+    {saveError && <div role="alert">{saveError}</div>}
     <div style={{ fontSize: 11, color: "#526477" }}>Select a subgroup or field. Each matched pair highlights together; inclusion reverses between the diagrams.</div>
     <div style={{ overflowX: "auto" }}><div style={{ display: "grid", gridTemplateColumns: "400px 400px", gap: 12, width: 812 }}>
       <div><strong>Subgroups of Gal(L/QQ)</strong>{renderLattice(false)}</div>

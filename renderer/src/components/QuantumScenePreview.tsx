@@ -13,6 +13,7 @@ import { buildQuantumReciprocalView, reciprocalPathFromPrimitive, reciprocalPoin
   type ReciprocalDefinition } from "./quantumReciprocalView";
 import { qwzSceneRole, reviewedQwzPair, sshSceneRole, reviewedSshPair } from "./quantumStudyProfile";
 import { projectTimeCursor, scientificCursorBus } from "./scientificCursor";
+import { nearestRecordedFrame } from "./quantumDynamicsSelection";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
@@ -114,6 +115,10 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       scene.time!.playback.loop ? scene.time!.playback.startFrame : index), 180);
     return () => window.clearInterval(timer);
   }, [timePlaying, opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    if (timePlaying && scene.time && !scene.time.playback.loop && timeFrameIndex >= scene.time.playback.endFrame)
+      setTimePlaying(false);
+  }, [timePlaying, timeFrameIndex, scene.time]);
   useEffect(() => {
     if (!timeFrame || !scene.time) return;
     scientificCursorBus.publish({ runId: timeFrame.runId, resultSha256: timeFrame.resultSha256,
@@ -624,6 +629,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 `${track.id}: (${track.xyz.map(value => value.toPrecision(4)).join(", ")})`).join(" · ")}</small>}
               {timeFrames && timeFrames.length > 1 && timeFrames[0].tracks.some(track => track.id === "sigma-z") && <svg
                 role="img" aria-label="Pauli sigma z expectation versus physical time" viewBox="0 0 300 120"
+                onClick={event => { const bounds = event.currentTarget.getBoundingClientRect();
+                  const fraction = ((event.clientX - bounds.left) / bounds.width * 300 - 10) / 280;
+                  setTimePlaying(false); setTimeFrameIndex(nearestRecordedFrame(timeFrames, fraction)); }}
                 style={{ display: "block", width: "100%", maxWidth: 420, height: 100, marginTop: 6, background: "var(--panel, #f8fafc)" }}>
                 <line x1="10" y1="60" x2="290" y2="60" stroke="#94a3b8" />
                 <polyline fill="none" stroke="#d97706" strokeWidth="2" points={timeFrames.map(frame => {
@@ -638,6 +646,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 <text x="10" y="113" fontSize="10">{timeFrames[0].time.toPrecision(4)}</text>
                 <text x="260" y="113" fontSize="10">{timeFrames[timeFrames.length - 1].time.toPrecision(4)} {scene.time.unit}</text>
               </svg>}
+              {timeFrame && <small data-testid="quantum-time-termination">Recorded frame {timeFrame.index + 1}/{scene.time.frameIds.length}
+                {timeFrame.index >= scene.time.playback.endFrame && !scene.time.playback.loop ? " · supplied endpoint reached" : " · exact sample; no interpolation"}</small>}
               {timeError && <small role="alert">{timeError}</small>}
             </div>}
             {scene.reciprocal && <div data-testid="quantum-space-controls" style={{ padding: 8, display: "flex", gap: 8 }}>
@@ -714,6 +724,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
+            {scene.time?.tracks.some(track => track.id === "bloch") && <section data-testid="quantum-dynamics-inspector" style={{ border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, padding: 10, marginBottom: 14 }}>
+              <h3 style={{ marginTop: 0 }}>Recorded dynamics</h3>
+              {timeFrame ? <><p>Exact frame <code>{timeFrame.frameId}</code> · t={timeFrame.time.toPrecision(8)} {timeFrame.unit} · source run <code>{timeFrame.runId}</code>.</p>
+                {timeFrame.tracks.filter(track => track.id === "bloch").map(track => <p key={track.id}>Bloch vector: ({track.xyz.map(value => value.toPrecision(6)).join(", ")}) · source track <code>{track.id}</code>.</p>)}
+                {timeFrame.tracks.filter(track => track.id !== "bloch").map(track => <p key={track.id}>{track.id}: {track.xyz[1].toPrecision(8)} · recorded sample {track.xyz.map(value => value.toPrecision(6)).join(", ")}.</p>)}
+                <p>Density matrix: unavailable in this scene. Time-resolved spectrum: unavailable in this scene.</p>
+                <p>Result SHA-256: <code style={{ overflowWrap: "anywhere" }}>{timeFrame.resultSha256}</code>.</p>
+              </> : <p>{timeError || "Loading verified time samples…"}</p>}
+            </section>}
             {fieldPromotionStatus && <p data-testid="quantum-field-promotion-status" role="status">{fieldPromotionStatus}</p>}
             {activeFieldDocument && <section data-testid="quantum-field-explorer-document">
               <h3>Field Explorer document</h3>

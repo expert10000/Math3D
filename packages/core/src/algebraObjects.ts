@@ -195,6 +195,7 @@ const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraOb
     : definition.kind === "number-field" || definition.kind === "field-extension" ? [definition.baseField]
     : definition.kind === "ideal" ? [definition.ambientRing]
       : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal]
+        : definition.kind === "finite-group" && definition.source ? [definition.source.ring]
         : definition.kind === "module" ? [definition.baseRing]
           : definition.kind === "module-map" ? [definition.sourceModule, definition.targetModule] : [];
 

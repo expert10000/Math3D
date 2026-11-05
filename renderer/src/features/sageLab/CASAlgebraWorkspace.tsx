@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness,
+import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
+  createGaloisGroupObject, inspectProjectAlgebraFreshness,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
 import type { SageGaloisResult, SageModuleInvariantResult } from "@math3d/core";
@@ -55,6 +56,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | null>(null);
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
+  const [groupError, setGroupError] = useState("");
 
   useEffect(() => {
     setSelection((current) => resolveStructureSelection(project,
@@ -78,6 +80,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const selectedEvidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId &&
     item.request.target.objectId === chosen?.record.id) ?? null;
   const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
+  const savedGaloisGroup = selectedEvidence && selectedEvidence.request.operation === "sage.galois.analyze"
+    ? project?.algebraObjects?.find((entry) => { const definition = entry.revisions.at(-1)?.definition;
+      return definition?.kind === "finite-group" && definition.source?.evidenceId === selectedEvidence.id; }) : null;
   const inspectEvidence = (id: string) => {
     const evidence = project?.algebraEvidence?.find((item) => item.id === id);
     if (evidence && evidence.request.target.objectId !== selection?.objectId) {
@@ -100,6 +105,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
       : chosen?.record.definition.kind === "quotient-ring"
         ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
+        : chosen?.record.definition.kind === "finite-group" && chosen.record.definition.source
+          ? selectedStructure(project, chosen.record.definition.source.ring)?.record
         : chosen?.record.definition.kind === "module"
           ? selectedStructure(project, chosen.record.definition.baseRing)?.record : null;
   const idealParent = chosen?.record.definition.kind === "quotient-ring"
@@ -189,6 +196,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           {chosen.record.definition.representation === "permutation" && <><dt>Permutation degree</dt><dd>{chosen.record.definition.degree}</dd>
             <dt>Generator images</dt><dd>{chosen.record.definition.generators.map((item) => `${item.name}: [${item.images.join(", ")}]`).join("; ")}</dd></>}
           {chosen.record.definition.representation === "abelian" && <><dt>Invariant factors</dt><dd>{chosen.record.definition.invariantFactors.join(" | ")}</dd></>}
+          {chosen.record.definition.source && <><dt>Source polynomial</dt><dd>{chosen.record.definition.source.polynomial}</dd>
+            <dt>Splitting field</dt><dd>{chosen.record.definition.source.splittingPolynomial}</dd>
+            <dt>Pinned evidence</dt><dd>{chosen.record.definition.source.evidenceId}</dd></>}
         </>;
       })()}
       {chosen.record.definition.kind === "module" && <>
@@ -283,7 +293,17 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
         result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />
           {selectedEvidence.request.operation === "sage.galois.analyze" &&
-            <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult} />}
+            <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult}
+              groupLabel={savedGaloisGroup?.revisions.at(-1)?.label} saveError={groupError}
+              onOpenGroup={savedGaloisGroup ? () => select({ objectId: savedGaloisGroup.id,
+                revision: savedGaloisGroup.revisions.length }) : undefined}
+              onSaveGroup={!savedGaloisGroup && project ? () => {
+                try { const record = createGaloisGroupObject(project, selectedEvidence);
+                  void Promise.resolve(onCreateStructure(record)).then(() => {
+                    setGroupError(""); select({ objectId: record.id, revision: 1 });
+                  }).catch((error) => setGroupError(String(error))); }
+                catch (error) { setGroupError(String(error)); }
+              } : undefined} />}
           {selectedEvidence.request.operation === "sage.group.dossier" && project &&
             <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}
           {selectedEvidence.request.operation === "sage.module.invariantFactors" &&

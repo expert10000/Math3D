@@ -948,6 +948,8 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 **Implementation note (2026-11-05):** Theory Lab's saved-run plot, Bloch, density matrix and observable panels share one exact time sample. A Hann-windowed DFT of the stored P₁ series adds a clearly labeled sampled response spectrum. The workspace reports the completed stored interval, final-sample boundary and absent termination/uncertainty metadata without extrapolation. See [QI-28–30 implementation details](quantum-qi28-30-volume-topology-dynamics.md).
 
+**Math3D consumer note (2026-11-05):** Typed scene time frames link the Bloch marker, σz plot, and an exact-frame inspector; clicking the plot selects a recorded sample without interpolation. Playback stops at the supplied endpoint. The exported scene does not contain the Lab's full density matrix or sampled response spectrum, so those panels remain unavailable in Math3D. This consumer extension is Partial until those records are supplied by a verified scene contract.
+
 ### QI-31 — QEC/syndrome and decoder visualizations
 
 **Commit:** `feat(qec): represent syndrome histories and decoding evidence`

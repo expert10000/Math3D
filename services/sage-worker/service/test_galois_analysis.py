@@ -45,6 +45,14 @@ class GaloisAnalysisTests(unittest.TestCase):
                 self.assertEqual(result["splittingField"]["degree"], order)
                 self.assertEqual(len(result["subgroups"]), subgroups)
 
+    def test_order_twelve_is_explicitly_partial(self):
+        result = run_payload(request("x^4-3*x^3+3*x^2+2*x+1"))["result"]
+        self.assertEqual(result["group"]["order"], 12)
+        self.assertFalse(result["complete"])
+        self.assertGreater(result["omittedCount"], 0)
+        self.assertEqual(result["subgroups"][0]["order"], 1)
+        self.assertEqual(result["subgroups"][-1]["order"], 12)
+
     def test_standalone_service_adapter(self):
         with tempfile.TemporaryDirectory() as directory:
             source, target = Path(directory) / "input.json", Path(directory) / "output.json"

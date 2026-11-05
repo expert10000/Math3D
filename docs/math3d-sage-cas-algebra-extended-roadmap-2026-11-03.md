@@ -336,6 +336,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **E04 implementation update (2026-11-05):** The [E04 acceptance record](evidence/sage-e04-module-presentations-2026-11-05.md) adds versioned free and presented modules with pinned `ZZ`, `QQ` or bounded `QQ` polynomial parents, an exact typed relation map `A:R^m→R^n`, and separate dimension-checked maps between saved free modules. Registry validation rejects wrong scalar domains, ranks and parent references; revision freshness tracks dependent modules. Core and actual desktop Project-package export/fresh-profile import gates pass. The next feature is **SAGE-E05**, module invariant factors.
 
+**E01–E02 → D06 integration (2026-11-05):** The [linked Galois acceptance record](evidence/sage-d06-linked-group-partial-2026-11-05.md) makes the D06 group a revisioned E01 object pinned to polynomial-ring and result evidence. The existing E02 dossier can run on that group. `x⁴−2` remains a complete ten-subgroup order-eight view; an order-twelve quartic now has an explicitly partial eight-of-ten view. Core, local Sage 9.5, Docker Sage 10.10 and controlled desktop export/reopen gates pass. E03 scenes remain available for saved E02 results.
+
 **E05 implementation update (2026-11-05):** The [E05 acceptance record](evidence/sage-e05-module-invariant-factors-2026-11-05.md) adds a typed Smith operation for saved `ZZ` modules with pinned module and ring snapshots. Exact unimodular transformations certify the free rank and torsion factors before Project evidence is saved. WSL Sage 9.5, Docker Sage 10.10, core rejection, desktop build and actual Project-package export/fresh-profile import gates pass. The next feature is **SAGE-E06**, chain complexes and homology.
 
 ---

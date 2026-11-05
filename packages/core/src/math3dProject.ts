@@ -151,6 +151,24 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       if (new Set(items.map((item) => item.id)).size !== items.length) throw new TypeError("Duplicate Project algebra evidence IDs.");
       return items;
     })();
+    for (const entry of algebraObjects ?? []) for (const group of entry.revisions) {
+      if (group.definition.kind !== "finite-group" || !group.definition.source) continue;
+      if (group.definition.representation !== "permutation")
+        throw new TypeError("Saved Galois group must use a permutation action.");
+      const source = group.definition.source;
+      const evidence = algebraEvidence?.find((item) => item.id === source.evidenceId);
+      const result = evidence?.result as { sourcePolynomial?: string; splittingField?: { definingPolynomial?: string };
+        group?: { elements?: readonly (readonly number[])[]; generators?: readonly number[] } } | undefined;
+      if (!evidence || evidence.request.operation !== "sage.galois.analyze" ||
+          evidence.request.target.objectId !== source.ring.objectId ||
+          evidence.request.target.revision !== source.ring.revision ||
+          result?.sourcePolynomial !== source.polynomial ||
+          result?.splittingField?.definingPolynomial !== source.splittingPolynomial ||
+          !result?.group?.elements || !result.group.generators ||
+          canonicalJsonStringify(group.definition.generators.map((item) => item.images)) !==
+            canonicalJsonStringify(result.group.generators.map((index) => result.group!.elements![index])))
+        throw new TypeError("Saved Galois group must reference matching pinned Project evidence.");
+    }
     for (const entry of workspace.value.entries.filter((item) => item.module === "quantum")) {
       const checkpoint = entry.checkpoint;
       if (entry.replay !== null || checkpoint.format !== "math3d.quantum-scene-document")
