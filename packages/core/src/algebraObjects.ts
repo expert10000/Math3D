@@ -10,6 +10,8 @@ import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { analyzeQuadraticNumberField } from "./quadraticNumberField";
 import { requireBiquadraticGenerator, requireBiquadraticRadicand } from "./biquadraticFieldTower";
 import { parseFiniteGroupDefinition, type FiniteGroupDefinition } from "./finiteGroup";
+import { parseModuleDefinition, parseModuleMapDefinition,
+  type ModuleDefinition, type ModuleMapDefinition } from "./modulePresentations";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
@@ -25,7 +27,9 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
   | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
   | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
-  | FiniteGroupDefinition;
+  | FiniteGroupDefinition
+  | ModuleDefinition
+  | ModuleMapDefinition;
 
 export type AlgebraObjectKind = AlgebraObjectDefinition["kind"];
 export type AlgebraMonomialOrder = "lex" | "deglex" | "degrevlex";
@@ -172,6 +176,15 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
         ideal: requireRef(definition.ideal, "definition.ideal") };
     case "finite-group":
       return parseFiniteGroupDefinition(definition);
+    case "module": {
+      const parsed = parseModuleDefinition(definition);
+      return { ...parsed, baseRing: requireRef(parsed.baseRing, "definition.baseRing") };
+    }
+    case "module-map": {
+      const parsed = parseModuleMapDefinition(definition);
+      return { ...parsed, sourceModule: requireRef(parsed.sourceModule, "definition.sourceModule"),
+        targetModule: requireRef(parsed.targetModule, "definition.targetModule") };
+    }
     default:
       throw new TypeError(`Unsupported algebra object kind '${String(definition.kind)}'.`);
   }
@@ -182,7 +195,9 @@ const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraOb
     : definition.kind === "number-field" || definition.kind === "field-extension" ? [definition.baseField]
     : definition.kind === "ideal" ? [definition.ambientRing]
       : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal]
-        : definition.kind === "finite-group" && definition.source ? [definition.source.ring] : [];
+        : definition.kind === "finite-group" && definition.source ? [definition.source.ring]
+        : definition.kind === "module" ? [definition.baseRing]
+          : definition.kind === "module-map" ? [definition.sourceModule, definition.targetModule] : [];
 
 const definitionHash = (definition: AlgebraObjectDefinition): StructuralHash =>
   structuralHash({ schemaVersion: ALGEBRA_OBJECT_SCHEMA_VERSION, definition });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adaptQuantumFieldVolume, type QuantumFieldVolume } from "./quantumFieldVolumeAdapter";
+import { planVolumeRendering } from "./transferFunction";
 
 const source: QuantumFieldVolume = {
   fingerprint: "a".repeat(64), fieldId: "psi", label: "Orbital", kind: "complex-field", quantity: "density",
@@ -30,5 +31,12 @@ describe("verified quantum field Volume adapter", () => {
     expect(() => adaptQuantumFieldVolume({ ...source, sourceHashes: ["bad"] })).toThrow();
     expect(() => adaptQuantumFieldVolume({ ...source, values: new Float32Array(7) })).toThrow();
     expect(() => adaptQuantumFieldVolume({ ...source, undefinedNodeCount: 1 })).toThrow();
+  });
+  it("keeps a CPU slice fallback when a verified grid has no 3-D texture support", () => {
+    const { dataset } = adaptQuantumFieldVolume({ ...source, quantity: "amplitude", valueUnit: "a0^-3/2" });
+    expect(planVolumeRendering(dataset.grid.dims, { webgl2: false, max3dTextureSize: 0,
+      budgetBytes: 0 }).path).toBe("cpu-2d-fallback");
+    expect(planVolumeRendering(dataset.grid.dims, { webgl2: true, max3dTextureSize: 16,
+      budgetBytes: 1_000_000 }).path).toBe("gpu-3d-texture");
   });
 });
