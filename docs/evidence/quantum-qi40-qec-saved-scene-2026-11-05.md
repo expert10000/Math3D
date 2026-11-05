@@ -16,4 +16,4 @@ The Backend page lists verified saved runs, reopens one after application restar
 
 ## Remaining QI-31 and QI-40 scope
 
-No stochastic noise, noisy parity measurement, surface-code patch, circuit-level fault model, independent decoder comparison, logical failure rate or pseudothreshold is inferred from this ideal trace. The QEC scene is a current-reader source-checkout path and has not been added to the 38-fixture release matrix; QI-40 release freeze remains open.
+No stochastic noise, noisy parity measurement, surface-code patch, circuit-level fault model, independent decoder comparison, logical failure rate or pseudothreshold is inferred from this ideal trace. The saved run and scene are now pinned in the 39-fixture release matrix, with an independent 21-bit baseline check and current visual capture. QI-40 release freeze remains open.

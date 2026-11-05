@@ -1,6 +1,6 @@
 {
   "schema": "math3d.quantum-release-matrix/v1",
-  "fixtureCount": 38,
+  "fixtureCount": 39,
   "readerVersions": [
     "quantum-scene/v1",
     "quantum-scene/v2"
@@ -432,6 +432,19 @@
       "fingerprint": "610caa74bea640225e23459542ac442a828dff3471e0fff08d35b446a8907020",
       "datasets": 9,
       "datasetBytes": 145456,
+      "objects": 4,
+      "fields": 0
+    },
+    {
+      "id": "saved-ideal-qec",
+      "model": "qec_repetition_ideal",
+      "schema": "quantum-scene/v1",
+      "runId": "run-ee2889dc341d4cb88e638f2af4ec6d2d",
+      "resultSha256": "55bf1afc2d025f332536b87cb52a3afc3d412145fff4f749339941d688ea3a7e",
+      "sceneSha256": "9e5d8dbedc6480c728eb2430945f839cae9bdb2948eb238dbaa8b71b74238146",
+      "fingerprint": "e879c0f3e5033429ef0b89fdf59536099d51d61bd346e44ea29651c9a01a2391",
+      "datasets": 7,
+      "datasetBytes": 696,
       "objects": 4,
       "fields": 0
     },

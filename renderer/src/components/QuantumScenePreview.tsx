@@ -1037,7 +1037,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               <p>Density and winding are shown as supplied. Math3D does not infer edge/bulk classification, band inversion, or node claims.</p>
               {sshError && <p role="alert">SSH view link refused: {sshError}</p>}
             </section>}
-            {scene.provenance.model === "qec_repetition_ideal" && <section data-testid="qec-repetition-profile"
+            {import.meta.env.VITE_QEC_PROFILE !== "off" && scene.provenance.model === "qec_repetition_ideal" && <section data-testid="qec-repetition-profile"
               style={{ padding: 10, marginBottom: 14, border: "1px solid var(--border, #cbd5e1)", borderRadius: 8 }}>
               <h3 style={{ margin: 0 }}>Ideal repetition-code record</h3>
               <p>Discrete rounds are on the horizontal axis. Blue shows recorded Z₀Z₁ and Z₁Z₂ parity bits,

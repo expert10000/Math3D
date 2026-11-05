@@ -15,10 +15,14 @@ const savedQwz = [
   { id: "saved-qwz-bands", folder: "run-05ce1036d70c466eb4f900944a85c474-bands.qscene",
     fingerprint: "d4c5fa4d12fcf3046584e990621e84e618f182191b2c531e81bc3e09edad1bb8" },
 ];
+const savedQec = { id: "saved-ideal-qec", group: "quantum-qec",
+  folder: "run-ee2889dc341d4cb88e638f2af4ec6d2d-qec.qscene",
+  fingerprint: "e879c0f3e5033429ef0b89fdf59536099d51d61bd346e44ea29651c9a01a2391" };
 const fixtures = [
   ...BUNDLED_QUANTUM_SCENE_EXAMPLES.map(item => ({ id: item.id, folder: item.folder,
     group: item.fixtureGroup, fingerprint: item.fingerprint })),
   ...savedQwz.map(item => ({ ...item, group: "quantum-qi01" })),
+  savedQec,
 ].sort((a, b) => a.id.localeCompare(b.id));
 assert.equal(BUNDLED_QUANTUM_SCENE_EXAMPLES.length, 36);
 assert.equal(new Set(fixtures.map(item => item.id)).size, fixtures.length);
