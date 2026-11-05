@@ -55,6 +55,7 @@
     "quantum:artifact-gc": "npm run build:main && node scripts/quantum-artifact-gc.mjs",
     "test:quantum:qwz-baseline": "npm run build:main && node scripts/test-qwz-baseline.mjs",
     "test:quantum:release:math3d": "npm run build:main && npm run build:renderer && node scripts/quantum-release-matrix.mjs --check && node scripts/test-qwz-baseline.mjs && node scripts/test-quantum-scene-import.mjs && playwright test tests/e2e/quantum-qi01-baseline.spec.ts tests/e2e/quantum-qi06-portable-project.spec.ts tests/e2e/quantum-field-explorer.spec.ts tests/e2e/quantum-qi08-study-handoff.spec.ts tests/e2e/quantum-qi40-inspector.spec.ts --reporter=list",
+    "test:quantum:release:cross-app": "node scripts/qi40-certify.mjs",
     "test:quantum:browser": "playwright test --config playwright.quantum-browser.config.ts",
     "test:quantum:q09": "playwright test tests/e2e/quantum-q09 --reporter=list",
     "test:scientific-scene": "node scripts/write-scientific-sincos-fixture.mjs --check && node scripts/write-scientific-thermal-fixture.mjs --check && node scripts/write-scientific-graph-presets.mjs --check && npm run build:main && node scripts/test-scientific-scene.mjs",

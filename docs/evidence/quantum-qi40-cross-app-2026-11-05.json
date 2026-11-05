@@ -1,0 +1,57 @@
+{
+  "schema": "math3d.qi40-certification/v1",
+  "generatedAt": "2026-11-05T13:16:56.011Z",
+  "math3dCommit": "6ac43b793ca6307bb06df4497a4eeea7afd27644",
+  "theoryLabCommit": "ad3d9da26657c71fabaed1365902bf9b6e119f50",
+  "requested": {
+    "live": true,
+    "installed": false
+  },
+  "gates": [
+    {
+      "name": "math3d-quantum-release-matrix",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 104082
+    },
+    {
+      "name": "theory-lab-types",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 5574
+    },
+    {
+      "name": "theory-lab-typescript-tests",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 18533
+    },
+    {
+      "name": "theory-lab-worker",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 10128
+    },
+    {
+      "name": "theory-lab-scenes",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 3055
+    },
+    {
+      "name": "theory-lab-build",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 459
+    },
+    {
+      "name": "real-two-app-handoff",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 13832
+    }
+  ],
+  "gateStatus": "pass",
+  "releaseCertification": "partial",
+  "limitation": "Source-checkout and installed-app gates are recorded separately; this report alone does not certify QI-40 or a release."
+}

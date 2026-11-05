@@ -174,6 +174,7 @@ export * from "./projectTemporalFieldSources";
 export * from "./temporalPathline";
 export * from "./temporalStreakline";
 export * from "./temporalSpectrum";
+export * from "./projectTemporalSpectrumGraph";
 export * from "./verifiedVectorFieldSampling";
 export * from "./projectComparisonProfileGraph";
 export * from "./scientificDatasetLink";

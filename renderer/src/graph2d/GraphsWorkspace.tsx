@@ -69,6 +69,10 @@ import {
   projectProfileGraphStatus,
   createProjectComparisonProfileOrigin, projectComparisonProfileRows,
   projectComparisonProfileGraphStatus, vectorField3DComparisonTransferKey,
+  computeTemporalSpectrum, createTemporalSpectrumGraphOrigin,
+  projectTemporalSpectrumGraphStatus, projectTemporalSpectrumStatus,
+  temporalSpectrumGraphRows,
+  type VerifiedTemporalTransfers, type TemporalSpectrumRecipe,
   graph2DParameterStudyStatus,
 } from "@math3d/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -329,6 +333,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   useEffect(() => {
     let active = true;
     const refresh = async () => {
+      if (active) setComparisonVerified({});
       const sources = project?.workspace.entries.filter(item => item.module === "vector3d" &&
         item.checkpoint.format === "math3d.vector-field3d-document" &&
         item.checkpoint.source.field.kind === "scientific-bundle").map(item =>
@@ -346,6 +351,13 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const projectProfileRef = useRef(project);
   projectProfileRef.current = project;
   const [profileActionError, setProfileActionError] = useState("");
+  const [spectrumVerified, setSpectrumVerified] = useState<Record<string,
+    VerifiedTemporalTransfers>>({});
+  useEffect(() => {
+    const withhold = () => setSpectrumVerified({});
+    window.addEventListener("focus", withhold);
+    return () => window.removeEventListener("focus", withhold);
+  }, []);
   const [selectionFocus, setSelectionFocus] = useState<{ id: string; token: number } | null>(null);
   const verifiedProfileSource = derivedProfiles.verifySource;
   const openProjectProfile = async (profileId: string) => {
@@ -403,6 +415,67 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           lineStyle: "solid", visible: true },
       } });
       setComparisonVerified(previous => ({ ...previous, ...updates }));
+      setVectorField3DOpen(false);
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const verifiedSpectrum = async (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    if (!project || result.provenance.operation.type !== "vector3d.temporal-spectrum")
+      throw new TypeError("Open the saved temporal spectrum in its Project.");
+    const temporalId = (result.provenance.operation.parameters.temporal as
+      { id?: string } | undefined)?.id;
+    const temporal = project.workspace.timeSources?.find(item => item.identity.id === temporalId);
+    if (!temporal) throw new TypeError("The saved temporal source is missing.");
+    const load = async (): Promise<VerifiedTemporalTransfers> => {
+      const transfers = new Map();
+      for (const frame of temporal.source.frames) {
+        const field = project.workspace.entries.find(item => item.module === "vector3d" &&
+          item.expected.id === frame.documentId)?.checkpoint;
+        if (field?.format !== "math3d.vector-field3d-document")
+          throw new TypeError("A pinned temporal frame is missing.");
+        if (field.source.field.kind === "scientific-bundle")
+          transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(field));
+      }
+      return transfers;
+    };
+    const transfers = await load();
+    const computed = await computeTemporalSpectrum(project, temporal,
+      result.provenance.operation.parameters.recipe as unknown as TemporalSpectrumRecipe,
+      { transfers, currentProject: () => projectProfileRef.current!,
+        verifyBeforePublish: load });
+    if (computed.publication.resultId !== result.resultId ||
+        structuralHash(computed.publication.summary) !== structuralHash(result.summary))
+      throw new TypeError("The saved temporal spectrum changed; recompute it in Field Explorer.");
+    if (projectProfileRef.current?.identity.structuralHash !== project.identity.structuralHash)
+      throw new TypeError("The Project changed while verifying the temporal spectrum.");
+    return { computed, transfers };
+  };
+  const spectrumDraft = (computed: import("@math3d/core").TemporalSpectrumResult,
+    transfers: VerifiedTemporalTransfers, series: "psd" | "autocorrelation",
+    style: Pick<import("@math3d/core").Graph2DObjectDisplay,
+      "color" | "lineWidth" | "lineStyle" | "visible">) => {
+    const origin = createTemporalSpectrumGraphOrigin(project!, computed, series, transfers);
+    const rows = temporalSpectrumGraphRows(computed, series);
+    return { label: series === "psd" ? "Temporal PSD" : "Temporal autocorrelation",
+      table: pointTableStore.publish(rows), mode: "line" as const,
+      domain: { min: rows[0]!.x, max: rows.at(-1)!.x,
+        includeMin: true, includeMax: true }, temporalSpectrumOrigin: origin, style };
+  };
+  const openTemporalSpectrum = async (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit) throw new TypeError("Open a saved Project and Graph editor first.");
+      const existing = document.source.objects.find(item => item.kind === "point-series" &&
+        item.temporalSpectrumOrigin?.resultId === result.resultId);
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null });
+        setVectorField3DOpen(false); return; }
+      const { computed, transfers } = await verifiedSpectrum(result);
+      onAuthoringCommit({ type: "create-point-series-pair", drafts: [
+        spectrumDraft(computed, transfers, "psd", { color: SCIENTIFIC_GRID_LINE_COLORS[0],
+          lineWidth: 2, lineStyle: "solid", visible: true }),
+        spectrumDraft(computed, transfers, "autocorrelation", {
+          color: SCIENTIFIC_GRID_LINE_COLORS[1], lineWidth: 2,
+          lineStyle: "solid", visible: true })] });
+      setSpectrumVerified(previous => ({ ...previous, [result.resultId]: transfers }));
       setVectorField3DOpen(false);
     } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
   };
@@ -1486,6 +1559,12 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     object.kind === "point-series" && object.comparisonProfileOrigin ? [[object.id,
       projectComparisonProfileGraphStatus(project, object.comparisonProfileOrigin,
         verifiedComparisonSource)]] : [])), [document, project, comparisonVerified]);
+  const spectrumStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.temporalSpectrumOrigin ? [[object.id,
+      projectTemporalSpectrumGraphStatus(project, object.temporalSpectrumOrigin,
+        pointTableStore.resolve(object.table),
+        spectrumVerified[object.temporalSpectrumOrigin.resultId])]] : [])),
+    [document, project, spectrumVerified]);
   const parameterStudyStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
     object.kind === "point-series" && object.parameterStudyOrigin ? [[object.id,
       graph2DParameterStudyStatus(document, object.parameterStudyOrigin,
@@ -1503,13 +1582,14 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             (() => { const rows = pointTableStore.resolve(object.table);
               return !rows || structuralHash(rows) !==
                 object.comparisonProfileOrigin.rowsSha256; })()) ||
+        object.temporalSpectrumOrigin && spectrumStates[object.id]?.status !== "current" ||
         object.parameterStudyOrigin && parameterStudyStates[object.id]?.status !== "current" ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
           linkedPairVerification.states[linkedVerificationKey(object.linkedOrigin)] !==
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
-    projectProfileStates, comparisonProfileStates, parameterStudyStates]);
+    projectProfileStates, comparisonProfileStates, spectrumStates, parameterStudyStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
     if (!pointDragPreview || pointDragRef.current?.documentId !== document.identity.id) return null;
@@ -1731,6 +1811,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     selectedObject.projectProfileOrigin : undefined;
   const selectedComparisonProfile = selectedObject?.kind === "point-series" ?
     selectedObject.comparisonProfileOrigin : undefined;
+  const selectedSpectrum = selectedObject?.kind === "point-series" ?
+    selectedObject.temporalSpectrumOrigin : undefined;
   const selectedProjectProfileState = selectedProjectProfile && selectedObject ?
     projectProfileStates[selectedObject.id] : null;
   const selectedProjectProfileRowsReady = selectedProjectProfile && selectedObject?.kind === "point-series" ?
@@ -1806,6 +1888,62 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       selectedComparisonProfile.axis.max} {selectedComparisonProfile.axis.unit} · {
       selectedComparisonProfile.unit}</p>
   </section>;
+  const refreshTemporalSpectrum = async () => {
+    if (!project || !selectedSpectrum || !onAuthoringCommit) return;
+    try {
+      setProfileActionError("");
+      const original = project.workspace.results.find(item => item.resultId === selectedSpectrum.resultId);
+      if (!original) throw new TypeError("The saved spectrum result is missing.");
+      const originalTemporal = (original.provenance.operation.parameters.temporal as
+        { id?: string } | undefined)?.id;
+      const recipeHash = structuralHash(original.provenance.operation.parameters.recipe);
+      const result = [...project.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-spectrum" &&
+        (item.provenance.operation.parameters.temporal as { id?: string } | undefined)?.id ===
+          originalTemporal &&
+        structuralHash(item.provenance.operation.parameters.recipe) === recipeHash &&
+        projectTemporalSpectrumStatus(project, item).status !== "stale");
+      if (!result) throw new TypeError("Recompute this recipe from the verified replacement " +
+        "temporal source in Field Explorer before refreshing Graphs.");
+      const { computed, transfers } = await verifiedSpectrum(result);
+      const members = document.source.objects.filter(item => item.kind === "point-series" &&
+        item.temporalSpectrumOrigin?.resultId === original.resultId);
+      if (members.length !== 2 || !members.some(item => item.kind === "point-series" &&
+          item.temporalSpectrumOrigin?.series === "psd") ||
+          !members.some(item => item.kind === "point-series" &&
+            item.temporalSpectrumOrigin?.series === "autocorrelation"))
+        throw new TypeError("Both saved spectral Graph rows are required for one refresh edit.");
+      const edits = members.map(item => {
+        if (item.kind !== "point-series" || !item.temporalSpectrumOrigin)
+          throw new TypeError("Invalid temporal series.");
+        const display = document.display.objects.find(view => view.objectId === item.id)!;
+        return { objectId: item.id, draft: spectrumDraft(computed, transfers,
+          item.temporalSpectrumOrigin.series, { color: display.color,
+            lineWidth: display.lineWidth, lineStyle: display.lineStyle,
+            visible: display.visible }) };
+      }) as [
+        { objectId: string; draft: Graph2DPointSeriesDraft },
+        { objectId: string; draft: Graph2DPointSeriesDraft }];
+      onAuthoringCommit({ type: "edit-point-series-pair", edits });
+      setSpectrumVerified(previous => ({ ...previous, [result.resultId]: transfers }));
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const spectrumGraphInspector = selectedSpectrum && selectedObject && <section
+    aria-label="Saved temporal spectral series" data-testid="gf32-graph-spectrum-status">
+    <h3>{selectedSpectrum.series === "psd" ? "Power spectral density" :
+      "Autocorrelation"} · {spectrumStates[selectedObject.id]?.status === "current" ?
+        "current" : "values withheld"}</h3>
+    {spectrumStates[selectedObject.id]?.reason && <p role="status">Values withheld: {
+      spectrumStates[selectedObject.id]?.reason}. Recompute a changed temporal source in
+      Field Explorer, then verify and refresh both rows.</p>}
+    <p>Project result {selectedSpectrum.resultId} · {selectedSpectrum.sampleCount} samples ·
+      {" "}{selectedSpectrum.window} window · {selectedSpectrum.detrend} detrend ·
+      {" "}{selectedSpectrum.interpolation} interpolation · {selectedSpectrum.axisUnit} →
+      {" "}{selectedSpectrum.valueUnit}</p>
+    <button type="button" data-testid="gf32-refresh-spectrum"
+      disabled={!onAuthoringCommit} onClick={() => void refreshTemporalSpectrum()}>
+      Verify and refresh spectral rows</button>
+  </section>;
   const selectedSageExpression = selectedObject?.kind === "explicit-cartesian"
     ? selectedObject.expression.source : undefined;
   const selectedSageSource = selectedObject?.kind === "explicit-cartesian"
@@ -1834,6 +1972,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       (() => { const rows = pointTableStore.resolve(selectedObject.table);
         return !!rows && structuralHash(rows) ===
           selectedObject.comparisonProfileOrigin.rowsSha256; })()) &&
+    (!selectedObject.temporalSpectrumOrigin || spectrumStates[selectedObject.id]?.status === "current") &&
     (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
     linkedPairVerification.states[linkedVerificationKey(selectedObject.linkedOrigin)] ===
@@ -3994,6 +4133,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
           onSaveTemporalSpectrum={onSaveVectorField3DTemporalSpectrum}
+          onOpenTemporalSpectrum={result => void openTemporalSpectrum(result)}
           onRebaseDerivedSource={onRebaseVectorField3DDerivedSource}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
           onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
@@ -4414,7 +4554,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{profileGraphInspector}{comparisonGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+            {inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
             {profileCards}{studyPanel}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
@@ -4467,7 +4607,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
         {profileCards}{studyPanel}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}

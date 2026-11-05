@@ -11,11 +11,14 @@ import { verifiedVectorFieldSampler, type VerifiedVectorFieldTransfer } from "./
 
 export const VECTOR_FIELD3D_COMPARISON_RESULT_TYPE = "vector3d.field-comparison" as const;
 export type VectorField3DComparisonPolicy = Readonly<{
-  frame: "cartesian-identical";
+  frame: "cartesian-identical" | "cartesian-aligned-overlap";
   grid: readonly [number, number, number];
   units: "identical";
   interpolation: "analytic-direct" | "verified-volume-trilinear";
   coverage: "complete-or-withhold";
+  resampling?: "physical-overlap-grid";
+  domain?: readonly [readonly [number, number], readonly [number, number],
+    readonly [number, number]];
 }>;
 export type VectorField3DComparison = Readonly<{
   policy: VectorField3DComparisonPolicy;
@@ -38,17 +41,28 @@ export const vectorField3DComparisonTransferKey = (transfer: VerifiedVectorField
     name: item.component, sha256: item.sampleSha256, resource: item.resourceSha256,
     shape: item.sampleShape })) });
 
-/** Explicit first-gate policy: identical Cartesian domains and units, direct analytic sampling. */
+/** Explicit Cartesian policy; cross-grid samples only inside a declared physical overlap. */
 export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DDocument,
   policy: VectorField3DComparisonPolicy,
   transfers: VectorField3DComparisonTransfers = {}): VectorField3DComparison {
   const left = normalizeVectorField3DDocument(a), right = normalizeVectorField3DDocument(b);
   if (!left.ok || !right.ok) throw new TypeError("Comparison sources must be valid Project documents.");
   if (a.identity.id === b.identity.id) throw new TypeError("Choose two distinct field sources.");
-  if (policy.frame !== "cartesian-identical" || policy.units !== "identical" ||
+  if (!["cartesian-identical", "cartesian-aligned-overlap"].includes(policy.frame) ||
+      policy.units !== "identical" ||
       !["analytic-direct", "verified-volume-trilinear"].includes(policy.interpolation) ||
       policy.coverage !== "complete-or-withhold")
     throw new TypeError("Frame, unit, interpolation and coverage policy must be explicit.");
+  const overlap = policy.frame === "cartesian-aligned-overlap";
+  if (overlap ? policy.resampling !== "physical-overlap-grid" ||
+      policy.interpolation !== "verified-volume-trilinear" ||
+      !Array.isArray(policy.domain) || policy.domain.length !== 3 ||
+      policy.domain.some((bounds, axis) => !Array.isArray(bounds) || bounds.length !== 2 ||
+        !bounds.every(Number.isFinite) || bounds[0] >= bounds[1] ||
+        bounds[0] < Math.max(a.source.axes[axis]!.min, b.source.axes[axis]!.min) ||
+        bounds[1] > Math.min(a.source.axes[axis]!.max, b.source.axes[axis]!.max)) :
+      policy.domain !== undefined || policy.resampling !== undefined)
+    throw new TypeError("Cross-grid comparison needs an explicit physical overlap and resampling policy.");
   if (!Array.isArray(policy.grid) || policy.grid.length !== 3 || policy.grid.some(n =>
       !Number.isSafeInteger(n) || n < 2 || n > 16) ||
       policy.grid[0] * policy.grid[1] * policy.grid[2] > 4096)
@@ -59,29 +73,31 @@ export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DD
       !transfers.a || !transfers.b : aField.kind !== "expressions" || bField.kind !== "expressions")
     throw new TypeError("Comparison interpolation requires two matching verified source kinds.");
   if (a.source.axes.some((axis, i) => axis.label !== b.source.axes[i]!.label ||
-      axis.unit !== b.source.axes[i]!.unit || axis.min !== b.source.axes[i]!.min ||
-      axis.max !== b.source.axes[i]!.max) ||
+      axis.unit !== b.source.axes[i]!.unit || !overlap &&
+      (axis.min !== b.source.axes[i]!.min || axis.max !== b.source.axes[i]!.max)) ||
       (aField.kind === "expressions" && bField.kind === "expressions" ?
         aField.components.some((component, i) => component.unit !== bField.components[i]!.unit) ||
         new Set(aField.components.map(component => component.unit)).size !== 1 :
         aField.kind === "scientific-bundle" && bField.kind === "scientific-bundle" ?
           aField.componentUnits.some((unit, i) => unit !== bField.componentUnits[i]) ||
           new Set(aField.componentUnits).size !== 1 ||
-          aField.references[0].shape.some((size, i) => size !== bField.references[0].shape[i]) ||
-          aField.references[0].axes.some((axis, i) =>
-            JSON.stringify(axis) !== JSON.stringify(bField.references[0].axes[i])) : true))
-    throw new TypeError("Both fields require identical Cartesian axes, domain and component units.");
+          !overlap && (aField.references[0].shape.some((size, i) =>
+            size !== bField.references[0].shape[i]) ||
+            aField.references[0].axes.some((axis, i) =>
+              JSON.stringify(axis) !== JSON.stringify(bField.references[0].axes[i]))) : true))
+    throw new TypeError("Both fields require aligned Cartesian axes and identical component units.");
   const samplerA = bundled ? verifiedVectorFieldSampler(a, transfers.a!) : null;
   const samplerB = bundled ? verifiedVectorFieldSampler(b, transfers.b!) : null;
   const unit = aField.kind === "expressions" ? aField.components[0].unit : aField.componentUnits[0];
   const profileRows: { x: number; y: number | null }[] = [];
   let valid = 0, angularUndefined = 0, vectorSum = 0, vectorSquared = 0;
   let vectorMax = 0, scalarSum = 0, scalarMax = 0, angleSum = 0, angleMax = 0;
+  const domain = overlap ? policy.domain! : a.source.axes.map(axis => [axis.min, axis.max]);
   for (let i = 0; i < policy.grid[0]; i++) for (let j = 0; j < policy.grid[1]; j++)
     for (let k = 0; k < policy.grid[2]; k++) {
       const position = [i, j, k].map((index, axis) => {
-        const bounds = a.source.axes[axis]!;
-        return bounds.min + (bounds.max - bounds.min) * index / (policy.grid[axis]! - 1);
+        const bounds = domain[axis]!;
+        return bounds[0]! + (bounds[1]! - bounds[0]!) * index / (policy.grid[axis]! - 1);
       });
       const variables = { x: position[0]!, y: position[1]!, z: position[2]! };
       const sample = (document: VectorField3DDocument) => document.source.field.kind === "expressions" ?
@@ -122,7 +138,7 @@ export function compareVectorField3D(a: VectorField3DDocument, b: VectorField3DD
     angularError: { meanRadians: valid > angularUndefined ? angleSum / (valid - angularUndefined) : null,
       maxRadians: valid > angularUndefined ? angleMax : null },
     profile: { axis: { name: a.source.axes[0].label, unit: a.source.axes[0].unit,
-      min: a.source.axes[0].min, max: a.source.axes[0].max }, unit, rows: profileRows },
+      min: domain[0]![0]!, max: domain[0]![1]! }, unit, rows: profileRows },
     verification: { a: transfers.a ? vectorField3DComparisonTransferKey(transfers.a) : null,
       b: transfers.b ? vectorField3DComparisonTransferKey(transfers.b) : null },
     status: valid === sampled ? "complete" : "incomplete" };
@@ -134,6 +150,9 @@ export function createVectorField3DComparisonResult(comparison: VectorField3DCom
     frame: comparison.policy.frame, counts: [...comparison.policy.grid],
     units: comparison.policy.units, interpolation: comparison.policy.interpolation,
     coverage: comparison.policy.coverage,
+    ...(comparison.policy.resampling ? { resampling: comparison.policy.resampling } : {}),
+    ...(comparison.policy.domain ? { domain: comparison.policy.domain.map(bounds =>
+      [...bounds]) } : {}),
   };
   const summary = { sampled: comparison.sampled, valid: comparison.valid, gaps: comparison.gaps,
     angularUndefined: comparison.angularUndefined,
@@ -204,7 +223,9 @@ export function upsertProjectVectorField3DComparison(project: Math3DProject,
   const parameters = result.provenance.operation.parameters;
   const policy = { frame: parameters.frame, grid: parameters.counts,
     units: parameters.units, interpolation: parameters.interpolation,
-    coverage: parameters.coverage } as VectorField3DComparisonPolicy;
+    coverage: parameters.coverage,
+    ...(parameters.resampling ? { resampling: parameters.resampling } : {}),
+    ...(parameters.domain ? { domain: parameters.domain } : {}) } as VectorField3DComparisonPolicy;
   const expected = createVectorField3DComparisonResult(compareVectorField3D(first, second, policy,
     transfers));
   if (expected.resultId !== result.resultId || structuralHash(expected.summary) !== structuralHash(result.summary))
