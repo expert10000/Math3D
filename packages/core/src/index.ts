@@ -28,6 +28,7 @@ export * from "./sageModuleInvariantFactors";
 export * from "./chainComplex";
 export * from "./sageChainHomology";
 export * from "./sageFiniteGroupScenes";
+export * from "./sageAlgebraicLocusScene";
 export * from "./modulePresentations";
 export * from "./sageNumberFieldOperations";
 export * from "./sageIdealOperations";

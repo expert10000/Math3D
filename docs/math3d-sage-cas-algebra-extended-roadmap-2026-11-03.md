@@ -342,6 +342,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **E06 implementation update (2026-11-05):** The [E06 acceptance record](evidence/sage-e06-chain-complex-homology-2026-11-05.md) adds a versioned three-degree chain object pinned to saved free `ZZ` modules and maps. Exact registry checks enforce map typing and `d₁d₂=0`; independently checked Smith witnesses certify the saved `H₀`, `H₁`, `H₂` free and torsion factors. WSL Sage 9.5, Docker Sage 10.10, core rejection/staleness, desktop build and actual Project-package export/fresh-profile import gates pass. The next feature is **SAGE-F01**, an algebraic-locus scene contract.
 
+**F01 implementation update (2026-11-05):** The [F01 acceptance record](evidence/sage-f01-algebraic-locus-scene-2026-11-05.md) adds a standalone, versioned real-locus scene with full pinned `QQ` polynomial-ring or ideal source records, exact equations, Cartesian axes, bounded intervals and numerical precision. It saves an uncomputed Geometry document to the Project and rejects false rendered claims or mismatched source revisions on independent import. Core, desktop build, JSON export and actual Project-package export/fresh-profile import gates pass. The next feature is **SAGE-F02**, polynomial and ideal plot handoff.
+
 ---
 
 ## 3. P0 — Algebra object registry
@@ -731,6 +733,8 @@ A complex variety is not automatically a real 3D surface. The bridge must ask fo
 ### 12.3 Geometry artifact contract
 
 The target document must record source object ID/revision, coordinate convention, declared domain (`R`, `C` or chosen slice), approximation tolerance, bounds, algorithm, detected singularity warnings, and whether the image is a guaranteed complete locus or only a bounded sampled rendering.
+
+**F01 contract:** The initial `R` handoff records full pinned source definitions, exact equations, one to three direct Cartesian axes, finite bounds and a sample policy in an uncomputed Geometry document. `algorithm=null` and `completeness=unknown` explicitly precede sampling. Complex-domain and sliced representations remain future contract variants; F02 consumes this real-domain source for bounded plotting.
 
 ### 12.4 Additional visual handoffs
 

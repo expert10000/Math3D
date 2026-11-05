@@ -1,7 +1,7 @@
 import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
   isDocumentIdentity, isStableDocumentId, isStructuralHash, structuralHash,
   type CanonicalJsonValue, type DocumentIdentity, type StableDocumentId, type StructuralHash } from "./documentIdentity";
-import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, normalizeMixedWorkspaceDocument,
+import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, createMixedWorkspaceDocument, normalizeMixedWorkspaceDocument,
   type MixedWorkspaceDocument } from "./mixedWorkspace";
 import { canonicalJsonByteLength } from "./scientificJobs";
 import { quantumSceneRole, relocateQuantumSceneDocument } from "./quantumSceneDocument";
@@ -13,6 +13,9 @@ import { createAlgebraObjectRecord, parseAlgebraObjectRecord, type AlgebraObject
 import { createProjectAlgebraObjectId, validateProjectAlgebraRegistry, type ProjectAlgebraObjectEntry } from "./projectAlgebraRegistry";
 import { MAX_PROJECT_ALGEBRA_EVIDENCE, parseProjectAlgebraEvidence, type ProjectAlgebraEvidence } from "./projectAlgebraEvidence";
 import { MAX_PROJECT_ALGEBRA_RECIPES, parseAlgebraRecipeGraph, type AlgebraRecipeGraph } from "./algebraRecipeGraph";
+import { SAGE_LOCUS_GEOMETRY_EXTENSION, algebraicLocusGeometryDocument,
+  parseAlgebraicLocusGeometryDocument, parseSageAlgebraicLocusScene, sageAlgebraicLocusSceneStatus,
+  type SageAlgebraicLocusScene } from "./sageAlgebraicLocusScene";
 
 export const MATH3D_PROJECT_FORMAT = "math3d.project" as const;
 export const MATH3D_PROJECT_SCHEMA_VERSION = 1 as const;
@@ -133,6 +136,13 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
       !value.savedMeshComparisons.every(validSavedMeshComparison) || new Set(value.savedMeshComparisons.map((item: ProjectSavedMeshComparison) => item.id)).size !== value.savedMeshComparisons.length))
       return { ok: false, errors: ["Invalid saved Mesh comparisons."] };
     const algebraObjects = value.algebraObjects === undefined ? undefined : validateProjectAlgebraRegistry(value.algebraObjects);
+    for (const entry of workspace.value.entries) if (entry.module === "geometry" &&
+        entry.checkpoint.format === "math3d.geometry-document" &&
+        SAGE_LOCUS_GEOMETRY_EXTENSION in entry.checkpoint.source.extensions) {
+      if (entry.replay !== null) throw new TypeError("Algebraic-locus Geometry checkpoints cannot carry replay code.");
+      parseAlgebraicLocusGeometryDocument(entry.checkpoint,
+        { identity: value.identity as DocumentIdentity, algebraObjects } as Math3DProject);
+    }
     const algebraRecipes = value.algebraRecipes === undefined ? undefined : (() => {
       if (!Array.isArray(value.algebraRecipes) || value.algebraRecipes.length < 1 ||
           value.algebraRecipes.length > MAX_PROJECT_ALGEBRA_RECIPES ||
@@ -245,6 +255,23 @@ export const replaceMath3DProjectWorkspace = (project: Math3DProject, workspace:
     ...quantumFieldReferences(workspace)].sort((a, b) => a.sceneFingerprint.localeCompare(b.sceneFingerprint));
   return requireProject({ ...current, identity: advanceDocumentIdentity(current.identity, projectContent(workspace, current.workbooks, current.notes, quantumScenes.length ? quantumScenes : undefined, current.scientificScenes, current.compositions, current.savedMeshComparisons, current.algebraObjects, current.algebraEvidence, current.algebraRecipes)), workspace,
     ...(quantumScenes.length ? { quantumScenes } : {}) });
+};
+
+/** Adds an uncomputed, exact-source Geometry contract without claiming a rendered locus. */
+export const upsertMath3DProjectAlgebraicLocusScene = (project: Math3DProject,
+  scene: SageAlgebraicLocusScene): Math3DProject => {
+  const current = requireProject(project);
+  const checked = parseSageAlgebraicLocusScene(scene, current);
+  if (sageAlgebraicLocusSceneStatus(checked, current) !== "current")
+    throw new TypeError("Rebuild the locus contract from a current, fresh source before saving it.");
+  const geometry = algebraicLocusGeometryDocument(checked);
+  const entries = [...current.workspace.entries.filter((entry) => entry.expected.id !== geometry.identity.id),
+    { module: "geometry" as const, checkpoint: geometry, expected: geometry.identity, replay: null }];
+  const activeDocumentIds = [...current.workspace.activeDocumentIds.filter((id) => id !== geometry.identity.id),
+    geometry.identity.id];
+  const { format: _format, schemaVersion: _version, ...workspace } = current.workspace;
+  return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...workspace, entries,
+    activeDocumentIds }));
 };
 export const upsertMath3DProjectWorkbook = (project: Math3DProject, reference: ProjectWorkbookReference): Math3DProject => {
   const current = requireProject(project);

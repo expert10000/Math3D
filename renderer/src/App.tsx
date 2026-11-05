@@ -807,6 +807,7 @@ import {
   applyGraph2DAuthoring,
   createMixedWorkspaceDocument,
   replaceMath3DProjectWorkspace,
+  upsertMath3DProjectAlgebraicLocusScene,
   upsertProjectScientificSelection,
   upsertProjectLineIntegralResult,
   upsertProjectRegionResult,
@@ -111562,6 +111563,19 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onSaveLocusScene={(scene) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving a real-locus contract.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the locus contract.");
+          const next = upsertMath3DProjectAlgebraicLocusScene(current, scene);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
         onSaveRecipe={(recipe) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== recipe.projectId) throw new TypeError("Open the matching Project before saving an algebra recipe.");
