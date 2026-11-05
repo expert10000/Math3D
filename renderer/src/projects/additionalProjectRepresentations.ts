@@ -1,6 +1,7 @@
 import { evaluateGraph2DPromotionGeometry, canonicalJsonStringify, createCurveDocument, createSurfaceDocument, createGeometryDocument, geometryDocumentToSceneDocument,
   evaluateDerivedConstructionObjects, canonicalizeFinite2DTopologyDocument, createTopologyDocument, createDocumentIdentity, type CurveDocument, type SurfaceDocument,
-  type GeometryDocument, type TopologyDocument, type MixedWorkspaceEntry, type CanonicalJsonValue } from "@math3d/core";
+  type GeometryDocument, type TopologyDocument, type MixedWorkspaceEntry,
+  type TemporalFieldSourceDocument, type CanonicalJsonValue } from "@math3d/core";
 import { createSplineDefinition, evaluateSpline } from "@math3d/core";
 import { validateSavedSplineSurfaceSettings } from "../math/splineSurface";
 import { compileExpression } from "../math/expression";
@@ -19,7 +20,9 @@ import { capturedCurveKey } from "./capturedCurveSources";
 import { supportsSavedSurfaceResolution, validateSurfaceStudyResolution } from "./surfaceStudyResolution";
 
 export type AdditionalDocument = CurveDocument | SurfaceDocument | GeometryDocument | TopologyDocument;
-export type RepresentationContext = { documents: ReadonlyMap<string, MixedWorkspaceEntry["checkpoint"]>; resources?: VerifiedProjectResources; capturedCurves?: ReadonlyMap<string, CurveDocument> };
+export type RepresentationContext = { documents: ReadonlyMap<string, MixedWorkspaceEntry["checkpoint"]>;
+  resources?: VerifiedProjectResources; capturedCurves?: ReadonlyMap<string, CurveDocument>;
+  timeSources?: readonly TemporalFieldSourceDocument[] };
 type Point = { x: number; y: number; z: number };
 export type RepresentationView = { scene: GeometryScene; meshes: SurfaceMeshData[]; qualification: string; sampleCount: number; bounds: { min: number[]; max: number[] } | null };
 const fail = (message: string): never => { throw new TypeError(message); };
@@ -45,6 +48,22 @@ const curveEvaluator = (document: CurveDocument, context: RepresentationContext,
   if (stack.includes(document.identity.id) || stack.length > 12) fail("Cyclic or overly deep project source dependencies.");
   stack = [...stack, document.identity.id];
   const source = document.source, definition = source.definition, f = definition.expressions ?? {}, parameter = source.domain.parameter;
+  if (definition.familyId === "vector3d.temporal-pathline") {
+    const temporal = context.timeSources?.find(item => item.identity.id === definition.sourceIds?.[0]);
+    if (!temporal) return fail("Temporal pathline source is missing; Curve values are withheld.");
+    if (temporal.identity.structuralHash !== definition.settings?.temporalHash ||
+        temporal.identity.revision !== definition.settings?.temporalRevision)
+      fail("Temporal pathline source changed or is missing; Curve values are withheld.");
+    for (const frame of temporal.source.frames) {
+      const current = context.documents.get(frame.documentId);
+      if (current?.format !== "math3d.vector-field3d-document" ||
+          current.identity.revision !== frame.revision ||
+          current.identity.structuralHash !== frame.structuralHash)
+        fail("Temporal pathline frame changed or is missing; Curve values are withheld.");
+    }
+    if (temporal.schemaVersion === 3)
+      fail("Scientific temporal pathline needs fresh bundle verification in Field Explorer.");
+  }
   const literal = (x: string, y: string, z = "0") => {
     const funcs = [x, y, z].map((value) => compiled(value, [parameter]));
     return (t: number) => point(funcs.map((fn) => fn({ [parameter]: t })));

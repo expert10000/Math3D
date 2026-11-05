@@ -6,6 +6,8 @@
 
 ### Implementation checkpoint
 
+The [GF-26–28 field and time gates](graph-field-gf26-gf28-foundation-time-pathline.md) add an explicit verified replacement-byte rebase for saved derived profiles, measured desktop foundation comparison, 2–4 pinned scientific time frames with bounded interpolation, and physical-time pathline Curves. Project reopen withholds bundle samples and Curves until source verification; changed frames remain stale. Streaklines, cross-grid temporal resampling and full platform-device signoff remain separate work.
+
 | Milestone | Delivered desktop slice | Remaining scope |
 | --- | --- | --- |
 | SCI-01 | Shared regular-grid index/coordinate and finite-domain validation now runs in Graph line previews/imports, saved paired-field validation, vector seeds and trajectories. Unit tests distinguish index 10 from its physical coordinate and reject out-of-range and nonuniform selections. | The `.sscene/v1` source contract supports regular axes only. Coordinate-array support, locale-aware physical-coordinate entry and broader dimensional analysis require separate schema/UI work. |

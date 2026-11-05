@@ -265,7 +265,12 @@ type Props = {
   onPromoteVectorField3DLocalSeparatrix?: (promotion: import("@math3d/core").LocalSeparatrixPromotion) => void;
   onSaveVectorField3DComparisonResult?: (result: import("@math3d/core").AnalysisResultEnvelope,
     transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
-  onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument) => void;
+  onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onRebaseVectorField3DDerivedSource?: (replacement: VectorField3DDocument,
+    transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendVectorField3DDerivedOperation?: (inputId: string,
     operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
@@ -299,7 +304,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DRegionIntegralSelection, onSaveVectorField3DRegionIntegralResult,
   onSaveVectorField3DTrajectorySeeds, onPromoteVectorField3DTrajectoryCurve,
   onPromoteVectorField3DLocalSeparatrix, onSaveVectorField3DComparisonResult,
-  onSaveVectorField3DTemporalSource,
+  onSaveVectorField3DTemporalSource, onSaveVectorField3DTemporalPathline,
+  onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
@@ -3978,6 +3984,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveComparisonResult={onSaveVectorField3DComparisonResult}
           onOpenComparisonProfile={result => void openComparisonProfile(result)}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
+          onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
+          onRebaseDerivedSource={onRebaseVectorField3DDerivedSource}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
           onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
           onOpenProjectResults={onOpenVectorField3DProjectResults}

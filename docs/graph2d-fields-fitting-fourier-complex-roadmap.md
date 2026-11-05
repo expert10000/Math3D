@@ -2,6 +2,8 @@
 
 The broader [Scientific Field Explorer roadmap](scientific-field-explorer-roadmap.md) proposes the next dataset/workspace architecture; its screenshot baseline is reconciled against delivered GRA milestones in the document introduction.
 
+The [GF-26 foundation and time checkpoint](graph-field-gf26-gf28-foundation-time-pathline.md) verifies replacement bundle bytes before rebasing a saved magnitude → slice → profile chain. The existing Graph row withholds old samples until explicit refresh; desktop save/reopen and measured handoff evidence are recorded there. Scientific time frames and pathline Curves stay in Field Explorer until a separate Graph time-series handoff is specified.
+
 This records the requested scope beyond the delivered Graph → Geometry promotion. The items below are separate milestones so the UI and document contracts can be reviewed without treating a field preview as a saved Graph object. The 3D point-cloud overview covers the domain but is a bounded sample, with exact planes available for inspection.
 
 | ID | Scope | Status and acceptance |

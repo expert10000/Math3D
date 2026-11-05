@@ -1,0 +1,32 @@
+{
+  "fixture": "vortex-volume 21x21x17",
+  "date": "2026-11-05",
+  "command": "npx tsx scripts/measure-gf26-foundation-desktop.ts",
+  "method": "Three fresh Electron runs; 50 ms app.getAppMetrics sampling. Each run measures the current Explorer 3D preview and slice-coordinate preview, then the GF-23 Graph profile handoff and an explicit refresh after Project reopen.",
+  "runs": [
+    {
+      "baselinePreview": { "elapsedMs": 1681.7, "peakProcessWorkingSetMiB": 829.7 },
+      "baselineInteraction": { "elapsedMs": 707.0, "peakProcessWorkingSetMiB": 869.0 },
+      "profilePreview": { "elapsedMs": 2440.7, "peakProcessWorkingSetMiB": 869.4 },
+      "profileInteraction": { "elapsedMs": 1874.2, "peakProcessWorkingSetMiB": 893.2 }
+    },
+    {
+      "baselinePreview": { "elapsedMs": 1860.0, "peakProcessWorkingSetMiB": 843.3 },
+      "baselineInteraction": { "elapsedMs": 982.2, "peakProcessWorkingSetMiB": 877.7 },
+      "profilePreview": { "elapsedMs": 2286.2, "peakProcessWorkingSetMiB": 870.8 },
+      "profileInteraction": { "elapsedMs": 1815.4, "peakProcessWorkingSetMiB": 838.1 }
+    },
+    {
+      "baselinePreview": { "elapsedMs": 1695.9, "peakProcessWorkingSetMiB": 832.5 },
+      "baselineInteraction": { "elapsedMs": 894.7, "peakProcessWorkingSetMiB": 865.8 },
+      "profilePreview": { "elapsedMs": 2447.7, "peakProcessWorkingSetMiB": 869.9 },
+      "profileInteraction": { "elapsedMs": 1788.1, "peakProcessWorkingSetMiB": 887.3 }
+    }
+  ],
+  "median": {
+    "baselinePreview": { "elapsedMs": 1695.9, "peakProcessWorkingSetMiB": 832.5 },
+    "baselineInteraction": { "elapsedMs": 894.7, "peakProcessWorkingSetMiB": 869.0 },
+    "profilePreview": { "elapsedMs": 2440.7, "peakProcessWorkingSetMiB": 869.9 },
+    "profileInteraction": { "elapsedMs": 1815.4, "peakProcessWorkingSetMiB": 887.3 }
+  }
+}

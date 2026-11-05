@@ -160,6 +160,7 @@ export * from "./scientificDatasetCoordinates";
 export * from "./scientificFrameUnitContract";
 export * from "./temporalFieldSourceDocument";
 export * from "./projectTemporalFieldSources";
+export * from "./temporalPathline";
 export * from "./verifiedVectorFieldSampling";
 export * from "./projectComparisonProfileGraph";
 export * from "./scientificDatasetLink";
