@@ -983,17 +983,23 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 - Coordinate transform validation, multi-layer picking, clipping and source links.
 
+**Implementation note (2026-11-05):** Project now offers a verified, read-only quantum/native Mesh or Geometry overlay with exact identity-frame validation, independent layers, shared Z clipping, source-local picks and source links. Non-identity transforms and persisted overlay state remain open. See [QI-34–36 evidence](quantum-qi34-36-overlay-runtime-portability.md).
+
 ### QI-35 — DevShell science-runtime diagnostics
 
 **Commit:** `feat(devshell): expose quantum worker diagnostics and fixture tests`
 
 - Version probe, health logs, reproducibility report and backend benchmarking.
 
+**Implementation note (2026-11-05):** DevShell's desktop-five health check probes the worker protocol and repeatable native fixture; a CLI writes a JSON reproducibility report and optionally runs the guarded acceleration benchmark. See [QI-34–36 evidence](quantum-qi34-36-overlay-runtime-portability.md).
+
 ### QI-36 — Cross-platform portable opening
 
 **Commit:** `feat(portability): verify project packs across Windows and Linux`
 
 - Drive-letter independence, missing worker fallback, read-only mobile planning.
+
+**Implementation note (2026-11-05):** A relocated two-scene `.qpack` reopens in Math3D with a missing worker path. Windows and Ubuntu/WSL independently verified and reconstructed its relative references and blobs with matching project hash. Native Linux Electron opening and read-only mobile consumption remain open. See [QI-34–36 evidence](quantum-qi34-36-overlay-runtime-portability.md).
 
 ### QI-37 — Full keyboard/panel/large-data UX pass
 
