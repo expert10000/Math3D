@@ -549,6 +549,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-E04](evidence/sage-e04-module-presentations-2026-11-05.md) adds Project free/presented modules and typed free-module maps with pinned base rings, exact bounded matrices and dimension checks. Core rejection and stale-parent gates plus desktop package export and independent import pass. The next feature is **SAGE-E05** module invariant factors over `ZZ`.
 
+[SAGE-E05](evidence/sage-e05-module-invariant-factors-2026-11-05.md) adds verified Smith-based classification of saved `ZZ` modules, a direct-summand explorer, revision-pinned Project evidence and exact runtime/provenance inspection. WSL Sage 9.5 and Docker Sage 10.10 worker fixtures, core rejection and desktop package export/independent import pass. The next feature is **SAGE-E06** chain complexes and homology.
+
 **2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
 
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,

@@ -37,6 +37,7 @@ export type Math3DWorkerOperationId =
   | "polynomial.dossier"
   | "galois.analyze"
   | "group.dossier"
+  | "module.invariant-factors"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -324,6 +325,10 @@ const definitions = [
   },
   {
     id: "group.dossier", title: "Bounded GAP finite-group invariants", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "module.invariant-factors", title: "Exact ZZ module invariant factors", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

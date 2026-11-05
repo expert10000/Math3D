@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField, inspectProjectAlgebraFreshness,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence } from "@math3d/core";
-import type { SageGaloisResult } from "@math3d/core";
+import type { SageGaloisResult, SageModuleInvariantResult } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
@@ -11,6 +11,7 @@ import SageFiniteGroupViewer from "./SageFiniteGroupViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageFiniteGroupBuilder from "./SageFiniteGroupBuilder";
 import SageModuleBuilder from "./SageModuleBuilder";
+import SageModuleInvariantViewer from "./SageModuleInvariantViewer";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
@@ -284,7 +285,10 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           {selectedEvidence.request.operation === "sage.galois.analyze" &&
             <SageGaloisViewer key={selectedEvidence.id} result={selectedEvidence.result as SageGaloisResult} />}
           {selectedEvidence.request.operation === "sage.group.dossier" && project &&
-            <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}</>,
+            <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}
+          {selectedEvidence.request.operation === "sage.module.invariantFactors" &&
+            <SageModuleInvariantViewer key={selectedEvidence.id}
+              result={selectedEvidence.result as SageModuleInvariantResult} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,

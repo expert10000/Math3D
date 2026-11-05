@@ -90,6 +90,10 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       fact("Generators", group.representation === "permutation"
         ? group.generators.map((item) => `${item.name}: (${item.images.join(", ")})`)
         : group.generators.map((name, index) => `${name}: C${group.invariantFactors[index]}`)));
+  } else if (source?.definition.kind === "module") {
+    structure.push(fact("Base ring", formatRef(source.definition.baseRing)),
+      fact("Ambient generators", source.definition.generators),
+      fact("Relation matrix", source.definition.relationMap.matrix));
   }
   const result = evidence.result as unknown as Record<string, unknown>;
   const params = evidence.request.params;
@@ -104,6 +108,23 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.module.invariantFactors": {
+      const torsion = result.torsionOrders as string[];
+      const smith = result.smith as { form: string[][]; diagonal: string[] } | null;
+      const freeRank = result.freeRank as number;
+      const summands = [...Array.from({ length: freeRank }, () => "ZZ"),
+        ...torsion.map((order) => `ZZ/${order}ZZ`)];
+      facts.push(fact("Decomposition", summands.length ? summands.join(" ⊕ ") : "0"),
+        fact("Free rank", String(freeRank)),
+        fact("Torsion invariant factors", torsion.length ? torsion : "None"),
+        fact("Smith diagonal", smith?.diagonal ?? "No relations"),
+        fact("Smith form", smith?.form ?? []));
+      checks.push(check("Module classification", "checked", smith
+        ? "Exact unimodular U and V verify U·A·V=D; diagonal divisibility and the free and torsion summands match."
+        : "The pinned relation map has zero columns, so the module is free."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.group.dossier": {
       const subgroups = result.subgroups as { members: number[]; normal: boolean }[];
       facts.push(fact("Group order", text(result.order)), fact("Action degree", text(result.actionDegree)),
