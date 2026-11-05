@@ -8,6 +8,7 @@ import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageSe
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
 import SageGaloisViewer from "./SageGaloisViewer";
+import SageFiniteGroupViewer from "./SageFiniteGroupViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageFiniteGroupBuilder from "./SageFiniteGroupBuilder";
 import SageObjectOperations from "./SageObjectOperations";
@@ -269,7 +270,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
                     setGroupError(""); select({ objectId: record.id, revision: 1 });
                   }).catch((error) => setGroupError(String(error))); }
                 catch (error) { setGroupError(String(error)); }
-              } : undefined} />}</>,
+              } : undefined} />}
+          {selectedEvidence.request.operation === "sage.group.dossier" && project &&
+            <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,

@@ -4,6 +4,7 @@ import type { Math3DProject } from "./math3dProject";
 import { evaluateGraph2DExpression } from "./mathExpressionRealAst";
 import { normalizeVectorField3DDocument, type VectorField3DDocument } from "./vectorField3DDocument";
 import type { ValidationResult } from "./validation";
+import { verifiedVectorFieldSampler, type VerifiedVectorFieldTransfer } from "./verifiedVectorFieldSampling";
 
 export const TEMPORAL_FIELD_SOURCE_FORMAT = "math3d.temporal-field-source" as const;
 export type TemporalFieldFrame = Readonly<{ time: number; documentId: string;
@@ -18,7 +19,7 @@ export type TemporalFieldSource = Readonly<{
   generationHash: string;
 }>;
 export type TemporalFieldSourceDocument = Readonly<{
-  format: typeof TEMPORAL_FIELD_SOURCE_FORMAT; schemaVersion: 1 | 2;
+  format: typeof TEMPORAL_FIELD_SOURCE_FORMAT; schemaVersion: 1 | 2 | 3;
   identity: DocumentIdentity; source: TemporalFieldSource;
   metadata: Readonly<{ title: string }>;
 }>;
@@ -34,7 +35,7 @@ const physicalTimeUnits = new Set(["ms", "s", "min", "h"]);
 export function normalizeTemporalFieldSourceDocument(value: unknown): ValidationResult<TemporalFieldSourceDocument> {
   const errors: string[] = [];
   if (!record(value) || !exact(value, ["format", "schemaVersion", "identity", "source", "metadata"]) ||
-      value.format !== TEMPORAL_FIELD_SOURCE_FORMAT || ![1, 2].includes(Number(value.schemaVersion)) ||
+      value.format !== TEMPORAL_FIELD_SOURCE_FORMAT || ![1, 2, 3].includes(Number(value.schemaVersion)) ||
       !record(value.identity) || !record(value.source) || !record(value.metadata) ||
       !exact(value.metadata, ["title"]) || typeof value.metadata.title !== "string" ||
       !value.metadata.title.trim() || value.metadata.title.length > 160 ||
@@ -49,8 +50,9 @@ export function normalizeTemporalFieldSourceDocument(value: unknown): Validation
       source.timeAxis.sampling !== "discrete-frames" ||
       !["none", "linear"].includes(String(source.timeAxis.interpolation)) ||
       (value.schemaVersion === 1 && source.timeAxis.interpolation !== "none") ||
-      (value.schemaVersion === 2 && source.timeAxis.interpolation !== "linear") ||
-      !Array.isArray(source.frames) || source.frames.length < 2 || source.frames.length > 64)
+      ([2, 3].includes(Number(value.schemaVersion)) && source.timeAxis.interpolation !== "linear") ||
+      !Array.isArray(source.frames) || source.frames.length < 2 || source.frames.length >
+        (value.schemaVersion === 3 ? 4 : 64))
     errors.push("Temporal source needs 2–64 Cartesian frames and a versioned interpolation rule.");
   const frames = Array.isArray(source.frames) ? source.frames : [];
   for (const [index, frame] of frames.entries()) {
@@ -79,18 +81,33 @@ export function normalizeTemporalFieldSourceDocument(value: unknown): Validation
 }
 
 const sameSpace = (left: VectorField3DDocument, right: VectorField3DDocument) =>
+  left.source.field.kind === right.source.field.kind &&
   canonicalJsonStringify(left.source.axes) === canonicalJsonStringify(right.source.axes) &&
   left.source.timeUnit === right.source.timeUnit &&
   canonicalJsonStringify(left.source.field.kind === "expressions" ?
     left.source.field.components.map(item => item.unit) : left.source.field.componentUnits) ===
     canonicalJsonStringify(right.source.field.kind === "expressions" ?
-      right.source.field.components.map(item => item.unit) : right.source.field.componentUnits);
+      right.source.field.components.map(item => item.unit) : right.source.field.componentUnits) &&
+  (left.source.field.kind !== "scientific-bundle" || right.source.field.kind !== "scientific-bundle" ||
+    canonicalJsonStringify(left.source.field.references.map(ref => ({ shape: ref.shape, axes: ref.axes }))) ===
+      canonicalJsonStringify(right.source.field.references.map(ref => ({ shape: ref.shape, axes: ref.axes }))));
 
-/** Pin existing Project snapshots at explicit physical times; no between-frame values exist yet. */
+export type VerifiedTemporalTransfers = ReadonlyMap<string, VerifiedVectorFieldTransfer>;
+const verifiedFrame = (document: VectorField3DDocument, transfers?: VerifiedTemporalTransfers) => {
+  if (document.source.field.kind === "expressions") return true;
+  const transfer = transfers?.get(document.identity.id);
+  if (!transfer) return false;
+  const bytes = transfer.volumes.reduce((sum, part) => sum + part.values.length * 8, 0);
+  if (bytes > 2 * 1024 * 1024) throw new RangeError("Temporal frame transfer exceeds 2 MiB.");
+  verifiedVectorFieldSampler(document, transfer);
+  return true;
+};
+
+/** Pin compatible saved snapshots; scientific frames require checked transfer bytes. */
 export function createTemporalFieldSourceDocument(project: Math3DProject,
   frames: readonly Readonly<{ time: number; documentId: string }>[],
   options: Readonly<{ stableKey: CanonicalJsonValue; title?: string; timeUnit: string;
-    interpolation?: "none" | "linear" }> ): TemporalFieldSourceDocument {
+    interpolation?: "none" | "linear"; transfers?: VerifiedTemporalTransfers }> ): TemporalFieldSourceDocument {
   if (frames.length < 2 || frames.length > 64)
     throw new RangeError("A temporal source requires 2–64 saved frames.");
   const documents = frames.map(frame => project.workspace.entries.find(item =>
@@ -99,9 +116,15 @@ export function createTemporalFieldSourceDocument(project: Math3DProject,
     throw new TypeError("Every temporal frame must be a saved 3D vector source.");
   const checked = documents as VectorField3DDocument[];
   if (checked.some(document => !normalizeVectorField3DDocument(document).ok ||
-      document.source.field.kind !== "expressions" ||
       document.source.timeUnit !== options.timeUnit || !sameSpace(checked[0]!, document)))
-    throw new TypeError("Temporal frames need matching analytic Cartesian grids, units and time unit.");
+    throw new TypeError("Temporal frames need matching Cartesian grids, units and time unit.");
+  if (checked[0]!.source.field.kind === "scientific-bundle" &&
+      (checked.length > 4 || options.interpolation !== "linear" ||
+        checked.some(document => !verifiedFrame(document, options.transfers)) ||
+        [...(options.transfers?.values() ?? [])].reduce((sum, transfer) => sum +
+          transfer.volumes.reduce((partSum, part) => partSum + part.values.length * 8, 0), 0) >
+          4 * 1024 * 1024))
+    throw new TypeError("Scientific temporal frames require linear interpolation and verified transfers.");
   const recipe = { frames: frames.map((frame, index) => ({ time: frame.time,
       documentId: checked[index]!.identity.id, revision: checked[index]!.identity.revision,
       structuralHash: checked[index]!.identity.structuralHash })),
@@ -110,7 +133,8 @@ export function createTemporalFieldSourceDocument(project: Math3DProject,
     calculus: "per-frame-cartesian-only" as const, export: "per-frame-source-lineage" as const };
   const source = { ...recipe, generationHash: sourceHash(recipe) };
   const document = { format: TEMPORAL_FIELD_SOURCE_FORMAT,
-    schemaVersion: options.interpolation === "linear" ? 2 as const : 1 as const,
+    schemaVersion: checked[0]!.source.field.kind === "scientific-bundle" ? 3 as const :
+      options.interpolation === "linear" ? 2 as const : 1 as const,
     identity: createDocumentIdentity(createStableDocumentId("temporal-field", options.stableKey), source),
     source, metadata: { title: options.title ?? "Temporal field source" } };
   const normalized = normalizeTemporalFieldSourceDocument(document);
@@ -119,10 +143,14 @@ export function createTemporalFieldSourceDocument(project: Math3DProject,
 }
 
 export function projectTemporalFieldSourceStatus(project: Math3DProject,
-  temporal: TemporalFieldSourceDocument): Readonly<{ status: "current" | "withheld";
+  temporal: TemporalFieldSourceDocument, transfers?: VerifiedTemporalTransfers): Readonly<{ status: "current" | "withheld";
     reason: string | null }> {
   const normalized = normalizeTemporalFieldSourceDocument(temporal);
   if (!normalized.ok) return { status: "withheld", reason: "invalid-temporal-contract" };
+  if (temporal.schemaVersion === 3 && [...(transfers?.values() ?? [])].reduce((sum, transfer) =>
+    sum + transfer.volumes.reduce((partSum, part) => partSum + part.values.length * 8, 0), 0) >
+      4 * 1024 * 1024)
+    return { status: "withheld", reason: "frame-transfer-budget-exceeded" };
   const documents = temporal.source.frames.map(frame => project.workspace.entries.find(item =>
     item.module === "vector3d" && item.expected.id === frame.documentId)?.checkpoint);
   for (const [index, frame] of temporal.source.frames.entries()) {
@@ -132,8 +160,12 @@ export function projectTemporalFieldSourceStatus(project: Math3DProject,
     if (document.identity.revision !== frame.revision ||
         document.identity.structuralHash !== frame.structuralHash)
       return { status: "withheld", reason: `frame-${index + 1}-changed` };
-    if (document.source.field.kind !== "expressions")
-      return { status: "withheld", reason: `frame-${index + 1}-verification-required` };
+    if (document.source.field.kind === "scientific-bundle" && temporal.schemaVersion !== 3 ||
+        document.source.field.kind === "expressions" && temporal.schemaVersion === 3)
+      return { status: "withheld", reason: "frame-kind-changed" };
+    try { if (!verifiedFrame(document, transfers))
+      return { status: "withheld", reason: `frame-${index + 1}-verification-required` }; }
+    catch { return { status: "withheld", reason: `frame-${index + 1}-verification-failed` }; }
     if (!sameSpace(documents[0] as VectorField3DDocument, document))
       return { status: "withheld", reason: "frame-alignment-changed" };
   }
@@ -156,11 +188,20 @@ export type TemporalFieldProbe = Readonly<{ time: number;
   interpolation: "none" | "linear"; frameIds: readonly string[] }>;
 
 /** Exact frames or declared linear interpolation only; no temporal extrapolation. */
-export function sampleTemporalFieldProbe(project: Math3DProject,
-  temporal: TemporalFieldSourceDocument, time: number,
-  position: readonly [number, number, number]): TemporalFieldProbe {
-  const status = projectTemporalFieldSourceStatus(project, temporal);
+export function createVerifiedTemporalFieldSampler(project: Math3DProject,
+  temporal: TemporalFieldSourceDocument, transfers?: VerifiedTemporalTransfers) {
+  const status = projectTemporalFieldSourceStatus(project, temporal, transfers);
   if (status.status !== "current") throw new TypeError(`Temporal source withheld: ${status.reason}.`);
+  const samplers = new Map<string, ReturnType<typeof verifiedVectorFieldSampler>>();
+  if (temporal.schemaVersion === 3) for (const frame of temporal.source.frames) {
+    const document = project.workspace.entries.find(item => item.module === "vector3d" &&
+      item.expected.id === frame.documentId)?.checkpoint;
+    const transfer = transfers?.get(frame.documentId);
+    if (document?.format !== "math3d.vector-field3d-document" || !transfer)
+      throw new TypeError("Verified temporal frame is unavailable.");
+    samplers.set(frame.documentId, verifiedVectorFieldSampler(document, transfer));
+  }
+  return (time: number, position: readonly [number, number, number]): TemporalFieldProbe => {
   if (!Number.isFinite(time) || position.length !== 3 || position.some(value => !Number.isFinite(value)))
     throw new RangeError("Time and physical position must be finite.");
   const frames = temporal.source.frames;
@@ -175,10 +216,15 @@ export function sampleTemporalFieldProbe(project: Math3DProject,
   const sample = (frame: TemporalFieldFrame) => {
     const document = project.workspace.entries.find(item => item.module === "vector3d" &&
       item.expected.id === frame.documentId)?.checkpoint;
-    if (document?.format !== "math3d.vector-field3d-document" ||
-        document.source.field.kind !== "expressions") throw new TypeError("Temporal frame is unavailable.");
+    if (document?.format !== "math3d.vector-field3d-document")
+      throw new TypeError("Temporal frame is unavailable.");
     if (position.some((value, axis) => value < document.source.axes[axis]!.min ||
         value > document.source.axes[axis]!.max)) throw new RangeError("Probe lies outside the physical domain.");
+    if (document.source.field.kind === "scientific-bundle") {
+      const vector = samplers.get(document.identity.id)?.sample(position);
+      if (!vector) throw new TypeError("Temporal frame has an unavailable value at this point.");
+      return { vector, unit: document.source.field.componentUnits[0] };
+    }
     const components = document.source.field.components.map(component =>
       evaluateGraph2DExpression(component.ast, { x: position[0], y: position[1],
         z: position[2] }, { maxEvaluations: 256 }));
@@ -196,11 +242,18 @@ export function sampleTemporalFieldProbe(project: Math3DProject,
     componentUnit: a.unit, timeUnit: temporal.source.timeAxis.unit,
     interpolation: temporal.source.timeAxis.interpolation,
     frameIds: b ? [lower.documentId, upper!.documentId] : [lower.documentId] };
+  };
+}
+
+export function sampleTemporalFieldProbe(project: Math3DProject,
+  temporal: TemporalFieldSourceDocument, time: number,
+  position: readonly [number, number, number], transfers?: VerifiedTemporalTransfers): TemporalFieldProbe {
+  return createVerifiedTemporalFieldSampler(project, temporal, transfers)(time, position);
 }
 
 export function sampleTemporalFieldSlice(project: Math3DProject,
   temporal: TemporalFieldSourceDocument, time: number, normalAxis: 0 | 1 | 2,
-  coordinate: number, resolution: number): Readonly<{ time: number;
+  coordinate: number, resolution: number, transfers?: VerifiedTemporalTransfers): Readonly<{ time: number;
     normalAxis: number; coordinate: number; shape: readonly [number, number];
     values: readonly number[]; unit: string; frameIds: readonly string[] }> {
   if (![0, 1, 2].includes(normalAxis) || !Number.isSafeInteger(resolution) ||
@@ -213,6 +266,7 @@ export function sampleTemporalFieldSlice(project: Math3DProject,
       coordinate > first.source.axes[normalAxis].max)
     throw new RangeError("Temporal slice plane is outside the source domain.");
   const axes = [0, 1, 2].filter(axis => axis !== normalAxis);
+  const sample = createVerifiedTemporalFieldSampler(project, temporal, transfers);
   const values: number[] = [];
   let frameIds: readonly string[] = [];
   for (let i = 0; i < resolution; i++) for (let j = 0; j < resolution; j++) {
@@ -223,7 +277,7 @@ export function sampleTemporalFieldSlice(project: Math3DProject,
       point[axis] = bounds.min + (bounds.max - bounds.min) * (index === 0 ? i : j) /
         (resolution - 1);
     }
-    const probe = sampleTemporalFieldProbe(project, temporal, time, point);
+    const probe = sample(time, point);
     frameIds = probe.frameIds;
     values.push(probe.magnitude);
   }
