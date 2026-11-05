@@ -95,6 +95,16 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await page.getByTestId("quantum-scene-geometry").getByRole("button", { name: "Volume", exact: true }).click();
     await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
     await expect(page.getByTestId("quantum-volume-source")).toContainText("f64le-planar-real-imaginary");
+    await expect(page.getByTestId("quantum-volume-bounds")).toContainText("x");
+    await page.getByLabel("Volume quantity").selectOption("amplitude");
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3/2");
+    await page.getByLabel("Volume view").selectOption("dvr");
+    await page.getByLabel("Volume transfer function").selectOption("cool-warm");
+    await page.getByLabel("Volume clip fraction").selectOption("0.75");
+    await expect(page.getByTestId("quantum-volume-capability")).toBeVisible();
+    await page.getByLabel("Volume clip fraction").selectOption("1");
+    await page.getByLabel("Volume view").selectOption("slice");
+    await page.getByLabel("Volume quantity").selectOption("density");
     await page.getByRole("button", { name: "Fit volume grid" }).click();
     await expect(page.getByTestId("quantum-field-volume").getByTestId("volume-slice-viewer-free"))
       .toHaveAttribute("data-camera-fit-target", "volume");
@@ -105,6 +115,8 @@ test("desktop picker imports only a verified quantum scene and refuses tampering
     await expect(page.getByTestId("quantum-volume-source")).toContainText("a0^-3");
     await page.getByLabel("Volume view").selectOption("isosurface");
     await expect(page.getByTestId("quantum-volume-source")).toContainText("threshold");
+    await page.getByLabel("Second isosurface").check();
+    await expect(page.getByTestId("quantum-volume-source")).toContainText("second threshold");
     await expect(page.getByRole("button", { name: "Fit volume isosurface" })).toBeEnabled();
     await page.getByRole("button", { name: "Fit volume isosurface" }).click();
     await expect(page.getByTestId("quantum-field-volume").getByTestId("volume-slice-viewer-free"))
@@ -609,6 +621,12 @@ test("verified reciprocal fixtures keep k-space IDs, units and selection across 
       await expect(page.getByTestId("quantum-primitive-objects")).toContainText("symmetry-points");
       await expect(page.getByTestId("quantum-scene-geometry").getByTestId("surface-viewer-canvas-host"))
         .toHaveAttribute("data-rendered-mesh-count", "3");
+      const overlays = page.getByTestId("quantum-topology-overlays");
+      await expect(overlays).toContainText("primitive-bz");
+      await overlays.getByLabel("Show Brillouin-zone boundary").uncheck();
+      await expect(page.getByTestId("quantum-scene-geometry").getByTestId("surface-viewer-canvas-host"))
+        .toHaveAttribute("data-rendered-mesh-count", "2");
+      await overlays.getByLabel("Show Brillouin-zone boundary").check();
       const target = family === "honeycomb" ? "K" : family === "simple_cubic" ? "R" : family === "ssh" ? "Gamma" : "X";
       await page.getByRole("button", { name: family === "ssh" ? "Select k-point Γ (Gamma)" : `Select k-point ${target} (${target})` }).click();
       await expect(page.getByTestId("quantum-k-selection")).toContainText(`(${target})`);

@@ -3,7 +3,7 @@ import type { VolumeDataset } from "../scene/datasets";
 
 export type QuantumFieldVolume = {
   fingerprint: string; fieldId: string; label: string; kind: "scalar-field" | "complex-field";
-  quantity: "real" | "imaginary" | "density" | "phase";
+  quantity: "real" | "imaginary" | "amplitude" | "density" | "phase";
   encoding: "f64le-planar-real-imaginary"; sourceDatasets: string[]; sourceHashes: string[];
   shape: [number, number, number]; origin: [number, number, number]; spacing: [number, number, number];
   axes: [string, string, string]; coordinateUnits: [string, string, string]; valueUnit: string;

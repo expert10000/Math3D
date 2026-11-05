@@ -15,6 +15,7 @@ import { qwzSceneRole, reviewedQwzPair, sshSceneRole, reviewedSshPair } from "./
 import { projectTimeCursor, scientificCursorBus } from "./scientificCursor";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
+import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -68,6 +69,12 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     topologyDisplay?: { scalars: { quantityId: string; objectId: string; minimum: number; maximum: number;
       unit: string; faceBins: number[] }[]; vectors: VectorGlyphDisplay[] } };
   const scene = details.scene;
+  const topologyOverlays = useMemo(() => quantumTopologyOverlayGroups(scene), [scene]);
+  const [hiddenTopologyOverlays, setHiddenTopologyOverlays] = useState<string[]>([]);
+  useEffect(() => setHiddenTopologyOverlays([]), [opened.reference.sceneFingerprint]);
+  const hiddenTopologyObjectIds = useMemo(() => new Set(topologyOverlays
+    .filter(group => hiddenTopologyOverlays.includes(group.id)).flatMap(group => group.objectIds)),
+  [hiddenTopologyOverlays, topologyOverlays]);
   const fluxPoints = scene.provenance.model === "hofstadter_flux_sweep" ?
     (document.geometry.points ?? []).flatMap(point => {
       const id = point.id?.match(/^(flux-\d+):site:(\d+)$/);
@@ -515,6 +522,15 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       x: track.xyz[0], y: track.xyz[1], z: track.xyz[2], id: `time-frame:${track.id}`,
       label: `${track.id} at ${timeFrame.time} ${timeFrame.unit}`, color: 0xffc857, size: .18,
     }))] } : viewerScene, [viewerScene, timeFrame, scene.time]);
+  const visibleGeometry = useMemo(() => ({ ...timeDisplayScene,
+    points: timeDisplayScene.points?.filter(point => topologyOverlayObjectVisible(point.id, hiddenTopologyObjectIds)),
+    segments: timeDisplayScene.segments?.filter(segment => topologyOverlayObjectVisible(segment.a.id, hiddenTopologyObjectIds)),
+  }), [timeDisplayScene, hiddenTopologyObjectIds]);
+  const visibleMeshOverrides = useMemo(() => (supercell ? supercellMeshes :
+    geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes])
+    .filter(mesh => topologyOverlayObjectVisible("sourceObjectId" in mesh ? String(mesh.sourceObjectId) : mesh.id,
+      hiddenTopologyObjectIds)),
+  [supercell, supercellMeshes, geometrySpace, reciprocalMeshes, meshObjects, primitiveMeshes, vectorMeshes, hiddenTopologyObjectIds]);
   const visibleLabels = useMemo(() => {
     const annotations = geometrySpace === "reciprocal" ? [] : supercell ? [] : scene.annotations;
     const supplied = annotations.filter(annotation => annotation.text.length <= 64).map(annotation => ({
@@ -636,6 +652,21 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 setSupercell(null); setGeometrySpace("reciprocal"); setPickedPrimitive(null); setPickedBandSample(null); setView("geometry");
               }}>Reciprocal space</button>
             </div>}
+            {topologyOverlays.length > 0 && <section data-testid="quantum-topology-overlays" style={{ padding: 8 }}>
+              <strong>Source-linked topology geometry</strong>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {topologyOverlays.map(group => <label key={group.id}>
+                  <input type="checkbox" aria-label={`Show ${group.label}`} checked={!hiddenTopologyOverlays.includes(group.id)}
+                    onChange={event => {
+                      setHiddenTopologyOverlays(current => event.target.checked ? current.filter(id => id !== group.id) : [...current, group.id]);
+                      setPickedPrimitive(null); setPickedBandSample(null); clearTopologySelection();
+                    }}/> {group.label} ({group.objectIds.join(", ")})
+                </label>)}
+              </div>
+              <small>Geometry and labels come from the verified scene. Enclosing a node does not establish charge; only a producer-supplied invariant can report it.</small>
+              {scene.topology?.invariants.filter(item => /charge|chern|gap/i.test(item.id)).map(item =>
+                <div key={item.id}>Producer {item.label}: {item.value ?? "undefined"} · {item.status} · {item.method}</div>)}
+            </section>}
             {Boolean(scene.fields?.length) && <div style={{ padding: 8, display: "flex", gap: 8 }}>
               {availableView("geometry") && <button type="button" onClick={() => setView("geometry")} aria-pressed={view === "geometry"}>Geometry</button>}
               {availableView("slice") && <button type="button" onClick={() => setView("slice")} aria-pressed={view === "slice"}>Field slice</button>}
@@ -669,9 +700,9 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
                 onRecordDerivation?.(record);
                 return record;
               },
-              geometry: <GeometryViewer scene={timeDisplayScene} meshOverrides={supercell ? supercellMeshes : geometrySpace === "reciprocal" ? reciprocalMeshes : [...meshObjects, ...primitiveMeshes, ...vectorMeshes]}
+              geometry: <GeometryViewer scene={visibleGeometry} meshOverrides={visibleMeshOverrides}
               overlayLabelSets={visibleLabels} showPlanes={false}
-              pickEnabled={(supercell ? supercellMeshes.length : geometrySpace === "reciprocal" ? reciprocalMeshes.length : meshObjects.length + primitiveMeshes.length + vectorMeshes.length) > 0} onPick={pickScene}
+              pickEnabled={visibleMeshOverrides.length > 0} onPick={pickScene}
               onPickMiss={() => { reciprocalGeneration.current++; bandGeneration.current++; topologyGeneration.current++;
                 scalarGeneration.current++; setPickedScalarSample(null); setScalarError(""); setVerifyingScalar(false);
                 setVerifyingReciprocal(false); setVerifyingBand(false); setBandSelectionError("");
