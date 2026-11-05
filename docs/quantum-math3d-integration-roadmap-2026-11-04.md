@@ -956,17 +956,23 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Source-linked rounds, defects, correction chains and logical results.
 
+**Implementation note (2026-11-05):** Theory Lab Atlas now includes a source-hash-checked, bounded three-qubit repetition-code example. It shows recorded syndrome rounds, changes between rounds, a checked single-error correction and the residual logical result. The example is a teaching record, not a general surface-code or Monte Carlo decoder. See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
+
 ### QI-32 — Numerical validation dashboard
 
 **Commit:** `feat(validation): surface physical and solver checks in both apps`
 
 - Hermiticity, normalization, trace, orthogonality, convergence, invariants and warnings.
 
+**Implementation note (2026-11-05):** Theory Lab Runs now reopens exact saved data and reports measured normalization, trace, damped-oscillator density-matrix Hermiticity and resolved eigenstate orthogonality where available, plus stored cutoff/invariant/resolution diagnostics. Missing checks and refinement evidence are marked unavailable. Math3D scene inspection reports import/source status, mapped/deferred geometry, producer invariant statuses and limitations, with unavailable physical checks labeled. See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
+
 ### QI-33 — Scientific-data compare alignment
 
 **Commit:** `feat(compare): add unit-aware resampling and eigenstate matching`
 
 - Interpolation policy, gauge/degeneracy guards and uncertainty flags.
+
+**Implementation note (2026-11-05):** Theory Lab's saved-run A/B panel keeps exact-coordinate comparison as default and offers opt-in linear interpolation for compatible scalar series on overlapping grids. The alignment helper checks declared coordinate/value units, excludes extrapolation and flags unquantified interpolation error. Resolved, nondegenerate two-level eigenstates are matched by sign-invariant squared overlap; ambiguous/degenerate pairs and complex-amplitude deltas are withheld. See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
 
 ### QI-34 — Scene composition and cross-document overlays
 
