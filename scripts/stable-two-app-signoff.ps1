@@ -32,6 +32,7 @@ $labRepo = (Resolve-Path -LiteralPath $TheoryLabRepo).Path
 $mathInstall = Join-Path $resolvedRoot "Math3D"
 $labInstall = Join-Path $resolvedRoot "TheoryLab"
 $uiResultPath = Join-Path $resolvedRoot "ui-roundtrip.json"
+$qecResultPath = Join-Path $resolvedRoot "qec-roundtrip.json"
 $evidence = [ordered]@{
   schema = "math3d/stable-two-app-signoff/v1"
   checkedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
@@ -50,7 +51,8 @@ $evidence = [ordered]@{
     installerName = [IO.Path]::GetFileName($labInstaller)
     installerSha256 = (Get-FileHash -LiteralPath $labInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
   }
-  checks = [ordered]@{ candidateBytes = "pending"; install = "pending"; installedUiRoundtrip = "pending" }
+  checks = [ordered]@{ candidateBytes = "pending"; install = "pending"; installedUiRoundtrip = "pending";
+    installedQecRoundtrip = "pending" }
   failure = $null
 }
 
@@ -76,9 +78,28 @@ try {
   New-Item -ItemType Directory -Path $resolvedRoot | Out-Null
   foreach ($item in @(@($mathInstaller, $mathInstall), @($labInstaller, $labInstall))) {
     $installer, $destination = $item
+    $startedAt = Get-Date
     $process = Start-Process -FilePath $installer -ArgumentList @("/S", "/CURRENTUSER", "/D=$destination") `
       -WindowStyle Hidden -Wait -PassThru
-    if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode): $installer" }
+    if ($process.ExitCode -ne 0) {
+      $hexCode = '0x{0:X8}' -f ($process.ExitCode -band 0xffffffffL)
+      $faults = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $startedAt.AddSeconds(-5) } `
+        -ErrorAction SilentlyContinue | Where-Object { $_.Properties.Count -ge 7 -and
+          $_.Properties[0].Value -eq [IO.Path]::GetFileName($installer) } |
+        Select-Object -First 3)
+      $evidence.installerFailure = [ordered]@{
+        installerName = [IO.Path]::GetFileName($installer)
+        exitCode = $process.ExitCode
+        exitCodeHex = $hexCode
+        applicationErrors = @($faults | ForEach-Object { [ordered]@{
+          timeUtc = $_.TimeCreated.ToUniversalTime().ToString('o')
+          faultingApplication = $_.Properties[0].Value
+          faultingModule = $_.Properties[3].Value
+          exceptionCode = $_.Properties[6].Value
+        } })
+      }
+      throw "Installer exited with code $($process.ExitCode) ($hexCode): $installer"
+    }
   }
   $mathExe = Join-Path $mathInstall "Math3D.exe"
   $labExe = Join-Path $labInstall "Quantum Hamiltonian Lab.exe"
@@ -109,6 +130,20 @@ try {
   }
   $evidence.uiRun = Get-Content -LiteralPath $uiResultPath -Raw | ConvertFrom-Json
   $evidence.checks.installedUiRoundtrip = "passed"
+
+  $env:MATH3D_SIGNOFF_QEC_RESULT_PATH = $qecResultPath
+  Push-Location $mathRepo
+  try {
+    & (Join-Path $mathRepo "node_modules/.bin/playwright.cmd") test `
+      tests/e2e/quantum-installed-qec.spec.ts --reporter=list
+    $qecExit = $LASTEXITCODE
+  } finally { Pop-Location }
+  if ($qecExit -ne 0) { throw "Installed QEC round trip failed (exit $qecExit)" }
+  if (-not (Test-Path -LiteralPath $qecResultPath -PathType Leaf)) {
+    throw "Installed QEC test passed without run evidence: $qecResultPath"
+  }
+  $evidence.qecRun = Get-Content -LiteralPath $qecResultPath -Raw | ConvertFrom-Json
+  $evidence.checks.installedQecRoundtrip = "passed"
   $evidence.status = "passed"
 } catch {
   $evidence.status = "failed"
