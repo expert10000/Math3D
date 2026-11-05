@@ -1,0 +1,37 @@
+{
+  "schema": "math3d/stable-two-app-signoff/v1",
+  "checkedAtUtc": "2026-11-05T22:22:50.5868294Z",
+  "environment": "clean Windows runner",
+  "status": "passed",
+  "math3d": {
+    "version": "1.7.0",
+    "commit": "8a7d0fa3e0bb68fb5ecb23465de3192bee5fbd61",
+    "channel": "stable",
+    "installerName": "Math3D Setup 1.7.0.exe",
+    "installerSha256": "b2c9e676ca7c81170c0db96138fe697c856282f8ebd14c4a06a95d8f067208c5",
+    "installedExe": "D:\\a\\_temp\\stable-two-app-signoff\\Math3D\\Math3D.exe"
+  },
+  "theoryLab": {
+    "version": "0.1.0",
+    "commit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "installerSha256": "758d3f8ed41ce0242ae90fd06d3ae424439a667b0b67e128342ea1d25d09681a",
+    "installedExe": "D:\\a\\_temp\\stable-two-app-signoff\\TheoryLab\\Quantum Hamiltonian Lab.exe"
+  },
+  "checks": {
+    "candidateBytes": "passed",
+    "install": "passed",
+    "installedUiRoundtrip": "passed"
+  },
+  "failure": null,
+  "candidateBuildRunId": "42041770604",
+  "candidateManifestSha256": "94e5bf957932569d1bf084013a5b1f50592729302f216f7c2221620474b60f7f",
+  "uiRun": {
+    "schema": "math3d/stable-two-app-ui-result/v1",
+    "runId": "run-dd07000f11444a1daa61c4d1f195c8b3",
+    "resultSha256": "7f3d0188885bf28ae1ec85aa1c4680b776e0f2c175a295d51d5724a7c4b560da",
+    "sceneBundle": "run-dd07000f11444a1daa61c4d1f195c8b3.qscene",
+    "sceneProvenanceVerified": true,
+    "installedMath3DOpenedExactRun": true
+  }
+}
