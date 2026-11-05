@@ -24,10 +24,16 @@ With `QLAB_E2E_CHECKOUT` pointing to this built Theory Lab checkout, the live Q0
 | D · Science | Worker numerical suite, QWZ parity and saved-run tests pass. | Partial: QEC remains a bounded repetition-code example without a saved `.qscene` or surface-code workflow. |
 | E · User workflows | Real Lab → Math3D launch and fixture study handoff pass. | Pass for tested Windows paths. |
 | F · Portable | Moved pack opens with the same fingerprint; altered blob is refused. | Pass for tested path and tamper case. |
-| G · Hardening | Size/path/schema negative tests and bounded large-field stream tests pass. | Partial: no live adversarial race, GPU-device-loss or measured RAM/VRAM budget signoff. |
-| H · Release | Reproducible source-checkout commands and this evidence record. | Blocked: no fresh-VM installer matrix, current visual golden review across all 38 scenes, or demonstrated adapter rollback. |
+| G · Hardening | Size/path/schema negative tests and bounded large-field stream tests pass. A separate 24-cycle Electron open/close run observed a simulated WebGL context-loss event and completed later views. | Partial: working set remains above idle after close; no long-duration RAM/VRAM budget or genuine GPU-device-loss signoff. |
+| H · Release | Reproducible source-checkout commands, 38-scene current capture, and this evidence record. | Partial: fresh-VM installer matrix is running; manual visual signoff and demonstrated adapter rollback remain open. |
 
 The gate decisions apply to this checkout and test environment, not to a distributable installer or another operating system. No numeric performance threshold is asserted without a measured baseline. QI-40 remains open until the partial and blocked gates are closed and a release candidate is reviewed.
+
+## Current visual and lifecycle evidence
+
+The strict Electron capture opened all 36 bundled gallery scenes and the two separately saved QWZ scenes. It produced 49 PNGs: 38 main views and 11 guidance/orbital variants, with zero recorded capture errors. The `Quantum-QI40-Visual-Review-2026-11-05.zip` review artifact is 32,080,191 bytes, SHA-256 `EB3F8ED4E6C7CBF9075619DE222C1A061FB2D02E3B36C6AED48EC480BF24A758`. It is a local review artifact rather than a repository asset because some captures display a local source path. The capture scripts now fail if a scene is missing. This is **capture coverage**, not a claim that a reviewer has approved every frame. Reproduce with `node scripts/capture-quantum-review.mjs <output-directory>` and `node scripts/capture-quantum-saved-qwz.mjs <same-directory>` after building the renderer.
+
+The existing `npm run measure:ssr:lifecycle` passed three scalar view cycles and one hydrogenic 2p density-surface cycle. The quantum view returned to one baseline canvas, its dialog closed, and its WebGL context-loss event was observed on cleanup. A separate `node scripts/measure-quantum-scene-stress.mjs <report.json> 24` alternated Rice–Mele v2 bands and hydrogenic 2p density surfaces for 24 cycles in an isolated Electron profile. It observed a forced `WEBGL_lose_context` event on cycle four and subsequent scenes opened; all 24 closes returned to zero scene canvases. In that run, total process working set was 516,436 KiB at idle, reached 746,384 KiB, and was 742,732 KiB after the final close. Forced-GC renderer heap was 25,349,804 bytes initially and 29,012,504 bytes finally. These are one-host measurements, not a memory ceiling or leak-free claim. Resource release beyond DOM/WebGL context and a physical GPU loss still need review.
 
 ## Cross-repository source-checkout gate
 
