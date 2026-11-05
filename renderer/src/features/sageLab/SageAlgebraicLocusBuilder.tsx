@@ -1,9 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonicalJsonStringify,
-  type AlgebraObjectRef, type Math3DProject, type SageAlgebraicLocusScene } from "@math3d/core";
+  sampleSageAlgebraicLocus, sampledAlgebraicLocusGeometryDocument,
+  type AlgebraObjectRef, type Math3DProject, type SageAlgebraicLocusScene,
+  type SageAlgebraicLocusSample } from "@math3d/core";
+import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
 
 type Props = { project: Math3DProject; target: AlgebraObjectRef;
-  onSave: (scene: SageAlgebraicLocusScene) => void | Promise<void> };
+  onSave: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
+  onSaveSample: (sample: SageAlgebraicLocusSample) => void | Promise<void> };
 const axisNames = ["x", "y", "z"];
 const download = (name: string, body: string) => {
   const url = URL.createObjectURL(new Blob([body], { type: "application/json" }));
@@ -12,12 +16,13 @@ const download = (name: string, body: string) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export default function SageAlgebraicLocusBuilder({ project, target, onSave }: Props) {
+export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
-  const ambient = record?.definition.kind === "ideal"
-    ? project.algebraObjects?.find((entry) => entry.id === record.definition.ambientRing.objectId)
-      ?.revisions[record.definition.ambientRing.revision - 1]
-    : record?.definition.kind === "polynomial-ring" ? record : null;
+  const definition = record?.definition;
+  const ambient = definition?.kind === "ideal"
+    ? project.algebraObjects?.find((entry) => entry.id === definition.ambientRing.objectId)
+      ?.revisions[definition.ambientRing.revision - 1]
+    : definition?.kind === "polynomial-ring" ? record : null;
   const variables = ambient?.definition.kind === "polynomial-ring" ? ambient.definition.variables : [];
   const [polynomial, setPolynomial] = useState(() => `${variables.map((variable) => `${variable}^2`).join("+")}-1`);
   const [bounds, setBounds] = useState([{ min: "-2", max: "2" }, { min: "-2", max: "2" },
@@ -25,12 +30,14 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave }: P
   const [tolerance, setTolerance] = useState("0.001");
   const [maxSamples, setMaxSamples] = useState("50000");
   const [preview, setPreview] = useState<{ signature: string; scene: SageAlgebraicLocusScene } | null>(null);
+  const [sampled, setSampled] = useState<{ signature: string; sample: SageAlgebraicLocusSample } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const signature = JSON.stringify({ target, polynomial, bounds: bounds.slice(0, variables.length), tolerance, maxSamples });
   const scene = preview?.signature === signature ? preview.scene : null;
+  const sample = sampled?.signature === signature ? sampled.sample : null;
   const prepare = (event: FormEvent) => {
-    event.preventDefault(); setMessage(""); setPreview(null);
+    event.preventDefault(); setMessage(""); setPreview(null); setSampled(null);
     try {
       const prepared = buildSageAlgebraicLocusScene(project, target, {
         ...(record?.definition.kind === "polynomial-ring" ? { polynomial } : {}),
@@ -46,12 +53,24 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave }: P
     catch (error) { setMessage(String((error as Error).message ?? error)); }
     finally { setBusy(false); }
   };
+  const render = () => {
+    if (!scene || busy) return;
+    setMessage("");
+    try { setSampled({ signature, sample: sampleSageAlgebraicLocus(scene) }); }
+    catch (error) { setMessage(String((error as Error).message ?? error)); }
+  };
+  const saveSample = async () => {
+    if (!sample || busy) return;
+    setBusy(true); setMessage("");
+    try { await onSaveSample(sample); setMessage("Saved bounded real-locus sample to Project Geometry."); }
+    catch (error) { setMessage(String((error as Error).message ?? error)); }
+    finally { setBusy(false); }
+  };
   if (!record || (record.definition.kind !== "ideal" && record.definition.kind !== "polynomial-ring")) return null;
   return <section data-testid="cas-locus-builder" style={{ display: "grid", gap: 8,
     border: "1px solid #c7d9ed", borderRadius: 8, padding: 10, maxWidth: 720 }}>
-    <strong>Real-locus scene contract</strong>
-    <div style={{ fontSize: 12 }}>Keep exact equations and source revisions in a Geometry document.
-      Sampling and visible curves or surfaces arrive in F02.</div>
+    <strong>Real-locus scene contract and plot</strong>
+    <div style={{ fontSize: 12 }}>Keep exact equations and source revisions with a bounded numerical curve or surface sample.</div>
     <form onSubmit={prepare} className="sage-structure-grid">
       {record.definition.kind === "polynomial-ring" && <label style={{ gridColumn: "1 / -1" }}>
         Polynomial equation = 0<input aria-label="Locus polynomial" value={polynomial}
@@ -81,11 +100,24 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave }: P
       <div><strong>Rendering:</strong> uncomputed · completeness unknown</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button type="button" disabled={busy} onClick={() => { void save(); }}>Save Geometry contract to Project</button>
+        <button type="button" disabled={busy} onClick={render}>Render bounded real locus</button>
         <button type="button" onClick={() => download(`math3d-locus-${scene.source.target.revision}.json`,
           canonicalJsonStringify(scene))}>Export scene JSON</button>
         <button type="button" onClick={() => download(`math3d-locus-geometry-${scene.source.target.revision}.json`,
           canonicalJsonStringify(algebraicLocusGeometryDocument(scene)))}>Export Geometry JSON</button>
       </div>
+      {sample && <div data-testid="cas-locus-sample" style={{ display: "grid", gap: 6 }}>
+        <SageAlgebraicLocusPlot sample={sample} />
+        <div>Exact source: {sample.scene.source.target.label}@{sample.scene.source.target.revision} · {sample.scene.sceneHash}</div>
+        <div>{sample.warnings.join(" ")}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" disabled={busy} onClick={() => { void saveSample(); }}>Save sampled Geometry to Project</button>
+          <button type="button" onClick={() => download(`math3d-locus-sample-${scene.source.target.revision}.json`,
+            canonicalJsonStringify(sample))}>Export sample JSON</button>
+          <button type="button" onClick={() => download(`math3d-locus-sampled-geometry-${scene.source.target.revision}.json`,
+            canonicalJsonStringify(sampledAlgebraicLocusGeometryDocument(sample)))}>Export sampled Geometry JSON</button>
+        </div>
+      </div>}
     </div>}
   </section>;
 }

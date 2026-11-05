@@ -16,6 +16,9 @@ import { MAX_PROJECT_ALGEBRA_RECIPES, parseAlgebraRecipeGraph, type AlgebraRecip
 import { SAGE_LOCUS_GEOMETRY_EXTENSION, algebraicLocusGeometryDocument,
   parseAlgebraicLocusGeometryDocument, parseSageAlgebraicLocusScene, sageAlgebraicLocusSceneStatus,
   type SageAlgebraicLocusScene } from "./sageAlgebraicLocusScene";
+import { SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
+  parseSageAlgebraicLocusSample, sampledAlgebraicLocusGeometryDocument,
+  type SageAlgebraicLocusSample } from "./sageAlgebraicLocusSampling";
 
 export const MATH3D_PROJECT_FORMAT = "math3d.project" as const;
 export const MATH3D_PROJECT_SCHEMA_VERSION = 1 as const;
@@ -140,8 +143,10 @@ export const normalizeMath3DProject = (value: unknown): ValidationResult<Math3DP
         entry.checkpoint.format === "math3d.geometry-document" &&
         SAGE_LOCUS_GEOMETRY_EXTENSION in entry.checkpoint.source.extensions) {
       if (entry.replay !== null) throw new TypeError("Algebraic-locus Geometry checkpoints cannot carry replay code.");
-      parseAlgebraicLocusGeometryDocument(entry.checkpoint,
-        { identity: value.identity as DocumentIdentity, algebraObjects } as Math3DProject);
+      const projectContext = { identity: value.identity as DocumentIdentity, algebraObjects } as Math3DProject;
+      if (SAGE_LOCUS_SAMPLE_EXTENSION in entry.checkpoint.source.extensions)
+        parseSampledAlgebraicLocusGeometryDocument(entry.checkpoint, projectContext);
+      else parseAlgebraicLocusGeometryDocument(entry.checkpoint, projectContext);
     }
     const algebraRecipes = value.algebraRecipes === undefined ? undefined : (() => {
       if (!Array.isArray(value.algebraRecipes) || value.algebraRecipes.length < 1 ||
@@ -265,6 +270,22 @@ export const upsertMath3DProjectAlgebraicLocusScene = (project: Math3DProject,
   if (sageAlgebraicLocusSceneStatus(checked, current) !== "current")
     throw new TypeError("Rebuild the locus contract from a current, fresh source before saving it.");
   const geometry = algebraicLocusGeometryDocument(checked);
+  const entries = [...current.workspace.entries.filter((entry) => entry.expected.id !== geometry.identity.id),
+    { module: "geometry" as const, checkpoint: geometry, expected: geometry.identity, replay: null }];
+  const activeDocumentIds = [...current.workspace.activeDocumentIds.filter((id) => id !== geometry.identity.id),
+    geometry.identity.id];
+  const { format: _format, schemaVersion: _version, ...workspace } = current.workspace;
+  return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({ ...workspace, entries,
+    activeDocumentIds }));
+};
+/** Replaces the uncomputed checkpoint with a verified bounded numerical sample. */
+export const upsertMath3DProjectAlgebraicLocusSample = (project: Math3DProject,
+  input: SageAlgebraicLocusSample): Math3DProject => {
+  const current = requireProject(project);
+  const sample = parseSageAlgebraicLocusSample(input, current);
+  if (sageAlgebraicLocusSceneStatus(sample.scene, current) !== "current")
+    throw new TypeError("Rebuild the locus sample from a current, fresh source before saving it.");
+  const geometry = sampledAlgebraicLocusGeometryDocument(sample);
   const entries = [...current.workspace.entries.filter((entry) => entry.expected.id !== geometry.identity.id),
     { module: "geometry" as const, checkpoint: geometry, expected: geometry.identity, replay: null }];
   const activeDocumentIds = [...current.workspace.activeDocumentIds.filter((id) => id !== geometry.identity.id),

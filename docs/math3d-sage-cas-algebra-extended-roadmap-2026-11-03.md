@@ -344,6 +344,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F01 implementation update (2026-11-05):** The [F01 acceptance record](evidence/sage-f01-algebraic-locus-scene-2026-11-05.md) adds a standalone, versioned real-locus scene with full pinned `QQ` polynomial-ring or ideal source records, exact equations, Cartesian axes, bounded intervals and numerical precision. It saves an uncomputed Geometry document to the Project and rejects false rendered claims or mismatched source revisions on independent import. Core, desktop build, JSON export and actual Project-package export/fresh-profile import gates pass. The next feature is **SAGE-F02**, polynomial and ideal plot handoff.
 
+**F02 implementation update (2026-11-05):** The [F02 acceptance record](evidence/sage-f02-bounded-real-locus-2026-11-05.md) adds bounded numerical sampling for one-variable real roots, two-variable implicit curves, three-variable implicit surfaces, and two-equation three-dimensional loci with a linear plane constraint. The sphere/plane intersection over `QQ[x,y,z]` renders as a curve. A versioned sample retains the complete F01 scene, declares its algorithm and sample count, and labels completeness as a bounded sample. Its Geometry checkpoint is validated against the exact pinned Project source on import. The next feature is **SAGE-F03**, singular-locus and tangent views.
+
 ---
 
 ## 3. P0 — Algebra object registry
@@ -735,6 +737,8 @@ A complex variety is not automatically a real 3D surface. The bridge must ask fo
 The target document must record source object ID/revision, coordinate convention, declared domain (`R`, `C` or chosen slice), approximation tolerance, bounds, algorithm, detected singularity warnings, and whether the image is a guaranteed complete locus or only a bounded sampled rendering.
 
 **F01 contract:** The initial `R` handoff records full pinned source definitions, exact equations, one to three direct Cartesian axes, finite bounds and a sample policy in an uncomputed Geometry document. `algorithm=null` and `completeness=unknown` explicitly precede sampling. Complex-domain and sliced representations remain future contract variants; F02 consumes this real-domain source for bounded plotting.
+
+**F02 rendering:** Grid roots, marching squares and marching tetrahedra produce bounded numerical previews. A linear plane constraint provides a two-dimensional parameter domain for a second equation, including the sphere/plane example. Each sample embeds the F01 exact-source contract and identifies the method, evaluation count, warnings and bounded, potentially incomplete status. Unsupported higher-codimension systems fail explicitly. The Geometry checkpoint preserves the sample in a versioned source extension; it does not claim exact mesh topology or complete real-locus coverage.
 
 ### 12.4 Additional visual handoffs
 

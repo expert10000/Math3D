@@ -6,7 +6,7 @@ import { closeSurfaceApp, launchSurfaceApp, resetSurfaceAppState,
 
 const core = require(resolve("packages/core/src/index.ts"));
 
-test("SAGE-F01 saves an exact-source real-locus Geometry contract and independently reopens it", async () => {
+test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, then independently reopens both", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
   try {
@@ -51,6 +51,7 @@ test("SAGE-F01 saves an exact-source real-locus Geometry contract and independen
     await builder.getByRole("button", { name: "Validate & preview locus" }).click();
     await expect(builder.getByRole("alert")).toContainText("bounds");
     await builder.getByLabel("x bound max").fill("3");
+    await builder.getByLabel("Locus sample cap").fill("8000");
     await builder.getByRole("button", { name: "Validate & preview locus" }).click();
     await expect(builder.getByTestId("cas-locus-preview")).toContainText("x^2+y^2+z^2-1=0");
     await expect(builder.getByTestId("cas-locus-preview")).toContainText("uncomputed");
@@ -71,6 +72,27 @@ test("SAGE-F01 saves an exact-source real-locus Geometry contract and independen
     expect(core.parseAlgebraicLocusGeometryDocument(JSON.parse(readFileSync(geometryPath, "utf8"))).scene).toEqual(scene);
     await builder.getByRole("button", { name: "Save Geometry contract to Project" }).click();
     await expect(builder.getByRole("status")).toContainText("Saved uncomputed real-locus Geometry contract");
+    await builder.getByRole("button", { name: "Render bounded real locus" }).click();
+    const sampleView = builder.getByTestId("cas-locus-sample");
+    await expect(sampleView.getByTestId("cas-locus-plot")).toBeVisible();
+    await expect(sampleView).toContainText("plane-section-v1");
+    await expect(sampleView).toContainText("potentially incomplete");
+    const samplePath = test.info().outputPath("real-locus.sample.json");
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), samplePath);
+    await builder.getByRole("button", { name: "Export sample JSON" }).click();
+    await expect.poll(() => { try { return readFileSync(samplePath).length; } catch { return 0; } }).toBeGreaterThan(100);
+    const sample = core.parseSageAlgebraicLocusSample(JSON.parse(readFileSync(samplePath, "utf8")), project);
+    expect(sample.scene).toEqual(scene);
+    expect(sample.segments.length).toBeGreaterThan(100);
+    const sampledGeometryPath = test.info().outputPath("real-locus.sampled.geometry.json");
+    await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
+      (_event, item) => item.setSavePath(target)), sampledGeometryPath);
+    await builder.getByRole("button", { name: "Export sampled Geometry JSON" }).click();
+    await expect.poll(() => { try { return readFileSync(sampledGeometryPath).length; } catch { return 0; } }).toBeGreaterThan(100);
+    expect(core.parseSampledAlgebraicLocusGeometryDocument(JSON.parse(readFileSync(sampledGeometryPath, "utf8")), project).sample).toEqual(sample);
+    await builder.getByRole("button", { name: "Save sampled Geometry to Project" }).click();
+    await expect(builder.getByRole("status")).toContainText("Saved bounded real-locus sample");
     await cas.getByRole("button", { name: "Back to workspace" }).click();
     await ctx.page.getByTestId("projects-toggle").click();
     const panel = ctx.page.getByTestId("project-explorer-panel");
@@ -96,7 +118,7 @@ test("SAGE-F01 saves an exact-source real-locus Geometry contract and independen
       entry.checkpoint.format === "math3d.geometry-document" &&
       entry.checkpoint.source?.extensions?.[core.SAGE_LOCUS_GEOMETRY_EXTENSION]);
     expect(checkpoint).toBeTruthy();
-    expect(core.parseAlgebraicLocusGeometryDocument(checkpoint.checkpoint, reopened).scene).toEqual(scene);
+    expect(core.parseSampledAlgebraicLocusGeometryDocument(checkpoint.checkpoint, reopened).sample).toEqual(sample);
     expect(core.sageAlgebraicLocusSceneStatus(scene, reopened)).toBe("current");
   } finally { await closeSurfaceApp(ctx); }
 });

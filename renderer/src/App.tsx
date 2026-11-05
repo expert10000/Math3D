@@ -808,6 +808,7 @@ import {
   createMixedWorkspaceDocument,
   replaceMath3DProjectWorkspace,
   upsertMath3DProjectAlgebraicLocusScene,
+  upsertMath3DProjectAlgebraicLocusSample,
   upsertProjectScientificSelection,
   upsertProjectLineIntegralResult,
   upsertProjectRegionResult,
@@ -111563,6 +111564,19 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onSaveLocusSample={(sample) => {
+          const current = projectForNotePins;
+          if (!current || current.identity.id !== sample.scene.source.projectId)
+            throw new TypeError("Open the matching Project before saving a real-locus sample.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before saving the locus sample.");
+          const next = upsertMath3DProjectAlgebraicLocusSample(current, sample);
+          saveLibraryProject(localStorage, next, Date.now(), undefined, { expectedBytes: savedBytes });
+          activeNotebookProjectRef.current = next;
+          setNotebookProjectVersion((version) => version + 1);
+          window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
         onSaveLocusScene={(scene) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== scene.source.projectId)

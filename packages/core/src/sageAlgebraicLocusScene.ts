@@ -65,12 +65,13 @@ export const parseSageAlgebraicLocusScene = (value: unknown, project?: Math3DPro
     (target.definition.kind === "ideal" && canonicalJsonStringify(source.equations) !==
       canonicalJsonStringify(target.definition.generators)))
     throw new TypeError("Locus source must be an ideal or one polynomial in a pinned QQ ring with 1–3 variables.");
-  const equations = source.equations.map((entry: unknown) => parseIdealGenerator(entry, ambient.definition.variables));
+  const variables = ambient.definition.variables;
+  const equations = source.equations.map((entry: unknown) => parseIdealGenerator(entry, variables));
   if (target.definition.kind === "polynomial-ring" && equations.length !== 1)
     throw new TypeError("A polynomial-ring locus requires exactly one saved equation in the scene contract.");
-  if (!Array.isArray(value.domain.bounds) || value.domain.bounds.length !== ambient.definition.variables.length ||
+  if (!Array.isArray(value.domain.bounds) || value.domain.bounds.length !== variables.length ||
     !value.domain.bounds.every((item: unknown, index: number) => object(item) &&
-      exact(item, ["variable", "axis", "min", "max"]) && item.variable === ambient.definition.variables[index] &&
+      exact(item, ["variable", "axis", "min", "max"]) && item.variable === variables[index] &&
       item.axis === axes[index] && bounded(item.min) && bounded(item.max) &&
       (item.max as number) - (item.min as number) >= 1e-9) ||
     typeof value.precision.tolerance !== "number" || !Number.isFinite(value.precision.tolerance) ||
@@ -78,12 +79,16 @@ export const parseSageAlgebraicLocusScene = (value: unknown, project?: Math3DPro
     !Number.isSafeInteger(value.precision.maxSamples) || (value.precision.maxSamples as number) < 1000 ||
     (value.precision.maxSamples as number) > 200000)
     throw new TypeError("Locus bounds, Cartesian axes or numerical precision are invalid or unbounded.");
-  const base = { format: SAGE_LOCUS_SCENE_FORMAT, schemaVersion: 1,
-    source: { projectId: source.projectId, target, ambientRing: ambient, coefficientRing: coefficient,
-      equations }, domain: value.domain, precision: value.precision, rendering: value.rendering };
-  const id = createStableDocumentId("algebraic-locus", { projectId: source.projectId, targetId: target.id,
-    revision: target.revision, equations, bounds: value.domain.bounds,
-    tolerance: value.precision.tolerance, maxSamples: value.precision.maxSamples });
+  const projectId = source.projectId as StableDocumentId;
+  const domain = value.domain as SageAlgebraicLocusScene["domain"];
+  const precision = value.precision as SageAlgebraicLocusScene["precision"];
+  const rendering = value.rendering as SageAlgebraicLocusScene["rendering"];
+  const base = { format: SAGE_LOCUS_SCENE_FORMAT, schemaVersion: 1 as const,
+    source: { projectId, target, ambientRing: ambient, coefficientRing: coefficient,
+      equations }, domain, precision, rendering };
+  const id = createStableDocumentId("algebraic-locus", { projectId, targetId: target.id,
+    revision: target.revision, equations, bounds: domain.bounds,
+    tolerance: precision.tolerance, maxSamples: precision.maxSamples });
   if (value.id !== id || value.sceneHash !== structuralHash(base))
     throw new TypeError("Locus scene ID or structural hash differs from its exact source and settings.");
   if (project) {
@@ -109,13 +114,15 @@ export const buildSageAlgebraicLocusScene = (project: Math3DProject, targetRef: 
   if (!entry || !target || entry.archived || target.revision !== entry.revisions.length ||
     inspectProjectAlgebraFreshness(project).find((item) => item.objectId === target.id)?.status !== "fresh")
     throw new TypeError("Choose a current, fresh polynomial ring or ideal revision for a real locus.");
-  const ambient = target.definition.kind === "ideal"
-    ? project.algebraObjects?.find((item) => item.id === target.definition.ambientRing.objectId)
-      ?.revisions[target.definition.ambientRing.revision - 1]
-    : target.definition.kind === "polynomial-ring" ? target : null;
+  const targetDefinition = target.definition;
+  const ambient = targetDefinition.kind === "ideal"
+    ? project.algebraObjects?.find((item) => item.id === targetDefinition.ambientRing.objectId)
+      ?.revisions[targetDefinition.ambientRing.revision - 1]
+    : targetDefinition.kind === "polynomial-ring" ? target : null;
   if (ambient?.definition.kind !== "polynomial-ring") throw new TypeError("Real locus requires a pinned QQ polynomial ring.");
-  const coefficient = project.algebraObjects?.find((item) => item.id === ambient.definition.coefficientDomain.objectId)
-    ?.revisions[ambient.definition.coefficientDomain.revision - 1];
+  const ambientDefinition = ambient.definition;
+  const coefficient = project.algebraObjects?.find((item) => item.id === ambientDefinition.coefficientDomain.objectId)
+    ?.revisions[ambientDefinition.coefficientDomain.revision - 1];
   if (coefficient?.definition.kind !== "rational-field") throw new TypeError("Real locus requires a ring directly over QQ.");
   if (!Array.isArray(settings.bounds) || settings.bounds.length !== ambient.definition.variables.length ||
       !settings.bounds.every((item) => object(item) && bounded(item.min) && bounded(item.max) &&

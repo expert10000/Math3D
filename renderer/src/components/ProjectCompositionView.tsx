@@ -4,6 +4,7 @@ import {
   inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedMeshGenerationDocuments, sameProjectCoordinateFrame,
   type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember, type MixedWorkspaceEntry,
+  SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
 } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { projectResourceInventory, type ProjectResourceReader } from "../projects/projectResources";
@@ -86,6 +87,17 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
     meshes.push({ ...decoded, label: document.metadata.label, source: source.origin as SurfaceMeshData["source"], id: member.documentId, color, opacity: member.opacity });
   } else if (entry.module === "geometry" && document.format === "math3d.geometry-document") {
     const source = (document as GeometryDocument).source;
+    if (SAGE_LOCUS_SAMPLE_EXTENSION in source.extensions) {
+      const { sample } = parseSampledAlgebraicLocusGeometryDocument(document, project);
+      const asPoint = (p: readonly number[]) => ({ x: p[0] ?? 0, y: p[1] ?? 0, z: p[2] ?? 0 });
+      if (sample.points.length) points.push({ points: sample.points.map(asPoint), color, opacity: member.opacity });
+      if (sample.segments.length) lines.push({ lines: sample.segments.map(([a, b]) => [asPoint(a), asPoint(b)]),
+        color, opacity: member.opacity });
+      if (sample.triangles.length) meshes.push({ id: `${member.documentId}/locus`,
+        label: `${document.metadata.title} (bounded numerical sample)`,
+        positions: new Float32Array(sample.triangles.flatMap((triangle) => triangle.flatMap((p) => [p[0], p[1], p[2]]))),
+        indices: null, source: { kind: "bakedFromImplicit" }, color, opacity: member.opacity });
+    }
     const primitive = buildGeometryRenderData(source.geometry ?? {});
     if (primitive.mesh) meshes.push({ ...primitive.mesh, id: `${member.documentId}/primitives`, color, opacity: member.opacity });
     points.push(...primitive.overlayPointSets.map(item => ({ ...item, color, opacity: member.opacity })));
