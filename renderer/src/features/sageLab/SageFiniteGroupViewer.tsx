@@ -27,8 +27,8 @@ export default function SageFiniteGroupViewer({ project, evidence }: Props) {
   const scene = sceneState.scene;
   const selected = scene?.nodes.find((node) => node.id === selectedId) ?? scene?.nodes[0];
   const byId = new Map(scene?.nodes.map((node) => [node.id, node]) ?? []);
-  const generators = evidence.request.params.definition &&
-    (evidence.request.params.definition as { generators?: readonly (string | { name: string })[] }).generators;
+  const generators = (evidence.request.params.definition as
+    { generators?: readonly (string | { name: string })[] } | undefined)?.generators;
   const changeKind = (next: SageFiniteGroupSceneKind) => { setKind(next); setSelectedId(next === "cayley" ? "g0" : "H0"); };
   const exportScene = (format: "json" | "svg") => {
     if (!scene) return;
