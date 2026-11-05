@@ -44,6 +44,7 @@ const bytes = JSON.stringify(report, null, 2) + "\n";
 const destination = resolve("docs/evidence/quantum-qi40-scene-matrix.json");
 if (process.argv.includes("--write")) await writeFile(destination, bytes);
 else if (process.argv.includes("--check"))
-  assert.equal(await readFile(destination, "utf8"), bytes, "Golden scene matrix changed; review fixtures before updating it");
+  assert.equal((await readFile(destination, "utf8")).replaceAll("\r\n", "\n"), bytes,
+    "Golden scene matrix changed; review fixtures before updating it");
 else process.stdout.write(bytes);
 console.error(`Verified ${rows.length} pinned v1/v2 scene fixtures and importer fingerprints`);
