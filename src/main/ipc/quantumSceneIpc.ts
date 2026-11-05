@@ -47,6 +47,10 @@ function opened(directory: string, imported: ImportedQuantumScene, remembered: b
     reference: { directory: resolve(directory), sceneFingerprint: sceneFingerprint(imported) },
     mappedObjectIds: imported.mappedObjectIds, deferredObjectIds: imported.deferredObjectIds,
     deferredFieldIds: imported.deferredFieldIds,
+    diagnostics: { importMs: imported.importDurationMs ?? 0,
+      datasetBytes: imported.source.datasets.reduce((sum, dataset) => sum + dataset.bytes, 0),
+      mappedPrimitives: (imported.document.geometry.points?.length ?? 0) +
+        (imported.document.geometry.segments?.length ?? 0) + (imported.document.geometry.triangles?.length ?? 0) },
     ...(imported.stream ? { stream: { level: imported.stream.level, levels: imported.stream.levels } } : {}) };
 }
 
