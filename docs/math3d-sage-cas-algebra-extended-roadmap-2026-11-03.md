@@ -352,6 +352,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F04 saved-result extension (2026-11-05):** A Project reference block can also link a saved Sage algebra result. This separate [result-cell record](evidence/sage-f04-workbook-algebra-result-2026-11-05.md) retains its exact request, result, runtime, hashes and pinned object revision; explicit replay uses the bounded Sage job registry. It remains historical after a source edit, while the Algebra object block above recomputes its local registry snapshot against the latest revision.
 
+**F05 implementation update (2026-11-05):** The [F05 acceptance record](evidence/sage-f05-execution-certificates-2026-11-05.md) adds a versioned, validated execution certificate to new object-linked Project algebra evidence. It pins operation schemas, request/result hashes and sizes, target and parent definitions, backend route, Sage version, elapsed time, warnings, known GAP subsystem version and declared ideal budgets. The Inspector displays it separately from mathematical Verification. Unknown algorithm, proof mode and memory remain unclaimed; legacy evidence still imports. The next feature is **SAGE-F06**, versioned capability manifests.
+
 ---
 
 ## 3. P0 — Algebra object registry

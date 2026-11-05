@@ -296,6 +296,10 @@ test("SAGE-B06 independently reopens saved evidence in the structured Inspector"
     await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
     await cas.getByRole("button", { name: "Verification", exact: true }).click();
     await expect(cas.getByTestId("cas-evidence-verification-mode")).toHaveText("COMPUTED");
+    await cas.getByRole("button", { name: "Execution", exact: true }).click();
+    await expect(cas.getByTestId("cas-evidence-execution")).toContainText("Certificate");
+    await expect(cas.getByTestId("cas-evidence-execution")).toContainText(evidence.certificate.contentHash);
+    await expect(cas.getByTestId("cas-evidence-execution")).toContainText("Not claimed by this execution certificate");
     await cas.getByRole("button", { name: "Operations", exact: true }).click();
     await cas.getByRole("button", { name: "Inspect saved result" }).click();
     await expect(cas.getByTestId("cas-evidence-result")).toContainText("Rational Field");
