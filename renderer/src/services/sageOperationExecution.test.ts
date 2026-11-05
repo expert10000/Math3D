@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput, buildSageGaloisInput,
+  buildSageFiniteFieldInput,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, createStableDocumentId,
   upsertMath3DProjectAlgebraObject } from "@math3d/core";
@@ -27,6 +28,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.polynomial.dossier",
   "sage.galois.analyze",
   "sage.group.dossier", "sage.module.invariantFactors", "sage.chain.homology",
+  "sage.finiteField.explore",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
@@ -70,6 +72,16 @@ const galoisParams = () => {
   project = upsertMath3DProjectAlgebraObject(project, ring);
   return buildSageGaloisInput(project, { objectId: ring.id, revision: 1 }, "x^4-2") as unknown as Record<string, unknown>;
 };
+const finiteFieldParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g01-broker" });
+  const field = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "F"),
+    label: "F", revision: 1, definition: { kind: "finite-field", characteristic: 2, degree: 2,
+      generator: "a", construction: "canonical" } });
+  project = upsertMath3DProjectAlgebraObject(project, field);
+  return buildSageFiniteFieldInput(project, { objectId: field.id, revision: 1 }, [0, 1]) as unknown as Record<string, unknown>;
+};
 const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.module.invariantFactors" | "sage.chain.homology") => {
   const projectId = createStableDocumentId("project", "sage-broker-contract");
   const ref = (key: string) => ({ objectId: createProjectAlgebraObjectId(projectId, key), revision: 1 });
@@ -93,6 +105,7 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : operation === "sage.numberField.elementDossier" || operation === "sage.numberField.primeDecomposition"
       ? numberFieldParams(operation)
     : operation === "sage.galois.analyze" ? galoisParams()
+    : operation === "sage.finiteField.explore" ? finiteFieldParams()
     : operation === "sage.group.dossier" || operation === "sage.module.invariantFactors" ||
       operation === "sage.chain.homology" ? pinnedStructureParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,

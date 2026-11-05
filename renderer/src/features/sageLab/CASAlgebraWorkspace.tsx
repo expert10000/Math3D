@@ -5,7 +5,7 @@ import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQ
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
   type SageAlgebraicLocusScene, type SageAlgebraicLocusSample,
   type SageAlgebraicSingularityScene } from "@math3d/core";
-import type { SageGaloisResult, SageModuleInvariantResult, SageChainHomologyResult } from "@math3d/core";
+import type { SageGaloisResult, SageModuleInvariantResult, SageChainHomologyResult, SageFiniteFieldResult } from "@math3d/core";
 import SageServicesWorkspace, { type SageServicesWorkspaceProps } from "./SageServicesWorkspace";
 import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
@@ -17,6 +17,7 @@ import SageModuleBuilder from "./SageModuleBuilder";
 import SageChainComplexBuilder from "./SageChainComplexBuilder";
 import SageModuleInvariantViewer from "./SageModuleInvariantViewer";
 import SageChainHomologyViewer from "./SageChainHomologyViewer";
+import SageFiniteFieldViewer from "./SageFiniteFieldViewer";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -340,7 +341,10 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
               result={selectedEvidence.result as SageModuleInvariantResult} />}
           {selectedEvidence.request.operation === "sage.chain.homology" &&
             <SageChainHomologyViewer key={selectedEvidence.id}
-              result={selectedEvidence.result as SageChainHomologyResult} />}</>,
+              result={selectedEvidence.result as SageChainHomologyResult} />}
+          {selectedEvidence.request.operation === "sage.finiteField.explore" &&
+            <SageFiniteFieldViewer key={selectedEvidence.id}
+              result={selectedEvidence.result as SageFiniteFieldResult} />}</>,
         structure: <SageAlgebraEvidenceInspector model={evidenceModel} section="structure" />,
         verification: <SageAlgebraEvidenceInspector model={evidenceModel} section="verification" />,
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,

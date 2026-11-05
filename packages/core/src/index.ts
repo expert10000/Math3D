@@ -27,6 +27,7 @@ export * from "./sageFiniteGroupOperations";
 export * from "./sageModuleInvariantFactors";
 export * from "./chainComplex";
 export * from "./sageChainHomology";
+export * from "./sageFiniteFieldExplorer";
 export * from "./sageFiniteGroupScenes";
 export * from "./sageAlgebraicLocusScene";
 export * from "./sageAlgebraicLocusSampling";

@@ -17,6 +17,7 @@ export type SageOperation =
   | "sage.group.dossier"
   | "sage.module.invariantFactors"
   | "sage.chain.homology"
+  | "sage.finiteField.explore"
   | "sage.groebner.compute"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
@@ -39,6 +40,7 @@ export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.intege
   "sage.group.dossier" |
   "sage.module.invariantFactors" |
   "sage.chain.homology" |
+  "sage.finiteField.explore" |
   "sage.numberField.elementDossier" | "sage.numberField.primeDecomposition" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" |
   "sage.ideal.groebner" | "sage.ideal.eliminate" | "sage.ideal.membership" | "sage.ideal.quotientDimension" |
@@ -100,6 +102,7 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.group.dossier",
   "sage.module.invariantFactors",
   "sage.chain.homology",
+  "sage.finiteField.explore",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.algebra.reconstruct",

@@ -130,6 +130,7 @@ Result shape:
 - `sage.matrix.integer_forms` (bounded exact `ZZ` Smith and row-Hermite forms, with verified transformations when available)
 - `sage.module.invariantFactors` (pinned `ZZ` module relation map and verified Smith decomposition)
 - `sage.chain.homology` (pinned three-degree `ZZ` chain complex; checks `d1*d2=0` and returns Smith witnesses for `H0`, `H1`, `H2`)
+- `sage.finiteField.explore` (pinned `GF(p^n)` with at most 64 elements; exact Frobenius, trace, norm, minimal polynomial, primitive elements and a table up to order 16)
 - `sage.polynomial.roots_exact`
 - `sage.polynomial.factor`
 - `sage.polynomial.dossier` (bounded exact `QQ[x]` analysis: factorization, square-free decomposition, derivative, discriminant and rational roots)

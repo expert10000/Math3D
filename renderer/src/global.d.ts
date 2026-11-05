@@ -528,6 +528,7 @@ declare global {
     | "sage.group.dossier"
     | "sage.module.invariantFactors"
     | "sage.chain.homology"
+    | "sage.finiteField.explore"
     | "sage.groebner.compute"
     | "sage.ideal.groebner"
     | "sage.ideal.eliminate"

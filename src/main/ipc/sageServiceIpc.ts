@@ -24,6 +24,7 @@ type SageOperation =
   | "sage.ideal.hilbertSeries"
   | "sage.algebra.reconstruct"
   | "sage.algebra.inspectDomains"
+  | "sage.finiteField.explore"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.numberField.elementDossier"

@@ -17,6 +17,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   if (id === "sage.group.dossier") return {};
   if (id === "sage.module.invariantFactors") return {};
   if (id === "sage.chain.homology") return {};
+  if (id === "sage.finiteField.explore") return { element: text.split(",").map((item) => Number(item.trim())) };
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
       id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
@@ -72,6 +73,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
   const targetStale = inspectProjectAlgebraFreshness(project).find((item) => item.objectId === target.objectId)?.status === "stale";
   const idealSelection = selected?.startsWith("sage.ideal.") ?? false;
   const targetRecord = project.algebraObjects?.find((item) => item.id === target.objectId)?.revisions[target.revision - 1];
+  const targetFieldDegree = targetRecord?.definition.kind === "finite-field" ? targetRecord.definition.degree : null;
   if (targetRecord?.kind === "module-map") return <section
     data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
     This exact module definition is saved in the Project. Select Structures to inspect its pinned matrix and parent revisions.</section>;
@@ -133,6 +135,9 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       <button type="button" disabled={!item.readyBackend || running} title={item.reason ?? item.runtimeReason ?? undefined}
         aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id);
           setInput(item.definition.id === "sage.numberField.elementDossier" ? "1, 1"
+            : item.definition.id === "sage.finiteField.explore" && targetFieldDegree !== null
+              ? Array.from({ length: targetFieldDegree }, (_, index) =>
+                index === (targetFieldDegree === 1 ? 0 : 1) ? "1" : "0").join(", ")
             : item.definition.id === "sage.numberField.primeDecomposition" ? "5"
               : item.definition.id === "sage.galois.analyze" && targetRecord?.definition.kind === "polynomial-ring"
                 ? `${targetRecord.definition.variables[0]}^4-2` : "");
@@ -173,6 +178,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
           selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :
           selected === "sage.numberField.primeDecomposition" ? "Rational prime p (2–97)" :
+          selected === "sage.finiteField.explore" ? "Element coefficients (constant first, in base p)" :
           selected === "sage.galois.analyze" ? "Monic irreducible QQ polynomial (degree 2–4; coefficients ≤ 100)" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}

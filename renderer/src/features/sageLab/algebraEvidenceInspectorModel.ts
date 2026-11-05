@@ -112,6 +112,23 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.finiteField.explore": {
+      const selected = result.selected as Record<string, unknown>;
+      facts.push(fact("Field", `GF(${text(result.characteristic)}^${text(result.degree)})`),
+        fact("Order", text(result.order)), fact("Generator", text(result.generator)),
+        fact("Defining polynomial coefficients", result.definingPolynomial === null ? "Prime field" : list(result.definingPolynomial)),
+        fact("Selected element coefficients", list(selected.coefficients)),
+        fact("Frobenius orbit", matrix(selected.frobeniusOrbit)),
+        fact("Trace", text(selected.trace)), fact("Norm", text(selected.norm)),
+        fact("Minimal polynomial coefficients", list(selected.minimalPolynomial)),
+        fact("Multiplicative order", text(selected.multiplicativeOrder)),
+        fact("Primitive", selected.primitive ? "Yes" : "No"),
+        fact("Enumerated elements", String((result.elements as unknown[]).length)));
+      checks.push(check("Exact finite-field arithmetic", "checked",
+        "The saved modulus, element enumeration, Frobenius orbit, trace, norm, primitive list and bounded multiplication table were independently checked."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.chain.homology": {
       const groups = result.groups as { degree: number; freeRank: number; torsionOrders: string[] }[];
       const notation = (group: typeof groups[number]) => {

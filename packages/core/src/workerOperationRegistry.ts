@@ -39,6 +39,7 @@ export type Math3DWorkerOperationId =
   | "group.dossier"
   | "module.invariant-factors"
   | "chain.homology"
+  | "finite-field.explore"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -334,6 +335,10 @@ const definitions = [
   },
   {
     id: "chain.homology", title: "Pinned ZZ chain-complex homology", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "finite-field.explore", title: "Pinned bounded finite-field explorer", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

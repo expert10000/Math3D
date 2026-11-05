@@ -23,6 +23,8 @@ import { buildSageModuleInvariantInput, parseSageModuleInvariantInput, parseSage
   type SageModuleInvariantResult } from "./sageModuleInvariantFactors";
 import { buildSageChainHomologyInput, parseSageChainHomologyInput, parseSageChainHomologyResult,
   type SageChainHomologyResult } from "./sageChainHomology";
+import { buildSageFiniteFieldInput, parseSageFiniteFieldInput, parseSageFiniteFieldResult,
+  type SageFiniteFieldResult } from "./sageFiniteFieldExplorer";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   SageNumberFieldOperation |
@@ -32,6 +34,7 @@ export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.insp
   "sage.group.dossier" |
   "sage.module.invariantFactors" |
   "sage.chain.homology" |
+  "sage.finiteField.explore" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" | SageIdealOperation;
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
@@ -48,6 +51,7 @@ export type AlgebraOperationArguments = {
   "sage.group.dossier": Readonly<Record<string, never>>;
   "sage.module.invariantFactors": Readonly<Record<string, never>>;
   "sage.chain.homology": Readonly<Record<string, never>>;
+  "sage.finiteField.explore": Readonly<{ element: readonly number[] }>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
   "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
@@ -60,7 +64,7 @@ export type AlgebraOperationArguments = {
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult | SageGaloisResult |
-  SageFiniteGroupResult | SageModuleInvariantResult | SageChainHomologyResult |
+  SageFiniteGroupResult | SageModuleInvariantResult | SageChainHomologyResult | SageFiniteFieldResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -109,6 +113,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     "module.invariant-factors", ["docker"], "math3d.sage-module-invariant-factors/v1", "math3d.sage-module-invariant-factors-result/v1"),
   definition("sage.chain.homology", "ZZ chain homology", "structure", ["chain-complex"], "any",
     "chain.homology", ["docker"], "math3d.sage-chain-homology/v1", "math3d.sage-chain-homology-result/v1"),
+  definition("sage.finiteField.explore", "Finite-field explorer", "structure", ["finite-field"], "any",
+    "finite-field.explore", ["docker"], "math3d.sage-finite-field-explorer/v1", "math3d.sage-finite-field-explorer-result/v1"),
   definition("sage.groebner.compute", "Gröbner basis over QQ", "polynomial", POLY, "QQ-polynomial", "algebra.groebner",
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
   definition("sage.matrix.linear_dossier", "Exact QQ matrix analysis", "matrix", ["rational-field"], "any", "matrix.linear-dossier",
@@ -150,6 +156,9 @@ const currentRecord = (project: Math3DProject, ref: AlgebraObjectRef): { record:
 const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
   operation: AlgebraOperationDefinition): string | null => {
   if (!operation.accepts.includes(record.kind)) return `${operation.label} does not accept ${record.kind} objects.`;
+  if (operation.id === "sage.finiteField.explore" && record.definition.kind === "finite-field" &&
+      record.definition.characteristic ** record.definition.degree > 64)
+    return "Finite-field exploration is limited to fields with at most 64 elements.";
   if (operation.id === "sage.group.dossier") try { finiteGroupAction(record.definition as import("./finiteGroup").FiniteGroupDefinition); }
   catch (error) { return String((error as Error).message ?? error); }
   if (operation.id === "sage.module.invariantFactors") {
@@ -270,6 +279,9 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
   } else if (id === "sage.chain.homology") {
     if (!exact(input, [])) throw new TypeError("ZZ chain homology takes no freeform arguments.");
     params = buildSageChainHomologyInput(project, target) as unknown as Record<string, unknown>;
+  } else if (id === "sage.finiteField.explore") {
+    if (!exact(input, ["element"])) throw new TypeError("Choose one exact finite-field element vector.");
+    params = buildSageFiniteFieldInput(project, target, input.element as number[]) as unknown as Record<string, unknown>;
   } else if (id === "sage.matrix.linear_dossier") {
     if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
     params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
@@ -325,6 +337,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     return parseSageModuleInvariantResult(value, parseSageModuleInvariantInput(request.params));
   if (request.operation === "sage.chain.homology")
     return parseSageChainHomologyResult(value, parseSageChainHomologyInput(request.params));
+  if (request.operation === "sage.finiteField.explore")
+    return parseSageFiniteFieldResult(value, parseSageFiniteFieldInput(request.params));
   if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
     parseSageMatrixDossierInput(request.params));
   if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,

@@ -360,6 +360,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **F08 implementation update (2026-11-05):** The [F08 acceptance record](evidence/sage-f08-real-backend-regression-2026-11-05.md) maps all 20 M0 review flows to a real WSL/Docker desktop suite. Its CAS gate checks exact matrix, polynomial and Gröbner results, while the existing Number Theory, Workbook, Console and code-cell gates verify persistence and trust. The suite found and fixed numeric zero matrix parsing. The next feature is **SAGE-G01**, finite-field exploration.
 
+**G01 implementation update (2026-11-06):** The [G01 acceptance record](evidence/sage-g01-finite-field-explorer-2026-11-06.md) adds a bounded explorer for saved `GF(p^n)` objects. It enumerates at most 64 elements, reports the actual Sage defining polynomial, Frobenius orbit, trace, norm, minimal polynomial and primitive elements, and shows a multiplication table up to order 16. Project evidence verifies these values with independent exact polynomial arithmetic and survives export and reopen. The next feature is **SAGE-G02**, the p-adic workspace.
+
 ---
 
 ## 3. P0 — Algebra object registry
