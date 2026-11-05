@@ -815,6 +815,9 @@ import {
   upsertProjectLocalSeparatrix,
   upsertProjectVectorField3DComparison,
   upsertProjectTemporalFieldSource,
+  upsertProjectTemporalPathline,
+  rebaseProjectDerivedSource,
+  verifiedVectorFieldSampler,
   appendProjectDerivedField,
   createVolumeDocument,
   createViewerProvenanceEvidence,
@@ -79228,7 +79231,8 @@ case "mobius":
     const context = () => {
       const documents = new Map(resolved);
       for (const adapter of [...graphs.values(), ...curves.values(), ...surfaces.values(), ...geometries.values(), ...topologies.values(), ...complexes.values(), ...volumes.values(), ...meshes.values(), ...additional.values()]) { const document = adapter.document(); documents.set(document.identity.id, document); }
-      return { documents, resources, capturedCurves };
+      return { documents, resources, capturedCurves,
+        timeSources: workspace.timeSources };
     };
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
@@ -90801,11 +90805,29 @@ case "mobius":
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}
-            onSaveVectorField3DTemporalSource={source => {
+            onSaveVectorField3DTemporalSource={(source, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
-              const updated = upsertProjectTemporalFieldSource(active, source);
+              const updated = upsertProjectTemporalFieldSource(active, source, transfers);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalPathline={(curve, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalPathline(active, curve, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onRebaseVectorField3DDerivedSource={(replacement, transfer) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = rebaseProjectDerivedSource(active, replacement, source => {
+                verifiedVectorFieldSampler(source, transfer);
+                return true;
+              });
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setVectorField3DDocument(replacement);
               setNotebookProjectVersion(value => value + 1);
             }}
             onAppendVectorField3DDerivedOperation={(inputId, operation, options) => {

@@ -1,5 +1,7 @@
 # GF-23–25: verified bundle, comparison and temporal sampling
 
+Follow-up: [GF-26–28](graph-field-gf26-gf28-foundation-time-pathline.md) adds replacement-byte source rebase, measured desktop foundation evidence, verified bundle frames and physical pathlines. The limits below describe the GF-23–25 checkpoint.
+
 ## GF-23 — bundled-source foundation path
 
 The GF-03 magnitude → orthogonal plane → physical line recipe now runs over either a saved analytic vector field or a verified 3D scientific bundle through the existing scientific execution broker. The bundled path reopens the three pinned components through the desktop verifier, checks the manifest, resource hashes, transfer checksums and coverage, and samples only the bounded transfer lattice. Physical trilinear interpolation uses the transfer's actual coordinates, including the rounded source positions of a 32³ preview. The result records `verified-volume-trilinear`, the three sample hashes and verified chunk/tile counts. Graphs and Explorer consume the same guarded result and provenance; neither Project nor Graph rows persist the transferred volume.

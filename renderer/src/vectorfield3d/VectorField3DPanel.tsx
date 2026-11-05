@@ -98,6 +98,7 @@ import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPan
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
+import { VectorField3DSourceRebasePanel } from "./VectorField3DSourceRebasePanel";
 import "./fieldExplorerHierarchy.css";
 
 const storageKey = "math3d.vector-field3d.document.v1";
@@ -147,7 +148,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveRegionIntegralSelection, onSaveRegionIntegralResult,
   onSaveTrajectorySeeds, onPromoteTrajectoryCurve, onPromoteLocalSeparatrix,
   onSaveComparisonResult, onOpenComparisonProfile,
-  onSaveTemporalSource,
+  onSaveTemporalSource, onSaveTemporalPathline, onRebaseDerivedSource,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
@@ -209,7 +210,12 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveComparisonResult?: (result: AnalysisResultEnvelope,
     transfers: import("@math3d/core").VectorField3DComparisonTransfers) => void;
   onOpenComparisonProfile?: (result: AnalysisResultEnvelope) => void;
-  onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument) => void;
+  onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onRebaseDerivedSource?: (replacement: VectorField3DDocument,
+    transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
   onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
@@ -2346,6 +2352,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       <button type="button" onClick={onOpenFieldDetails}>Open field controls</button>
     </section>}
     <div data-gf06-section="provenance" className="field-explorer-profile-provenance">
+    <VectorField3DSourceRebasePanel document={document} project={project}
+      onRebase={onRebaseDerivedSource ? (replacement, transfer) => {
+        onRebaseDerivedSource?.(replacement, transfer);
+        setDocument(replacement);
+      } : undefined} />
     {derivedProfiles.map(record => <DerivedProfileProvenanceCard key={record.profileId}
       view="explorer" provenance={record}
       onCompute={onComputeDerivedProfile ? () => void onComputeDerivedProfile(record.profileId) : undefined}
@@ -2774,7 +2785,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
       <VectorField3DTimeSourcePanel document={document} project={project}
-        onSave={onSaveTemporalSource} />
+        onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline} />
     </section>
     {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">
       <h5>Slice appearance and verification</h5>

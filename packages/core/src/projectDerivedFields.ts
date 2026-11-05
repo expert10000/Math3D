@@ -1,5 +1,6 @@
-import { canonicalJsonStringify, structuralHash, type StructuralHash } from "./documentIdentity";
-import { createDerivedFieldDocument, vectorFieldDerivedShape,
+import { advanceDocumentIdentity, canonicalJsonStringify, structuralHash, type StructuralHash } from "./documentIdentity";
+import { createDerivedFieldDocument, deriveFieldOutput, normalizeDerivedFieldDocument,
+  vectorFieldDerivedShape,
   type DerivedFieldDocument, type DerivedFieldInput, type DerivedFieldOperation } from "./derivedFieldDocument";
 import { parseMath3DProject, replaceMath3DProjectWorkspace, serializeMath3DProject,
   type Math3DProject } from "./math3dProject";
@@ -119,3 +120,78 @@ export const projectDerivedFieldsForDocument = (project: Math3DProject, document
   return fields.filter(field => descendants.has(field.identity.id))
     .map(field => reviewProjectDerivedField(current, field.identity.id, verifySource, resolved));
 };
+
+/** Explicitly repin a saved recipe chain after verified replacement bytes. IDs and coordinates stay fixed. */
+export function rebaseProjectDerivedSource(project: Math3DProject,
+  replacement: VectorField3DDocument, verifyReplacement: DerivedSourceVerification): Math3DProject {
+  const current = requireProject(project);
+  const entry = current.workspace.entries.find(item => item.module === "vector3d" &&
+    item.expected.id === replacement.identity.id);
+  if (!entry || entry.checkpoint.format !== "math3d.vector-field3d-document" ||
+      entry.replay !== null) throw new TypeError("Rebase needs a saved vector source checkpoint.");
+  const old = entry.checkpoint;
+  const oldField = old.source.field, newField = replacement.source.field;
+  if (oldField.kind !== "scientific-bundle" || newField.kind !== "scientific-bundle" ||
+      oldField.references.every((ref, index) =>
+        ref.resourceSha256 === newField.references[index]!.resourceSha256))
+    throw new TypeError("Source rebase requires changed scientific bundle bytes.");
+  if (replacement.identity.revision !== old.identity.revision + 1 ||
+      replacement.identity.structuralHash === old.identity.structuralHash ||
+      canonicalJsonStringify(replacement.source.axes) !== canonicalJsonStringify(old.source.axes) ||
+      canonicalJsonStringify(vectorFieldDerivedShape(replacement).componentUnits) !==
+        canonicalJsonStringify(vectorFieldDerivedShape(old).componentUnits) ||
+      !verifyReplacement(replacement))
+    throw new TypeError("Replacement must be a newly verified generation on the same physical grid and units.");
+  const rebuilt = new Map<string, DerivedFieldDocument>();
+  const remaining = [...(current.workspace.derivedFields ?? [])];
+  let progress = true;
+  while (remaining.length && progress) {
+    progress = false;
+    for (let index = remaining.length - 1; index >= 0; index--) {
+      const field = remaining[index]!;
+      const references = [field.input, ...(field.secondaryInput ? [field.secondaryInput] : [])];
+      if (references.some(input => input.kind === "derived" &&
+          remaining.some(item => item.identity.id === input.documentId))) continue;
+      const repin = (input: DerivedFieldInput): DerivedFieldInput => {
+        if (input.kind === "vector3d" && input.documentId === old.identity.id)
+          return { ...input, revision: replacement.identity.revision,
+            structuralHash: replacement.identity.structuralHash,
+            shape: vectorFieldDerivedShape(replacement) };
+        const parent = rebuilt.get(input.documentId);
+        return parent ? { ...input, revision: parent.identity.revision,
+          structuralHash: parent.identity.structuralHash, shape: parent.output } : input;
+      };
+      const input = repin(field.input);
+      const secondaryInput = field.secondaryInput && repin(field.secondaryInput);
+      const changed = canonicalJsonStringify(input) !== canonicalJsonStringify(field.input) ||
+        canonicalJsonStringify(secondaryInput ?? null) !== canonicalJsonStringify(field.secondaryInput ?? null);
+      if (changed) {
+        const output = deriveFieldOutput(input.shape, field.operation, secondaryInput?.shape);
+        const identitySource = { input, ...(secondaryInput ? { secondaryInput } : {}),
+          operation: field.operation, output };
+        const candidate = { ...field, input, ...(secondaryInput ? { secondaryInput } : {}),
+          output, identity: advanceDocumentIdentity(field.identity, identitySource) };
+        const checked = normalizeDerivedFieldDocument(candidate);
+        if (!checked.ok) throw new TypeError(checked.errors.join(" "));
+        rebuilt.set(field.identity.id, checked.value);
+      }
+      remaining.splice(index, 1); progress = true;
+    }
+  }
+  if (remaining.length) throw new TypeError("Derived recipe cycle prevents source rebase.");
+  return replaceMath3DProjectWorkspace(current, createMixedWorkspaceDocument({
+    ...current.workspace,
+    entries: current.workspace.entries.map(item => item === entry ?
+      { ...item, checkpoint: replacement, expected: replacement.identity } : item),
+    derivedFields: (current.workspace.derivedFields ?? []).map(field =>
+      rebuilt.get(field.identity.id) ?? field),
+    scientificSelections: current.workspace.scientificSelections?.map(selection =>
+      selection.source?.kind === "document" &&
+      selection.source.documentId === replacement.identity.id &&
+      selection.source.checkpoint?.revision === old.identity.revision &&
+      selection.source.checkpoint.structuralHash === old.identity.structuralHash ?
+        { ...selection, source: { ...selection.source, checkpoint: {
+          revision: replacement.identity.revision,
+          structuralHash: replacement.identity.structuralHash } } } : selection),
+  }));
+}
