@@ -717,13 +717,14 @@ declare global {
       timeFrames: (reference: { directory: string; sceneFingerprint: string }) => Promise<{
         frameId: string; index: number; time: number; unit: string; runId: string; resultSha256: string;
         tracks: { id: string; object?: string; xyz: number[] }[] }[]>;
-      compare: (a: { directory: string; sceneFingerprint: string }, b: { directory: string; sceneFingerprint: string }) =>
+      compare: (a: { directory: string; sceneFingerprint: string }, b: { directory: string; sceneFingerprint: string }, policy:"exact"|"linear-1d") =>
         Promise<{ status: "compatible" | "incompatible"; reasons: string[]; warnings: string[];
           metadataDiffs: { key: string; a: string | number | null; b: string | number | null }[];
           convergence: { quantity: "bulk gap"; gridA: [number, number]; gridB: [number, number];
             absoluteChange: number; status: "two-resolution-indicator" } | null;
           quantity: string | null; unit: string | null; samples: number; meanAbsolute: number | null;
-          rootMeanSquare: number | null; maximumAbsolute: number | null; bulkGapDelta: number | null }>;
+          rootMeanSquare: number | null; maximumAbsolute: number | null; bulkGapDelta: number | null;
+          alignment:"exact"|"linear-1d"|null;stateMatching:"unavailable" }>;
       consumeStudyLaunch: () => Promise<
         { ok: true; canceled: false; mode: "new" | "attach"; title: string; model: "qwz" | "hofstadter"; roles: string[]; runId: string; resultSha256: string;
           references: { format: "quantum-scene/v1" | "quantum-scene/v2"; title: string; directory: string; sceneFingerprint: string }[] } |

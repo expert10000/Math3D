@@ -39,4 +39,29 @@ describe("verified quantum A/B comparison", () => {
     const result = compareVerifiedQuantumScenes(field(1, 0), field(0, 1));
     assert.equal(result.status, "compatible"); assert.equal(result.maximumAbsolute, 0);
   });
+  const path=(axis:number[],low:number[],high:number[],unit="eV")=>({
+    source:{provenance:{model:"two-band",parameters:{}},coordinates:{handedness:"right",axes:["k","display y","E"],units:["rad","rad",unit]},
+      bands:{kind:"path",coordinates:"k",energies:["low","high"],labels:["lower","upper"],energyUnit:unit,bulkGap:2}},
+    arrays:new Map([["k",Float64Array.from(axis.flatMap(x=>[x,0,0]))],["low",Float64Array.from(low)],["high",Float64Array.from(high)]])
+  }) as unknown as ImportedQuantumScene;
+  it("converts explicitly compatible energy units before exact subtraction",()=>{
+    const a=path([0,1],[-1,-2],[1,2]);
+    const b=path([0,1],[-1000,-2000],[1000,2000],"meV");
+    const result=compareVerifiedQuantumScenes(a,b);
+    assert.equal(result.status,"compatible");assert.equal(result.maximumAbsolute,0);
+    assert.match(result.warnings.join(" "),/converted/);
+    assert.equal(result.stateMatching,"unavailable");
+  });
+  it("interpolates only bounded nondegenerate one-dimensional paths",()=>{
+    const a=path([0,1],[-1,-2],[1,2]);
+    const b=path([0,0.5,1],[-1,-1.5,-2],[1,1.5,2]);
+    assert.equal(compareVerifiedQuantumScenes(a,b).status,"incompatible");
+    const result=compareVerifiedQuantumScenes(a,b,"linear-1d");
+    assert.equal(result.status,"compatible");assert.equal(result.maximumAbsolute,0);
+    assert.equal(result.alignment,"linear-1d");
+  });
+  it("refuses extrapolation and sampled degeneracy",()=>{
+    assert.match(compareVerifiedQuantumScenes(path([-1,0],[-1,-2],[1,2]),path([0,1],[-1,-2],[1,2]),"linear-1d").reasons.join(" "),/extrapolate/);
+    assert.match(compareVerifiedQuantumScenes(path([0,1],[-1,0],[1,0]),path([0,0.5,1],[-1,-1,-1],[1,1,1]),"linear-1d").reasons.join(" "),/Degenerate/);
+  });
 });

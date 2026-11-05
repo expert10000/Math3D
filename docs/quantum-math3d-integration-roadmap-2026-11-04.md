@@ -956,17 +956,23 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Source-linked rounds, defects, correction chains and logical results.
 
+**Status (2026-11-05): Partial.** Theory Lab has a bounded ideal three-data-bit repetition-code example on its Backend page. Its Python worker records exact flip, parity syndrome, temporal defects, final correction and logical outcome; Electron independently checks the trace and digest. Multiple-error ambiguity is explicit. The example has no immutable saved run, `.qscene` export, surface-code patch or circuit-level noisy decoding. Those producer and consumer pieces remain required for full QI-31.
+
 ### QI-32 — Numerical validation dashboard
 
 **Commit:** `feat(validation): surface physical and solver checks in both apps`
 
 - Hermiticity, normalization, trace, orthogonality, convergence, invariants and warnings.
 
+**Status (2026-11-05): Partial.** Theory Lab's Runs provenance panel derives eigenstate norm/overlap, recorded evolution population, cavity norm, and Lindblad trace/purity checks from a hash-verified saved result and artifact. It surfaces producer topology validity and convergence flags; absent checks are explicitly unavailable. Math3D's scene inspector displays only supplied gap, invariant status and limitations alongside bundle verification. A versioned exported solver-check record is still needed for a complete cross-app dashboard; Math3D does not infer Hermiticity or solver accuracy from display geometry.
+
 ### QI-33 — Scientific-data compare alignment
 
 **Commit:** `feat(compare): add unit-aware resampling and eigenstate matching`
 
 - Interpolation policy, gauge/degeneracy guards and uncertainty flags.
+
+**Status (2026-11-05): Partial.** Projects comparison offers exact samples or explicitly selected linear interpolation of B onto A for monotone 1D band paths, with convertible eV/meV/µeV energy units. It refuses extrapolation, differing spatial frames/units, 2D surfaces and sampled degeneracies; the UI labels interpolation uncertainty. Existing `.qscene` bands do not generally supply eigenvectors, so state overlap, gauge-safe matching and unsampled crossing certification remain unavailable. No state identity is inferred from band index.
 
 ### QI-34 — Scene composition and cross-document overlays
 
