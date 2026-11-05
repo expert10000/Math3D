@@ -879,17 +879,23 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 
 - Version-aware capabilities, unavailable-feature explanations and tested fallbacks.
 
+**Implementation note (2026-11-05):** Theory Lab derives operation and engine decisions from its validated worker handshake, checks protocol 1 and worker 0.1.x, explains unavailable operations and suggests available alternative engines without switching jobs silently. The backend panel shows these decisions and the scene formats understood by its viewer. Every worker run/start request enforces the same decision. See [QI-22–24 implementation details](quantum-qi22-24-runtime-capabilities-transports-acceleration.md).
+
 ### QI-23 — WSL, Docker and remote adapters
 
 **Commit:** `feat(runtime): execute scientific jobs through transport adapters`
 
 - Same job semantics, explicit environment identity, secure artifacts and cancellation.
 
+**Implementation note (2026-11-05):** Theory Lab now selects exactly one local, SSH, WSL or Docker worker transport. Each uses the same supervised JSON-RPC job and cancellation path, exposes its target identity, and checks artifact size and SHA-256 before publication. SSH remains authenticated with strict host-key checking. WSL handshake, health and resources passed on the verification host; its Python installation lacks the pinned worker dependencies, and Docker's daemon was unavailable there, so their full job acceptance commands remain to be run in provisioned environments. See [QI-22–24 implementation details](quantum-qi22-24-runtime-capabilities-transports-acceleration.md).
+
 ### QI-24 — GPU/accelerated engines
 
 **Commit:** `feat(runtime): register optional accelerated numerical adapters`
 
 - Benchmark correctness before speed; preserve deterministic and tolerance reporting.
+
+**Implementation note (2026-11-05):** The optional Dynamiqs GPU engine now passes an analytic population/norm probe before registration. A fixed GPU-versus-native benchmark reports numerical and repeat-run errors at a declared tolerance, and gives a speed ratio only after those checks pass. The verification host has no Dynamiqs GPU stack, so the actual GPU benchmark reports unavailable. See [QI-22–24 implementation details](quantum-qi22-24-runtime-capabilities-transports-acceleration.md).
 
 ### QI-25 — Notebook/report export
 
