@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { createMixedWorkspaceDocument, createQuantumSceneDocument, instantiateMath3DProjectTemplate,
@@ -19,6 +19,7 @@ describe("content-addressed portable QWZ Project", () => {
     try {
       const locations = [`${runId}.qscene`, `${runId}-bands.qscene`].map(name => join(fixtureRoot, name));
       const imported = await Promise.all(locations.map(location => importQuantumSceneBundle(location)));
+      expect(imported.every(item => Number.isSafeInteger(item.importDurationMs) && item.importDurationMs! >= 0)).toBe(true);
       const documents = linkQuantumSceneDocuments(imported.map((item, index) => {
         const scene = item.source;
         const source: QuantumSceneDocumentSource = {
@@ -76,6 +77,23 @@ describe("content-addressed portable QWZ Project", () => {
         const scene = await importQuantumSceneBundle(reference.directory);
         expect(sceneFingerprint(scene)).toBe(reference.sceneFingerprint);
       }
+      const manifestPath = join(packB, "manifest.json"), originalManifest = await readFile(manifestPath);
+      const unsafePath = JSON.parse(originalManifest.toString("utf8"));
+      unsafePath.scenes[0].files[0].name = "../escape.f64";
+      await writeFile(manifestPath, JSON.stringify(unsafePath));
+      await expect(openQuantumProjectPack(packB, join(root, "unsafe-path-cache"))).rejects.toThrow(/Invalid quantum pack blob descriptor/);
+      const oversized = JSON.parse(originalManifest.toString("utf8"));
+      oversized.scenes[0].files[0].bytes = 16 * 1024 * 1024 + 1;
+      await writeFile(manifestPath, JSON.stringify(oversized));
+      await expect(openQuantumProjectPack(packB, join(root, "oversized-cache"))).rejects.toThrow(/Invalid quantum pack blob descriptor/);
+      const wrongSchema = JSON.parse(originalManifest.toString("utf8")); wrongSchema.schema = "zip-bundle/v1";
+      await writeFile(manifestPath, JSON.stringify(wrongSchema));
+      await expect(openQuantumProjectPack(packB, join(root, "compressed-cache"))).rejects.toThrow(/Invalid quantum pack manifest/);
+      await writeFile(manifestPath, originalManifest);
+      const outsideCache = join(root, "outside-cache"), linkedCache = join(root, "linked-cache");
+      await mkdir(outsideCache);
+      await symlink(outsideCache, linkedCache, process.platform === "win32" ? "junction" : "dir");
+      await expect(openQuantumProjectPack(packB, linkedCache)).rejects.toThrow(/cache root must be a real directory/);
       const target = manifest.scenes[0].files.find((file: { name: string }) => file.name === "scene.json");
       const blobPath = join(packB, "blobs", target.sha256), bytes = await readFile(blobPath);
       bytes[0] ^= 1; await writeFile(blobPath, bytes);

@@ -100,6 +100,9 @@ export type SurfaceMeshSource =
         triangleBudget: number; gridShape: readonly [number, number, number] };
       topology: import("@math3d/core").VectorField3DIsosurfaceTopology;
       complete: boolean; clipped: boolean;
+      temporal?: { id: string; revision: number; structuralHash: string;
+        generationHash: string; time: number; timeUnit: string;
+        frames: readonly { documentId: string; revision: number; structuralHash: string }[] };
       rebuildSequence?: number;
       verifiedTiles: import("@math3d/core").VectorField3DIsosurface["verifiedTiles"] | null }
   | { kind: "derivedScalarFieldIsosurface";

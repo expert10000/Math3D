@@ -14,6 +14,7 @@ export interface ImportedQuantumScene {
   mappedObjectIds: string[];
   deferredObjectIds: string[];
   deferredFieldIds: string[];
+  importDurationMs?: number;
   stream?: { manifestSha256: string; level: number; levels: { id: string; label: string; bytes: number }[] };
 }
 
@@ -166,15 +167,18 @@ export async function adaptQuantumScene(payload: ScenePayload): Promise<Imported
 
 export async function importQuantumSceneBundle(directory: string, streamLevel = 0,
   signal?: AbortSignal, progress?: (done: number, total: number) => void): Promise<ImportedQuantumScene> {
+  const started = performance.now();
   const envelope = JSON.parse((await boundedRead(join(directory, "bundle.json"))).toString("utf8")) as { schema?: unknown };
   if (envelope.schema !== "quantum-scene-stream-bundle/v1") {
     if (streamLevel !== 0) throw new Error("This quantum scene has no LOD levels");
-    return adaptQuantumScene(await readQuantumSceneBundle(directory));
+    const imported = await adaptQuantumScene(await readQuantumSceneBundle(directory));
+    return { ...imported, importDurationMs: Math.round(performance.now() - started) };
   }
   const source = await openQuantumSceneStream(directory);
   const imported = await adaptQuantumScene(await source.load(streamLevel, signal, progress));
   imported.stream = { manifestSha256: source.manifestSha256, level: streamLevel,
     levels: source.manifest.levels.map(item => ({ id: item.id, label: item.label,
       bytes: item.scene.datasets.reduce((sum, dataset) => sum + dataset.bytes, 0) })) };
+  imported.importDurationMs = Math.round(performance.now() - started);
   return imported;
 }

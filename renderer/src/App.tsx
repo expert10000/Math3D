@@ -42,6 +42,7 @@ import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
   reverifyScientificIsosurfaceMesh } from "./projects/scientificIsosurfaceMesh";
 import { promoteDerivedScalarIsosurfaceMesh } from "./projects/derivedScalarIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
+import { loadVerifiedVectorFieldTransfer } from "./vectorfield3d/loadVerifiedVectorFieldTransfer";
 import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
@@ -818,6 +819,10 @@ import {
   upsertProjectVectorField3DComparison,
   upsertProjectTemporalFieldSource,
   upsertProjectTemporalPathline,
+  projectTemporalPathlineStatus,
+  upsertProjectTemporalStreakline,
+  projectTemporalStreaklineStatus,
+  upsertProjectTemporalSpectrum,
   rebaseProjectDerivedSource,
   verifiedVectorFieldSampler,
   appendProjectDerivedField,
@@ -11496,6 +11501,12 @@ const App: React.FC = () => {
   const derivedProjectSurfaceRef = useRef<string | null>(null);
   const restoreNormalSurfacePresentationRef = useRef<(() => void) | null>(null);
   const restoredProjectRef = useRef<{ graphs: Map<string, Graph2DCommandAdapter>; additional: Map<string, AdditionalProjectSession>; workspace: MixedWorkspaceDocument; curves: Map<string, CurveDocumentAdapter>; surfaces: Map<string, SurfaceDocumentAdapter>; geometries: Map<string, GeometryDocumentAdapter>; topologies: Map<string, TopologyDiagramCommandAdapter>; complexes: Map<string, ComplexAnalysisCommandAdapter>; volumes: Map<string, VolumeDocumentAdapter>; meshes: Map<string, MeshDocumentAdapter>; resources?: VerifiedProjectResources; projectTags: readonly string[]; context: () => import("./projects/additionalProjectRepresentations").RepresentationContext } | null>(null);
+  const verifiedCurveTemporalTransfersRef = useRef<import("@math3d/core").VerifiedTemporalTransfers | undefined>(undefined);
+  useEffect(() => {
+    const withholdOnReturn = () => { verifiedCurveTemporalTransfersRef.current = undefined; setAdditionalVersion(v => v + 1); };
+    window.addEventListener("focus", withholdOnReturn);
+    return () => window.removeEventListener("focus", withholdOnReturn);
+  }, []);
   const geometryProjectLayoutBeforeRef = useRef<{ controlsOpen: boolean; layout: WorkspaceDockLayout } | null>(null);
   const activeSavedSurfaceSession = additionalActiveId ? restoredProjectRef.current?.additional.get(additionalActiveId) : null;
   const activeSavedSurfaceDocument = useMemo(() => activeSavedSurfaceSession?.document(), [activeSavedSurfaceSession, additionalVersion]);
@@ -79223,6 +79234,7 @@ case "mobius":
     } else activateComplexAdapter(adapter);
   };
   const reopenProjectWorkspace = (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => {
+    verifiedCurveTemporalTransfersRef.current = undefined;
     const resolved = verifyMixedWorkspaceReplay(workspace);
     const graphs = new Map<string, Graph2DCommandAdapter>();
     const curves = new Map<string, CurveDocumentAdapter>(), surfaces = new Map<string, SurfaceDocumentAdapter>(), geometries = new Map<string, GeometryDocumentAdapter>();
@@ -79234,7 +79246,8 @@ case "mobius":
       const documents = new Map(resolved);
       for (const adapter of [...graphs.values(), ...curves.values(), ...surfaces.values(), ...geometries.values(), ...topologies.values(), ...complexes.values(), ...volumes.values(), ...meshes.values(), ...additional.values()]) { const document = adapter.document(); documents.set(document.identity.id, document); }
       return { documents, resources, capturedCurves,
-        timeSources: workspace.timeSources };
+        timeSources: workspace.timeSources, project: activeNotebookProjectRef.current ?? owner,
+        verifiedTemporalTransfers: verifiedCurveTemporalTransfersRef.current };
     };
     const promoted = new Set(workspace.relations.filter((relation) => relation.operation.startsWith("graph2d.") && relation.target.type === "document").map((relation) => relation.target.type === "document" ? relation.target.generation.documentId : ""));
     for (const entry of workspace.entries) {
@@ -79297,7 +79310,7 @@ case "mobius":
         setScientificMeshSourceStates(current => ({ ...current, [meshId]: "stale" }));
         continue;
       }
-      void reverifyScientificIsosurfaceMesh(origin, source, window.scientificScenes)
+      void reverifyScientificIsosurfaceMesh(origin, source, window.scientificScenes, workspace)
         .then(status => setScientificMeshSourceStates(current =>
           ({ ...current, [meshId]: status })))
         .catch(() => setScientificMeshSourceStates(current =>
@@ -79344,9 +79357,11 @@ case "mobius":
   };
 
   const promoteFieldIsosurfaceToMesh = (field: import("@math3d/core").VectorField3DDocument,
-    surface: import("@math3d/core").VectorField3DIsosurface) => {
+    surface: import("@math3d/core").VectorField3DIsosurface,
+    temporal?: import("@math3d/core").TemporalFieldSourceDocument, time?: number) => {
     const restored = restoredProjectRef.current;
-    const next = promoteScientificIsosurfaceMesh(captureMixedKernelWorkspace(), field, surface);
+    const next = promoteScientificIsosurfaceMesh(captureMixedKernelWorkspace(), field, surface,
+      temporal, time);
     setVectorField3DDocument(field);
     meshDocumentAdapterRef.current = next.adapter;
     setMeshKernelDocument(next.adapter.document());
@@ -79356,7 +79371,8 @@ case "mobius":
       const id = next.adapter.document().identity.id;
       const origin = next.adapter.document().source.origin as import("./projects/scientificIsosurfaceMesh").IsosurfaceMeshOrigin;
       setScientificMeshSourceStates(current => ({ ...current, [id]: "pending" }));
-      void reverifyScientificIsosurfaceMesh(origin, field, window.scientificScenes)
+      void reverifyScientificIsosurfaceMesh(origin, field, window.scientificScenes,
+        next.workspace)
         .then(status => setScientificMeshSourceStates(current => ({ ...current, [id]: status })))
         .catch(() => setScientificMeshSourceStates(current => ({ ...current, [id]: "stale" })));
       setAdditionalVersion(value => value + 1);
@@ -82460,6 +82476,35 @@ case "mobius":
       </header>
       <div id="project-gallery-host" data-testid="project-gallery-host" />
       {additionalActiveId && !savedSurfaceModuleActive && restoredProjectRef.current?.additional.get(additionalActiveId) && <SavedDocumentWorkbench customView={savedSurfaceCustomView} onSelectView={view => setSavedSurfaceCustomView(view === "custom")}
+        onVerifyScientificPathline={async curve => {
+          verifiedCurveTemporalTransfersRef.current = undefined;
+          const project = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+          if (!project || !restored)
+            throw new TypeError("Reopen the saved Project before verifying this Curve.");
+          const workspace = restored.workspace;
+          const temporal = project.workspace.timeSources?.find(source =>
+            source.identity.id === curve.source.definition.sourceIds?.[0]);
+          if (!temporal || temporal.schemaVersion !== 3)
+            throw new TypeError("The pinned scientific temporal source is missing or changed.");
+          const transfers = new Map<string, import("@math3d/core").VerifiedVectorFieldTransfer>();
+          for (const frame of temporal.source.frames) {
+            const document = project.workspace.entries.find(entry => entry.module === "vector3d" &&
+              entry.expected.id === frame.documentId)?.checkpoint;
+            if (document?.format !== "math3d.vector-field3d-document" ||
+                document.identity.revision !== frame.revision ||
+                document.identity.structuralHash !== frame.structuralHash)
+              throw new TypeError("A pinned scientific frame is missing or changed.");
+            transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(document));
+          }
+          if (activeNotebookProjectRef.current !== project || restoredProjectRef.current !== restored ||
+              restored.workspace !== workspace)
+            throw new TypeError("The Project changed during verification; retry with the current source.");
+          const status = curve.source.definition.familyId === "vector3d.temporal-streakline" ?
+            projectTemporalStreaklineStatus(project, curve, transfers) :
+            projectTemporalPathlineStatus(project, curve, transfers);
+          if (status.status !== "current") throw new TypeError(`Curve values withheld: ${status.reason}.`);
+          verifiedCurveTemporalTransfersRef.current = transfers;
+        }}
         moduleView={activeSavedSurfaceBinding ? { viewport: <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>{activeSurfaceCurvatureField && activeSurfaceComputation === "curvature-field" && renderNativeSurfaceDisplay()}<div style={{ flex: 1, minHeight: 0 }}>{renderNativeParamSurfaceViewer()}</div></div>, inspector: renderNativeSurfaceInspector(), tools: <>{renderNativeSurfaceComputation()}<details><summary>Advanced Surface tools</summary>{renderSurfacesInspectorPanel("analysis")}</details></> } : undefined}
         workspaceVersion={additionalVersion} key={additionalActiveId} related={relatedDocuments(restoredProjectRef.current?.workspace, additionalActiveId, restoredProjectRef.current?.context().documents)} onOpenRelated={navigateRestoredDocument} projectId={activeNotebookProjectRef.current?.identity.id} projectTitle={activeNotebookProjectRef.current?.metadata.title} onOpenProject={() => setProjectsOpen(true)} documentTitle={activeNotebookProjectRef.current?.metadata.documents?.[additionalActiveId]?.title} session={restoredProjectRef.current.additional.get(additionalActiveId)!} onChange={() => setAdditionalVersion((v) => v + 1)} onClose={() => {
         if (additionalSurface?.format === "math3d.surface-document") openNormalSurfacesWorkspace();
@@ -90818,6 +90863,20 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTemporalPathline(active, curve, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalStreakline={(curve, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalStreakline(active, curve, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSpectrum={(result, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSpectrum(active, result, transfers);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}

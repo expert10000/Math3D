@@ -18,6 +18,8 @@ import { createQuantumDerivationRecord, type QuantumDerivationRecord, type Quant
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
 import { quantumSceneValidation } from "./quantumSceneValidation";
+import { QuantumInspectorSummary } from "./QuantumInspectorSummary";
+import { QuantumViewerTrace } from "./quantumViewerTrace";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -46,7 +48,8 @@ export type QuantumSceneOpenResponse =
       cameras: { position: Vector3; target: Vector3; up: Vector3 }[];
       extensions: Record<string, unknown>;
     }; remembered: boolean; mappedObjectIds: string[]; deferredObjectIds: string[]; deferredFieldIds: string[];
-    stream?: { level: number; levels: { id: string; label: string; bytes: number }[] } }
+    stream?: { level: number; levels: { id: string; label: string; bytes: number }[] };
+    diagnostics?: { importMs: number; datasetBytes: number; mappedPrimitives: number } }
   | { ok: false; canceled: true }
   | { ok: false; canceled: false; error: string };
 
@@ -589,12 +592,63 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     hasTrajectory: scene.objects.some(object => object.kind === "trajectory" || object.kind === "polyline"),
   };
   const availableView = (request: QuantumViewRequest) => Boolean(negotiateQuantumView(request, viewCapabilities));
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const trace = useMemo(() => new QuantumViewerTrace({ runId: scene.provenance.runId,
+    resultSha256: scene.provenance.resultSha256, sceneFingerprint: opened.reference.sceneFingerprint,
+    model: scene.provenance.model }), [scene.provenance.runId, scene.provenance.resultSha256,
+      scene.provenance.model, opened.reference.sceneFingerprint]);
+  const [supportStatus, setSupportStatus] = useState("");
+  useEffect(() => {
+    const previous = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+    closeButtonRef.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation();
+        void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onCloseRef.current(); return; }
+      if (event.key !== "Tab") return;
+      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex='0']") ?? [])];
+      if (!focusable.length) return;
+      const first = focusable[0]!, last = focusable.at(-1)!;
+      if (event.shiftKey && window.document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && window.document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => { window.removeEventListener("keydown", onKey, true); previous?.focus(); };
+  }, [opened.reference.sceneFingerprint]);
+  useEffect(() => {
+    trace.record("opened");
+    if (opened.diagnostics) for (const [name, value] of Object.entries(opened.diagnostics))
+      trace.measure(name as "importMs" | "datasetBytes" | "mappedPrimitives", value);
+    const started = performance.now();
+    const frame = requestAnimationFrame(() => { trace.measure("firstFrameMs", performance.now() - started); trace.record("first-frame"); });
+    return () => { cancelAnimationFrame(frame); trace.record("closed"); };
+  }, [trace, opened.diagnostics]);
+  useEffect(() => { trace.record("view"); }, [trace, view]);
+  useEffect(() => { if (pickedBandSample || pickedScalarSample || pickedTopologySample || pickedVectorSample) trace.record("sample"); },
+    [trace, pickedBandSample, pickedScalarSample, pickedTopologySample, pickedVectorSample]);
+  useEffect(() => { if (timeError || topologyError || bandSelectionError || scalarError || reciprocalError || streamStatus.includes("unavailable")) trace.record("error"); },
+    [trace, timeError, topologyError, bandSelectionError, scalarError, reciprocalError, streamStatus]);
+  const exportSupport = async () => {
+    setSupportStatus("Re-verifying the active source…");
+    try {
+      if (!window.quantumScenes?.verifyActive || !await window.quantumScenes.verifyActive(opened.reference.sceneFingerprint))
+        throw new Error("Desktop source verifier unavailable");
+      const blob = new Blob([JSON.stringify(trace.supportBundle(), null, 2) + "\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob), link = window.document.createElement("a");
+      link.href = url; link.download = `quantum-support-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
+      link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setSupportStatus("Redacted support bundle downloaded from the re-verified scene.");
+    } catch (error) { trace.record("error"); setSupportStatus(`Support export refused: ${String((error as Error).message ?? error)}`); }
+  };
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Verified quantum scene" data-testid="quantum-scene-preview"
-      style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 20 }}>
-      <div style={{ width: "min(1200px, 96vw)", height: "min(790px, 94vh)", minHeight: 360, background: "var(--panel-strong, #fff)",
+      ref={dialogRef}
+      style={{ position: "fixed", inset: 0, zIndex: 2900, background: "rgba(15,23,42,.64)", display: "grid", placeItems: "center", padding: 12 }}>
+      <div style={{ width: "min(1200px, calc(100vw - 24px))", height: "min(790px, calc(100dvh - 24px))", minHeight: 0, background: "var(--panel-strong, #fff)",
         color: "var(--text, #172033)", borderRadius: 12, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", overflow: "hidden" }}>
-        <header style={{ padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
+        <header style={{ padding: "10px 16px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottom: "1px solid var(--border, #cbd5e1)" }}>
           <div><strong>{document.title}</strong><div style={{ fontSize: 12 }}>Verified {scene.schema} · {scene.provenance.model} · {opened.stream ?
             `Stream ${opened.stream.level + 1}/${opened.stream.levels.length}: ${opened.stream.levels[opened.stream.level].label}` :
             "Save a workspace or attach it to a Project to retain this source"}</div>
@@ -614,10 +668,10 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
               void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint);
               setStreamStatus("Canceling full-level load…");
             }}>Cancel load</button>}
-            <button type="button" onClick={() => { if (streamBusy) void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onClose(); }} data-testid="quantum-scene-close">Close</button>
+            <button type="button" ref={closeButtonRef} onClick={() => { if (streamBusy) void window.quantumScenes?.cancelStreamLevel(opened.reference.sceneFingerprint); onClose(); }} data-testid="quantum-scene-close">Close</button>
           </div>
         </header>
-        <div style={{ minHeight: 0, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 320px)" }}>
+        <div className="quantum-scene-layout">
           <div style={{ minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }} data-testid="quantum-scene-geometry">
             {scene.time && <div data-testid="quantum-time-playback" style={{ padding: "10px 14px", borderBottom: "1px solid var(--border, #cbd5e1)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -725,6 +779,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             </div>
           </div>
           <aside style={{ padding: 16, overflow: "auto", borderLeft: "1px solid var(--border, #cbd5e1)", fontSize: 12, lineHeight: 1.5 }}>
+            <QuantumInspectorSummary data={{ view, mapped: opened.mappedObjectIds.length, deferred: opened.deferredObjectIds.length,
+              stream: opened.stream ? `Verified level ${opened.stream.level + 1} of ${opened.stream.levels.length}` : undefined,
+              datasets: scene.datasets, invariants: scene.topology?.invariants ?? [], limitations: scene.topology?.limitations ?? [],
+              provenance: { schema: scene.schema, model: scene.provenance.model, runId: scene.provenance.runId,
+                resultSha256: scene.provenance.resultSha256, fingerprint: opened.reference.sceneFingerprint,
+                engine: scene.provenance.engine, engineVersion: scene.provenance.engineVersion } }} onExportSupport={exportSupport} supportStatus={supportStatus} />
+            <h3>Detailed source inspection</h3>
             {scene.time?.tracks.some(track => track.id === "bloch") && <section data-testid="quantum-dynamics-inspector" style={{ border: "1px solid var(--border, #cbd5e1)", borderRadius: 8, padding: 10, marginBottom: 14 }}>
               <h3 style={{ marginTop: 0 }}>Recorded dynamics</h3>
               {timeFrame ? <><p>Exact frame <code>{timeFrame.frameId}</code> · t={timeFrame.time.toPrecision(8)} {timeFrame.unit} · source run <code>{timeFrame.runId}</code>.</p>

@@ -1007,17 +1007,23 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 - View/Data/Science/Provenance inspector; keyboard focus; error and loading states.
 
+**Implementation note (2026-11-05):** The quantum viewer now has keyboard-operated View/Data/Science/Provenance tabs, bounded dataset paging, dialog focus handling and a responsive inspector layout. Full installed-app keyboard and large-data certification remains in QI-40. See [QI-37–39 evidence](quantum-qi37-39-ux-observability-hardening.md).
+
 ### QI-38 — Operational observability
 
 **Commit:** `feat(diagnostics): correlate job, result, scene and viewer traces`
 
 - Correlation IDs, bounded logs, redacted support bundle, metric baselines.
 
+**Implementation note (2026-11-05):** Theory Lab exports verified job/result identities and runtime duration; Math3D exports matching run/result/scene identities, bounded viewer events and observed import/preview metrics. The frozen scene contract has no job ID, so cross-app correlation uses run ID and result SHA-256. See [QI-37–39 evidence](quantum-qi37-39-ux-observability-hardening.md).
+
 ### QI-39 — Threat model and import hardening
 
 **Commit:** `security(artifacts): harden bundles, links and broker requests`
 
 - Path, size, schema, decompression, code execution and transport trust tests.
+
+**Implementation note (2026-11-05):** Portable pack reads now verify file identity and reject a linked cache root; negative tests cover traversal, size, schema and changed blobs. Theory Lab adds explicit injected-path transport tests. The pack format has no decompressor or executable payload. See [QI-37–39 evidence](quantum-qi37-39-ux-observability-hardening.md).
 
 ### QI-40 — Integration certification + release freeze
 

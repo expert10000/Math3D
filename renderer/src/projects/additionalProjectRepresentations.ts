@@ -1,7 +1,9 @@
 import { evaluateGraph2DPromotionGeometry, canonicalJsonStringify, createCurveDocument, createSurfaceDocument, createGeometryDocument, geometryDocumentToSceneDocument,
   evaluateDerivedConstructionObjects, canonicalizeFinite2DTopologyDocument, createTopologyDocument, createDocumentIdentity, type CurveDocument, type SurfaceDocument,
   type GeometryDocument, type TopologyDocument, type MixedWorkspaceEntry,
-  type TemporalFieldSourceDocument, type CanonicalJsonValue } from "@math3d/core";
+  type TemporalFieldSourceDocument, type CanonicalJsonValue, type Math3DProject,
+  type VerifiedTemporalTransfers, projectTemporalPathlineStatus,
+  projectTemporalStreaklineStatus } from "@math3d/core";
 import { createSplineDefinition, evaluateSpline } from "@math3d/core";
 import { validateSavedSplineSurfaceSettings } from "../math/splineSurface";
 import { compileExpression } from "../math/expression";
@@ -22,7 +24,8 @@ import { supportsSavedSurfaceResolution, validateSurfaceStudyResolution } from "
 export type AdditionalDocument = CurveDocument | SurfaceDocument | GeometryDocument | TopologyDocument;
 export type RepresentationContext = { documents: ReadonlyMap<string, MixedWorkspaceEntry["checkpoint"]>;
   resources?: VerifiedProjectResources; capturedCurves?: ReadonlyMap<string, CurveDocument>;
-  timeSources?: readonly TemporalFieldSourceDocument[] };
+  timeSources?: readonly TemporalFieldSourceDocument[]; project?: Math3DProject | null;
+  verifiedTemporalTransfers?: VerifiedTemporalTransfers };
 type Point = { x: number; y: number; z: number };
 export type RepresentationView = { scene: GeometryScene; meshes: SurfaceMeshData[]; qualification: string; sampleCount: number; bounds: { min: number[]; max: number[] } | null };
 const fail = (message: string): never => { throw new TypeError(message); };
@@ -48,21 +51,30 @@ const curveEvaluator = (document: CurveDocument, context: RepresentationContext,
   if (stack.includes(document.identity.id) || stack.length > 12) fail("Cyclic or overly deep project source dependencies.");
   stack = [...stack, document.identity.id];
   const source = document.source, definition = source.definition, f = definition.expressions ?? {}, parameter = source.domain.parameter;
-  if (definition.familyId === "vector3d.temporal-pathline") {
+  if (["vector3d.temporal-pathline", "vector3d.temporal-streakline"].includes(definition.familyId)) {
     const temporal = context.timeSources?.find(item => item.identity.id === definition.sourceIds?.[0]);
-    if (!temporal) return fail("Temporal pathline source is missing; Curve values are withheld.");
+    if (!temporal) return fail("Temporal Curve source is missing; Curve values are withheld.");
     if (temporal.identity.structuralHash !== definition.settings?.temporalHash ||
         temporal.identity.revision !== definition.settings?.temporalRevision)
-      fail("Temporal pathline source changed or is missing; Curve values are withheld.");
+      fail("Temporal Curve source changed or is missing; Curve values are withheld.");
     for (const frame of temporal.source.frames) {
       const current = context.documents.get(frame.documentId);
       if (current?.format !== "math3d.vector-field3d-document" ||
           current.identity.revision !== frame.revision ||
           current.identity.structuralHash !== frame.structuralHash)
-        fail("Temporal pathline frame changed or is missing; Curve values are withheld.");
+        fail("Temporal Curve frame changed or is missing; Curve values are withheld.");
     }
-    if (temporal.schemaVersion === 3)
-      fail("Scientific temporal pathline needs fresh bundle verification in Field Explorer.");
+    if (temporal.schemaVersion === 3) {
+      if (!context.project || !context.verifiedTemporalTransfers)
+        fail("Scientific temporal Curve needs fresh bundle verification before Curve values can be shown.");
+      const status = definition.familyId === "vector3d.temporal-pathline" ?
+        projectTemporalPathlineStatus(context.project!, document,
+          context.verifiedTemporalTransfers!) :
+        projectTemporalStreaklineStatus(context.project!, document,
+          context.verifiedTemporalTransfers!);
+      if (status.status !== "current")
+        fail(`Scientific temporal Curve ${status.status}: ${status.reason}; Curve values are withheld.`);
+    }
   }
   const literal = (x: string, y: string, z = "0") => {
     const funcs = [x, y, z].map((value) => compiled(value, [parameter]));

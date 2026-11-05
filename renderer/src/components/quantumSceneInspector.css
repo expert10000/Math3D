@@ -1,0 +1,14 @@
+.quantum-scene-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); min-height: 0; }
+.quantum-inspector-summary { border: 1px solid var(--border, #cbd5e1); border-radius: 8px; padding: 10px; margin-bottom: 14px; }
+.quantum-inspector-tabs { display: flex; gap: 3px; flex-wrap: wrap; }
+.quantum-inspector-tabs button { min-height: 34px; padding: 5px 8px; }
+.quantum-inspector-tabs button[aria-selected="true"] { background: #1f576a; color: white; }
+.quantum-inspector-summary [role="tabpanel"] { max-height: 230px; overflow: auto; padding-top: 8px; overflow-wrap: anywhere; }
+.quantum-inspector-summary h3 { margin: 0 0 7px; }
+.quantum-inspector-summary dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; }
+.quantum-inspector-summary dd { margin: 0; }
+.quantum-inspector-summary :focus-visible, .quantum-scene-layout :focus-visible { outline: 3px solid #db7c24; outline-offset: 2px; }
+@media (max-width: 760px) {
+  .quantum-scene-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(330px, 1fr) minmax(180px, 35vh); }
+  .quantum-scene-layout > aside { border-left: 0 !important; border-top: 1px solid var(--border, #cbd5e1); }
+}

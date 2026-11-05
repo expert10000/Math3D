@@ -75,6 +75,8 @@ test("GF-26–28 verified time frames, saved pathline and explicit source rebase
     await expect(panel.getByTestId("gf25-sample-result")).toContainText("9 × 9");
     await panel.getByTestId("gf28-run-pathline").click();
     await expect(panel).toContainText("Saved pathlines (1)");
+    await panel.getByTestId("gf29-run-streakline").click();
+    await expect(panel).toContainText("Saved streaklines (1)");
     await explorer.getByTestId("gf07-open-profile-from-explorer").click();
     await expect(explorer).toBeHidden();
     await page.getByTestId("projects-toggle").click();
@@ -82,10 +84,27 @@ test("GF-26–28 verified time frames, saved pathline and explicit source rebase
     await expect(projects.getByTestId("project-message")).toContainText("Saved");
     await page.reload();
     await openLastSavedProject(page);
+    if (!await projects.isVisible()) await page.getByTestId("projects-toggle").click();
+    const pathlineId = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("math3d.project.v1")!).workspace.entries
+        .find((item: { module: string; checkpoint: { source?: { definition?: { familyId?: string } } } }) =>
+          item.module === "curve" && item.checkpoint.source?.definition?.familyId ===
+            "vector3d.temporal-pathline").checkpoint.identity.id as string);
+    await projects.getByTestId(`project-tree-document-${pathlineId}`).click();
+    const curvePreview = page.getByTestId("project-source-editor");
+    await expect(curvePreview).toContainText("Curve values withheld");
+    await curvePreview.getByTestId("scientific-pathline-verify-preview").click();
+    await expect(curvePreview.getByTestId("project-source-measurement"))
+      .toContainText("sampled points");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(curvePreview).toContainText("Curve values withheld");
     await page.getByTestId("workspace-nav-graphs").click();
     explorer = await openExplorer();
     panel = explorer.getByTestId("gf22-time-source");
     await expect(panel).toContainText("Saved pathlines (1)");
+    await expect(panel).toContainText("Saved streaklines (1)");
+    await panel.getByText("Saved streaklines (1)").click();
+    await expect(panel).toContainText("unverified");
     await panel.getByText("Saved pathlines (1)").click();
     await expect(panel).toContainText("unverified");
     await panel.getByTestId("gf25-saved-time-source-select").selectOption(temporal.identity.id);

@@ -171,6 +171,8 @@ export * from "./scientificFrameUnitContract";
 export * from "./temporalFieldSourceDocument";
 export * from "./projectTemporalFieldSources";
 export * from "./temporalPathline";
+export * from "./temporalStreakline";
+export * from "./temporalSpectrum";
 export * from "./verifiedVectorFieldSampling";
 export * from "./projectComparisonProfileGraph";
 export * from "./scientificDatasetLink";

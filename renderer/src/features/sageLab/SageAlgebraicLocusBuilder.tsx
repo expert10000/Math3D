@@ -18,11 +18,11 @@ const download = (name: string, body: string) => {
 
 export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
-  const definition = record?.definition;
-  const ambient = definition?.kind === "ideal"
-    ? project.algebraObjects?.find((entry) => entry.id === definition.ambientRing.objectId)
-      ?.revisions[definition.ambientRing.revision - 1]
-    : definition?.kind === "polynomial-ring" ? record : null;
+  const ambientRef = record?.definition.kind === "ideal" ? record.definition.ambientRing : null;
+  const ambient = ambientRef
+    ? project.algebraObjects?.find((entry) => entry.id === ambientRef.objectId)
+      ?.revisions[ambientRef.revision - 1]
+    : record?.definition.kind === "polynomial-ring" ? record : null;
   const variables = ambient?.definition.kind === "polynomial-ring" ? ambient.definition.variables : [];
   const [polynomial, setPolynomial] = useState(() => `${variables.map((variable) => `${variable}^2`).join("+")}-1`);
   const [bounds, setBounds] = useState([{ min: "-2", max: "2" }, { min: "-2", max: "2" },
