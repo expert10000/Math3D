@@ -150,6 +150,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveComparisonResult, onOpenComparisonProfile,
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
   onSaveTemporalSpectrum, onRebaseDerivedSource,
+  onOpenTemporalSpectrum,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
@@ -219,6 +220,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalSpectrum?: (result: import("@math3d/core").AnalysisResultEnvelope,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onOpenTemporalSpectrum?: (result: AnalysisResultEnvelope) => void;
   onRebaseDerivedSource?: (replacement: VectorField3DDocument,
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
@@ -2794,6 +2796,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSave={onSaveTemporalSource} onSavePathline={onSaveTemporalPathline}
         onSaveStreakline={onSaveTemporalStreakline}
         onSaveSpectrum={onSaveTemporalSpectrum}
+        onOpenSpectrum={onOpenTemporalSpectrum}
+        onPreviewMovingIsosurface={setIsosurface}
         onPromoteMovingIsosurface={onPromoteIsosurface} />
     </section>
     {normalAxis !== undefined && <section aria-label="Slice appearance and verification" data-gf06-section="layer">

@@ -638,7 +638,8 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       const blob = new Blob([JSON.stringify(trace.supportBundle(), null, 2) + "\n"], { type: "application/json" });
       const url = URL.createObjectURL(blob), link = window.document.createElement("a");
       link.href = url; link.download = `quantum-support-${opened.reference.sceneFingerprint.slice(0, 12)}.json`;
-      link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      window.document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       setSupportStatus("Redacted support bundle downloaded from the re-verified scene.");
     } catch (error) { trace.record("error"); setSupportStatus(`Support export refused: ${String((error as Error).message ?? error)}`); }
   };

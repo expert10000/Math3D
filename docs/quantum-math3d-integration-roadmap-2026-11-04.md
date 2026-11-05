@@ -1033,6 +1033,8 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Done when:** release evidence is generated, all P0 gates pass, known limitations are documented, and new result/scene adapters can be rolled back while both pinned `quantum-scene/v1|v2` readers remain available.
 
+**Status (2026-11-05): In progress; release freeze withheld.** The [QI-40 certification candidate](evidence/quantum-qi40-certification-2026-11-05.md) pins 38 v1/v2 scenes and records passing QWZ, importer, Project, portable, inspector, worker and live two-app checks. QEC remains a bounded example without a saved scene, and full visual/stress, installer and rollback gates are outstanding. Do not interpret passing source-checkout tests as installer signoff.
+
 ### Cross-repository ownership and evidence for the first cut
 
 | Deliverable | Owning repository | Required predecessor | Evidence to attach |

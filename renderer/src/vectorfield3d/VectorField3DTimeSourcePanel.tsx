@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createTemporalFieldSourceDocument, projectTemporalFieldSourceStatus,
   sampleTemporalFieldProbe, sampleTemporalFieldSlice, computeTemporalPathline,
   projectTemporalPathlineStatus, computeTemporalStreakline,
@@ -11,18 +11,23 @@ import { createTemporalFieldSourceDocument, projectTemporalFieldSourceStatus,
 import { loadVerifiedVectorFieldTransfer } from "./loadVerifiedVectorFieldTransfer";
 import { runTemporalMovingIsosurfaces, type TemporalMovingIsosurfaceFrame } from
   "./runTemporalMovingIsosurfaces";
+import { playTemporalMovingIsosurfaces, temporalSurfaceResidentBytes } from
+  "./playTemporalMovingIsosurfaces";
 
 export function VectorField3DTimeSourcePanel({ document, project, onSave, onSavePathline,
-  onSaveStreakline, onSaveSpectrum, onPromoteMovingIsosurface }: {
+  onSaveStreakline, onSaveSpectrum, onOpenSpectrum, onPromoteMovingIsosurface,
+  onPreviewMovingIsosurface }: {
   document: VectorField3DDocument; project: Math3DProject | null | undefined;
   onSave?: (temporal: TemporalFieldSourceDocument, transfers?: VerifiedTemporalTransfers) => void;
   onSavePathline?: (curve: CurveDocument, transfers?: VerifiedTemporalTransfers) => void;
   onSaveStreakline?: (curve: CurveDocument, transfers?: VerifiedTemporalTransfers) => void;
   onSaveSpectrum?: (result: AnalysisResultEnvelope,
     transfers?: VerifiedTemporalTransfers) => void;
+  onOpenSpectrum?: (result: AnalysisResultEnvelope) => void;
   onPromoteMovingIsosurface?: (field: VectorField3DDocument,
     surface: VectorField3DIsosurface, temporal: TemporalFieldSourceDocument,
     time: number) => void;
+  onPreviewMovingIsosurface?: (surface: VectorField3DIsosurface | null) => void;
 }) {
   const [secondId, setSecondId] = useState("");
   const [laterTime, setLaterTime] = useState(1);
@@ -50,6 +55,10 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const [movingFrames, setMovingFrames] = useState<readonly TemporalMovingIsosurfaceFrame[]>([]);
   const movingAbort = useRef<AbortController | null>(null);
   const movingTemporal = useRef<TemporalFieldSourceDocument | null>(null);
+  const playbackAbort = useRef<AbortController | null>(null);
+  const playbackTransfers = useRef<VerifiedTemporalTransfers | undefined>();
+  const [playbackBusy, setPlaybackBusy] = useState(false);
+  const [playbackStatus, setPlaybackStatus] = useState("");
   const [spectrumComponent, setSpectrumComponent] = useState<"magnitude" | "x" | "y" | "z">("magnitude");
   const [spectrumCount, setSpectrumCount] = useState<16 | 32 | 64>(32);
   const [spectrumWindow, setSpectrumWindow] = useState<"rectangular" | "hann">("hann");
@@ -60,6 +69,28 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const cancelSpectrum = useRef(false);
   const projectRef = useRef(project);
   projectRef.current = project;
+  useEffect(() => () => { playbackAbort.current?.abort(); movingAbort.current?.abort();
+    onPreviewMovingIsosurface?.(null); }, [onPreviewMovingIsosurface]);
+  useEffect(() => {
+    const temporal = movingTemporal.current;
+    if (!project || !temporal || !playbackTransfers.current) return;
+    const status = projectTemporalFieldSourceStatus(project, temporal,
+      playbackTransfers.current);
+    if (status.status !== "current") {
+      playbackAbort.current?.abort(); onPreviewMovingIsosurface?.(null);
+      setPlaybackStatus(`Playback withheld: ${status.reason}.`);
+    }
+  }, [project, onPreviewMovingIsosurface]);
+  useEffect(() => {
+    const withhold = () => {
+      if (!movingTemporal.current) return;
+      playbackAbort.current?.abort(); playbackTransfers.current = undefined;
+      onPreviewMovingIsosurface?.(null);
+      setPlaybackStatus("Playback withheld until the pinned frames are verified again.");
+    };
+    window.addEventListener("focus", withhold);
+    return () => window.removeEventListener("focus", withhold);
+  }, [onPreviewMovingIsosurface]);
   const candidates = project?.workspace.entries.filter(item => item.module === "vector3d" &&
     item.expected.id !== document.identity.id) ?? [];
   const saved = project?.workspace.timeSources?.filter(item => item.source.frames.some(frame =>
@@ -166,6 +197,9 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   };
   const runMoving = async () => {
     setError(""); setMessage(""); setMovingProgress(""); setMovingFrames([]);
+    playbackAbort.current?.abort(); setPlaybackStatus("");
+    playbackTransfers.current = undefined;
+    onPreviewMovingIsosurface?.(null);
     movingTemporal.current = null;
     const controller = new AbortController(); movingAbort.current = controller;
     setMovingBusy(true);
@@ -187,6 +221,31 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
       setMessage(`Extracted ${frames.length} verified time frames. Choose one to save as a Mesh.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { movingAbort.current = null; setMovingBusy(false); }
+  };
+  const playMoving = async () => {
+    setError(""); setPlaybackStatus("");
+    const controller = new AbortController(); playbackAbort.current = controller;
+    setPlaybackBusy(true);
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || movingFrames.length < 2)
+        throw new TypeError("Extract the pinned frames before playback.");
+      await playTemporalMovingIsosurfaces(current, temporal, movingFrames, {
+        signal: controller.signal, currentProject: () => projectRef.current ?? current,
+        loadTransfers: async () => { const transfers = await loadTransfers(
+          temporal.source.frames.map(frame => frame.documentId));
+          playbackTransfers.current = transfers; return transfers; },
+        intervalMs: 500, timeBudgetMs: 10_000,
+        memoryBudgetBytes: 64 * 1024 * 1024,
+        onFrame: (frame, index) => {
+          onPreviewMovingIsosurface?.(frame.surface);
+          setPlaybackStatus(`Frame ${index + 1}/${movingFrames.length}: ${frame.time} ` +
+            `${temporal.source.timeAxis.unit}; ${frame.surface.triangleCount} triangles.`);
+        } });
+    } catch (cause) { onPreviewMovingIsosurface?.(null);
+      setPlaybackStatus("Playback withheld.");
+      setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { playbackAbort.current = null; setPlaybackBusy(false); }
   };
   const promoteMoving = async (frame: TemporalMovingIsosurfaceFrame) => {
     setError("");
@@ -333,6 +392,15 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
         {movingBusy && <button type="button" onClick={() => movingAbort.current?.abort()}>
           Cancel moving isosurfaces</button>}
         {movingProgress && <p role="status">Moving isosurfaces {movingProgress}</p>}
+        {movingFrames.length > 0 && <div data-testid="gf33-moving-playback">
+          <p>Exact pinned frames · 500 ms display cadence · no surface interpolation or topology correspondence ·
+            {" "}{temporalSurfaceResidentBytes(movingFrames)} geometry bytes / 64 MiB budget.</p>
+          <button type="button" disabled={playbackBusy || !onPreviewMovingIsosurface}
+            onClick={() => void playMoving()}>Play verified frames</button>
+          {playbackBusy && <button type="button" onClick={() => playbackAbort.current?.abort()}>
+            Stop playback</button>}
+          {playbackStatus && <p role="status">{playbackStatus}</p>}
+        </div>}
         {movingFrames.map(frame => <div key={frame.time}>
           {frame.time} {movingTemporal.current?.source.timeAxis.unit} ·
           {" "}{frame.surface.triangleCount} triangles ·
@@ -368,6 +436,9 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
               strokeWidth="2" /></svg>
           <div>Autocorrelation: {String(spectrumView?.publication.summary.autocorrelationStatus)} ·
             {" "}{String(spectrumView?.publication.summary.sampleCount)} samples</div>
+          {onOpenSpectrum && <button type="button" data-testid="gf32-open-spectrum-graphs"
+            onClick={() => onOpenSpectrum(spectrumView!.publication)}>
+            Open PSD and autocorrelation in Graphs</button>}
         </div>}
         {spectrumStatus && spectrumStatus.status !== "current" &&
           <p role="status">Spectrum values withheld: {spectrumStatus.reason}</p>}
