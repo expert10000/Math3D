@@ -35,6 +35,7 @@ const keyOf = (edge: WorkbookDependency): string => JSON.stringify([edge.targetB
 export function validateWorkbookDependencies(workbook: Workbook): void {
   for (const block of blocksOf(workbook)) if (block.algebraResult !== undefined) {
     if (block.type !== "reference") throw new TypeError("Typed algebra results belong to Project reference blocks.");
+    if (block.notebookReference !== undefined) throw new TypeError("A Project reference block can link one typed target at a time.");
     normalizeWorkbookAlgebraResult(block.algebraResult);
   }
   if (workbook.namedParameters !== undefined) normalizeWorkbookNamedParameters(workbook.namedParameters);

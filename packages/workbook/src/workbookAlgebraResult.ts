@@ -1,4 +1,5 @@
-import { canonicalJsonByteLength, createProjectAlgebraEvidence, isStableDocumentId, isStructuralHash,
+import { canonicalJsonByteLength, createProjectAlgebraEvidence, inspectProjectAlgebraFreshness,
+  isStableDocumentId, isStructuralHash,
   parseAlgebraOperationResult,
   parseProjectAlgebraEvidence, structuralHash, type Math3DProject,
   type AlgebraOperationRequest, type ProjectAlgebraEvidence, type StableDocumentId, type StructuralHash } from "@math3d/core";
@@ -58,6 +59,8 @@ export const inspectWorkbookAlgebraResult = (project: Math3DProject | null, valu
   const latest = entry!.revisions[entry!.revisions.length - 1];
   if (entry!.archived || latest.revision !== cell.revision || latest.contentHash !== cell.objectHash)
     return { status: "stale", reason: `Object changed after revision ${cell.revision}; result remains pinned to its original source.` };
+  if (inspectProjectAlgebraFreshness(project).find((item) => item.objectId === cell.objectId)?.status === "stale")
+    return { status: "stale", reason: "A pinned parent algebra object has a newer revision." };
   return { status: "current", reason: "Exact object revision and result hash match." };
 };
 
