@@ -957,6 +957,7 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Source-linked rounds, defects, correction chains and logical results.
 
 **Status (2026-11-05): Partial.** Theory Lab has a pinned, source-checked repetition-code viewer in its Atlas and a bounded ideal three-data-bit example on its Backend page. The Python worker records exact flip, parity syndrome, temporal defects, final correction and logical outcome; Electron independently checks the trace and digest. Multiple-error ambiguity is explicit. The live example has no immutable saved run or `.qscene` export; there is no surface-code patch or circuit-level noisy decoding. Those producer and consumer pieces remain required for full QI-31.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
 
 ### QI-32 — Numerical validation dashboard
 
@@ -965,6 +966,7 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Hermiticity, normalization, trace, orthogonality, convergence, invariants and warnings.
 
 **Status (2026-11-05): Partial.** Theory Lab's Runs provenance panel derives eigenstate norm/overlap, recorded evolution population, cavity norm, Lindblad trace/purity and stored damped-oscillator density Hermiticity checks from a hash-verified saved result and artifact. It surfaces producer topology validity and convergence flags; absent checks are explicitly unavailable. Math3D's scene inspector displays only supplied gap, invariant status and limitations alongside bundle verification. A versioned exported solver-check record is still needed for a complete cross-app dashboard; Math3D does not infer Hermiticity or solver accuracy from display geometry.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
 
 ### QI-33 — Scientific-data compare alignment
 
@@ -973,6 +975,7 @@ The sequence below **retains all QI-01–QI-25 stages** and extends them through
 - Interpolation policy, gauge/degeneracy guards and uncertainty flags.
 
 **Status (2026-11-05): Partial.** Theory Lab's saved-run A/B view offers opt-in unit-aware scalar alignment and phase/sign-invariant matching for stored, resolved two-level eigenstates; it refuses degenerate or ambiguous pairs. Math3D Projects comparison offers exact samples or explicitly selected linear interpolation of B onto A for monotone 1D band paths, with convertible eV/meV/µeV energy units. It refuses extrapolation, differing spatial frames/units, 2D surfaces and sampled degeneracies; the UI labels interpolation uncertainty. Existing `.qscene` bands do not generally supply eigenvectors, so cross-scene state overlap, gauge-safe matching and unsampled crossing certification remain unavailable. No state identity is inferred from band index.
+See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment.md).
 
 ### QI-34 — Scene composition and cross-document overlays
 

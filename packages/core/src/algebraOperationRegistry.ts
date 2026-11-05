@@ -148,9 +148,9 @@ const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
   catch (error) { return String((error as Error).message ?? error); }
   if (operation.id === "sage.module.invariantFactors") {
     if (record.definition.kind !== "module") return "Invariant factors require a saved ZZ module.";
-    const baseRing = record.definition.baseRing;
-    const parent = project.algebraObjects?.find((item) => item.id === baseRing.objectId)
-      ?.revisions[baseRing.revision - 1];
+    const moduleDefinition = record.definition;
+    const parent = project.algebraObjects?.find((item) => item.id === moduleDefinition.baseRing.objectId)
+      ?.revisions[moduleDefinition.baseRing.revision - 1];
     if (parent?.definition.kind !== "integer-ring") return "Invariant factors require a pinned ZZ parent ring.";
   }
   if (operation.category === "ideal") {

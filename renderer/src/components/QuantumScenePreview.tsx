@@ -17,6 +17,7 @@ import { nearestRecordedFrame } from "./quantumDynamicsSelection";
 import { createQuantumDerivationRecord, type QuantumDerivationRecord, type QuantumFieldDocument } from "@math3d/core";
 import { quantumSceneDocumentFromVerifiedOpen } from "../projects/quantumSceneAdmission";
 import { quantumTopologyOverlayGroups, topologyOverlayObjectVisible } from "./quantumTopologyOverlay";
+import { quantumSceneValidation } from "./quantumSceneValidation";
 
 type Vector3 = { x: number; y: number; z: number };
 type SceneSource = {
@@ -1000,14 +1001,13 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
             </dl></>}
             <div><b>Source axes:</b> {scene.coordinates.axes.join(", ")} ({scene.coordinates.handedness}-handed)</div>
             <div><b>Source coordinate units:</b> {scene.coordinates.units.join(", ")}</div>
-            <section data-testid="quantum-scene-validation" style={{marginTop:12,padding:10,border:"1px solid var(--border, #cbd5e1)",borderRadius:8}}>
-              <h3 style={{marginTop:0}}>Scientific checks · QI-32</h3>
-              <p>Bundle bytes and source identity verified at import. Numerical checks below are producer statements carried by this scene; Math3D does not recalculate the Hamiltonian or solver.</p>
-              {scene.bands&&<p>Supplied bulk gap: {scene.bands.bulkGap} {scene.bands.energyUnit}. A positive sampled gap alone is not a convergence verdict.</p>}
-              {scene.topology?.invariants.length?<ul>{scene.topology.invariants.map(item=><li key={item.id}>{item.label}: {item.value??"undefined"} · {item.status} · {item.method}</li>)}</ul>:<p>Producer invariants: unavailable in this scene.</p>}
-              {scene.topology?.limitations.map((item,index)=><p key={index}>Limit: {item}</p>)}
-              <p>Hermiticity, normalization, trace and eigenstate orthogonality: unavailable unless supplied in a verified Lab result; this scene contains no general solver-check record.</p>
-            </section>
+            <details data-testid="quantum-validation-dashboard"><summary>Numerical validation dashboard</summary>
+              <p>Scene checks report source evidence and limits. Producer-run physical diagnostics require reopening that run.</p>
+              {quantumSceneValidation(scene, { fingerprint: opened.reference.sceneFingerprint,
+                mappedObjectIds: opened.mappedObjectIds, deferredObjectIds: opened.deferredObjectIds,
+                deferredFieldIds: opened.deferredFieldIds }).map((check, index) => <div key={`${check.name}-${index}`}>
+                <strong>{check.name}</strong> · {check.status} · {check.detail}</div>)}
+            </details>
             {scene.reciprocal && <section data-testid="quantum-reciprocal-inspector">
               <h3>Supplied reciprocal geometry</h3>
               <div>Reciprocal coordinates: {(scene.reciprocal.basis.length===1 ? ["k"] : ["kx", "ky", "kz"].slice(0, scene.reciprocal.basis.length)).join(", ")} · {scene.reciprocal.reciprocalUnit}</div>
