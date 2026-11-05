@@ -11,6 +11,7 @@ import { chooseTheoryLabTarget, configureTheoryLabTarget, launchTheoryLab, theor
 import { inspectVerifiedBandSample, type BandSampleRequest } from "../quantumScene/bandSelection";
 import { inspectVerifiedScalarSample, type ScalarSampleRequest } from "../quantumScene/scalarSelection";
 import { resolveStudySourceRun, type StudySourceRunRequest } from "../quantumScene/studySourceRun";
+import { resolveFluxSourceRun, type FluxSourceRunRequest } from "../quantumScene/fluxSourceRun";
 import { inspectVerifiedTopologySample, inspectVerifiedVectorSample,
   type TopologySampleRequest, type VectorSampleRequest } from "../quantumScene/topologyDisplay";
 import { projectVerifiedQwzCursor, type QwzCursorProjectionRequest } from "../quantumScene/cursorProjection";
@@ -155,6 +156,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
   let launchError = initialError;
   const verifiedBySender = new WeakMap<Electron.WebContents, { fingerprint: string; directory: string; imported: ImportedQuantumScene }>();
   const selectedStudyPoint = new WeakMap<Electron.WebContents, { fingerprint: string; series: "periodic" | "chain"; sampleIndex: number }>();
+  const selectedFluxPoint = new WeakMap<Electron.WebContents, { fingerprint: string; objectId: string; sampleIndex: number }>();
   const studySelectionSerial = new WeakMap<Electron.WebContents, number>();
   const volumeJobs = new WeakMap<Electron.WebContents, Map<string, { cancelled: boolean }>>();
   const streamJobs = new WeakMap<Electron.WebContents, AbortController>();
@@ -163,6 +165,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     for (const job of volumeJobs.get(event.sender)?.values() ?? []) job.cancelled = true;
     studySelectionSerial.set(event.sender, (studySelectionSerial.get(event.sender) ?? 0) + 1);
     selectedStudyPoint.delete(event.sender);
+    selectedFluxPoint.delete(event.sender);
     verifiedBySender.set(event.sender, { fingerprint: sceneFingerprint(imported), directory: resolve(directory), imported });
     return opened(directory, imported, remembered);
   };
@@ -324,6 +327,7 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
     const serial = (studySelectionSerial.get(event.sender) ?? 0) + 1;
     studySelectionSerial.set(event.sender, serial);
     selectedStudyPoint.delete(event.sender);
+    selectedFluxPoint.delete(event.sender);
     const reopened = await reopenActive(active);
     if (verifiedBySender.get(event.sender) !== active || studySelectionSerial.get(event.sender) !== serial)
       throw new Error("Quantum scene or selection changed during scalar selection");
@@ -332,6 +336,9 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
         (sample.objectId === "periodic-points" || sample.objectId === "chain-points"))
       selectedStudyPoint.set(event.sender, { fingerprint: active.fingerprint,
         series: sample.objectId === "periodic-points" ? "periodic" : "chain", sampleIndex: sample.sampleIndex });
+    if (reopened.imported.source.provenance.model === "hofstadter_flux_sweep" && /^flux-\d+$/.test(sample.objectId))
+      selectedFluxPoint.set(event.sender, { fingerprint: active.fingerprint,
+        objectId: sample.objectId, sampleIndex: sample.sampleIndex });
     return sample;
   });
   ipcMain.handle("quantumScenes:topologySample", async (event, ...args: unknown[]) => {
@@ -484,6 +491,32 @@ export function registerQuantumSceneIpc(initialDirectory: string | null = null, 
       const identity = resolveStudySourceRun(reopened.imported, request);
       await launchTheoryLab(target, identity.runId, identity.resultSha256);
       return { ok: true, canceled: false, ...identity };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle("quantumScenes:openFluxSourceRun", async (event, ...args: unknown[]) => {
+    if (args.length !== 1) return { ok: false, canceled: false, error: "Flux source launch requires one selected point" };
+    try {
+      const active = activeField(event, args[0]);
+      const request = args[0] as FluxSourceRunRequest;
+      const selected = selectedFluxPoint.get(event.sender);
+      if (!selected || selected.fingerprint !== active.fingerprint || selected.objectId !== request.objectId ||
+          selected.sampleIndex !== request.sampleIndex)
+        throw new Error("Select and verify this exact flux point before opening its Lab run");
+      const first = await reopenActive(active);
+      resolveFluxSourceRun(first.imported, request);
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (!win || win.isDestroyed()) throw new Error("Scene window is unavailable");
+      const target = await chooseTheoryLabTarget(win);
+      if (!target) return { ok: false, canceled: true };
+      activeField(event, request);
+      if (selectedFluxPoint.get(event.sender) !== selected)
+        throw new Error("Selected flux point changed during Theory Lab selection");
+      const reopened = await reopenActive(active);
+      const identity = resolveFluxSourceRun(reopened.imported, request);
+      await launchTheoryLab(target, identity.runId, identity.resultSha256);
+      return { ok: true, canceled: false, runId: identity.runId, resultSha256: identity.resultSha256 };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }

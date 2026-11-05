@@ -796,6 +796,10 @@ declare global {
         runId: string; resultSha256: string }) => Promise<
         { ok: true; canceled: false; runId: string; resultSha256: string } |
         { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
+      openFluxSourceRun: (request: { fingerprint: string; objectId: string; sampleIndex: number;
+        runId: string; resultSha256: string }) => Promise<
+        { ok: true; canceled: false; runId: string; resultSha256: string } |
+        { ok: false; canceled: true } | { ok: false; canceled: false; error: string }>;
     };
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;

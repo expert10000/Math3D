@@ -51,6 +51,7 @@
     "build:main": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.scientific.json && tsc -p tsconfig.node.json",
     "test:quantum-scene:import": "npm run build:main && node scripts/test-quantum-scene-import.mjs",
     "test:quantum-scene:stream": "npm run build:main && node scripts/test-quantum-scene-stream.mjs",
+    "test:quantum:flux-source": "npm run build:main && node scripts/test-quantum-flux-source.mjs",
     "quantum:artifact-gc": "npm run build:main && node scripts/quantum-artifact-gc.mjs",
     "test:quantum:qwz-baseline": "npm run build:main && node scripts/test-qwz-baseline.mjs",
     "test:quantum:browser": "playwright test --config playwright.quantum-browser.config.ts",
