@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput, buildSageGaloisInput,
   createAlgebraObjectRecord, createMath3DProject,
-  createMixedWorkspaceDocument, createProjectAlgebraObjectId, upsertMath3DProjectAlgebraObject } from "@math3d/core";
+  createMixedWorkspaceDocument, createProjectAlgebraObjectId, createStableDocumentId,
+  upsertMath3DProjectAlgebraObject } from "@math3d/core";
 import { getComputeJobs } from "../features/computeCenter/scientificJobTelemetry";
 import { SAGE_OPERATIONS, SAGE_SYMBOLIC_OPERATIONS } from "../integrations/sage/sageSchemas";
 import { scientificOperationsFor } from "../features/scientificServices/operationCatalog";
@@ -25,6 +26,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.numberField.elementDossier", "sage.numberField.primeDecomposition",
   "sage.polynomial.dossier",
   "sage.galois.analyze",
+  "sage.group.dossier", "sage.module.invariantFactors", "sage.chain.homology",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
@@ -68,12 +70,31 @@ const galoisParams = () => {
   project = upsertMath3DProjectAlgebraObject(project, ring);
   return buildSageGaloisInput(project, { objectId: ring.id, revision: 1 }, "x^4-2") as unknown as Record<string, unknown>;
 };
+const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.module.invariantFactors" | "sage.chain.homology") => {
+  const projectId = createStableDocumentId("project", "sage-broker-contract");
+  const ref = (key: string) => ({ objectId: createProjectAlgebraObjectId(projectId, key), revision: 1 });
+  const hash = `sha256:${"0".repeat(64)}`;
+  const target = ref(operation);
+  const common = { schemaVersion: 1, projectId, target, targetHash: hash };
+  if (operation === "sage.group.dossier") return { ...common,
+    format: "math3d.sage-finite-group-operation",
+    definition: { kind: "finite-group", representation: "abelian", invariantFactors: [2], generators: ["a"] } };
+  if (operation === "sage.module.invariantFactors") return { ...common,
+    format: "math3d.sage-module-invariant-factors", baseRing: ref("ZZ"), baseRingHash: hash,
+    ambientRank: 1, relationRank: 1, matrix: [["2"]] };
+  return { ...common, format: "math3d.sage-chain-homology",
+    definition: { kind: "chain-complex", coefficientRing: ref("ZZ"),
+      modules: [ref("C0"), ref("C1"), ref("C2")], boundaries: [ref("d1"), ref("d2")] },
+    dimensions: [1, 1, 1], boundary1: [["0"]], boundary2: [["2"]] };
+};
 const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker") =>
   operation === "sage.algebra.reconstruct" ? algebraParams()
     : operation === "sage.algebra.inspectDomains" ? algebraParams(true)
     : operation === "sage.numberField.elementDossier" || operation === "sage.numberField.primeDecomposition"
       ? numberFieldParams(operation)
     : operation === "sage.galois.analyze" ? galoisParams()
+    : operation === "sage.group.dossier" || operation === "sage.module.invariantFactors" ||
+      operation === "sage.chain.homology" ? pinnedStructureParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
       matrix: [["1", "2"], ["2", "4"]] }
     : operation === "sage.matrix.integer_forms" ? { format: "math3d.sage-integer-matrix-forms", schemaVersion: 1,

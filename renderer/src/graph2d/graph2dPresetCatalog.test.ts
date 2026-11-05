@@ -25,9 +25,10 @@ describe("curated Graphs catalog", () => {
     expect(catalog.entries.filter(p => p.featuredOrder !== null)).toHaveLength(7);
     expect(catalog.entries.filter(p => p.template.source.objects.length > 1).length).toBeGreaterThanOrEqual(6);
     expect(catalog.filter("phase portrait", "Differential equations")).toHaveLength(4);
-    // Linked slope trajectories are authored in the workspace.
+    // Linked slope trajectories and derivative curves are authored in the workspace.
     expect([...new Set(catalog.entries.flatMap(p => p.template.source.objects.map(o => o.kind)))].sort())
-      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory").slice().sort());
+      .toEqual(GRAPH2D_OBJECT_KINDS.filter(kind => kind !== "slope-field" && kind !== "trajectory" &&
+        kind !== "derivative-curve").slice().sort());
   });
   it("opens the orbit explorer with two independently editable starts", () => {
     const preset = getGraph2DPresetCatalog().get("phase-orbit-explorer")!;

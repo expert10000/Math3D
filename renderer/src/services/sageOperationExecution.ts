@@ -110,10 +110,13 @@ export const createSageCapabilityManifest = (backend: SageBackend, health: SageH
   const unavailableReason = available ? null : health.engine !== "sagemath"
     ? `Unexpected runtime engine ${health.engine}.` : health.status;
   const reportedOperations = [...new Set(health.operations)].sort();
-  const definitions = Object.entries(SAGE_JOB_OPERATIONS)
-    .map(([id, item]) => ({ id, operationType: item.type, mode: "bounded" as const }))
-    .concat([{ id: SAGE_CONSOLE_OPERATION, operationType: SAGE_CONSOLE_OPERATION,
-      mode: "trusted-code" as const }]).sort((a, b) => a.id.localeCompare(b.id));
+  const definitions: { id: BrokeredSageOperation | typeof SAGE_CONSOLE_OPERATION;
+    operationType: string; mode: "bounded" | "trusted-code" }[] = [
+    ...Object.entries(SAGE_JOB_OPERATIONS).map(([id, item]) =>
+      ({ id: id as BrokeredSageOperation, operationType: item.type, mode: "bounded" as const })),
+    { id: SAGE_CONSOLE_OPERATION, operationType: SAGE_CONSOLE_OPERATION, mode: "trusted-code" },
+  ];
+  definitions.sort((a, b) => a.id.localeCompare(b.id));
   const operations = definitions.map((item) => {
     const routeAllowed = item.id === SAGE_CONSOLE_OPERATION ? backend === "local"
       : backend === "docker" || backend === "local" && isLocalSageOperation(item.id)
