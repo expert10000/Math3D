@@ -56,7 +56,7 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const movingAbort = useRef<AbortController | null>(null);
   const movingTemporal = useRef<TemporalFieldSourceDocument | null>(null);
   const playbackAbort = useRef<AbortController | null>(null);
-  const playbackTransfers = useRef<VerifiedTemporalTransfers | undefined>();
+  const playbackTransfers = useRef<VerifiedTemporalTransfers | undefined>(undefined);
   const [playbackBusy, setPlaybackBusy] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState("");
   const [spectrumComponent, setSpectrumComponent] = useState<"magnitude" | "x" | "y" | "z">("magnitude");
