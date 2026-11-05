@@ -539,6 +539,8 @@ The [extended Sage/CAS/Algebra roadmap](math3d-sage-cas-algebra-extended-roadmap
 
 [SAGE-D05](evidence/sage-d05-field-tower-2026-11-05.md) adds a saved quadratic-over-quadratic extension and a pinned Structures field-tower diagram. It checks the constructor inclusions and defining relations, the composed `Q ↪ K ↪ L` map and the `2×2=4` tower law. Exact core, real local Sage 9.5 and controlled desktop Project export/fresh-profile import gates pass. The next feature is **SAGE-D06** Galois analysis and subgroup views. B08's live Docker Sage 10.10 comparison remains open.
 
+**2026-11-05 runtime and evidence update:** The [B08 live WSL/Docker gate](evidence/sage-b08-live-2026-11-05.md) passed all 16 cases on Sage 9.5 and Sage 10.10 with zero differences. The [hosted Private gateway gate](evidence/sage-hosted-workbook-live-2026-11-05.md) saves success, mathematical failure and cancellation to Workbook and checks each after reopening. D05 now exposes pinned Sage evidence and stale-source labels in the field tower. Historical "B08 remains open" notes above describe the earlier state.
+
 Add a small Services preset menu: **Basic**, **Symbolic**, **Numerical**,
 **Algebraic Geometry**, and **Number Theory**. Presets filter the contextual
 operation catalog and remember the user's view; they do not create separate

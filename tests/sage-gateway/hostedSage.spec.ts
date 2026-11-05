@@ -41,33 +41,62 @@ test("two hosted web sessions share discovery but keep authorization and quotas 
       await expect(workspace.getByTestId("sage-analysis-result").getByTestId("sage-result-kind-expression")).toContainText(expected);
     };
     await runUi(a.workspace, "sage.numberTheory.gcd", "6");
+    const saveAndReopen = async (page: typeof ada, workspace: typeof a.workspace, operation: string, outcome: string,
+      version = "10.10", errorCode?: string) => {
+      await workspace.getByTestId("sage-analysis-result").getByRole("button", { name: "Save to Workbook" }).click();
+      const evidence = page.getByTestId("workbook-sage-evidence").last();
+      await expect(evidence).toContainText(`Operation: ${operation}`);
+      await expect(evidence).toContainText(outcome);
+      await expect(evidence).toContainText(`Private gateway · SageMath ${version}`);
+      await page.reload();
+      await expect(evidence).toContainText(`Operation: ${operation}`);
+      await expect(evidence).toContainText(outcome);
+      await evidence.getByText("Exact request, response, and diagnostics").click();
+      await expect(evidence).toContainText('"backend": "private"');
+      if (errorCode) await expect(evidence).toContainText(`"errorCode": "${errorCode}"`);
+      await page.getByTestId("workspace-nav-number_theory").click();
+    };
+    await saveAndReopen(ada, a.workspace, "sage.numberTheory.gcd", "Outcome: Exact");
     await runUi(b.workspace, "sage.numberTheory.modInverse", "4");
     const noetherServices = b.workspace.getByTestId("scientific-services-number_theory");
     await noetherServices.getByLabel("Integer", { exact: true }).fill("2");
     await noetherServices.getByLabel("Modulus (greater than 1)").fill("4");
     await noetherServices.getByRole("button", { name: "Run", exact: true }).click();
     await expect(b.workspace.getByTestId("sage-result-kind-error")).toContainText("operation_failed");
+    await b.workspace.getByRole("button", { name: "Open Compute → Runtimes" }).last().click();
+    const failedCompute = noether.getByTestId("compute-center");
+    await failedCompute.getByRole("button", { name: "Overview" }).click();
+    await expect(failedCompute.getByRole("region", { name: "Broker jobs" })).toContainText("operation_failed");
+    await failedCompute.getByRole("button", { name: "Close", exact: true }).click();
+    await saveAndReopen(noether, b.workspace, "sage.numberTheory.modInverse", "Outcome: Failed", "10.10", "operation_failed");
+    await noetherServices.getByLabel("SageMath backend").selectOption("private");
+    await noetherServices.getByLabel("Operation").selectOption("sage.numberTheory.modInverse");
     await noetherServices.getByLabel("Integer", { exact: true }).fill("3");
     await noetherServices.getByLabel("Modulus (greater than 1)").fill("11");
     await noetherServices.getByRole("button", { name: "Run", exact: true }).click();
     await noetherServices.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(noetherServices).toContainText("cancelled", { timeout: 30_000 });
+    await expect(b.workspace.getByTestId("sage-analysis-result")).toContainText("cancelled");
     await b.workspace.getByRole("button", { name: "Open Compute → Runtimes" }).last().click();
     const compute = noether.getByTestId("compute-center");
     await compute.getByRole("button", { name: "Overview" }).click();
     const jobs = compute.getByRole("region", { name: "Broker jobs" });
     await expect(jobs).toContainText("sage-private-gateway");
-    await expect(jobs).toContainText("operation_failed");
     await expect(jobs).toContainText("cancelled");
     await compute.getByRole("button", { name: "Close", exact: true }).click();
+    await saveAndReopen(noether, b.workspace, "sage.numberTheory.modInverse", "Outcome: Failed", "unreported", "cancelled");
     const runApi = (index: number) => first.request.post("http://127.0.0.1:8796/api/sage-private/run", {
       data: { operation: "sage.numberTheory.gcd", params: { values: ["12", "18"] }, jobId: `quota-${index}-${randomUUID()}` },
       headers: { Origin: "http://127.0.0.1:5186" },
     });
-    for (let index = 0; index < 9; index++) expect((await runApi(index)).status()).toBe(200);
-    const limited = await runApi(10);
-    expect(limited.status()).toBe(429);
-    expect((await limited.json()).code).toBe("user_rate_limited");
+    let limited: Awaited<ReturnType<typeof runApi>> | null = null;
+    for (let index = 0; index < 11; index++) {
+      const response = await runApi(index);
+      if (response.status() === 429) { limited = response; break; }
+      expect(response.status()).toBe(200);
+    }
+    expect(limited?.status()).toBe(429);
+    expect((await limited!.json()).code).toBe("user_rate_limited");
     await runUi(b.workspace, "sage.numberTheory.gcd", "6");
     expect(browserHeaders.length).toBeGreaterThan(0);
     expect(browserHeaders.every((headers) => !Object.hasOwn(headers, "authorization"))).toBe(true);

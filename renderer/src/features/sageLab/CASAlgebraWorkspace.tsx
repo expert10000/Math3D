@@ -124,7 +124,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           </button>;
         }) : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>No structures in this Project yet.</div>}
     </div>}
-    {project && <SageFieldTowerViewer project={project} selected={selection} onSelect={select} />}
+    {project && <SageFieldTowerViewer project={project} selected={selection} onSelect={select} onInspectEvidence={inspectEvidence} />}
   </div>;
 
   const dossier = builder === "ring" && project ? <SageRingFieldBuilder key={project.identity.id} project={project}

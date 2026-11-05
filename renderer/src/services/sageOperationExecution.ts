@@ -298,6 +298,7 @@ export class SageExecutionRegistry {
         engine: "sagemath", operation: request.operation, success: false, latex: "", result: {}, warnings: [],
         error: outcome.ok ? "SageMath returned no response." : outcome.code === "cancelled"
           ? definition.cancelled : outcome.message,
+        ...(!outcome.ok && outcome.code === "cancelled" ? { errorCode: "cancelled" } : {}),
         ...(!outcome.ok && /^([a-z][a-z0-9_]+): /.test(outcome.message)
           ? { errorCode: /^([a-z][a-z0-9_]+): /.exec(outcome.message)![1] } : {}),
       };

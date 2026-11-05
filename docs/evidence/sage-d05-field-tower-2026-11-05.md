@@ -6,6 +6,8 @@ The Field tower diagram uses saved object references and verified constructors f
 
 **Acceptance:** Exact core tests cover independent `.math3d` serialize/parse, stable IDs and revisions, both inclusion edges, the composed inclusion, degree products, stale historical parents, invalid definitions and forged Sage metadata. Real local Sage 9.5 reconstruction confirms `K.extension(t²−3)`, an available `K → L` coercion map, zero defining relations and absolute degree four. A controlled desktop Sage route creates the extension in the builder, saves reconstruction evidence, exports the Project and reopens the same object and evidence in a fresh profile. The desktop route's reported Sage 10.10 version is a test fixture; it is not a live Docker result.
 
-The first tower builder deliberately covers a quadratic extension of a saved quadratic field with small squarefree rational radicands. The diagram does not claim arbitrary field embeddings or deeper towers. **B08's live Docker Sage 10.10 comparison remains open.**
+The first tower builder deliberately covers a quadratic extension of a saved quadratic field with small squarefree rational radicands. The diagram does not claim arbitrary field embeddings or deeper towers. The viewer now lists each pinned Sage evidence record beside its field, including operation, worker version and current/historical/stale source state; selecting it opens the Inspector evidence. The desktop test checks those states after Project reopen and after the base field advances.
+
+The separate [B08 live comparison](sage-b08-live-2026-11-05.md) subsequently passed 16 cases on Sage 9.5 WSL and Sage 10.10 Docker with no differences.
 
 **Next:** SAGE-D06 Galois analysis and subgroup views.

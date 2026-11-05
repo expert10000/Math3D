@@ -99,6 +99,7 @@ test("SAGE-D05 builds and independently reopens a verified Q→K→L field tower
     await expect(cas.getByTestId("cas-evidence-result")).toContainText("Absolute degree4");
     await cas.getByRole("button", { name: "Structures", exact: true }).click();
     await expect(tower).toContainText("exact construction and Sage");
+    await expect(tower.getByTestId("field-tower-evidence")).toContainText("Pinned Sage evidence · reconstruct · 10.10 · current source");
     const before = core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1")));
     const l = before.algebraObjects.find((item: { revisions: { kind: string }[] }) => item.revisions[0].kind === "field-extension").revisions[0];
     expect(l.definition).toEqual({ kind: "field-extension", baseField: { objectId: k.id, revision: 1 },
@@ -115,10 +116,21 @@ test("SAGE-D05 builds and independently reopens a verified Q→K→L field tower
     const reopened = ctx.page.getByTestId("cas-algebra-workspace");
     await expect(reopened.getByTestId("cas-field-tower")).toContainText("K@1 ↪ L@1");
     await expect(reopened.getByTestId("cas-field-tower")).toContainText("exact construction and Sage");
+    await reopened.getByTestId("field-tower-evidence").click();
+    await expect(reopened.getByTestId("cas-evidence-result")).toContainText("Absolute degree4");
     await reopened.getByTestId(`field-tower-node-${l.id}-1`).click();
     await expect(reopened.getByTestId("cas-structure-inspector")).toContainText(l.contentHash);
     const imported = core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1")));
     expect(imported.algebraObjects.find((item: { id: string }) => item.id === l.id).revisions[0]).toEqual(l);
     expect(imported.algebraEvidence).toHaveLength(1);
+    const k2 = core.createAlgebraObjectRecord({ id: k.id, revision: 2, label: "K revised",
+      definition: { kind: "number-field", baseField: { objectId: q.id, revision: 1 },
+        definingPolynomial: ["-5", "0", "1"], generator: "a" } });
+    const changed = core.upsertMath3DProjectAlgebraObject(imported, k2);
+    await reopened.getByRole("button", { name: "Back to workspace" }).click();
+    await install(core.serializeMath3DProject(changed));
+    const stale = ctx.page.getByTestId("cas-algebra-workspace").getByTestId("cas-field-tower");
+    await expect(stale).toContainText("stale");
+    await expect(stale.getByTestId("field-tower-evidence")).toContainText("stale source");
   } finally { await closeSurfaceApp(ctx); await new Promise<void>((resolve) => server.close(() => resolve())); }
 });
