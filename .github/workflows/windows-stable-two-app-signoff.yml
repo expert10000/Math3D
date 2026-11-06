@@ -2,6 +2,16 @@ name: Windows Stable Two-App Signoff
 
 on:
   workflow_dispatch:
+    inputs:
+      theory_lab_ref:
+        type: string
+        description: Exact Theory Lab source ref for a diagnostic candidate
+        default: main
+      theory_lab_nsis_variant:
+        type: choice
+        description: Theory Lab NSIS template variant; diagnostic only
+        options: [standard, without-store]
+        default: standard
 
 jobs:
   build-candidates:
@@ -104,7 +114,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: expert10000/theory-lab
-          ref: main
+          ref: ${{ inputs.theory_lab_ref }}
           path: theory-lab
 
       - name: Record exact Theory Lab source revision
@@ -123,9 +133,16 @@ jobs:
         id: lab_build
         working-directory: theory-lab
         shell: pwsh
+        env:
+          QI40_NSIS_VARIANT: ${{ inputs.theory_lab_nsis_variant }}
         run: |
           npm ci
           if ($LASTEXITCODE -ne 0) { throw 'Theory Lab npm ci failed' }
+          if ($env:QI40_NSIS_VARIANT -eq 'without-store') {
+            node ../scripts/prepare-qi40-nsis-template.mjs `
+              node_modules/app-builder-lib/templates/nsis/multiUser.nsh qi40-nsis-template.json
+            if ($LASTEXITCODE -ne 0) { throw 'QI-40 NSIS template preparation failed' }
+          }
           python -m venv .venv
           if ($LASTEXITCODE -ne 0) { throw 'Theory Lab venv creation failed' }
           & .\.venv\Scripts\python.exe -m pip install -c workers/quantum-python/requirements.lock -e workers/quantum-python
@@ -139,6 +156,8 @@ jobs:
       - name: Preserve exact candidate installers and hashes
         id: manifest
         shell: pwsh
+        env:
+          QI40_NSIS_VARIANT: ${{ inputs.theory_lab_nsis_variant }}
         run: |
           $math = @(Get-ChildItem -LiteralPath release -Filter 'Math3D Setup *.exe' -File)
           $lab = @(Get-ChildItem -LiteralPath theory-lab/release -Filter 'Quantum-Hamiltonian-Lab-Setup-*.exe' -File)
@@ -147,6 +166,9 @@ jobs:
           New-Item -ItemType Directory -Path $candidate | Out-Null
           Copy-Item -LiteralPath $math[0].FullName -Destination (Join-Path $candidate $math[0].Name)
           Copy-Item -LiteralPath $lab[0].FullName -Destination (Join-Path $candidate $lab[0].Name)
+          if ($env:QI40_NSIS_VARIANT -eq 'without-store') {
+            Copy-Item -LiteralPath theory-lab/qi40-nsis-template.json -Destination (Join-Path $candidate 'qi40-nsis-template.json')
+          }
           [ordered]@{
             schema = 'math3d/two-app-candidate/v1'
             createdAtUtc = (Get-Date).ToUniversalTime().ToString('o')
@@ -163,6 +185,7 @@ jobs:
               commit = (& git -C theory-lab rev-parse HEAD).Trim()
               installerName = $lab[0].Name
               installerSha256 = (Get-FileHash -LiteralPath $lab[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              nsisTemplateVariant = $env:QI40_NSIS_VARIANT
             }
           } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $candidate 'candidate-manifest.json') -Encoding UTF8
 
