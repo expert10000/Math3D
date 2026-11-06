@@ -240,11 +240,28 @@ test("desktop Symbolic Simplify uses local WSL SageMath without Docker", async (
 
 test("desktop Sage polynomial factor handles valid input, rejection, and cancellation", async () => {
   test.setTimeout(180_000);
+  const service = createServer((req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (req.url === "/health") {
+      res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.10", available: true,
+        status: "ok", operations: ["sage.polynomial.factor"] }));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!res.writableEnded) res.end(JSON.stringify({ engine: "sagemath", engineVersion: "10.10",
+        operation: "sage.polynomial.factor", success: false, result: {}, error: "Delayed test response" }));
+    }, 5_000);
+    res.on("close", () => clearTimeout(timer));
+  });
+  await new Promise<void>((done) => service.listen(0, "127.0.0.1", done));
+  const address = service.address();
+  if (!address || typeof address === "string") throw new Error("Cancellation test service did not bind.");
   const root = await mkdtemp(join(tmpdir(), "m3d-sage-desktop-"));
   const app = await launchRepoElectron({
     args: ["."],
     cwd: resolve(__dirname, "../.."),
-    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root },
+    env: { ...process.env, MATH3D_E2E_PROFILE_ROOT: root,
+      MATH3D_SAGE_SERVICE_URL: `http://127.0.0.1:${address.port}` },
   });
   try {
     const page = await app.firstWindow();
@@ -268,6 +285,8 @@ test("desktop Sage polynomial factor handles valid input, rejection, and cancell
     await expect(panel).toContainText("Exact reconstruction: verified", { timeout: 60_000 });
     await expect(panel).toContainText("(x - 1) * (x + 1)");
 
+    await panel.getByLabel("SageMath backend").selectOption("docker");
+    await expect(panel).toContainText("Backend available for this operation");
     await coefficients.fill("-2, 0, 1");
     await panel.getByRole("button", { name: "Run", exact: true }).click();
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -279,6 +298,7 @@ test("desktop Sage polynomial factor handles valid input, rejection, and cancell
       .getByText("Exact polynomial factorization").first().locator("../..")).toContainText("cancelled");
   } finally {
     await app.close();
+    await new Promise<void>((done) => service.close(() => done()));
     if (!root.startsWith(resolve(tmpdir()) + sep) || !root.includes("m3d-sage-desktop-"))
       throw new Error("Unsafe Sage desktop test cleanup path");
     await rm(root, { recursive: true, force: true });
