@@ -1,0 +1,4365 @@
+{
+  "schema": "math3d.quantum-stress/v1",
+  "cycles": 40,
+  "installed": false,
+  "autosaveAblation": false,
+  "workbookAutosaveStorage": {
+    "currentBytes": 92409,
+    "journalBytes": 184730
+  },
+  "baseline": {
+    "heapBytes": 31668660,
+    "workingSetKiB": 580144,
+    "roleWorkingSetKiB": {
+      "Browser": 118964,
+      "GPU": 168628,
+      "Utility": 49636,
+      "Tab": 242916
+    },
+    "privateKiB": 394404,
+    "processes": [
+      {
+        "type": "Browser",
+        "pid": 47468,
+        "workingSetKiB": 118964,
+        "privateKiB": 82024
+      },
+      {
+        "type": "GPU",
+        "pid": 596,
+        "workingSetKiB": 168628,
+        "privateKiB": 157916
+      },
+      {
+        "type": "Utility",
+        "pid": 47748,
+        "workingSetKiB": 49636,
+        "privateKiB": 13740
+      },
+      {
+        "type": "Tab",
+        "pid": 44728,
+        "workingSetKiB": 242916,
+        "privateKiB": 140724
+      }
+    ],
+    "canvasCount": 1
+  },
+  "samples": [
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 34166616,
+        "workingSetKiB": 744408,
+        "roleWorkingSetKiB": {
+          "Browser": 125844,
+          "GPU": 229016,
+          "Utility": 49636,
+          "Tab": 339912
+        },
+        "privateKiB": 499112,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 125844,
+            "privateKiB": 88684
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 229016,
+            "privateKiB": 193528
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49636,
+            "privateKiB": 13740
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 339912,
+            "privateKiB": 203160
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 32381060,
+        "workingSetKiB": 701944,
+        "roleWorkingSetKiB": {
+          "Browser": 126228,
+          "GPU": 198196,
+          "Utility": 49636,
+          "Tab": 327884
+        },
+        "privateKiB": 462260,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 126228,
+            "privateKiB": 89080
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 198196,
+            "privateKiB": 159824
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49636,
+            "privateKiB": 13740
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 327884,
+            "privateKiB": 199616
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 33232012,
+        "workingSetKiB": 744960,
+        "roleWorkingSetKiB": {
+          "Browser": 132176,
+          "GPU": 220960,
+          "Utility": 49640,
+          "Tab": 342184
+        },
+        "privateKiB": 495056,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132176,
+            "privateKiB": 93780
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 220960,
+            "privateKiB": 184336
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 342184,
+            "privateKiB": 203196
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 32259976,
+        "workingSetKiB": 719324,
+        "roleWorkingSetKiB": {
+          "Browser": 132220,
+          "GPU": 200848,
+          "Utility": 49640,
+          "Tab": 336616
+        },
+        "privateKiB": 469416,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132220,
+            "privateKiB": 93840
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 200848,
+            "privateKiB": 160304
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 336616,
+            "privateKiB": 201528
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 33467052,
+        "workingSetKiB": 767408,
+        "roleWorkingSetKiB": {
+          "Browser": 133488,
+          "GPU": 237884,
+          "Utility": 49640,
+          "Tab": 346396
+        },
+        "privateKiB": 507484,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 133488,
+            "privateKiB": 94912
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 237884,
+            "privateKiB": 196268
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346396,
+            "privateKiB": 202560
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 32467368,
+        "workingSetKiB": 724536,
+        "roleWorkingSetKiB": {
+          "Browser": 132308,
+          "GPU": 206308,
+          "Utility": 49640,
+          "Tab": 336280
+        },
+        "privateKiB": 470264,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132308,
+            "privateKiB": 93660
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 206308,
+            "privateKiB": 161392
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 336280,
+            "privateKiB": 201468
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 32536288,
+        "workingSetKiB": 724820,
+        "roleWorkingSetKiB": {
+          "Browser": 131228,
+          "GPU": 203800,
+          "Utility": 49640,
+          "Tab": 340152
+        },
+        "privateKiB": 477484,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 131228,
+            "privateKiB": 94396
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 203800,
+            "privateKiB": 163840
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 340152,
+            "privateKiB": 205504
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 31890484,
+        "workingSetKiB": 723360,
+        "roleWorkingSetKiB": {
+          "Browser": 131244,
+          "GPU": 202952,
+          "Utility": 49640,
+          "Tab": 339524
+        },
+        "privateKiB": 475868,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 131244,
+            "privateKiB": 94412
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 202952,
+            "privateKiB": 162840
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 339524,
+            "privateKiB": 204872
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "observed"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 32956196,
+        "workingSetKiB": 771356,
+        "roleWorkingSetKiB": {
+          "Browser": 131928,
+          "GPU": 238860,
+          "Utility": 49640,
+          "Tab": 350928
+        },
+        "privateKiB": 513924,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 131928,
+            "privateKiB": 95276
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 238860,
+            "privateKiB": 197528
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 350928,
+            "privateKiB": 207376
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 30852872,
+        "workingSetKiB": 728972,
+        "roleWorkingSetKiB": {
+          "Browser": 131988,
+          "GPU": 207784,
+          "Utility": 49640,
+          "Tab": 339560
+        },
+        "privateKiB": 477212,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 131988,
+            "privateKiB": 95348
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 207784,
+            "privateKiB": 163316
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13744
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 339560,
+            "privateKiB": 204804
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 32859128,
+        "workingSetKiB": 752328,
+        "roleWorkingSetKiB": {
+          "Browser": 132612,
+          "GPU": 226124,
+          "Utility": 49640,
+          "Tab": 343952
+        },
+        "privateKiB": 505520,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132612,
+            "privateKiB": 96348
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 226124,
+            "privateKiB": 190448
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 343952,
+            "privateKiB": 205044
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 32037036,
+        "workingSetKiB": 724412,
+        "roleWorkingSetKiB": {
+          "Browser": 132688,
+          "GPU": 203880,
+          "Utility": 49640,
+          "Tab": 338204
+        },
+        "privateKiB": 477460,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132688,
+            "privateKiB": 96480
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 203880,
+            "privateKiB": 164344
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 338204,
+            "privateKiB": 202956
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 35086840,
+        "workingSetKiB": 778244,
+        "roleWorkingSetKiB": {
+          "Browser": 132380,
+          "GPU": 241444,
+          "Utility": 49640,
+          "Tab": 354780
+        },
+        "privateKiB": 521976,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132380,
+            "privateKiB": 95804
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 241444,
+            "privateKiB": 201620
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 354780,
+            "privateKiB": 210872
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33316080,
+        "workingSetKiB": 733072,
+        "roleWorkingSetKiB": {
+          "Browser": 132680,
+          "GPU": 208492,
+          "Utility": 49640,
+          "Tab": 342260
+        },
+        "privateKiB": 482984,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 132680,
+            "privateKiB": 96676
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 208492,
+            "privateKiB": 164900
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 342260,
+            "privateKiB": 207728
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 33898792,
+        "workingSetKiB": 754812,
+        "roleWorkingSetKiB": {
+          "Browser": 136592,
+          "GPU": 224340,
+          "Utility": 49640,
+          "Tab": 344240
+        },
+        "privateKiB": 508028,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 136592,
+            "privateKiB": 99672
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 224340,
+            "privateKiB": 188824
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 344240,
+            "privateKiB": 205852
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33248372,
+        "workingSetKiB": 730124,
+        "roleWorkingSetKiB": {
+          "Browser": 136600,
+          "GPU": 204564,
+          "Utility": 49640,
+          "Tab": 339320
+        },
+        "privateKiB": 483428,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 136600,
+            "privateKiB": 99676
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 204564,
+            "privateKiB": 165244
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 339320,
+            "privateKiB": 204828
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 33887844,
+        "workingSetKiB": 781164,
+        "roleWorkingSetKiB": {
+          "Browser": 137100,
+          "GPU": 240428,
+          "Utility": 49640,
+          "Tab": 353996
+        },
+        "privateKiB": 524384,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 137100,
+            "privateKiB": 100196
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 240428,
+            "privateKiB": 200200
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 353996,
+            "privateKiB": 210308
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 32136988,
+        "workingSetKiB": 737988,
+        "roleWorkingSetKiB": {
+          "Browser": 137108,
+          "GPU": 209356,
+          "Utility": 49640,
+          "Tab": 341884
+        },
+        "privateKiB": 487204,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 137108,
+            "privateKiB": 100200
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 209356,
+            "privateKiB": 166012
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 341884,
+            "privateKiB": 207312
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 33910904,
+        "workingSetKiB": 762820,
+        "roleWorkingSetKiB": {
+          "Browser": 142084,
+          "GPU": 225548,
+          "Utility": 49640,
+          "Tab": 345548
+        },
+        "privateKiB": 515496,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 142084,
+            "privateKiB": 104960
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 225548,
+            "privateKiB": 190224
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 345548,
+            "privateKiB": 206632
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33277896,
+        "workingSetKiB": 738176,
+        "roleWorkingSetKiB": {
+          "Browser": 142096,
+          "GPU": 205760,
+          "Utility": 49640,
+          "Tab": 340680
+        },
+        "privateKiB": 491284,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 142096,
+            "privateKiB": 104964
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 205760,
+            "privateKiB": 166776
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 340680,
+            "privateKiB": 205864
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 34307632,
+        "workingSetKiB": 787140,
+        "roleWorkingSetKiB": {
+          "Browser": 141772,
+          "GPU": 242708,
+          "Utility": 49640,
+          "Tab": 353020
+        },
+        "privateKiB": 529604,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 141772,
+            "privateKiB": 104204
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 242708,
+            "privateKiB": 202728
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 353020,
+            "privateKiB": 208992
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33362176,
+        "workingSetKiB": 744244,
+        "roleWorkingSetKiB": {
+          "Browser": 141780,
+          "GPU": 210132,
+          "Utility": 49640,
+          "Tab": 342692
+        },
+        "privateKiB": 492740,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 141780,
+            "privateKiB": 104212
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 210132,
+            "privateKiB": 167080
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49640,
+            "privateKiB": 13680
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 342692,
+            "privateKiB": 207768
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 34768652,
+        "workingSetKiB": 766536,
+        "roleWorkingSetKiB": {
+          "Browser": 142552,
+          "GPU": 224824,
+          "Utility": 49644,
+          "Tab": 349516
+        },
+        "privateKiB": 521204,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 142552,
+            "privateKiB": 105420
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 224824,
+            "privateKiB": 191296
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 349516,
+            "privateKiB": 210804
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33270092,
+        "workingSetKiB": 741744,
+        "roleWorkingSetKiB": {
+          "Browser": 142056,
+          "GPU": 206396,
+          "Utility": 49644,
+          "Tab": 343648
+        },
+        "privateKiB": 494488,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 142056,
+            "privateKiB": 104596
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 206396,
+            "privateKiB": 167556
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 343648,
+            "privateKiB": 208652
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 34348268,
+        "workingSetKiB": 790552,
+        "roleWorkingSetKiB": {
+          "Browser": 143320,
+          "GPU": 242052,
+          "Utility": 49644,
+          "Tab": 355536
+        },
+        "privateKiB": 534640,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 143320,
+            "privateKiB": 106336
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 242052,
+            "privateKiB": 202432
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 355536,
+            "privateKiB": 212188
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33365784,
+        "workingSetKiB": 749300,
+        "roleWorkingSetKiB": {
+          "Browser": 143364,
+          "GPU": 211096,
+          "Utility": 49644,
+          "Tab": 345196
+        },
+        "privateKiB": 498972,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 143364,
+            "privateKiB": 106400
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 211096,
+            "privateKiB": 168076
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 345196,
+            "privateKiB": 210812
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 33930056,
+        "workingSetKiB": 767412,
+        "roleWorkingSetKiB": {
+          "Browser": 143724,
+          "GPU": 227248,
+          "Utility": 49644,
+          "Tab": 346796
+        },
+        "privateKiB": 520988,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 143724,
+            "privateKiB": 106640
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 227248,
+            "privateKiB": 192504
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346796,
+            "privateKiB": 208160
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33273956,
+        "workingSetKiB": 742788,
+        "roleWorkingSetKiB": {
+          "Browser": 143736,
+          "GPU": 207152,
+          "Utility": 49644,
+          "Tab": 342256
+        },
+        "privateKiB": 496416,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 143736,
+            "privateKiB": 106648
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 207152,
+            "privateKiB": 168596
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 342256,
+            "privateKiB": 207488
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 35081552,
+        "workingSetKiB": 792532,
+        "roleWorkingSetKiB": {
+          "Browser": 142800,
+          "GPU": 242836,
+          "Utility": 49644,
+          "Tab": 357252
+        },
+        "privateKiB": 535904,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 142800,
+            "privateKiB": 105376
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 242836,
+            "privateKiB": 203528
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 357252,
+            "privateKiB": 213316
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33337392,
+        "workingSetKiB": 749628,
+        "roleWorkingSetKiB": {
+          "Browser": 143544,
+          "GPU": 211784,
+          "Utility": 49644,
+          "Tab": 344656
+        },
+        "privateKiB": 499120,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 143544,
+            "privateKiB": 106180
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 211784,
+            "privateKiB": 169072
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 344656,
+            "privateKiB": 210184
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 35628056,
+        "workingSetKiB": 770188,
+        "roleWorkingSetKiB": {
+          "Browser": 144772,
+          "GPU": 226652,
+          "Utility": 49644,
+          "Tab": 349120
+        },
+        "privateKiB": 525308,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 144772,
+            "privateKiB": 107552
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 226652,
+            "privateKiB": 193676
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 349120,
+            "privateKiB": 210396
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34472716,
+        "workingSetKiB": 744712,
+        "roleWorkingSetKiB": {
+          "Browser": 144776,
+          "GPU": 206652,
+          "Utility": 49644,
+          "Tab": 343640
+        },
+        "privateKiB": 499728,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 144776,
+            "privateKiB": 107564
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 206652,
+            "privateKiB": 169696
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 343640,
+            "privateKiB": 208784
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 37495280,
+        "workingSetKiB": 798808,
+        "roleWorkingSetKiB": {
+          "Browser": 145364,
+          "GPU": 244124,
+          "Utility": 49644,
+          "Tab": 359676
+        },
+        "privateKiB": 543244,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145364,
+            "privateKiB": 108304
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 244124,
+            "privateKiB": 205112
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 359676,
+            "privateKiB": 216144
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34567232,
+        "workingSetKiB": 754240,
+        "roleWorkingSetKiB": {
+          "Browser": 145368,
+          "GPU": 212892,
+          "Utility": 49644,
+          "Tab": 346336
+        },
+        "privateKiB": 504556,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145368,
+            "privateKiB": 108308
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 212892,
+            "privateKiB": 170520
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346336,
+            "privateKiB": 212044
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 33891784,
+        "workingSetKiB": 773020,
+        "roleWorkingSetKiB": {
+          "Browser": 145668,
+          "GPU": 229028,
+          "Utility": 49644,
+          "Tab": 348680
+        },
+        "privateKiB": 526996,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145668,
+            "privateKiB": 108412
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 229028,
+            "privateKiB": 194932
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 348680,
+            "privateKiB": 209968
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33234476,
+        "workingSetKiB": 748124,
+        "roleWorkingSetKiB": {
+          "Browser": 145672,
+          "GPU": 209100,
+          "Utility": 49644,
+          "Tab": 343708
+        },
+        "privateKiB": 502496,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145672,
+            "privateKiB": 108416
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 209100,
+            "privateKiB": 171108
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 343708,
+            "privateKiB": 209288
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 35469960,
+        "workingSetKiB": 796868,
+        "roleWorkingSetKiB": {
+          "Browser": 145148,
+          "GPU": 245140,
+          "Utility": 49644,
+          "Tab": 356936
+        },
+        "privateKiB": 541144,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145148,
+            "privateKiB": 107892
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 245140,
+            "privateKiB": 206488
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 356936,
+            "privateKiB": 213080
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34491972,
+        "workingSetKiB": 755368,
+        "roleWorkingSetKiB": {
+          "Browser": 145156,
+          "GPU": 214316,
+          "Utility": 49644,
+          "Tab": 346252
+        },
+        "privateKiB": 506524,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145156,
+            "privateKiB": 107904
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 214316,
+            "privateKiB": 172896
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346252,
+            "privateKiB": 212040
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 35035552,
+        "workingSetKiB": 780128,
+        "roleWorkingSetKiB": {
+          "Browser": 146192,
+          "GPU": 231464,
+          "Utility": 49644,
+          "Tab": 352828
+        },
+        "privateKiB": 532264,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 146192,
+            "privateKiB": 108944
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 231464,
+            "privateKiB": 196332
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 352828,
+            "privateKiB": 213304
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34397368,
+        "workingSetKiB": 753532,
+        "roleWorkingSetKiB": {
+          "Browser": 146204,
+          "GPU": 211380,
+          "Utility": 49644,
+          "Tab": 346304
+        },
+        "privateKiB": 506808,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 146204,
+            "privateKiB": 108956
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 211380,
+            "privateKiB": 172504
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346304,
+            "privateKiB": 211664
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 36276036,
+        "workingSetKiB": 800832,
+        "roleWorkingSetKiB": {
+          "Browser": 146428,
+          "GPU": 246808,
+          "Utility": 49644,
+          "Tab": 357952
+        },
+        "privateKiB": 545464,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 146428,
+            "privateKiB": 109256
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 246808,
+            "privateKiB": 208512
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 357952,
+            "privateKiB": 214012
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 33341272,
+        "workingSetKiB": 755392,
+        "roleWorkingSetKiB": {
+          "Browser": 146432,
+          "GPU": 215220,
+          "Utility": 49644,
+          "Tab": 344096
+        },
+        "privateKiB": 506164,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 146432,
+            "privateKiB": 109260
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 215220,
+            "privateKiB": 173624
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 344096,
+            "privateKiB": 209596
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 35107944,
+        "workingSetKiB": 778520,
+        "roleWorkingSetKiB": {
+          "Browser": 146528,
+          "GPU": 230996,
+          "Utility": 49644,
+          "Tab": 351352
+        },
+        "privateKiB": 533308,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 146528,
+            "privateKiB": 109296
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 230996,
+            "privateKiB": 197664
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 351352,
+            "privateKiB": 212664
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34462124,
+        "workingSetKiB": 754100,
+        "roleWorkingSetKiB": {
+          "Browser": 146548,
+          "GPU": 211640,
+          "Utility": 49644,
+          "Tab": 346268
+        },
+        "privateKiB": 509596,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 146548,
+            "privateKiB": 109312
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 211640,
+            "privateKiB": 174848
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346268,
+            "privateKiB": 211752
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 38107336,
+        "workingSetKiB": 805536,
+        "roleWorkingSetKiB": {
+          "Browser": 147208,
+          "GPU": 246904,
+          "Utility": 49644,
+          "Tab": 361780
+        },
+        "privateKiB": 551176,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 147208,
+            "privateKiB": 110248
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 246904,
+            "privateKiB": 208972
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 361780,
+            "privateKiB": 218272
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34929400,
+        "workingSetKiB": 753696,
+        "roleWorkingSetKiB": {
+          "Browser": 147224,
+          "GPU": 210124,
+          "Utility": 49644,
+          "Tab": 346704
+        },
+        "privateKiB": 512500,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 147224,
+            "privateKiB": 110264
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 210124,
+            "privateKiB": 176272
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346704,
+            "privateKiB": 212280
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 35928748,
+        "workingSetKiB": 789888,
+        "roleWorkingSetKiB": {
+          "Browser": 148084,
+          "GPU": 237108,
+          "Utility": 49644,
+          "Tab": 355052
+        },
+        "privateKiB": 536288,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 148084,
+            "privateKiB": 111004
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 237108,
+            "privateKiB": 199932
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 355052,
+            "privateKiB": 211668
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34518112,
+        "workingSetKiB": 761804,
+        "roleWorkingSetKiB": {
+          "Browser": 148092,
+          "GPU": 215852,
+          "Utility": 49644,
+          "Tab": 348216
+        },
+        "privateKiB": 508496,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 148092,
+            "privateKiB": 111012
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 215852,
+            "privateKiB": 174600
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 348216,
+            "privateKiB": 209200
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 36753584,
+        "workingSetKiB": 812424,
+        "roleWorkingSetKiB": {
+          "Browser": 147800,
+          "GPU": 252364,
+          "Utility": 49644,
+          "Tab": 362616
+        },
+        "privateKiB": 548684,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 147800,
+            "privateKiB": 110700
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 252364,
+            "privateKiB": 210156
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 362616,
+            "privateKiB": 214144
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 35768608,
+        "workingSetKiB": 770976,
+        "roleWorkingSetKiB": {
+          "Browser": 147828,
+          "GPU": 221472,
+          "Utility": 49644,
+          "Tab": 352032
+        },
+        "privateKiB": 513628,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 147828,
+            "privateKiB": 110736
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 221472,
+            "privateKiB": 176196
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 352032,
+            "privateKiB": 213012
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 36682688,
+        "workingSetKiB": 794192,
+        "roleWorkingSetKiB": {
+          "Browser": 148280,
+          "GPU": 237468,
+          "Utility": 49644,
+          "Tab": 358800
+        },
+        "privateKiB": 540716,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 148280,
+            "privateKiB": 111064
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 237468,
+            "privateKiB": 200084
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 358800,
+            "privateKiB": 215884
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 35677312,
+        "workingSetKiB": 769060,
+        "roleWorkingSetKiB": {
+          "Browser": 148432,
+          "GPU": 217688,
+          "Utility": 49644,
+          "Tab": 353296
+        },
+        "privateKiB": 515556,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 148432,
+            "privateKiB": 111268
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 217688,
+            "privateKiB": 176436
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 353296,
+            "privateKiB": 214168
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 36368876,
+        "workingSetKiB": 815288,
+        "roleWorkingSetKiB": {
+          "Browser": 149108,
+          "GPU": 253240,
+          "Utility": 49644,
+          "Tab": 363296
+        },
+        "privateKiB": 551416,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 149108,
+            "privateKiB": 111756
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 253240,
+            "privateKiB": 211284
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 363296,
+            "privateKiB": 214692
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34605424,
+        "workingSetKiB": 772464,
+        "roleWorkingSetKiB": {
+          "Browser": 149124,
+          "GPU": 222372,
+          "Utility": 49644,
+          "Tab": 351324
+        },
+        "privateKiB": 514952,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 149124,
+            "privateKiB": 111772
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 222372,
+            "privateKiB": 177588
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 351324,
+            "privateKiB": 211908
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 36864880,
+        "workingSetKiB": 790796,
+        "roleWorkingSetKiB": {
+          "Browser": 144772,
+          "GPU": 238056,
+          "Utility": 49644,
+          "Tab": 358324
+        },
+        "privateKiB": 536812,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 144772,
+            "privateKiB": 107332
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 238056,
+            "privateKiB": 201016
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 358324,
+            "privateKiB": 214780
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 35739516,
+        "workingSetKiB": 765832,
+        "roleWorkingSetKiB": {
+          "Browser": 144784,
+          "GPU": 218536,
+          "Utility": 49644,
+          "Tab": 352868
+        },
+        "privateKiB": 512240,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 144784,
+            "privateKiB": 107336
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 218536,
+            "privateKiB": 177724
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 352868,
+            "privateKiB": 213496
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 38767608,
+        "workingSetKiB": 816912,
+        "roleWorkingSetKiB": {
+          "Browser": 145520,
+          "GPU": 253900,
+          "Utility": 49644,
+          "Tab": 367848
+        },
+        "privateKiB": 554060,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145520,
+            "privateKiB": 108168
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 253900,
+            "privateKiB": 212404
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 367848,
+            "privateKiB": 219804
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 35835836,
+        "workingSetKiB": 767128,
+        "roleWorkingSetKiB": {
+          "Browser": 145532,
+          "GPU": 223000,
+          "Utility": 49644,
+          "Tab": 348952
+        },
+        "privateKiB": 510168,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 145532,
+            "privateKiB": 108176
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 223000,
+            "privateKiB": 178504
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 348952,
+            "privateKiB": 209804
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 35344448,
+        "workingSetKiB": 807688,
+        "roleWorkingSetKiB": {
+          "Browser": 161820,
+          "GPU": 238936,
+          "Utility": 49644,
+          "Tab": 357288
+        },
+        "privateKiB": 554356,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161820,
+            "privateKiB": 124160
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 238936,
+            "privateKiB": 202264
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 357288,
+            "privateKiB": 214248
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 34514896,
+        "workingSetKiB": 783032,
+        "roleWorkingSetKiB": {
+          "Browser": 161824,
+          "GPU": 219200,
+          "Utility": 49644,
+          "Tab": 352364
+        },
+        "privateKiB": 530140,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161824,
+            "privateKiB": 124164
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 219200,
+            "privateKiB": 178924
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 352364,
+            "privateKiB": 213368
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 37915212,
+        "workingSetKiB": 819052,
+        "roleWorkingSetKiB": {
+          "Browser": 161216,
+          "GPU": 248112,
+          "Utility": 49644,
+          "Tab": 360080
+        },
+        "privateKiB": 569860,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161216,
+            "privateKiB": 123552
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 248112,
+            "privateKiB": 213848
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 360080,
+            "privateKiB": 218776
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 35802244,
+        "workingSetKiB": 777996,
+        "roleWorkingSetKiB": {
+          "Browser": 161220,
+          "GPU": 217076,
+          "Utility": 49644,
+          "Tab": 350056
+        },
+        "privateKiB": 532664,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161220,
+            "privateKiB": 123556
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 217076,
+            "privateKiB": 179744
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 350056,
+            "privateKiB": 215680
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 37580292,
+        "workingSetKiB": 799260,
+        "roleWorkingSetKiB": {
+          "Browser": 161704,
+          "GPU": 235076,
+          "Utility": 49644,
+          "Tab": 352836
+        },
+        "privateKiB": 555240,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161704,
+            "privateKiB": 124040
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 235076,
+            "privateKiB": 203552
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 352836,
+            "privateKiB": 213964
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 36937764,
+        "workingSetKiB": 774524,
+        "roleWorkingSetKiB": {
+          "Browser": 161708,
+          "GPU": 215540,
+          "Utility": 49644,
+          "Tab": 347632
+        },
+        "privateKiB": 531384,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161708,
+            "privateKiB": 124044
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 215540,
+            "privateKiB": 180524
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 347632,
+            "privateKiB": 213132
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 37635072,
+        "workingSetKiB": 825608,
+        "roleWorkingSetKiB": {
+          "Browser": 162520,
+          "GPU": 251772,
+          "Utility": 49644,
+          "Tab": 361672
+        },
+        "privateKiB": 572284,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162520,
+            "privateKiB": 125016
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 251772,
+            "privateKiB": 215616
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 361672,
+            "privateKiB": 217968
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 36217232,
+        "workingSetKiB": 775084,
+        "roleWorkingSetKiB": {
+          "Browser": 161220,
+          "GPU": 214360,
+          "Utility": 49644,
+          "Tab": 349860
+        },
+        "privateKiB": 534632,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 161220,
+            "privateKiB": 123560
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 214360,
+            "privateKiB": 182052
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 349860,
+            "privateKiB": 215336
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 37678500,
+        "workingSetKiB": 800992,
+        "roleWorkingSetKiB": {
+          "Browser": 162072,
+          "GPU": 236136,
+          "Utility": 49644,
+          "Tab": 353140
+        },
+        "privateKiB": 557384,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162072,
+            "privateKiB": 124356
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 236136,
+            "privateKiB": 204872
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 353140,
+            "privateKiB": 214472
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 37013144,
+        "workingSetKiB": 776324,
+        "roleWorkingSetKiB": {
+          "Browser": 162088,
+          "GPU": 216520,
+          "Utility": 49644,
+          "Tab": 348072
+        },
+        "privateKiB": 532980,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162088,
+            "privateKiB": 124380
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 216520,
+            "privateKiB": 181260
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 348072,
+            "privateKiB": 213656
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 38065104,
+        "workingSetKiB": 825756,
+        "roleWorkingSetKiB": {
+          "Browser": 162924,
+          "GPU": 252108,
+          "Utility": 49644,
+          "Tab": 361080
+        },
+        "privateKiB": 573016,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162924,
+            "privateKiB": 125288
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 252108,
+            "privateKiB": 216200
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 361080,
+            "privateKiB": 217844
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 37106732,
+        "workingSetKiB": 784172,
+        "roleWorkingSetKiB": {
+          "Browser": 162936,
+          "GPU": 221136,
+          "Utility": 49644,
+          "Tab": 350456
+        },
+        "privateKiB": 537156,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162936,
+            "privateKiB": 125300
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 221136,
+            "privateKiB": 181976
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 350456,
+            "privateKiB": 216196
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 36592828,
+        "workingSetKiB": 801972,
+        "roleWorkingSetKiB": {
+          "Browser": 162496,
+          "GPU": 236948,
+          "Utility": 49644,
+          "Tab": 352884
+        },
+        "privateKiB": 557272,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162496,
+            "privateKiB": 124840
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 236948,
+            "privateKiB": 205976
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 352884,
+            "privateKiB": 212772
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 35773312,
+        "workingSetKiB": 774844,
+        "roleWorkingSetKiB": {
+          "Browser": 162504,
+          "GPU": 216140,
+          "Utility": 49644,
+          "Tab": 346556
+        },
+        "privateKiB": 533344,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162504,
+            "privateKiB": 124848
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 216140,
+            "privateKiB": 182944
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49644,
+            "privateKiB": 13684
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 346556,
+            "privateKiB": 211868
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 38808252,
+        "workingSetKiB": 827732,
+        "roleWorkingSetKiB": {
+          "Browser": 162092,
+          "GPU": 252864,
+          "Utility": 49588,
+          "Tab": 363188
+        },
+        "privateKiB": 575152,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162092,
+            "privateKiB": 124596
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 252864,
+            "privateKiB": 217264
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 363188,
+            "privateKiB": 219680
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 37026984,
+        "workingSetKiB": 784468,
+        "roleWorkingSetKiB": {
+          "Browser": 162112,
+          "GPU": 221764,
+          "Utility": 49588,
+          "Tab": 351004
+        },
+        "privateKiB": 538028,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162112,
+            "privateKiB": 124628
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 221764,
+            "privateKiB": 182976
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 351004,
+            "privateKiB": 216812
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 37577732,
+        "workingSetKiB": 804360,
+        "roleWorkingSetKiB": {
+          "Browser": 162676,
+          "GPU": 237900,
+          "Utility": 49588,
+          "Tab": 354196
+        },
+        "privateKiB": 561696,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162676,
+            "privateKiB": 125172
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 237900,
+            "privateKiB": 207204
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 354196,
+            "privateKiB": 215708
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 36937196,
+        "workingSetKiB": 779316,
+        "roleWorkingSetKiB": {
+          "Browser": 162380,
+          "GPU": 218056,
+          "Utility": 49588,
+          "Tab": 349292
+        },
+        "privateKiB": 537232,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 162380,
+            "privateKiB": 125144
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 218056,
+            "privateKiB": 183540
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 349292,
+            "privateKiB": 214936
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "rice-mele-bands",
+      "opened": {
+        "heapBytes": 36840592,
+        "workingSetKiB": 789540,
+        "roleWorkingSetKiB": {
+          "Browser": 125748,
+          "GPU": 253932,
+          "Utility": 49588,
+          "Tab": 360272
+        },
+        "privateKiB": 537300,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 125748,
+            "privateKiB": 88532
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 253932,
+            "privateKiB": 218492
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 360272,
+            "privateKiB": 216664
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 36215940,
+        "workingSetKiB": 742684,
+        "roleWorkingSetKiB": {
+          "Browser": 125816,
+          "GPU": 217024,
+          "Utility": 49588,
+          "Tab": 350256
+        },
+        "privateKiB": 503460,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 125816,
+            "privateKiB": 88600
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 217024,
+            "privateKiB": 185572
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 350256,
+            "privateKiB": 215676
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    },
+    {
+      "model": "hydrogen-2p",
+      "opened": {
+        "heapBytes": 37688992,
+        "workingSetKiB": 774880,
+        "roleWorkingSetKiB": {
+          "Browser": 130580,
+          "GPU": 238632,
+          "Utility": 49588,
+          "Tab": 356080
+        },
+        "privateKiB": 532648,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 130580,
+            "privateKiB": 93184
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 238632,
+            "privateKiB": 208352
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 356080,
+            "privateKiB": 217500
+          }
+        ],
+        "canvasCount": 3
+      },
+      "closed": {
+        "heapBytes": 37044372,
+        "workingSetKiB": 749788,
+        "roleWorkingSetKiB": {
+          "Browser": 130060,
+          "GPU": 219060,
+          "Utility": 49588,
+          "Tab": 351080
+        },
+        "privateKiB": 507348,
+        "processes": [
+          {
+            "type": "Browser",
+            "pid": 47468,
+            "workingSetKiB": 130060,
+            "privateKiB": 92344
+          },
+          {
+            "type": "GPU",
+            "pid": 596,
+            "workingSetKiB": 219060,
+            "privateKiB": 184848
+          },
+          {
+            "type": "Utility",
+            "pid": 47748,
+            "workingSetKiB": 49588,
+            "privateKiB": 13612
+          },
+          {
+            "type": "Tab",
+            "pid": 44728,
+            "workingSetKiB": 351080,
+            "privateKiB": 216544
+          }
+        ],
+        "canvasCount": 1
+      },
+      "simulatedContextLoss": "not attempted"
+    }
+  ],
+  "final": {
+    "heapBytes": 37044284,
+    "workingSetKiB": 750020,
+    "roleWorkingSetKiB": {
+      "Browser": 130292,
+      "GPU": 219060,
+      "Utility": 49588,
+      "Tab": 351080
+    },
+    "privateKiB": 508184,
+    "processes": [
+      {
+        "type": "Browser",
+        "pid": 47468,
+        "workingSetKiB": 130292,
+        "privateKiB": 93180
+      },
+      {
+        "type": "GPU",
+        "pid": 596,
+        "workingSetKiB": 219060,
+        "privateKiB": 184848
+      },
+      {
+        "type": "Utility",
+        "pid": 47748,
+        "workingSetKiB": 49588,
+        "privateKiB": 13612
+      },
+      {
+        "type": "Tab",
+        "pid": 44728,
+        "workingSetKiB": 351080,
+        "privateKiB": 216544
+      }
+    ],
+    "canvasCount": 1
+  },
+  "contextLoss": "observed",
+  "heapComposition": {
+    "baselineByType": {
+      "synthetic": {
+        "count": 31,
+        "selfBytes": 0
+      },
+      "hidden": {
+        "count": 25405,
+        "selfBytes": 875864
+      },
+      "string": {
+        "count": 55422,
+        "selfBytes": 6675980
+      },
+      "object shape": {
+        "count": 24616,
+        "selfBytes": 1300340
+      },
+      "code": {
+        "count": 143458,
+        "selfBytes": 10334472
+      },
+      "array": {
+        "count": 120820,
+        "selfBytes": 4524328
+      },
+      "number": {
+        "count": 38424,
+        "selfBytes": 460968
+      },
+      "symbol": {
+        "count": 42,
+        "selfBytes": 416
+      },
+      "object": {
+        "count": 166369,
+        "selfBytes": 3487400
+      },
+      "concatenated string": {
+        "count": 107357,
+        "selfBytes": 2147140
+      },
+      "closure": {
+        "count": 23360,
+        "selfBytes": 670800
+      },
+      "native": {
+        "count": 9121,
+        "selfBytes": 45186071
+      },
+      "bigint": {
+        "count": 47,
+        "selfBytes": 480
+      },
+      "regexp": {
+        "count": 79,
+        "selfBytes": 2212
+      },
+      "sliced string": {
+        "count": 2,
+        "selfBytes": 40
+      }
+    },
+    "finalByType": {
+      "synthetic": {
+        "count": 31,
+        "selfBytes": 0
+      },
+      "hidden": {
+        "count": 28542,
+        "selfBytes": 987884
+      },
+      "string": {
+        "count": 57109,
+        "selfBytes": 13199788
+      },
+      "object shape": {
+        "count": 26547,
+        "selfBytes": 1390548
+      },
+      "code": {
+        "count": 130220,
+        "selfBytes": 9548780
+      },
+      "array": {
+        "count": 121925,
+        "selfBytes": 4903408
+      },
+      "number": {
+        "count": 41999,
+        "selfBytes": 503868
+      },
+      "symbol": {
+        "count": 42,
+        "selfBytes": 416
+      },
+      "object": {
+        "count": 172311,
+        "selfBytes": 3866976
+      },
+      "concatenated string": {
+        "count": 105593,
+        "selfBytes": 2111860
+      },
+      "native": {
+        "count": 13536,
+        "selfBytes": 45417519
+      },
+      "closure": {
+        "count": 24836,
+        "selfBytes": 711784
+      },
+      "regexp": {
+        "count": 79,
+        "selfBytes": 2212
+      },
+      "bigint": {
+        "count": 6,
+        "selfBytes": 80
+      },
+      "sliced string": {
+        "count": 2,
+        "selfBytes": 40
+      }
+    },
+    "topConstructorGrowth": [
+      {
+        "name": "array:[other]",
+        "baseline": {
+          "count": 120820,
+          "selfBytes": 4524328
+        },
+        "final": {
+          "count": 121925,
+          "selfBytes": 4903408
+        },
+        "deltaCount": 1105,
+        "deltaSelfBytes": 379080
+      },
+      {
+        "name": "object:[other]",
+        "baseline": {
+          "count": 1106,
+          "selfBytes": 206244
+        },
+        "final": {
+          "count": 1172,
+          "selfBytes": 428200
+        },
+        "deltaCount": 66,
+        "deltaSelfBytes": 221956
+      },
+      {
+        "name": "object:Object",
+        "baseline": {
+          "count": 35708,
+          "selfBytes": 999460
+        },
+        "final": {
+          "count": 39884,
+          "selfBytes": 1121184
+        },
+        "deltaCount": 4176,
+        "deltaSelfBytes": 121724
+      },
+      {
+        "name": "native:[other]",
+        "baseline": {
+          "count": 1427,
+          "selfBytes": 45093887
+        },
+        "final": {
+          "count": 2094,
+          "selfBytes": 45140935
+        },
+        "deltaCount": 667,
+        "deltaSelfBytes": 47048
+      },
+      {
+        "name": "native:DOMRectReadOnly",
+        "baseline": {
+          "count": 10,
+          "selfBytes": 560
+        },
+        "final": {
+          "count": 816,
+          "selfBytes": 45696
+        },
+        "deltaCount": 806,
+        "deltaSelfBytes": 45136
+      },
+      {
+        "name": "native:PerformanceEventTiming",
+        "baseline": {
+          "count": 0,
+          "selfBytes": 0
+        },
+        "final": {
+          "count": 101,
+          "selfBytes": 25048
+        },
+        "deltaCount": 101,
+        "deltaSelfBytes": 25048
+      },
+      {
+        "name": "native:LayoutShift",
+        "baseline": {
+          "count": 2,
+          "selfBytes": 304
+        },
+        "final": {
+          "count": 143,
+          "selfBytes": 21736
+        },
+        "deltaCount": 141,
+        "deltaSelfBytes": 21432
+      },
+      {
+        "name": "object:Array",
+        "baseline": {
+          "count": 119289,
+          "selfBytes": 1908624
+        },
+        "final": {
+          "count": 120621,
+          "selfBytes": 1929936
+        },
+        "deltaCount": 1332,
+        "deltaSelfBytes": 21312
+      },
+      {
+        "name": "native:Text",
+        "baseline": {
+          "count": 248,
+          "selfBytes": 22560
+        },
+        "final": {
+          "count": 444,
+          "selfBytes": 41552
+        },
+        "deltaCount": 196,
+        "deltaSelfBytes": 18992
+      },
+      {
+        "name": "native:LayoutShiftAttribution",
+        "baseline": {
+          "count": 5,
+          "selfBytes": 200
+        },
+        "final": {
+          "count": 408,
+          "selfBytes": 16320
+        },
+        "deltaCount": 403,
+        "deltaSelfBytes": 16120
+      },
+      {
+        "name": "object:FiberNode",
+        "baseline": {
+          "count": 730,
+          "selfBytes": 75920
+        },
+        "final": {
+          "count": 840,
+          "selfBytes": 87360
+        },
+        "deltaCount": 110,
+        "deltaSelfBytes": 11440
+      },
+      {
+        "name": "native:TaskAttributionTiming",
+        "baseline": {
+          "count": 5,
+          "selfBytes": 600
+        },
+        "final": {
+          "count": 86,
+          "selfBytes": 10320
+        },
+        "deltaCount": 81,
+        "deltaSelfBytes": 9720
+      },
+      {
+        "name": "native:PerformanceLongTaskTiming",
+        "baseline": {
+          "count": 5,
+          "selfBytes": 520
+        },
+        "final": {
+          "count": 86,
+          "selfBytes": 8944
+        },
+        "deltaCount": 81,
+        "deltaSelfBytes": 8424
+      },
+      {
+        "name": "native:PerformanceLongAnimationFrameTiming",
+        "baseline": {
+          "count": 5,
+          "selfBytes": 680
+        },
+        "final": {
+          "count": 62,
+          "selfBytes": 8432
+        },
+        "deltaCount": 57,
+        "deltaSelfBytes": 7752
+      },
+      {
+        "name": "native:NodeList",
+        "baseline": {
+          "count": 10,
+          "selfBytes": 848
+        },
+        "final": {
+          "count": 93,
+          "selfBytes": 7992
+        },
+        "deltaCount": 83,
+        "deltaSelfBytes": 7144
+      },
+      {
+        "name": "native:V8EventListener",
+        "baseline": {
+          "count": 208,
+          "selfBytes": 8320
+        },
+        "final": {
+          "count": 350,
+          "selfBytes": 14000
+        },
+        "deltaCount": 142,
+        "deltaSelfBytes": 5680
+      },
+      {
+        "name": "native:EventListener",
+        "baseline": {
+          "count": 300,
+          "selfBytes": 7200
+        },
+        "final": {
+          "count": 459,
+          "selfBytes": 11016
+        },
+        "deltaCount": 159,
+        "deltaSelfBytes": 3816
+      },
+      {
+        "name": "native:CSSStyleDeclaration",
+        "baseline": {
+          "count": 223,
+          "selfBytes": 15864
+        },
+        "final": {
+          "count": 274,
+          "selfBytes": 19536
+        },
+        "deltaCount": 51,
+        "deltaSelfBytes": 3672
+      },
+      {
+        "name": "native:ShadowRoot",
+        "baseline": {
+          "count": 7,
+          "selfBytes": 1288
+        },
+        "final": {
+          "count": 19,
+          "selfBytes": 3496
+        },
+        "deltaCount": 12,
+        "deltaSelfBytes": 2208
+      },
+      {
+        "name": "native:SVGAnimatedLength",
+        "baseline": {
+          "count": 0,
+          "selfBytes": 0
+        },
+        "final": {
+          "count": 23,
+          "selfBytes": 1472
+        },
+        "deltaCount": 23,
+        "deltaSelfBytes": 1472
+      },
+      {
+        "name": "native:Attr",
+        "baseline": {
+          "count": 3,
+          "selfBytes": 288
+        },
+        "final": {
+          "count": 17,
+          "selfBytes": 1632
+        },
+        "deltaCount": 14,
+        "deltaSelfBytes": 1344
+      },
+      {
+        "name": "native:CanvasRenderingContext2D",
+        "baseline": {
+          "count": 0,
+          "selfBytes": 0
+        },
+        "final": {
+          "count": 1,
+          "selfBytes": 1000
+        },
+        "deltaCount": 1,
+        "deltaSelfBytes": 1000
+      },
+      {
+        "name": "object:HTMLDivElement",
+        "baseline": {
+          "count": 102,
+          "selfBytes": 1656
+        },
+        "final": {
+          "count": 146,
+          "selfBytes": 2360
+        },
+        "deltaCount": 44,
+        "deltaSelfBytes": 704
+      },
+      {
+        "name": "object:HTMLElement",
+        "baseline": {
+          "count": 27,
+          "selfBytes": 456
+        },
+        "final": {
+          "count": 66,
+          "selfBytes": 1080
+        },
+        "deltaCount": 39,
+        "deltaSelfBytes": 624
+      },
+      {
+        "name": "native:ArrayBuffer",
+        "baseline": {
+          "count": 7,
+          "selfBytes": 812
+        },
+        "final": {
+          "count": 12,
+          "selfBytes": 1392
+        },
+        "deltaCount": 5,
+        "deltaSelfBytes": 580
+      },
+      {
+        "name": "native:SVGCircleElement",
+        "baseline": {
+          "count": 0,
+          "selfBytes": 0
+        },
+        "final": {
+          "count": 3,
+          "selfBytes": 552
+        },
+        "deltaCount": 3,
+        "deltaSelfBytes": 552
+      },
+      {
+        "name": "native:V8EventHandlerNonNull",
+        "baseline": {
+          "count": 92,
+          "selfBytes": 2944
+        },
+        "final": {
+          "count": 109,
+          "selfBytes": 3488
+        },
+        "deltaCount": 17,
+        "deltaSelfBytes": 544
+      },
+      {
+        "name": "native:Float32Array",
+        "baseline": {
+          "count": 4,
+          "selfBytes": 464
+        },
+        "final": {
+          "count": 8,
+          "selfBytes": 928
+        },
+        "deltaCount": 4,
+        "deltaSelfBytes": 464
+      },
+      {
+        "name": "native:SVGSVGElement",
+        "baseline": {
+          "count": 0,
+          "selfBytes": 0
+        },
+        "final": {
+          "count": 2,
+          "selfBytes": 448
+        },
+        "deltaCount": 2,
+        "deltaSelfBytes": 448
+      },
+      {
+        "name": "native:SVGAnimatedTransformList",
+        "baseline": {
+          "count": 0,
+          "selfBytes": 0
+        },
+        "final": {
+          "count": 7,
+          "selfBytes": 448
+        },
+        "deltaCount": 7,
+        "deltaSelfBytes": 448
+      }
+    ],
+    "trackedConstructors": {
+      "native:WebGL2RenderingContext": {
+        "baseline": 1,
+        "final": 1
+      },
+      "native:WebGLTexture": {
+        "baseline": 5,
+        "final": 5
+      }
+    },
+    "retainers": {
+      "nodeCount": 722778,
+      "edgeCount": 2716417,
+      "totalWebGLContexts": 1,
+      "largeStringCount": 22,
+      "largeStrings": {
+        "totalSelfBytes": 10208510,
+        "groups": [
+          {
+            "prefixSha256": "1101d574df29471bfe3657d65de62ee29778ad710a321682ccd4733976fb043a",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id",
+              "title",
+              "blocks",
+              "id"
+            ],
+            "count": 10,
+            "selfBytes": 4872176
+          },
+          {
+            "prefixSha256": "93460b1f3699a7cc989b7a4e789f48d4610fd0b0c83f79025cb1dce033d9b7d0",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487616
+          },
+          {
+            "prefixSha256": "b0090c81e9d4ff0a6611e35fcd1d8200765dde667c3b6c507b6be1100b3152a8",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487616
+          },
+          {
+            "prefixSha256": "3b8a319b9ec4520219f80c834c08819d27ffefcd1a201be6565373e5dd7e3c9d",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487616
+          },
+          {
+            "prefixSha256": "b01b5eeccca1d824852acf688b1a0837f4a581542d73ff4929f3b24746c5c723",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487568
+          },
+          {
+            "prefixSha256": "e3234e028b4d0d452263776f3f206e0a52b2315e593ed5eaf659eca69a86a1d7",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487568
+          },
+          {
+            "prefixSha256": "1c308aa23999ff4a0394f1bc0a39caf075a00ee65d40d9a8b05e9d3c81ac7b8b",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487568
+          },
+          {
+            "prefixSha256": "8f0dbb871dbe31284835526e17f87045433af1f46808867b1762cb130e2459fa",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487084
+          },
+          {
+            "prefixSha256": "d060363d589cd93cbd4c6f6743bc6201a1214989d3291629b76af32bf88a1ae9",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487084
+          },
+          {
+            "prefixSha256": "291c30eca74def13b48bfce092928eb6508c9e44a0b3c58b05ebaa5bb20ca4d0",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 487080
+          },
+          {
+            "prefixSha256": "87506cf47d70a1f4192474172f50fbccfb0a67a257791eccf711950bb54ec61d",
+            "kind": "json-object",
+            "previewChars": 1024,
+            "fieldKeys": [
+              "version",
+              "format",
+              "extension",
+              "savedAt",
+              "assetMode",
+              "payload",
+              "workbooks",
+              "id",
+              "title",
+              "updatedAt",
+              "stages",
+              "id"
+            ],
+            "count": 1,
+            "selfBytes": 486988
+          },
+          {
+            "prefixSha256": "73c153f48697a0706d0e35c6691b988f2f98b8e6f413dbd91ed0a2561912a83a",
+            "kind": "other",
+            "previewChars": 1024,
+            "fieldKeys": [],
+            "count": 1,
+            "selfBytes": 305336
+          },
+          {
+            "prefixSha256": "44f682559ea046550ad567324540dba9c352600770b4c3b2b9c4388309755f5c",
+            "kind": "other",
+            "previewChars": 1024,
+            "fieldKeys": [],
+            "count": 1,
+            "selfBytes": 157210
+          }
+        ]
+      },
+      "paths": [
+        {
+          "kind": "WebGL2RenderingContext",
+          "selfBytes": 1368,
+          "status": "root path found",
+          "searchedNodes": 26056,
+          "path": [
+            {
+              "node": "synthetic:[redacted]",
+              "edgeType": "shortcut",
+              "edgeName": "[redacted]"
+            },
+            {
+              "node": "hidden:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "global_object"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "property",
+              "edgeName": "[redacted]"
+            },
+            {
+              "node": "native:HTMLDocument",
+              "edgeType": "element",
+              "edgeName": "14"
+            },
+            {
+              "node": "native:InternalNode",
+              "edgeType": "element",
+              "edgeName": "4"
+            },
+            {
+              "node": "native:InternalNode",
+              "edgeType": "element",
+              "edgeName": "431"
+            },
+            {
+              "node": "native:InternalNode",
+              "edgeType": "element",
+              "edgeName": "1"
+            },
+            {
+              "node": "native:[redacted]",
+              "edgeType": "element",
+              "edgeName": "3"
+            },
+            {
+              "node": "native:WebGL2RenderingContext",
+              "edgeType": null,
+              "edgeName": null
+            }
+          ]
+        },
+        {
+          "kind": "large string",
+          "selfBytes": 487616,
+          "status": "root path found",
+          "searchedNodes": 24636,
+          "path": [
+            {
+              "node": "synthetic:[redacted]",
+              "edgeType": "shortcut",
+              "edgeName": "[redacted]"
+            },
+            {
+              "node": "hidden:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "global_object"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "property",
+              "edgeName": "__MATH3D_E2E_MESH_ANALYSIS__"
+            },
+            {
+              "node": "object:Object",
+              "edgeType": "property",
+              "edgeName": "compareGraphAndSurfacePath"
+            },
+            {
+              "node": "closure:compareGraphAndSurfacePath",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "runMeshOperationPreviewRef"
+            },
+            {
+              "node": "object:Object",
+              "edgeType": "property",
+              "edgeName": "current"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "handleSaveWorkbook"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "handleValidateLastMeshOperationResult"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "handleSaveWorkbook"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "handleValidateLastMeshOperationResult"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "workbookBundleJson"
+            },
+            {
+              "node": "string:[string]",
+              "edgeType": null,
+              "edgeName": null
+            }
+          ]
+        },
+        {
+          "kind": "large string",
+          "selfBytes": 487616,
+          "status": "root path found",
+          "searchedNodes": 24636,
+          "path": [
+            {
+              "node": "synthetic:[redacted]",
+              "edgeType": "shortcut",
+              "edgeName": "[redacted]"
+            },
+            {
+              "node": "hidden:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "global_object"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "property",
+              "edgeName": "__MATH3D_E2E_MESH_ANALYSIS__"
+            },
+            {
+              "node": "object:Object",
+              "edgeType": "property",
+              "edgeName": "compareGraphAndSurfacePath"
+            },
+            {
+              "node": "closure:compareGraphAndSurfacePath",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "runMeshOperationPreviewRef"
+            },
+            {
+              "node": "object:Object",
+              "edgeType": "property",
+              "edgeName": "current"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "handleSaveWorkbook"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "handleValidateLastMeshOperationResult"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "workbookBundleJson"
+            },
+            {
+              "node": "string:[string]",
+              "edgeType": null,
+              "edgeName": null
+            }
+          ]
+        },
+        {
+          "kind": "large string",
+          "selfBytes": 487616,
+          "status": "root path found",
+          "searchedNodes": 24634,
+          "path": [
+            {
+              "node": "synthetic:[redacted]",
+              "edgeType": "shortcut",
+              "edgeName": "[redacted]"
+            },
+            {
+              "node": "hidden:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "global_object"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "property",
+              "edgeName": "__MATH3D_E2E_MESH_ANALYSIS__"
+            },
+            {
+              "node": "object:Object",
+              "edgeType": "property",
+              "edgeName": "compareGraphAndSurfacePath"
+            },
+            {
+              "node": "closure:compareGraphAndSurfacePath",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "runMeshOperationPreviewRef"
+            },
+            {
+              "node": "object:Object",
+              "edgeType": "property",
+              "edgeName": "current"
+            },
+            {
+              "node": "closure:[redacted]",
+              "edgeType": "internal",
+              "edgeName": "context"
+            },
+            {
+              "node": "object:[redacted]",
+              "edgeType": "context",
+              "edgeName": "workbookBundleJson"
+            },
+            {
+              "node": "string:[string]",
+              "edgeType": null,
+              "edgeName": null
+            }
+          ]
+        }
+      ]
+    },
+    "method": "V8 heap snapshot node self sizes after forced GC; shallow bytes, not retained-size attribution"
+  }
+}
