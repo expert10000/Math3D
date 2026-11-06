@@ -1576,7 +1576,11 @@ Geometry source whose current revision is its retained checkpoint. It commits
 a new replay-backed source revision and a separate exact saved composition;
 the old comparison still resolves its undeclared checkpoint. The declaration
 is authored metadata, not independent proof of physical alignment. Legacy
-Mesh sources and Geometry history outside the retained checkpoint remain open.
+Mesh sources now use the same bounded source-owner declaration path with their
+binary sidecar preserved. A current Mesh revision beyond the replay checkpoint
+is explicitly marked as a retained pre-declaration snapshot, so the original
+comparison keeps its exact source. Geometry history outside the retained
+checkpoint remains open.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

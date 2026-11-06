@@ -75,7 +75,7 @@ import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { createProjectComparisonNote, inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
-import { declareLegacyGeometryCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
+import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
@@ -2200,10 +2200,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               !parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some(item => item.id === saved.identity.id))
               throw new Error("The open Project differs from the saved copy. Reopen it first.");
             const live = capture();
-            if (canonicalJsonStringify(live) !== canonicalJsonStringify(saved.workspace))
+            const comparable = (workspace: MixedWorkspaceDocument) => canonicalJsonStringify({
+              ...workspace, scientificScenes: workspace.scientificScenes ?? [],
+            });
+            if (comparable(live) !== comparable(saved.workspace))
               throw new Error("Save current document edits before declaring a frame.");
-            const { project: next, comparison: pinned } = declareLegacyGeometryCoordinateFrame(saved, composition, slot, frame);
             const previousResources = await loadProjectResources(saved);
+            const selectedEntry = saved.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
+            const { project: next, comparison: pinned } = selectedEntry?.module === "mesh" ?
+              declareLegacyMeshCoordinateFrame(saved, composition, slot, frame, item => previousResources.bytes(item)) :
+              declareLegacyGeometryCoordinateFrame(saved, composition, slot, frame);
             const resources = captureProjectResources(next, item => previousResources.bytes(item));
             if (projectStateRef.current?.identity.id !== saved.identity.id ||
               canonicalJsonStringify(capture()) !== canonicalJsonStringify(live))
