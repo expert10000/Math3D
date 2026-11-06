@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 const safeName = value => /^[A-Za-z_$][A-Za-z0-9_$ .<>-]{0,79}$/.test(value)
   ? value : "[redacted]";
 
@@ -56,6 +58,22 @@ export function summarizeQuantumHeapRetainers(snapshot) {
   }
   contextTargets.sort((a, b) => b.id - a.id);
   stringTargets.sort((a, b) => b.bytes - a.bytes);
+  const stringGroups = new Map();
+  for (const target of stringTargets) {
+    const value = strings[nodes[target.node * nodeStride + nodeNameAt]];
+    // V8 heap snapshots truncate long string values to a preview. This hash
+    // groups matching previews; it is not a hash of the complete live string.
+    const prefixSha256 = createHash("sha256").update(value).digest("hex");
+    const kind = value.startsWith("{") ? "json-object" : value.startsWith("[") ? "json-array" :
+      value.startsWith("data:") ? "data-url" : "other";
+    const fieldKeys = kind.startsWith("json") ? [...value.matchAll(/"([^"\\]{1,80})"\s*:/g)]
+      .slice(0, 12).map(match => safeName(match[1])) : [];
+    const group = stringGroups.get(prefixSha256) ?? { prefixSha256, kind,
+      previewChars: value.length, fieldKeys, count: 0, selfBytes: 0 };
+    group.count++;
+    group.selfBytes += target.bytes;
+    stringGroups.set(prefixSha256, group);
+  }
   const targets = [...contextTargets.slice(0, 3).map(row => ({ ...row, kind: "WebGL2RenderingContext" })),
     ...stringTargets.slice(0, 3).map(row => ({ ...row, kind: "large string" }))];
   const label = node => {
@@ -82,6 +100,8 @@ export function summarizeQuantumHeapRetainers(snapshot) {
   };
   return { nodeCount, edgeCount, totalWebGLContexts: contextTargets.length,
     largeStringCount: stringTargets.length,
+    largeStrings: { totalSelfBytes: stringTargets.reduce((sum, item) => sum + item.bytes, 0),
+      groups: [...stringGroups.values()].sort((a, b) => b.selfBytes - a.selfBytes).slice(0, 20) },
     paths: targets.map(target => {
       const towardTarget = new Int32Array(nodeCount).fill(-1);
       const viaEdge = new Int32Array(nodeCount).fill(-1);

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { marchingCubesVolume } from "../math/marchingCubes";
 
@@ -1046,7 +1047,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       controls.removeEventListener("end", finishInteractiveRender);
       renderer.domElement.removeEventListener("webglcontextlost", handleContextLost);
       renderer.domElement.removeEventListener("webglcontextrestored", handleContextRestored);
-      controls.dispose();
+      disposeOrbitControls(controls);
       renderer.dispose();
       renderer.domElement.remove();
 

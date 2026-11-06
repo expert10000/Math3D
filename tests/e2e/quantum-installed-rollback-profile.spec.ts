@@ -67,7 +67,7 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
     await expect(page.getByTestId("app-shell")).toBeVisible();
     await page.getByTestId("projects-toggle").click();
     const projects = page.getByTestId("project-explorer-panel");
-    let seedGeometryIds: string[] = [];
+    let seedGraphIds: string[] = [];
     if (phase === "seed") {
       for (const item of scenes) {
         const folder = resolve(__dirname, "..", "fixtures", item.group, item.folder);
@@ -84,35 +84,51 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
       await projects.getByTestId("project-save").click();
       await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
-      seedGeometryIds = saved.workspace.entries.filter((entry: { module: string }) =>
-        entry.module === "geometry").map((entry: { expected: { id: string } }) => entry.expected.id);
-      const qwz = matrix.fixtures.find((row: { id: string }) => row.id === "qwz-curvature");
-      expect(qwz?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+      seedGraphIds = saved.workspace.entries.filter((entry: { module: string }) =>
+        entry.module === "graph2d").map((entry: { expected: { id: string } }) => entry.expected.id);
+      const riceMele = matrix.fixtures.find((row: { id: string }) => row.id === "rice-mele-bands");
+      expect(riceMele?.fingerprint).toMatch(/^[a-f0-9]{64}$/);
       expect(saved.quantumScenes.some((row: { sceneFingerprint: string }) =>
-        row.sceneFingerprint === qwz.fingerprint)).toBe(true);
-      await projects.getByTestId(`quantum-promote-geometry-${qwz.fingerprint}`).click();
-      await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("geometry copy staged");
+        row.sceneFingerprint === riceMele.fingerprint)).toBe(true);
+      await projects.getByTestId(`quantum-promote-graph2d-${riceMele.fingerprint}`).click();
+      await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("graph2d copy staged");
       await projects.getByTestId("project-save").click();
       await expect.poll(() => page.evaluate(() =>
         JSON.parse(localStorage.getItem("math3d.project.v1") || "null")?.workspace?.relations?.some(
-          (relation: { operation: string }) => relation.operation === "quantum.promote-geometry")),
+          (relation: { operation: string }) => relation.operation === "quantum.promote-graph2d")),
       { timeout: 60_000 }).toBe(true);
       await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     }
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1") || "null"));
     expect(project?.quantumScenes).toHaveLength(scenes.length);
     const promotion = project.workspace.relations.find((relation: { operation: string }) =>
-      relation.operation === "quantum.promote-geometry");
+      relation.operation === "quantum.promote-graph2d");
     expect(promotion).toBeTruthy();
     const promoted = project.workspace.entries.find((entry: { module: string; expected: { id: string } }) =>
-      entry.module === "geometry" && (phase === "seed" ? !seedGeometryIds.includes(entry.expected.id) :
-        entry.expected.id === process.env.MATH3D_ROLLBACK_PROMOTED_GEOMETRY_ID));
-    expect(promoted?.checkpoint?.format).toBe("math3d.geometry-document");
+      entry.module === "graph2d" && (phase === "seed" ? !seedGraphIds.includes(entry.expected.id) :
+        entry.expected.id === process.env.MATH3D_ROLLBACK_PROMOTED_GRAPH_ID));
+    expect(promoted?.checkpoint?.format).toBe("math3d.graph2d-document");
     if (phase === "verify") {
       await projects.getByTestId(`project-open-saved-${project.identity.id}`).click();
+      await expect(projects.getByTestId("project-message")).toContainText(/Opened supported project|preview support/);
+      if ((await projects.getByTestId("project-message").textContent())?.includes("preview support")) {
+        const previewReasons = (await page.getByTestId("project-import-preview").locator("div").allTextContents())
+          .map(value => value.trim()).filter(value => value.includes("preview support") || value.includes("missing or unverified"));
+        if (process.env.MATH3D_ROLLBACK_PROFILE_RESULT_PATH) {
+          await writeFile(resolve(process.env.MATH3D_ROLLBACK_PROFILE_RESULT_PATH), JSON.stringify({
+            schema: "math3d/installed-rollback-profile-phase/v1", phase, version: "1.7.0",
+            quantumProjectId: project.identity.id, promotedGraphId: promoted.expected.id,
+            geometryCount: project.workspace.entries.filter((entry: { module: string }) => entry.module === "geometry").length,
+            graphCount: project.workspace.entries.filter((entry: { module: string }) => entry.module === "graph2d").length,
+            constructionCount: project.workspace.constructions.length,
+            status: "preview-only", previewReasons,
+          }, null, 2) + "\n");
+        }
+        throw new Error(`Rolled-back graph-promoted Project is preview-only: ${previewReasons.join(" | ")}`);
+      }
       await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
       await projects.getByTestId(`project-open-${promoted.expected.id}`).click();
-      await expect(page.getByTestId("workspace-nav-geometry")).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
       if (!await projects.isVisible()) await page.getByTestId("projects-toggle").click();
     }
     const sceneChecks: { id: string; fingerprint: string; reopenedAfterRollback: boolean }[] = [];
@@ -136,8 +152,8 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
       await writeFile(resolve(process.env.MATH3D_ROLLBACK_PROFILE_RESULT_PATH), JSON.stringify({
         schema: "math3d/installed-rollback-profile-phase/v1", phase, version: "1.7.0",
         projectTitle, savedProjectVisible: true, commandPreviewOverlaysOff: true,
-        quantumProjectId: project.identity.id, promotedGeometryId: promoted.expected.id,
-        promotedGeometryReopenedAfterRollback: phase === "verify", sceneChecks,
+        quantumProjectId: project.identity.id, promotedGraphId: promoted.expected.id,
+        promotedGraphReopenedAfterRollback: phase === "verify", sceneChecks,
       }, null, 2) + "\n");
     }
   } finally { await app.close(); }

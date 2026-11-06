@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { configureOrbitControlsForTouch, installViewerTouchGestures } from "../utils/viewerTouchGestures";
 import AxisGizmo from "./AxisGizmo";
 import { applyCameraOrientation, CAMERA_ORIENTATION_LABEL, orbitCameraAroundTarget, type CameraOrientation } from "./cameraOrientation";
@@ -467,7 +468,7 @@ export const CurveViewer: React.FC<CurveViewerProps> = ({
       if (cameraRef.current === camera) cameraRef.current = null;
       if (controlsRef.current === controls) controlsRef.current = null;
       fitSceneRef.current = null;
-      controls.dispose();
+      disposeOrbitControls(controls);
       disposeSceneObjects(scene);
       renderer.dispose();
       renderer.forceContextLoss();

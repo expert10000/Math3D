@@ -138,8 +138,8 @@ function Invoke-ProfilePhase([string]$phase, [string]$path) {
   $env:MATH3D_ROLLBACK_PROFILE_ROOT = $profile
   $env:MATH3D_ROLLBACK_PROFILE_PHASE = $phase
   $env:MATH3D_ROLLBACK_PROFILE_RESULT_PATH = $path
-  $env:MATH3D_ROLLBACK_PROMOTED_GEOMETRY_ID = if ($phase -eq 'verify') {
-    $evidence.profileSeed.promotedGeometryId
+  $env:MATH3D_ROLLBACK_PROMOTED_GRAPH_ID = if ($phase -eq 'verify') {
+    $evidence.profileSeed.promotedGraphId
   } else { '' }
   Push-Location $repo
   try {
@@ -183,9 +183,9 @@ try {
   $evidence.checks.rollbackInstall = 'passed'
   $evidence.profileVerify = Invoke-ProfilePhase 'verify' (Join-Path $root 'profile-verify.json')
   if ($evidence.profileVerify.quantumProjectId -ne $evidence.profileSeed.quantumProjectId -or
-      $evidence.profileVerify.promotedGeometryId -ne $evidence.profileSeed.promotedGeometryId -or
-      -not $evidence.profileVerify.promotedGeometryReopenedAfterRollback) {
-    throw 'Installed rollback changed the saved Project or promoted geometry identity'
+      $evidence.profileVerify.promotedGraphId -ne $evidence.profileSeed.promotedGraphId -or
+      -not $evidence.profileVerify.promotedGraphReopenedAfterRollback) {
+    throw 'Installed rollback changed the saved Project or promoted Graph identity'
   }
   $evidence.checks.rollbackProfileRetained = 'passed'
   $evidence.rollbackScenes = Invoke-Phase 'rolled-back' (Join-Path $root 'rollback-scenes.json')
@@ -194,6 +194,10 @@ try {
 } catch {
   $evidence.status = 'failed'
   $evidence.failure = $_.Exception.Message
+  $verifyPath = Join-Path $root 'profile-verify.json'
+  if (Test-Path -LiteralPath $verifyPath -PathType Leaf) {
+    $evidence.profileVerify = Get-Content -LiteralPath $verifyPath -Raw | ConvertFrom-Json
+  }
   throw
 } finally {
   New-Item -ItemType Directory -Path (Split-Path -Parent $EvidencePath) -Force | Out-Null
