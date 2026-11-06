@@ -174,7 +174,7 @@ export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "sha
   if (a!.param && b!.param && compatibleCompositionParameterChart(members) && a!.param.unit === b!.param.unit &&
     !!a!.param.x && a!.param.x === b!.param.x && !!a!.param.y && a!.param.y === b!.param.y)
     return "shared-surface-axes";
-  if (!a!.param && !b!.param && a!.coordinates.status === "declared" && b!.coordinates.status === "declared" &&
+  if (a!.coordinates.status === "declared" && b!.coordinates.status === "declared" &&
     a!.coordinates.value && b!.coordinates.value && sameProjectCoordinateFrame(a!.coordinates.value, b!.coordinates.value))
     return "declared-3d-frame";
   return null;
@@ -207,6 +207,7 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
       paramResolution={48} materialOpacity={members[0]!.param.opacity} inspectEnabled
       isCameraLeader={!!onCameraSync} onCameraSync={onCameraSync} cameraOverride={cameraOverride} cameraOverrideToken={cameraOverrideToken}
       paramProbeUV={linkedUV} paramProbeToken={linkedToken}
+      overlayPointSets={coordinateProbe ? [{ points: [coordinateProbe.point], color: 0xffbd2e, size: 0.2, opacity: 1 }] : null}
       captureToken={captureToken} onCaptureThumbnail={onCaptureThumbnail}
       captureSize="report"
       onInspectPick={hit => onPick({ memberId: members[0]!.id,
@@ -464,7 +465,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
             if (ok) { setObservationBody(""); setPick(null); setMessage("Coordinate observation saved with both exact source generations."); }
             else setMessage("Coordinate observation could not be saved; recheck both sources.");
           }).finally(() => setObservationBusy(false)); }}>Save coordinate observation</button>
-      <small style={{ display: "block" }}>Pick a Mesh or Geometry surface first. The Note records its coordinate and declared frame, not a matching element or measured value in the other source.</small>
+      <small style={{ display: "block" }}>Pick a declared-frame Mesh, Geometry, or Surface first. The Note records its coordinate and frame, not a matching element or measured value in the other source.</small>
       {(project.notes ?? []).filter(note => note.anchor?.kind === "comparison" && note.anchor.compositionId === saved.id).map(note => {
         const anchor = note.anchor!;
         if (anchor.kind !== "comparison") return null;
@@ -492,8 +493,8 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         displayedProbe ? <p data-testid="project-composition-probe-status">{coordinateProbe ? "Linked" : "Saved"} coordinate from {displayedProbe.source.slot === 0 ? "A" : "B"} to {displayedProbe.target.slot === 0 ? "A" : "B"}:
           {` (${displayedProbe.point.x.toPrecision(5)}, ${displayedProbe.point.y.toPrecision(5)}, ${displayedProbe.point.z.toPrecision(5)}) ${displayedProbe.unit}`}
           {` in ${displayedProbe.frame}.`} Source: {displayedProbe.source.id} r{displayedProbe.source.revision} · {displayedProbe.source.hash}.
-          Mesh and Geometry element picks remain source-local; the other pane shows a coordinate marker only.</p> :
-        <p data-testid="project-composition-probe-status">Linked coordinate unavailable until a Mesh or Geometry is picked in two visible sources with matching declared frames, axes, handedness, and units. Element picks remain source-local.</p>)}
+          Element picks remain source-local; the other pane shows a coordinate marker only.</p> :
+        <p data-testid="project-composition-probe-status">Linked coordinate unavailable until a Mesh, Geometry, or Surface is picked in two visible sources with matching declared frames, axes, handedness, and units. Element picks remain source-local.</p>)}
       {message && <p role="status">{message}</p>}
     </footer>
   </div>, document.body);

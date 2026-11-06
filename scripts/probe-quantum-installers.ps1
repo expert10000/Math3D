@@ -5,12 +5,14 @@ param(
   [switch]$Math3DOnly,
   [switch]$TheoryLabOnly,
   [switch]$CaptureCrashDump,
+  [switch]$FullCrashDump,
   [string]$ExpectedBuildRunId = '',
   [string]$ExpectedMath3DCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
 if ($Math3DOnly -and $TheoryLabOnly) { throw 'Choose only one single-app probe scope' }
+if ($FullCrashDump -and -not $CaptureCrashDump) { throw 'FullCrashDump requires CaptureCrashDump' }
 $repo = Split-Path -Parent $PSScriptRoot
 $temporaryBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) { $InstallRoot = Join-Path $temporaryBase 'qi40-installer-probe' }
@@ -69,7 +71,7 @@ function Get-SanitizedDumpStack([string]$dump) {
   $arguments = "-z `"$dump`" -c `".exr -1; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; q`""
   $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-  if (-not $process.WaitForExit(90000)) {
+  if (-not $process.WaitForExit(180000)) {
     try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
     return [ordered]@{ status = 'cdb timeout'; frames = @() }
   }
@@ -189,10 +191,10 @@ try {
       New-Item -Path $key -Force | Out-Null
       $werKeysCreated += $key
       New-ItemProperty -Path $key -Name DumpFolder -PropertyType ExpandString -Value $dumpDir -Force | Out-Null
-      New-ItemProperty -Path $key -Name DumpType -PropertyType DWord -Value 1 -Force | Out-Null
+      New-ItemProperty -Path $key -Name DumpType -PropertyType DWord -Value $(if ($FullCrashDump) { 2 } else { 1 }) -Force | Out-Null
       New-ItemProperty -Path $key -Name DumpCount -PropertyType DWord -Value 2 -Force | Out-Null
     }
-    $evidence.crashDump = [ordered]@{ configured = $true; dumpType = 'mini';
+    $evidence.crashDump = [ordered]@{ configured = $true; dumpType = $(if ($FullCrashDump) { 'full' } else { 'mini' });
       configuredFor = @($targetInstallers | ForEach-Object { [IO.Path]::GetFileName($_) }); files = @() }
   }
   $mathInstall = Join-Path $root 'Math3D'
@@ -237,7 +239,7 @@ try {
   if ($werKeysCreated.Count -gt 0) {
     try {
       if ($evidence.status -eq 'failed') {
-        $deadline = (Get-Date).AddSeconds(20)
+        $deadline = (Get-Date).AddSeconds($(if ($FullCrashDump) { 90 } else { 20 }))
         do {
           $dumpFiles = @(Get-ChildItem -LiteralPath $dumpDir -Filter '*.dmp' -File -ErrorAction SilentlyContinue)
           if ($dumpFiles.Count -eq 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }

@@ -38,12 +38,16 @@ export type ProjectCoordinateFrameRead = Readonly<{ status: "missing" | "invalid
 export const readProjectCoordinateFrame = (document: KernelWorkspaceDocument): ProjectCoordinateFrameRead => {
   const marker = document.format === "math3d.mesh-document" ?
     (record(document.source.origin) ? document.source.origin.math3dCoordinateFrame : undefined) :
-    document.format === "math3d.geometry-document" ? document.source.extensions.math3dCoordinateFrame : undefined;
+    document.format === "math3d.geometry-document" ? document.source.extensions.math3dCoordinateFrame :
+    document.format === "math3d.surface-document" && record(document.source.orientation) ?
+      document.source.orientation.math3dCoordinateFrame : undefined;
   if (marker === undefined) return { status: "missing" };
   if (!record(marker) || !exact(marker, ["format", "frame", "unit", "axes", "handedness"]) ||
     marker.format !== "math3d.coordinate-frame/v1" || !label(marker.frame, 80) || !label(marker.unit, 40) ||
     !Array.isArray(marker.axes) || marker.axes.length !== 3 || !marker.axes.every(axis => label(axis, 32)) ||
     new Set(marker.axes).size !== 3 || !["right", "left"].includes(String(marker.handedness))) return { status: "invalid" };
+  if (document.format === "math3d.surface-document" && marker.unit !== (document.source.units as { length: string }).length)
+    return { status: "invalid" };
   return { status: "declared", value: marker as ProjectCoordinateFrame };
 };
 export const sameProjectCoordinateFrame = (a: ProjectCoordinateFrame, b: ProjectCoordinateFrame): boolean =>
