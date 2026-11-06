@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { _electron as electron } from "playwright";
 
 const requestedCycles = process.argv[3] === undefined ? 8 : Number(process.argv[3]);
 if (!Number.isInteger(requestedCycles) || requestedCycles < 4 || requestedCycles > 120)
   throw new Error("Choose 4 to 120 quantum scene stress cycles.");
 const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-stress-"));
-const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile };
+const installedExe = process.env.MATH3D_INSTALLED_STRESS_EXE
+  ? resolve(process.env.MATH3D_INSTALLED_STRESS_EXE) : null;
+if (installedExe) await access(installedExe);
+const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile,
+  ...(installedExe ? { MATH3D_E2E: "1", MATH3D_E2E_USER_DATA_DIR: join(profile, "user-data") } : {}) };
 delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try {
-  app = await electron.launch({ args: ["."], cwd: resolve("."), env });
+  app = await electron.launch(installedExe
+    ? { executablePath: installedExe, args: [`--user-data-dir=${join(profile, "user-data")}`],
+      cwd: dirname(installedExe), env }
+    : { args: ["."], cwd: resolve("."), env });
   const page = await app.firstWindow();
   await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
   const cdp = await page.context().newCDPSession(page);
@@ -23,8 +30,14 @@ try {
     const processes = metrics.map(item => ({ type: item.type, pid: item.pid,
       workingSetKiB: Number(item.memory?.workingSetSize ?? 0),
       privateKiB: item.memory?.privateBytes === undefined ? null : Number(item.memory.privateBytes) }));
+    const roleWorkingSetKiB = {};
+    for (const item of processes) {
+      const role = String(item.type ?? "unknown");
+      roleWorkingSetKiB[role] = (roleWorkingSetKiB[role] ?? 0) + item.workingSetKiB;
+    }
     return { heapBytes: heap.usedSize,
       workingSetKiB: processes.reduce((sum, item) => sum + item.workingSetKiB, 0),
+      roleWorkingSetKiB,
       privateKiB: processes.every(item => item.privateKiB !== null) ?
         processes.reduce((sum, item) => sum + item.privateKiB, 0) : null,
       processes,
@@ -69,6 +82,7 @@ try {
   }
   const final = await snapshot();
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
+    installed: Boolean(installedExe),
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss };
   const bytes = JSON.stringify(result, null, 2) + "\n";
   if (process.argv[2]) await writeFile(resolve(process.argv[2]), bytes);

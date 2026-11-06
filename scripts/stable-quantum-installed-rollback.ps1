@@ -44,9 +44,10 @@ $evidence = [ordered]@{
     installerSha256 = $candidateSha; manifestSha256 = (Get-FileHash -LiteralPath $candidateManifestFile -Algorithm SHA256).Hash.ToLowerInvariant() }
   rollback = [ordered]@{ commit = $rollbackManifest.math3d.commit; version = $rollbackManifest.math3d.version;
     installerSha256 = $rollbackSha; manifestSha256 = (Get-FileHash -LiteralPath $rollbackManifestFile -Algorithm SHA256).Hash.ToLowerInvariant() }
-  checks = [ordered]@{ exactBytes = 'pending'; candidateInstall = 'pending'; candidateQec = 'pending';
+  checks = [ordered]@{ exactBytes = 'pending'; candidateInstall = 'pending'; candidateProfileSeed = 'pending';
+    candidateQec = 'pending';
     candidateUninstall = 'pending';
-    rollbackInstall = 'pending'; v1v2Readers = 'pending' }
+    rollbackInstall = 'pending'; rollbackProfileRetained = 'pending'; v1v2Readers = 'pending' }
   failure = $null
 }
 
@@ -132,6 +133,21 @@ function Invoke-Phase([string]$phase, [string]$path) {
   return (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json)
 }
 
+function Invoke-ProfilePhase([string]$phase, [string]$path) {
+  $env:MATH3D_E2E_INSTALLED_EXE = $executable
+  $env:MATH3D_ROLLBACK_PROFILE_ROOT = $profile
+  $env:MATH3D_ROLLBACK_PROFILE_PHASE = $phase
+  $env:MATH3D_ROLLBACK_PROFILE_RESULT_PATH = $path
+  Push-Location $repo
+  try {
+    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test tests/e2e/quantum-installed-rollback-profile.spec.ts --reporter=list | Out-Host
+    $result = $LASTEXITCODE
+  } finally { Pop-Location }
+  if ($result -ne 0) { throw "Installed rollback profile $phase failed (exit $result)" }
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Installed rollback profile $phase passed without evidence" }
+  return (Get-Content -LiteralPath $path -Raw | ConvertFrom-Json)
+}
+
 try {
   if ($candidateManifest.schema -ne 'math3d/two-app-candidate/v1' -or
       $rollbackManifest.schema -ne 'math3d/two-app-candidate/v1' -or
@@ -150,6 +166,8 @@ try {
   Invoke-Installer $candidate 'QEC candidate'
   if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Candidate Math3D executable missing' }
   $evidence.checks.candidateInstall = 'passed'
+  $evidence.profileSeed = Invoke-ProfilePhase 'seed' (Join-Path $root 'profile-seed.json')
+  $evidence.checks.candidateProfileSeed = 'passed'
   $evidence.candidateScene = Invoke-Phase 'candidate' (Join-Path $root 'candidate-scene.json')
   $evidence.checks.candidateQec = 'passed'
 
@@ -160,6 +178,8 @@ try {
   Invoke-Installer $rollback 'Pre-QEC rollback'
   if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Rolled-back Math3D executable missing' }
   $evidence.checks.rollbackInstall = 'passed'
+  $evidence.profileVerify = Invoke-ProfilePhase 'verify' (Join-Path $root 'profile-verify.json')
+  $evidence.checks.rollbackProfileRetained = 'passed'
   $evidence.rollbackScenes = Invoke-Phase 'rolled-back' (Join-Path $root 'rollback-scenes.json')
   $evidence.checks.v1v2Readers = 'passed'
   $evidence.status = 'passed'

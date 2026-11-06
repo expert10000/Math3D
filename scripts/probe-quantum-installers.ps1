@@ -50,8 +50,15 @@ function Get-ApplicationErrors([string]$installerName, [datetime]$startedAt) {
       $_.Properties[0].Value -eq $installerName } | Select-Object -First 3 | ForEach-Object { [ordered]@{
       timeUtc = $_.TimeCreated.ToUniversalTime().ToString('o')
       faultingApplication = $_.Properties[0].Value
+      applicationVersion = $_.Properties[1].Value
       faultingModule = $_.Properties[3].Value
+      moduleVersion = $_.Properties[4].Value
       exceptionCode = $_.Properties[6].Value
+      faultOffset = if ($_.Properties.Count -gt 7) { $_.Properties[7].Value } else { $null }
+      modulePathName = if ($_.Properties.Count -gt 11) {
+        [IO.Path]::GetFileName([string]$_.Properties[11].Value)
+      } else { $null }
+      eventRecordId = $_.RecordId
     } })
 }
 
