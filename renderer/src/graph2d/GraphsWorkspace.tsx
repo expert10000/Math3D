@@ -282,6 +282,7 @@ type Props = {
   onPromoteVectorField3DManifoldPatch?: (patch: import("@math3d/core").LocalManifoldPatch) => void;
   onPromoteVectorField3DManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
   onPromoteVectorField3DExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
+  onPromoteVectorField3DManifoldAtlas?: (study: import("@math3d/core").ManifoldAtlasStudy) => void;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -293,6 +294,8 @@ type Props = {
   onSaveVectorField3DTemporalFtLeField?: (study: import("@math3d/core").TemporalLyapunovFieldStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalSurfaceEvents?: (study: import("@math3d/core").TemporalSurfaceEventStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalSurfaceLinkage?: (study: import("@math3d/core").TemporalSurfaceLinkageStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
@@ -341,9 +344,11 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DTemporalSpectrum,
   onSaveVectorField3DTemporalFtLeField,
   onSaveVectorField3DTemporalSurfaceEvents,
+  onSaveVectorField3DTemporalSurfaceLinkage,
   onSaveVectorField3DTemporalFtleProfile,
   onPromoteVectorField3DManifoldContinuation,
   onPromoteVectorField3DExtendedManifold,
+  onPromoteVectorField3DManifoldAtlas,
   onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onSaveVectorField3DTensorGlyphs,
@@ -4402,12 +4407,14 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onPromoteManifoldPatch={onPromoteVectorField3DManifoldPatch}
           onPromoteManifoldContinuation={onPromoteVectorField3DManifoldContinuation}
           onPromoteExtendedManifold={onPromoteVectorField3DExtendedManifold}
+          onPromoteManifoldAtlas={onPromoteVectorField3DManifoldAtlas}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
           onSaveTemporalSpectrum={onSaveVectorField3DTemporalSpectrum}
           onSaveTemporalFtLeField={onSaveVectorField3DTemporalFtLeField}
           onSaveTemporalSurfaceEvents={onSaveVectorField3DTemporalSurfaceEvents}
+          onSaveTemporalSurfaceLinkage={onSaveVectorField3DTemporalSurfaceLinkage}
           onSaveTemporalFtleProfile={onSaveVectorField3DTemporalFtleProfile}
           onOpenTemporalFtleProfile={result => void openTemporalFtleProfile(result)}
           onOpenTemporalSpectrum={result => void openTemporalSpectrum(result)}

@@ -3,16 +3,18 @@ import { computeVectorField3DPoincareReturnMap, computeVectorField3DLyapunov,
   computeVectorField3DLocalManifoldPatch, projectPoincareReturnStatus,
   computeVectorField3DManifoldContinuation, projectManifoldContinuationStatus,
   computeVectorField3DExtendedManifold, projectExtendedManifoldStatus,
+  computeVectorField3DManifoldAtlas, projectManifoldAtlasStatus,
+  structuralHash,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
   projectVectorField3DTopologyStatus, type AnalysisResultEnvelope,
   type LocalManifoldPatch, type ManifoldContinuationStudy,
-  type ExtendedManifoldStudy,
+  type ExtendedManifoldStudy, type ManifoldAtlasStudy,
   type LyapunovStudy, type Math3DProject,
   type PoincareReturnStudy, type VectorField3DDocument } from "@math3d/core";
 
 export function VectorField3DAdvancedTopologyPanel({ document, project,
   onSaveReturn, onOpenReturn, onSaveLyapunov, onPromoteManifold,
-  onPromoteContinuation, onPromoteExtended }: {
+  onPromoteContinuation, onPromoteExtended, onPromoteAtlas }: {
   document: VectorField3DDocument; project?: Math3DProject | null;
   onSaveReturn?: (study: PoincareReturnStudy) => void;
   onOpenReturn?: (result: AnalysisResultEnvelope) => void;
@@ -20,6 +22,7 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   onPromoteManifold?: (patch: LocalManifoldPatch) => void;
   onPromoteContinuation?: (study: ManifoldContinuationStudy) => void;
   onPromoteExtended?: (study: ExtendedManifoldStudy) => void;
+  onPromoteAtlas?: (study: ManifoldAtlasStudy) => void;
 }) {
   const axes = document.source.axes;
   const center = axes.map(axis => (axis.min + axis.max) / 2);
@@ -33,10 +36,15 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   const [lyapunov, setLyapunov] = useState<LyapunovStudy | null>(null);
   const [constructionId, setConstructionId] = useState("");
   const [branch, setBranch] = useState<"stable" | "unstable">("stable");
+  const [seedCount, setSeedCount] = useState(8);
+  const [ringCount, setRingCount] = useState(5);
+  const [patchTime, setPatchTime] = useState(1);
+  const [solverTolerance, setSolverTolerance] = useState(1e-5);
   const [manifold, setManifold] = useState<LocalManifoldPatch | null>(null);
   const [savedPatchId, setSavedPatchId] = useState("");
   const [continuation, setContinuation] = useState<ManifoldContinuationStudy | null>(null);
   const [extended, setExtended] = useState<ExtendedManifoldStudy | null>(null);
+  const [atlas, setAtlas] = useState<ManifoldAtlasStudy | null>(null);
   const [extraTime, setExtraTime] = useState(.5);
   const [message, setMessage] = useState("");
   const run = (task: () => void) => {
@@ -50,7 +58,7 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   const saved = project?.workspace.results.filter(result =>
     ["vector3d.poincare-return-map", "vector3d.lyapunov-finite-time",
       "vector3d.local-manifold-patch", "vector3d.manifold-continuation",
-      "vector3d.extended-manifold"]
+      "vector3d.extended-manifold", "vector3d.manifold-atlas"]
       .includes(result.provenance.operation.type) &&
     result.provenance.source.documentId === document.identity.id) ?? [];
   const constructions = document.workspace?.equilibriumConstructions ?? [];
@@ -120,12 +128,25 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
         setBranch(event.target.value as "stable" | "unstable")}>
         <option value="stable">Stable</option><option value="unstable">Unstable</option>
       </select></label>
+      <label>Patch seeds (6–12) <input type="number" min="6" max="12"
+        step="1" value={seedCount} onChange={event =>
+          setSeedCount(Number(event.target.value))} /></label>
+      <label>Patch rings (3–8) <input type="number" min="3" max="8"
+        step="1" value={ringCount} onChange={event =>
+          setRingCount(Number(event.target.value))} /></label>
+      <label>Patch time ({document.source.timeUnit}) <input type="number"
+        min="0.1" max="4" step="0.25" value={patchTime} onChange={event =>
+          setPatchTime(Number(event.target.value))} /></label>
+      <label>Patch solver tolerance <input type="number" min="1e-9"
+        max="1e-4" step="any" value={solverTolerance} onChange={event =>
+          setSolverTolerance(Number(event.target.value))} /></label>
       <button type="button" disabled={!constructionId} onClick={() => run(() =>
         setManifold(computeVectorField3DLocalManifoldPatch(document, {
-          constructionId, branch, offsetFraction: .01, seedCount: 8,
-          rings: 5, timeLimit: 1, solver: { method: "rk4-step-doubling",
-            maxSteps: 256, absoluteTolerance: 1e-5,
-            relativeTolerance: 1e-5 } })))}>
+          constructionId, branch, offsetFraction: .01, seedCount,
+          rings: ringCount, timeLimit: patchTime,
+          solver: { method: "rk4-step-doubling", maxSteps: 256,
+            absoluteTolerance: solverTolerance,
+            relativeTolerance: solverTolerance } })))}>
         Build bounded local patch</button>
       {manifold && <p role="status" data-testid="gf46-manifold-status">
         {manifold.status === "resolved" ?
@@ -205,6 +226,57 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
             setMessage("Validated extended local Mesh saved with bounded evidence.");
           })}>Save extended local Mesh</button>}
       </div>}
+      {saved.filter(item => item.provenance.operation.type ===
+        "vector3d.extended-manifold" &&
+        projectExtendedManifoldStatus(project!, item).status === "current").length >= 2 &&
+        <div data-testid="gf58-atlas-controls">
+          <p>Two saved source-linked local patches · declared source domain ·
+            10% span overlap tolerance · 1,000,000 evaluation cap.</p>
+          <button type="button" onClick={() => run(() => {
+            const results = saved.filter(item => item.provenance.operation.type ===
+              "vector3d.extended-manifold" &&
+              projectExtendedManifoldStatus(project!, item).status === "current").slice(0, 2);
+            const pinned = project!.workspace.entries.find(item => item.module === "vector3d" &&
+              item.expected.id === results[0]?.provenance.source.documentId)?.checkpoint;
+            if (pinned?.format !== "math3d.vector-field3d-document")
+              throw new TypeError("Pinned atlas source is missing.");
+            const studies = results.map(result => {
+              const base = project!.workspace.results.find(item => item.resultId ===
+                result.provenance.operation.parameters.baseResultId);
+              if (!base) throw new TypeError("Atlas base patch is missing.");
+              const patch = computeVectorField3DLocalManifoldPatch(pinned,
+                base.provenance.operation.parameters.recipe as
+                  import("@math3d/core").LocalManifoldRecipe);
+              if (patch.publication?.resultId !== base.resultId ||
+                  patch.publication.summary.geometryHash !== base.summary.geometryHash)
+                throw new TypeError("Atlas base patch changed.");
+              const recipe = result.provenance.operation.parameters.recipe as
+                import("@math3d/core").ExtendedManifoldRecipe;
+              const study = computeVectorField3DExtendedManifold(project!, pinned,
+                patch, recipe);
+              if (study.publication?.resultId !== result.resultId ||
+                  structuralHash(study.publication.summary) !== structuralHash(result.summary))
+                throw new TypeError("Atlas member did not reproduce its saved geometry.");
+              return study;
+            });
+            const domain = pinned.source.axes.map(axis => [axis.min, axis.max]) as unknown as
+              import("@math3d/core").ManifoldAtlasRecipe["domain"];
+            setAtlas(computeVectorField3DManifoldAtlas(project!, pinned, studies,
+              { domain, overlapTolerance: .1, maxEvaluations: 1_000_000 }));
+          })}>Validate local patch atlas</button>
+          {atlas && <p role="status" data-testid="gf58-atlas-status">{
+            atlas.status === "validated" ?
+              `Local atlas validated: ${String(atlas.publication!.summary.overlapSamples)} ` +
+                `overlap samples, ${String(atlas.publication!.summary.uncoveredCells)} ` +
+                `uncovered grid cells, ${String(atlas.publication!.summary.transverseIntersectionPairs)} ` +
+                `transverse intersections. Global claim withheld.` :
+              `Atlas unavailable: ${atlas.reason}. Global claim withheld.`}</p>}
+          {atlas?.status === "validated" && <button type="button"
+            disabled={!onPromoteAtlas} onClick={() => run(() => {
+              onPromoteAtlas?.(atlas);
+              setMessage("Local patch atlas saved as a guarded Mesh.");
+            })}>Save local atlas Mesh</button>}
+        </div>}
     </div>
     {!!message && <p role="status">{message}</p>}
     {saved.map(result => {
@@ -217,6 +289,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
             projectManifoldContinuationStatus(project!, result) :
           type === "vector3d.extended-manifold" ?
             projectExtendedManifoldStatus(project!, result) :
+          type === "vector3d.manifold-atlas" ?
+            projectManifoldAtlasStatus(project!, result) :
           projectLocalManifoldPatchStatus(project!, result);
       return <div key={result.resultId} data-testid="gf44-gf46-saved-result">
         {type} · {status.status === "current" ? "current" :
