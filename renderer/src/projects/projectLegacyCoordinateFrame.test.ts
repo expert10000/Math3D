@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMixedWorkspaceDocument, inspectProjectCompositionAvailability, parseMath3DProject,
+import { createDocumentIdentity, createMixedWorkspaceDocument, createSurfaceDocument, inspectProjectCompositionAvailability, parseMath3DProject,
   readProjectCoordinateFrame, replaceMath3DProjectWorkspace, retainedGeometryGenerationDocuments,
   serializeMath3DProject, upsertMath3DProjectComposition,
   type MeshDocument, type ProjectComposition, type ProjectCoordinateFrame } from "@math3d/core";
@@ -7,12 +7,15 @@ import { createProjectComparisonTemplate } from "../../../packages/core/src/proj
 import { mobileMixedProjectFixture } from "../../../tests/fixtures/unified-projects/mobileProjects";
 import { projectFreezeFixture } from "../../../tests/fixtures/unified-projects/projectFreeze";
 import { createProjectComparisonEvidence } from "./projectComparisonEvidence";
-import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame } from "./projectLegacyCoordinateFrame";
+import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame,
+  declareLegacySurfaceCoordinateFrame } from "./projectLegacyCoordinateFrame";
 import { resolveProjectCompositionMember } from "../components/ProjectCompositionView";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
 import { GeometryDocumentAdapter } from "../geometry/geometryDocumentAdapter";
+import { instantiateMeshComparisonStarter } from "./meshComparisonStarter";
+import { resolveLinkedCoordinateProbe } from "./projectLinkedCoordinateProbe";
 
 const frame: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: "laboratory xyz",
   unit: "mm", axes: ["x", "y", "z"], handedness: "right" };
@@ -129,5 +132,43 @@ describe("PC03 legacy Mesh frame declaration", () => {
     const restored = parseProjectPackage(exportProjectPackage(next.project, resources));
     expect(resolveProjectCompositionMember(restored.project, comparison.members[0], item => restored.resources.bytes(item)).revision)
       .toBe(entries[0].expected.revision);
+  });
+});
+
+describe("PC05 legacy Surface frame declaration", () => {
+  it("revises the owning Surface and reopens both exact comparisons", () => {
+    const { project: starter, resources } = instantiateMeshComparisonStarter("legacy-surface", "surface-mesh-probe");
+    const originalComparison = starter.compositions![0]!;
+    const entry = starter.workspace.entries[0]!;
+    const old = entry.checkpoint;
+    if (old.format !== "math3d.surface-document") throw new TypeError("Expected Surface starter.");
+    const source = { ...old.source, orientation: {} };
+    const legacy = createSurfaceDocument({ ...old, source,
+      identity: createDocumentIdentity(old.identity.id, source, old.identity.revision) });
+    const workspace = createMixedWorkspaceDocument({ ...starter.workspace, entries: starter.workspace.entries.map(item =>
+      item === entry ? { ...item, checkpoint: legacy, expected: legacy.identity } : item) });
+    const base = replaceMath3DProjectWorkspace(starter, workspace);
+    const comparison: ProjectComposition = { ...originalComparison, members: [
+      { ...originalComparison.members[0], expected: legacy.identity }, originalComparison.members[1]] };
+    const project = upsertMath3DProjectComposition(base, comparison);
+    const declared: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    expect(() => declareLegacySurfaceCoordinateFrame(project, comparison, 0, { ...declared, unit: "cm" })).toThrow(/unit/i);
+    expect(() => declareLegacySurfaceCoordinateFrame(project, comparison, 0, { ...declared, handedness: "left" })).toThrow(/handedness/i);
+    const next = declareLegacySurfaceCoordinateFrame(project, comparison, 0, declared);
+    const reopened = parseProjectPackage(exportProjectPackage(next.project, resources));
+    const revised = reopened.project.workspace.entries[0]!;
+    expect(revised.checkpoint.identity).toEqual(legacy.identity);
+    expect(revised.expected).toEqual(next.comparison.members[0].expected);
+    expect(inspectProjectCompositionAvailability(comparison, reopened.project.workspace)[0]).toBe("retained-checkpoint");
+    expect(inspectProjectCompositionAvailability(next.comparison, reopened.project.workspace)[0]).toBe("current");
+    const read = (item: Parameters<typeof resources.bytes>[0]) => reopened.resources.bytes(item);
+    expect(resolveProjectCompositionMember(reopened.project, comparison.members[0], read).coordinates.status).toBe("missing");
+    expect(resolveProjectCompositionMember(reopened.project, next.comparison.members[0], read).coordinates.value).toEqual(declared);
+    expect(readProjectCoordinateFrame(verifyMixedWorkspaceReplay(reopened.project.workspace).get(legacy.identity.id)!).value).toEqual(declared);
+    const members = next.comparison.members.map((member, slot) => ({ ...resolveProjectCompositionMember(reopened.project, member, read), slot: slot as 0 | 1 }));
+    expect(resolveLinkedCoordinateProbe(members, { memberId: members[0]!.id, revision: members[0]!.revision,
+      hash: members[0]!.hash, point: { x: 0.25, y: 0.25, z: 0.04 } })?.target.id).toBe(members[1]!.id);
+    expect(() => declareLegacySurfaceCoordinateFrame(next.project, comparison, 0, declared)).toThrow(/checkpoint/i);
   });
 });

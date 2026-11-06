@@ -32,6 +32,22 @@ checks the authored declaration against the other source's declaration; it
 cannot independently establish that the authored axes describe the physical
 source correctly.
 
+## PC05 legacy Surface frame declarations
+
+For a saved side-by-side comparison with a current Surface source that has no
+frame, save the Project and open that comparison. Use **Record frame in source
+A/B**, enter the frame name, axis labels, and handedness confirmed for the
+Surface, then record it. The unit comes from the Surface source's length unit;
+Math3D refuses a declaration that conflicts with the other source's available
+frame. The Surface orientation receives the authored declaration in a new
+replay-backed revision. The original comparison keeps its exact checkpoint,
+and a new comparison pins the declared revision. Reopen either after restart.
+
+This path requires the current Surface revision to equal its retained replay
+checkpoint. It cannot recover an unretained Surface revision. The declaration
+records the author's coordinate claim; it does not independently verify the
+Surface's physical alignment.
+
 ## PC24 linked coordinate probe
 
 Open **Coordinate Overlay Verification → Compare saved documents → Verified A/B

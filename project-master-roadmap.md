@@ -1589,6 +1589,13 @@ agree with its length unit. A pick marks the same 3D coordinate in the other
 pane and may be saved in an exact comparison Note; it does not infer a target
 element or value. Unretained generations and unrelated-model element mapping
 remain **Partial**.
+An existing legacy Surface can now record an authored frame from a saved
+side-by-side comparison when its current revision is the retained checkpoint.
+The source length unit is fixed, the other available declaration is checked,
+and a new exact comparison pins the replay-backed revision. The old comparison
+keeps its checkpoint. Surface revisions beyond the checkpoint still need an
+explicit retention path before metadata editing; never-retained history stays
+unavailable.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

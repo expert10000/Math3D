@@ -334,12 +334,16 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   }) : [];
   const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
   const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
-  const legacyFrameSlots = saved && mode === "overlay" && !resolved.error ? ([0, 1] as const).filter(slot => {
+  const legacyFrameSlots = saved && !resolved.error ? ([0, 1] as const).filter(slot => {
     const member = saved.members[slot], entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
-    return (entry?.module === "geometry" || entry?.module === "mesh") &&
-      (!entry.replay || entry.replay.format === (entry.module === "mesh" ? "math3d.mesh-replay.v1" : "math3d.geometry-replay.v1")) &&
+    if (!entry || mode === "overlay" && entry.module !== "geometry" && entry.module !== "mesh" ||
+      mode === "side-by-side" && entry.module !== "surface") return false;
+    return (!entry.replay || entry.replay.format === (entry.module === "mesh" ? "math3d.mesh-replay.v1" :
+      entry.module === "geometry" ? "math3d.geometry-replay.v1" : "math3d.surface-replay.v1")) &&
       entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash &&
       resolved.members[slot]?.coordinates.status === "missing" &&
+      (entry.module !== "surface" || entry.checkpoint.identity.revision === member.expected.revision &&
+        entry.checkpoint.identity.structuralHash === member.expected.structuralHash) &&
       (entry.module !== "mesh" || entry.checkpoint.format === "math3d.mesh-document" &&
         !!entry.checkpoint.source.origin && typeof entry.checkpoint.source.origin === "object" &&
         !Array.isArray(entry.checkpoint.source.origin));
@@ -425,6 +429,8 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8 }}>
       <strong>Record a frame in a legacy source</strong>
       <p style={{ margin: "4px 0" }}>Enter the axes and handedness confirmed for that source. This creates a replay-backed source revision and a new exact comparison. The previous comparison keeps its exact retained generation. Matching declarations do not prove the producer's coordinate claim.</p>
+      {mode === "side-by-side" && <label>Declared frame <input aria-label="Declared frame" value={frame} maxLength={80}
+        onChange={event => setFrame(event.target.value)} placeholder="e.g. local" /></label>}
       {declaredAxes.map((axis, index) => <label key={index} style={{ marginRight: 8 }}>Axis {index + 1} <input
         aria-label={`Declared axis ${index + 1}`} value={axis} maxLength={32} style={{ width: 70 }}
         onChange={event => setDeclaredAxes(current => current.map((value, i) => i === index ? event.target.value : value) as [string, string, string])} /></label>)}
@@ -432,9 +438,12 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         onChange={event => setDeclaredHandedness(event.target.value as "right" | "left")}>
         <option value="right">Right</option><option value="left">Left</option></select></label>
       <div>{legacyFrameSlots.map(slot => <button key={slot} type="button" style={{ marginTop: 6, marginRight: 8 }}
-        data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid}
+        data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid || mode === "side-by-side" && !frame.trim()}
         onClick={() => { setDeclaringFrame(true); setMessage("");
-          const declaration: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: frame.trim(), unit: unit.trim(),
+          const sourceEntry = project.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
+          const sourceUnit = sourceEntry?.module === "surface" && sourceEntry.checkpoint.format === "math3d.surface-document" ?
+            (sourceEntry.checkpoint.source.units as { length: string }).length : unit.trim();
+          const declaration: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: frame.trim(), unit: sourceUnit,
             axes: declaredAxes, handedness: declaredHandedness };
           void onDeclareCoordinateFrame(composition, slot, declaration).then(id => {
             setSavedId(id); setPick(null); setLinked(null); setMessage("Source frame recorded in a new document revision; new exact comparison saved.");
