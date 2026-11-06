@@ -8,6 +8,9 @@ import { summarizeQuantumHeapRetainers } from "./quantum-heap-retainers.mjs";
 const requestedCycles = process.argv[3] === undefined ? 8 : Number(process.argv[3]);
 if (!Number.isInteger(requestedCycles) || requestedCycles < 4 || requestedCycles > 120)
   throw new Error("Choose 4 to 120 quantum scene stress cycles.");
+const scenePair = process.env.MATH3D_STRESS_SCENE_PAIR ?? "standard";
+if (!["standard", "qwz"].includes(scenePair))
+  throw new Error("Choose the standard or qwz quantum scene pair.");
 const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-stress-"));
 const installedExe = process.env.MATH3D_INSTALLED_STRESS_EXE
   ? resolve(process.env.MATH3D_INSTALLED_STRESS_EXE) : null;
@@ -47,7 +50,7 @@ try {
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
   const e2eHookAblation = process.env.MATH3D_STRESS_ABLATE_E2E_HOOKS === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
-  const heapComposition = async (traceRetainers = false) => {
+  const heapComposition = async (traceRetainers = false, baselineMaxNodeId = 0) => {
     await cdp.send("HeapProfiler.collectGarbage");
     const chunks = [];
     const collect = ({ chunk }) => chunks.push(chunk);
@@ -60,11 +63,15 @@ try {
     const typeIndex = fields.indexOf("type");
     const nameIndex = fields.indexOf("name");
     const sizeIndex = fields.indexOf("self_size");
-    assert(typeIndex >= 0 && nameIndex >= 0 && sizeIndex >= 0, "Unknown V8 heap snapshot fields");
+    const idIndex = fields.indexOf("id");
+    assert(typeIndex >= 0 && nameIndex >= 0 && sizeIndex >= 0 && idIndex >= 0,
+      "Unknown V8 heap snapshot fields");
     const types = snapshot.snapshot.meta.node_types[typeIndex];
     const byType = {};
     const byConstructor = {};
+    let maxNodeId = 0;
     for (let offset = 0; offset < snapshot.nodes.length; offset += stride) {
+      maxNodeId = Math.max(maxNodeId, snapshot.nodes[offset + idIndex]);
       const type = types[snapshot.nodes[offset + typeIndex]];
       const bytes = snapshot.nodes[offset + sizeIndex];
       const typeRow = byType[type] ??= { count: 0, selfBytes: 0 };
@@ -78,8 +85,8 @@ try {
       row.count++;
       row.selfBytes += bytes;
     }
-    return { byType, byConstructor,
-      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot) } : {}) };
+    return { byType, byConstructor, maxNodeId,
+      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId) } : {}) };
   };
   const snapshot = async () => {
     if (e2eHookAblation) await page.evaluate(() => {
@@ -109,9 +116,13 @@ try {
   };
   const baseline = await snapshot();
   const baselineHeapComposition = diagnoseHeap ? await heapComposition() : null;
+  const warmupHeapSnapshot = diagnoseHeap && process.env.MATH3D_HEAP_WARMUP_SNAPSHOT === "1";
+  let warmupHeapComposition = null;
   const cycles = [];
   for (let i = 0; i < requestedCycles; i++) {
-    const id = i % 2 ? "hydrogen-2p" : "rice-mele-bands";
+    const id = scenePair === "qwz"
+      ? (i % 2 ? "qwz-bands" : "qwz-curvature")
+      : (i % 2 ? "hydrogen-2p" : "rice-mele-bands");
     // A first-run coachmark can cover the toolbar on a fresh CI profile. This
     // harness measures scene lifecycle, so dispatch the palette button directly.
     await page.getByRole("button", { name: "Palette", exact: true }).click({ force: true });
@@ -119,7 +130,12 @@ try {
     await page.getByRole("button", { name: "Verified quantum examples", exact: true }).click();
     await page.getByTestId(`quantum-example-${id}`).click();
     const dialog = page.getByTestId("quantum-scene-preview");
-    await dialog.waitFor({ state: "visible", timeout: 30_000 });
+    try { await dialog.waitFor({ state: "visible", timeout: 30_000 }); }
+    catch (reason) {
+      const alert = page.getByTestId("quantum-scene-examples").getByRole("alert");
+      const error = await alert.count() ? await alert.textContent() : null;
+      throw new Error(`${id} preview did not open: ${error ?? String(reason)}`);
+    }
     if (id === "hydrogen-2p") {
       await page.getByTestId("quantum-scene-geometry").getByRole("button", { name: "Density surface", exact: true }).click();
       await page.getByTestId("quantum-surface-legend").waitFor({ state: "visible" });
@@ -146,9 +162,11 @@ try {
     const closed = await snapshot();
     assert.equal(closed.canvasCount, baseline.canvasCount, `${id} left a canvas after close`);
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
+    if (warmupHeapSnapshot && i === 19) warmupHeapComposition = await heapComposition();
   }
   const final = await snapshot();
-  const finalHeapComposition = diagnoseHeap ? await heapComposition(true) : null;
+  const finalHeapComposition = diagnoseHeap ?
+    await heapComposition(true, warmupHeapComposition?.maxNodeId ?? baselineHeapComposition.maxNodeId) : null;
   const workbookAutosaveStorage = await page.evaluate(() => ({
     currentBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosave.v1") ?? "").length,
     journalBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosaveJournal.v1") ?? "").length,
@@ -165,18 +183,28 @@ try {
   })).map(row => ({ ...row, deltaCount: row.final.count - row.baseline.count,
     deltaSelfBytes: row.final.selfBytes - row.baseline.selfBytes }))
     .sort((a, b) => b.deltaSelfBytes - a.deltaSelfBytes).slice(0, 30) : null;
+  const lateConstructorGrowth = warmupHeapComposition ? Object.keys({
+    ...warmupHeapComposition.byConstructor, ...finalHeapComposition.byConstructor,
+  }).map(name => ({ name,
+    warmup: warmupHeapComposition.byConstructor[name] ?? { count: 0, selfBytes: 0 },
+    final: finalHeapComposition.byConstructor[name] ?? { count: 0, selfBytes: 0 },
+  })).map(row => ({ ...row, deltaCount: row.final.count - row.warmup.count,
+    deltaSelfBytes: row.final.selfBytes - row.warmup.selfBytes }))
+    .sort((a, b) => b.deltaSelfBytes - a.deltaSelfBytes).slice(0, 30) : null;
   const trackedConstructors = diagnoseHeap ? Object.fromEntries(
     ["native:WebGL2RenderingContext", "native:WebGLTexture"].map(name => [name, {
       baseline: baselineHeapComposition.byConstructor[name]?.count ?? 0,
       final: finalHeapComposition.byConstructor[name]?.count ?? 0,
     }])) : null;
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
-    installed: Boolean(installedExe),
+    installed: Boolean(installedExe), scenePair,
     autosaveAblation,
     e2eHookAblation,
     workbookAutosaveStorage,
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
     ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,
+      ...(warmupHeapComposition ? { warmupByType: warmupHeapComposition.byType,
+        topConstructorLateGrowth: lateConstructorGrowth } : {}),
       finalByType: finalHeapComposition.byType, topConstructorGrowth: constructorGrowth,
       trackedConstructors,
       retainers: finalHeapComposition.retainers,
