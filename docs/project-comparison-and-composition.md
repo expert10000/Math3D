@@ -79,6 +79,14 @@ declared 3D coordinate in the other pane. A saved coordinate Note checks both
 exact source revisions on reopen. The marker does not claim a corresponding
 Surface parameter or Geometry object, and it may lie off the other shape.
 
+When a saved Surface has a valid declared frame, **Create Mesh** carries
+that frame into the new Mesh source along with the Surface's recorded length
+unit. The generated-by relation pins the exact Surface generation. A saved
+side-by-side Surface/Mesh pair can then share a coordinate and record an exact
+comparison Note. A missing or invalid Surface declaration is not propagated;
+the Mesh snapshot does not acquire a frame by inference. A Mesh declaration
+that disagrees with its own recorded length unit is invalid.
+
 Choose the undeclared D source or mismatched C source to see the link refused.
 Changed or missing source evidence also prevents the marker. PC03 remains
 Partial for historical generations outside retained checkpoints or marked
@@ -165,8 +173,10 @@ The acceptance covers the bounded Mesh/Geometry adapter. PC03 remains
 For a compatible side-by-side pair, turn on **Synchronize cameras** and choose
 **A → B** or **B → A**. The leader's orbit, pan, and zoom pose is applied to the
 other viewer; either pane can remain independent when the switch is off. The
-control is disabled for unmatched or undeclared coordinate frames and for
-Surfaces without the same saved parameter domain, x/y axes, and length unit.
+control is disabled for invalid or contradictory declared frames. Two
+generations of the same Surface can also qualify through the same saved
+parameter domain, x/y axes, and length unit; a declared frame conflict still
+disables linking.
 Saving the composition retains the camera-link preference and leader, but not a
 transient camera pose. Reopening rechecks source compatibility before linking;
 it never uses a saved preference as proof that two frames match.

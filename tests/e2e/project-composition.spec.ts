@@ -154,6 +154,43 @@ test("PC05 compares a retained Surface checkpoint with its current generation", 
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC05 refuses camera sync across contradictory declared Surface frames", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const surface = core.createSurfaceDocument({ stableKey: "pc05-camera-frame-conflict", metadata: { title: "Frame conflict Surface" },
+      source: { representation: "parametric", domain: { kind: "parameter",
+        u: { min: 0, max: 1, periodic: false }, v: { min: 0, max: 1, periodic: false } },
+        units: { length: "m" }, orientation: { math3dCoordinateFrame: frame }, parameters: {}, branchPolicy: null,
+        definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "u*v" } } } });
+    const adapter = new SurfaceDocumentAdapter(surface);
+    const current = adapter.commitSource({ ...surface.source, orientation: { math3dCoordinateFrame: { ...frame, frame: "other" } } });
+    const replay = adapter.replayBundle();
+    const workspace = core.createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: replay.checkpoint,
+      expected: current.identity, replay: { format: "math3d.surface-replay.v1", payload: replay } }],
+      activeDocumentIds: [surface.identity.id], constructions: [], relations: [], results: [], artifacts: [], committedSelection: null });
+    let project = core.createMath3DProject(workspace, { stableKey: "pc05-camera-frame-conflict-project" });
+    project = core.upsertMath3DProjectComposition(project, { id: "pc05-camera-frame-conflict", title: "Conflicting Surface frames",
+      mode: "side-by-side", members: [replay.checkpoint, current].map(document => ({ documentId: document.identity.id,
+        expected: document.identity, visible: true, color: "#3976d7", opacity: 1 })) });
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "pc05-camera-conflict.json",
+      mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    await panel.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Conflicting Surface frames" });
+    await expect(view.getByTestId("project-composition-camera-link")).toBeDisabled();
+    await expect(view.getByText(/Independent cameras: source frames/)).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC05 links a declared Surface coordinate to a saved Mesh pane", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;

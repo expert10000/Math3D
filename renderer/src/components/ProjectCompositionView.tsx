@@ -178,6 +178,9 @@ export const compatibleCompositionParameterChart = (members: readonly RenderMemb
 export const qualifyProjectCameraPair = (members: readonly RenderMember[]): "shared-surface-axes" | "declared-3d-frame" | null => {
   if (members.length !== 2) return null;
   const [a, b] = members;
+  if (a!.coordinates.status === "invalid" || b!.coordinates.status === "invalid" ||
+    a!.coordinates.value && b!.coordinates.value && !sameProjectCoordinateFrame(a!.coordinates.value, b!.coordinates.value))
+    return null;
   if (a!.param && b!.param && compatibleCompositionParameterChart(members) && a!.param.unit === b!.param.unit &&
     !!a!.param.x && a!.param.x === b!.param.x && !!a!.param.y && a!.param.y === b!.param.y)
     return "shared-surface-axes";
