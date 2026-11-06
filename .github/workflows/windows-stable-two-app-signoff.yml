@@ -54,6 +54,11 @@ jobs:
           path: .cache/vcpkg-binaries
           key: ${{ steps.native-cache-key.outputs.key }}
 
+      - name: Prepare pinned NSIS 3.13 for both installers
+        shell: pwsh
+        run: |
+          & scripts/prepare-qi40-nsis313.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'qi40-nsis313')
+
       - name: Install full release worker dependencies
         shell: pwsh
         run: |
@@ -165,6 +170,25 @@ jobs:
               installerSha256 = (Get-FileHash -LiteralPath $lab[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             }
           } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $candidate 'candidate-manifest.json') -Encoding UTF8
+
+      - name: Verify embedded NSIS System.dll in both installers
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $PWD 'test-results/qi40-installer-components.json'
+          & scripts/inspect-quantum-installer-components.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'candidate') -EvidencePath $evidence
+          $components = (Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json).components
+          $expected = '1556ee1bf1cb477124e1269b534ed81653ba71994dab7903ee3782b75acc2810'
+          if ($components.Count -ne 2 -or @($components | Where-Object { $_.systemDllSha256 -ne $expected }).Count -ne 0) {
+            throw 'Candidate installers did not embed the pinned NSIS 3.13 System.dll'
+          }
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-installer-components
+          if-no-files-found: ignore
+          path: test-results/qi40-installer-components.json
 
       - name: Upload exact release-candidate files
         uses: actions/upload-artifact@v7

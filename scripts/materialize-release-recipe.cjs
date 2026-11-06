@@ -7,6 +7,7 @@ const recipeFiles = [
   ".github/workflows/release.yml",
   "scripts/materialize-release-recipe.cjs",
   "scripts/setup-cgal-python-worker.ps1",
+  "scripts/prepare-qi40-nsis313.ps1",
   "scripts/prepare-public-source-bundle.mjs",
   "scripts/generate-release-sbom.mjs",
   "scripts/generate-android-release-sbom.mjs",
