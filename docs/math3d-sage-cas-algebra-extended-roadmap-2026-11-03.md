@@ -368,6 +368,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G04 implementation update (2026-11-06):** The [G04 acceptance record](evidence/sage-g04-elliptic-curves-2026-11-06.md) adds a versioned, pinned short Weierstrass elliptic-curve object over `QQ` or prime `GF(p)` for 5 ≤ p ≤ 1009. Structures validates nonzero discriminant in the base field before save and displays exact `Δ` and `j`. The bounded Docker Sage dossier checks exact invariants and doubles an optional verified integer-coordinate point; Project import recomputes those values independently. The next feature is **SAGE-G05**, separate real and finite-field visualizations.
 
+**G05 implementation update (2026-11-06):** The [G05 acceptance record](evidence/sage-g05-elliptic-visualizations-2026-11-06.md) adds separate visualizations to the saved curve dossier in CAS and Number Theory. Over `QQ`, a bounded numerical real-branch sample can overlay the exact tangent, third intersection and reflected double point from saved G04 evidence. Over prime `GF(p)` with p ≤ 31, the diagram enumerates every affine residue point plus infinity and labels group addition as modular algebra, with no connecting real chord. Larger supported G04 fields give an explicit diagram limit. The views derive from pinned Project records and saved evidence after an independent reopen. The next gate is **SAGE-G06**, advanced ideal invariants with capability and cost limits.
+
 ---
 
 ## 3. P0 — Algebra object registry

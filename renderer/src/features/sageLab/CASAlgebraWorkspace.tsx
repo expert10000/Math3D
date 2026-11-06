@@ -22,6 +22,7 @@ import SageFiniteFieldViewer from "./SageFiniteFieldViewer";
 import SagePadicWorkspace from "./SagePadicWorkspace";
 import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
 import SageEllipticCurveBuilder from "./SageEllipticCurveBuilder";
+import SageEllipticCurveVisualization from "./SageEllipticCurveVisualization";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -276,6 +277,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           <dt>Relation checks</dt><dd>{facts.baseRelation}; {facts.extensionRelation}</dd></>;
       })()}
     </dl>
+    {chosen.record.definition.kind === "elliptic-curve" &&
+      <SageEllipticCurveVisualization key={`${chosen.record.id}@${chosen.record.revision}`}
+        project={project} curve={chosen.record} />}
     {onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity && (chosen.record.definition.kind === "ideal" ||
       chosen.record.definition.kind === "polynomial-ring") &&
       <SageAlgebraicLocusBuilder key={`${chosen.record.id}@${chosen.record.revision}`}
