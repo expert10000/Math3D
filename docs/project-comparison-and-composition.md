@@ -25,13 +25,12 @@ before the edit. The original composition remains an operator
 assertion. A second saved composition pins the new revision and its exact hash.
 Reopen either composition after restart to check its own source generation.
 
-Geometry requires its current revision to be the retained replay checkpoint.
-Mesh can retain its current pre-declaration revision within the eight-generation
-budget. Save live document edits before using the action. Math3D
+Geometry and Mesh can each retain their current pre-declaration revision within
+an eight-generation budget. A historical revision that was never explicitly
+retained remains unavailable. Save live document edits before using the action. Math3D
 checks the authored declaration against the other source's declaration; it
 cannot independently establish that the authored axes describe the physical
-source correctly. Older Geometry revisions beyond the checkpoint still need a
-source-owner migration path.
+source correctly.
 
 ## PC24 linked coordinate probe
 

@@ -45,6 +45,7 @@ try {
   await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
   const cdp = await page.context().newCDPSession(page);
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
+  const e2eHookAblation = process.env.MATH3D_STRESS_ABLATE_E2E_HOOKS === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
   const heapComposition = async (traceRetainers = false) => {
     await cdp.send("HeapProfiler.collectGarbage");
@@ -81,6 +82,12 @@ try {
       ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot) } : {}) };
   };
   const snapshot = async () => {
+    if (e2eHookAblation) await page.evaluate(() => {
+      delete window.__MATH3D_E2E_GEOMETRY_PICK__;
+      delete window.__MATH3D_E2E_MESH_ANALYSIS__;
+      delete window.__MATH3D_E2E_MESH_BENCHMARK__;
+      delete window.__MATH3D_E2E_MESH_OPERATION__;
+    });
     await cdp.send("HeapProfiler.collectGarbage");
     const heap = await cdp.send("Runtime.getHeapUsage");
     const metrics = await app.evaluate(({ app }) => app.getAppMetrics());
@@ -166,6 +173,7 @@ try {
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
     installed: Boolean(installedExe),
     autosaveAblation,
+    e2eHookAblation,
     workbookAutosaveStorage,
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
     ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,

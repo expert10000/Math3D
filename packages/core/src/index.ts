@@ -130,6 +130,7 @@ export * from "./sageMatrixDossier";
 export * from "./sageIntegerMatrixForms";
 export * from "./projectComposition";
 export * from "./retainedMeshGenerations";
+export * from "./retainedGeometryGenerations";
 export * from "./quantumSceneDocument";
 export * from "./quantumStudyDocument";
 export * from "./quantumFieldDocument";

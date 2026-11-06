@@ -320,7 +320,7 @@ jobs:
               ($env:CANDIDATE_RUN_ID -and $manifest.math3d.commit -ne $run.headSha)) {
             throw 'Candidate manifest does not match the build run'
           }
-      - name: Install pinned candidate with per-app WER mini dump enabled
+      - name: Install pinned candidate with per-app WER dump enabled
         shell: pwsh
         env:
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}

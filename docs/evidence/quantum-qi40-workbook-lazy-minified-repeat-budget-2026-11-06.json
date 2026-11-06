@@ -1,0 +1,17 @@
+{
+  "schema": "math3d/qi40-scene-memory-budget/v1",
+  "source": "test-results/qi40-workbook-lazy-minified-repeat-80.json",
+  "cycles": 80,
+  "installed": false,
+  "autosaveAblation": false,
+  "method": "Forced-GC closed-preview renderer heap; cycle 20 is warmup, cycle 80 is steady-state check",
+  "warmupCycle": 20,
+  "lastCycle": 80,
+  "warmupHeapBytes": 24881876,
+  "finalHeapBytes": 27180116,
+  "lateHeapGrowthBytes": 2298240,
+  "maxLateHeapGrowthBytes": 2097152,
+  "stringSelfBytesGrowth": 1532788,
+  "targetMet": false,
+  "note": "Provisional source target. Installed-build and workload coverage are required before QI-40 memory signoff."
+}
