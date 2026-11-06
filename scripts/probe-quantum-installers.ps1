@@ -70,7 +70,7 @@ function Get-SanitizedDumpStack([string]$dump) {
   $stdout = Join-Path $root 'cdb-stdout.txt'
   $stderr = Join-Path $root 'cdb-stderr.txt'
   # k omits the argument columns emitted by kb, leaving a stable Call Site.
-  $arguments = "-z `"$dump`" -c `".exr -1; .effmach x86; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; .echo QI40_STACK_WORDS_BEGIN; dds @esp L40; .echo QI40_STACK_WORDS_END; q`""
+  $arguments = "-z `"$dump`" -c `".exr -1; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; .echo QI40_STACK_WORDS_BEGIN; dds @esp L40; .echo QI40_STACK_WORDS_END; q`""
   $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   if (-not $process.WaitForExit(180000)) {
