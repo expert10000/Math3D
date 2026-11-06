@@ -76,8 +76,11 @@ const coplanarOverlap = (a: Triangle, b: Triangle,
 
 /** Bounded triangle-pair screen; adjacent triangles share a legitimate edge. */
 export function countManifoldSelfIntersections(vertices: readonly Vec3[],
-  triangles: readonly Triangle[]): number {
-  if (vertices.length > 96 || triangles.length > 192)
+  triangles: readonly Triangle[], options: Readonly<{
+    maxVertices?: number; maxTriangles?: number; includeCoplanar?: boolean }> = {}): number {
+  if (vertices.length > (options.maxVertices ?? 96) ||
+      triangles.length > (options.maxTriangles ?? 192) ||
+      (options.maxVertices ?? 96) > 192 || (options.maxTriangles ?? 192) > 384)
     throw new RangeError("Continuation mesh exceeds the validation budget.");
   let count = 0;
   for (let i = 0; i < triangles.length; i++) {
@@ -91,7 +94,8 @@ export function countManifoldSelfIntersections(vertices: readonly Vec3[],
       const hits = (face: Triangle, target: Triangle) => [0, 1, 2].some(edge =>
         segmentHitsFace(vertices[face[edge]!]!, vertices[face[(edge + 1) % 3]!]!,
           target, vertices, 1e-9));
-      if (hits(a, b) || hits(b, a) || coplanarOverlap(a, b, vertices)) count++;
+      if (hits(a, b) || hits(b, a) ||
+          (options.includeCoplanar ?? true) && coplanarOverlap(a, b, vertices)) count++;
     }
   }
   return count;

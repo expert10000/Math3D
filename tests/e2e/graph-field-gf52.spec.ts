@@ -56,6 +56,9 @@ test("GF-52 saves exact-frame component evidence and plays pinned surfaces", asy
     await panel.getByRole("button", { name: "Save exact-frame topology events" }).click();
     await expect(panel.getByTestId("gf33-moving-playback"))
       .toContainText("Saved 1 exact-frame event records");
+    await panel.getByRole("button", { name: "Save component-event linkage" }).click();
+    await expect(panel.getByTestId("gf57-linkage-status"))
+      .toContainText("sampled component links");
     await panel.getByRole("button", { name: "Play verified frames" }).click();
     await expect(panel.getByTestId("gf33-moving-playback"))
       .toContainText("Frame 2/2: 1 s", { timeout: 15_000 });
@@ -69,5 +72,8 @@ test("GF-52 saves exact-frame component evidence and plays pinned surfaces", asy
       item.provenance.operation.type === "vector3d.temporal-surface-events");
     expect(result.summary.events[0].kind).toBe("stable-count");
     expect(result.summary.interpolation).toBe("unavailable");
+    const linkage = results.find((item: { provenance: { operation: { type: string } } }) =>
+      item.provenance.operation.type === "vector3d.temporal-surface-linkage");
+    expect(linkage.summary.exactFrameOnly).toBe(true);
   } finally { await closeSurfaceApp(app); }
 });

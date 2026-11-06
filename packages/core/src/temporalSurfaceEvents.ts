@@ -24,7 +24,7 @@ export type TemporalSurfaceEventFrame = Readonly<{ time: number;
 
 const bytesHash = (values: Float32Array | Uint32Array) => sha256Checksum(
   new Uint8Array(values.buffer, values.byteOffset, values.byteLength));
-const signature = (surface: VectorField3DIsosurface) => structuralHash({
+export const temporalSurfaceSignature = (surface: VectorField3DIsosurface) => structuralHash({
   source: surface.source, level: surface.level, unit: surface.unit,
   clipBounds: surface.clipBounds, topology: surface.topology,
   positions: bytesHash(surface.positions), indices: bytesHash(surface.indices),
@@ -169,7 +169,7 @@ export function computeTemporalSurfaceEvents(project: Math3DProject,
       temporalRevision: temporal.identity.revision,
       temporalHash: temporal.identity.structuralHash,
       temporalGenerationHash: temporal.source.generationHash,
-      signatures: frames.map(frame => signature(frame.surface)) };
+      signatures: frames.map(frame => temporalSurfaceSignature(frame.surface)) };
     const publication = createAnalysisResultEnvelope({
       resultId: `vector3d.temporal-surface-events.${structuralHash(lineage).slice(7)}`,
       status: "numerical",
