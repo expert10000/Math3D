@@ -54946,22 +54946,13 @@ case "mobius":
     [workbookSessionPayload, buildWorkbookWorkspaceState]
   );
 
-  const workbookSessionJsonWithWorkspace = useMemo(
-    () =>
-      JSON.stringify(
-        {
-          version: WORKBOOK_PROJECT_FORMAT_VERSION,
-          format: WORKBOOK_PROJECT_FORMAT,
-          payload: workbookSessionPayloadWithWorkspace,
-        },
-        null,
-        2
-      ),
-    [workbookSessionPayloadWithWorkspace]
-  );
   const workbookSessionHashWithWorkspace = useMemo(
-    () => hashString(workbookSessionJsonWithWorkspace),
-    [workbookSessionJsonWithWorkspace]
+    () => hashString(JSON.stringify({
+      version: WORKBOOK_PROJECT_FORMAT_VERSION,
+      format: WORKBOOK_PROJECT_FORMAT,
+      payload: workbookSessionPayloadWithWorkspace,
+    }, null, 2)),
+    [workbookSessionPayloadWithWorkspace]
   );
   const workbookBundlePayload = useMemo<WorkbookReplayPayload>(
     () =>
@@ -54973,7 +54964,7 @@ case "mobius":
           },
     [workbookBundleAssetMode, workbookSessionPayloadWithWorkspace]
   );
-  const workbookBundleJson = useMemo(
+  const buildWorkbookBundleJson = useCallback(
     () =>
       JSON.stringify(
         buildWorkbookProjectEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
@@ -55819,9 +55810,9 @@ case "mobius":
         ? "math3d-book"
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
-    downloadTextFile(workbookBundleJson, fileName, "application/json");
+    downloadTextFile(buildWorkbookBundleJson(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
-  }, [workbookBundleJson, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+  }, [buildWorkbookBundleJson, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
 
   const handleSaveWorkbook = useCallback(() => {
     const base =
@@ -55830,10 +55821,10 @@ case "mobius":
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const defaultName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
     const fileName = ensureMath3dExtension(workbookManualSaveName || defaultName);
-    downloadTextFile(workbookBundleJson, fileName, "application/json");
+    downloadTextFile(buildWorkbookBundleJson(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
   }, [
-    workbookBundleJson,
+    buildWorkbookBundleJson,
     workbookSessionHash,
     workbookManualSaveName,
     workbooks.length,
@@ -56056,11 +56047,11 @@ case "mobius":
 
   const handleExportWorkbooks = useCallback(() => {
     downloadTextFile(
-      workbookBundleJson,
+      buildWorkbookBundleJson(),
       `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.math3d`,
       "application/json"
     );
-  }, [workbookBundleJson]);
+  }, [buildWorkbookBundleJson]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
     const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);
