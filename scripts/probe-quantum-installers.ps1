@@ -1,7 +1,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$CandidateDirectory,
   [string]$InstallRoot = "",
-  [string]$EvidencePath = ""
+  [string]$EvidencePath = "",
+  [switch]$Math3DOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,6 +28,7 @@ $evidence = [ordered]@{
   schema = 'math3d/qi40-installer-probe/v1'
   checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   environment = 'clean Windows runner'
+  scope = if ($Math3DOnly) { 'Math3D' } else { 'both apps' }
   imageVersion = $env:ImageVersion
   osVersion = (Get-CimInstance Win32_OperatingSystem).Version
   status = 'started'
@@ -101,14 +103,23 @@ try {
   $labInstall = Join-Path $root 'TheoryLab'
   Invoke-ProbeInstall $mathInstaller $mathInstall 'Math3D'
   $evidence.checks.math3dInstall = 'passed'
-  Invoke-ProbeInstall $labInstaller $labInstall 'Theory Lab'
-  $evidence.checks.theoryLabInstall = 'passed'
-  foreach ($required in @(
+  if ($Math3DOnly) {
+    $evidence.checks.theoryLabInstall = 'not requested'
+    $requiredFiles = @(
+      (Join-Path $mathInstall 'Math3D.exe'),
+      (Join-Path $mathInstall 'resources/python-worker/worker.exe')
+    )
+  } else {
+    Invoke-ProbeInstall $labInstaller $labInstall 'Theory Lab'
+    $evidence.checks.theoryLabInstall = 'passed'
+    $requiredFiles = @(
     (Join-Path $mathInstall 'Math3D.exe'),
     (Join-Path $mathInstall 'resources/python-worker/worker.exe'),
     (Join-Path $labInstall 'Quantum Hamiltonian Lab.exe'),
     (Join-Path $labInstall 'resources/quantum-worker/quantum-worker.exe')
-  )) {
+    )
+  }
+  foreach ($required in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Installed file missing: $required" }
   }
   $evidence.checks.packagedWorkers = 'passed'

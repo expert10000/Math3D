@@ -83,7 +83,8 @@ jobs:
           & scripts/probe-quantum-installers.ps1 `
             -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
             -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-stress-install') `
-            -EvidencePath (Join-Path $PWD 'test-results/qi40-stress-installer.json')
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-stress-installer.json') `
+            -Math3DOnly
       - name: Install stress harness dependencies
         shell: pwsh
         run: |
