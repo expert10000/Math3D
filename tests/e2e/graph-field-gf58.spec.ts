@@ -103,6 +103,10 @@ test("GF-58/60 saves and refines a guarded local manifold atlas Mesh", async () 
     await advanced.getByRole("button", { name: "Save local atlas Mesh" }).click();
     await expect(page.getByTestId("app-status-bar"))
       .toContainText("Local manifold patch atlas");
+    await openAnalyze();
+    await advanced.getByRole("button", { name: "Verify saved atlas surface coverage" }).click();
+    await expect(advanced.getByTestId("gf62-surface-coverage-status"))
+      .toContainText("Global claim withheld");
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message"))
@@ -118,6 +122,14 @@ test("GF-58/60 saves and refines a guarded local manifold atlas Mesh", async () 
         item.summary.globalClaim === "withheld" &&
         item.summary.memberResultIds?.length === 3 &&
         item.summary.uncoveredCells! < item.summary.baseUncoveredCells!))
+      .toBe(true);
+    expect(results.some((item: { provenance: { operation: { type: string } };
+      summary: { globalClaim?: string; gain16?: number; gain32?: number;
+        refined32?: { boundaryGapCells: number } } }) =>
+      item.provenance.operation.type === "vector3d.manifold-surface-coverage" &&
+        item.summary.globalClaim === "withheld" &&
+        item.summary.gain16! > 0 && item.summary.gain32! > 0 &&
+        Number.isFinite(item.summary.refined32?.boundaryGapCells)))
       .toBe(true);
   } finally { await closeSurfaceApp(app); }
 });

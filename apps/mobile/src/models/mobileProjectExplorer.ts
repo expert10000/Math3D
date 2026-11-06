@@ -6,6 +6,7 @@ import { projectVectorField3DTopologyStatus, projectPoincareReturnStatus,
   projectTemporalLyapunovFieldStatus, projectTemporalSurfaceEventsStatus,
   projectTemporalSurfaceLinkageStatus, projectTemporalSurfaceTransportStatus,
   projectManifoldContinuationStatus, projectManifoldAtlasStatus,
+  projectManifoldSurfaceCoverageStatus,
   reviewProjectDerivedField } from "@math3d/core";
 import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
@@ -194,7 +195,7 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     ...project.workspace.results.filter(item => ["vector3d.temporal-ftle-field",
       "vector3d.temporal-surface-events", "vector3d.temporal-surface-linkage",
       "vector3d.temporal-surface-transport", "vector3d.manifold-continuation",
-      "vector3d.manifold-atlas"]
+      "vector3d.manifold-atlas", "vector3d.manifold-surface-coverage"]
       .includes(item.provenance.operation.type)).map(item => {
         const operation = item.provenance.operation.type;
         const state = operation === "vector3d.temporal-ftle-field" ?
@@ -207,6 +208,8 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
                 projectTemporalSurfaceTransportStatus(project, item) :
                 operation === "vector3d.manifold-atlas" ?
                   projectManifoldAtlasStatus(project, item) :
+                  operation === "vector3d.manifold-surface-coverage" ?
+                    projectManifoldSurfaceCoverageStatus(project, item) :
                   projectManifoldContinuationStatus(project, item);
         return { id: item.resultId,
           title: operation === "vector3d.temporal-ftle-field" ?
@@ -218,7 +221,9 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
                 operation === "vector3d.temporal-surface-transport" ?
                   "Checked region transport" :
                   operation === "vector3d.manifold-atlas" ?
-                    "Local manifold atlas" : "Local manifold continuation",
+                    "Local manifold atlas" :
+                    operation === "vector3d.manifold-surface-coverage" ?
+                      "Local atlas surface coverage" : "Local manifold continuation",
           kind: "Saved scientific result", sourceId: item.provenance.source.documentId,
           status: state.status === "current" ? "recipe retained" : "withheld",
           detail: `Source revision ${item.provenance.source.revision}, ` +

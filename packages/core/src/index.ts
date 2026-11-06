@@ -179,6 +179,7 @@ export * from "./vectorField3DManifoldPatch";
 export * from "./vectorField3DManifoldContinuation";
 export * from "./vectorField3DExtendedManifold";
 export * from "./vectorField3DManifoldAtlas";
+export * from "./vectorField3DManifoldCoverage";
 export * from "./projectTensorGlyphs";
 export * from "./projectPoincareGraph";
 export * from "./vectorField3DComparison";

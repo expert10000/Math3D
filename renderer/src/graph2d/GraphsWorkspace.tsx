@@ -283,6 +283,7 @@ type Props = {
   onPromoteVectorField3DManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
   onPromoteVectorField3DExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
   onPromoteVectorField3DManifoldAtlas?: (study: import("@math3d/core").ManifoldAtlasStudy) => void;
+  onValidateVectorField3DManifoldCoverage?: (baseResultId: string, refinedResultId: string) => Promise<import("@math3d/core").ManifoldSurfaceCoverageStudy>;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -352,6 +353,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onPromoteVectorField3DManifoldContinuation,
   onPromoteVectorField3DExtendedManifold,
   onPromoteVectorField3DManifoldAtlas,
+  onValidateVectorField3DManifoldCoverage,
   onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onSaveVectorField3DTensorGlyphs,
@@ -4411,6 +4413,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onPromoteManifoldContinuation={onPromoteVectorField3DManifoldContinuation}
           onPromoteExtendedManifold={onPromoteVectorField3DExtendedManifold}
           onPromoteManifoldAtlas={onPromoteVectorField3DManifoldAtlas}
+          onValidateAtlasCoverage={onValidateVectorField3DManifoldCoverage}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
