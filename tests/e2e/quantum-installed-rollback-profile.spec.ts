@@ -13,6 +13,11 @@ const scenes = [
     folder: "run-c0be71581dc94fb599f4df7c7dab2031-bands.qscene" },
   { id: "saved-ideal-qec", group: "quantum-qec",
     folder: "run-ee2889dc341d4cb88e638f2af4ec6d2d-qec.qscene" },
+  { id: "hydrogen-2p", group: "quantum-scene-orbitals", folder: "orbital-2p.qscene" },
+  { id: "rice-mele-pump", group: "quantum-scene",
+    folder: "run-19f513c1ee9d4d1f8716a590fc7f1dc0-pump.qscene" },
+  { id: "kitaev-bands", group: "quantum-scene",
+    folder: "run-18145016435540afafc5a2a06870566f-bands.qscene" },
 ] as const;
 
 test("installed QEC rollback retains a saved Graph Project and setting", async () => {
@@ -20,7 +25,7 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
   test.skip(process.platform !== "win32" || !process.env.MATH3D_E2E_INSTALLED_EXE ||
     !process.env.MATH3D_ROLLBACK_PROFILE_ROOT || !["seed", "verify"].includes(phase ?? ""),
   "Requires installed Math3D and a rollback profile phase");
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const executable = resolve(process.env.MATH3D_E2E_INSTALLED_EXE!);
   const profileRoot = resolve(process.env.MATH3D_ROLLBACK_PROFILE_ROOT!);
   const userData = join(profileRoot, "user-data");
