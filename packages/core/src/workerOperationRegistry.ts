@@ -37,6 +37,7 @@ export type Math3DWorkerOperationId =
   | "polynomial.dossier"
   | "galois.analyze"
   | "group.dossier"
+  | "group.action-characters"
   | "module.invariant-factors"
   | "chain.homology"
   | "finite-field.explore"
@@ -333,6 +334,10 @@ const definitions = [
   },
   {
     id: "group.dossier", title: "Bounded GAP finite-group invariants", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "group.action-characters", title: "Bounded finite-group action and characters", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

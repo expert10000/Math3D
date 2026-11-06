@@ -15,6 +15,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   AlgebraOperationArguments[AlgebraOperationId] => {
   if (id === "sage.algebra.reconstruct") return {};
   if (id === "sage.group.dossier") return {};
+  if (id === "sage.group.actionCharacters") return { point: Number(text.trim()) };
   if (id === "sage.module.invariantFactors") return {};
   if (id === "sage.chain.homology") return {};
   if (id === "sage.finiteField.explore") return { element: text.split(",").map((item) => Number(item.trim())) };
@@ -141,6 +142,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       <button type="button" disabled={!item.readyBackend || running} title={item.reason ?? item.runtimeReason ?? undefined}
         aria-label={`Select ${item.definition.label}`} onClick={() => { setSelected(item.definition.id);
           setInput(item.definition.id === "sage.numberField.elementDossier" ? "1, 1"
+            : item.definition.id === "sage.group.actionCharacters" ? "1"
             : item.definition.id === "sage.finiteField.explore" && targetFieldDegree !== null
               ? Array.from({ length: targetFieldDegree }, (_, index) =>
                 index === (targetFieldDegree === 1 ? 0 : 1) ? "1" : "0").join(", ")
@@ -185,6 +187,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
         selected !== "sage.ideal.hilbertPolynomial" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
           selected === "sage.ideal.membership" ? "Polynomial to test" :
+          selected === "sage.group.actionCharacters" ? "Action point (1 through the saved permutation degree)" :
           selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :
           selected === "sage.numberTheory.modInverse" ? "Integer to invert" :
           selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :

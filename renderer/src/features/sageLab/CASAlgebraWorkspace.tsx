@@ -12,6 +12,7 @@ import SageRingFieldBuilder from "./SageRingFieldBuilder";
 import SageFieldTowerViewer from "./SageFieldTowerViewer";
 import SageGaloisViewer from "./SageGaloisViewer";
 import SageFiniteGroupViewer from "./SageFiniteGroupViewer";
+import SageGroupActionViewer from "./SageGroupActionViewer";
 import SageIdealBuilder from "./SageIdealBuilder";
 import SageFiniteGroupBuilder from "./SageFiniteGroupBuilder";
 import SageModuleBuilder from "./SageModuleBuilder";
@@ -360,6 +361,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
               } : undefined} />}
           {selectedEvidence.request.operation === "sage.group.dossier" && project &&
             <SageFiniteGroupViewer key={selectedEvidence.id} project={project} evidence={selectedEvidence} />}
+          {selectedEvidence.request.operation === "sage.group.actionCharacters" &&
+            <SageGroupActionViewer key={selectedEvidence.id} evidence={selectedEvidence} />}
           {selectedEvidence.request.operation === "sage.module.invariantFactors" &&
             <SageModuleInvariantViewer key={selectedEvidence.id}
               result={selectedEvidence.result as SageModuleInvariantResult} />}

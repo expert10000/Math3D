@@ -526,6 +526,7 @@ declare global {
     | "sage.polynomial.dossier"
     | "sage.galois.analyze"
     | "sage.group.dossier"
+    | "sage.group.actionCharacters"
     | "sage.module.invariantFactors"
     | "sage.chain.homology"
     | "sage.finiteField.explore"

@@ -232,6 +232,32 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       if (mode !== "FAILED") mode = "CHECKED";
       break;
     }
+    case "sage.group.actionCharacters": {
+      const matrices = result.generatorMatrices as number[][][];
+      facts.push(fact("Group order", text(result.order)), fact("Action degree", text(result.actionDegree)),
+        fact("Selected point", text(result.point)), fact("Orbit", list(result.orbit)),
+        fact("Stabilizer element indices", list(result.stabilizer)),
+        fact("Generator permutation matrices", matrices.map((rows, index) =>
+          `M${index + 1} = [${rows.map((row) => row.join(", ")).join("; ")}]`)),
+        fact("Permutation character by element index", list(result.permutationCharacter)),
+        fact("Conjugacy classes", (result.conjugacyClasses as number[][]).map((items) => items.join(", "))),
+        fact("GAP version", text(result.gapVersion)));
+      checks.push(check("Orbit, stabilizer and matrices", "checked",
+        "The app reconstructs the natural permutation action and verifies orbit size × stabilizer size = group order."),
+        check("Permutation character", "checked",
+          "Each character value equals the exact number of points fixed by its group element."));
+      if (result.characterStatus === "integer-table") {
+        facts.push(fact("Irreducible character rows", matrix(result.irreducibleCharacters)),
+          fact("Permutation representation multiplicities", list(result.multiplicities)));
+        checks.push(check("Integer character table", "reported",
+          "GAP supplied the irreducible rows; the app checks row orthogonality, degree squares and decomposition multiplicities."));
+      } else {
+        facts.push(fact("Irreducible character table", "Unavailable in this bounded integer-valued view"));
+        checks.push(check("Nonintegral characters", "unavailable",
+          "This group has nonintegral character values. The exact action and permutation character remain available."));
+      }
+      break;
+    }
     case "sage.algebra.reconstruct":
       facts.push(fact("Presentation", text(result.text)), fact("Characteristic", text(result.characteristic)),
         fact("Field", result.isField ? "Yes" : "No"), fact("Base ring", text(result.baseRing)),

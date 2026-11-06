@@ -30,7 +30,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.numberField.elementDossier", "sage.numberField.primeDecomposition",
   "sage.polynomial.dossier",
   "sage.galois.analyze",
-  "sage.group.dossier", "sage.module.invariantFactors", "sage.chain.homology",
+  "sage.group.dossier", "sage.group.actionCharacters", "sage.module.invariantFactors", "sage.chain.homology",
   "sage.finiteField.explore",
   "sage.numberTheory.padic",
   "sage.numberField.localExtensions",
@@ -125,15 +125,17 @@ const ellipticCurveParams = () => {
   project = upsertMath3DProjectAlgebraObject(project, curve);
   return buildSageEllipticCurveInput(project, { objectId: curve.id, revision: 1 }, ["0", "1"]) as unknown as Record<string, unknown>;
 };
-const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.module.invariantFactors" | "sage.chain.homology") => {
+const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.group.actionCharacters" |
+  "sage.module.invariantFactors" | "sage.chain.homology") => {
   const projectId = createStableDocumentId("project", "sage-broker-contract");
   const ref = (key: string) => ({ objectId: createProjectAlgebraObjectId(projectId, key), revision: 1 });
   const hash = `sha256:${"0".repeat(64)}`;
   const target = ref(operation);
   const common = { schemaVersion: 1, projectId, target, targetHash: hash };
-  if (operation === "sage.group.dossier") return { ...common,
+  if (operation === "sage.group.dossier" || operation === "sage.group.actionCharacters") return { ...common,
     format: "math3d.sage-finite-group-operation",
-    definition: { kind: "finite-group", representation: "abelian", invariantFactors: [2], generators: ["a"] } };
+    definition: { kind: "finite-group", representation: "abelian", invariantFactors: [2], generators: ["a"] },
+    ...(operation === "sage.group.actionCharacters" ? { point: 1 } : {}) };
   if (operation === "sage.module.invariantFactors") return { ...common,
     format: "math3d.sage-module-invariant-factors", baseRing: ref("ZZ"), baseRingHash: hash,
     ambientRank: 1, relationRank: 1, matrix: [["2"]] };
@@ -152,7 +154,8 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : operation === "sage.numberTheory.padic" ? padicParams()
     : operation === "sage.numberField.localExtensions" ? localExtensionParams()
     : operation === "sage.ellipticCurve.dossier" ? ellipticCurveParams()
-    : operation === "sage.group.dossier" || operation === "sage.module.invariantFactors" ||
+    : operation === "sage.group.dossier" || operation === "sage.group.actionCharacters" ||
+      operation === "sage.module.invariantFactors" ||
       operation === "sage.chain.homology" ? pinnedStructureParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,
       matrix: [["1", "2"], ["2", "4"]] }

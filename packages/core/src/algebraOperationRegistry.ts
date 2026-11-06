@@ -19,6 +19,8 @@ import { buildSageGaloisInput, parseSageGaloisInput, parseSageGaloisResult,
   type SageGaloisResult } from "./sageGaloisAnalysis";
 import { buildSageFiniteGroupInput, finiteGroupAction, parseSageFiniteGroupInput,
   parseSageFiniteGroupResult, type SageFiniteGroupResult } from "./sageFiniteGroupOperations";
+import { buildSageGroupActionInput, parseSageGroupActionInput, parseSageGroupActionResult,
+  type SageGroupActionResult } from "./sageGroupActionCharacters";
 import { buildSageModuleInvariantInput, parseSageModuleInvariantInput, parseSageModuleInvariantResult,
   type SageModuleInvariantResult } from "./sageModuleInvariantFactors";
 import { buildSageChainHomologyInput, parseSageChainHomologyInput, parseSageChainHomologyResult,
@@ -38,6 +40,7 @@ export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.insp
   "sage.polynomial.roots_exact" | "sage.polynomial.dossier" | "sage.groebner.compute" |
   "sage.galois.analyze" |
   "sage.group.dossier" |
+  "sage.group.actionCharacters" |
   "sage.module.invariantFactors" |
   "sage.chain.homology" |
   "sage.finiteField.explore" |
@@ -58,6 +61,7 @@ export type AlgebraOperationArguments = {
   "sage.polynomial.dossier": Readonly<{ polynomial: string }>;
   "sage.galois.analyze": Readonly<{ polynomial: string }>;
   "sage.group.dossier": Readonly<Record<string, never>>;
+  "sage.group.actionCharacters": Readonly<{ point: number }>;
   "sage.module.invariantFactors": Readonly<Record<string, never>>;
   "sage.chain.homology": Readonly<Record<string, never>>;
   "sage.finiteField.explore": Readonly<{ element: readonly number[] }>;
@@ -80,7 +84,7 @@ export type AlgebraOperationArguments = {
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult | SageGaloisResult |
-  SageFiniteGroupResult | SageModuleInvariantResult | SageChainHomologyResult | SageFiniteFieldResult | SagePadicResult |
+  SageFiniteGroupResult | SageGroupActionResult | SageModuleInvariantResult | SageChainHomologyResult | SageFiniteFieldResult | SagePadicResult |
   SageLocalExtensionResult | SageEllipticCurveResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
@@ -126,6 +130,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     "math3d.sage-galois-analysis/v1", "math3d.sage-galois-analysis-result/v1"),
   definition("sage.group.dossier", "GAP group invariants", "structure", ["finite-group"], "any",
     "group.dossier", ["docker"], "math3d.sage-finite-group-operation/v1", "math3d.sage-finite-group-result/v1"),
+  definition("sage.group.actionCharacters", "Group action and characters", "structure", ["finite-group"], "any",
+    "group.action-characters", ["docker"], "math3d.sage-finite-group-operation/v1", "math3d.sage-group-action-result/v1"),
   definition("sage.module.invariantFactors", "ZZ module invariant factors", "structure", ["module"], "any",
     "module.invariant-factors", ["docker"], "math3d.sage-module-invariant-factors/v1", "math3d.sage-module-invariant-factors-result/v1"),
   definition("sage.chain.homology", "ZZ chain homology", "structure", ["chain-complex"], "any",
@@ -188,7 +194,8 @@ const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
   if (operation.id === "sage.finiteField.explore" && record.definition.kind === "finite-field" &&
       record.definition.characteristic ** record.definition.degree > 64)
     return "Finite-field exploration is limited to fields with at most 64 elements.";
-  if (operation.id === "sage.group.dossier") try { finiteGroupAction(record.definition as import("./finiteGroup").FiniteGroupDefinition); }
+  if (operation.id === "sage.group.dossier" || operation.id === "sage.group.actionCharacters")
+    try { finiteGroupAction(record.definition as import("./finiteGroup").FiniteGroupDefinition); }
   catch (error) { return String((error as Error).message ?? error); }
   if (operation.id === "sage.module.invariantFactors") {
     if (record.definition.kind !== "module") return "Invariant factors require a saved ZZ module.";
@@ -305,6 +312,9 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
   } else if (id === "sage.group.dossier") {
     if (!exact(input, [])) throw new TypeError("GAP group dossier takes no freeform arguments.");
     params = buildSageFiniteGroupInput(project, target) as unknown as Record<string, unknown>;
+  } else if (id === "sage.group.actionCharacters") {
+    if (!exact(input, ["point"])) throw new TypeError("Choose one point of the saved group action.");
+    params = buildSageGroupActionInput(project, target, input.point as number) as unknown as Record<string, unknown>;
   } else if (id === "sage.module.invariantFactors") {
     if (!exact(input, [])) throw new TypeError("ZZ module invariant factors take no freeform arguments.");
     params = buildSageModuleInvariantInput(project, target) as unknown as Record<string, unknown>;
@@ -378,6 +388,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     return parseSageGaloisResult(value, parseSageGaloisInput(request.params));
   if (request.operation === "sage.group.dossier")
     return parseSageFiniteGroupResult(value, parseSageFiniteGroupInput(request.params));
+  if (request.operation === "sage.group.actionCharacters")
+    return parseSageGroupActionResult(value, parseSageGroupActionInput(request.params));
   if (request.operation === "sage.module.invariantFactors")
     return parseSageModuleInvariantResult(value, parseSageModuleInvariantInput(request.params));
   if (request.operation === "sage.chain.homology")

@@ -8,6 +8,7 @@ import { parseSageNumberFieldInput, validateSageNumberFieldSnapshot,
   type SageNumberFieldOperation } from "./sageNumberFieldOperations";
 import { parseSageGaloisInput, validateSageGaloisSnapshot } from "./sageGaloisAnalysis";
 import { parseSageFiniteGroupInput, validateSageFiniteGroupSnapshot } from "./sageFiniteGroupOperations";
+import { parseSageGroupActionInput, validateSageGroupActionSnapshot } from "./sageGroupActionCharacters";
 import { parseSageModuleInvariantInput, validateSageModuleInvariantSnapshot } from "./sageModuleInvariantFactors";
 import { parseSageChainHomologyInput, validateSageChainHomologySnapshot } from "./sageChainHomology";
 import { parseSageFiniteFieldInput, validateSageFiniteFieldSnapshot } from "./sageFiniteFieldExplorer";
@@ -90,6 +91,8 @@ export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDoc
     validateSageGaloisSnapshot(parseSageGaloisInput(request.params), projectId, objects);
   if (request.operation === "sage.group.dossier")
     validateSageFiniteGroupSnapshot(parseSageFiniteGroupInput(request.params), projectId, objects);
+  if (request.operation === "sage.group.actionCharacters")
+    validateSageGroupActionSnapshot(parseSageGroupActionInput(request.params), projectId, objects);
   if (request.operation === "sage.module.invariantFactors")
     validateSageModuleInvariantSnapshot(parseSageModuleInvariantInput(request.params), projectId, objects);
   if (request.operation === "sage.chain.homology")

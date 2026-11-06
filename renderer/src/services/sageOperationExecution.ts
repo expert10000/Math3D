@@ -10,6 +10,7 @@ import {
   parseSageNumberFieldInput,
   parseSageGaloisInput,
   parseSageFiniteGroupInput,
+  parseSageGroupActionInput,
   parseSageModuleInvariantInput,
   parseSageChainHomologyInput,
   parseSageFiniteFieldInput,
@@ -57,6 +58,7 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.numberField.primeDecomposition": { type: "number-field.prime-decomposition", label: "prime ideal decomposition", cancelled: "Sage number-field job cancelled." },
   "sage.galois.analyze": { type: "galois.analyze", label: "Galois analysis", cancelled: "Sage Galois job cancelled." },
   "sage.group.dossier": { type: "group.dossier", label: "GAP group invariants", cancelled: "Sage GAP job cancelled." },
+  "sage.group.actionCharacters": { type: "group.action-characters", label: "group action and characters", cancelled: "Sage GAP action job cancelled." },
   "sage.module.invariantFactors": { type: "module.invariant-factors", label: "ZZ module invariant factors", cancelled: "Sage module job cancelled." },
   "sage.chain.homology": { type: "chain.homology", label: "ZZ chain homology", cancelled: "Sage chain job cancelled." },
   "sage.finiteField.explore": { type: "finite-field.explore", label: "finite-field explorer", cancelled: "Sage finite-field job cancelled." },
@@ -212,6 +214,8 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       ? request.backend === "docker" && !!parseSageGaloisInput(params)
     : request.operation === "sage.group.dossier"
       ? request.backend === "docker" && !!parseSageFiniteGroupInput(params)
+    : request.operation === "sage.group.actionCharacters"
+      ? request.backend === "docker" && !!parseSageGroupActionInput(params)
     : request.operation === "sage.module.invariantFactors"
       ? request.backend === "docker" && !!parseSageModuleInvariantInput(params)
     : request.operation === "sage.chain.homology"

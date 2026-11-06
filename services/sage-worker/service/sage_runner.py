@@ -24,7 +24,7 @@ if __package__:
     from .elliptic_curve import run_elliptic_curve
     from .number_field_operations import run_number_field_operation
     from .galois_analysis import analyze_galois
-    from .finite_group_operations import analyze_finite_group, group_capability_available
+    from .finite_group_operations import analyze_finite_group, analyze_group_action, group_capability_available, group_action_capability_available
 else:
     from algebra_reconstruction import reconstruct_algebra, inspect_algebra_domains
     from finite_field_explorer import explore_finite_field
@@ -33,7 +33,7 @@ else:
     from elliptic_curve import run_elliptic_curve
     from number_field_operations import run_number_field_operation
     from galois_analysis import analyze_galois
-    from finite_group_operations import analyze_finite_group, group_capability_available
+    from finite_group_operations import analyze_finite_group, analyze_group_action, group_capability_available, group_action_capability_available
 
 
 ENGINE = "sagemath"
@@ -1003,6 +1003,8 @@ if _ideal_capability_available("is_homogeneous") and _ideal_capability_available
     OPERATIONS["sage.ideal.hilbertPolynomial"] = _ideal_operation
 if group_capability_available():
     OPERATIONS["sage.group.dossier"] = lambda op, params: _success(op, analyze_finite_group(params))
+if group_action_capability_available():
+    OPERATIONS["sage.group.actionCharacters"] = lambda op, params: _success(op, analyze_group_action(params))
 
 
 def run_payload(payload):

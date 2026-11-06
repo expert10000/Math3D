@@ -15,6 +15,7 @@ export type SageOperation =
   | "sage.polynomial.dossier"
   | "sage.galois.analyze"
   | "sage.group.dossier"
+  | "sage.group.actionCharacters"
   | "sage.module.invariantFactors"
   | "sage.chain.homology"
   | "sage.finiteField.explore"
@@ -44,6 +45,7 @@ export type SageSymbolicOperation = Exclude<SageOperation, "sage.topology.intege
   "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" | "sage.polynomial.dossier" |
   "sage.galois.analyze" |
   "sage.group.dossier" |
+  "sage.group.actionCharacters" |
   "sage.module.invariantFactors" |
   "sage.chain.homology" |
   "sage.finiteField.explore" |
@@ -110,6 +112,7 @@ export const SAGE_OPERATIONS: SageOperation[] = [
   "sage.polynomial.dossier",
   "sage.galois.analyze",
   "sage.group.dossier",
+  "sage.group.actionCharacters",
   "sage.module.invariantFactors",
   "sage.chain.homology",
   "sage.finiteField.explore",

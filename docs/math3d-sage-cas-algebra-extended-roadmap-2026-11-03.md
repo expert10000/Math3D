@@ -372,6 +372,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G06 implementation update (2026-11-06):** The [G06 acceptance record](evidence/sage-g06-ideal-invariants-2026-11-06.md) adds capability-gated radical, primary decomposition with associated primes, and graded quotient Hilbert polynomial operations to saved ideals. Each request pins its ideal and ambient ring, requires an explicit standard or expanded budget, and is limited to two variables and three generators. The worker caps output, stops jobs at the budget wall time, checks radical containment/idempotence and primary component reconstruction, and reports unavailable methods through the route manifest. The Inspector distinguishes worker-reported mathematics from app-checked schema and identity. The next feature is **SAGE-G07**, representations and group actions.
 
+**G07 implementation update (2026-11-06):** The [G07 acceptance record](evidence/sage-g07-representations-actions-2026-11-06.md) adds the natural permutation representation of a pinned finite group, selected-point orbit and stabilizer, generator matrices, fixed-point character and a discrete action graph. GAP supplies irreducible character rows for the existing bounded group contract; integer-valued tables receive exact orthogonality and permutation-representation decomposition checks. Nonintegral tables are explicitly unavailable in this first integer-valued view while the exact action remains usable. The next feature is **SAGE-G08**, projective and affine geometry objects.
+
 ---
 
 ## 3. P0 — Algebra object registry

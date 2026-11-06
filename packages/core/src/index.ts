@@ -24,6 +24,7 @@ export * from "./projectFieldTower";
 export * from "./sageGaloisAnalysis";
 export * from "./finiteGroup";
 export * from "./sageFiniteGroupOperations";
+export * from "./sageGroupActionCharacters";
 export * from "./sageModuleInvariantFactors";
 export * from "./chainComplex";
 export * from "./sageChainHomology";
