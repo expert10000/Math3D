@@ -109,6 +109,8 @@ try {
   };
   const baseline = await snapshot();
   const baselineHeapComposition = diagnoseHeap ? await heapComposition() : null;
+  const warmupHeapSnapshot = diagnoseHeap && process.env.MATH3D_HEAP_WARMUP_SNAPSHOT === "1";
+  let warmupHeapComposition = null;
   const cycles = [];
   for (let i = 0; i < requestedCycles; i++) {
     const id = scenePair === "qwz"
@@ -148,10 +150,11 @@ try {
     const closed = await snapshot();
     assert.equal(closed.canvasCount, baseline.canvasCount, `${id} left a canvas after close`);
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
+    if (warmupHeapSnapshot && i === 19) warmupHeapComposition = await heapComposition();
   }
   const final = await snapshot();
   const finalHeapComposition = diagnoseHeap ?
-    await heapComposition(true, baselineHeapComposition.maxNodeId) : null;
+    await heapComposition(true, warmupHeapComposition?.maxNodeId ?? baselineHeapComposition.maxNodeId) : null;
   const workbookAutosaveStorage = await page.evaluate(() => ({
     currentBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosave.v1") ?? "").length,
     journalBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosaveJournal.v1") ?? "").length,
@@ -168,6 +171,14 @@ try {
   })).map(row => ({ ...row, deltaCount: row.final.count - row.baseline.count,
     deltaSelfBytes: row.final.selfBytes - row.baseline.selfBytes }))
     .sort((a, b) => b.deltaSelfBytes - a.deltaSelfBytes).slice(0, 30) : null;
+  const lateConstructorGrowth = warmupHeapComposition ? Object.keys({
+    ...warmupHeapComposition.byConstructor, ...finalHeapComposition.byConstructor,
+  }).map(name => ({ name,
+    warmup: warmupHeapComposition.byConstructor[name] ?? { count: 0, selfBytes: 0 },
+    final: finalHeapComposition.byConstructor[name] ?? { count: 0, selfBytes: 0 },
+  })).map(row => ({ ...row, deltaCount: row.final.count - row.warmup.count,
+    deltaSelfBytes: row.final.selfBytes - row.warmup.selfBytes }))
+    .sort((a, b) => b.deltaSelfBytes - a.deltaSelfBytes).slice(0, 30) : null;
   const trackedConstructors = diagnoseHeap ? Object.fromEntries(
     ["native:WebGL2RenderingContext", "native:WebGLTexture"].map(name => [name, {
       baseline: baselineHeapComposition.byConstructor[name]?.count ?? 0,
@@ -179,6 +190,8 @@ try {
     workbookAutosaveStorage,
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
     ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,
+      ...(warmupHeapComposition ? { warmupByType: warmupHeapComposition.byType,
+        topConstructorLateGrowth: lateConstructorGrowth } : {}),
       finalByType: finalHeapComposition.byType, topConstructorGrowth: constructorGrowth,
       trackedConstructors,
       retainers: finalHeapComposition.retainers,
