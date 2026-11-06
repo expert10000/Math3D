@@ -107,6 +107,8 @@ jobs:
           node scripts/evaluate-quantum-scene-memory-budget.mjs `
             $reportPath test-results/qi40-source-memory-budget.json
           if ($LASTEXITCODE -ne 0) { throw 'Memory budget evaluation failed' }
+          $budget = Get-Content test-results/qi40-source-memory-budget.json -Raw | ConvertFrom-Json
+          if (-not $budget.targetMet) { throw 'Provisional source memory target remains unmet; see uploaded evidence' }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
