@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { _electron as electron } from "playwright";
@@ -144,7 +144,11 @@ try {
       retainers: finalHeapComposition.retainers,
       method: "V8 heap snapshot node self sizes after forced GC; shallow bytes, not retained-size attribution" } } : {}) };
   const bytes = JSON.stringify(result, null, 2) + "\n";
-  if (process.argv[2]) await writeFile(resolve(process.argv[2]), bytes);
+  if (process.argv[2]) {
+    const output = resolve(process.argv[2]);
+    await mkdir(dirname(output), { recursive: true });
+    await writeFile(output, bytes);
+  }
   process.stdout.write(bytes);
 } finally {
   if (app) await app.close();
