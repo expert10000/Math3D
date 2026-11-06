@@ -145,7 +145,8 @@ export function computeProjectAtlasRefinement(project: Math3DProject,
   let seamRefinement: ReturnType<typeof measureAtlasSeams> | null = null;
   let coverageRefinement: { coarse: number; fine: number } | null = null;
   if (refinedCharts.length === memberIds.length) {
-    const positions: number[] = [], indices: number[] = [], counts = [];
+    const positions: number[] = [], indices: number[] = [];
+    const counts: { vertices: number; faces: number }[] = [];
     for (const chart of refinedCharts) {
       const offset = positions.length / 3;
       positions.push(...chart.vertices.flatMap(point => [...point]));
