@@ -1039,6 +1039,8 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Further QI-40 evidence (2026-11-06):** A [Lab-only versus both-app installer comparison](evidence/quantum-qi40-installer-heap-project-followup-2026-11-06.md) passed six clean-runner installs but did not reproduce or explain the earlier access violation. Two installed 80-cycle V8 snapshots showed string growth and 80 additional WebGL context wrappers each; zero canvas mismatches are therefore insufficient for memory signoff. The pinned pre-QEC installed app reopened a retained mixed Project with exact QWZ, Rice–Mele and QEC scene references. Investigate the retained-object paths and installer fault before release freeze.
 
+**Retainer and rollback follow-up (2026-11-06):** A [40-cycle installed V8 trace](evidence/quantum-qi40-retainers-dumps-six-scene-2026-11-06.md) found document event-listener paths to closed WebGL contexts. Six clean-runner Theory Lab installs had per-application WER mini-dump capture enabled; all passed, so the earlier access violation was not reproduced. The pinned pre-QEC installed app reopened a retained six-scene Project, including field, time, QEC and v2 band references. Cleanup repair, installer diagnosis and release memory limits remain open.
+
 ### Cross-repository ownership and evidence for the first cut
 
 | Deliverable | Owning repository | Required predecessor | Evidence to attach |

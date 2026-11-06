@@ -23,10 +23,12 @@ export function summarizeQuantumHeapRetainers(snapshot) {
   const nodeCount = nodes.length / nodeStride;
   const edgeCount = edges.length / edgeStride;
   const incoming = new Int32Array(nodeCount).fill(-1);
+  const outgoingStart = new Int32Array(nodeCount);
   const next = new Int32Array(edgeCount).fill(-1);
   const source = new Int32Array(edgeCount);
   let edgeNumber = 0;
   for (let node = 0; node < nodeCount; node++) {
+    outgoingStart[node] = edgeNumber;
     const count = nodes[node * nodeStride + nodeEdgesAt];
     for (let i = 0; i < count; i++, edgeNumber++) {
       const targetOffset = edges[edgeNumber * edgeStride + edgeTargetAt];
@@ -60,7 +62,23 @@ export function summarizeQuantumHeapRetainers(snapshot) {
     const at = node * nodeStride;
     const type = nodeTypes[nodes[at + nodeTypeAt]];
     const name = type === "string" ? "[string]" : safeName(strings[nodes[at + nodeNameAt]]);
-    return `${type}:${name}`;
+    if (type !== "object") return `${type}:${name}`;
+    let materialType = null;
+    let marker = null;
+    const start = outgoingStart[node];
+    const count = nodes[at + nodeEdgesAt];
+    for (let i = start; i < start + count; i++) {
+      const edgeAt = i * edgeStride;
+      if (edgeTypes[edges[edgeAt + edgeTypeAt]] !== "property") continue;
+      const property = strings[edges[edgeAt + edgeNameAt]];
+      if (["isTexture", "isRenderTarget", "isWebGLRenderTarget", "isMaterial",
+        "isBufferGeometry"].includes(property)) marker = property;
+      if (property !== "type") continue;
+      const target = edges[edgeAt + edgeTargetAt];
+      if (nodeTypes[nodes[target + nodeTypeAt]] === "string")
+        materialType = safeName(strings[nodes[target + nodeNameAt]]);
+    }
+    return `${type}:${name}${materialType || marker ? `{${materialType ?? marker}}` : ""}`;
   };
   return { nodeCount, edgeCount, totalWebGLContexts: contextTargets.length,
     largeStringCount: stringTargets.length,
