@@ -2,9 +2,16 @@ name: Windows QI40 Next Three
 
 on:
   workflow_dispatch:
+    inputs:
+      checks:
+        description: Checks to run
+        type: choice
+        options: [all, rollback-profile]
+        default: all
 
 jobs:
   rollback-profile:
+    if: ${{ inputs.checks == 'all' || inputs.checks == 'rollback-profile' }}
     runs-on: windows-latest
     timeout-minutes: 35
     permissions:
@@ -56,6 +63,7 @@ jobs:
             test-results/playwright/quantum-installed-rollback-profile*/test-failed-*.png
 
   installed-stress:
+    if: ${{ inputs.checks == 'all' }}
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
@@ -115,6 +123,7 @@ jobs:
             test-results/qi40-installed-stress-80.json
 
   installer-diagnostics:
+    if: ${{ inputs.checks == 'all' }}
     strategy:
       fail-fast: false
       matrix:

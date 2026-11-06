@@ -94,9 +94,8 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
       if (phase === "verify") {
         await projects.getByTestId(`project-open-quantum-scene-${expected.fingerprint}`).click();
         await expect(page.getByTestId("quantum-scene-preview")).toBeVisible();
-        const opened = await page.evaluate(() => (window as any).quantumScenes.reopenRecent());
-        expect(opened.ok).toBe(true);
-        expect(opened.reference.sceneFingerprint).toBe(expected.fingerprint);
+        expect(await page.evaluate(fingerprint =>
+          (window as any).quantumScenes.verifyActive(fingerprint), expected.fingerprint)).toBe(true);
         await page.getByTestId("quantum-scene-close").click();
       }
       sceneChecks.push({ id: item.id, fingerprint: expected.fingerprint,
