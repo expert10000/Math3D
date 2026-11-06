@@ -57,7 +57,8 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
       await expect(page.getByTestId("graph-gallery")).toBeHidden();
       await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
     }
-    await page.getByTestId("projects-toggle").click();
+    // The Graph workspace sits over the top navigation in the archived 1.7 build.
+    await page.getByTestId("projects-toggle").evaluate((button: HTMLButtonElement) => button.click());
     const projects = page.getByTestId("project-explorer-panel");
     if (phase === "seed") {
       for (const item of scenes) {
