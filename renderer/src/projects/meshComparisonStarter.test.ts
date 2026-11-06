@@ -1,15 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { parseMath3DProject, serializeMath3DProject } from "@math3d/core";
+import { parseMath3DProject, readProjectCoordinateFrame, serializeMath3DProject } from "@math3d/core";
 import { instantiateMeshComparisonStarter } from "./meshComparisonStarter";
 import { buildSavedMeshResultTrend } from "./projectSavedMeshResultTrend";
 import { compareSavedMeshTrendPoints, resolveSavedMeshTrendPoint } from "./projectSavedMeshTrendPoint";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { retainedMeshGenerationDocuments } from "@math3d/core";
 import { buildSavedMeshComparisonReview } from "./projectSavedMeshComparisonReview";
-import { resolveProjectCompositionMember } from "../components/ProjectCompositionView";
+import { qualifyProjectCameraPair, resolveProjectCompositionMember } from "../components/ProjectCompositionView";
 import { resolveLinkedCoordinateProbe } from "./projectLinkedCoordinateProbe";
+import { createProjectComparisonNote, inspectProjectComparisonNote } from "./projectComparisonNotes";
 
 describe("Saved Mesh comparison starter", () => {
+  it("links a declared Surface coordinate to a Mesh without inferring a target element", () => {
+    const { project, resources } = instantiateMeshComparisonStarter("surface-mesh-pair", "surface-mesh-probe");
+    const imported = parseProjectPackage(exportProjectPackage(project, resources));
+    const comparison = imported.project.compositions![0]!;
+    const members = comparison.members.map((member, slot) => ({ ...resolveProjectCompositionMember(imported.project, member,
+      item => imported.resources.bytes(item)), slot: slot as 0 | 1 }));
+    expect(imported.project.workspace.entries.map(entry => entry.module)).toEqual(["surface", "mesh"]);
+    expect(members[0]!.param).toBeTruthy();
+    expect(members.map(member => member.coordinates.value?.unit)).toEqual(["m", "m"]);
+    expect(qualifyProjectCameraPair(members)).toBe("declared-3d-frame");
+    expect(qualifyProjectCameraPair([{ ...members[0]!, coordinates: { status: "missing" } }, members[1]!])).toBeNull();
+    for (const source of members) {
+      const probe = resolveLinkedCoordinateProbe(members, { memberId: source.id, revision: source.revision, hash: source.hash,
+        point: { x: 0.25, y: 0.25, z: 0.04 } });
+      expect(probe?.source.id).toBe(source.id);
+      expect(probe?.target.id).toBe(members.find(member => member !== source)!.id);
+      expect(probe?.target).not.toHaveProperty("meshKey");
+      expect(probe?.unit).toBe("m");
+    }
+    const probe = resolveLinkedCoordinateProbe(members, { memberId: members[0]!.id, revision: members[0]!.revision,
+      hash: members[0]!.hash, point: { x: 0.25, y: 0.25, z: 0.04 } })!;
+    const note = createProjectComparisonNote(imported.project, comparison, item => imported.resources.bytes(item),
+      "Surface coordinate", "The same local coordinate is marked in the Mesh pane.", 1, "surface-mesh-note", probe);
+    expect(inspectProjectComparisonNote({ ...imported.project, notes: [note] }, note,
+      item => imported.resources.bytes(item)).status).toBe("current");
+    expect(readProjectCoordinateFrame({ ...imported.project.workspace.entries[0]!.checkpoint,
+      source: { ...(imported.project.workspace.entries[0]!.checkpoint as any).source,
+        units: { length: "cm" } } } as never).status).toBe("invalid");
+    expect(() => resolveProjectCompositionMember(imported.project, comparison.members[1], () => null)).toThrow(/buffer/i);
+  });
   it("opens a portable Mesh/Geometry pair and links picks from both exact sources", () => {
     const { project, resources } = instantiateMeshComparisonStarter("coordinate-pair", "mesh-geometry-probe");
     const imported = parseProjectPackage(exportProjectPackage(project, resources));

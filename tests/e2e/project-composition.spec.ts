@@ -153,6 +153,38 @@ test("PC05 compares a retained Surface checkpoint with its current generation", 
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC05 links a declared Surface coordinate to a saved Mesh pane", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-surface-mesh-probe").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Surface / Mesh · shared metres" });
+    const surfacePane = view.getByRole("region", { name: /A: Declared metre paraboloid/ });
+    const meshPane = view.getByRole("region", { name: /B: Declared metre Mesh/ });
+    await expect(surfacePane.locator("canvas").first()).toBeVisible();
+    await expect(meshPane.locator("canvas").first()).toBeVisible();
+    const canvas = surfacePane.locator("canvas").first();
+    const bounds = await canvas.boundingBox();
+    if (!bounds) throw new Error("Surface comparison canvas is unavailable.");
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(meshPane.getByTestId("project-composition-linked-coordinate")).toContainText("Coordinate marker only");
+    await expect(view.getByTestId("project-composition-probe-status")).toContainText("local");
+    await expect(surfacePane.getByTestId("project-composition-linked-coordinate")).toHaveCount(0);
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "Surface / Mesh · shared metres" });
+    await expect(view.getByTestId("project-composition-linked-coordinate")).toHaveCount(0);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC03 starter exposes verified, asserted and refused coordinate overlays", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;

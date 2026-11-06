@@ -1581,6 +1581,12 @@ binary sidecar preserved. A current Mesh revision beyond the replay checkpoint
 is explicitly marked as a retained pre-declaration snapshot, so the original
 comparison keeps its exact source. Geometry history outside the retained
 checkpoint remains open.
+PC05 now has a bounded declared-frame Surface/Mesh coordinate probe. The
+Surface declaration is stored in its structural orientation source and must
+agree with its length unit. A pick marks the same 3D coordinate in the other
+pane and may be saved in an exact comparison Note; it does not infer a target
+element or value. Unretained generations and unrelated-model element mapping
+remain **Partial**.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

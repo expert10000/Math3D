@@ -1,4 +1,4 @@
-import { createGeometryDocument, createMath3DProject, createMixedWorkspaceDocument, updateMath3DProjectMetadata,
+import { createGeometryDocument, createMath3DProject, createMixedWorkspaceDocument, createSurfaceDocument, updateMath3DProjectMetadata,
   upsertMath3DProjectComposition, upsertMath3DProjectNote, upsertMath3DProjectSavedMeshComparison } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./savedMeshAnalysis";
@@ -10,9 +10,13 @@ import { createSavedMeshPinnedComparison } from "./projectSavedMeshPinnedCompari
 import { createProjectSavedMeshComparisonNote } from "./projectSavedMeshComparisonNotes";
 
 export type MeshComparisonStarterId = "mesh-comparison-study" | "mesh-comparison-review" | "mesh-subdivision-study" |
-  "mesh-curvature-study" | "mesh-trend-gap-study" | "mesh-geometry-probe";
+  "mesh-curvature-study" | "mesh-trend-gap-study" | "mesh-geometry-probe" | "surface-mesh-probe";
 
 const descriptions: Record<MeshComparisonStarterId, { title: string; description: string; document: string }> = {
+  "surface-mesh-probe": {
+    title: "Surface and Mesh Coordinate Probe", document: "Declared metre Surface",
+    description: "Pick a coordinate in a declared Surface or Mesh and mark that same 3D coordinate in the other pane without inferring a matching element.",
+  },
   "mesh-geometry-probe": {
     title: "Mesh and Geometry Coordinate Probe", document: "Declared metre Mesh",
     description: "Pick a saved Mesh beside a Geometry sphere in the same declared local metre frame. Save an authored coordinate observation without equating their elements.",
@@ -70,7 +74,7 @@ function sphereMesh() {
 
 function starterMesh(id: MeshComparisonStarterId) {
   if (id === "mesh-curvature-study") return sphereMesh();
-  if (id === "mesh-comparison-study" || id === "mesh-comparison-review" || id === "mesh-trend-gap-study" || id === "mesh-geometry-probe") return MeshDocumentAdapter.fromMesh({
+  if (id === "mesh-comparison-study" || id === "mesh-comparison-review" || id === "mesh-trend-gap-study" || id === "mesh-geometry-probe" || id === "surface-mesh-probe") return MeshDocumentAdapter.fromMesh({
     label: "Comparison square", source: source("built-in-comparison-square.obj"),
     positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]),
     indices: Uint32Array.from([0, 1, 2, 1, 3, 2]),
@@ -85,6 +89,31 @@ function starterMesh(id: MeshComparisonStarterId) {
 
 /** Built-in examples use the same edit, analysis, and sidecar paths as a user Project. */
 export function instantiateMeshComparisonStarter(token: string, id: MeshComparisonStarterId = "mesh-comparison-study") {
+  if (id === "surface-mesh-probe") {
+    const adapter = starterMesh(id), mesh = adapter.document();
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const surface = createSurfaceDocument({ stableKey: [id, token, "surface"], metadata: { title: "Declared metre paraboloid" },
+      source: { representation: "parametric", domain: { kind: "parameter",
+        u: { min: 0, max: 1, periodic: false }, v: { min: 0, max: 1, periodic: false } },
+        units: { length: "m" }, orientation: { math3dCoordinateFrame: frame }, parameters: {}, branchPolicy: null,
+        definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "0.3*(u*u+v*v)" } } } });
+    const workspace = createMixedWorkspaceDocument({ entries: [
+      { module: "surface", checkpoint: surface, expected: surface.identity, replay: null },
+      { module: "mesh", checkpoint: mesh, expected: mesh.identity, replay: null }],
+      activeDocumentIds: [surface.identity.id, mesh.identity.id], constructions: [], results: [], relations: [], artifacts: [], committedSelection: null });
+    let project = createMath3DProject(workspace, { stableKey: [id, token], title: descriptions[id].title });
+    project = updateMath3DProjectMetadata(project, { ...project.metadata, description: descriptions[id].description,
+      tags: ["starter", id, "surface", "mesh", "comparison", "coordinate-probe"],
+      documents: { [surface.identity.id]: { title: surface.metadata.title }, [mesh.identity.id]: { title: "Declared metre Mesh" } } });
+    project = upsertMath3DProjectComposition(project, { id: `${id}:saved-pair`, title: "Surface / Mesh · shared metres",
+      mode: "side-by-side", members: [
+        { documentId: surface.identity.id, expected: surface.identity, visible: true, color: "#3976d7", opacity: 1 },
+        { documentId: mesh.identity.id, expected: mesh.identity, visible: true, color: "#e8793a", opacity: 0.8 },
+      ] });
+    return { project, resources: captureProjectResources(project, item => item.kind === "mesh-buffers" ?
+      adapter.resources.bytes(item.reference as never) : null) };
+  }
   if (id === "mesh-geometry-probe") {
     const adapter = starterMesh(id), mesh = adapter.document();
     const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",

@@ -32,7 +32,7 @@ export type LinkedCoordinateProbe = Readonly<{
 export const resolveLinkedCoordinateProbe = (
   members: readonly CoordinateProbeMember[], pick: CoordinateProbePick | null,
 ): LinkedCoordinateProbe | null => {
-  if (!pick || members.length !== 2 || members.some(member => member.param || member.coordinates.status !== "declared" || !member.coordinates.value)) return null;
+  if (!pick || members.length !== 2 || members.some(member => member.coordinates.status !== "declared" || !member.coordinates.value)) return null;
   const [a, b] = members;
   if (a!.slot === undefined || b!.slot === undefined || a!.slot === b!.slot ||
     !sameProjectCoordinateFrame(a!.coordinates.value!, b!.coordinates.value!)) return null;

@@ -19,6 +19,7 @@ export const NOTEBOOK_STARTERS = [
   { id: "mesh-curvature-study", title: "Saved Mesh Curvature Study", description: "Three saved discrete-curvature results from a closed triangulated sphere at different scales." },
   { id: "mesh-trend-gap-study", title: "Mesh Trend With Missing Result", description: "A three-generation Mesh trend whose middle generation has no saved quality result." },
   { id: "mesh-geometry-probe", title: "Mesh and Geometry Coordinate Probe", description: "A saved Mesh and Geometry pair with matching declared metre coordinates for source-backed probe observations." },
+  { id: "surface-mesh-probe", title: "Surface and Mesh Coordinate Probe", description: "A saved Surface and Mesh pair with matching declared metre coordinates for a bounded cross-model coordinate marker." },
 ] as const;
 export type NotebookStarterId = typeof NOTEBOOK_STARTERS[number]["id"];
 
@@ -160,7 +161,7 @@ export function instantiateNotebookStarter(id: NotebookStarterId, token: string)
   const recipe = NOTEBOOK_STARTERS.find(item => item.id === id);
   if (!recipe) throw new TypeError("Unknown Notebook starter.");
   if (id === "mesh-comparison-study" || id === "mesh-comparison-review" || id === "mesh-subdivision-study" ||
-    id === "mesh-curvature-study" || id === "mesh-trend-gap-study" || id === "mesh-geometry-probe")
+    id === "mesh-curvature-study" || id === "mesh-trend-gap-study" || id === "mesh-geometry-probe" || id === "surface-mesh-probe")
     return instantiateMeshComparisonStarter(token, id);
   if (id === "ripple-wave-study") return instantiateRippleWaveStarter(token);
   if (id === "graph-derivative-notebook" || id === "curve-construction-notebook") return instantiateDocumentNotebookStarter(id, token);

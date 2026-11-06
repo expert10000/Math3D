@@ -43,9 +43,18 @@ the exact picked source ID, revision and hash. Only the coordinate is shared;
 face and vertex IDs remain local to the picked source. The marker is a transient
 view aid and is recreated from a fresh pick after reopening the comparison.
 
+For a heterogeneous Surface/Mesh pair, open **Surface and Mesh Coordinate
+Probe → Surface / Mesh · shared metres**. Both saved sources declare the same
+local 3D frame and metre unit. A Surface pick places its local xyz coordinate
+in the Mesh pane; a Mesh pick can mark the same coordinate in the Surface pane.
+The marker may lie off the other shape. It does not identify a matching
+parameter, vertex, face, or measured value. The bounded coordinate can be
+recorded in a comparison Note; reopening rechecks both exact sources and the
+Mesh sidecar. Missing or mismatched declarations disable the link.
+
 Choose the undeclared D source or mismatched C source to see the link refused.
 Changed or missing source evidence also prevents the marker. PC03 remains
-Partial for legacy coordinate metadata, and PC05 remains Partial for history
+Partial for historical generations outside retained checkpoints, and PC05 remains Partial for history
 that was never retained and comparison families without a linked adapter.
 
 ## PC25 saved coordinate observations
