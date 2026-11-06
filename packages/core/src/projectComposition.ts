@@ -2,6 +2,7 @@ import { isDocumentIdentity, type DocumentIdentity } from "./documentIdentity";
 import type { MixedWorkspaceDocument, KernelWorkspaceDocument } from "./mixedWorkspace";
 import { retainedMeshGenerationDocuments } from "./retainedMeshGenerations";
 import { retainedGeometryGenerationDocuments } from "./retainedGeometryGenerations";
+import { retainedSurfaceGenerationDocuments } from "./retainedSurfaceGenerations";
 
 /** A view of existing Project documents. No source bytes or edited document state live here. */
 export type ProjectCompositionMember = Readonly<{
@@ -91,7 +92,7 @@ export const inspectProjectComposition = (composition: ProjectComposition, works
     return entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash ? "current" : "historical";
   });
 
-export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "retained-mesh" | "retained-geometry" | "unavailable-generation" | "missing";
+export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "retained-mesh" | "retained-geometry" | "retained-surface" | "unavailable-generation" | "missing";
 /** Metadata availability only; callers must still replay-verify and check resource sidecars. */
 export const inspectProjectCompositionAvailability = (composition: ProjectComposition, workspace: MixedWorkspaceDocument): readonly ProjectCompositionAvailability[] =>
   composition.members.map(member => {
@@ -109,6 +110,11 @@ export const inspectProjectCompositionAvailability = (composition: ProjectCompos
       const retained = retainedGeometryGenerationDocuments(entry).some(document =>
         document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
       if (retained) return "retained-geometry";
+    }
+    if (entry.module === "surface") {
+      const retained = retainedSurfaceGenerationDocuments(entry).some(document =>
+        document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
+      if (retained) return "retained-surface";
     }
     return "unavailable-generation";
   });

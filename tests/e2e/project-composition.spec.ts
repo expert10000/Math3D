@@ -273,6 +273,71 @@ test("PC03 records a legacy Geometry frame in its owner and reopens the exact ne
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC05 records a legacy Surface frame in its owner and reopens both exact comparisons", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const surface = (title: string, orientation: object) => core.createSurfaceDocument({ stableKey: ["pc05-surface-frame", title],
+      metadata: { title }, source: { representation: "parametric", domain: { kind: "parameter",
+        u: { min: 0, max: 1, periodic: false }, v: { min: 0, max: 1, periodic: false } },
+        units: { length: "m" }, orientation, parameters: {}, branchPolicy: null,
+        definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "0.3*(u*u+v*v)" } } } });
+    const declared = surface("Declared Surface", { math3dCoordinateFrame: frame });
+    const legacy = surface("Legacy Surface", {});
+    const edited = new SurfaceDocumentAdapter(legacy);
+    const current = edited.commitSource({ ...legacy.source, definition: { ...legacy.source.definition,
+      expressions: { x: "u", y: "v", z: "0.4*(u*u+v*v)" } } });
+    const replay = edited.replayBundle();
+    const workspace = core.createMixedWorkspaceDocument({ entries: [
+      { module: "surface", checkpoint: declared, expected: declared.identity, replay: null },
+      { module: "surface", checkpoint: replay.checkpoint, expected: current.identity,
+        replay: { format: "math3d.surface-replay.v1", payload: replay } }],
+      activeDocumentIds: [declared.identity.id, legacy.identity.id], constructions: [], relations: [], results: [],
+      artifacts: [], committedSelection: null });
+    let project = core.createMath3DProject(workspace, { stableKey: "pc05-surface-frame", title: "Legacy Surface frame" });
+    project = core.upsertMath3DProjectComposition(project, { id: "pc05-surface-frame-pair", title: "Legacy Surface pair",
+      mode: "side-by-side", members: [declared, current].map((document, index) => ({
+        documentId: document.identity.id, expected: document.identity, visible: true,
+        color: index ? "#e8793a" : "#3976d7", opacity: 1 })) });
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "legacy-surface-project.json",
+      mimeType: "application/json", buffer: Buffer.from(core.serializeMath3DProject(project)) });
+    await panel.getByTestId("project-import-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Imported into the library");
+    await panel.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByTestId("project-composition-declare-frame-1")).toBeVisible();
+    await view.getByLabel("Declared frame").fill("local");
+    await view.getByTestId("project-composition-declare-frame-1").click();
+    await expect(view.getByText("Source frame recorded in a new document revision; new exact comparison saved.")).toBeVisible();
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.compositions).toHaveLength(2);
+    expect(saved.workspace.entries[1].checkpoint.identity).toEqual(legacy.identity);
+    expect(saved.workspace.entries[1].expected.revision).toBe(current.identity.revision + 1);
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained snapshot r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r3" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r3");
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained snapshot r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r3" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r3");
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC05 starter opens a replay-backed before/after comparison", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;

@@ -4,9 +4,11 @@ import { buildMobileProjectExplorer } from
   "../../apps/mobile/src/models/mobileProjectExplorer";
 import { computeVectorField3DExtendedManifold,
   computeVectorField3DLocalManifoldPatch, computeVectorField3DManifoldAtlas,
+  computeProjectManifoldSurfaceCoverage,
   createMixedWorkspaceDocument, parseMath3DProject,
   promoteProjectExtendedManifold, promoteProjectManifoldAtlas,
   projectManifoldAtlasMeshStatus, projectManifoldAtlasStatus,
+  projectManifoldSurfaceCoverageStatus, upsertProjectManifoldSurfaceCoverage,
   replaceMath3DProjectWorkspace, reviseVectorField3DDocument,
   reviseVectorField3DWorkspace, searchVectorField3DEquilibria,
   serializeMath3DProject, upsertProjectLocalManifoldPatch,
@@ -109,7 +111,8 @@ describe("GF-60 bounded atlas coverage refinement", () => {
     const base = computeVectorField3DManifoldAtlas(project, document, studies,
       { domain, overlapTolerance: .25, maxEvaluations: 1_000_000 });
     expect(base.status, base.reason ?? "").toBe("validated");
-    project = promoteProjectManifoldAtlas(project, base).project;
+    const basePromoted = promoteProjectManifoldAtlas(project, base);
+    project = basePromoted.project;
     const patch = computeVectorField3DLocalManifoldPatch(document,
       { constructionId: "gf58-origin", branch: "stable", offsetFraction: .02,
         seedCount: 12, rings: 3, timeLimit: .5,
@@ -131,6 +134,49 @@ describe("GF-60 bounded atlas coverage refinement", () => {
     expect(Number(refined.publication!.summary.uncoveredCells)).toBeLessThan(
       Number(base.publication!.summary.uncoveredCells));
     const promoted = promoteProjectManifoldAtlas(project, refined);
+    const coverage = computeProjectManifoldSurfaceCoverage(promoted.project,
+      base.publication!.resultId, refined.publication!.resultId,
+      basePromoted.bytes, promoted.bytes);
+    expect(coverage.status, coverage.reason ?? "").toBe("validated");
+    expect(coverage.publication!.summary).toMatchObject({
+      globalClaim: "withheld", coverageClaim: "local-projected-triangle-evidence" });
+    expect(Number(coverage.publication!.summary.gain16)).toBeGreaterThan(0);
+    expect(Number(coverage.publication!.summary.gain32)).toBeGreaterThan(0);
+    expect(Number((coverage.publication!.summary.refined32 as
+      { boundaryGapCells: number }).boundaryGapCells)).toBeGreaterThan(0);
+    const base32 = coverage.publication!.summary.base32 as
+      { coveredCells: number; boundaryGapCells: number; longestBoundaryGap: number };
+    const refined32 = coverage.publication!.summary.refined32 as
+      { coveredCells: number; boundaryGapCells: number; longestBoundaryGap: number };
+    expect(refined32.coveredCells).toBeGreaterThan(base32.coveredCells);
+    expect(refined32.boundaryGapCells).toBeLessThanOrEqual(base32.boundaryGapCells);
+    expect(refined32.longestBoundaryGap).toBeLessThanOrEqual(base32.longestBoundaryGap);
+    const coarse = coverage.publication!.summary.coarseOverlap as
+      { count: number; rms: number };
+    const fine = coverage.publication!.summary.fineOverlap as
+      { count: number; max: number; rms: number };
+    expect(fine.count).toBeGreaterThan(coarse.count);
+    expect(fine.max).toBeLessThanOrEqual(
+      Number(coverage.publication!.summary.overlapTolerance));
+    expect(Math.abs(fine.rms - coarse.rms)).toBeLessThanOrEqual(
+      Number(coverage.publication!.summary.overlapTolerance) * .25);
+    const withCoverage = parseMath3DProject(serializeMath3DProject(
+      upsertProjectManifoldSurfaceCoverage(promoted.project, coverage,
+        basePromoted.bytes, promoted.bytes)));
+    const coverageResult = withCoverage.workspace.results.find(item =>
+      item.resultId === coverage.publication!.resultId)!;
+    expect(projectManifoldSurfaceCoverageStatus(withCoverage, coverageResult).status)
+      .toBe("withheld");
+    expect(projectManifoldSurfaceCoverageStatus(withCoverage, coverageResult,
+      basePromoted.bytes, promoted.bytes).status).toBe("current");
+    expect(projectManifoldSurfaceCoverageStatus(withCoverage, coverageResult,
+      basePromoted.bytes, promoted.bytes.slice(0, -1)).status).toBe("withheld");
+    expect(buildMobileProjectExplorer(serializeMath3DProject(withCoverage))
+      .scientificContracts.find(item => item.title === "Local atlas surface coverage")
+      ?.spokenSummary).toContain("withheld");
+    expect(() => computeProjectManifoldSurfaceCoverage(promoted.project,
+      base.publication!.resultId, refined.publication!.resultId,
+      basePromoted.bytes, promoted.bytes, () => true)).toThrow(/cancelled/);
     const reopened = parseMath3DProject(serializeMath3DProject(promoted.project));
     const result = reopened.workspace.results.find(item =>
       item.resultId === refined.publication!.resultId)!;
@@ -149,6 +195,13 @@ describe("GF-60 bounded atlas coverage refinement", () => {
           entry.expected.id === changed.identity.id ? { ...entry,
             checkpoint: changed, expected: changed.identity } : entry) }));
     expect(projectManifoldAtlasStatus(stale, result).status).toBe("withheld");
+    const staleCoverage = replaceMath3DProjectWorkspace(withCoverage,
+      createMixedWorkspaceDocument({ ...withCoverage.workspace,
+        entries: withCoverage.workspace.entries.map(entry =>
+          entry.expected.id === changed.identity.id ? { ...entry,
+            checkpoint: changed, expected: changed.identity } : entry) }));
+    expect(projectManifoldSurfaceCoverageStatus(staleCoverage, coverageResult,
+      basePromoted.bytes, promoted.bytes).status).toBe("withheld");
     expect(computeVectorField3DManifoldAtlas(project, document, studies,
       { domain, overlapTolerance: .25, maxEvaluations: 1,
         baseAtlasResultId: base.publication!.resultId }).reason)

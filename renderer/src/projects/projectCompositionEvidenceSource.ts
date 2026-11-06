@@ -1,4 +1,5 @@
-import { readProjectCoordinateFrame, retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments, type KernelWorkspaceDocument, type Math3DProject, type ProjectComposition } from "@math3d/core";
+import { readProjectCoordinateFrame, retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments,
+  retainedSurfaceGenerationDocuments, type KernelWorkspaceDocument, type Math3DProject, type ProjectComposition } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
 import { projectResourceInventory, type ProjectResourceReader } from "./projectResources";
@@ -18,6 +19,8 @@ export function verifyProjectCompositionEvidenceSources(project: Math3DProject, 
       entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
         document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash) :
       entry.module === "geometry" ? retainedGeometryGenerationDocuments(entry).find(document =>
+        document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash) :
+      entry.module === "surface" ? retainedSurfaceGenerationDocuments(entry).find(document =>
         document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash) : undefined;
     if (!currentSelected && !retained) throw new TypeError("The selected source has no matching retained generation.");
     const document: KernelWorkspaceDocument = currentSelected ? current : retained!;

@@ -75,7 +75,8 @@ import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { createProjectComparisonNote, inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
-import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
+import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame,
+  declareLegacySurfaceCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
@@ -2182,7 +2183,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
             const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
-            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry"))
+            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry" && status !== "retained-surface"))
               throw new Error("A comparison source generation is unavailable. Reopen the saved Project.");
             return upsertMath3DProjectComposition(saved, composition);
           }, `Saved composition “${composition.title}”.`);
@@ -2209,6 +2210,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
             const selectedEntry = saved.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
             const { project: next, comparison: pinned } = selectedEntry?.module === "mesh" ?
               declareLegacyMeshCoordinateFrame(saved, composition, slot, frame, item => previousResources.bytes(item)) :
+              selectedEntry?.module === "surface" ? declareLegacySurfaceCoordinateFrame(saved, composition, slot, frame) :
               declareLegacyGeometryCoordinateFrame(saved, composition, slot, frame);
             const resources = captureProjectResources(next, item => previousResources.bytes(item));
             if (projectStateRef.current?.identity.id !== saved.identity.id ||

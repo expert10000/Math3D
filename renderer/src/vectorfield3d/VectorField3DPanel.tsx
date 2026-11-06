@@ -159,6 +159,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onPromoteManifoldContinuation,
   onPromoteExtendedManifold,
   onPromoteManifoldAtlas,
+  onValidateAtlasCoverage,
   onSaveTemporalFtleProfile, onOpenTemporalFtleProfile,
   onRebaseDerivedSource,
   onOpenTemporalSpectrum,
@@ -233,6 +234,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onPromoteManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
   onPromoteExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
   onPromoteManifoldAtlas?: (study: import("@math3d/core").ManifoldAtlasStudy) => void;
+  onValidateAtlasCoverage?: (baseResultId: string, refinedResultId: string) => Promise<import("@math3d/core").ManifoldSurfaceCoverageStudy>;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -2833,7 +2835,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onPromoteManifold={onPromoteManifoldPatch}
         onPromoteContinuation={onPromoteManifoldContinuation}
         onPromoteExtended={onPromoteExtendedManifold}
-        onPromoteAtlas={onPromoteManifoldAtlas} />
+        onPromoteAtlas={onPromoteManifoldAtlas}
+        onValidateAtlasCoverage={onValidateAtlasCoverage} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />

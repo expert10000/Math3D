@@ -840,6 +840,8 @@ import {
   promoteProjectManifoldContinuation,
   promoteProjectExtendedManifold,
   promoteProjectManifoldAtlas,
+  computeProjectManifoldSurfaceCoverage,
+  upsertProjectManifoldSurfaceCoverage,
   rebaseProjectDerivedSource,
   verifiedVectorFieldSampler,
   appendProjectDerivedField,
@@ -91019,6 +91021,33 @@ case "mobius":
               setNotebookProjectVersion(value => value + 1);
               setAdditionalVersion(value => value + 1);
               navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
+            }}
+            onValidateVectorField3DManifoldCoverage={async (baseId, refinedId) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const bytesFor = async (resultId: string) => {
+                const mesh = active.workspace.entries.find(item => item.module === "mesh" &&
+                  item.checkpoint.format === "math3d.mesh-document" &&
+                  (item.checkpoint.source.origin as { resultId?: string }).resultId === resultId)
+                  ?.checkpoint;
+                if (!mesh || mesh.format !== "math3d.mesh-document")
+                  throw new TypeError("Saved atlas Mesh is missing.");
+                const reference = { kind: "mesh-buffers" as const, id: mesh.source.resource.id };
+                return restored.meshes.get(mesh.identity.id)?.resources.bytes(mesh.source.resource) ??
+                  restored.resources?.bytes(reference) ??
+                  (await loadProjectResources(active)).bytes(reference) ?? null;
+              };
+              const baseBytes = await bytesFor(baseId), refinedBytes = await bytesFor(refinedId);
+              const study = computeProjectManifoldSurfaceCoverage(active, baseId, refinedId,
+                baseBytes, refinedBytes);
+              if (study.status !== "validated")
+                throw new TypeError(`Atlas surface coverage unavailable: ${study.reason}.`);
+              const updated = upsertProjectManifoldSurfaceCoverage(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
             }}
             onSaveVectorField3DTemporalSource={(source, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
