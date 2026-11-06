@@ -41,6 +41,7 @@ export type Math3DWorkerOperationId =
   | "chain.homology"
   | "finite-field.explore"
   | "number-theory.padic"
+  | "number-field.local-extensions"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -344,6 +345,10 @@ const definitions = [
   },
   {
     id: "number-theory.padic", title: "Precision-explicit p-adic study", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "number-field.local-extensions", title: "Quadratic Qp local models and ramification", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

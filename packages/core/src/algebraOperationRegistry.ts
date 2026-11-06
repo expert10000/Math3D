@@ -27,6 +27,8 @@ import { buildSageFiniteFieldInput, parseSageFiniteFieldInput, parseSageFiniteFi
   type SageFiniteFieldResult } from "./sageFiniteFieldExplorer";
 import { buildSagePadicInput, parseSagePadicInput, parseSagePadicResult,
   type PadicRational, type SagePadicResult } from "./sagePadicWorkspace";
+import { buildSageLocalExtensionInput, parseSageLocalExtensionInput, parseSageLocalExtensionResult,
+  type SageLocalExtensionResult } from "./sageLocalExtensions";
 
 export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.inspectDomains" |
   SageNumberFieldOperation |
@@ -38,6 +40,7 @@ export type AlgebraOperationId = "sage.algebra.reconstruct" | "sage.algebra.insp
   "sage.chain.homology" |
   "sage.finiteField.explore" |
   "sage.numberTheory.padic" |
+  "sage.numberField.localExtensions" |
   "sage.matrix.linear_dossier" | "sage.matrix.integer_forms" | SageIdealOperation;
 export type AlgebraBackend = "docker" | "private";
 export type AlgebraOperationArguments = {
@@ -57,6 +60,7 @@ export type AlgebraOperationArguments = {
   "sage.finiteField.explore": Readonly<{ element: readonly number[] }>;
   "sage.numberTheory.padic": Readonly<{ prime: number; precision: number; a: PadicRational; b: PadicRational;
     hensel: Readonly<{ coefficients: readonly string[]; seed: number }> | null }>;
+  "sage.numberField.localExtensions": Readonly<{ prime: number; precision: number }>;
   "sage.groebner.compute": Readonly<{ polynomials: readonly string[] }>;
   "sage.matrix.linear_dossier": Readonly<{ matrix: readonly (readonly string[])[] }>;
   "sage.matrix.integer_forms": Readonly<{ matrix: readonly (readonly string[])[] }>;
@@ -70,6 +74,7 @@ export type AlgebraOperationArguments = {
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult | SageGaloisResult |
   SageFiniteGroupResult | SageModuleInvariantResult | SageChainHomologyResult | SageFiniteFieldResult | SagePadicResult |
+  SageLocalExtensionResult |
   Readonly<{ value: string }> | Readonly<{ value: string; modulus: string }> |
   Readonly<{ text: string }> | Readonly<{ roots: readonly Readonly<{ value: string; multiplicity: number }>[] }> |
   Readonly<{ basis: readonly string[] }>;
@@ -122,6 +127,8 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     "finite-field.explore", ["docker"], "math3d.sage-finite-field-explorer/v1", "math3d.sage-finite-field-explorer-result/v1"),
   definition("sage.numberTheory.padic", "p-adic precision study", "number-theory", ["integer-ring", "rational-field"], "any",
     "number-theory.padic", ["docker"], "math3d.sage-padic-workspace/v1", "math3d.sage-padic-workspace-result/v1"),
+  definition("sage.numberField.localExtensions", "Quadratic local extensions", "number-theory", ["number-field"], "any",
+    "number-field.local-extensions", ["docker"], "math3d.sage-local-extension/v1", "math3d.sage-local-extension-result/v1"),
   definition("sage.groebner.compute", "Gröbner basis over QQ", "polynomial", POLY, "QQ-polynomial", "algebra.groebner",
     ["docker"], "math3d.algebra-groebner-arguments/v1", "sage.groebner.compute/result-v1"),
   definition("sage.matrix.linear_dossier", "Exact QQ matrix analysis", "matrix", ["rational-field"], "any", "matrix.linear-dossier",
@@ -294,6 +301,11 @@ export const buildAlgebraOperationRequest = <K extends AlgebraOperationId>(proje
       throw new TypeError("p-adic study requires prime, precision, two exact operands and an optional Hensel input.");
     params = buildSagePadicInput(project, target,
       input as AlgebraOperationArguments["sage.numberTheory.padic"]) as unknown as Record<string, unknown>;
+  } else if (id === "sage.numberField.localExtensions") {
+    if (!exact(input, ["prime", "precision"]))
+      throw new TypeError("Local extension requires an odd prime and finite precision.");
+    params = buildSageLocalExtensionInput(project, target, input.prime as number,
+      input.precision as number) as unknown as Record<string, unknown>;
   } else if (id === "sage.matrix.linear_dossier") {
     if (!exact(input, ["matrix"])) throw new TypeError("Matrix analysis requires one exact QQ matrix.");
     params = parseSageMatrixDossierInput({ format: "math3d.sage-matrix-dossier", schemaVersion: 1,
@@ -353,6 +365,8 @@ export const parseAlgebraOperationResult = (request: AlgebraOperationRequest, va
     return parseSageFiniteFieldResult(value, parseSageFiniteFieldInput(request.params));
   if (request.operation === "sage.numberTheory.padic")
     return parseSagePadicResult(value, parseSagePadicInput(request.params));
+  if (request.operation === "sage.numberField.localExtensions")
+    return parseSageLocalExtensionResult(value, parseSageLocalExtensionInput(request.params));
   if (request.operation === "sage.matrix.linear_dossier") return parseSageMatrixDossierResult(value,
     parseSageMatrixDossierInput(request.params));
   if (request.operation === "sage.matrix.integer_forms") return parseSageIntegerMatrixFormsResult(value,

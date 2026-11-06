@@ -112,6 +112,21 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.numberField.localExtensions": {
+      const branches = result.branches as Record<string, unknown>[];
+      facts.push(fact("Prime", text(result.prime)), fact("Base precision digits", text(result.precision)),
+        fact("Global field discriminant", text(result.fieldDiscriminant)),
+        fact("Prime behavior", text(result.splitting)),
+        fact("Local branches", branches.map((branch, index) =>
+          `P${index + 1}: e=${text(branch.ramificationIndex)}, f=${text(branch.residueDegree)}, ` +
+          `degree=${text(branch.localDegree)}, residue order=${text(branch.residueOrder)}`)),
+        fact("Prime ideals", branches.map((branch) => text(branch.ideal))),
+        fact("Uniformizers", branches.map((branch) => text(branch.uniformizer))));
+      checks.push(check("Quadratic local data", "checked",
+        "The pinned field discriminant determines split, inert or ramified behavior; e·f, ideal norms, residue orders, base-prime valuations and any split roots are checked exactly."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.numberTheory.padic": {
       const entries = result.entries as Record<string, Record<string, unknown>>;
       facts.push(fact("Domain", `${text(result.domain)}(${text(result.prime)})`),

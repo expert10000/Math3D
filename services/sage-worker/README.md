@@ -132,6 +132,7 @@ Result shape:
 - `sage.chain.homology` (pinned three-degree `ZZ` chain complex; checks `d1*d2=0` and returns Smith witnesses for `H0`, `H1`, `H2`)
 - `sage.finiteField.explore` (pinned `GF(p^n)` with at most 64 elements; exact Frobenius, trace, norm, minimal polynomial, primitive elements and a table up to order 16)
 - `sage.numberTheory.padic` (pinned `ZZ`/`QQ` parent; bounded `Zp`/`Qp` arithmetic with explicit precision and optional simple-root Hensel lift)
+- `sage.numberField.localExtensions` (pinned quadratic field; odd primes 3–31 away from the power-basis index, precision 2–16, exact prime ideals and finite-precision `Qp` local models)
 - `sage.polynomial.roots_exact`
 - `sage.polynomial.factor`
 - `sage.polynomial.dossier` (bounded exact `QQ[x]` analysis: factorization, square-free decomposition, derivative, discriminant and rational roots)

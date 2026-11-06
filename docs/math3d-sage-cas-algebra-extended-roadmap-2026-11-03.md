@@ -364,6 +364,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G02 implementation update (2026-11-06):** The [G02 acceptance record](evidence/sage-g02-padic-workspace-2026-11-06.md) adds Number Theory's precision-explicit `Zp`/`Qp` panel. Each bounded study pins a saved `ZZ` or `QQ` parent, prime, precision, exact operands and optional simple-root Hensel input. Results distinguish exact source fractions from finite p-adic displays and expose valuation, absolute/relative precision, unit digits, precision loss and uncertain zero. Project import independently checks rational arithmetic, digits and Hensel congruence. The next feature is **SAGE-G03**, local extensions.
 
+**G03 implementation update (2026-11-06):** The [G03 acceptance record](evidence/sage-g03-local-extensions-2026-11-06.md) adds a Number Theory view for saved quadratic fields at odd primes. It combines exact prime ideals with finite-precision `Qp` local models, showing splitting, ramification index, residue degree/order, uniformizer and split-root branches. Project import checks the discriminant classification, degree and norm identities, valuations and split-root congruences. Sage 9.5's `NumberField.completion()` is unimplemented, so these are explicitly labelled models from the pinned polynomial rather than canonical completion maps. The next feature is **SAGE-G04**, elliptic curve objects.
+
 ---
 
 ## 3. P0 — Algebra object registry

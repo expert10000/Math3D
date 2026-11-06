@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, buildSageNumberFieldInput, buildSageGaloisInput,
   buildSageFiniteFieldInput,
   buildSagePadicInput,
+  buildSageLocalExtensionInput,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, createStableDocumentId,
   upsertMath3DProjectAlgebraObject } from "@math3d/core";
@@ -31,6 +32,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.group.dossier", "sage.module.invariantFactors", "sage.chain.homology",
   "sage.finiteField.explore",
   "sage.numberTheory.padic",
+  "sage.numberField.localExtensions",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
@@ -94,6 +96,19 @@ const padicParams = () => {
   return buildSagePadicInput(project, { objectId: parent.id, revision: 1 }, { prime: 7, precision: 6,
     a: { numerator: "3", denominator: "1" }, b: { numerator: "4", denominator: "1" }, hensel: null }) as unknown as Record<string, unknown>;
 };
+const localExtensionParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g03-broker" });
+  const q = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "Q"),
+    label: "Q", revision: 1, definition: { kind: "rational-field" } });
+  project = upsertMath3DProjectAlgebraObject(project, q);
+  const k = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "K"),
+    label: "K", revision: 1, definition: { kind: "number-field",
+      baseField: { objectId: q.id, revision: 1 }, definingPolynomial: ["-5", "0", "1"], generator: "a" } });
+  project = upsertMath3DProjectAlgebraObject(project, k);
+  return buildSageLocalExtensionInput(project, { objectId: k.id, revision: 1 }, 3, 8) as unknown as Record<string, unknown>;
+};
 const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.module.invariantFactors" | "sage.chain.homology") => {
   const projectId = createStableDocumentId("project", "sage-broker-contract");
   const ref = (key: string) => ({ objectId: createProjectAlgebraObjectId(projectId, key), revision: 1 });
@@ -119,6 +134,7 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : operation === "sage.galois.analyze" ? galoisParams()
     : operation === "sage.finiteField.explore" ? finiteFieldParams()
     : operation === "sage.numberTheory.padic" ? padicParams()
+    : operation === "sage.numberField.localExtensions" ? localExtensionParams()
     : operation === "sage.group.dossier" || operation === "sage.module.invariantFactors" ||
       operation === "sage.chain.homology" ? pinnedStructureParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,

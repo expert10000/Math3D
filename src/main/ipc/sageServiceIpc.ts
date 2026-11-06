@@ -26,6 +26,7 @@ type SageOperation =
   | "sage.algebra.inspectDomains"
   | "sage.finiteField.explore"
   | "sage.numberTheory.padic"
+  | "sage.numberField.localExtensions"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.numberField.elementDossier"

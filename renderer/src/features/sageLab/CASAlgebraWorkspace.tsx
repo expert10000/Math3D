@@ -19,6 +19,7 @@ import SageModuleInvariantViewer from "./SageModuleInvariantViewer";
 import SageChainHomologyViewer from "./SageChainHomologyViewer";
 import SageFiniteFieldViewer from "./SageFiniteFieldViewer";
 import SagePadicWorkspace from "./SagePadicWorkspace";
+import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -312,8 +313,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   </dl> : <div role="status" style={{ fontSize: 12 }}>Select a structure in the Project explorer.</div>;
 
   return <SageServicesWorkspace {...props} onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
-    topPanel={workspaceContext === "number_theory" ? <SagePadicWorkspace project={project}
-      onCreateStructure={onCreateStructure} onSaveEvidence={onSaveEvidence} /> : undefined}
+    topPanel={workspaceContext === "number_theory" ? <><SagePadicWorkspace project={project}
+      onCreateStructure={onCreateStructure} onSaveEvidence={onSaveEvidence} />
+      <SageLocalExtensionWorkspace project={project} onSaveEvidence={onSaveEvidence} /></> : undefined}
     context={workspaceContext} title={workspaceContext === "cas" ? "CAS / Algebra" : "Number Theory"}
     description={workspaceContext === "cas"
       ? "Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations."

@@ -65,7 +65,8 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
   if (!project || !target) return <section data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
     Select a saved structure to see compatible object operations.</section>;
   const operations = algebraOperationsFor(project, target, routes)
-    .filter((item) => item.definition.id !== "sage.numberTheory.padic");
+    .filter((item) => item.definition.id !== "sage.numberTheory.padic" &&
+      item.definition.id !== "sage.numberField.localExtensions");
   const current = operations.find((item) => item.definition.id === selected);
   const otherOptions = (project.algebraObjects ?? []).filter((entry) => !entry.archived).map((entry) => ({
     id: entry.id, record: entry.revisions[entry.revisions.length - 1] }));
