@@ -63,7 +63,8 @@ function Get-SanitizedDumpStack([string]$dump) {
   if (-not $cdb) { return [ordered]@{ status = 'cdb unavailable'; frames = @() } }
   $stdout = Join-Path $root 'cdb-stdout.txt'
   $stderr = Join-Path $root 'cdb-stderr.txt'
-  $arguments = "-z `"$dump`" -c `".exr -1; .ecxr; kb; q`""
+  # k omits the argument columns emitted by kb, leaving a stable Call Site.
+  $arguments = "-z `"$dump`" -c `".exr -1; .ecxr; k; q`""
   $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   if (-not $process.WaitForExit(90000)) {
@@ -71,14 +72,16 @@ function Get-SanitizedDumpStack([string]$dump) {
     return [ordered]@{ status = 'cdb timeout'; frames = @() }
   }
   $raw = Get-Content -LiteralPath $stdout -Raw -ErrorAction SilentlyContinue
-  $frames = @($raw -split '\r?\n' | ForEach-Object {
-    if ($_ -match '^\s*\d{1,2}\s+[0-9a-f`]+\s+[0-9a-f`]+\s+([A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+0x[0-9a-f]+))') {
+  $stackLines = @($raw -split '\r?\n' | Where-Object { $_ -match '^\s*\d{1,2}\s+' })
+  $frames = @($stackLines | ForEach-Object {
+    if ($_ -match '([A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+(?:0x)?[0-9a-f]+))') {
       $Matches[1]
     }
   } | Select-Object -First 20)
   $exceptionCode = if ($raw -match 'ExceptionCode:\s*([0-9a-fA-F]{8})') { $Matches[1].ToLowerInvariant() } else { $null }
   return [ordered]@{ status = if ($frames.Count) { 'stack summarized' } else { 'no stack frames parsed' };
-    exceptionCode = $exceptionCode; frames = $frames; debuggerExitCode = $process.ExitCode }
+    exceptionCode = $exceptionCode; frames = $frames; stackLineCount = $stackLines.Count;
+    debuggerExitCode = $process.ExitCode }
 }
 
 function Get-ApplicationErrors([string]$installerName, [datetime]$startedAt) {
