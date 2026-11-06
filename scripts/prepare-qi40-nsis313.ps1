@@ -29,6 +29,7 @@ foreach ($required in @($compilerSource, $system, $elevate)) {
 }
 Copy-Item -LiteralPath $compilerSource -Destination $compiler
 Copy-Item -LiteralPath $elevate -Destination (Join-Path $windows 'elevate.exe')
+$env:ELECTRON_BUILDER_NSIS_DIR = $windows
 "ELECTRON_BUILDER_NSIS_DIR=$windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 [ordered]@{
   schema = 'math3d/qi40-nsis-toolchain/v1'
