@@ -63,7 +63,7 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
     -WindowStyle Hidden -PassThru
   if (-not $process.WaitForExit(180000)) {
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name; reason = 'timeout';
-      applicationErrors = Get-ApplicationErrors $name $startedAt }
+      applicationErrors = @(Get-ApplicationErrors $name $startedAt) }
     try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
     throw "$phase installer exceeded 180 seconds"
   }
@@ -71,7 +71,7 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
     $hexCode = '0x{0:X8}' -f ($process.ExitCode -band 0xffffffffL)
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name;
       exitCode = $process.ExitCode; exitCodeHex = $hexCode;
-      applicationErrors = Get-ApplicationErrors $name $startedAt }
+      applicationErrors = @(Get-ApplicationErrors $name $startedAt) }
     throw "$phase installer exited with code $($process.ExitCode) ($hexCode)"
   }
   Write-Host "$phase installer exited successfully"
