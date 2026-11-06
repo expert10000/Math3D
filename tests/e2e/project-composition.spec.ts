@@ -168,6 +168,42 @@ test("PC03 starter exposes verified, asserted and refused coordinate overlays", 
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC03 records a legacy Geometry frame in its owner and reopens the exact new overlay", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-coordinate-overlay-study").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByTestId("project-composition-declare-frame-1").click();
+    await expect(view.getByText("Source frame recorded in a new Geometry revision; new exact comparison saved.")).toBeVisible();
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D overlay · source frame r2" });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.compositions).toHaveLength(3);
+    const updated = saved.workspace.entries.find((entry: any) => entry.expected.id === saved.compositions[1].members[1].documentId);
+    expect(updated.expected.revision).toBe(updated.checkpoint.identity.revision + 1);
+    expect(updated.checkpoint.source.extensions.math3dCoordinateFrame).toBeUndefined();
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D overlay · source frame r2" });
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC05 starter opens a replay-backed before/after comparison", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;

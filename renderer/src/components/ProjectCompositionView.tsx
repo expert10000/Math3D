@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedMeshGenerationDocuments, sameProjectCoordinateFrame,
-  type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
+  type ProjectCoordinateFrame, type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember, type MixedWorkspaceEntry,
   SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
   SAGE_LOCUS_SINGULARITY_EXTENSION, parseAlgebraicSingularityGeometryDocument,
@@ -223,8 +223,9 @@ export const ComparisonPane: React.FC<{ members: RenderMember[]; label: string; 
 
 export const ProjectCompositionView: React.FC<{ project: Math3DProject; readResource: ProjectResourceReader; onClose: () => void;
   initialCompositionId?: string; initialProbeNoteId?: string; onSave: (composition: ProjectComposition) => Promise<boolean>;
+  onDeclareCoordinateFrame?: (composition: ProjectComposition, slot: 0 | 1, frame: ProjectCoordinateFrame) => Promise<string>;
   onSaveObservation: (composition: ProjectComposition, title: string, body: string, probe?: LinkedCoordinateProbe) => Promise<boolean> }> =
-  ({ project, readResource, onClose, initialCompositionId, initialProbeNoteId, onSave, onSaveObservation }) => {
+  ({ project, readResource, onClose, initialCompositionId, initialProbeNoteId, onSave, onDeclareCoordinateFrame, onSaveObservation }) => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKeyDown, true);
@@ -241,6 +242,9 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   ]);
   const [mode, setMode] = useState<"overlay" | "side-by-side">("side-by-side");
   const [frame, setFrame] = useState(""), [unit, setUnit] = useState("");
+  const [declaredAxes, setDeclaredAxes] = useState<[string, string, string]>(["x", "y", "z"]);
+  const [declaredHandedness, setDeclaredHandedness] = useState<"right" | "left">("right");
+  const [declaringFrame, setDeclaringFrame] = useState(false);
   const [visible, setVisible] = useState<[boolean, boolean]>([true, true]);
   const [palette, setPalette] = useState<[string, string]>([...colors]);
   const [opacity, setOpacity] = useState<[number, number]>([1, 0.72]);
@@ -320,6 +324,16 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   }) : [];
   const savedProbe = savedProbeId ? savedProbes.find(item => item.note.identity.id === savedProbeId) : savedProbes.at(-1);
   const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
+  const legacyGeometrySlots = saved && mode === "overlay" && !resolved.error ? ([0, 1] as const).filter(slot => {
+    const member = saved.members[slot], entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
+    return entry?.module === "geometry" && (!entry.replay || entry.replay.format === "math3d.geometry-replay.v1") &&
+      entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash &&
+      entry.checkpoint.identity.revision === member.expected.revision &&
+      entry.checkpoint.identity.structuralHash === member.expected.structuralHash &&
+      readProjectCoordinateFrame(entry.checkpoint).status === "missing";
+  }) : [];
+  const declarationValid = declaredAxes.every(axis => !!axis.trim() && axis.trim() === axis && axis.length <= 32) &&
+    new Set(declaredAxes).size === 3;
   const cameraQualification = mode === "side-by-side" && !resolved.error ? qualifyProjectCameraPair(resolved.members) : null;
   const cameraLinked = cameraMode === "linked" && !!cameraQualification;
   const onPick = (next: Pick) => { setPick(next); setLinked(current => linkable && next.uv ? { uv: next.uv!, token: (current?.token ?? 0) + 1 } : null); };
@@ -329,14 +343,14 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
     style={{ position: "fixed", inset: 16, zIndex: 10000, background: "#f8fafc", color: "#18243a", border: "1px solid #94a3b8", borderRadius: 12,
       boxShadow: "0 24px 80px #0008", overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
     <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><small>PROJECT / PC01–PC06</small><h2 style={{ margin: "4px 0" }}>Compare saved documents</h2>
-      <p style={{ margin: 0 }}>Read-only composition; sources and scientific buffers stay in their owning documents.</p></div><button onClick={onClose}>Close</button></header>
+      <p style={{ margin: 0 }}>Comparisons read saved sources. Recording a frame creates a new revision of its owning Geometry document.</p></div><button onClick={onClose}>Close</button></header>
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
       <label>Saved composition <select value={savedId} onChange={event => chooseSaved(event.target.value)}><option value="">New comparison</option>{project.compositions?.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label>
       <label>View <select data-testid="project-composition-mode" value={mode} onChange={event => { setSavedId(""); setMode(event.target.value as typeof mode);
         setPick(null); setLinked(null); setCameraMode("independent"); setCameraPose(null); }}><option value="side-by-side">Side by side</option><option value="overlay">Overlay</option></select></label>
       {mode === "overlay" && <><label>Shared frame (your assertion) <input aria-label="Shared frame" value={frame} onChange={event => setFrame(event.target.value)} placeholder="e.g. laboratory xyz" maxLength={80} /></label>
         <label>Shared unit (your assertion) <input aria-label="Shared unit" value={unit} onChange={event => setUnit(event.target.value)} placeholder="e.g. mm" maxLength={40} /></label>
-        <small>Source declarations are compared when both exist; otherwise this frame and unit remain your explicit alignment assertion.</small></>}
+        <small>Each available source declaration is checked against the entered frame and unit. A missing declaration remains your alignment assertion.</small></>}
       <button disabled={!composition || !!resolved.error || cameraMode === "linked" && !cameraQualification} onClick={() => { if (composition) void onSave(composition).then(ok => { if (ok) { setSavedId(composition.id); setMessage("Composition saved; source documents were not changed."); } else setMessage("Composition could not be saved."); }); }}>Save composition</button>
     </div>
     {mode === "side-by-side" && <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -395,6 +409,27 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         "Source-declared coordinate frames, axes, handedness, and units match this overlay." :
         "Unverified overlay: at least one source has no coordinate-frame declaration. The frame and unit above are operator assertions."}
     </p>}
+    {!!legacyGeometrySlots.length && onDeclareCoordinateFrame && saved && composition && <section data-testid="project-composition-declare-frame"
+      style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8 }}>
+      <strong>Record a frame in a legacy Geometry source</strong>
+      <p style={{ margin: "4px 0" }}>Enter the axes and handedness confirmed for that source. This creates a replay-backed Geometry revision and a new exact comparison. The previous comparison keeps its old checkpoint. Matching declarations do not prove the producer's coordinate claim.</p>
+      {declaredAxes.map((axis, index) => <label key={index} style={{ marginRight: 8 }}>Axis {index + 1} <input
+        aria-label={`Declared axis ${index + 1}`} value={axis} maxLength={32} style={{ width: 70 }}
+        onChange={event => setDeclaredAxes(current => current.map((value, i) => i === index ? event.target.value : value) as [string, string, string])} /></label>)}
+      <label>Handedness <select aria-label="Declared handedness" value={declaredHandedness}
+        onChange={event => setDeclaredHandedness(event.target.value as "right" | "left")}>
+        <option value="right">Right</option><option value="left">Left</option></select></label>
+      <div>{legacyGeometrySlots.map(slot => <button key={slot} type="button" style={{ marginTop: 6, marginRight: 8 }}
+        data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid}
+        onClick={() => { setDeclaringFrame(true); setMessage("");
+          const declaration: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: frame.trim(), unit: unit.trim(),
+            axes: declaredAxes, handedness: declaredHandedness };
+          void onDeclareCoordinateFrame(composition, slot, declaration).then(id => {
+            setSavedId(id); setPick(null); setLinked(null); setMessage("Source frame recorded in a new Geometry revision; new exact comparison saved.");
+          }).catch(error => setMessage(`Frame declaration refused: ${String((error as Error).message)}`))
+            .finally(() => setDeclaringFrame(false));
+        }}>Record frame in source {slot === 0 ? "A" : "B"}</button>)}</div>
+    </section>}
     {composition && <section data-testid="project-comparison-evidence" style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: 8 }}>
       <strong>Exportable comparison evidence</strong><p style={{ margin: "4px 0" }}>A/B source revisions and complete hashes are retained in the report; selected values are local to their source.</p>
       {composition.members.map((member, index) => <div key={index} style={{ overflowWrap: "anywhere" }}>

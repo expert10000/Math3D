@@ -13,6 +13,23 @@ Projects. Each creates an independent saved copy; **New copy** creates another.
 Then open **Compare saved documents** in the Project navigator and choose the
 named entry under **Saved composition**.
 
+## PC03 legacy Geometry frame declaration
+
+For a saved overlay containing a Geometry source with no coordinate frame,
+open that comparison and use **Record frame in source A/B**. Enter the source's
+axis labels and handedness. The overlay's frame and unit become part of the
+owning Geometry source in a new replay-backed revision. The old revision remains
+the replay checkpoint and its original composition remains an operator
+assertion. A second saved composition pins the new revision and its exact hash.
+Reopen either composition after restart to check its own source generation.
+
+This action is available only while the current Geometry revision is also its
+retained replay checkpoint. Save live document edits before using it. Math3D
+checks the authored declaration against the other source's declaration; it
+cannot independently establish that the authored axes describe the physical
+source correctly. Legacy Mesh sources and older Geometry revisions beyond the
+checkpoint still need a source-owner migration path.
+
 ## PC24 linked coordinate probe
 
 Open **Coordinate Overlay Verification → Compare saved documents → Verified A/B
