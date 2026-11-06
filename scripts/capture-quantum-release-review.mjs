@@ -5,9 +5,12 @@ import { _electron as electron } from "playwright";
 import { PNG } from "pngjs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 const output = resolve(process.argv[2] ?? "output/qi40-39-review");
+const preQec = process.argv.includes("--pre-qec");
+const installedExe = process.env.MATH3D_INSTALLED_CAPTURE_EXE
+  ? resolve(process.env.MATH3D_INSTALLED_CAPTURE_EXE) : null;
 if (!process.argv.includes("--append")) {
   const result = spawnSync(process.execPath, ["scripts/capture-quantum-review.mjs", output],
     { cwd: resolve("."), stdio: "inherit" });
@@ -15,20 +18,25 @@ if (!process.argv.includes("--append")) {
 }
 await mkdir(output, { recursive: true });
 const index = JSON.parse(await readFile(join(output, "capture-index.json"), "utf8"));
-if (process.argv.includes("--append") && index.length === 39) index.length = 36;
+if (process.argv.includes("--append") && index.length >= 38) index.length = 36;
 assert.equal(index.length, 36);
 const matrix = JSON.parse(await readFile(resolve("docs/evidence/quantum-qi40-scene-matrix.json"), "utf8"));
 const extras = [
   { id: "saved-qwz-curvature", group: "quantum-qi01", folder: "run-05ce1036d70c466eb4f900944a85c474.qscene" },
   { id: "saved-qwz-bands", group: "quantum-qi01", folder: "run-05ce1036d70c466eb4f900944a85c474-bands.qscene" },
   { id: "saved-ideal-qec", group: "quantum-qec", folder: "run-ee2889dc341d4cb88e638f2af4ec6d2d-qec.qscene" },
-];
+].filter(extra => !preQec || extra.id !== "saved-ideal-qec");
+const expectedCount = 36 + extras.length;
 for (const [number, extra] of extras.entries()) {
   const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-release-review-"));
-  const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile };
+  const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile,
+    ...(installedExe ? { MATH3D_E2E: "1", MATH3D_E2E_USER_DATA_DIR: join(profile, "user-data") } : {}) };
   delete env.ELECTRON_RUN_AS_NODE;
   const folder = resolve("tests/fixtures", extra.group, extra.folder);
-  const app = await electron.launch({ args: [".", "--quantum-scene", folder], cwd: resolve("."), env });
+  const app = await electron.launch(installedExe
+    ? { executablePath: installedExe, args: [`--user-data-dir=${join(profile, "user-data")}`, "--quantum-scene", folder],
+      cwd: dirname(installedExe), env }
+    : { args: [".", "--quantum-scene", folder], cwd: resolve("."), env });
   try {
     const page = await app.firstWindow();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 1000));
@@ -42,8 +50,9 @@ for (const [number, extra] of extras.entries()) {
     const file = `${number + 37}-${extra.id}.png`;
     await page.screenshot({ path: join(output, file), animations: "disabled" });
     index.push({ number: number + 37, id: extra.id, label: extra.id,
-      model: opened.source?.provenance?.model ?? extra.id, file });
-    console.log(`${number + 37}/39 ${extra.id} captured`);
+      model: opened.source?.provenance?.model ?? extra.id, schema: expected.schema,
+      fingerprint: expected.fingerprint, file });
+    console.log(`${number + 37}/${expectedCount} ${extra.id} captured`);
   } finally {
     await app.close();
     if (!profile.startsWith(resolve(tmpdir()) + sep) || !profile.includes("math3d-quantum-release-review-"))
@@ -52,7 +61,7 @@ for (const [number, extra] of extras.entries()) {
   }
 }
 
-assert.equal(index.length, 39);
+assert.equal(index.length, expectedCount);
 const rows = [];
 for (const row of index) {
   assert(row.file && !row.error, `${row.id}: capture missing or failed`);
@@ -74,5 +83,5 @@ for (const row of index) {
 }
 await writeFile(join(output, "capture-index.json"), JSON.stringify(index, null, 2) + "\n");
 await writeFile(join(output, "visual-signal.json"), JSON.stringify({ schema: "math3d.quantum-visual-review/v1",
-  fixtureCount: 39, rows }, null, 2) + "\n");
+  fixtureCount: expectedCount, installed: Boolean(installedExe), preQec, rows }, null, 2) + "\n");
 console.log(`Captured ${rows.length} matrix scenes; ${rows.filter(row => row.needsVisualReview).length} heuristic blank-screen flags`);
