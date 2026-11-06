@@ -123,7 +123,12 @@ try {
     await page.getByRole("button", { name: "Verified quantum examples", exact: true }).click();
     await page.getByTestId(`quantum-example-${id}`).click();
     const dialog = page.getByTestId("quantum-scene-preview");
-    await dialog.waitFor({ state: "visible", timeout: 30_000 });
+    try { await dialog.waitFor({ state: "visible", timeout: 30_000 }); }
+    catch (reason) {
+      const alert = page.getByTestId("quantum-scene-examples").getByRole("alert");
+      const error = await alert.count() ? await alert.textContent() : null;
+      throw new Error(`${id} preview did not open: ${error ?? String(reason)}`);
+    }
     if (id === "hydrogen-2p") {
       await page.getByTestId("quantum-scene-geometry").getByRole("button", { name: "Density surface", exact: true }).click();
       await page.getByTestId("quantum-surface-legend").waitFor({ state: "visible" });
