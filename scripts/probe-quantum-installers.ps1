@@ -6,6 +6,7 @@ param(
   [switch]$TheoryLabOnly,
   [switch]$CaptureCrashDump,
   [switch]$FullCrashDump,
+  [ValidateSet('CurrentUser', 'AllUsers')][string]$InstallMode = 'CurrentUser',
   [string]$ExpectedBuildRunId = '',
   [string]$ExpectedMath3DCommit = ''
 )
@@ -46,6 +47,7 @@ $evidence = [ordered]@{
   checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   environment = 'clean Windows runner'
   scope = if ($Math3DOnly) { 'Math3D' } elseif ($TheoryLabOnly) { 'Theory Lab' } else { 'both apps' }
+  installMode = $InstallMode
   imageVersion = $env:ImageVersion
   osVersion = (Get-CimInstance Win32_OperatingSystem).Version
   status = 'started'
@@ -131,7 +133,8 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
   $name = [IO.Path]::GetFileName($installer)
   $startedAt = Get-Date
   Write-Host "Starting $phase installer: $name"
-  $process = Start-Process -FilePath $installer -ArgumentList @('/S', '/CURRENTUSER', "/D=$destination") `
+  $modeArgument = if ($InstallMode -eq 'AllUsers') { '/ALLUSERS' } else { '/CURRENTUSER' }
+  $process = Start-Process -FilePath $installer -ArgumentList @('/S', $modeArgument, "/D=$destination") `
     -WindowStyle Hidden -PassThru
   if (-not $process.WaitForExit(180000)) {
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name; reason = 'timeout';
