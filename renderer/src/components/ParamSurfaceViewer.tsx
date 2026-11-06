@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { disposeOrbitControls } from "../utils/disposeOrbitControls";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
@@ -3985,7 +3986,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         if (isCameraLeader && onCameraSync) {
           controls.removeEventListener("change", emitCameraSync);
         }
-        controls.dispose();
+        disposeOrbitControls(controls);
         if (referenceGridOverlay) {
           scene.remove(referenceGridOverlay.group);
           referenceGridOverlay.dispose();
