@@ -27,9 +27,24 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
         run: |
-          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          $candidateRunId = if ($env:CANDIDATE_RUN_ID) { $env:CANDIDATE_RUN_ID } else { '42123298884' }
+          if ($candidateRunId -notmatch '^[0-9]+$') { throw 'candidate_run_id must be numeric' }
+          if ($env:CANDIDATE_RUN_ID) {
+            $run = gh run view $candidateRunId --repo expert10000/Math3D --json headSha,jobs | ConvertFrom-Json
+            $build = @($run.jobs | Where-Object { $_.name -eq 'build-candidates' })
+            if ($LASTEXITCODE -ne 0 -or $build.Count -ne 1 -or $build[0].conclusion -ne 'success') {
+              throw 'Candidate build job has not completed successfully'
+            }
+          }
+          gh run download $candidateRunId --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
           if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+          $manifest = Get-Content installers/candidate/candidate-manifest.json -Raw | ConvertFrom-Json
+          if ([string]$manifest.buildRunId -ne $candidateRunId -or
+              ($env:CANDIDATE_RUN_ID -and $manifest.math3d.commit -ne $run.headSha)) {
+            throw 'Candidate manifest does not match the build run'
+          }
       - name: Compare archived NSIS System.dll components
         shell: pwsh
         run: |
