@@ -34,7 +34,7 @@ test("desktop Surface Services sends exact Sage results to Analysis and Workbook
     await expect(analysis).toContainText("2*x ; 2*y ; 2*z");
     await analysis.getByRole("button", { name: "Preview vector field" }).click();
     await expect(analysis).toContainText("Previewing");
-    await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("source surface:active-implicit:");
+    await expect(analysis.getByTestId("sage-viewer-provenance")).toContainText("source surface:active-implicit r1");
     await analysis.getByRole("button", { name: "Commit vector overlay" }).click();
     await expect(analysis).toContainText("Committed");
 

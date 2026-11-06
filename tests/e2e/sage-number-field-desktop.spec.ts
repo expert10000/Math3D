@@ -77,7 +77,8 @@ test("SAGE-D01 builds Q(sqrt(5)) and independently reopens its exact Project dos
     await resetSurfaceAppState(ctx.page);
     await install(exported);
     const reopened = ctx.page.getByTestId("cas-algebra-workspace");
-    await reopened.getByRole("button", { name: /K @1/ }).click();
+    await reopened.getByTestId("cas-structures-explorer").locator(".sage-structure-list")
+      .getByRole("button", { name: /K @1/ }).click();
     await expect(reopened.getByTestId("cas-selected-structure")).toContainText("Field discriminant5");
     await expect(reopened.getByTestId("cas-structure-inspector")).toContainText(k.id);
     await expect(reopened.getByTestId("cas-structure-inspector")).toContainText(k.contentHash);

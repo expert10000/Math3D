@@ -4,10 +4,14 @@
   "evidenceStatus": "historical",
   "b08": {
     "path": "docs/evidence/sage-b08-live-2026-11-05.json",
-    "sha256": "5d47ed2993b18568c242f5393a5a7933ba75db35093d8a1de6451ec8414d024d",
+    "sha256": "4e9aa5933a9730d233e945258e72e950c30ab956cea48c821794528e6f9026ab",
     "fixtureCount": 16,
     "localVersion": "9.5",
     "dockerVersion": "10.10"
+  },
+  "currentLive": {
+    "path": "docs/evidence/sage-m0-m6-live-release-2026-11-06.json",
+    "sha256": "f19333a3fcb02972bd0b7a8a7450ca416bf3642694362831276125998226be29"
   },
   "milestones": [
     { "id": "M0", "evidence": ["docs/evidence/sage-f08-real-backend-regression-2026-11-05.md"],

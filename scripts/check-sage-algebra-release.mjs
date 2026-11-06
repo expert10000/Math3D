@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const matrixPath = resolve(root, "docs/evidence/sage-algebra-release-matrix-2026-11-06.json");
+const portableDigest = (bytes) => createHash("sha256").update(bytes.toString("utf8").replace(/\r\n/g, "\n")).digest("hex");
 const requireFile = (path) => {
   if (typeof path !== "string" || isAbsolute(path) || path.includes("\\"))
     throw new TypeError("Release evidence path must be repository-relative.");
@@ -27,7 +28,7 @@ export const auditSageAlgebraRelease = (matrix) => {
     for (const path of [...item.evidence, ...item.tests]) requireFile(path);
   }
   const bytes = readFileSync(requireFile(matrix.b08.path));
-  const digest = createHash("sha256").update(bytes).digest("hex");
+  const digest = portableDigest(bytes);
   if (digest !== matrix.b08.sha256) throw new TypeError("B08 recorded artifact hash differs from the release matrix.");
   const b08 = JSON.parse(bytes.toString("utf8"));
   if (b08.fixtureCount !== matrix.b08.fixtureCount || b08.fixtureCount !== 16 ||
@@ -37,9 +38,32 @@ export const auditSageAlgebraRelease = (matrix) => {
       b08.differences?.length !== 0 || Object.keys(b08.local?.cases ?? {}).length !== 16 ||
       Object.keys(b08.docker?.cases ?? {}).length !== 16)
     throw new TypeError("B08 recorded parity result is incomplete or failed.");
+  let currentLiveGate = "not-recorded", currentLiveDate = null;
+  if (matrix.currentLive) {
+    const liveBytes = readFileSync(requireFile(matrix.currentLive.path));
+    if (portableDigest(liveBytes) !== matrix.currentLive.sha256)
+      throw new TypeError("Current live release record hash differs from the matrix.");
+    const live = JSON.parse(liveBytes.toString("utf8"));
+    const expected = { f08LiveDesktop: 6, wslService: 78, dockerServiceWithReadOnlyRepoMount: 78,
+      m1ToM6Desktop: 28 };
+    if (live.format !== "math3d.sage-m0-m6-live-release" || live.schemaVersion !== 1 ||
+        live.status !== "passed" || !/^\d{4}-\d{2}-\d{2}$/.test(live.recordedDate ?? "") ||
+        live.b08?.artifactSha256 !== portableDigest(readFileSync(requireFile(live.b08?.artifact))) ||
+        live.b08?.localPassed !== 16 || live.b08?.dockerPassed !== 16 || live.b08?.differences !== 0 ||
+        live.routes?.local !== "SageMath 9.5 on WSL Ubuntu" ||
+        live.routes?.docker !== "SageMath 10.10 on math3d-sage-worker" ||
+        !Array.isArray(live.testAssertionUpdates) || live.testAssertionUpdates.length !== 4 ||
+        Object.entries(expected).some(([name, count]) =>
+          live.suites?.[name]?.passed !== count || live.suites?.[name]?.total !== count) ||
+        live.suites?.m1ToM6Desktop?.files !== 21)
+      throw new TypeError("Current live release record is incomplete or failed.");
+    for (const path of live.testAssertionUpdates) requireFile(path);
+    currentLiveGate = "recorded-passed";
+    currentLiveDate = live.recordedDate;
+  }
   return { status: "historical-evidence-verified", milestones: matrix.milestones.map((item) => item.id),
     b08: { local: b08.local.version, docker: b08.docker.version, casesPerRoute: 16, differences: 0,
-      artifactSha256: digest }, currentLiveGate: "not-run" };
+      artifactSha256: digest }, currentLiveGate, currentLiveDate, liveExecutionNow: "not-run" };
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
