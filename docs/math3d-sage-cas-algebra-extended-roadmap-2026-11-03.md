@@ -380,7 +380,9 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **H02 implementation update (2026-11-06):** The [H02 acceptance record](evidence/sage-h02-backend-domain-comparison-2026-11-06.md) adds an Inspector comparison tab for two saved algebra results. It checks pinned inputs and independently verified exact values across Docker and local Sage for GCD or modular inverse, and compares typed rank invariants for the same integer matrix over `ZZ` and `QQ` while retaining Smith torsion only in the `ZZ` view. Each side shows its source, route, version, result hash, certificate scope and Inspector verification. Unsupported operation pairs and mismatched inputs are explicit. The next feature is **SAGE-H03**, a reproducible algebra export manifest.
 
-**H03–H05 implementation update (2026-11-06):** The [acceptance record](evidence/sage-h03-h05-portable-algebra-and-sweeps-2026-11-06.md) adds deterministic JSON and Markdown algebra manifest export with inert trusted code; atomic, Project-pinned curated field/group/ideal/module examples; and reusable ZZ GCD parameter sweeps with exact inputs, per-run evidence and one global wall-time budget. The live B08 Docker Sage 10.10 comparison remains open. The next feature is **SAGE-H06**, detailed tutorials and mathematical verification.
+**H03–H05 implementation update (2026-11-06):** The [acceptance record](evidence/sage-h03-h05-portable-algebra-and-sweeps-2026-11-06.md) adds deterministic JSON and Markdown algebra manifest export with inert trusted code; atomic, Project-pinned curated field/group/ideal/module examples; and reusable ZZ GCD parameter sweeps with exact inputs, per-run evidence and one global wall-time budget. The bounded [B08 live comparison](evidence/sage-b08-live-2026-11-05.md) had already passed on 2026-11-05; the earlier “remains open” note was stale. The next feature is **SAGE-H06**, detailed tutorials and mathematical verification.
+
+**H06–H08 implementation update (2026-11-06):** The [acceptance record](evidence/sage-h06-h08-tutorial-verifier-release-audit-2026-11-06.md) adds a worked algebra tutorial with a real Sage 9.5 mathematical check, a standalone inert manifest verifier for independent Project/Workbook files, and a machine-readable M0–M6 evidence audit. H07 and H08 extend Track H with reproducibility and release review gates. The recorded B08 16-case parity is closed; a new live Docker run was not made in this session.
 
 ---
 
@@ -1201,6 +1203,8 @@ These are **proposed commit identifiers**, not existing Git commits. Keep them s
 | `SAGE-H04` | `feat(algebra-gallery): add curated algebra examples` | Fields, groups, ideals, modules | Exact expected answers |
 | `SAGE-H05` | `feat(algebra): add parameter sweep recipes` | Bounded combinatorial experiments | Global budget and repeatability |
 | `SAGE-H06` | `docs(algebra): add detailed tutorials and math verification` | Worked steps + backend notes | Reviewer can reproduce examples |
+| `SAGE-H07` | `feat(algebra): verify exported manifest independently` | Check Project and optional Workbook bytes | Reject omissions, changes and auto-run policy |
+| `SAGE-H08` | `test(algebra): audit milestone and runtime evidence` | M0–M6 matrix and recorded B08 digest | Historical evidence distinguished from current live run |
 
 ---
 

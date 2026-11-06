@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { addMath3DProjectAlgebraEvidence, buildAlgebraOperationRequest, createAlgebraObjectRecord,
   createMath3DProject, createMixedWorkspaceDocument, createProjectAlgebraEvidence,
   createProjectAlgebraObjectId, parseMath3DProject, serializeMath3DProject,
-  upsertMath3DProjectAlgebraObject } from "@math3d/core";
+  upsertMath3DProjectAlgebraObject, upsertMath3DProjectWorkbook } from "@math3d/core";
 import { createDefaultWorkbook, createWorkbookAlgebraObjectCell, type WorkbookBlock } from "@math3d/workbook";
+import { prepareProjectWorkbook } from "../projects/projectWorkbookBinding";
 import { algebraReproManifestMarkdown, createAlgebraReproManifest, inspectAlgebraReproManifest,
   parseAlgebraReproManifest } from "./algebraReproManifest";
 
@@ -20,7 +25,8 @@ const setup = () => {
     { value: "6" }, { engine: "sagemath", version: "10.10", backend: "docker",
       jobId: "h03gcd", elapsedMs: 8, warnings: [] });
   project = addMath3DProjectAlgebraEvidence(project, evidence);
-  const book = createDefaultWorkbook(() => "h03-block");
+  let serial = 0;
+  const book = createDefaultWorkbook(() => `h03-block-${++serial}`);
   book.stages[1].blocks.push({ id: "algebra", type: "algebra-object", title: "Pinned Z",
     outputs: [{ id: "object", label: "Algebra object", type: "algebra-object" }],
     algebraObject: createWorkbookAlgebraObjectCell(project, z.id, 100) } as WorkbookBlock,
@@ -53,5 +59,51 @@ describe("SAGE-H03 algebra reproducibility manifest", () => {
     expect(() => parseAlgebraReproManifest({ ...manifest, executionPolicy: "auto-run" })).toThrow();
     expect(() => parseAlgebraReproManifest({ ...manifest, operations: [{ ...manifest.operations[0],
       resultHash: "sha256:" + "0".repeat(64) }] })).toThrow();
+  });
+
+  it("checks supplied Workbook bytes against a pinned Project Workbook reference", () => {
+    const { project, book } = setup();
+    const adopted = prepareProjectWorkbook(project, book, "h07");
+    const bound = upsertMath3DProjectWorkbook(project, adopted.reference);
+    const manifest = createAlgebraReproManifest(bound, [adopted.workbook]);
+    expect(inspectAlgebraReproManifest(manifest, bound, [adopted.workbook])).toMatchObject({
+      workbookVerified: true, workbookProjectBound: true });
+    const changed = JSON.parse(JSON.stringify(adopted.workbook));
+    changed.stages[1].blocks.find((block: WorkbookBlock) => block.id === "trusted").sageCode.code = "2 + 2";
+    expect(() => inspectAlgebraReproManifest(createAlgebraReproManifest(bound, [changed]), bound, [changed]))
+      .toThrow(/does not match its Project reference/);
+  });
+
+  it("verifies exported JSON against an independent Project and Workbook with the standalone H07 command", () => {
+    const { project, book } = setup();
+    const directory = mkdtempSync(join(tmpdir(), "math3d-h07-"));
+    try {
+      const manifestFile = join(directory, "report.algebra.json"), projectFile = join(directory, "project.math3d"),
+        workbookFile = join(directory, "workbook.json");
+      const manifest = createAlgebraReproManifest(project, [book], undefined, true);
+      writeFileSync(manifestFile, JSON.stringify(manifest));
+      writeFileSync(projectFile, serializeMath3DProject(project));
+      writeFileSync(workbookFile, JSON.stringify(book));
+      const command = (extra: string[] = []) => spawnSync(process.execPath,
+        ["scripts/check-sage-algebra-manifest.mjs", manifestFile, projectFile, "--workbook", workbookFile, ...extra],
+        { cwd: resolve("."), encoding: "utf8", timeout: 30_000 });
+      const good = command();
+      expect(good.status, good.stderr).toBe(0);
+      expect(JSON.parse(good.stdout)).toMatchObject({ status: "verified", objects: 1, operations: 1,
+        workbookVerified: true, workbookProjectBound: false, trustedCodeBlocks: 1 });
+      const changedBook = JSON.parse(JSON.stringify(book));
+      changedBook.stages[1].blocks.find((block: WorkbookBlock) => block.id === "trusted").sageCode.code = "2 + 2";
+      writeFileSync(workbookFile, JSON.stringify(changedBook));
+      const changedWorkbook = command();
+      expect(changedWorkbook.status).toBe(1);
+      expect(changedWorkbook.stderr).toContain("Workbook blocks differ");
+      writeFileSync(workbookFile, JSON.stringify(book));
+      writeFileSync(projectFile, serializeMath3DProject(upsertMath3DProjectAlgebraObject(project,
+        createAlgebraObjectRecord({ id: project.algebraObjects![0].id, revision: 2, label: "Changed Z",
+          definition: { kind: "integer-ring" } }))));
+      const changed = command();
+      expect(changed.status).toBe(1);
+      expect(changed.stderr).toContain("differs from the Project");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });
