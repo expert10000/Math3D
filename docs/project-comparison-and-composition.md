@@ -15,19 +15,22 @@ named entry under **Saved composition**.
 
 ## PC03 legacy Geometry and Mesh frame declarations
 
-For a saved overlay containing a Geometry or Mesh source with no coordinate frame,
-open that comparison and use **Record frame in source A/B**. Enter the source's
-axis labels and handedness. The overlay's frame and unit become part of the
-owning source in a new replay-backed revision. Mesh declarations retain the
+For a saved overlay or side-by-side comparison containing a Geometry or Mesh
+source with no coordinate frame, open that comparison and use **Record frame in
+source A/B**. Enter the source's axis labels and handedness. An overlay uses
+its asserted frame and unit; a side-by-side comparison asks for both values.
+The declared frame and unit become part of the owning source in a new
+replay-backed revision. Mesh declarations retain the
 exact verified binary buffer; only source origin metadata changes. An old Mesh
 revision beyond the checkpoint is marked as an explicit retained snapshot
-before the edit. The original composition remains an operator
-assertion. A second saved composition pins the new revision and its exact hash.
+before the edit. An original overlay remains an operator assertion. A second
+saved composition pins the new revision and its exact hash.
 Reopen either composition after restart to check its own source generation.
 
 Geometry and Mesh can each retain their current pre-declaration revision within
 an eight-generation budget. A historical revision that was never explicitly
-retained remains unavailable. Save live document edits before using the action. Math3D
+retained remains unavailable. Save live document edits before using the action.
+Math3D
 checks the authored declaration against the other source's declaration; it
 cannot independently establish that the authored axes describe the physical
 source correctly.
@@ -39,9 +42,10 @@ frame, save the Project and open that comparison. Use **Record frame in source
 A/B**, enter the frame name, axis labels, and handedness confirmed for the
 Surface, then record it. The unit comes from the Surface source's length unit;
 Math3D refuses a declaration that conflicts with the other source's available
-frame. The Surface orientation receives the authored declaration in a new
-replay-backed revision. The original comparison keeps its exact checkpoint,
-and a new comparison pins the declared revision. Reopen either after restart.
+frame at the exact revision pinned by the comparison. The Surface orientation
+receives the authored declaration in a new replay-backed revision. The original
+comparison keeps its exact retained generation, and a new comparison pins the
+declared revision. Reopen either after restart.
 
 If the current Surface revision is beyond its replay checkpoint, the frame
 edit explicitly retains that exact pre-declaration revision as a selectable
@@ -69,10 +73,17 @@ parameter, vertex, face, or measured value. The bounded coordinate can be
 recorded in a comparison Note; reopening rechecks both exact sources and the
 Mesh sidecar. Missing or mismatched declarations disable the link.
 
+For a Surface/Geometry pair, open **Surface and Geometry Coordinate Probe →
+Surface / Geometry · shared metres**. A pick in either pane marks the same
+declared 3D coordinate in the other pane. A saved coordinate Note checks both
+exact source revisions on reopen. The marker does not claim a corresponding
+Surface parameter or Geometry object, and it may lie off the other shape.
+
 Choose the undeclared D source or mismatched C source to see the link refused.
 Changed or missing source evidence also prevents the marker. PC03 remains
-Partial for historical generations outside retained checkpoints, and PC05 remains Partial for history
-that was never retained and comparison families without a linked adapter.
+Partial for historical generations outside retained checkpoints or marked
+snapshots. PC05 remains Partial for history that was never retained and
+comparison families without a linked adapter.
 
 ## PC25 saved coordinate observations
 

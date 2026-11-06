@@ -1595,6 +1595,11 @@ declaration is checked, and a new exact comparison pins the replay-backed
 revision. A current Surface beyond its checkpoint is explicitly retained as a
 pre-declaration snapshot, so the old comparison still reopens against its exact
 source. Unmarked and never-retained history stays unavailable.
+Frame declaration now checks the other member's exact saved generation, not a
+newer current revision. Saved side-by-side Geometry/Mesh comparisons can also
+record an owning source frame and unit, then reopen the old and new exact pairs.
+The Surface/Geometry starter exercises both declared-frame directions, exact
+coordinate Notes, and restart; neither viewer infers a matching target element.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

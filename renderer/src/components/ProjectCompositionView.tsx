@@ -8,7 +8,6 @@ import {
   SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
   SAGE_LOCUS_SINGULARITY_EXTENSION, parseAlgebraicSingularityGeometryDocument,
 } from "@math3d/core";
-import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { projectResourceInventory, type ProjectResourceReader } from "../projects/projectResources";
 import { MeshResourceStore } from "../mesh/meshResourceStore";
 import { buildSurfaceMeshFromGeometry, type SurfaceMeshData } from "../mesh/surfaceMesh";
@@ -22,6 +21,7 @@ import { type ComparisonEvidenceSelection } from "../projects/projectComparisonE
 import { useComparisonEvidenceExport } from "../projects/useComparisonEvidenceExport";
 import { inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
 import { resolveLinkedCoordinateProbe, resolveSavedCoordinateProbe, type LinkedCoordinateProbe } from "../projects/projectLinkedCoordinateProbe";
+import { resolveExactProjectCompositionSource } from "../projects/projectCompositionSource";
 
 type RenderMesh = SurfaceMeshData & { id: string; color: number; opacity: number; transform?: {
   position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number };
@@ -78,20 +78,8 @@ const titleOf = (project: Math3DProject, id: string): string => {
 export const resolveProjectCompositionMember = (project: Math3DProject, member: ProjectCompositionMember, read: ProjectResourceReader): RenderMember => {
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
   if (!entry) throw new TypeError("The selected source document is missing.");
-  const current = verifyMixedWorkspaceReplay(project.workspace).get(member.documentId);
-  if (!current || current.identity.revision !== entry.expected.revision || current.identity.structuralHash !== entry.expected.structuralHash)
-    throw new TypeError("The current source did not pass replay verification.");
-  const currentSelected = current.identity.revision === member.expected.revision && current.identity.structuralHash === member.expected.structuralHash;
-  const retainedDocument = entry.replay && sameGeneration(entry.checkpoint.identity, member.expected) ? entry.checkpoint :
-    entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
-      sameGeneration(document.identity, member.expected)) :
-    entry.module === "geometry" ? retainedGeometryGenerationDocuments(entry).find(document =>
-      sameGeneration(document.identity, member.expected)) :
-    entry.module === "surface" ? retainedSurfaceGenerationDocuments(entry).find(document =>
-      sameGeneration(document.identity, member.expected)) : undefined;
-  if (!currentSelected && !retainedDocument)
-    throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint or snapshot.");
-  const document = currentSelected ? current : retainedDocument!;
+  const document = resolveExactProjectCompositionSource(project, member);
+  const currentSelected = sameGeneration(document.identity, entry.expected);
   const color = Number.parseInt(member.color.slice(1), 16), meshes: RenderMesh[] = [];
   const points: OverlayPointSet[] = [], lines: OverlayPolylineGroup[] = [];
   let param: RenderMember["param"];
@@ -346,12 +334,12 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const displayedProbe = coordinateProbe ?? savedProbe?.probe ?? null;
   const legacyFrameSlots = saved && !resolved.error ? ([0, 1] as const).filter(slot => {
     const member = saved.members[slot], entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
-    if (!entry || mode === "overlay" && entry.module !== "geometry" && entry.module !== "mesh" ||
-      mode === "side-by-side" && entry.module !== "surface") return false;
+    if (!entry || !["geometry", "mesh", "surface"].includes(entry.module) ||
+      mode === "overlay" && entry.module === "surface") return false;
     return (!entry.replay || entry.replay.format === (entry.module === "mesh" ? "math3d.mesh-replay.v1" :
       entry.module === "geometry" ? "math3d.geometry-replay.v1" : "math3d.surface-replay.v1")) &&
       entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash &&
-      resolved.members[slot]?.coordinates.status === "missing" &&
+      resolved.members.find(item => item.slot === slot)?.coordinates.status === "missing" &&
       (entry.module !== "mesh" || entry.checkpoint.format === "math3d.mesh-document" &&
         !!entry.checkpoint.source.origin && typeof entry.checkpoint.source.origin === "object" &&
         !Array.isArray(entry.checkpoint.source.origin));
@@ -439,6 +427,10 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       <p style={{ margin: "4px 0" }}>Enter the axes and handedness confirmed for that source. This creates a replay-backed source revision and a new exact comparison. The previous comparison keeps its exact retained generation. Matching declarations do not prove the producer's coordinate claim.</p>
       {mode === "side-by-side" && <label>Declared frame <input aria-label="Declared frame" value={frame} maxLength={80}
         onChange={event => setFrame(event.target.value)} placeholder="e.g. local" /></label>}
+      {mode === "side-by-side" && legacyFrameSlots.some(slot => project.workspace.entries.find(item =>
+        item.expected.id === composition.members[slot].documentId)?.module !== "surface") &&
+        <label>Declared unit <input aria-label="Declared unit" value={unit} maxLength={40}
+          onChange={event => setUnit(event.target.value)} placeholder="e.g. m" /></label>}
       {declaredAxes.map((axis, index) => <label key={index} style={{ marginRight: 8 }}>Axis {index + 1} <input
         aria-label={`Declared axis ${index + 1}`} value={axis} maxLength={32} style={{ width: 70 }}
         onChange={event => setDeclaredAxes(current => current.map((value, i) => i === index ? event.target.value : value) as [string, string, string])} /></label>)}
@@ -446,7 +438,9 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         onChange={event => setDeclaredHandedness(event.target.value as "right" | "left")}>
         <option value="right">Right</option><option value="left">Left</option></select></label>
       <div>{legacyFrameSlots.map(slot => <button key={slot} type="button" style={{ marginTop: 6, marginRight: 8 }}
-        data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid || mode === "side-by-side" && !frame.trim()}
+        data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid ||
+          mode === "side-by-side" && (!frame.trim() ||
+            project.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId)?.module !== "surface" && !unit.trim())}
         onClick={() => { setDeclaringFrame(true); setMessage("");
           const sourceEntry = project.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
           const sourceUnit = sourceEntry?.module === "surface" ? resolved.members.find(item => item.slot === slot)?.param?.unit ?? "" : unit.trim();

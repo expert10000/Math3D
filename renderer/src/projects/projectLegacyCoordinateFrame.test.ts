@@ -44,8 +44,8 @@ describe("PC03 legacy Geometry frame declaration", () => {
   it("refuses an unsaved, incompatible, repeated, or invalid declaration", () => {
     const project = createProjectComparisonTemplate("coordinate-overlay-study", "pc03-frame-refusal");
     const asserted = project.compositions!.find(item => item.title === "Unverified A/D overlay")!;
-    expect(() => declareLegacyGeometryCoordinateFrame(project, { ...asserted, title: "edited" }, 1, frame)).toThrow(/exact overlay/i);
-    expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 1, { ...frame, unit: "cm" })).toThrow(/exact overlay/i);
+    expect(() => declareLegacyGeometryCoordinateFrame(project, { ...asserted, title: "edited" }, 1, frame)).toThrow(/exact comparison/i);
+    expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 1, { ...frame, unit: "cm" })).toThrow(/exact comparison/i);
     expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 0, frame)).toThrow(/already declares/i);
     expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 1, { ...frame, axes: ["x", "x", "z"] })).toThrow(/invalid/i);
     expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 1, { ...frame, handedness: "left" })).toThrow(/handedness/i);
@@ -85,6 +85,36 @@ describe("PC03 legacy Geometry frame declaration", () => {
     } } };
     expect(() => retainedGeometryGenerationDocuments(forged)).toThrow(/marker/i);
   });
+
+  it("checks the other member's retained revision rather than its newer current frame", () => {
+    const original = createProjectComparisonTemplate("coordinate-overlay-study", "pc03-retained-other");
+    const asserted = original.compositions!.find(item => item.title === "Unverified A/D overlay")!;
+    const entry = original.workspace.entries.find(item => item.expected.id === asserted.members[0].documentId)!;
+    const adapter = new GeometryDocumentAdapter(entry.checkpoint as never);
+    const current = adapter.commitSource({ ...adapter.document().source, extensions: {
+      ...adapter.document().source.extensions, math3dCoordinateFrame: { ...frame, unit: "cm" } } });
+    const replay = adapter.exportReplay();
+    const workspace = createMixedWorkspaceDocument({ ...original.workspace, entries: original.workspace.entries.map(item =>
+      item === entry ? { ...item, expected: current.identity,
+        replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as never } } : item) });
+    const project = replaceMath3DProjectWorkspace(original, workspace);
+    expect(inspectProjectCompositionAvailability(asserted, project.workspace)[0]).toBe("retained-checkpoint");
+    const next = declareLegacyGeometryCoordinateFrame(project, asserted, 1, frame);
+    expect(createProjectComparisonEvidence(next.project, next.comparison, () => null).alignment).toBe("source-declared match");
+  });
+
+  it("declares a legacy Geometry frame from a saved side-by-side comparison", () => {
+    const original = createProjectComparisonTemplate("coordinate-overlay-study", "pc03-side-by-side-geometry");
+    const overlay = original.compositions!.find(item => item.title === "Unverified A/D overlay")!;
+    const { alignment: _alignment, ...withoutAlignment } = overlay;
+    const comparison: ProjectComposition = { ...withoutAlignment, id: "pc03-side-by-side-geometry", mode: "side-by-side" };
+    const project = upsertMath3DProjectComposition(original, comparison);
+    const next = declareLegacyGeometryCoordinateFrame(project, comparison, 1, frame);
+    const members = next.comparison.members.map((member, slot) => ({ ...resolveProjectCompositionMember(next.project, member, () => null), slot: slot as 0 | 1 }));
+    expect(resolveLinkedCoordinateProbe(members, { memberId: members[1]!.id, revision: members[1]!.revision,
+      hash: members[1]!.hash, point: { x: 0, y: 0, z: 0 } })?.target.id).toBe(members[0]!.id);
+    expect(inspectProjectCompositionAvailability(comparison, next.project.workspace)[1]).toBe("retained-checkpoint");
+  });
 });
 
 describe("PC03 legacy Mesh frame declaration", () => {
@@ -97,6 +127,12 @@ describe("PC03 legacy Mesh frame declaration", () => {
       })) as unknown as ProjectComposition["members"] };
     const project = upsertMath3DProjectComposition(base, composition);
     const meshFrame: ProjectCoordinateFrame = { ...frame, frame: "local xyz", unit: "unitless" };
+    const sideBySide: ProjectComposition = { id: "pc03-mesh-frame-side", title: "Legacy Mesh beside Geometry",
+      mode: "side-by-side", members: composition.members };
+    const sideProject = upsertMath3DProjectComposition(project, sideBySide);
+    const sideNext = declareLegacyMeshCoordinateFrame(sideProject, sideBySide, 0, meshFrame, item => resources.bytes(item));
+    expect(inspectProjectCompositionAvailability(sideBySide, sideNext.project.workspace)[0]).toBe("retained-checkpoint");
+    expect(inspectProjectCompositionAvailability(sideNext.comparison, sideNext.project.workspace)[0]).toBe("current");
     const next = declareLegacyMeshCoordinateFrame(project, composition, 0, meshFrame, item => resources.bytes(item));
     const restored = parseProjectPackage(exportProjectPackage(next.project, resources));
     const read = (item: Parameters<typeof resources.bytes>[0]) => restored.resources.bytes(item);

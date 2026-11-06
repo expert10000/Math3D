@@ -11,6 +11,31 @@ import { resolveLinkedCoordinateProbe } from "./projectLinkedCoordinateProbe";
 import { createProjectComparisonNote, inspectProjectComparisonNote } from "./projectComparisonNotes";
 
 describe("Saved Mesh comparison starter", () => {
+  it("opens a portable Surface/Geometry pair with exact coordinate observations", () => {
+    const { project, resources } = instantiateMeshComparisonStarter("surface-geometry-pair", "surface-geometry-probe");
+    const imported = parseProjectPackage(exportProjectPackage(project, resources));
+    const comparison = imported.project.compositions![0]!;
+    const members = comparison.members.map((member, slot) => ({ ...resolveProjectCompositionMember(imported.project, member,
+      item => imported.resources.bytes(item)), slot: slot as 0 | 1 }));
+    expect(imported.project.workspace.entries.map(entry => entry.module)).toEqual(["surface", "geometry"]);
+    expect(imported.resources.sidecars()).toEqual([]);
+    expect(qualifyProjectCameraPair(members)).toBe("declared-3d-frame");
+    for (const source of members) {
+      const probe = resolveLinkedCoordinateProbe(members, { memberId: source.id, revision: source.revision,
+        hash: source.hash, point: { x: 0.3, y: 0.4, z: 0.1 } });
+      expect(probe?.target.id).toBe(members.find(member => member !== source)!.id);
+      expect(probe?.target).not.toHaveProperty("meshKey");
+    }
+    expect(resolveLinkedCoordinateProbe([{ ...members[0]!, coordinates: { status: "missing" } }, members[1]!],
+      { memberId: members[1]!.id, revision: members[1]!.revision, hash: members[1]!.hash,
+        point: { x: 0.3, y: 0.4, z: 0.1 } })).toBeNull();
+    const probe = resolveLinkedCoordinateProbe(members, { memberId: members[0]!.id, revision: members[0]!.revision,
+      hash: members[0]!.hash, point: { x: 0.3, y: 0.4, z: 0.1 } })!;
+    const note = createProjectComparisonNote(imported.project, comparison, item => imported.resources.bytes(item),
+      "Surface coordinate", "The same coordinate is marked beside the Geometry sphere.", 1, "surface-geometry-note", probe);
+    expect(inspectProjectComparisonNote({ ...imported.project, notes: [note] }, note,
+      item => imported.resources.bytes(item)).status).toBe("current");
+  });
   it("links a declared Surface coordinate to a Mesh without inferring a target element", () => {
     const { project, resources } = instantiateMeshComparisonStarter("surface-mesh-pair", "surface-mesh-probe");
     const imported = parseProjectPackage(exportProjectPackage(project, resources));
