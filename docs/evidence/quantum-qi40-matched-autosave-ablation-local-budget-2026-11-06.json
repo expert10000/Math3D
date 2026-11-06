@@ -1,0 +1,17 @@
+{
+  "schema": "math3d/qi40-scene-memory-budget/v1",
+  "source": "docs/evidence/quantum-qi40-matched-autosave-ablation-local-80-2026-11-06.json",
+  "cycles": 80,
+  "installed": false,
+  "autosaveAblation": true,
+  "method": "Forced-GC closed-preview renderer heap; cycle 20 is warmup, cycle 80 is steady-state check",
+  "warmupCycle": 20,
+  "lastCycle": 80,
+  "warmupHeapBytes": 32411444,
+  "finalHeapBytes": 42222032,
+  "lateHeapGrowthBytes": 9810588,
+  "maxLateHeapGrowthBytes": 2097152,
+  "stringSelfBytesGrowth": 13035000,
+  "targetMet": false,
+  "note": "Provisional source target. Installed-build and workload coverage are required before QI-40 memory signoff."
+}

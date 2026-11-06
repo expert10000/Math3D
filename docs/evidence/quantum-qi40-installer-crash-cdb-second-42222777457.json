@@ -1,0 +1,72 @@
+{
+  "schema": "math3d/qi40-installer-probe/v1",
+  "checkedAtUtc": "2026-11-06T13:08:12.6417059Z",
+  "environment": "clean Windows runner",
+  "scope": "Theory Lab",
+  "imageVersion": "20261030.294.1",
+  "osVersion": "10.0.26100",
+  "status": "failed",
+  "candidate": {
+    "buildRunId": "42123298884",
+    "manifestSha256": "b704d1bce3fa8446908584b74c7cbcdc4b2463f178ca092b24bcacaa71ee5472",
+    "math3dCommit": "49485e816fcfc7b46d5da1634c6746a631343f8e",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535",
+    "theoryLabInstallerSha256": "18bfd9bd243b101a2ba2b6a3586e3e080b6e3223866af57853e32024b9fc3d81"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "math3dInstall": "not requested",
+    "theoryLabInstall": "pending",
+    "packagedWorkers": "pending"
+  },
+  "failure": "Theory Lab installer exited with code -1073741819 (0xC0000005)",
+  "debugger": {
+    "cdbAvailable": true,
+    "dumpAnalysis": "no stack frames parsed"
+  },
+  "crashDump": {
+    "configured": true,
+    "dumpType": "mini",
+    "configuredFor": [
+      "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe"
+    ],
+    "files": [
+      {
+        "name": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe.6480.dmp",
+        "bytes": 2873691,
+        "sha256": "29eb03a7fb582fd5169a6bf678180c905d56875b7c090d036520186fa031ac2b"
+      }
+    ],
+    "stackSummary": {
+      "status": "no stack frames parsed",
+      "exceptionCode": "c0000005",
+      "frames": [],
+      "stackLineCount": 0,
+      "debuggerExitCode": 0
+    }
+  },
+  "installerFailure": {
+    "phase": "Theory Lab",
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "processId": 6480,
+    "startedUtc": "2026-11-06T13:08:12.7464753Z",
+    "endedUtc": "2026-11-06T13:08:16.3574927Z",
+    "exitCode": -1073741819,
+    "exitCodeHex": "0xC0000005",
+    "applicationErrors": [
+      {
+        "timeUtc": "2026-11-06T13:08:15.7163148Z",
+        "faultingApplication": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+        "applicationVersion": "0.1.0.0",
+        "faultingModule": "System.dll",
+        "moduleVersion": "0.0.0.0",
+        "exceptionCode": "c0000005",
+        "faultOffset": "00001581",
+        "modulePathName": "System.dll",
+        "eventRecordId": 3931
+      }
+    ],
+    "werEvents": []
+  }
+}
