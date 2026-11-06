@@ -178,6 +178,12 @@ export type Graph2DTemporalSpectrumOrigin = Readonly<{
   window: "rectangular" | "hann"; detrend: "none" | "mean";
   interpolation: "none" | "linear";
 }>;
+export type Graph2DTemporalFtleOrigin = Readonly<{
+  kind: "project-temporal-ftle-profile/v1"; projectId: string;
+  resultId: string; summaryHash: string; rowsSha256: string;
+  axisUnit: string; valueUnit: string; profileRow: 0 | 1;
+  convergenceTolerance: number;
+}>;
 export type Graph2DPoincareOrigin = Readonly<{
   kind: "project-poincare-section/v1" | "project-poincare-return/v1";
   projectId: string; resultId: string;
@@ -263,6 +269,7 @@ export type Graph2DPointSeriesObject = Readonly<{
   projectProfileOrigin?: Graph2DProjectProfileOrigin;
   comparisonProfileOrigin?: Graph2DComparisonProfileOrigin;
   temporalSpectrumOrigin?: Graph2DTemporalSpectrumOrigin;
+  temporalFtleOrigin?: Graph2DTemporalFtleOrigin;
   poincareOrigin?: Graph2DPoincareOrigin;
   parameterStudyOrigin?: Graph2DParameterStudyOrigin;
   linkedOrigin?: Graph2DLinkedOverlayOrigin;
@@ -645,6 +652,18 @@ export const validGraph2DTemporalSpectrumOrigin = (value: unknown):
   ["rectangular", "hann"].includes(String(value.window)) &&
   ["none", "mean"].includes(String(value.detrend)) &&
   ["none", "linear"].includes(String(value.interpolation));
+export const validGraph2DTemporalFtleOrigin = (value: unknown):
+  value is Graph2DTemporalFtleOrigin => record(value) && exact(value,
+    ["kind", "projectId", "resultId", "summaryHash", "rowsSha256",
+      "axisUnit", "valueUnit", "profileRow", "convergenceTolerance"]) &&
+  value.kind === "project-temporal-ftle-profile/v1" &&
+  isStableDocumentId(value.projectId) && bounded(value.resultId, 160) &&
+  isStructuralHash(value.summaryHash) && isStructuralHash(value.rowsSha256) &&
+  bounded(value.axisUnit, 80) && bounded(value.valueUnit, 80) &&
+  [0, 1].includes(value.profileRow as number) &&
+  finite(value.convergenceTolerance) &&
+  (value.convergenceTolerance as number) >= 1e-8 &&
+  (value.convergenceTolerance as number) <= .5;
 export const validGraph2DPoincareOrigin = (value: unknown):
   value is Graph2DPoincareOrigin => record(value) && exact(value,
     ["kind", "projectId", "resultId", "summaryHash", "rowsSha256",
@@ -881,6 +900,7 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     ...(value.projectProfileOrigin === undefined ? [] : ["projectProfileOrigin"]),
     ...(value.comparisonProfileOrigin === undefined ? [] : ["comparisonProfileOrigin"]),
     ...(value.temporalSpectrumOrigin === undefined ? [] : ["temporalSpectrumOrigin"]),
+    ...(value.temporalFtleOrigin === undefined ? [] : ["temporalFtleOrigin"]),
     ...(value.poincareOrigin === undefined ? [] : ["poincareOrigin"]),
     ...(value.parameterStudyOrigin === undefined ? [] : ["parameterStudyOrigin"]),
     ...(value.linkedOrigin === undefined ? [] : ["linkedOrigin"])]) && objectId(value.id) &&
@@ -888,6 +908,7 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
   ["points", "line"].includes(String(value.mode)) && value.missing === "gap" && validDomain(value.domain) &&
   [value.origin, value.analyticOrigin, value.derivedOrigin, value.linkedOrigin,
     value.projectProfileOrigin, value.comparisonProfileOrigin, value.temporalSpectrumOrigin,
+    value.temporalFtleOrigin,
     value.poincareOrigin,
     value.parameterStudyOrigin].filter(item => item !== undefined).length <= 1 &&
   (value.origin === undefined || validGraph2DScientificDatasetOrigin(value.origin)) &&
@@ -898,6 +919,8 @@ const validPointSeriesObject = (value: unknown): value is Graph2DPointSeriesObje
     validGraph2DComparisonProfileOrigin(value.comparisonProfileOrigin)) &&
   (value.temporalSpectrumOrigin === undefined ||
     validGraph2DTemporalSpectrumOrigin(value.temporalSpectrumOrigin)) &&
+  (value.temporalFtleOrigin === undefined ||
+    validGraph2DTemporalFtleOrigin(value.temporalFtleOrigin)) &&
   (value.poincareOrigin === undefined ||
     validGraph2DPoincareOrigin(value.poincareOrigin)) &&
   (value.parameterStudyOrigin === undefined || isGraph2DParameterStudyOrigin(value.parameterStudyOrigin)) &&

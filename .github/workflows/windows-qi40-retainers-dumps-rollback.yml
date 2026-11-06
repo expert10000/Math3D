@@ -4,6 +4,49 @@ on:
   workflow_dispatch:
 
 jobs:
+  source-memory-cleanup:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Build current source
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer npm ci failed' }
+          npm run build:main
+          if ($LASTEXITCODE -ne 0) { throw 'Main build failed' }
+          npm run build:renderer
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer build failed' }
+      - name: Check 80 source scene cycles after cleanup
+        shell: pwsh
+        env:
+          MATH3D_HEAP_DIAGNOSTIC: '1'
+        run: |
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-source-cleanup-80.json 80 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Scene stress failed' }
+          $report = Get-Content test-results/qi40-source-cleanup-80.json -Raw | ConvertFrom-Json
+          $contexts = $report.heapComposition.trackedConstructors.'native:WebGL2RenderingContext'
+          $textures = $report.heapComposition.trackedConstructors.'native:WebGLTexture'
+          if ($report.cycles -ne 80 -or $report.installed -or
+              $contexts.final -ne $contexts.baseline -or
+              $textures.final -ne $textures.baseline -or
+              @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
+            throw 'Post-cleanup source context or canvas budget failed'
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-source-cleanup-80
+          if-no-files-found: ignore
+          path: test-results/qi40-source-cleanup-80.json
+
   mixed-project-rollback:
     runs-on: windows-latest
     timeout-minutes: 35
@@ -30,7 +73,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
           gh run download 42035098178 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/rollback
           if ($LASTEXITCODE -ne 0) { throw 'Rollback download failed' }
-      - name: Verify six-scene Project across installed rollback
+      - name: Verify six scenes and promoted geometry across installed rollback
         shell: pwsh
         run: |
           & scripts/stable-quantum-installed-rollback.ps1 `
@@ -76,7 +119,7 @@ jobs:
             -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
             -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-retainer-install') `
             -EvidencePath (Join-Path $PWD 'test-results/qi40-retainer-installer.json') `
-            -Math3DOnly
+            -Math3DOnly -CaptureCrashDump
       - name: Install harness
         shell: pwsh
         run: |
@@ -110,6 +153,7 @@ jobs:
       fail-fast: false
       matrix:
         slot: [1, 2, 3, 4, 5, 6]
+        scope: [lab-only, both-apps]
     runs-on: windows-latest
     timeout-minutes: 20
     permissions:
@@ -124,17 +168,20 @@ jobs:
         run: |
           gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
           if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
-      - name: Install Theory Lab with per-app WER mini dump enabled
+      - name: Install pinned candidate with per-app WER mini dump enabled
         shell: pwsh
         run: |
-          & scripts/probe-quantum-installers.ps1 `
-            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
-            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-lab-dump-probe') `
-            -EvidencePath (Join-Path $PWD 'test-results/qi40-lab-dump-probe.json') `
-            -TheoryLabOnly -CaptureCrashDump
+          $arguments = @{
+            CandidateDirectory = Join-Path $PWD 'installers/candidate'
+            InstallRoot = Join-Path $env:RUNNER_TEMP 'qi40-lab-dump-probe'
+            EvidencePath = Join-Path $PWD 'test-results/qi40-lab-dump-probe.json'
+            CaptureCrashDump = $true
+          }
+          if ('${{ matrix.scope }}' -eq 'lab-only') { $arguments.TheoryLabOnly = $true }
+          & scripts/probe-quantum-installers.ps1 @arguments
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: qi40-lab-dump-probe-${{ matrix.slot }}
+          name: qi40-lab-dump-probe-${{ matrix.scope }}-${{ matrix.slot }}
           if-no-files-found: ignore
           path: test-results/qi40-lab-dump-probe.json

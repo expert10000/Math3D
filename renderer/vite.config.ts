@@ -5,6 +5,7 @@ import fs from "node:fs";
 import type { ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { threeTextureCleanup } from "./threeTextureCleanup";
 
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const mobileDependency = (name: string) => {
@@ -123,7 +124,8 @@ const galleryImagesDevServer = () => ({
 // https://vitejs.dev/config/
 export default defineConfig({
   base: "./",        // 👈 IMPORTANT for Electron / file://
-  plugins: [react(), galleryImagesDevServer()],
+  plugins: [threeTextureCleanup(), react(), galleryImagesDevServer()],
+  optimizeDeps: { exclude: ["three"] },
   build: {
     chunkSizeWarningLimit: 2400,
     rollupOptions: {

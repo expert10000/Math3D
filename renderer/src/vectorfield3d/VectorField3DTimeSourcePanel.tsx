@@ -8,6 +8,8 @@ import { createTemporalFieldSourceDocument, projectTemporalFieldSourceStatus,
   computeTemporalSurfaceEvents, classifyTemporalSurfaceEvent,
   projectTemporalSurfaceEventsStatus,
   type TemporalLyapunovFieldStudy, type TemporalSurfaceEventStudy,
+  computeTemporalFtleProfile, projectTemporalFtleProfileStatus,
+  type TemporalFtleProfileStudy,
   type TemporalSpectrumResult, type TemporalSpectrumRecipe,
   type Math3DProject, type TemporalFieldSourceDocument, type VerifiedTemporalTransfers,
   type VectorField3DDocument, type VectorField3DIsosurface,
@@ -21,7 +23,8 @@ import { validateTemporalSurfacePair } from "./validateTemporalSurfacePair";
 
 export function VectorField3DTimeSourcePanel({ document, project, onSave, onSavePathline,
   onSaveStreakline, onSaveSpectrum, onOpenSpectrum, onSaveFtLeField,
-  onSaveSurfaceEvents, onPromoteMovingIsosurface,
+  onSaveSurfaceEvents, onSaveFtleProfile, onOpenFtleProfile,
+  onPromoteMovingIsosurface,
   onPreviewMovingIsosurface }: {
   document: VectorField3DDocument; project: Math3DProject | null | undefined;
   onSave?: (temporal: TemporalFieldSourceDocument, transfers?: VerifiedTemporalTransfers) => void;
@@ -33,6 +36,9 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
     transfers?: VerifiedTemporalTransfers) => void;
   onSaveSurfaceEvents?: (study: TemporalSurfaceEventStudy,
     transfers?: VerifiedTemporalTransfers) => void;
+  onSaveFtleProfile?: (study: TemporalFtleProfileStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onOpenFtleProfile?: (result: AnalysisResultEnvelope) => void;
   onOpenSpectrum?: (result: AnalysisResultEnvelope) => void;
   onPromoteMovingIsosurface?: (field: VectorField3DDocument,
     surface: VectorField3DIsosurface, temporal: TemporalFieldSourceDocument,
@@ -81,6 +87,9 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const [ftleProgress, setFtleProgress] = useState("");
   const [ftleStudy, setFtleStudy] = useState<TemporalLyapunovFieldStudy | null>(null);
   const cancelFtle = useRef(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileView, setProfileView] = useState<TemporalFtleProfileStudy | null>(null);
+  const cancelProfile = useRef(false);
   const [eventStatus, setEventStatus] = useState("");
   const cancelSpectrum = useRef(false);
   const projectRef = useRef(project);
@@ -133,6 +142,10 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
     item.provenance.operation.type === "vector3d.temporal-surface-events" &&
     saved.some(source => source.identity.id ===
       (item.provenance.operation.parameters.lineage as { temporalId?: string } | undefined)?.temporalId)) ?? [];
+  const ftleProfiles = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-ftle-profile" &&
+    saved.some(source => source.identity.id ===
+      item.provenance.operation.parameters.temporalId)) ?? [];
   const loadTransfers = async (ids: readonly string[]): Promise<VerifiedTemporalTransfers> => {
     const transfers = new Map();
     for (const id of ids) {
@@ -275,6 +288,30 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
       if (study.status === "ready") onSaveFtLeField(study, transfers);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setFtleBusy(false); }
+  };
+  const runFtleProfile = async () => {
+    setError(""); setProfileView(null); cancelProfile.current = false;
+    setProfileBusy(true);
+    try {
+      const current = projectRef.current;
+      if (!current || !sampleId || !onSaveFtleProfile)
+        throw new TypeError("Save a bounded FTLE field first.");
+      const base = [...current.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-ftle-field" &&
+        item.provenance.operation.parameters.temporalId === sampleId);
+      if (!base) throw new TypeError("Saved FTLE field is missing.");
+      const temporal = saved.find(item => item.identity.id === sampleId)!;
+      const frameIds = temporal.source.frames.map(frame => frame.documentId);
+      const transfers = await loadTransfers(frameIds);
+      const study = await computeTemporalFtleProfile(current,
+        { baseResultId: base.resultId, convergenceTolerance: .02, profileRow: 0 },
+        { transfers, shouldCancel: () => cancelProfile.current,
+          currentProject: () => projectRef.current ?? current,
+          verifyBeforePublish: async () => loadTransfers(frameIds) });
+      setProfileView(study);
+      if (study.status === "ready") onSaveFtleProfile(study, transfers);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setProfileBusy(false); }
   };
   const saveEvents = async () => {
     setError(""); setEventStatus("");
@@ -474,6 +511,23 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
           `${ftleStudy.cells.length} finite-time estimates saved; ` +
             `${ftleStudy.evaluations} velocity samples.` :
           `FTLE unavailable: ${ftleStudy.reason}.`}</p>}
+        <button type="button" disabled={!sampleId || !onSaveFtleProfile ||
+          profileBusy || ftleResults.length === 0}
+          onClick={() => void runFtleProfile()}>Refine and save physical FTLE profile</button>
+        {profileBusy && <button type="button" onClick={() => {
+          cancelProfile.current = true;
+        }}>Cancel FTLE refinement</button>}
+        {profileView && <p role="status" data-testid="gf53-profile-status">
+          {profileView.status === "ready" ?
+            `${profileView.publication!.summary.convergedCount} converged cells, ` +
+              `${profileView.publication!.summary.gapCount} unavailable gaps; ` +
+              `${String(profileView.publication!.summary.axisUnit)} → ` +
+              `${String(profileView.publication!.summary.valueUnit)}.` :
+            `FTLE profile unavailable: ${profileView.reason}.`}
+        </p>}
+        {profileView?.status === "ready" && onOpenFtleProfile &&
+          <button type="button" onClick={() => onOpenFtleProfile(profileView.publication!)}>
+            Open refined FTLE profile in Graphs</button>}
       </div>
       <div data-testid="gf30-moving-isosurfaces">
         <label>Speed level <input type="number" min="0" step="any" value={movingLevel}
@@ -600,6 +654,15 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
         return <li key={result.resultId}>{String(result.summary.eventCount)} exact-frame events:
           {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
           No topology-changing interpolation.</li>;
+      })}</ul></details>}
+    {ftleProfiles.length > 0 && <details><summary>Saved FTLE profiles</summary>
+      <ul>{ftleProfiles.map(result => {
+        const status = projectTemporalFtleProfileStatus(project!, result);
+        return <li key={result.resultId}>{String(result.summary.convergedCount)}
+          {" "}converged, {String(result.summary.gapCount)} gaps:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          <button type="button" disabled={!onOpenFtleProfile}
+            onClick={() => onOpenFtleProfile?.(result)}>Open in Graphs</button></li>;
       })}</ul></details>}
   </section>;
 }

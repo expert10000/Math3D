@@ -1,9 +1,11 @@
-import type { VectorField3DIsosurface } from "@math3d/core";
+import { measureTemporalSurfaceComponents, type VectorField3DIsosurface } from "@math3d/core";
 import { matchReindexedTemporalSurface } from "./matchReindexedTemporalSurface";
+import { matchRemeshedTemporalSurface } from "./matchRemeshedTemporalSurface";
 
 export type TemporalSurfacePairReview = Readonly<{ status: "compatible" | "unavailable";
   reason: string; maxDisplacement: number; rmsDisplacement?: number;
-  correspondence?: "indexed" | "reindexed"; mapping?: readonly number[] }>;
+  correspondence?: "indexed" | "reindexed" | "remeshed"; mapping?: readonly number[];
+  targetPositions?: Float32Array; targetNormals?: Float32Array }>;
 
 /** A conservative vertex correspondence gate for deterministic extraction output. */
 export function validateTemporalSurfacePair(a: VectorField3DIsosurface,
@@ -14,16 +16,31 @@ export function validateTemporalSurfacePair(a: VectorField3DIsosurface,
     return unavailable("A frame is incomplete or empty.");
   if (a.level !== b.level || a.unit !== b.unit ||
       JSON.stringify(a.clipBounds) !== JSON.stringify(b.clipBounds) ||
-      JSON.stringify(a.coordinateAxes) !== JSON.stringify(b.coordinateAxes))
-    return unavailable("Level, units, clipping, or physical axes changed.");
+      JSON.stringify(a.coordinateAxes) !== JSON.stringify(b.coordinateAxes) ||
+      JSON.stringify(a.gridShape) !== JSON.stringify(b.gridShape))
+    return unavailable("Level, units, clipping, grid, or physical axes changed.");
   if (!a.topology.watertight || !b.topology.watertight ||
       a.topology.nonManifoldEdgeCount || b.topology.nonManifoldEdgeCount)
     return unavailable("A frame has an open or nonmanifold surface.");
   if (JSON.stringify(a.topology) !== JSON.stringify(b.topology))
     return unavailable("Surface topology changed between frames.");
-  if (a.positions.length !== b.positions.length || a.indices.length !== b.indices.length ||
-      a.normals.length !== a.positions.length || b.normals.length !== b.positions.length)
-    return unavailable("Vertex or triangle counts changed.");
+  if (a.normals.length !== a.positions.length || b.normals.length !== b.positions.length)
+    return unavailable("Surface normals are missing or incomplete.");
+  if (a.positions.length !== b.positions.length || a.indices.length !== b.indices.length) {
+    try {
+      const euler = (surface: VectorField3DIsosurface) =>
+        measureTemporalSurfaceComponents(surface).map(item => item.euler).sort((x, y) => x - y);
+      if (JSON.stringify(euler(a)) !== JSON.stringify(euler(b)))
+        return unavailable("Surface topology changed between frames (Euler characteristic).");
+    } catch (cause) { return unavailable(cause instanceof Error ? cause.message : String(cause)); }
+    const remeshed = matchRemeshedTemporalSurface(a, b);
+    return remeshed.status === "matched" ? { status: "compatible",
+      reason: `Validated remeshed surfaces; max error ${remeshed.maxError.toPrecision(3)}, ` +
+        `RMS ${remeshed.rmsError.toPrecision(3)}. Geometric correspondence only.`,
+      maxDisplacement: remeshed.maxError, rmsDisplacement: remeshed.rmsError,
+      correspondence: "remeshed", targetPositions: remeshed.targetPositions,
+      targetNormals: remeshed.targetNormals } : unavailable(remeshed.reason);
+  }
   const sameIndexing = a.indices.every((index, i) => index === b.indices[i]);
   const match = sameIndexing ? null : matchReindexedTemporalSurface(a, b);
   if (match?.status === "unavailable") return unavailable(match.reason);
@@ -97,11 +114,13 @@ export function interpolateTemporalSurfacePair(a: VectorField3DIsosurface,
   if (!Number.isFinite(fraction) || fraction <= 0 || fraction >= 1)
     throw new RangeError("Interpolation fraction must be between the pinned times.");
   const positions = Float32Array.from(a.positions, (value, i) =>
-    value + fraction * (b.positions[(review.mapping?.[Math.floor(i / 3)] ??
-      Math.floor(i / 3)) * 3 + i % 3]! - value));
+    value + fraction * ((review.targetPositions?.[i] ??
+      b.positions[(review.mapping?.[Math.floor(i / 3)] ??
+        Math.floor(i / 3)) * 3 + i % 3]!) - value));
   const normals = Float32Array.from(a.normals, (value, i) =>
-    value + fraction * (b.normals[(review.mapping?.[Math.floor(i / 3)] ??
-      Math.floor(i / 3)) * 3 + i % 3]! - value));
+    value + fraction * ((review.targetNormals?.[i] ??
+      b.normals[(review.mapping?.[Math.floor(i / 3)] ??
+        Math.floor(i / 3)) * 3 + i % 3]!) - value));
   for (let i = 0; i < normals.length; i += 3) {
     const length = Math.hypot(normals[i]!, normals[i + 1]!, normals[i + 2]!);
     if (length <= 1e-8) throw new TypeError("Interpolated normal is undefined.");

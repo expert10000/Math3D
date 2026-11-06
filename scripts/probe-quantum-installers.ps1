@@ -25,9 +25,9 @@ $manifestPath = Join-Path $candidateRoot 'candidate-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $mathInstaller = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $manifest.math3d.installerName)).Path
 $labInstaller = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $manifest.theoryLab.installerName)).Path
-$werKey = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\$([IO.Path]::GetFileName($labInstaller))"
+$werRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
 $dumpDir = Join-Path $root 'crash-dumps'
-$werConfigured = $false
+$werKeysCreated = @()
 $mathSha = (Get-FileHash -LiteralPath $mathInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
 $labSha = (Get-FileHash -LiteralPath $labInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
 $evidence = [ordered]@{
@@ -70,6 +70,16 @@ function Get-ApplicationErrors([string]$installerName, [datetime]$startedAt) {
     } })
 }
 
+function Get-WerEvents([string]$installerName, [datetime]$startedAt) {
+  @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1001; StartTime = $startedAt.AddSeconds(-5) } `
+    -ErrorAction SilentlyContinue | Where-Object { $_.Message -like "*$installerName*" } |
+    Select-Object -First 3 | ForEach-Object { [ordered]@{
+      timeUtc = $_.TimeCreated.ToUniversalTime().ToString('o')
+      eventRecordId = $_.RecordId
+      provider = $_.ProviderName
+    } })
+}
+
 function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$phase) {
   $name = [IO.Path]::GetFileName($installer)
   $startedAt = Get-Date
@@ -78,15 +88,20 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
     -WindowStyle Hidden -PassThru
   if (-not $process.WaitForExit(180000)) {
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name; reason = 'timeout';
-      applicationErrors = @(Get-ApplicationErrors $name $startedAt) }
+      processId = $process.Id; startedUtc = $startedAt.ToUniversalTime().ToString('o');
+      applicationErrors = @(Get-ApplicationErrors $name $startedAt);
+      werEvents = @(Get-WerEvents $name $startedAt) }
     try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
     throw "$phase installer exceeded 180 seconds"
   }
   if ($process.ExitCode -ne 0) {
     $hexCode = '0x{0:X8}' -f ($process.ExitCode -band 0xffffffffL)
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name;
+      processId = $process.Id; startedUtc = $startedAt.ToUniversalTime().ToString('o');
+      endedUtc = (Get-Date).ToUniversalTime().ToString('o');
       exitCode = $process.ExitCode; exitCodeHex = $hexCode;
-      applicationErrors = @(Get-ApplicationErrors $name $startedAt) }
+      applicationErrors = @(Get-ApplicationErrors $name $startedAt);
+      werEvents = @(Get-WerEvents $name $startedAt) }
     throw "$phase installer exited with code $($process.ExitCode) ($hexCode)"
   }
   Write-Host "$phase installer exited successfully"
@@ -106,16 +121,24 @@ try {
   $evidence.checks.exactBytes = 'passed'
   New-Item -ItemType Directory -Path $root | Out-Null
   if ($CaptureCrashDump) {
-    if ($Math3DOnly) { throw 'Crash dump capture requires a Theory Lab installer probe' }
-    if (Test-Path -LiteralPath $werKey) { throw 'Per-application WER LocalDumps key already exists' }
+    $targetInstallers = if ($Math3DOnly) { @($mathInstaller) } elseif ($TheoryLabOnly) {
+      @($labInstaller)
+    } else { @($mathInstaller, $labInstaller) }
+    $targetKeys = @($targetInstallers | ForEach-Object { Join-Path $werRoot ([IO.Path]::GetFileName($_)) })
+    foreach ($key in $targetKeys) {
+      if (Test-Path -LiteralPath $key) { throw "Per-application WER LocalDumps key already exists: $key" }
+    }
     New-Item -ItemType Directory -Path $dumpDir | Out-Null
-    New-Item -Path (Split-Path -Parent $werKey) -Force | Out-Null
-    New-Item -Path $werKey -Force | Out-Null
-    $werConfigured = $true
-    New-ItemProperty -Path $werKey -Name DumpFolder -PropertyType ExpandString -Value $dumpDir -Force | Out-Null
-    New-ItemProperty -Path $werKey -Name DumpType -PropertyType DWord -Value 1 -Force | Out-Null
-    New-ItemProperty -Path $werKey -Name DumpCount -PropertyType DWord -Value 2 -Force | Out-Null
-    $evidence.crashDump = [ordered]@{ configured = $true; dumpType = 'mini'; files = @() }
+    New-Item -Path $werRoot -Force | Out-Null
+    foreach ($key in $targetKeys) {
+      New-Item -Path $key -Force | Out-Null
+      $werKeysCreated += $key
+      New-ItemProperty -Path $key -Name DumpFolder -PropertyType ExpandString -Value $dumpDir -Force | Out-Null
+      New-ItemProperty -Path $key -Name DumpType -PropertyType DWord -Value 1 -Force | Out-Null
+      New-ItemProperty -Path $key -Name DumpCount -PropertyType DWord -Value 2 -Force | Out-Null
+    }
+    $evidence.crashDump = [ordered]@{ configured = $true; dumpType = 'mini';
+      configuredFor = @($targetInstallers | ForEach-Object { [IO.Path]::GetFileName($_) }); files = @() }
   }
   $mathInstall = Join-Path $root 'Math3D'
   $labInstall = Join-Path $root 'TheoryLab'
@@ -156,7 +179,7 @@ try {
   $evidence.failure = $_.Exception.Message
   throw
 } finally {
-  if ($werConfigured) {
+  if ($werKeysCreated.Count -gt 0) {
     try {
       if ($evidence.status -eq 'failed') {
         $deadline = (Get-Date).AddSeconds(20)
@@ -171,7 +194,7 @@ try {
             sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
       }
     } finally {
-      if ($werConfigured) { Remove-Item -LiteralPath $werKey -Force }
+      foreach ($key in $werKeysCreated) { Remove-Item -LiteralPath $key -Force }
     }
   }
   New-Item -ItemType Directory -Path (Split-Path -Parent $EvidencePath) -Force | Out-Null

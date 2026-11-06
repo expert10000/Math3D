@@ -138,6 +138,9 @@ function Invoke-ProfilePhase([string]$phase, [string]$path) {
   $env:MATH3D_ROLLBACK_PROFILE_ROOT = $profile
   $env:MATH3D_ROLLBACK_PROFILE_PHASE = $phase
   $env:MATH3D_ROLLBACK_PROFILE_RESULT_PATH = $path
+  $env:MATH3D_ROLLBACK_PROMOTED_GEOMETRY_ID = if ($phase -eq 'verify') {
+    $evidence.profileSeed.promotedGeometryId
+  } else { '' }
   Push-Location $repo
   try {
     & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test tests/e2e/quantum-installed-rollback-profile.spec.ts --reporter=list | Out-Host
@@ -179,6 +182,11 @@ try {
   if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Rolled-back Math3D executable missing' }
   $evidence.checks.rollbackInstall = 'passed'
   $evidence.profileVerify = Invoke-ProfilePhase 'verify' (Join-Path $root 'profile-verify.json')
+  if ($evidence.profileVerify.quantumProjectId -ne $evidence.profileSeed.quantumProjectId -or
+      $evidence.profileVerify.promotedGeometryId -ne $evidence.profileSeed.promotedGeometryId -or
+      -not $evidence.profileVerify.promotedGeometryReopenedAfterRollback) {
+    throw 'Installed rollback changed the saved Project or promoted geometry identity'
+  }
   $evidence.checks.rollbackProfileRetained = 'passed'
   $evidence.rollbackScenes = Invoke-Phase 'rolled-back' (Join-Path $root 'rollback-scenes.json')
   $evidence.checks.v1v2Readers = 'passed'
