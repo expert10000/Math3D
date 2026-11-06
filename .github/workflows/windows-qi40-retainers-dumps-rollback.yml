@@ -22,6 +22,10 @@ on:
         type: boolean
         description: Trace objects allocated after the closed cycle-20 heap snapshot
         default: false
+      e2e_hook_ablation:
+        type: boolean
+        description: Diagnose retained preview data with E2E-only global hooks removed
+        default: false
       candidate_run_id:
         type: string
         description: Stable two-app candidate build run for fixed-memory or installer checks
@@ -85,6 +89,7 @@ jobs:
           MATH3D_STRESS_AUTOSAVE_ABLATION: ${{ inputs.focus == 'autosave' && '1' || '0' }}
           MATH3D_STRESS_SCENE_PAIR: ${{ inputs.scene_pair }}
           MATH3D_HEAP_WARMUP_SNAPSHOT: ${{ inputs.heap_warmup_snapshot && '1' || '0' }}
+          MATH3D_STRESS_ABLATE_E2E_HOOKS: ${{ inputs.e2e_hook_ablation && '1' || '0' }}
         run: |
           if ('${{ inputs.focus }}' -eq 'autosave') {
             $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '0'
@@ -113,6 +118,7 @@ jobs:
             $reportPath test-results/qi40-source-memory-budget.json
           if ($LASTEXITCODE -ne 0) { throw 'Memory budget evaluation failed' }
           $budget = Get-Content test-results/qi40-source-memory-budget.json -Raw | ConvertFrom-Json
+          if ($report.e2eHookAblation) { throw 'E2E-hook ablation is diagnostic only; see uploaded evidence' }
           if (-not $budget.targetMet) { throw 'Provisional source memory target remains unmet; see uploaded evidence' }
       - uses: actions/upload-artifact@v7
         if: always()
