@@ -69,13 +69,21 @@ function Invoke-Installer([string]$file, [string]$phase) {
   }
   if ($process.ExitCode -ne 0) {
     $hexCode = '0x{0:X8}' -f ($process.ExitCode -band 0xffffffffL)
-    $faults = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $startedAt.AddSeconds(-5) } `
-      -ErrorAction SilentlyContinue | Where-Object { $_.Properties.Count -ge 7 -and
-        $_.Properties[0].Value -eq [IO.Path]::GetFileName($file) } | Select-Object -First 3)
+    # Windows Error Reporting can write its event after the installer exits.
+    $faults = @()
+    $eventLogPolls = 0
+    do {
+      $eventLogPolls++
+      $faults = @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $startedAt.AddSeconds(-5) } `
+        -ErrorAction SilentlyContinue | Where-Object { $_.Properties.Count -ge 7 -and
+          $_.Properties[0].Value -eq [IO.Path]::GetFileName($file) } | Select-Object -First 3)
+      if ($faults.Count -eq 0 -and $eventLogPolls -lt 6) { Start-Sleep -Seconds 2 }
+    } while ($faults.Count -eq 0 -and $eventLogPolls -lt 6)
     $evidence.installerFailure = [ordered]@{
       phase = $phase
       exitCode = $process.ExitCode
       exitCodeHex = $hexCode
+      eventLogPolls = $eventLogPolls
       applicationErrors = @($faults | ForEach-Object { [ordered]@{
         timeUtc = $_.TimeCreated.ToUniversalTime().ToString('o')
         faultingApplication = $_.Properties[0].Value
@@ -83,6 +91,7 @@ function Invoke-Installer([string]$file, [string]$phase) {
         exceptionCode = $_.Properties[6].Value
       } })
     }
+    $evidence.installerProcesses = Get-InstallerProcessSnapshot
     throw "$phase installer exited with code $($process.ExitCode) ($hexCode)"
   }
 }
