@@ -16,7 +16,8 @@ type Vec3 = readonly [number, number, number];
 type Bounds = readonly [readonly [number, number], readonly [number, number],
   readonly [number, number]];
 export type ManifoldAtlasRecipe = Readonly<{ domain: Bounds;
-  overlapTolerance: number; maxEvaluations: number }>;
+  overlapTolerance: number; maxEvaluations: number;
+  baseAtlasResultId?: string }>;
 export type ManifoldAtlasStudy = Readonly<{ status: "validated" | "unavailable";
   reason: string | null; vertices: readonly Vec3[];
   triangles: readonly (readonly [number, number, number])[];
@@ -40,7 +41,9 @@ const inside = (point: Vec3, bounds: Bounds, axes: readonly number[], margin = 0
 export function computeVectorField3DManifoldAtlas(project: Math3DProject,
   document: VectorField3DDocument, studies: readonly ExtendedManifoldStudy[],
   recipe: ManifoldAtlasRecipe, shouldCancel?: () => boolean): ManifoldAtlasStudy {
-  if (studies.length !== 2 || studies.some(item => item.status !== "validated" ||
+  if (studies.length < 2 || studies.length > 3 ||
+      (studies.length === 3) !== !!recipe.baseAtlasResultId ||
+      studies.some(item => item.status !== "validated" ||
       !item.publication || !item.continuation?.candidate) ||
       !Number.isFinite(recipe.overlapTolerance) ||
       recipe.overlapTolerance <= 0 || recipe.overlapTolerance > .25 ||
@@ -50,7 +53,16 @@ export function computeVectorField3DManifoldAtlas(project: Math3DProject,
         !Number.isFinite(range[1]) || range[0] >= range[1] ||
         range[0] < document.source.axes[axis]!.min ||
         range[1] > document.source.axes[axis]!.max))
-    throw new RangeError("Atlas needs two saved local patches and bounded domain/work rules.");
+    throw new RangeError("Atlas needs two or three saved local patches and bounded domain/work rules.");
+  const baseAtlas = recipe.baseAtlasResultId ? project.workspace.results.find(item =>
+    item.resultId === recipe.baseAtlasResultId) : null;
+  if (recipe.baseAtlasResultId && (!baseAtlas ||
+      projectManifoldAtlasStatus(project, baseAtlas).status !== "current" ||
+      structuralHash(baseAtlas.summary.memberResultIds) !== structuralHash(
+        studies.slice(0, 2).map(item => item.publication?.resultId))))
+    return unavailable("saved-base-atlas-required");
+  if (new Set(studies.map(item => item.publication?.resultId)).size !== studies.length)
+    return unavailable("distinct-saved-charts-required");
   for (const study of studies) {
     const saved = project.workspace.results.find(item =>
       item.resultId === study.publication!.resultId);
@@ -61,18 +73,21 @@ export function computeVectorField3DManifoldAtlas(project: Math3DProject,
   }
   const patches = studies.map(item => item.continuation!.candidate!);
   const branch = patches[0]!.publication!.summary.branch;
-  if (patches[1]!.publication!.summary.branch !== branch ||
-      studies[0]!.publication!.provenance.source.documentId !== document.identity.id ||
-      studies[1]!.publication!.provenance.source.documentId !== document.identity.id)
+  if (patches.some(item => item.publication!.summary.branch !== branch) ||
+      studies.some(item => item.publication!.provenance.source.documentId !== document.identity.id))
     return unavailable("source-or-branch-mismatch");
   const evaluations = studies.reduce((sum, item) => sum +
     Number(item.publication!.summary.evaluations), 0);
   if (evaluations > recipe.maxEvaluations)
     return unavailable("atlas-work-budget");
   const vertices = patches.flatMap(item => item.vertices);
-  const triangles = patches.flatMap((item, index) => item.triangles.map(face =>
-    face.map(id => id + (index ? patches[0]!.vertices.length : 0)) as
-      [number, number, number]));
+  let offset = 0;
+  const triangles = patches.flatMap(item => {
+    const faces = item.triangles.map(face => face.map(id => id + offset) as
+      [number, number, number]);
+    offset += item.vertices.length;
+    return faces;
+  });
   if (vertices.length > 192 || triangles.length > 384)
     return unavailable("atlas-mesh-budget");
   if (shouldCancel?.()) throw new Error("Manifold atlas cancelled.");
@@ -83,28 +98,42 @@ export function computeVectorField3DManifoldAtlas(project: Math3DProject,
       r = patches[index]!.vertices[face[2]]!;
     return cross(sub(q, p), sub(r, p));
   };
-  const aNormal = normal(0), bNormal = normal(1);
-  if (dot(aNormal, bNormal) < .5 * Math.hypot(...aNormal) * Math.hypot(...bNormal))
+  const aNormal = normal(0);
+  if (patches.slice(1).some((_, index) => {
+    const other = normal(index + 1);
+    return dot(aNormal, other) < .5 * Math.hypot(...aNormal) * Math.hypot(...other);
+  }))
     return unavailable("patch-orientation-mismatch");
   const dimension = [0, 1, 2].sort((a, b) =>
     (Math.max(...vertices.map(v => v[b]!)) - Math.min(...vertices.map(v => v[b]!))) -
     (Math.max(...vertices.map(v => v[a]!)) - Math.min(...vertices.map(v => v[a]!))))
     .slice(0, 2);
   const boxes = patches.map(item => boundsOf(item.vertices));
-  const overlap = dimension.map(axis => [Math.max(boxes[0]![axis]![0], boxes[1]![axis]![0]),
-    Math.min(boxes[0]![axis]![1], boxes[1]![axis]![1])]);
-  if (overlap.some(range => range[1]! <= range[0]!))
-    return unavailable("patches-do-not-overlap-in-physical-domain");
   const span = Math.min(...recipe.domain.map(range => range[1] - range[0]));
   const margin = span * recipe.overlapTolerance;
   const measured: number[] = [];
-  for (let i = 0; i < 2; i++) for (const point of patches[i]!.vertices) {
-    if (shouldCancel?.()) throw new Error("Manifold atlas cancelled.");
-    if (!inside(point, boxes[1 - i]!, dimension, margin)) continue;
-    const nearest = Math.min(...patches[1 - i]!.vertices.map(other =>
-      Math.hypot(...sub(point, other))));
-    measured.push(nearest);
+  let newChartNeighbors = 0;
+  for (let i = 0; i < patches.length; i++) for (let j = i + 1; j < patches.length; j++) {
+    const overlap = dimension.map(axis => [Math.max(boxes[i]![axis]![0], boxes[j]![axis]![0]),
+      Math.min(boxes[i]![axis]![1], boxes[j]![axis]![1])]);
+    if (overlap.some(range => range[1]! <= range[0]!)) {
+      if (patches.length === 2) return unavailable("patches-do-not-overlap-in-physical-domain");
+      continue;
+    }
+    const pair: number[] = [];
+    for (const [a, b] of [[i, j], [j, i]]) for (const point of patches[a]!.vertices) {
+      if (shouldCancel?.()) throw new Error("Manifold atlas cancelled.");
+      if (!inside(point, boxes[b]!, dimension, margin)) continue;
+      pair.push(Math.min(...patches[b]!.vertices.map(other =>
+        Math.hypot(...sub(point, other)))));
+    }
+    if (pair.length < 4) return unavailable("insufficient-overlap-samples");
+    if (Math.max(...pair) > margin) return unavailable("patch-overlap-did-not-converge");
+    if (j === 2) newChartNeighbors++;
+    measured.push(...pair);
   }
+  if (patches.length === 3 && !newChartNeighbors)
+    return unavailable("new-chart-has-no-validated-overlap");
   if (measured.length < 4) return unavailable("insufficient-overlap-samples");
   const overlapError = Math.max(...measured);
   if (overlapError > margin) return unavailable("patch-overlap-did-not-converge");
@@ -120,8 +149,12 @@ export function computeVectorField3DManifoldAtlas(project: Math3DProject,
     return boxes.some(box => inside(point, box, dimension));
   });
   const uncoveredCells = cells.filter(value => !value).length;
+  if (baseAtlas && uncoveredCells >= Number(baseAtlas.summary.uncoveredCells))
+    return unavailable("no-coverage-gain");
   const pin = document.identity;
   const summary = { memberResultIds: studies.map(item => item.publication!.resultId),
+    ...(baseAtlas ? { baseAtlasResultId: baseAtlas.resultId,
+      baseUncoveredCells: baseAtlas.summary.uncoveredCells } : {}),
     memberGeometryHashes: patches.map(item => item.publication!.summary.geometryHash),
     branch, overlapSamples: measured.length, overlapError,
     overlapTolerance: margin, transverseIntersectionPairs: intersections,
@@ -130,6 +163,8 @@ export function computeVectorField3DManifoldAtlas(project: Math3DProject,
     stopReasons: studies.map(item => item.stopReason),
     vertexCount: vertices.length, triangleCount: triangles.length,
     geometryHash: structuralHash({ vertices, triangles }),
+    coordinateUnit: document.source.axes[0]!.unit,
+    timeUnit: document.source.timeUnit,
     claim: "local-finite-time", globalClaim: "withheld" };
   const parameters = { recipe, memberResultIds: summary.memberResultIds,
     memberGeometryHashes: summary.memberGeometryHashes,
@@ -139,7 +174,8 @@ export function computeVectorField3DManifoldAtlas(project: Math3DProject,
     status: "numerical", provenance: { source: { documentId: pin.id,
       revision: pin.revision, structuralHash: pin.structuralHash,
       generation: pin.revision }, operation: { type: "vector3d.manifold-atlas",
-      algorithm: "bounded-overlap-local-patch-atlas", algorithmVersion: "1",
+      algorithm: baseAtlas ? "bounded-atlas-coverage-refinement" :
+        "bounded-overlap-local-patch-atlas", algorithmVersion: baseAtlas ? "2" : "1",
       parameters }, numericContext: { precision: { binaryBits: 53 },
         tolerance: { absolute: margin } },
       engine: { name: "math3d-core", version: "1" }, elapsedMs: 0 },
@@ -154,13 +190,22 @@ export function projectManifoldAtlasStatus(project: Math3DProject,
     return { status: "withheld" as const, reason: "wrong-result-type" };
   const parameters = result.provenance.operation.parameters;
   const members = parameters.memberResultIds as string[];
-  if (!Array.isArray(members) || members.length !== 2 ||
+  if (!Array.isArray(members) || members.length < 2 || members.length > 3 ||
       members.some((id, index) => {
         const saved = project.workspace.results.find(item => item.resultId === id);
         return !saved || saved.provenance.operation.parameters.candidateGeometryHash !==
           (parameters.memberGeometryHashes as string[] | undefined)?.[index] ||
           projectExtendedManifoldStatus(project, saved).status !== "current";
       })) return { status: "withheld" as const, reason: "atlas-member-changed" };
+  if (members.length === 3) {
+    const baseId = (parameters.recipe as ManifoldAtlasRecipe | undefined)?.baseAtlasResultId;
+    const base = project.workspace.results.find(item => item.resultId === baseId);
+    if (!base || base.resultId === result.resultId ||
+        projectManifoldAtlasStatus(project, base).status !== "current" ||
+        structuralHash(base.summary.memberResultIds) !== structuralHash(members.slice(0, 2)) ||
+        Number(result.summary.uncoveredCells) >= Number(base.summary.uncoveredCells))
+      return { status: "withheld" as const, reason: "base-atlas-or-coverage-changed" };
+  }
   const pin = result.provenance.source;
   const source = project.workspace.entries.find(item => item.module === "vector3d" &&
     item.expected.id === pin.documentId);

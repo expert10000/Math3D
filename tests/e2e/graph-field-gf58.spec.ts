@@ -10,8 +10,8 @@ import { createMath3DProject,
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
-test("GF-58 saves a guarded local manifold atlas Mesh", async () => {
-  test.setTimeout(120_000);
+test("GF-58/60 saves and refines a guarded local manifold atlas Mesh", async () => {
+  test.setTimeout(180_000);
   const fixture = parseMath3DProject(readFileSync(resolve(
     "tests/fixtures/derived-field/gf03-magnitude-slice-profile.math3d"), "utf8"));
   const original = fixture.workspace.entries.find(item => item.module === "vector3d")!
@@ -63,12 +63,13 @@ test("GF-58 saves a guarded local manifold atlas Mesh", async () => {
     };
     await openAnalyze();
     const advanced = explorer.getByTestId("gf44-gf46-advanced-topology");
-    for (const seedCount of [8, 10]) {
+    for (const seedCount of [8, 10, 12]) {
       await advanced.getByLabel("Saved equilibrium").selectOption("gf58-desktop-equilibrium");
       await advanced.getByLabel("Patch rings (3–8)").fill("3");
       await advanced.getByLabel("Patch time (s)").fill("0.5");
       await advanced.getByLabel("Patch solver tolerance").fill("1e-7");
       await advanced.getByLabel("Patch seeds (6–12)").fill(String(seedCount));
+      await advanced.getByLabel("Patch offset fraction").fill(seedCount === 12 ? ".02" : ".01");
       await advanced.getByRole("button", { name: "Build bounded local patch" }).click();
       await expect(advanced.getByTestId("gf46-manifold-status"))
         .toContainText("patch");
@@ -86,21 +87,37 @@ test("GF-58 saves a guarded local manifold atlas Mesh", async () => {
         .toContainText("Global claim withheld");
       await advanced.getByRole("button", { name: "Save extended local Mesh" }).click();
       await openAnalyze();
+      if (seedCount === 10) {
+        await advanced.getByLabel("Atlas domain fraction").fill(".375");
+        await advanced.getByLabel("Atlas overlap tolerance").fill(".25");
+        await advanced.getByRole("button", { name: "Validate local patch atlas" }).click();
+        await expect(advanced.getByTestId("gf58-atlas-status"))
+          .toContainText("Global claim withheld");
+        await advanced.getByRole("button", { name: "Save local atlas Mesh" }).click();
+        await openAnalyze();
+      }
     }
-    await advanced.getByRole("button", { name: "Validate local patch atlas" }).click();
+    await advanced.getByRole("button", { name: "Refine saved local atlas" }).click();
     await expect(advanced.getByTestId("gf58-atlas-status"))
-      .toContainText("Global claim withheld");
+      .toContainText("Local atlas validated");
     await advanced.getByRole("button", { name: "Save local atlas Mesh" }).click();
+    await expect(page.getByTestId("app-status-bar"))
+      .toContainText("Local manifold patch atlas");
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message"))
+      .toContainText("Saved “Local atlas gate”");
     await page.reload();
     await openLastSavedProject(page);
     const results = await page.evaluate(() => JSON.parse(
       localStorage.getItem("math3d.project.v1")!).workspace.results);
     expect(results.some((item: { provenance: { operation: { type: string } };
-      summary: { globalClaim?: string } }) =>
+      summary: { globalClaim?: string; memberResultIds?: string[];
+        uncoveredCells?: number; baseUncoveredCells?: number } }) =>
       item.provenance.operation.type === "vector3d.manifold-atlas" &&
-        item.summary.globalClaim === "withheld"))
+        item.summary.globalClaim === "withheld" &&
+        item.summary.memberResultIds?.length === 3 &&
+        item.summary.uncoveredCells! < item.summary.baseUncoveredCells!))
       .toBe(true);
   } finally { await closeSurfaceApp(app); }
 });

@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { buildMobileProjectExplorer } from
+  "../../apps/mobile/src/models/mobileProjectExplorer";
 import { computeVectorField3DExtendedManifold,
   computeVectorField3DLocalManifoldPatch, computeVectorField3DManifoldAtlas,
   createMixedWorkspaceDocument, parseMath3DProject,
@@ -62,7 +64,7 @@ describe("GF-58 bounded local manifold atlas", () => {
   it("measures overlap and uncovered bounds, then saves a guarded combined Mesh", () => {
     const { project, document, studies, domain } = fixture();
     const atlas = computeVectorField3DManifoldAtlas(project, document, studies,
-      { domain, overlapTolerance: .1, maxEvaluations: 1_000_000 });
+      { domain, overlapTolerance: .25, maxEvaluations: 1_000_000 });
     expect(atlas.status, atlas.reason ?? "").toBe("validated");
     expect(atlas.publication!.summary).toMatchObject({
       transverseIntersectionPairs: 0, claim: "local-finite-time",
@@ -95,7 +97,66 @@ describe("GF-58 bounded local manifold atlas", () => {
       { domain, overlapTolerance: .1, maxEvaluations: 1 }).reason)
       .toBe("atlas-work-budget");
     expect(() => computeVectorField3DManifoldAtlas(project, document, studies,
-      { domain, overlapTolerance: .1, maxEvaluations: 1_000_000 },
+      { domain, overlapTolerance: .25, maxEvaluations: 1_000_000 },
       () => true)).toThrow(/cancelled/);
+  });
+});
+
+describe("GF-60 bounded atlas coverage refinement", () => {
+  it("adds a third saved chart only with measured coverage gain and source lineage", () => {
+    let { project, document, studies } = fixture();
+    const domain = [[-1.5, 1.5], [-1.5, 1.5], [-1.5, 1.5]] as const;
+    const base = computeVectorField3DManifoldAtlas(project, document, studies,
+      { domain, overlapTolerance: .25, maxEvaluations: 1_000_000 });
+    expect(base.status, base.reason ?? "").toBe("validated");
+    project = promoteProjectManifoldAtlas(project, base).project;
+    const patch = computeVectorField3DLocalManifoldPatch(document,
+      { constructionId: "gf58-origin", branch: "stable", offsetFraction: .02,
+        seedCount: 12, rings: 3, timeLimit: .5,
+        solver: { method: "rk4-step-doubling", maxSteps: 256,
+          absoluteTolerance: 1e-7, relativeTolerance: 1e-7 } });
+    expect(patch.status, patch.reason ?? "").toBe("resolved");
+    project = upsertProjectLocalManifoldPatch(project, patch);
+    const extra = computeVectorField3DExtendedManifold(project, document, patch,
+      { domain: document.source.axes.map(axis => [axis.min, axis.max]) as
+          unknown as import("@math3d/core").ExtendedManifoldRecipe["domain"],
+        targetExtraTime: .5, maxAttempts: 4, maxEvaluations: 1_000_000 });
+    expect(extra.status, extra.reason ?? "").toBe("validated");
+    project = promoteProjectExtendedManifold(project, extra).project;
+    studies = [...studies, extra];
+    const refined = computeVectorField3DManifoldAtlas(project, document, studies,
+      { domain, overlapTolerance: .25, maxEvaluations: 1_000_000,
+        baseAtlasResultId: base.publication!.resultId });
+    expect(refined.status, refined.reason ?? "").toBe("validated");
+    expect(Number(refined.publication!.summary.uncoveredCells)).toBeLessThan(
+      Number(base.publication!.summary.uncoveredCells));
+    const promoted = promoteProjectManifoldAtlas(project, refined);
+    const reopened = parseMath3DProject(serializeMath3DProject(promoted.project));
+    const result = reopened.workspace.results.find(item =>
+      item.resultId === refined.publication!.resultId)!;
+    expect(projectManifoldAtlasStatus(reopened, result).status).toBe("current");
+    expect(projectManifoldAtlasMeshStatus(reopened, promoted.mesh,
+      promoted.bytes).status).toBe("current");
+    expect(result.summary.globalClaim).toBe("withheld");
+    expect(buildMobileProjectExplorer(serializeMath3DProject(reopened))
+      .scientificContracts.find(item => item.title === "Local manifold atlas")
+      ?.spokenSummary).toContain("Unit metres");
+    const changed = reviseVectorField3DDocument(document, { ...document.source,
+      display: { ...document.source.display, magnitudeScale: 2 } });
+    const stale = replaceMath3DProjectWorkspace(reopened,
+      createMixedWorkspaceDocument({ ...reopened.workspace,
+        entries: reopened.workspace.entries.map(entry =>
+          entry.expected.id === changed.identity.id ? { ...entry,
+            checkpoint: changed, expected: changed.identity } : entry) }));
+    expect(projectManifoldAtlasStatus(stale, result).status).toBe("withheld");
+    expect(computeVectorField3DManifoldAtlas(project, document, studies,
+      { domain, overlapTolerance: .25, maxEvaluations: 1,
+        baseAtlasResultId: base.publication!.resultId }).reason)
+      .toBe("atlas-work-budget");
+    const noGain = computeVectorField3DManifoldAtlas(project, document,
+      [studies[0]!, studies[1]!, studies[0]!],
+      { domain, overlapTolerance: .25, maxEvaluations: 1_000_000,
+        baseAtlasResultId: base.publication!.resultId });
+    expect(noGain.reason).toBe("distinct-saved-charts-required");
   });
 });
