@@ -2182,7 +2182,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
             const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
-            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh"))
+            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry"))
               throw new Error("A comparison source generation is unavailable. Reopen the saved Project.");
             return upsertMath3DProjectComposition(saved, composition);
           }, `Saved composition “${composition.title}”.`);

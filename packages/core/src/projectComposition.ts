@@ -1,6 +1,7 @@
 import { isDocumentIdentity, type DocumentIdentity } from "./documentIdentity";
 import type { MixedWorkspaceDocument, KernelWorkspaceDocument } from "./mixedWorkspace";
 import { retainedMeshGenerationDocuments } from "./retainedMeshGenerations";
+import { retainedGeometryGenerationDocuments } from "./retainedGeometryGenerations";
 
 /** A view of existing Project documents. No source bytes or edited document state live here. */
 export type ProjectCompositionMember = Readonly<{
@@ -90,7 +91,7 @@ export const inspectProjectComposition = (composition: ProjectComposition, works
     return entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash ? "current" : "historical";
   });
 
-export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "retained-mesh" | "unavailable-generation" | "missing";
+export type ProjectCompositionAvailability = "current" | "retained-checkpoint" | "retained-mesh" | "retained-geometry" | "unavailable-generation" | "missing";
 /** Metadata availability only; callers must still replay-verify and check resource sidecars. */
 export const inspectProjectCompositionAvailability = (composition: ProjectComposition, workspace: MixedWorkspaceDocument): readonly ProjectCompositionAvailability[] =>
   composition.members.map(member => {
@@ -103,6 +104,11 @@ export const inspectProjectCompositionAvailability = (composition: ProjectCompos
       const retained = retainedMeshGenerationDocuments(entry).some(document =>
         document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
       if (retained) return "retained-mesh";
+    }
+    if (entry.module === "geometry") {
+      const retained = retainedGeometryGenerationDocuments(entry).some(document =>
+        document.identity.revision === member.expected.revision && document.identity.structuralHash === member.expected.structuralHash);
+      if (retained) return "retained-geometry";
     }
     return "unavailable-generation";
   });
