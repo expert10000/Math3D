@@ -44,6 +44,7 @@ import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
 import { promoteDerivedScalarIsosurfaceMesh } from "./projects/derivedScalarIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { loadVerifiedVectorFieldTransfer } from "./vectorfield3d/loadVerifiedVectorFieldTransfer";
+import { loadSavedAtlasBytes } from "./vectorfield3d/loadSavedAtlasBytes";
 import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
@@ -842,6 +843,11 @@ import {
   promoteProjectManifoldAtlas,
   computeProjectManifoldSurfaceCoverage,
   upsertProjectManifoldSurfaceCoverage,
+  computeProjectAtlasSeams,
+  upsertProjectAtlasSeams,
+  computeProjectAtlasRefinement,
+  upsertProjectAtlasRefinement,
+  upsertProjectTemporalSurfaceIdentity,
   rebaseProjectDerivedSource,
   verifiedVectorFieldSampler,
   appendProjectDerivedField,
@@ -91025,24 +91031,55 @@ case "mobius":
             onValidateVectorField3DManifoldCoverage={async (baseId, refinedId) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
-              const bytesFor = async (resultId: string) => {
-                const mesh = active.workspace.entries.find(item => item.module === "mesh" &&
-                  item.checkpoint.format === "math3d.mesh-document" &&
-                  (item.checkpoint.source.origin as { resultId?: string }).resultId === resultId)
-                  ?.checkpoint;
-                if (!mesh || mesh.format !== "math3d.mesh-document")
-                  throw new TypeError("Saved atlas Mesh is missing.");
-                const reference = { kind: "mesh-buffers" as const, id: mesh.source.resource.id };
-                return restored.meshes.get(mesh.identity.id)?.resources.bytes(mesh.source.resource) ??
-                  restored.resources?.bytes(reference) ??
-                  (await loadProjectResources(active)).bytes(reference) ?? null;
-              };
-              const baseBytes = await bytesFor(baseId), refinedBytes = await bytesFor(refinedId);
+              const baseBytes = await loadSavedAtlasBytes(active, restored, baseId);
+              const refinedBytes = await loadSavedAtlasBytes(active, restored, refinedId);
               const study = computeProjectManifoldSurfaceCoverage(active, baseId, refinedId,
                 baseBytes, refinedBytes);
               if (study.status !== "validated")
                 throw new TypeError(`Atlas surface coverage unavailable: ${study.reason}.`);
               const updated = upsertProjectManifoldSurfaceCoverage(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
+            onValidateVectorField3DAtlasSeams={async coverageId => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const coverage = active.workspace.results.find(item => item.resultId === coverageId);
+              if (!coverage) throw new TypeError("Save GF-62 coverage first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.baseResultId));
+              const refinedBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.refinedResultId));
+              const study = computeProjectAtlasSeams(active, coverage,
+                baseBytes, refinedBytes);
+              if (study.status !== "measured")
+                throw new TypeError(`Atlas seam evidence unavailable: ${study.reason}.`);
+              const updated = upsertProjectAtlasSeams(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
+            onValidateVectorField3DAtlasRefinement={async seamsId => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const seams = active.workspace.results.find(item => item.resultId === seamsId);
+              const coverage = active.workspace.results.find(item =>
+                item.resultId === seams?.summary.coverageResultId);
+              if (!seams || !coverage) throw new TypeError("Save GF-63 seam evidence first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.baseResultId));
+              const refinedBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.refinedResultId));
+              const study = computeProjectAtlasRefinement(active, seams,
+                baseBytes, refinedBytes);
+              if (study.status !== "measured")
+                throw new TypeError(`Atlas refinement unavailable: ${study.reason}.`);
+              const updated = upsertProjectAtlasRefinement(active, study,
                 baseBytes!, refinedBytes!);
               activeNotebookProjectRef.current = updated;
               restored.workspace = updated.workspace;
@@ -91103,6 +91140,14 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTemporalSurfaceTransport(active, study, transfers);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceIdentity={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceIdentity(active, study, transfers);
               activeNotebookProjectRef.current = updated;
               restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);

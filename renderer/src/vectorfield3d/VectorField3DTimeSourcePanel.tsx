@@ -12,6 +12,8 @@ import { createTemporalFieldSourceDocument, projectTemporalFieldSourceStatus,
   type TemporalSurfaceLinkageStudy,
   computeTemporalSurfaceTransport, projectTemporalSurfaceTransportStatus,
   type TemporalSurfaceTransportStudy,
+  computeTemporalSurfaceIdentity, projectTemporalSurfaceIdentityStatus,
+  type TemporalSurfaceIdentityStudy,
   computeTemporalFtleProfile, projectTemporalFtleProfileStatus,
   type TemporalFtleProfileStudy,
   type TemporalSpectrumResult, type TemporalSpectrumRecipe,
@@ -28,6 +30,7 @@ import { validateTemporalSurfacePair } from "./validateTemporalSurfacePair";
 export function VectorField3DTimeSourcePanel({ document, project, onSave, onSavePathline,
   onSaveStreakline, onSaveSpectrum, onOpenSpectrum, onSaveFtLeField,
   onSaveSurfaceEvents, onSaveSurfaceLinkage, onSaveSurfaceTransport,
+  onSaveSurfaceIdentity,
   onSaveFtleProfile, onOpenFtleProfile,
   onPromoteMovingIsosurface,
   onPreviewMovingIsosurface }: {
@@ -44,6 +47,8 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   onSaveSurfaceLinkage?: (study: TemporalSurfaceLinkageStudy,
     transfers?: VerifiedTemporalTransfers) => void;
   onSaveSurfaceTransport?: (study: TemporalSurfaceTransportStudy,
+    transfers?: VerifiedTemporalTransfers) => void;
+  onSaveSurfaceIdentity?: (study: TemporalSurfaceIdentityStudy,
     transfers?: VerifiedTemporalTransfers) => void;
   onSaveFtleProfile?: (study: TemporalFtleProfileStudy,
     transfers?: VerifiedTemporalTransfers) => void;
@@ -103,6 +108,7 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
   const [eventStatus, setEventStatus] = useState("");
   const [linkageStatus, setLinkageStatus] = useState("");
   const [transportStatus, setTransportStatus] = useState("");
+  const [identityStatus, setIdentityStatus] = useState("");
   const cancelSpectrum = useRef(false);
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -162,6 +168,10 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
     item.provenance.operation.type === "vector3d.temporal-surface-transport" &&
     saved.some(source => source.identity.id ===
       (item.provenance.operation.parameters.lineage as { temporalId?: string } | undefined)?.temporalId)) ?? [];
+  const identityResults = project?.workspace.results.filter(item =>
+    item.provenance.operation.type === "vector3d.temporal-surface-identity" &&
+    saved.some(source => source.identity.id ===
+      item.provenance.operation.parameters.temporalId)) ?? [];
   const ftleProfiles = project?.workspace.results.filter(item =>
     item.provenance.operation.type === "vector3d.temporal-ftle-profile" &&
     saved.some(source => source.identity.id ===
@@ -392,6 +402,30 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
       setTransportStatus(`Saved ${study.witnesses.length} checked region witnesses; ` +
         `${String(study.publication!.summary.ambiguousCount)} ambiguous. ` +
         "Material identity and interpolation remain unavailable.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const saveIdentity = async () => {
+    setError(""); setIdentityStatus("");
+    try {
+      const temporal = movingTemporal.current, current = projectRef.current;
+      if (!temporal || !current || !onSaveSurfaceIdentity || movingFrames.length < 2)
+        throw new TypeError("Extract verified exact frames and save GF-59 transport first.");
+      const transfers = await loadTransfers(temporal.source.frames.map(frame =>
+        frame.documentId));
+      const transport = [...current.workspace.results].reverse().find(item =>
+        item.provenance.operation.type === "vector3d.temporal-surface-transport" &&
+        (item.provenance.operation.parameters.lineage as
+          { temporalId?: string } | undefined)?.temporalId === temporal.identity.id);
+      if (!transport) throw new TypeError("Save GF-59 transport evidence first.");
+      const study = computeTemporalSurfaceIdentity(current, temporal,
+        movingFrames, transport, transfers);
+      if (study.status !== "measured")
+        throw new TypeError(study.reason ?? "Identity evidence unavailable.");
+      onSaveSurfaceIdentity(study, transfers);
+      setIdentityStatus(`Saved ${String((study.publication!.summary.identityLinks as
+        unknown[]).length)} unique directed links and ` +
+        `${String(study.publication!.summary.ambiguousCount)} ambiguous links. ` +
+        "Exact-frame playback; global material identity unverified.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const playMoving = async () => {
@@ -635,6 +669,10 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
             onClick={() => void saveTransport()}>Save checked surface transport evidence</button>
           {transportStatus && <p role="status" data-testid="gf59-transport-status">{
             transportStatus}</p>}
+          <button type="button" disabled={!onSaveSurfaceIdentity || !transportResults.length}
+            onClick={() => void saveIdentity()}>Check unique material links</button>
+          {identityStatus && <p role="status" data-testid="gf65-identity-status">{
+            identityStatus}</p>}
           <button type="button" disabled={playbackBusy || !onPreviewMovingIsosurface}
             onClick={() => void playMoving()}>Play verified frames</button>
           {playbackBusy && <button type="button" onClick={() => playbackAbort.current?.abort()}>
@@ -747,6 +785,14 @@ export function VectorField3DTimeSourcePanel({ document, project, onSave, onSave
           (result.summary.witnesses as unknown[]).length)} region witnesses:
           {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
           Material identity unverified; exact frames only.</li>;
+      })}</ul></details>}
+    {identityResults.length > 0 && <details><summary>Saved material-link evidence</summary>
+      <ul>{identityResults.map(result => {
+        const status = projectTemporalSurfaceIdentityStatus(project!, result);
+        return <li key={result.resultId}>{String((result.summary.identityLinks as
+          unknown[]).length)} unique links, {String(result.summary.ambiguousCount)} ambiguous:
+          {" "}{status.status}{status.reason ? ` (${status.reason})` : ""}.
+          Exact-frame playback; global identity unverified.</li>;
       })}</ul></details>}
     {ftleProfiles.length > 0 && <details><summary>Saved FTLE profiles</summary>
       <ul>{ftleProfiles.map(result => {

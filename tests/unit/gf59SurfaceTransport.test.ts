@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { computeTemporalSurfaceEvents, computeTemporalSurfaceLinkage,
   computeTemporalSurfaceTransport, createMath3DProject, createMixedWorkspaceDocument,
+  computeTemporalSurfaceIdentity, projectTemporalSurfaceIdentityStatus,
+  upsertProjectTemporalSurfaceIdentity,
   createTemporalFieldSourceDocument, createVectorField3DDocument,
   parseMath3DProject, projectTemporalSurfaceTransportStatus,
   replaceMath3DProjectWorkspace, reviseVectorField3DDocument,
@@ -81,6 +83,21 @@ describe("GF-59 checked region transport evidence", () => {
     expect(study.publication!.summary).toMatchObject({ exactFrameOnly: true,
       interpolation: "unavailable", materialIdentity: "unverified",
       coordinateUnit: "m", timeUnit: "s" });
+    const transportProject = upsertProjectTemporalSurfaceTransport(f.project, study);
+    const identity = computeTemporalSurfaceIdentity(transportProject, f.temporal,
+      frames, study.publication!);
+    expect(identity.status, identity.reason ?? "").toBe("measured");
+    expect((identity.publication!.summary.identityLinks as unknown[]).length).toBe(1);
+    expect(identity.publication!.summary).toMatchObject({ exactFrameOnly: true,
+      interpolation: "unavailable", globalMaterialIdentity: "unverified" });
+    const identityProject = parseMath3DProject(serializeMath3DProject(
+      upsertProjectTemporalSurfaceIdentity(transportProject, identity)));
+    const identityResult = identityProject.workspace.results.find(item =>
+      item.resultId === identity.publication!.resultId)!;
+    expect(projectTemporalSurfaceIdentityStatus(identityProject,
+      identityResult).status).toBe("current");
+    expect(() => computeTemporalSurfaceIdentity(transportProject, f.temporal,
+      frames, study.publication!, undefined, () => true)).toThrow(/cancelled/);
     const reopened = parseMath3DProject(serializeMath3DProject(
       upsertProjectTemporalSurfaceTransport(f.project, study)));
     const result = reopened.workspace.results.find(item =>
@@ -98,6 +115,13 @@ describe("GF-59 checked region transport evidence", () => {
         entries: reopened.workspace.entries.map(item => item.expected.id === f.b.identity.id ?
           { ...item, checkpoint: changed, expected: changed.identity } : item) }));
     expect(projectTemporalSurfaceTransportStatus(stale, result).status).toBe("withheld");
+    const staleIdentity = replaceMath3DProjectWorkspace(identityProject,
+      createMixedWorkspaceDocument({ ...identityProject.workspace,
+        entries: identityProject.workspace.entries.map(item =>
+          item.expected.id === f.b.identity.id ? { ...item,
+            checkpoint: changed, expected: changed.identity } : item) }));
+    expect(projectTemporalSurfaceIdentityStatus(staleIdentity,
+      identityResult).status).toBe("withheld");
   });
   it("records split, merge, appearance and disappearance as unproved identity", () => {
     for (const [before, after, radiusBefore, radiusAfter, event] of [
@@ -113,6 +137,12 @@ describe("GF-59 checked region transport evidence", () => {
       expect(study.status, study.reason ?? "").toBe("ready");
       expect(study.witnesses.some(item => item.link.status === event)).toBe(true);
       expect(study.publication!.summary.materialIdentity).toBe("unverified");
+      const transportProject = upsertProjectTemporalSurfaceTransport(f.project, study);
+      const identity = computeTemporalSurfaceIdentity(transportProject, f.temporal,
+        frames, study.publication!);
+      expect(identity.status, identity.reason ?? "").toBe("measured");
+      expect(identity.publication!.summary.identityLinks).toEqual([]);
+      expect(Number(identity.publication!.summary.ambiguousCount)).toBeGreaterThan(0);
       expect(study.witnesses.filter(item => item.link.fromComponent === null ||
         item.link.toComponent === null).every(item => item.status === "ambiguous")).toBe(true);
     }

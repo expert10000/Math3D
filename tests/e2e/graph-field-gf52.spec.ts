@@ -62,6 +62,9 @@ test("GF-52 saves exact-frame component evidence and plays pinned surfaces", asy
     await panel.getByRole("button", { name: "Save checked surface transport evidence" }).click();
     await expect(panel.getByTestId("gf59-transport-status"))
       .toContainText("Material identity and interpolation remain unavailable");
+    await panel.getByRole("button", { name: "Check unique material links" }).click();
+    await expect(panel.getByTestId("gf65-identity-status"))
+      .toContainText("global material identity unverified");
     await panel.getByRole("button", { name: "Play verified frames" }).click();
     await expect(panel.getByTestId("gf33-moving-playback"))
       .toContainText("Frame 2/2: 1 s", { timeout: 15_000 });
@@ -81,5 +84,9 @@ test("GF-52 saves exact-frame component evidence and plays pinned surfaces", asy
     const transport = results.find((item: { provenance: { operation: { type: string } } }) =>
       item.provenance.operation.type === "vector3d.temporal-surface-transport");
     expect(transport.summary.materialIdentity).toBe("unverified");
+    const identity = results.find((item: { provenance: { operation: { type: string } } }) =>
+      item.provenance.operation.type === "vector3d.temporal-surface-identity");
+    expect(identity.summary.exactFrameOnly).toBe(true);
+    expect(identity.summary.globalMaterialIdentity).toBe("unverified");
   } finally { await closeSurfaceApp(app); }
 });
