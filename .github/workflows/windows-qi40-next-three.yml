@@ -1,0 +1,148 @@
+name: Windows QI40 Next Three
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rollback-profile:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D rollback harness
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Install test harness dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+      - name: Download pinned QEC and pre-QEC installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'QEC candidate download failed' }
+          gh run download 42035098178 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/rollback
+          if ($LASTEXITCODE -ne 0) { throw 'Pre-QEC candidate download failed' }
+      - name: Verify Project and setting after installed rollback
+        shell: pwsh
+        run: |
+          & scripts/stable-quantum-installed-rollback.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -RollbackDirectory (Join-Path $PWD 'installers/rollback') `
+            -ExpectedCandidateCommit '49485e816fcfc7b46d5da1634c6746a631343f8e' `
+            -ExpectedCandidateSha256 '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'stable-quantum-installed-rollback') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-rollback-profile.json')
+      - name: Upload rollback profile evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-rollback-profile
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-rollback-profile.json
+            test-results/playwright/quantum-installed-rollback-profile*/trace.zip
+            test-results/playwright/quantum-installed-rollback-profile*/test-failed-*.png
+
+  installed-stress:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D stress harness
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Download pinned QEC candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned candidate download failed' }
+      - name: Install exact candidate files
+        shell: pwsh
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-stress-install') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-stress-installer.json') `
+            -Math3DOnly
+      - name: Install stress harness dependencies
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'Math3D npm ci failed' }
+      - name: Measure 80 installed quantum scene cycles
+        shell: pwsh
+        run: |
+          $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-stress-install/Math3D/Math3D.exe'
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-installed-stress-80.json 80 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Installed quantum stress run failed' }
+          $report = Get-Content test-results/qi40-installed-stress-80.json -Raw | ConvertFrom-Json
+          if ($report.cycles -ne 80 -or -not $report.installed -or $report.contextLoss -ne 'observed' -or
+              @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
+            throw 'Installed stress lifecycle assertions failed'
+          }
+      - name: Upload stress and installer evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-installed-stress-80
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-stress-installer.json
+            test-results/qi40-installed-stress-80.json
+
+  installer-diagnostics:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out Math3D installer probe
+        uses: actions/checkout@v7
+      - name: Download pinned QEC candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D `
+            --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned candidate download failed' }
+      - name: Probe both installers
+        shell: pwsh
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-installer-probe') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-installer-probe.json')
+      - name: Upload installer diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qi40-installer-diagnostics-${{ matrix.slot }}
+          if-no-files-found: ignore
+          path: test-results/qi40-installer-probe.json
