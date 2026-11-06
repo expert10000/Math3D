@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
   ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
@@ -27,6 +27,8 @@ import SageEllipticCurveVisualization from "./SageEllipticCurveVisualization";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
 import SageSchemeBuilder from "./SageSchemeBuilder";
 import SageSchemeTools from "./SageSchemeTools";
+import SageCommandPalette from "./SageCommandPalette";
+import type { SagePaletteAction } from "./sageCommandPaletteModel";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
@@ -74,6 +76,11 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
   const [groupError, setGroupError] = useState("");
+  const commandSequence = useRef(0);
+  const [commandLeftTab, setCommandLeftTab] = useState<{ tab: "structures" | "operations" | "recipes"; token: number } | null>(null);
+  const [commandRightTab, setCommandRightTab] = useState<{ tab: "runtimes"; token: number } | null>(null);
+  const [commandOperation, setCommandOperation] = useState<{ id: import("@math3d/core").AlgebraOperationId; token: number } | null>(null);
+  const [commandRecipe, setCommandRecipe] = useState<{ id: string | null; token: number } | null>(null);
 
   useEffect(() => {
     setSelection((current) => resolveStructureSelection(project,
@@ -88,12 +95,23 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
 
   const select = (ref: AlgebraObjectRef) => {
     setSelection(ref);
+    setCommandOperation(null);
+    setCommandRecipe(null);
     setSelectionFocus((value) => value + 1);
     setSelectedEvidenceId(null);
     if (project) try { localStorage.setItem(structureSelectionKey(project.identity.id), JSON.stringify(ref)); }
     catch { /* Selection still works when local storage is unavailable. */ }
   };
   const chosen = selectedStructure(project, selection);
+  const chooseCommand = (command: SagePaletteAction) => {
+    const token = ++commandSequence.current;
+    if (command.kind === "operation") { setCommandOperation({ id: command.id, token });
+      setCommandLeftTab({ tab: "operations", token }); }
+    else if (command.kind === "recipe") { setCommandRecipe({ id: command.id, token });
+      setCommandLeftTab({ tab: "recipes", token }); }
+    else if (command.kind === "tangent") { setBuilder(null); setCommandLeftTab({ tab: "structures", token }); }
+    else setCommandRightTab({ tab: "runtimes", token });
+  };
   const selectedEvidence = project?.algebraEvidence?.find((item) => item.id === selectedEvidenceId &&
     item.request.target.objectId === chosen?.record.id) ?? null;
   const evidenceModel = project && selectedEvidence ? algebraEvidenceInspectorModel(project, selectedEvidence) : null;
@@ -364,9 +382,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   </dl> : <div role="status" style={{ fontSize: 12 }}>Select a structure in the Project explorer.</div>;
 
   return <SageServicesWorkspace {...props} onResult={(record) => { setSelectedEvidenceId(null); props.onResult(record); }}
-    topPanel={workspaceContext === "number_theory" ? <><SagePadicWorkspace project={project}
+    requestedLeftTab={commandLeftTab} requestedRightTab={commandRightTab}
+    topPanel={<><SageCommandPalette project={project} target={chosen ? { objectId: chosen.record.id,
+      revision: chosen.record.revision } : null}
+      locusAvailable={!!(onSaveLocusScene && onSaveLocusSample && onSaveLocusSingularity)} onAction={chooseCommand} />
+      {workspaceContext === "number_theory" && <><SagePadicWorkspace project={project}
       onCreateStructure={onCreateStructure} onSaveEvidence={onSaveEvidence} />
-      <SageLocalExtensionWorkspace project={project} onSaveEvidence={onSaveEvidence} /></> : undefined}
+      <SageLocalExtensionWorkspace project={project} onSaveEvidence={onSaveEvidence} /></>}</>}
     context={workspaceContext} title={workspaceContext === "cas" ? "CAS / Algebra" : "Number Theory"}
     description={workspaceContext === "cas"
       ? "Exact symbolic, polynomial, matrix, algebraic geometry, and number theory operations."
@@ -408,11 +430,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         execution: <SageAlgebraEvidenceInspector model={evidenceModel} section="execution" />,
       } : undefined,
       operations: <SageObjectOperations project={project} selectedEvidenceId={selectedEvidenceId}
+        requestedOperation={commandOperation}
         onInspectEvidence={inspectEvidence} onSaveEvidence={async (evidence) => {
           await onSaveEvidence(evidence);
           inspectEvidence(evidence.id);
         }} target={chosen ? { objectId: chosen.record.id, revision: chosen.record.revision } : null} />,
       recipes: <SageRecipes project={project} target={chosen ? { objectId: chosen.record.id,
         revision: chosen.record.revision } : null} onSaveRecipe={onSaveRecipe}
+        requestedRecipe={commandRecipe}
         onAppendEvidence={onAppendRecipeEvidence} onInspectEvidence={inspectEvidence} /> }} />;
 }

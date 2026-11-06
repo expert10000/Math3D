@@ -376,6 +376,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G08 implementation update (2026-11-06):** The [G08 acceptance record](evidence/sage-g08-schemes-charts-2026-11-06.md) adds versioned affine `Spec(R/I)` and projective `Proj(R/I)` objects over bounded direct `QQ` polynomial rings, pinned projective affine charts and their canonical open-immersion maps. A chart derives exact equations by setting one homogeneous coordinate to one, and the Structures UI opens the pinned ideal for the existing real-locus workflow. Project import preserves exact IDs, revisions, definitions and dependencies, including nonreduced ideals. The next feature is **SAGE-H01**, the mathematics command palette.
 
+**H01 implementation update (2026-11-06):** The [H01 acceptance record](evidence/sage-h01-command-palette-2026-11-06.md) adds a searchable keyboard palette to CAS and Number Theory. It uses the typed operation registry's object, domain, freshness and Sage-route capability checks, including reasons for unavailable commands. Search opens contextual operation controls, saved recipes, the tangent-cone workflow or runtime Inspector. The next feature is **SAGE-H02**, backend and domain comparison views.
+
 ---
 
 ## 3. P0 — Algebra object registry

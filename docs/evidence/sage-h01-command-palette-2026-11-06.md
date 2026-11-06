@@ -1,0 +1,9 @@
+# SAGE-H01 mathematics command palette acceptance
+
+In **CAS → Algebra** or **Number Theory**, press **Ctrl+K** (or **Cmd+K**) or choose **Search mathematics commands**. Type a mathematical phrase or operation name. Arrow keys choose a result, Enter opens it, and Escape closes the palette. Search is scoped to the selected saved structure; selecting another structure changes the matching operations. The palette also indexes saved recipes for that structure, a recipe starter, the existing tangent-cone workflow for ideals and polynomial rings, and the Sage runtime Inspector.
+
+Operation results use the existing typed registry. Object kind, coefficient domain, current revision, stale parents, route health and advertised capability determine availability. An unavailable result stays visible with **Why unavailable** and cannot be launched. Saved recipes check every stage against its pinned target and required backend. The palette opens existing bounded operation and recipe controls; it does not execute a Sage job merely from a search result. Search aliases include `smith`, `prime decomposition`, `factor over`, and `show tangent cone`.
+
+Acceptance results (2026-11-06): three focused model tests passed, covering alias matching, saved recipe discovery, object-type filtering, a ready mocked route, an unavailable Docker route, an invalid multivariate dossier domain and a stale parent. `npm run typecheck:noemit` and `npm run build:core` passed, followed by a renderer rebuild after the keyboard shortcut fix. The desktop gate passed Ctrl+K, arrow keys, Enter, Escape, tangent workflow navigation, a Smith operation backed by an advertised mocked route, a saved recipe, unavailable domain explanation and factor-over-QQ navigation. Four existing Structures, Recipes and Inspector desktop regression tests also passed. The live B08 Docker Sage 10.10 comparison remains open.
+
+Next: **SAGE-H02**, certified backend and domain comparison views.

@@ -8,11 +8,12 @@ import { createSageRecipeStarter } from "./sageRecipeStarter";
 type Props = { project: Math3DProject | null; target: AlgebraObjectRef | null;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
-  onInspectEvidence: (id: string) => void };
+  onInspectEvidence: (id: string) => void;
+  requestedRecipe?: Readonly<{ id: string | null; token: number }> | null };
 const operationLabel = (id: string) => ALGEBRA_OPERATION_REGISTRY.find((item) => item.id === id)?.label ?? id;
 
 export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvidence,
-  onInspectEvidence }: Props) {
+  onInspectEvidence, requestedRecipe }: Props) {
   const [recipeId, setRecipeId] = useState<string | null>(null);
   const [progress, setProgress] = useState<AlgebraRecipeRunProgress | null>(null);
   const [message, setMessage] = useState("");
@@ -36,6 +37,8 @@ export default function SageRecipes({ project, target, onSaveRecipe, onAppendEvi
   useEffect(() => { generation.current += 1; active.current?.cancel(); active.current = null;
     setRecipeId(null); setProgress(null); setMessage("");
   }, [project?.identity.id, target?.objectId, target?.revision]);
+  useEffect(() => { if (requestedRecipe) { setRecipeId(requestedRecipe.id); setProgress(null); setMessage(""); }
+  }, [requestedRecipe?.token]);
   if (!project || !target) return <section data-testid="cas-recipes" role="status" style={{ fontSize: 12 }}>
     Select a saved structure to create or run a recipe.</section>;
   const recipes = (project.algebraRecipes ?? []).filter((item) => item.stages.some((stage) =>

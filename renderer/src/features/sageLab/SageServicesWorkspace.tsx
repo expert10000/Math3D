@@ -36,13 +36,16 @@ type Props = SageServicesWorkspaceProps & {
   testId: string;
   onOpenConsole?: () => void;
   topPanel?: ReactNode;
+  requestedLeftTab?: Readonly<{ tab: "structures" | "operations" | "recipes"; token: number }> | null;
+  requestedRightTab?: Readonly<{ tab: "runtimes"; token: number }> | null;
 };
 
 const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff", color: "#183b70", padding: "6px 10px", cursor: "pointer", fontSize: 12 } as const;
 
 /** Shared workspace surface over the Sage catalog, result cards, and runtime registry. */
 export default function SageServicesWorkspace({ context, title, description, testId, record, onResult,
-  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures, topPanel }: Props) {
+  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures, topPanel,
+  requestedLeftTab, requestedRightTab }: Props) {
   const [leftTab, setLeftTab] = useState<"structures" | "operations" | "recipes">(structures?.projectId ? "structures" : "operations");
   const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "runtimes">(structures?.projectId ? "structure" : "results");
   const [resultSource, setResultSource] = useState<"evidence" | "freeform">("evidence");
@@ -54,6 +57,8 @@ export default function SageServicesWorkspace({ context, title, description, tes
   useEffect(() => { if (structures?.selectionKey) setRightTab("structure"); }, [structures?.selectionKey]);
   useEffect(() => { if (structures?.evidence?.focusKey) { setResultSource("evidence"); setRightTab("results"); }
   }, [structures?.evidence?.focusKey]);
+  useEffect(() => { if (requestedLeftTab) setLeftTab(requestedLeftTab.tab); }, [requestedLeftTab?.token]);
+  useEffect(() => { if (requestedRightTab) setRightTab(requestedRightTab.tab); }, [requestedRightTab?.token]);
   return <main data-testid={testId} aria-label={`${title} workspace`}
     style={{ position: "fixed", inset: 0, zIndex: 2100, background: "#f3f7fc", color: "#172b4d", display: "flex", flexDirection: "column", overflow: "auto" }}>
     <header style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid #cbd5e1", background: "#fff" }}>

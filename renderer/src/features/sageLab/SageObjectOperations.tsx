@@ -8,7 +8,8 @@ import { sageExecutionRegistry, type SageOperationHandle } from "../../services/
 
 type Props = { project: Math3DProject | null; target: AlgebraObjectRef | null;
   onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
-  selectedEvidenceId: string | null; onInspectEvidence: (id: string) => void };
+  selectedEvidenceId: string | null; onInspectEvidence: (id: string) => void;
+  requestedOperation?: Readonly<{ id: AlgebraOperationId; token: number }> | null };
 const field = { width: "100%", boxSizing: "border-box" as const, padding: 6, fontSize: 12 };
 const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObjectRef,
   budgetProfile: SageIdealBudgetProfile):
@@ -39,7 +40,7 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
 };
 
 export default function SageObjectOperations({ project, target, onSaveEvidence, selectedEvidenceId,
-  onInspectEvidence }: Props) {
+  onInspectEvidence, requestedOperation }: Props) {
   const [routes, setRoutes] = useState<readonly AlgebraRouteCapability[]>([]);
   const [checking, setChecking] = useState(false);
   const [selected, setSelected] = useState<AlgebraOperationId | null>(null);
@@ -67,6 +68,9 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
     setRunning(false); setSelected(null); setInput(""); setMessage("");
     setBudgetProfile("standard"); setExpandedAcknowledged(false);
   }, [project?.identity.id, target?.objectId, target?.revision]);
+  useEffect(() => { if (requestedOperation) { setSelected(requestedOperation.id); setInput(""); setMessage("");
+    setBudgetProfile("standard"); setExpandedAcknowledged(false); }
+  }, [requestedOperation?.token]);
   if (!project || !target) return <section data-testid="cas-object-operations" role="status" style={{ fontSize: 12 }}>
     Select a saved structure to see compatible object operations.</section>;
   const operations = algebraOperationsFor(project, target, routes)
