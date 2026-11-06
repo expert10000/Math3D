@@ -30,6 +30,10 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
   | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
   | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
+  | Readonly<{ kind: "affine-scheme" | "projective-scheme"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
+  | Readonly<{ kind: "scheme-chart"; projectiveScheme: AlgebraObjectRef; nonzeroCoordinate: string }>
+  | Readonly<{ kind: "scheme-map"; mapKind: "chart-inclusion"; sourceChart: AlgebraObjectRef;
+      targetProjective: AlgebraObjectRef }>
   | FiniteGroupDefinition
   | ModuleDefinition
   | ModuleMapDefinition
@@ -186,6 +190,23 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       requireKeys(definition, ["kind", "ambientRing", "ideal"], "definition");
       return { kind: "quotient-ring", ambientRing: requireRef(definition.ambientRing, "definition.ambientRing"),
         ideal: requireRef(definition.ideal, "definition.ideal") };
+    case "affine-scheme":
+    case "projective-scheme":
+      requireKeys(definition, ["kind", "ambientRing", "ideal"], "definition");
+      return { kind: definition.kind, ambientRing: requireRef(definition.ambientRing, "definition.ambientRing"),
+        ideal: requireRef(definition.ideal, "definition.ideal") };
+    case "scheme-chart":
+      requireKeys(definition, ["kind", "projectiveScheme", "nonzeroCoordinate"], "definition");
+      return { kind: "scheme-chart", projectiveScheme: requireRef(definition.projectiveScheme,
+        "definition.projectiveScheme"), nonzeroCoordinate: requireIdentifier(definition.nonzeroCoordinate,
+        "definition.nonzeroCoordinate") };
+    case "scheme-map":
+      requireKeys(definition, ["kind", "mapKind", "sourceChart", "targetProjective"], "definition");
+      if (definition.mapKind !== "chart-inclusion")
+        throw new TypeError("Only canonical projective chart inclusion maps are supported.");
+      return { kind: "scheme-map", mapKind: "chart-inclusion",
+        sourceChart: requireRef(definition.sourceChart, "definition.sourceChart"),
+        targetProjective: requireRef(definition.targetProjective, "definition.targetProjective") };
     case "finite-group":
       return parseFiniteGroupDefinition(definition);
     case "module": {
@@ -210,6 +231,10 @@ const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraOb
       definition.kind === "elliptic-curve" ? [definition.baseField]
     : definition.kind === "ideal" ? [definition.ambientRing]
       : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal]
+        : definition.kind === "affine-scheme" || definition.kind === "projective-scheme"
+          ? [definition.ambientRing, definition.ideal]
+        : definition.kind === "scheme-chart" ? [definition.projectiveScheme]
+        : definition.kind === "scheme-map" ? [definition.sourceChart, definition.targetProjective]
         : definition.kind === "finite-group" && definition.source ? [definition.source.ring]
         : definition.kind === "module" ? [definition.baseRing]
           : definition.kind === "module-map" ? [definition.sourceModule, definition.targetModule]

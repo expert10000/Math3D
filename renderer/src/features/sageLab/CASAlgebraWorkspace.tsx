@@ -25,6 +25,8 @@ import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
 import SageEllipticCurveBuilder from "./SageEllipticCurveBuilder";
 import SageEllipticCurveVisualization from "./SageEllipticCurveVisualization";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
+import SageSchemeBuilder from "./SageSchemeBuilder";
+import SageSchemeTools from "./SageSchemeTools";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
 import SageAlgebraEvidenceInspector from "./SageAlgebraEvidenceInspector";
@@ -68,7 +70,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
-  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | "chain" | "curve" | null>(null);
+  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | "chain" | "curve" | "scheme" | null>(null);
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
   const [groupError, setGroupError] = useState("");
@@ -120,13 +122,21 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       ? selectedStructure(project, chosen.record.definition.baseField)?.record
     : chosen?.record.definition.kind === "ideal"
       ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
-      : chosen?.record.definition.kind === "quotient-ring"
+      : chosen?.record.definition.kind === "quotient-ring" ||
+        chosen?.record.definition.kind === "affine-scheme" ||
+        chosen?.record.definition.kind === "projective-scheme"
         ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
+      : chosen?.record.definition.kind === "scheme-chart"
+        ? selectedStructure(project, chosen.record.definition.projectiveScheme)?.record
+      : chosen?.record.definition.kind === "scheme-map"
+        ? selectedStructure(project, chosen.record.definition.sourceChart)?.record
         : chosen?.record.definition.kind === "finite-group" && chosen.record.definition.source
           ? selectedStructure(project, chosen.record.definition.source.ring)?.record
         : chosen?.record.definition.kind === "module"
           ? selectedStructure(project, chosen.record.definition.baseRing)?.record : null;
-  const idealParent = chosen?.record.definition.kind === "quotient-ring"
+  const idealParent = chosen?.record.definition.kind === "quotient-ring" ||
+    chosen?.record.definition.kind === "affine-scheme" ||
+    chosen?.record.definition.kind === "projective-scheme"
     ? selectedStructure(project, chosen.record.definition.ideal)?.record : null;
   const mapSource = chosen?.record.definition.kind === "module-map"
     ? selectedStructure(project, chosen.record.definition.sourceModule)?.record : null;
@@ -134,7 +144,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     ? selectedStructure(project, chosen.record.definition.targetModule)?.record : null;
   const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring" &&
     chosen.record.kind !== "finite-group" && chosen.record.kind !== "module" && chosen.record.kind !== "module-map" &&
-    chosen.record.kind !== "chain-complex" && chosen.record.kind !== "elliptic-curve"
+    chosen.record.kind !== "chain-complex" && chosen.record.kind !== "elliptic-curve" &&
+    chosen.record.kind !== "affine-scheme" && chosen.record.kind !== "projective-scheme" &&
+    chosen.record.kind !== "scheme-chart" && chosen.record.kind !== "scheme-map"
     ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
@@ -147,6 +159,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("module")}>+ New module</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("chain")}>+ New chain complex</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("curve")}>+ New curve</button>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("scheme")}>+ New scheme</button>
       </div>
     </div>
     {!project && <div role="status" style={{ fontSize: 12 }}>Open or create a Project to save algebra structures.
@@ -181,6 +194,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : builder === "curve" && project ? <SageEllipticCurveBuilder key={project.identity.id} project={project}
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : builder === "scheme" && project ? <SageSchemeBuilder key={project.identity.id} project={project}
+      onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : chosen && project ? <div data-testid="cas-selected-structure" style={{ display: "grid", gap: 14 }}>
     <div><div style={{ fontSize: 11, color: "#64748b" }}>Structure dossier</div>
       <h2 style={{ margin: "3px 0", fontSize: 21 }}>{chosen.record.label}</h2>
@@ -192,13 +207,13 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       </select>
     </label>
     <dl className="sage-structure-facts">
-      <dt>Kind</dt><dd>{chosen.record.kind === "elliptic-curve" ? "Elliptic curve" : chosen.record.kind === "chain-complex" ? "ZZ chain complex" : chosen.record.kind === "module" ? "Presented module" : chosen.record.kind === "module-map" ? "Module map" : chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
+      <dt>Kind</dt><dd>{chosen.record.kind === "elliptic-curve" ? "Elliptic curve" : chosen.record.kind === "chain-complex" ? "ZZ chain complex" : chosen.record.kind === "module" ? "Presented module" : chosen.record.kind === "module-map" ? "Module map" : chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "affine-scheme" ? "Affine scheme" : chosen.record.kind === "projective-scheme" ? "Projective scheme" : chosen.record.kind === "scheme-chart" ? "Affine chart" : chosen.record.kind === "scheme-map" ? "Chart inclusion map" : chosen.record.kind === "quotient-ring"
         ? "Quotient ring" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
       <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>{chosen.record.kind === "module" ? "Base ring" : chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" || chosen.record.kind === "elliptic-curve" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "module" ? "Base ring" : chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" || chosen.record.kind === "affine-scheme" || chosen.record.kind === "projective-scheme" ? "Ambient ring" : chosen.record.kind === "scheme-chart" ? "Projective scheme" : chosen.record.kind === "scheme-map" ? "Source chart" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" || chosen.record.kind === "elliptic-curve" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
       {chosen.record.definition.kind === "elliptic-curve" && (() => {
         const characteristic = parent?.definition.kind === "finite-field" ? parent.definition.characteristic : 0;
         const facts = ellipticCurveFacts(chosen.record.definition.a, chosen.record.definition.b, characteristic);
@@ -210,6 +225,10 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       {mapSource && <><dt>Source module</dt><dd><button type="button" style={action} onClick={() => select({ objectId: mapSource.id, revision: mapSource.revision })}>{mapSource.label}@{mapSource.revision}</button></dd></>}
       {mapTarget && <><dt>Target module</dt><dd><button type="button" style={action} onClick={() => select({ objectId: mapTarget.id, revision: mapTarget.revision })}>{mapTarget.label}@{mapTarget.revision}</button></dd></>}
       {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}
+      {(chosen.record.kind === "affine-scheme" || chosen.record.kind === "projective-scheme") && <>
+        <dt>Exact construction</dt><dd>{chosen.record.kind === "affine-scheme" ? "Spec(R/I)" : "Proj(R/I)"}</dd>
+        <dt>Scheme structure</dt><dd>The pinned ideal presentation is retained; no radical or real-locus reduction is applied.</dd>
+      </>}
       {chosen.record.definition.kind === "ideal" && <><dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd>
         <dt>Validation</dt><dd>Bounded exact polynomial syntax</dd></>}
       {chosen.record.definition.kind === "polynomial-ring" && <>
@@ -278,6 +297,9 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
           <dt>Relation checks</dt><dd>{facts.baseRelation}; {facts.extensionRelation}</dd></>;
       })()}
     </dl>
+    {(["affine-scheme", "projective-scheme", "scheme-chart", "scheme-map"] as string[]).includes(chosen.record.kind) &&
+      <SageSchemeTools key={`${chosen.record.id}@${chosen.record.revision}`} project={project} record={chosen.record}
+        onCreate={onCreateStructure} onSelect={select} />}
     {chosen.record.definition.kind === "elliptic-curve" &&
       <SageEllipticCurveVisualization key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} curve={chosen.record} />}
@@ -311,6 +333,15 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       <dt>Generators</dt><dd>{chosen.record.definition.generators.join(", ")}</dd></>}
     {chosen.record.definition.kind === "quotient-ring" && <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
       <dt>Ideal</dt><dd>{idealParent?.label}@{idealParent?.revision}</dd></>}
+    {(chosen.record.definition.kind === "affine-scheme" || chosen.record.definition.kind === "projective-scheme") &&
+      <><dt>Ambient ring</dt><dd>{parent?.label}@{parent?.revision}</dd>
+        <dt>Pinned ideal</dt><dd>{idealParent?.label}@{idealParent?.revision}</dd>
+        <dt>Construction</dt><dd>{chosen.record.definition.kind === "affine-scheme" ? "Spec" : "Proj"}(R/I)</dd></>}
+    {chosen.record.definition.kind === "scheme-chart" && <><dt>Projective scheme</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Nonzero coordinate</dt><dd>{chosen.record.definition.nonzeroCoordinate}</dd></>}
+    {chosen.record.definition.kind === "scheme-map" && <><dt>Source chart</dt><dd>{parent?.label}@{parent?.revision}</dd>
+      <dt>Target projective</dt><dd>{chosen.record.definition.targetProjective.objectId}@{chosen.record.definition.targetProjective.revision}</dd>
+      <dt>Map kind</dt><dd>Canonical chart open immersion</dd></>}
     {chosen.record.definition.kind === "number-field" && <><dt>Base field</dt><dd>{parent?.label}@{parent?.revision}</dd>
       <dt>Defining coefficients</dt><dd>{chosen.record.definition.definingPolynomial.join(", ")}</dd></>}
     {chosen.record.definition.kind === "field-extension" && <><dt>Base field</dt><dd>{parent?.label}@{parent?.revision}</dd>

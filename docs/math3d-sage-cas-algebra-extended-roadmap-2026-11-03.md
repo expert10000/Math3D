@@ -374,6 +374,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G07 implementation update (2026-11-06):** The [G07 acceptance record](evidence/sage-g07-representations-actions-2026-11-06.md) adds the natural permutation representation of a pinned finite group, selected-point orbit and stabilizer, generator matrices, fixed-point character and a discrete action graph. GAP supplies irreducible character rows for the existing bounded group contract; integer-valued tables receive exact orthogonality and permutation-representation decomposition checks. Nonintegral tables are explicitly unavailable in this first integer-valued view while the exact action remains usable. The next feature is **SAGE-G08**, projective and affine geometry objects.
 
+**G08 implementation update (2026-11-06):** The [G08 acceptance record](evidence/sage-g08-schemes-charts-2026-11-06.md) adds versioned affine `Spec(R/I)` and projective `Proj(R/I)` objects over bounded direct `QQ` polynomial rings, pinned projective affine charts and their canonical open-immersion maps. A chart derives exact equations by setting one homogeneous coordinate to one, and the Structures UI opens the pinned ideal for the existing real-locus workflow. Project import preserves exact IDs, revisions, definitions and dependencies, including nonreduced ideals. The next feature is **SAGE-H01**, the mathematics command palette.
+
 ---
 
 ## 3. P0 — Algebra object registry

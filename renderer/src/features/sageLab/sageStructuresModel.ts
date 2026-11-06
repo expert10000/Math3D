@@ -100,6 +100,21 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
     const ideal = selectedStructure(project, definition.ideal)?.record;
     return `${ambient?.label ?? "R"}/${ideal?.label ?? "I"}`;
   }
+  if (definition.kind === "affine-scheme" || definition.kind === "projective-scheme") {
+    const ambient = selectedStructure(project, definition.ambientRing)?.record;
+    const ideal = selectedStructure(project, definition.ideal)?.record;
+    return `${definition.kind === "affine-scheme" ? "Spec" : "Proj"}(${ambient?.label ?? "R"}/${ideal?.label ?? "I"})`;
+  }
+  if (definition.kind === "scheme-chart") {
+    const parent = selectedStructure(project, definition.projectiveScheme)?.record;
+    return `D₊(${definition.nonzeroCoordinate}) ⊂ ${parent?.label ?? "projective scheme"}`;
+  }
+  if (definition.kind === "scheme-map") {
+    const source = selectedStructure(project, definition.sourceChart)?.record;
+    const target = selectedStructure(project, definition.targetProjective)?.record;
+    return `${source?.label ?? "chart"} ↪ ${target?.label ?? "projective scheme"}`;
+  }
+  if (definition.kind !== "polynomial-ring") throw new TypeError("Unsupported structure presentation.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   return `${parent ? parent.label : definition.coefficientDomain.objectId}[${definition.variables.join(",")}]`;
 };
@@ -135,8 +150,11 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
   if (definition.kind === "field-extension") return { presentation, characteristic: "0", field: "yes",
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
   if (definition.kind === "elliptic-curve" || definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group" ||
-      definition.kind === "module" || definition.kind === "module-map" || definition.kind === "chain-complex")
+      definition.kind === "module" || definition.kind === "module-map" || definition.kind === "chain-complex" ||
+      definition.kind === "affine-scheme" || definition.kind === "projective-scheme" ||
+      definition.kind === "scheme-chart" || definition.kind === "scheme-map")
     throw new TypeError("Ideal, quotient and finite-group objects need dedicated exact analysis.");
+  if (definition.kind !== "polynomial-ring") throw new TypeError("Unsupported structure analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;
   if (!parent) throw new TypeError("The polynomial coefficient domain is missing from the Project.");
   const base = describeStructure(parent, project);

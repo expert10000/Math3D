@@ -4,6 +4,7 @@ import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTow
 import { validateModuleMatrixScalars, type ModuleScalarRing } from "./modulePresentations";
 import { resolveChainComplex } from "./chainComplex";
 import { ellipticCurveFacts } from "./ellipticCurve";
+import { validateSchemeGeometryRecord } from "./schemeGeometry";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 
@@ -99,6 +100,8 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       validateModuleMatrixScalars(record.definition.matrix, ring.definition as ModuleScalarRing);
     }
     if (record.definition.kind === "chain-complex") resolveChainComplex(record.definition, entries);
+    if (["affine-scheme", "projective-scheme", "scheme-chart", "scheme-map"].includes(record.kind))
+      validateSchemeGeometryRecord(record, entries);
     for (const ref of record.dependencies) {
       const parent = byId.get(ref.objectId)?.revisions[ref.revision - 1];
       if (!parent || parent.revision !== ref.revision) {
