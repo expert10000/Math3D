@@ -9,8 +9,8 @@ on:
         default: main
       theory_lab_nsis_variant:
         type: choice
-        description: Theory Lab NSIS template variant; diagnostic only
-        options: [standard, without-store, nsis313]
+        description: Installer NSIS variant; diagnostic only
+        options: [standard, without-store, nsis313, nsis313-both]
         default: standard
 
 jobs:
@@ -63,6 +63,12 @@ jobs:
         with:
           path: .cache/vcpkg-binaries
           key: ${{ steps.native-cache-key.outputs.key }}
+
+      - name: Prepare NSIS 3.13 for both installers
+        if: ${{ inputs.theory_lab_nsis_variant == 'nsis313-both' }}
+        shell: pwsh
+        run: |
+          & scripts/prepare-qi40-nsis313.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'qi40-nsis313')
 
       - name: Install full release worker dependencies
         shell: pwsh
@@ -202,14 +208,14 @@ jobs:
           path: candidate/*
 
       - name: Identify embedded NSIS components for diagnostic variant
-        if: ${{ inputs.theory_lab_nsis_variant == 'nsis313' }}
+        if: ${{ inputs.theory_lab_nsis_variant == 'nsis313' || inputs.theory_lab_nsis_variant == 'nsis313-both' }}
         shell: pwsh
         run: |
           & scripts/inspect-quantum-installer-components.ps1 `
             -CandidateDirectory (Join-Path $PWD 'candidate') `
             -EvidencePath (Join-Path $PWD 'test-results/qi40-nsis313-components.json')
       - uses: actions/upload-artifact@v7
-        if: ${{ always() && inputs.theory_lab_nsis_variant == 'nsis313' }}
+        if: ${{ always() && (inputs.theory_lab_nsis_variant == 'nsis313' || inputs.theory_lab_nsis_variant == 'nsis313-both') }}
         with:
           name: qi40-nsis313-components
           if-no-files-found: ignore
