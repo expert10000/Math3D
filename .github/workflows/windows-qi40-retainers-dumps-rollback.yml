@@ -76,12 +76,17 @@ jobs:
               @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
             throw 'Post-cleanup source context or canvas budget failed'
           }
+          node scripts/evaluate-quantum-scene-memory-budget.mjs `
+            test-results/qi40-source-cleanup-80.json test-results/qi40-source-memory-budget.json
+          if ($LASTEXITCODE -ne 0) { throw 'Memory budget evaluation failed' }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: qi40-source-cleanup-80
           if-no-files-found: ignore
-          path: test-results/qi40-source-cleanup-80.json
+          path: |
+            test-results/qi40-source-cleanup-80.json
+            test-results/qi40-source-memory-budget.json
 
   mixed-project-rollback:
     if: ${{ inputs.focus == 'all' || inputs.focus == 'rollback' }}
