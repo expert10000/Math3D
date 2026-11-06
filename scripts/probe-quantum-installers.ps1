@@ -4,7 +4,9 @@ param(
   [string]$EvidencePath = "",
   [switch]$Math3DOnly,
   [switch]$TheoryLabOnly,
-  [switch]$CaptureCrashDump
+  [switch]$CaptureCrashDump,
+  [string]$ExpectedBuildRunId = '',
+  [string]$ExpectedMath3DCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -151,14 +153,24 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
 }
 
 try {
-  if ($manifest.schema -ne 'math3d/two-app-candidate/v1' -or
-      $manifest.buildRunId -ne '42123298884' -or
-      $manifest.math3d.commit -ne '49485e816fcfc7b46d5da1634c6746a631343f8e' -or
-      $manifest.theoryLab.commit -ne '38842c8ca927720e9a0f39bd6a04f0e366073996' -or
+  $usingNewCandidate = -not [string]::IsNullOrWhiteSpace($ExpectedBuildRunId)
+  if ($usingNewCandidate -and [string]::IsNullOrWhiteSpace($ExpectedMath3DCommit)) {
+    throw 'ExpectedMath3DCommit is required with ExpectedBuildRunId'
+  }
+  $identityMismatch = if ($usingNewCandidate) {
+    [string]$manifest.buildRunId -ne $ExpectedBuildRunId -or
+    [string]$manifest.math3d.commit -ne $ExpectedMath3DCommit -or
+    [string]::IsNullOrWhiteSpace([string]$manifest.theoryLab.commit)
+  } else {
+    [string]$manifest.buildRunId -ne '42123298884' -or
+    $manifest.math3d.commit -ne '49485e816fcfc7b46d5da1634c6746a631343f8e' -or
+    $manifest.theoryLab.commit -ne '38842c8ca927720e9a0f39bd6a04f0e366073996' -or
+    $mathSha -ne '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' -or
+    $labSha -ne '18bfd9bd243b101a2ba2b6a3586e3e080b6e3223866af57853e32024b9fc3d81'
+  }
+  if ($manifest.schema -ne 'math3d/two-app-candidate/v1' -or $identityMismatch -or
       $mathSha -ne $manifest.math3d.installerSha256 -or
-      $labSha -ne $manifest.theoryLab.installerSha256 -or
-      $mathSha -ne '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' -or
-      $labSha -ne '18bfd9bd243b101a2ba2b6a3586e3e080b6e3223866af57853e32024b9fc3d81') {
+      $labSha -ne $manifest.theoryLab.installerSha256) {
     throw 'Downloaded candidate identity differs from pinned source and installer hashes'
   }
   $evidence.checks.exactBytes = 'passed'
