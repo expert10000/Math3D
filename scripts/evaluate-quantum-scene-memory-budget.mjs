@@ -23,6 +23,7 @@ const result = {
   source: input,
   cycles: report.cycles,
   installed: report.installed,
+  autosaveAblation: report.autosaveAblation === true,
   method: "Forced-GC closed-preview renderer heap; cycle 20 is warmup, cycle 80 is steady-state check",
   warmupCycle,
   lastCycle,

@@ -30,6 +30,13 @@ $dumpDir = Join-Path $root 'crash-dumps'
 $werKeysCreated = @()
 $mathSha = (Get-FileHash -LiteralPath $mathInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
 $labSha = (Get-FileHash -LiteralPath $labInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+$programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+$debuggerCandidates = @(
+  (Get-Command cdb.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source),
+  $(if ($programFilesX86) { Join-Path $programFilesX86 'Windows Kits\10\Debuggers\x64\cdb.exe' }),
+  $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Windows Kits\10\Debuggers\x64\cdb.exe' })
+)
+$cdb = $debuggerCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
 $evidence = [ordered]@{
   schema = 'math3d/qi40-installer-probe/v1'
   checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
@@ -49,6 +56,29 @@ $evidence = [ordered]@{
   checks = [ordered]@{ exactBytes = 'pending'; math3dInstall = 'pending'; theoryLabInstall = 'pending';
     packagedWorkers = 'pending' }
   failure = $null
+  debugger = [ordered]@{ cdbAvailable = [bool]$cdb; dumpAnalysis = 'not attempted' }
+}
+
+function Get-SanitizedDumpStack([string]$dump) {
+  if (-not $cdb) { return [ordered]@{ status = 'cdb unavailable'; frames = @() } }
+  $stdout = Join-Path $root 'cdb-stdout.txt'
+  $stderr = Join-Path $root 'cdb-stderr.txt'
+  $arguments = "-z `"$dump`" -c `".exr -1; .ecxr; kb; q`""
+  $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  if (-not $process.WaitForExit(90000)) {
+    try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
+    return [ordered]@{ status = 'cdb timeout'; frames = @() }
+  }
+  $raw = Get-Content -LiteralPath $stdout -Raw -ErrorAction SilentlyContinue
+  $frames = @($raw -split '\r?\n' | ForEach-Object {
+    if ($_ -match '^\s*\d{1,2}\s+[0-9a-f`]+\s+[0-9a-f`]+\s+([A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+0x[0-9a-f]+))') {
+      $Matches[1]
+    }
+  } | Select-Object -First 20)
+  $exceptionCode = if ($raw -match 'ExceptionCode:\s*([0-9a-fA-F]{8})') { $Matches[1].ToLowerInvariant() } else { $null }
+  return [ordered]@{ status = if ($frames.Count) { 'stack summarized' } else { 'no stack frames parsed' };
+    exceptionCode = $exceptionCode; frames = $frames; debuggerExitCode = $process.ExitCode }
 }
 
 function Get-ApplicationErrors([string]$installerName, [datetime]$startedAt) {
@@ -189,9 +219,14 @@ try {
         } while ($dumpFiles.Count -eq 0 -and (Get-Date) -lt $deadline)
       }
       if ($evidence.crashDump) {
-        $evidence.crashDump.files = @(Get-ChildItem -LiteralPath $dumpDir -Filter '*.dmp' -File -ErrorAction SilentlyContinue |
+        $foundDumps = @(Get-ChildItem -LiteralPath $dumpDir -Filter '*.dmp' -File -ErrorAction SilentlyContinue)
+        $evidence.crashDump.files = @($foundDumps |
           ForEach-Object { [ordered]@{ name = $_.Name; bytes = $_.Length;
             sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
+        if ($foundDumps.Count -gt 0) {
+          $evidence.crashDump.stackSummary = Get-SanitizedDumpStack $foundDumps[0].FullName
+          $evidence.debugger.dumpAnalysis = $evidence.crashDump.stackSummary.status
+        }
       }
     } finally {
       foreach ($key in $werKeysCreated) { Remove-Item -LiteralPath $key -Force }

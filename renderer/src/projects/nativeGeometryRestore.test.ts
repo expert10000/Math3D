@@ -28,7 +28,13 @@ describe("native Geometry project restore", () => {
     expect(GeometryDocumentAdapter.restore(adapter.exportReplay()).document()).toEqual(adapter.document());
   });
   it("does not advertise unrelated Geometry payloads or lossy construction normalization", () => {
-    const doc = fixture(); expect(() => geometryEditorSeed(createGeometryDocument({ source: { ...doc.source, geometry: { points: [{ id: "a", x: 0, y: 0, z: 0 }] } } }))).toThrow();
+    const doc = fixture();
+    const primitiveCopy = createGeometryDocument({ source: { ...doc.source,
+      geometry: { points: [{ id: "a", x: 0, y: 0, z: 0 }] } } });
+    expect(() => geometryEditorSeed(primitiveCopy)).toThrow();
+    expect(inspectProjectCompatibility(createMath3DProject(workspace(primitiveCopy),
+      { stableKey: "primitive-copy" })).reasons).toContain(
+      "geometry: this document has verified preview support; its editor state cannot be fully restored by this host adapter.");
     expect(() => geometryEditorSeed(createGeometryDocument({ source: { ...doc.source, extensions: { [LIVE_GEOMETRY_CONSTRUCTIONS]: [{ id: "future", type: "future-construction", sourceKind: "object", sourceObjectId: "box", dependent: true }] } } }))).toThrow();
     expect(projectConstructionsEditable({ ...workspace(), entries: [] })).toBe(false);
   });
