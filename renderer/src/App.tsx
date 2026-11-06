@@ -830,6 +830,9 @@ import {
   upsertProjectTemporalStreakline,
   projectTemporalStreaklineStatus,
   upsertProjectTemporalSpectrum,
+  upsertProjectTemporalLyapunovField,
+  upsertProjectTemporalSurfaceEvents,
+  promoteProjectManifoldContinuation,
   rebaseProjectDerivedSource,
   verifiedVectorFieldSampler,
   appendProjectDerivedField,
@@ -90958,6 +90961,21 @@ case "mobius":
               setAdditionalVersion(value => value + 1);
               navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
             }}
+            onPromoteVectorField3DManifoldContinuation={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const promoted = promoteProjectManifoldContinuation(active, study);
+              const adapter = MeshDocumentAdapter.restore({ document: promoted.mesh,
+                resourceBytes: promoted.bytes });
+              activeNotebookProjectRef.current = promoted.project;
+              restored.workspace = promoted.project.workspace;
+              restored.meshes.set(promoted.mesh.identity.id, adapter);
+              meshDocumentAdapterRef.current = adapter;
+              setMeshKernelDocument(promoted.mesh);
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
+            }}
             onSaveVectorField3DTemporalSource={(source, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
@@ -90983,6 +91001,20 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTemporalSpectrum(active, result, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalFtLeField={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalLyapunovField(active, study, transfers);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceEvents={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceEvents(active, study, transfers);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}

@@ -57,8 +57,8 @@ export async function runTemporalMovingIsosurfaces(project: Math3DProject,
           triangleBudget: recipe.triangleBudgetPerFrame },
         { signal: controller.signal });
       if (controller.signal.aborted) throw new RangeError("Moving isosurface time budget reached or cancelled.");
-      if (!surface.complete || surface.triangleCount < 1)
-        throw new TypeError(`Moving isosurface frame ${index + 1} is partial or empty ` +
+      if (!surface.complete || surface.triangleCount < 0)
+        throw new TypeError(`Moving isosurface frame ${index + 1} is partial ` +
           `(${surface.triangleCount} triangles, ${surface.limitReason ?? "no limit"}).`);
       frames.push({ time: pinned.time, field, surface });
       options.onProgress?.(index + 1, temporal.source.frames.length);

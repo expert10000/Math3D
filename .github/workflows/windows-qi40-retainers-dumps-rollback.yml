@@ -1,0 +1,140 @@
+name: Windows QI40 Retainers Dumps Rollback
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mixed-project-rollback:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Install harness
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+      - name: Download pinned installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+          gh run download 42035098178 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/rollback
+          if ($LASTEXITCODE -ne 0) { throw 'Rollback download failed' }
+      - name: Verify six-scene Project across installed rollback
+        shell: pwsh
+        run: |
+          & scripts/stable-quantum-installed-rollback.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -RollbackDirectory (Join-Path $PWD 'installers/rollback') `
+            -ExpectedCandidateCommit '49485e816fcfc7b46d5da1634c6746a631343f8e' `
+            -ExpectedCandidateSha256 '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-six-scene-rollback') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-six-scene-rollback.json')
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-six-scene-rollback
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-six-scene-rollback.json
+            test-results/playwright/quantum-installed-rollback-profile*/trace.zip
+            test-results/playwright/quantum-installed-rollback-profile*/test-failed-*.png
+
+  installed-retainers:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.15.0'
+          cache: npm
+      - name: Download pinned candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+      - name: Install pinned Math3D
+        shell: pwsh
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-retainer-install') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-retainer-installer.json') `
+            -Math3DOnly
+      - name: Install harness
+        shell: pwsh
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+      - name: Trace retained heap roots after 40 installed scene cycles
+        shell: pwsh
+        env:
+          MATH3D_HEAP_DIAGNOSTIC: '1'
+        run: |
+          $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-retainer-install/Math3D/Math3D.exe'
+          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-installed-retainers-40.json 40 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Retainer trace failed' }
+          $report = Get-Content test-results/qi40-installed-retainers-40.json -Raw | ConvertFrom-Json
+          if ($report.cycles -ne 40 -or -not $report.installed -or
+              @($report.heapComposition.retainers.paths | Where-Object { $_.status -eq 'root path found' }).Count -lt 2 -or
+              @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
+            throw 'Retainer trace assertions failed'
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-installed-retainers-40
+          if-no-files-found: ignore
+          path: |
+            test-results/qi40-retainer-installer.json
+            test-results/qi40-installed-retainers-40.json
+
+  lab-crash-dumps:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download pinned candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 42123298884 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+      - name: Install Theory Lab with per-app WER mini dump enabled
+        shell: pwsh
+        run: |
+          & scripts/probe-quantum-installers.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-lab-dump-probe') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-lab-dump-probe.json') `
+            -TheoryLabOnly -CaptureCrashDump
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-lab-dump-probe-${{ matrix.slot }}
+          if-no-files-found: ignore
+          path: test-results/qi40-lab-dump-probe.json

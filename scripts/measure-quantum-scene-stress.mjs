@@ -3,6 +3,7 @@ import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { _electron as electron } from "playwright";
+import { summarizeQuantumHeapRetainers } from "./quantum-heap-retainers.mjs";
 
 const requestedCycles = process.argv[3] === undefined ? 8 : Number(process.argv[3]);
 if (!Number.isInteger(requestedCycles) || requestedCycles < 4 || requestedCycles > 120)
@@ -25,7 +26,7 @@ try {
   const cdp = await page.context().newCDPSession(page);
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
-  const heapComposition = async () => {
+  const heapComposition = async (traceRetainers = false) => {
     await cdp.send("HeapProfiler.collectGarbage");
     const chunks = [];
     const collect = ({ chunk }) => chunks.push(chunk);
@@ -56,7 +57,8 @@ try {
       row.count++;
       row.selfBytes += bytes;
     }
-    return { byType, byConstructor };
+    return { byType, byConstructor,
+      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot) } : {}) };
   };
   const snapshot = async () => {
     await cdp.send("HeapProfiler.collectGarbage");
@@ -117,7 +119,7 @@ try {
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
   }
   const final = await snapshot();
-  const finalHeapComposition = diagnoseHeap ? await heapComposition() : null;
+  const finalHeapComposition = diagnoseHeap ? await heapComposition(true) : null;
   const constructorGrowth = diagnoseHeap ? Object.keys({
     ...baselineHeapComposition.byConstructor, ...finalHeapComposition.byConstructor,
   }).map(name => ({ name,
@@ -131,6 +133,7 @@ try {
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
     ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,
       finalByType: finalHeapComposition.byType, topConstructorGrowth: constructorGrowth,
+      retainers: finalHeapComposition.retainers,
       method: "V8 heap snapshot node self sizes after forced GC; shallow bytes, not retained-size attribution" } } : {}) };
   const bytes = JSON.stringify(result, null, 2) + "\n";
   if (process.argv[2]) await writeFile(resolve(process.argv[2]), bytes);

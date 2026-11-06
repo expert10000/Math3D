@@ -3,7 +3,8 @@ param(
   [string]$InstallRoot = "",
   [string]$EvidencePath = "",
   [switch]$Math3DOnly,
-  [switch]$TheoryLabOnly
+  [switch]$TheoryLabOnly,
+  [switch]$CaptureCrashDump
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,9 @@ $manifestPath = Join-Path $candidateRoot 'candidate-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $mathInstaller = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $manifest.math3d.installerName)).Path
 $labInstaller = (Resolve-Path -LiteralPath (Join-Path $candidateRoot $manifest.theoryLab.installerName)).Path
+$werKey = "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\$([IO.Path]::GetFileName($labInstaller))"
+$dumpDir = Join-Path $root 'crash-dumps'
+$werConfigured = $false
 $mathSha = (Get-FileHash -LiteralPath $mathInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
 $labSha = (Get-FileHash -LiteralPath $labInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
 $evidence = [ordered]@{
@@ -101,6 +105,18 @@ try {
   }
   $evidence.checks.exactBytes = 'passed'
   New-Item -ItemType Directory -Path $root | Out-Null
+  if ($CaptureCrashDump) {
+    if ($Math3DOnly) { throw 'Crash dump capture requires a Theory Lab installer probe' }
+    if (Test-Path -LiteralPath $werKey) { throw 'Per-application WER LocalDumps key already exists' }
+    New-Item -ItemType Directory -Path $dumpDir | Out-Null
+    New-Item -Path (Split-Path -Parent $werKey) -Force | Out-Null
+    New-Item -Path $werKey -Force | Out-Null
+    $werConfigured = $true
+    New-ItemProperty -Path $werKey -Name DumpFolder -PropertyType ExpandString -Value $dumpDir -Force | Out-Null
+    New-ItemProperty -Path $werKey -Name DumpType -PropertyType DWord -Value 1 -Force | Out-Null
+    New-ItemProperty -Path $werKey -Name DumpCount -PropertyType DWord -Value 2 -Force | Out-Null
+    $evidence.crashDump = [ordered]@{ configured = $true; dumpType = 'mini'; files = @() }
+  }
   $mathInstall = Join-Path $root 'Math3D'
   $labInstall = Join-Path $root 'TheoryLab'
   if (-not $TheoryLabOnly) {
@@ -140,6 +156,24 @@ try {
   $evidence.failure = $_.Exception.Message
   throw
 } finally {
+  if ($werConfigured) {
+    try {
+      if ($evidence.status -eq 'failed') {
+        $deadline = (Get-Date).AddSeconds(20)
+        do {
+          $dumpFiles = @(Get-ChildItem -LiteralPath $dumpDir -Filter '*.dmp' -File -ErrorAction SilentlyContinue)
+          if ($dumpFiles.Count -eq 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+        } while ($dumpFiles.Count -eq 0 -and (Get-Date) -lt $deadline)
+      }
+      if ($evidence.crashDump) {
+        $evidence.crashDump.files = @(Get-ChildItem -LiteralPath $dumpDir -Filter '*.dmp' -File -ErrorAction SilentlyContinue |
+          ForEach-Object { [ordered]@{ name = $_.Name; bytes = $_.Length;
+            sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } })
+      }
+    } finally {
+      if ($werConfigured) { Remove-Item -LiteralPath $werKey -Force }
+    }
+  }
   New-Item -ItemType Directory -Path (Split-Path -Parent $EvidencePath) -Force | Out-Null
   $evidence | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $EvidencePath -Encoding UTF8
   Write-Host "Installer probe evidence: $EvidencePath"
