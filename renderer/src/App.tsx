@@ -9,7 +9,8 @@ import { quantumFieldDocumentFromVerifiedOpen, quantumSceneDocumentFromVerifiedO
 import { addQuantumFieldDerivation, updateQuantumFieldView } from "@math3d/core";
 import { meshDocumentEditable } from "./projects/nativeMeshRestore";
 import { createMeshDocument, canonicalJsonStringify, parseMath3DProject, upsertMath3DProjectAlgebraObject,
-  addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, type ProjectScientificSceneReference } from "@math3d/core";
+  addMath3DProjectAlgebraEvidence, upsertMath3DProjectAlgebraRecipe, installAlgebraGalleryExample,
+  type ProjectScientificSceneReference } from "@math3d/core";
 import { VerifiedProjectResources, type ProjectResourceReader, type ProjectResourceRequirement } from "./projects/projectResources";
 import type { MeshReplayBundle } from "./mesh/meshReplay";
 import { geometryEditorSeed as restoredGeometryEditorSeed, geometryDocumentEditable, geometrySourceFromEditor, geometryDisplayFromEditor, retainConstructionSource } from "./projects/nativeGeometryRestore";
@@ -48,6 +49,7 @@ import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
 import { loadProjectResources } from "./projects/projectResourceArchive";
 import { createPortableNotebookPublication, notebookPublicationManifest, notebookPublicationMarkdown, notebookPublicationManifestHtml, portableNotebookPublicationHtml } from "./workbook/notebookPublication";
+import { algebraReproManifestMarkdown, createAlgebraReproManifest } from "./workbook/algebraReproManifest";
 import { freezeWorkbookSnapshot, workbookSnapshotQualification } from "@math3d/workbook";
 import { rerunNotebookAnalysis } from "./workbook/notebookRerun";
 import { analyzeSavedMesh, appendSavedMeshAnalysis, type SavedMeshAnalysisKind } from "./projects/savedMeshAnalysis";
@@ -77849,6 +77851,13 @@ case "mobius":
     const reportProject = exactSavedProject ?? project;
     const reportReader: ProjectResourceReader = exactResources ? item => exactResources.bytes(item) : readComparisonResource;
     const base = sanitizeFileBase(book.title, "workbook");
+    if (kind === "algebra-manifest" || kind === "algebra-snapshot") {
+      if (!project) throw new TypeError("Open a named Project before exporting its algebra manifest.");
+      const manifest = createAlgebraReproManifest(project, [book], selected, kind === "algebra-snapshot");
+      downloadTextFile(canonicalJsonStringify(manifest), base + ".algebra.json", "application/json");
+      downloadTextFile(algebraReproManifestMarkdown(manifest), base + ".algebra.md", "text/markdown");
+      return;
+    }
     if (kind === "markdown") {
       downloadTextFile(buildWorkbooksMarkdown([book], book.id, reportProject, selected, context?.readArtifact, reportReader), base + ".report.md", "text/markdown"); return;
     }
@@ -111810,6 +111819,21 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        onInstallGalleryExample={(id) => {
+          const current = projectForNotePins;
+          if (!current) throw new TypeError("Open and save a Project before adding a gallery example.");
+          const savedBytes = localStorage.getItem(projectPayloadKey(current.identity.id));
+          if (!savedBytes || parseMath3DProject(savedBytes).identity.structuralHash !== current.identity.structuralHash)
+            throw new TypeError("The saved Project changed. Reopen it before adding a gallery example.");
+          const installed = installAlgebraGalleryExample(current, id);
+          if (installed.records > 0) {
+            saveLibraryProject(localStorage, installed.project, Date.now(), undefined, { expectedBytes: savedBytes });
+            activeNotebookProjectRef.current = installed.project;
+            setNotebookProjectVersion((version) => version + 1);
+            window.dispatchEvent(new Event("math3d:project-saved-externally"));
+          }
+          return installed.primary;
+        }}
         onSaveLocusSingularity={(analysis) => {
           const current = projectForNotePins;
           if (!current || current.identity.id !== analysis.scene.source.projectId)

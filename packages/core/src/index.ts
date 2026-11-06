@@ -17,6 +17,8 @@ export * from "./localZ2Homology";
 export * from "./sageIntegerHomology";
 export * from "./analysisResults";
 export * from "./algebraObjects";
+export * from "./algebraGallery";
+export * from "./algebraParameterSweep";
 export * from "./algebraIdealGenerators";
 export * from "./quadraticNumberField";
 export * from "./biquadraticFieldTower";

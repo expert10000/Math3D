@@ -29,6 +29,7 @@ import SageSchemeBuilder from "./SageSchemeBuilder";
 import SageSchemeTools from "./SageSchemeTools";
 import SageCommandPalette from "./SageCommandPalette";
 import SageAlgebraComparison from "./SageAlgebraComparison";
+import SageAlgebraGallery from "./SageAlgebraGallery";
 import type { SagePaletteAction } from "./sageCommandPaletteModel";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -49,6 +50,7 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
   onOpenProjects: () => void;
+  onInstallGalleryExample?: (id: import("@math3d/core").AlgebraGalleryId) => AlgebraObjectRef | Promise<AlgebraObjectRef>;
 };
 
 const action = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff", color: "#183b70",
@@ -66,7 +68,8 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 };
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
-  onSaveLocusScene, onSaveLocusSample, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
+  onSaveLocusScene, onSaveLocusSample, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
+  onInstallGalleryExample, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
   const [selectionFocus, setSelectionFocus] = useState(0);
@@ -199,6 +202,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         }) : <div role="status" style={{ fontSize: 12, color: "#64748b" }}>No structures in this Project yet.</div>}
     </div>}
     {project && <SageFieldTowerViewer project={project} selected={selection} onSelect={select} onInspectEvidence={inspectEvidence} />}
+    {onInstallGalleryExample && <SageAlgebraGallery project={project} onInstall={onInstallGalleryExample} onSelect={select} />}
   </div>;
 
   const dossier = builder === "ring" && project ? <SageRingFieldBuilder key={project.identity.id} project={project}

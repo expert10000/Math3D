@@ -1,0 +1,13 @@
+# SAGE-H03–H05 reproducible algebra, gallery and sweeps
+
+## Where to use them
+
+- **H03:** Workbook → **Publish selected report blocks** → **Export algebra manifest + report**. This downloads deterministic `.algebra.json` and readable `.algebra.md` files. **Export algebra manifest with results** additionally includes the saved result snapshots. Both exports include Project object revisions, operation requests and result hashes, route/version/certificate metadata, saved recipe graphs, and selected algebra or Sage-code Workbook sources. The JSON marks trusted code inert on import. Its parser checks the format, checksum and inert policy; inspection against an independently reopened Project compares object definitions, saved operations and recipes. No import path executes code.
+- **H04:** CAS → Algebra → **Structures** → **Curated algebra examples**. Four curated Project fixtures cover GF(5), C4, the ideal `(x²,y)` in `QQ[x,y]`, and `Z/6Z` as a ZZ module. Cards state exact expected facts and a failure example. A multi-object example saves its entire parent chain in one Project update, and a repeated install is idempotent. A conflicting saved ID is rejected.
+- **H05:** Select a saved ZZ structure, then CAS → Algebra → **Recipes** → **GCD parameter sweep**. Enter one comma-separated integer pair per line and save the reusable recipe. The recipe pins the target revision, backend, inputs and request hashes. Explicit **Run saved recipe** executes at most eight stages under one 30-second wall-time budget; cancel or budget expiry cancels the active job. Successful stages retain individually validated Project evidence, and the results table shows each input, result and saved count. Importing the Project does not start the sweep.
+
+## Acceptance
+
+Focused H03, H04 and H05 tests exercise JSON roundtrip, optional snapshots, altered-policy and checksum rejection, inert Sage code, independent Project inspection, all four gallery chains, duplicate-ID rejection, repeatable sweep identity, saved per-run evidence, invalid input bounds and budget cancellation. The four focused test files (including existing B07 recipe coverage) passed 14 tests. The desktop gate installed all four gallery examples, ran a two-row sweep against a controlled Sage 10.10 endpoint, and reopened its Project and saved evidence in a fresh profile. `npm run typecheck:noemit` and `npm run build:core` passed. The live B08 Docker Sage 10.10 comparison remains open; the controlled endpoint is not Docker runtime parity.
+
+Next: **SAGE-H06**, detailed tutorials and mathematical verification with backend notes.

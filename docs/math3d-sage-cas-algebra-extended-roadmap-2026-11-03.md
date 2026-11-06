@@ -380,6 +380,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **H02 implementation update (2026-11-06):** The [H02 acceptance record](evidence/sage-h02-backend-domain-comparison-2026-11-06.md) adds an Inspector comparison tab for two saved algebra results. It checks pinned inputs and independently verified exact values across Docker and local Sage for GCD or modular inverse, and compares typed rank invariants for the same integer matrix over `ZZ` and `QQ` while retaining Smith torsion only in the `ZZ` view. Each side shows its source, route, version, result hash, certificate scope and Inspector verification. Unsupported operation pairs and mismatched inputs are explicit. The next feature is **SAGE-H03**, a reproducible algebra export manifest.
 
+**H03–H05 implementation update (2026-11-06):** The [acceptance record](evidence/sage-h03-h05-portable-algebra-and-sweeps-2026-11-06.md) adds deterministic JSON and Markdown algebra manifest export with inert trusted code; atomic, Project-pinned curated field/group/ideal/module examples; and reusable ZZ GCD parameter sweeps with exact inputs, per-run evidence and one global wall-time budget. The live B08 Docker Sage 10.10 comparison remains open. The next feature is **SAGE-H06**, detailed tutorials and mathematical verification.
+
 ---
 
 ## 3. P0 — Algebra object registry

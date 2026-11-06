@@ -23,7 +23,8 @@ export type AlgebraRecipeEvidenceSaver = (base: Math3DProject,
 /** Sequential bounded DAG execution. Independent branches continue after a failure; descendants skip. */
 export const startAlgebraRecipeRun = (project: Math3DProject, recipe: AlgebraRecipeGraph,
   execute: AlgebraRecipeExecutor, saveEvidence: AlgebraRecipeEvidenceSaver,
-  onProgress?: (progress: AlgebraRecipeRunProgress) => void): Readonly<{
+  onProgress?: (progress: AlgebraRecipeRunProgress) => void,
+  options?: Readonly<{ globalWallTimeMs: number }>): Readonly<{
     promise: Promise<{ project: Math3DProject; progress: AlgebraRecipeRunProgress }>;
     cancel: () => void;
   }> => {
@@ -31,6 +32,12 @@ export const startAlgebraRecipeRun = (project: Math3DProject, recipe: AlgebraRec
   const progress = new Map<string, AlgebraRecipeStageProgress>(graph.stages.map((stage) => [stage.id,
     { stageId: stage.id, status: "pending" as AlgebraRecipeStageStatus }]));
   let cancelled = false, active: AlgebraRecipeStageHandle | null = null;
+  if (options && (!Number.isSafeInteger(options.globalWallTimeMs) || options.globalWallTimeMs < 1 ||
+      options.globalWallTimeMs > 120_000)) throw new TypeError("Invalid recipe global time budget.");
+  let budgetExpired = false;
+  const budgetTimer = options ? setTimeout(() => {
+    budgetExpired = true; cancelled = true; active?.cancel();
+  }, options.globalWallTimeMs) : null;
   let state: AlgebraRecipeRunProgress["status"] = "running";
   const snapshot = (): AlgebraRecipeRunProgress => ({ recipeId: graph.id, status: state,
     stages: graph.stages.map((stage) => ({ ...progress.get(stage.id)! })) });
@@ -39,7 +46,8 @@ export const startAlgebraRecipeRun = (project: Math3DProject, recipe: AlgebraRec
     let working = project, saveFailed = false;
     publish();
     for (const stage of graph.stages) {
-      if (cancelled) { progress.set(stage.id, { stageId: stage.id, status: "cancelled" }); publish(); continue; }
+      if (cancelled) { progress.set(stage.id, { stageId: stage.id, status: "cancelled",
+        reason: budgetExpired ? "Global operation budget exhausted." : undefined }); publish(); continue; }
       const blocked = stage.dependsOn.find((edge) => progress.get(edge.stageId)?.status !== "completed");
       if (blocked || saveFailed) {
         progress.set(stage.id, { stageId: stage.id, status: "skipped",
@@ -55,7 +63,8 @@ export const startAlgebraRecipeRun = (project: Math3DProject, recipe: AlgebraRec
         progress.set(stage.id, { stageId: stage.id, status: "running" });
         publish();
         const response = await active.promise;
-        if (cancelled) { progress.set(stage.id, { stageId: stage.id, status: "cancelled" }); publish(); continue; }
+        if (cancelled) { progress.set(stage.id, { stageId: stage.id, status: "cancelled",
+          reason: budgetExpired ? "Global operation budget exhausted." : undefined }); publish(); continue; }
         if (!response.success) throw new Error(response.error ?? "Sage recipe stage failed.");
         if (response.engine !== "sagemath" || response.operation !== request.operation || !response.engineVersion)
           throw new TypeError("Sage recipe response lacks matching versioned provenance.");
@@ -67,12 +76,13 @@ export const startAlgebraRecipeRun = (project: Math3DProject, recipe: AlgebraRec
         progress.set(stage.id, { stageId: stage.id, status: "completed", evidenceId: evidence.id });
       } catch (error) {
         progress.set(stage.id, { stageId: stage.id, status: cancelled ? "cancelled" : "failed",
-          reason: String((error as Error).message ?? error) });
+          reason: budgetExpired ? "Global operation budget exhausted." : String((error as Error).message ?? error) });
       } finally { active = null; publish(); }
     }
     state = cancelled ? "cancelled" : [...progress.values()].every((item) => item.status === "completed")
       ? "complete" : "partial";
     publish();
+    if (budgetTimer !== null) clearTimeout(budgetTimer);
     return { project: working, progress: snapshot() };
   })();
   return { promise, cancel: () => { cancelled = true; active?.cancel(); } };
