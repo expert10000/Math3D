@@ -81,7 +81,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
           gh run download 42035098178 --repo expert10000/Math3D --name two-app-stable-candidate --dir installers/rollback
           if ($LASTEXITCODE -ne 0) { throw 'Rollback download failed' }
-      - name: Verify six scenes and promoted geometry across installed rollback
+      - name: Verify six scenes and promoted Graph across installed rollback
         shell: pwsh
         run: |
           & scripts/stable-quantum-installed-rollback.ps1 `
