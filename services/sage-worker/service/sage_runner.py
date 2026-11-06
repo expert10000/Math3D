@@ -530,11 +530,16 @@ def _ideal_operation(operation, params):
         "ambientRing", "ambientHash", "variables", "monomialOrder", "generators"}
     extra = {"sage.ideal.groebner": set(), "sage.ideal.eliminate": {"eliminate"},
         "sage.ideal.membership": {"polynomial"}, "sage.ideal.quotientDimension": set(),
-        "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set()}[operation]
+        "sage.ideal.syzygies": set(), "sage.ideal.hilbertSeries": set(),
+        "sage.ideal.radical": set(), "sage.ideal.primaryDecomposition": set(),
+        "sage.ideal.hilbertPolynomial": set()}[operation]
     _require_exact_fields(params, common | extra | ({"budget"} if "budget" in params else set()), "ideal request")
     if params["format"] != "math3d.sage-ideal-operation" or type(params["schemaVersion"]) is not int or params["schemaVersion"] != 1:
         raise SageRequestError("Ideal request requires the versioned exact schema.")
     budget = params.get("budget")
+    if operation in ("sage.ideal.radical", "sage.ideal.primaryDecomposition",
+            "sage.ideal.hilbertPolynomial") and budget is None:
+        raise SageRequestError("Advanced ideal invariants require an explicit bounded budget profile.")
     if "budget" in params:
         _require_exact_fields(budget, IDEAL_BUDGETS["standard"].keys(), "ideal budget")
         expected = IDEAL_BUDGETS.get(budget.get("profile")) if isinstance(budget.get("profile"), str) else None
@@ -553,7 +558,9 @@ def _ideal_operation(operation, params):
         raise SageRequestError("Ideal operations require one to six distinct generators.")
     if budget is not None and (len(variables) > budget["maxVariables"] or len(generators) > budget["maxGenerators"]):
         raise SageRequestError(f"{budget['profile']} ideal budget exceeded: variables or generators.")
-    if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries") and \
+    if operation in ("sage.ideal.syzygies", "sage.ideal.hilbertSeries",
+            "sage.ideal.radical", "sage.ideal.primaryDecomposition",
+            "sage.ideal.hilbertPolynomial") and \
             (len(variables) > 2 or len(generators) > 3):
         raise SageRequestError("Advanced ideal operations require at most two variables and three generators.")
     ring = PolynomialRing(QQ, variables, order=order)
@@ -576,7 +583,30 @@ def _ideal_operation(operation, params):
     ideal = ring.ideal(polys)
     shared = {"format": "math3d.sage-ideal-result", "schemaVersion": 1,
         "target": params["target"], "targetHash": params["targetHash"], "idealHash": params["idealHash"]}
-    if operation == "sage.ideal.syzygies":
+    if operation == "sage.ideal.radical":
+        radical = ideal.radical()
+        if radical.radical() != radical or not all(generator in radical for generator in polys):
+            raise SageRequestError("Radical validation failed for the pinned ideal.")
+        result = {**shared, "basis": [str(item) for item in radical.groebner_basis()]}
+    elif operation == "sage.ideal.primaryDecomposition":
+        components = ideal.primary_decomposition()
+        if not components or len(components) > 32 or not all(component.is_primary() for component in components):
+            raise SageRequestError("Primary decomposition is unavailable or exceeds its component cap.")
+        intersection = components[0]
+        for component in components[1:]:
+            intersection = intersection.intersection(component)
+        if intersection != ideal:
+            raise SageRequestError("Primary components do not reconstruct the pinned ideal.")
+        result = {**shared,
+            "components": [[str(item) for item in component.groebner_basis()] for component in components],
+            "associatedPrimes": [[str(item) for item in component.radical().groebner_basis()]
+                for component in components]}
+    elif operation == "sage.ideal.hilbertPolynomial":
+        if order == "lex" or not ideal.is_homogeneous():
+            raise SageRequestError("Hilbert polynomial requires a graded monomial order and a homogeneous ideal.")
+        result = {**shared, "hilbertPolynomial": str(ideal.hilbert_polynomial()),
+            "dimension": int(ideal.dimension()), "grading": "standard"}
+    elif operation == "sage.ideal.syzygies":
         module = ideal.syzygy_module()
         rows = [[str(value) for value in row] for row in module.rows()]
         if module.ncols() != len(polys) or any(sum(row[index] * polys[index]
@@ -615,6 +645,11 @@ def _ideal_operation(operation, params):
         raise SageRequestError("Syzygy output exceeds the bounded result budget.")
     if "series" in result and (len(result["series"]) > 1024 or len(result["numerator"]) > 1024):
         raise SageRequestError("Hilbert output exceeds the bounded result budget.")
+    if "hilbertPolynomial" in result and len(result["hilbertPolynomial"]) > 1024:
+        raise SageRequestError("Hilbert polynomial exceeds the bounded result budget.")
+    if "components" in result and any(len(basis) > 128 or any(len(item) > 1024 for item in basis)
+            for collection in (result["components"], result["associatedPrimes"]) for basis in collection):
+        raise SageRequestError("Primary decomposition exceeds the bounded result budget.")
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > (budget["maxResultBytes"] if budget else 65536):
         raise SageRequestError("Ideal result exceeds the bounded output budget.")
     return _success(operation, result)
@@ -960,6 +995,12 @@ if _ideal_capability_available("syzygy_module"):
 if _ideal_capability_available("is_homogeneous") and _ideal_capability_available("hilbert_series") and \
         _ideal_capability_available("hilbert_numerator"):
     OPERATIONS["sage.ideal.hilbertSeries"] = _ideal_operation
+if _ideal_capability_available("radical"):
+    OPERATIONS["sage.ideal.radical"] = _ideal_operation
+if _ideal_capability_available("primary_decomposition") and _ideal_capability_available("is_primary"):
+    OPERATIONS["sage.ideal.primaryDecomposition"] = _ideal_operation
+if _ideal_capability_available("is_homogeneous") and _ideal_capability_available("hilbert_polynomial"):
+    OPERATIONS["sage.ideal.hilbertPolynomial"] = _ideal_operation
 if group_capability_available():
     OPERATIONS["sage.group.dossier"] = lambda op, params: _success(op, analyze_finite_group(params))
 

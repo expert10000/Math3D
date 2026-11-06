@@ -398,6 +398,23 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
       checks.push(check("Grading and Hilbert computation", "reported",
         "The pinned generators passed the conservative homogeneous syntax gate; Sage checked homogeneity and computed the standard graded quotient series."));
       break;
+    case "sage.ideal.radical":
+      facts.push(fact("Ideal generators", list(params.generators)), fact("Radical Gröbner basis", list(result.basis)));
+      checks.push(check("Radical computation", "reported",
+        "Sage checked that the returned ideal is radical and contains the pinned generators; the app checks its shape and identity."));
+      break;
+    case "sage.ideal.primaryDecomposition":
+      facts.push(fact("Primary components", matrix(result.components)),
+        fact("Associated primes", matrix(result.associatedPrimes)));
+      checks.push(check("Primary decomposition", "reported",
+        "Sage checked each component is primary and their intersection equals the pinned ideal. Associated primes are the component radicals."));
+      break;
+    case "sage.ideal.hilbertPolynomial":
+      facts.push(fact("Standard graded quotient", "R/I"),
+        fact("Hilbert polynomial", text(result.hilbertPolynomial)), fact("Krull dimension", text(result.dimension)));
+      checks.push(check("Grading and Hilbert computation", "reported",
+        "The pinned generators passed the conservative homogeneous syntax gate; Sage checked homogeneity and computed the Hilbert polynomial."));
+      break;
     case "sage.matrix.linear_dossier":
       facts.push(fact("Source matrix", matrix(result.sourceMatrix)), fact("Rank", text(result.rank)),
         fact("RREF", matrix(result.reducedRowEchelonForm)),

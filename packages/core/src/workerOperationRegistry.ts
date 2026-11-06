@@ -59,6 +59,9 @@ export type Math3DWorkerOperationId =
   | "ideal.quotient-dimension"
   | "ideal.syzygies"
   | "ideal.hilbert-series"
+  | "ideal.radical"
+  | "ideal.primary-decomposition"
+  | "ideal.hilbert-polynomial"
   | "number-theory.gcd"
   | "number-theory.mod-inverse"
   | "sage.console.execute";
@@ -458,6 +461,18 @@ const definitions = [
   {
     id: "ideal.hilbert-series",
     title: "Graded quotient Hilbert series",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.radical", title: "Saved ideal radical",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.primary-decomposition", title: "Saved ideal primary decomposition",
+    canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "ideal.hilbert-polynomial", title: "Graded quotient Hilbert polynomial",
     canonicalOwner: "sage", method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

@@ -71,6 +71,9 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.ideal.quotientDimension": { type: "ideal.quotient-dimension", label: "quotient dimension", cancelled: "Sage quotient job cancelled." },
   "sage.ideal.syzygies": { type: "ideal.syzygies", label: "generator syzygies", cancelled: "Sage syzygy job cancelled." },
   "sage.ideal.hilbertSeries": { type: "ideal.hilbert-series", label: "quotient Hilbert series", cancelled: "Sage Hilbert job cancelled." },
+  "sage.ideal.radical": { type: "ideal.radical", label: "ideal radical", cancelled: "Sage radical job cancelled." },
+  "sage.ideal.primaryDecomposition": { type: "ideal.primary-decomposition", label: "primary decomposition", cancelled: "Sage decomposition job cancelled." },
+  "sage.ideal.hilbertPolynomial": { type: "ideal.hilbert-polynomial", label: "quotient Hilbert polynomial", cancelled: "Sage Hilbert job cancelled." },
 } as const;
 export type BrokeredSageOperation = keyof typeof SAGE_JOB_OPERATIONS;
 export const isBrokeredSageOperation = (operation: string): operation is BrokeredSageOperation =>

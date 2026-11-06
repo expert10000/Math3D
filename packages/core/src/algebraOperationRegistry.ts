@@ -74,6 +74,9 @@ export type AlgebraOperationArguments = {
   "sage.ideal.quotientDimension": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
   "sage.ideal.syzygies": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
   "sage.ideal.hilbertSeries": Readonly<{ budgetProfile?: SageIdealBudgetProfile }>;
+  "sage.ideal.radical": Readonly<{ budgetProfile: SageIdealBudgetProfile }>;
+  "sage.ideal.primaryDecomposition": Readonly<{ budgetProfile: SageIdealBudgetProfile }>;
+  "sage.ideal.hilbertPolynomial": Readonly<{ budgetProfile: SageIdealBudgetProfile }>;
 };
 export type AlgebraOperationResult = SageAlgebraReconstructionResult | SageAlgebraDomainResult | PolynomialDossierResult |
   SageMatrixDossierResult | SageIntegerMatrixFormsResult | SageIdealResult | SageNumberFieldResult | SageGaloisResult |
@@ -153,6 +156,12 @@ export const ALGEBRA_OPERATION_REGISTRY: readonly AlgebraOperationDefinition[] =
     ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
   definition("sage.ideal.hilbertSeries", "Quotient Hilbert series", "ideal", ["quotient-ring"], "any", "ideal.hilbert-series",
     ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.radical", "Ideal radical", "ideal", ["ideal"], "any", "ideal.radical",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.primaryDecomposition", "Primary decomposition and associated primes", "ideal", ["ideal"], "any", "ideal.primary-decomposition",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
+  definition("sage.ideal.hilbertPolynomial", "Quotient Hilbert polynomial", "ideal", ["quotient-ring"], "any", "ideal.hilbert-polynomial",
+    ["docker"], "math3d.sage-ideal-operation/v1", "math3d.sage-ideal-result/v1"),
 ]);
 const byId = new Map(ALGEBRA_OPERATION_REGISTRY.map((item) => [item.id, item]));
 if (byId.size !== ALGEBRA_OPERATION_REGISTRY.length) throw new Error("Duplicate algebra operation ID.");
@@ -197,12 +206,15 @@ const domainReason = (project: Math3DProject, record: AlgebraObjectRecord,
         ring.definition.variables.length > 3 || ideal.definition.generators.length > 6 ||
         ideal.definition.generators.some((item) => item.length > 128))
       return "Bounded ideal operations require a pinned QQ polynomial ring with at most three variables and six short generators.";
-    if ((operation.id === "sage.ideal.syzygies" || operation.id === "sage.ideal.hilbertSeries") &&
+    if ((operation.id === "sage.ideal.syzygies" || operation.id === "sage.ideal.hilbertSeries" ||
+        operation.id === "sage.ideal.radical" || operation.id === "sage.ideal.primaryDecomposition" ||
+        operation.id === "sage.ideal.hilbertPolynomial") &&
         (ring.definition.variables.length > 2 || ideal.definition.generators.length > 3))
       return "Advanced ideal operations require at most two variables and three generators.";
-    if (operation.id === "sage.ideal.hilbertSeries" && (ring.definition.monomialOrder === "lex" ||
+    if ((operation.id === "sage.ideal.hilbertSeries" || operation.id === "sage.ideal.hilbertPolynomial") &&
+        (ring.definition.monomialOrder === "lex" ||
         !isProvablyHomogeneousIdeal(ideal.definition.generators, ring.definition.variables)))
-      return "Hilbert series requires a graded monomial order and provably homogeneous generators.";
+      return "Hilbert invariants require a graded monomial order and provably homogeneous generators.";
   }
   if (operation.domain === "any") return null;
   const polynomial = record.definition.kind === "polynomial-ring" ? record.definition : null;

@@ -38,7 +38,8 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
-  "sage.ideal.syzygies", "sage.ideal.hilbertSeries",
+  "sage.ideal.syzygies", "sage.ideal.hilbertSeries", "sage.ideal.radical",
+  "sage.ideal.primaryDecomposition", "sage.ideal.hilbertPolynomial",
 ]);
 const algebraParams = (domains = false) => {
   const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
@@ -163,7 +164,11 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
       ambientRing: { objectId: "math3d:algebra:ring", revision: 1 }, ambientHash: "sha256:fixture",
       variables: ["x", "y"], monomialOrder: "lex", generators: ["x*y-1", "y-1"],
       ...(operation === "sage.ideal.eliminate" ? { eliminate: ["x"] } : {}),
-      ...(operation === "sage.ideal.membership" ? { polynomial: "x-1" } : {}) }
+      ...(operation === "sage.ideal.membership" ? { polynomial: "x-1" } : {}),
+      ...(["sage.ideal.radical", "sage.ideal.primaryDecomposition", "sage.ideal.hilbertPolynomial"].includes(operation)
+        ? { budget: { format: "math3d.sage-ideal-budget", schemaVersion: 1, profile: "standard",
+          maxVariables: 2, maxGenerators: 3, maxDegree: 8, maxTermsPerPolynomial: 48,
+          maxResultBytes: 16384, wallTimeMs: 15000 } } : {}) }
     : operation.startsWith("sage.matrix.") ? { matrix: [[1, 2], [3, 4]], variable: "lambda" }
     : operation === "sage.groebner.compute" ? { polynomials: ["x^2+y^2-1", "x-y"], variables: ["x", "y"] }
     : operation === "sage.numberTheory.gcd" ? { values: ["84", "30"] }

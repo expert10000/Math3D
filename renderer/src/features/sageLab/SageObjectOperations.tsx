@@ -21,7 +21,9 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   if (id === "sage.ellipticCurve.dossier") return { point: text.trim() ?
     text.split(",").map((item) => item.trim()) as [string, string] : null };
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
-      id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
+      id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries" ||
+      id === "sage.ideal.radical" || id === "sage.ideal.primaryDecomposition" ||
+      id === "sage.ideal.hilbertPolynomial") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
   if (id === "sage.ideal.membership") return { polynomial: text.trim(), budgetProfile };
   if (id === "sage.algebra.inspectDomains") return { other };
@@ -156,7 +158,10 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       {idealSelection && <div data-testid="cas-ideal-budget-warning" style={{ display: "grid", gap: 5,
         border: "1px solid #d9b46b", background: "#fff9ed", borderRadius: 6, padding: 8 }}>
         <strong>Ideal operation budget</strong>
-        <span>{idealCost?.warning}</span>
+        <span>{idealCost?.warning}{selected === "sage.ideal.primaryDecomposition"
+          ? " Primary decomposition can grow sharply; this run is subject to a component cap and hard wall-time limit."
+          : selected === "sage.ideal.radical" || selected === "sage.ideal.hilbertPolynomial"
+            ? " This exact invariant may require expensive Gröbner work and is subject to the hard wall-time limit." : ""}</span>
         <label>Budget profile <select aria-label="Ideal budget profile" value={budgetProfile}
           onChange={(event) => { setBudgetProfile(event.target.value as SageIdealBudgetProfile);
             setExpandedAcknowledged(false); }}>
@@ -176,6 +181,8 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
       {selected !== "sage.algebra.reconstruct" && selected !== "sage.group.dossier" && selected !== "sage.module.invariantFactors" && selected !== "sage.chain.homology" && selected !== "sage.algebra.inspectDomains" &&
         selected !== "sage.ideal.groebner" && selected !== "sage.ideal.quotientDimension" &&
         selected !== "sage.ideal.syzygies" && selected !== "sage.ideal.hilbertSeries" &&
+        selected !== "sage.ideal.radical" && selected !== "sage.ideal.primaryDecomposition" &&
+        selected !== "sage.ideal.hilbertPolynomial" &&
         <label>{selected === "sage.ideal.eliminate" ? "Variables to eliminate, comma separated" :
           selected === "sage.ideal.membership" ? "Polynomial to test" :
           selected === "sage.numberTheory.gcd" ? "Integers, comma separated" :

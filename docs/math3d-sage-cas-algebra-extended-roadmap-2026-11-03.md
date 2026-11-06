@@ -370,6 +370,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G05 implementation update (2026-11-06):** The [G05 acceptance record](evidence/sage-g05-elliptic-visualizations-2026-11-06.md) adds separate visualizations to the saved curve dossier in CAS and Number Theory. Over `QQ`, a bounded numerical real-branch sample can overlay the exact tangent, third intersection and reflected double point from saved G04 evidence. Over prime `GF(p)` with p ≤ 31, the diagram enumerates every affine residue point plus infinity and labels group addition as modular algebra, with no connecting real chord. Larger supported G04 fields give an explicit diagram limit. The views derive from pinned Project records and saved evidence after an independent reopen. The next gate is **SAGE-G06**, advanced ideal invariants with capability and cost limits.
 
+**G06 implementation update (2026-11-06):** The [G06 acceptance record](evidence/sage-g06-ideal-invariants-2026-11-06.md) adds capability-gated radical, primary decomposition with associated primes, and graded quotient Hilbert polynomial operations to saved ideals. Each request pins its ideal and ambient ring, requires an explicit standard or expanded budget, and is limited to two variables and three generators. The worker caps output, stops jobs at the budget wall time, checks radical containment/idempotence and primary component reconstruction, and reports unavailable methods through the route manifest. The Inspector distinguishes worker-reported mathematics from app-checked schema and identity. The next feature is **SAGE-G07**, representations and group actions.
+
 ---
 
 ## 3. P0 — Algebra object registry
