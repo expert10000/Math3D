@@ -291,6 +291,8 @@ type Props = {
   onAppendVectorField3DDerivedOperation?: (inputId: string,
     operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
+  onSaveVectorField3DTensorGlyphs?: (study: import("@math3d/core").TensorGlyphStudy,
+    transfers: ReadonlyMap<string, import("@math3d/core").VerifiedVectorFieldTransfer>) => void;
   onPromoteVectorField3DDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenVectorField3DProjectResults?: (resultId: string) => void;
   onPromoteVectorField3DIsosurface?: (document: VectorField3DDocument,
@@ -329,6 +331,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DTemporalSpectrum,
   onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
+  onSaveVectorField3DTensorGlyphs,
   onPromoteVectorField3DIsosurface,
   savedScientificFields = [], savedScientificScenes = EMPTY_SCIENTIFIC_SCENES,
   onSaveScientificScene, onRemoveScientificScene,
@@ -4273,6 +4276,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onOpenTemporalSpectrum={result => void openTemporalSpectrum(result)}
           onRebaseDerivedSource={onRebaseVectorField3DDerivedSource}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
+          onSaveTensorGlyphs={onSaveVectorField3DTensorGlyphs}
           onPromoteDerivedIsosurface={onPromoteVectorField3DDerivedIsosurface}
           onOpenProjectResults={onOpenVectorField3DProjectResults}
           onPromoteIsosurface={onPromoteVectorField3DIsosurface}

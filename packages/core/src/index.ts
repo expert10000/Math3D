@@ -167,6 +167,7 @@ export * from "./vectorField3DTopologyStudies";
 export * from "./vectorField3DPoincareReturn";
 export * from "./vectorField3DLyapunov";
 export * from "./vectorField3DManifoldPatch";
+export * from "./projectTensorGlyphs";
 export * from "./projectPoincareGraph";
 export * from "./vectorField3DComparison";
 export * from "./derivedFieldDocument";
