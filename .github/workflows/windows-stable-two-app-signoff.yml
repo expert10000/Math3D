@@ -10,7 +10,7 @@ on:
       theory_lab_nsis_variant:
         type: choice
         description: Theory Lab NSIS template variant; diagnostic only
-        options: [standard, without-store]
+        options: [standard, without-store, nsis313]
         default: standard
 
 jobs:
@@ -143,6 +143,9 @@ jobs:
               node_modules/app-builder-lib/templates/nsis/multiUser.nsh qi40-nsis-template.json
             if ($LASTEXITCODE -ne 0) { throw 'QI-40 NSIS template preparation failed' }
           }
+          if ($env:QI40_NSIS_VARIANT -eq 'nsis313') {
+            & ../scripts/prepare-qi40-nsis313.ps1 -OutputRoot (Join-Path $env:RUNNER_TEMP 'qi40-nsis313')
+          }
           python -m venv .venv
           if ($LASTEXITCODE -ne 0) { throw 'Theory Lab venv creation failed' }
           & .\.venv\Scripts\python.exe -m pip install -c workers/quantum-python/requirements.lock -e workers/quantum-python
@@ -197,6 +200,20 @@ jobs:
           retention-days: 90
           compression-level: 0
           path: candidate/*
+
+      - name: Identify embedded NSIS components for diagnostic variant
+        if: ${{ inputs.theory_lab_nsis_variant == 'nsis313' }}
+        shell: pwsh
+        run: |
+          & scripts/inspect-quantum-installer-components.ps1 `
+            -CandidateDirectory (Join-Path $PWD 'candidate') `
+            -EvidencePath (Join-Path $PWD 'test-results/qi40-nsis313-components.json')
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() && inputs.theory_lab_nsis_variant == 'nsis313' }}
+        with:
+          name: qi40-nsis313-components
+          if-no-files-found: ignore
+          path: test-results/qi40-nsis313-components.json
 
       - name: Record build failure
         if: failure()
