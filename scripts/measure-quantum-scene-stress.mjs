@@ -47,7 +47,7 @@ try {
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
   const e2eHookAblation = process.env.MATH3D_STRESS_ABLATE_E2E_HOOKS === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
-  const heapComposition = async (traceRetainers = false) => {
+  const heapComposition = async (traceRetainers = false, collectNodeIds = false, baselineNodeIds = null) => {
     await cdp.send("HeapProfiler.collectGarbage");
     const chunks = [];
     const collect = ({ chunk }) => chunks.push(chunk);
@@ -62,8 +62,11 @@ try {
     const sizeIndex = fields.indexOf("self_size");
     assert(typeIndex >= 0 && nameIndex >= 0 && sizeIndex >= 0, "Unknown V8 heap snapshot fields");
     const types = snapshot.snapshot.meta.node_types[typeIndex];
+    const idIndex = fields.indexOf("id");
+    assert(idIndex >= 0, "Unknown V8 heap snapshot node ID field");
     const byType = {};
     const byConstructor = {};
+    const nodeIds = collectNodeIds ? new Set() : null;
     for (let offset = 0; offset < snapshot.nodes.length; offset += stride) {
       const type = types[snapshot.nodes[offset + typeIndex]];
       const bytes = snapshot.nodes[offset + sizeIndex];
@@ -71,6 +74,7 @@ try {
       typeRow.count++;
       typeRow.selfBytes += bytes;
       if (!["object", "native", "array"].includes(type)) continue;
+      if (nodeIds && ["object", "array"].includes(type)) nodeIds.add(snapshot.nodes[offset + idIndex]);
       const rawName = snapshot.strings[snapshot.nodes[offset + nameIndex]];
       const name = /^[A-Za-z_$][A-Za-z0-9_$ .<>-]{0,79}$/.test(rawName) ? rawName : "[other]";
       const key = `${type}:${name}`;
@@ -79,7 +83,8 @@ try {
       row.selfBytes += bytes;
     }
     return { byType, byConstructor,
-      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot) } : {}) };
+      ...(nodeIds ? { nodeIds } : {}),
+      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot, baselineNodeIds) } : {}) };
   };
   const snapshot = async () => {
     if (e2eHookAblation) await page.evaluate(() => {
@@ -108,7 +113,7 @@ try {
       canvasCount: await page.locator("canvas").count() };
   };
   const baseline = await snapshot();
-  const baselineHeapComposition = diagnoseHeap ? await heapComposition() : null;
+  const baselineHeapComposition = diagnoseHeap ? await heapComposition(false, true) : null;
   const cycles = [];
   for (let i = 0; i < requestedCycles; i++) {
     const id = i % 2 ? "hydrogen-2p" : "rice-mele-bands";
@@ -148,7 +153,7 @@ try {
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
   }
   const final = await snapshot();
-  const finalHeapComposition = diagnoseHeap ? await heapComposition(true) : null;
+  const finalHeapComposition = diagnoseHeap ? await heapComposition(true, false, baselineHeapComposition.nodeIds) : null;
   const workbookAutosaveStorage = await page.evaluate(() => ({
     currentBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosave.v1") ?? "").length,
     journalBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosaveJournal.v1") ?? "").length,
