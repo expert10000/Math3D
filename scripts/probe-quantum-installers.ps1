@@ -2,10 +2,12 @@ param(
   [Parameter(Mandatory = $true)][string]$CandidateDirectory,
   [string]$InstallRoot = "",
   [string]$EvidencePath = "",
-  [switch]$Math3DOnly
+  [switch]$Math3DOnly,
+  [switch]$TheoryLabOnly
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Math3DOnly -and $TheoryLabOnly) { throw 'Choose only one single-app probe scope' }
 $repo = Split-Path -Parent $PSScriptRoot
 $temporaryBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) { $InstallRoot = Join-Path $temporaryBase 'qi40-installer-probe' }
@@ -28,7 +30,7 @@ $evidence = [ordered]@{
   schema = 'math3d/qi40-installer-probe/v1'
   checkedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
   environment = 'clean Windows runner'
-  scope = if ($Math3DOnly) { 'Math3D' } else { 'both apps' }
+  scope = if ($Math3DOnly) { 'Math3D' } elseif ($TheoryLabOnly) { 'Theory Lab' } else { 'both apps' }
   imageVersion = $env:ImageVersion
   osVersion = (Get-CimInstance Win32_OperatingSystem).Version
   status = 'started'
@@ -101,9 +103,18 @@ try {
   New-Item -ItemType Directory -Path $root | Out-Null
   $mathInstall = Join-Path $root 'Math3D'
   $labInstall = Join-Path $root 'TheoryLab'
-  Invoke-ProbeInstall $mathInstaller $mathInstall 'Math3D'
-  $evidence.checks.math3dInstall = 'passed'
-  if ($Math3DOnly) {
+  if (-not $TheoryLabOnly) {
+    Invoke-ProbeInstall $mathInstaller $mathInstall 'Math3D'
+    $evidence.checks.math3dInstall = 'passed'
+  } else { $evidence.checks.math3dInstall = 'not requested' }
+  if ($TheoryLabOnly) {
+    Invoke-ProbeInstall $labInstaller $labInstall 'Theory Lab'
+    $evidence.checks.theoryLabInstall = 'passed'
+    $requiredFiles = @(
+      (Join-Path $labInstall 'Quantum Hamiltonian Lab.exe'),
+      (Join-Path $labInstall 'resources/quantum-worker/quantum-worker.exe')
+    )
+  } elseif ($Math3DOnly) {
     $evidence.checks.theoryLabInstall = 'not requested'
     $requiredFiles = @(
       (Join-Path $mathInstall 'Math3D.exe'),

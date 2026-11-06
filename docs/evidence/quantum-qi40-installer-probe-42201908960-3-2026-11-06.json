@@ -1,0 +1,23 @@
+{
+  "schema": "math3d/qi40-installer-probe/v1",
+  "checkedAtUtc": "2026-11-06T10:20:53.6670109Z",
+  "environment": "clean Windows runner",
+  "imageVersion": "20261103.298.1",
+  "osVersion": "10.0.26100",
+  "status": "passed",
+  "candidate": {
+    "buildRunId": "42123298884",
+    "manifestSha256": "b704d1bce3fa8446908584b74c7cbcdc4b2463f178ca092b24bcacaa71ee5472",
+    "math3dCommit": "49485e816fcfc7b46d5da1634c6746a631343f8e",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535",
+    "theoryLabInstallerSha256": "18bfd9bd243b101a2ba2b6a3586e3e080b6e3223866af57853e32024b9fc3d81"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "math3dInstall": "passed",
+    "theoryLabInstall": "passed",
+    "packagedWorkers": "passed"
+  },
+  "failure": null
+}

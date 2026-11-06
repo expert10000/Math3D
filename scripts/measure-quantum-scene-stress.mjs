@@ -23,6 +23,41 @@ try {
   const page = await app.firstWindow();
   await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
   const cdp = await page.context().newCDPSession(page);
+  const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
+  if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
+  const heapComposition = async () => {
+    await cdp.send("HeapProfiler.collectGarbage");
+    const chunks = [];
+    const collect = ({ chunk }) => chunks.push(chunk);
+    cdp.on("HeapProfiler.addHeapSnapshotChunk", collect);
+    try { await cdp.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false }); }
+    finally { cdp.off("HeapProfiler.addHeapSnapshotChunk", collect); }
+    const snapshot = JSON.parse(chunks.join(""));
+    const fields = snapshot.snapshot.meta.node_fields;
+    const stride = fields.length;
+    const typeIndex = fields.indexOf("type");
+    const nameIndex = fields.indexOf("name");
+    const sizeIndex = fields.indexOf("self_size");
+    assert(typeIndex >= 0 && nameIndex >= 0 && sizeIndex >= 0, "Unknown V8 heap snapshot fields");
+    const types = snapshot.snapshot.meta.node_types[typeIndex];
+    const byType = {};
+    const byConstructor = {};
+    for (let offset = 0; offset < snapshot.nodes.length; offset += stride) {
+      const type = types[snapshot.nodes[offset + typeIndex]];
+      const bytes = snapshot.nodes[offset + sizeIndex];
+      const typeRow = byType[type] ??= { count: 0, selfBytes: 0 };
+      typeRow.count++;
+      typeRow.selfBytes += bytes;
+      if (!["object", "native", "array"].includes(type)) continue;
+      const rawName = snapshot.strings[snapshot.nodes[offset + nameIndex]];
+      const name = /^[A-Za-z_$][A-Za-z0-9_$ .<>-]{0,79}$/.test(rawName) ? rawName : "[other]";
+      const key = `${type}:${name}`;
+      const row = byConstructor[key] ??= { count: 0, selfBytes: 0 };
+      row.count++;
+      row.selfBytes += bytes;
+    }
+    return { byType, byConstructor };
+  };
   const snapshot = async () => {
     await cdp.send("HeapProfiler.collectGarbage");
     const heap = await cdp.send("Runtime.getHeapUsage");
@@ -44,6 +79,7 @@ try {
       canvasCount: await page.locator("canvas").count() };
   };
   const baseline = await snapshot();
+  const baselineHeapComposition = diagnoseHeap ? await heapComposition() : null;
   const cycles = [];
   for (let i = 0; i < requestedCycles; i++) {
     const id = i % 2 ? "hydrogen-2p" : "rice-mele-bands";
@@ -81,9 +117,21 @@ try {
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
   }
   const final = await snapshot();
+  const finalHeapComposition = diagnoseHeap ? await heapComposition() : null;
+  const constructorGrowth = diagnoseHeap ? Object.keys({
+    ...baselineHeapComposition.byConstructor, ...finalHeapComposition.byConstructor,
+  }).map(name => ({ name,
+    baseline: baselineHeapComposition.byConstructor[name] ?? { count: 0, selfBytes: 0 },
+    final: finalHeapComposition.byConstructor[name] ?? { count: 0, selfBytes: 0 },
+  })).map(row => ({ ...row, deltaCount: row.final.count - row.baseline.count,
+    deltaSelfBytes: row.final.selfBytes - row.baseline.selfBytes }))
+    .sort((a, b) => b.deltaSelfBytes - a.deltaSelfBytes).slice(0, 30) : null;
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
     installed: Boolean(installedExe),
-    baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss };
+    baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
+    ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,
+      finalByType: finalHeapComposition.byType, topConstructorGrowth: constructorGrowth,
+      method: "V8 heap snapshot node self sizes after forced GC; shallow bytes, not retained-size attribution" } } : {}) };
   const bytes = JSON.stringify(result, null, 2) + "\n";
   if (process.argv[2]) await writeFile(resolve(process.argv[2]), bytes);
   process.stdout.write(bytes);

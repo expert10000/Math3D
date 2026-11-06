@@ -97,6 +97,7 @@ import { VectorField3DMultiIsosurfacePanel } from "./VectorField3DMultiIsosurfac
 import { VectorField3DLocalTopologyPanel } from "./VectorField3DLocalTopologyPanel";
 import { VectorField3DTopologyStudiesPanel } from "./VectorField3DTopologyStudiesPanel";
 import { VectorField3DAdvancedTopologyPanel } from "./VectorField3DAdvancedTopologyPanel";
+import { VectorField3DTensorGlyphPanel } from "./VectorField3DTensorGlyphPanel";
 import { VectorField3DComparisonPanel } from "./VectorField3DComparisonPanel";
 import { VectorField3DFrameUnitPanel } from "./VectorField3DFrameUnitPanel";
 import { VectorField3DTimeSourcePanel } from "./VectorField3DTimeSourcePanel";
@@ -156,6 +157,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveTemporalSpectrum, onRebaseDerivedSource,
   onOpenTemporalSpectrum,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
+  onSaveTensorGlyphs,
   libraryEntries = [], libraryBusy = false, libraryError = "", onBrowseLibraryScene,
   onOpenLibraryExample, onOpenLibraryEntry, onRemoveLibraryScene, onRecheckLibraryScene,
   fieldLayer, linkedProbe = null, onLinkedProbeChange, onOpenFieldDetails,
@@ -235,6 +237,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
   onAppendDerivedOperation?: (inputId: string, operation: import("@math3d/core").DerivedFieldOperation,
     options: { stableKey: string; title: string; secondaryInputId?: string }) => void;
+  onSaveTensorGlyphs?: (study: import("@math3d/core").TensorGlyphStudy,
+    transfers: ReadonlyMap<string, import("@math3d/core").VerifiedVectorFieldTransfer>) => void;
   onPromoteDerivedIsosurface?: (surface: import("@math3d/core").DerivedScalarIsosurface) => void;
   onOpenProjectResults?: (resultId: string) => void;
   onPromoteIsosurface?: (document: VectorField3DDocument,
@@ -2044,6 +2048,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     {!fieldLayer && <VectorField3DLICPanel document={document} slice={visibleRegionSlice ?? slice} />}
     {!fieldLayer && <VectorField3DDerivedOperationsPanel document={document} project={project}
       onAppend={onAppendDerivedOperation} />}
+    {!fieldLayer && <VectorField3DTensorGlyphPanel document={document} project={project}
+      onSave={onSaveTensorGlyphs} />}
     {!fieldLayer && <VectorField3DDerivedIsosurfacePanel document={document} project={project}
       onPromote={onPromoteDerivedIsosurface} />}
     {!fieldLayer && <VectorField3DMultiIsosurfacePanel document={document}

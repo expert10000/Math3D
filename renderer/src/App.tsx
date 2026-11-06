@@ -821,6 +821,7 @@ import {
   upsertProjectVectorField3DTopologyStudy,
   upsertProjectPoincareReturnMap,
   upsertProjectLyapunov,
+  upsertProjectTensorGlyphs,
   promoteProjectLocalManifoldPatch,
   projectLocalManifoldMeshStatus,
   upsertProjectTemporalFieldSource,
@@ -90932,6 +90933,13 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectLyapunov(active, study);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTensorGlyphs={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTensorGlyphs(active, study, transfers);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
             }}
