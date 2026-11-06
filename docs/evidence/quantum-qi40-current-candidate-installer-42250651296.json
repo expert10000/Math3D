@@ -1,0 +1,36 @@
+{
+  "schema": "math3d/qi40-installer-probe/v1",
+  "checkedAtUtc": "2026-11-06T16:16:46.2670484Z",
+  "environment": "clean Windows runner",
+  "scope": "Math3D",
+  "imageVersion": "20261030.294.1",
+  "osVersion": "10.0.26100",
+  "status": "passed",
+  "candidate": {
+    "buildRunId": "42232023714",
+    "manifestSha256": "b75d1e5644c2d1532e059e235f45d0c325d6a4caa5e6c56f111883ecbd873f35",
+    "math3dCommit": "ffc4f4a6832cd765947c0786f9b3f025c512cc19",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "c157d9aeeabe141290f5c7420efed86c0dd4b5b0ae9a3eff78057c61e1b06bf0",
+    "theoryLabInstallerSha256": "800005a71d993e45d49cd6b36ed032c7464c65620d7ecca372700457365f8154"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "math3dInstall": "passed",
+    "theoryLabInstall": "not requested",
+    "packagedWorkers": "passed"
+  },
+  "failure": null,
+  "debugger": {
+    "cdbAvailable": true,
+    "dumpAnalysis": "not attempted"
+  },
+  "crashDump": {
+    "configured": true,
+    "dumpType": "mini",
+    "configuredFor": [
+      "Math3D Setup 1.7.0.exe"
+    ],
+    "files": []
+  }
+}
