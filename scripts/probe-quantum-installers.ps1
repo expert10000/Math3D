@@ -70,7 +70,7 @@ function Get-SanitizedDumpStack([string]$dump) {
   $stdout = Join-Path $root 'cdb-stdout.txt'
   $stderr = Join-Path $root 'cdb-stderr.txt'
   # k omits the argument columns emitted by kb, leaving a stable Call Site.
-  $arguments = "-z `"$dump`" -c `".exr -1; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; q`""
+  $arguments = "-z `"$dump`" -c `".exr -1; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; .echo QI40_STACK_WORDS_BEGIN; dds @esp L40; .echo QI40_STACK_WORDS_END; q`""
   $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   if (-not $process.WaitForExit(180000)) {
@@ -88,13 +88,24 @@ function Get-SanitizedDumpStack([string]$dump) {
   $stderrText = Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue
   $moduleTokens = @([regex]::Matches($raw, '\b[A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+(?:0x)?[0-9a-f]{3,})') |
     ForEach-Object { $_.Value } | Select-Object -Unique -First 20)
+  $stackWordSection = [regex]::Match($raw, '(?s)QI40_STACK_WORDS_BEGIN\r?\n(.*?)\r?\nQI40_STACK_WORDS_END')
+  $stackWordSymbols = if ($stackWordSection.Success) {
+    @($stackWordSection.Groups[1].Value -split '\r?\n' | ForEach-Object {
+      if ($_ -match '^\s*[0-9a-fA-F]{8}\s+[0-9a-fA-F]{8}\s+([A-Za-z][A-Za-z0-9_.-]*![A-Za-z0-9_?$@<>.+-]+)') {
+        $Matches[1]
+      }
+    } | Select-Object -First 30)
+  } else { @() }
   $diagnosticTags = @('Unable to', 'Failed to', 'No stack', 'Stack unwind', 'Unable to get',
     'Symbol search path') | Where-Object { $raw -match [regex]::Escape($_) }
   return [ordered]@{ status = if ($frames.Count) { 'stack summarized' } else { 'no stack frames parsed' };
     exceptionCode = $exceptionCode; frames = $frames; stackLineCount = $stackLines.Count;
     moduleTokens = $moduleTokens; commandMarkers = [ordered]@{
       begin = [bool]($raw -match '(?m)^QI40_STACK_BEGIN\r?$');
-      end = [bool]($raw -match '(?m)^QI40_STACK_END\r?$') };
+      end = [bool]($raw -match '(?m)^QI40_STACK_END\r?$');
+      stackWordsBegin = [bool]($raw -match '(?m)^QI40_STACK_WORDS_BEGIN\r?$');
+      stackWordsEnd = [bool]($raw -match '(?m)^QI40_STACK_WORDS_END\r?$') };
+    stackWordSymbols = $stackWordSymbols;
     diagnosticTags = $diagnosticTags; stdoutChars = ([string]$raw).Length;
     stderrChars = ([string]$stderrText).Length;
     debuggerExitCode = $process.ExitCode }
