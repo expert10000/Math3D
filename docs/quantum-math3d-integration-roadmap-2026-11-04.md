@@ -1043,6 +1043,8 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Cleanup and native rollback follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-cleanup-installer-native-rollback-2026-11-06.md) add captured-root OrbitControls cleanup and guarded Three.js renderer texture-listener cleanup. A local 80-cycle source run held WebGL context wrappers at 2 and texture wrappers at 10, with zero leftover canvases; total renderer heap still grew about 11 MB. The first Windows matrix reproduced `0xC0000005` in both archived Math3D and Theory Lab setup executables at the same `System.dll` offset. Its new source job lacked the separate renderer install, and the native rollback test failed a Geometry ID lookup before reaching rollback; both harness issues are being corrected. Release freeze remains withheld pending repeat Windows results, installed cleanup validation, a complete memory budget, and installer fault diagnosis.
 
+**Repeat matrix (2026-11-06):** The [second Windows run](https://github.com/expert10000/Math3D/actions/runs/42214279473) passed all twelve installer probes and rechecked the archived installed renderer's 40-cycle leak. The new source job built but a first-run overlay blocked its Palette click; the rollback test read before an asynchronous save completed. Both harness paths were corrected and a local 80-cycle run with the revised source harness held contexts and textures at baseline. Installed native rollback and Windows source memory confirmation remain pending another run.
+
 ### Cross-repository ownership and evidence for the first cut
 
 | Deliverable | Owning repository | Required predecessor | Evidence to attach |

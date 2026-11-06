@@ -12,8 +12,8 @@ const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-stress-"));
 const installedExe = process.env.MATH3D_INSTALLED_STRESS_EXE
   ? resolve(process.env.MATH3D_INSTALLED_STRESS_EXE) : null;
 if (installedExe) await access(installedExe);
-const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile,
-  ...(installedExe ? { MATH3D_E2E: "1", MATH3D_E2E_USER_DATA_DIR: join(profile, "user-data") } : {}) };
+const env = { ...process.env, MATH3D_E2E: "1", MATH3D_E2E_PROFILE_ROOT: profile,
+  ...(installedExe ? { MATH3D_E2E_USER_DATA_DIR: join(profile, "user-data") } : {}) };
 delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try {
@@ -85,7 +85,9 @@ try {
   const cycles = [];
   for (let i = 0; i < requestedCycles; i++) {
     const id = i % 2 ? "hydrogen-2p" : "rice-mele-bands";
-    await page.getByRole("button", { name: "Palette", exact: true }).click();
+    // A first-run coachmark can cover the toolbar on a fresh CI profile. This
+    // harness measures scene lifecycle, so dispatch the palette button directly.
+    await page.getByRole("button", { name: "Palette", exact: true }).click({ force: true });
     await page.getByPlaceholder("Type a command (examples: export, screenshot, run stage)...").fill("Verified quantum examples");
     await page.getByRole("button", { name: "Verified quantum examples", exact: true }).click();
     await page.getByTestId(`quantum-example-${id}`).click();
