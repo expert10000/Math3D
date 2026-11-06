@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { addMath3DProjectAlgebraEvidence, buildAlgebraOperationRequest, createAlgebraObjectRecord,
   createMath3DProject, createMixedWorkspaceDocument, createProjectAlgebraEvidence,
   createProjectAlgebraObjectId, parseMath3DProject, serializeMath3DProject,
@@ -84,8 +85,9 @@ describe("SAGE-H03 algebra reproducibility manifest", () => {
       writeFileSync(manifestFile, JSON.stringify(manifest));
       writeFileSync(projectFile, serializeMath3DProject(project));
       writeFileSync(workbookFile, JSON.stringify(book));
+      const checker = fileURLToPath(new URL("../../../scripts/check-sage-algebra-manifest.mjs", import.meta.url));
       const command = (extra: string[] = []) => spawnSync(process.execPath,
-        ["scripts/check-sage-algebra-manifest.mjs", manifestFile, projectFile, "--workbook", workbookFile, ...extra],
+        [checker, manifestFile, projectFile, "--workbook", workbookFile, ...extra],
         { cwd: resolve("."), encoding: "utf8", timeout: 30_000 });
       const good = command();
       expect(good.status, good.stderr).toBe(0);
