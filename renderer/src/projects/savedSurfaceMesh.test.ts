@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createMath3DProject, createMixedWorkspaceDocument, createSurfaceDocument } from "@math3d/core";
+import { createMath3DProject, createMixedWorkspaceDocument, createSurfaceDocument, readProjectCoordinateFrame,
+  upsertMath3DProjectComposition } from "@math3d/core";
 import { additionalRepresentationFixture } from "../../../tests/fixtures/unified-projects/additionalRepresentations";
 import { createSavedSurfaceMesh, savedSurfaceMeshLinks, savedMeshSurfaceSource } from "./savedSurfaceMesh";
 import { AdditionalProjectSession } from "./additionalProjectSession";
@@ -7,6 +8,9 @@ import { captureProjectResources, exportProjectPackage, parseProjectPackage } fr
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { SurfaceDocumentAdapter } from "../surfaceAnalysis/surfaceDocumentAdapter";
 import { surfaceEditorSeed, surfaceSourceFromEditor } from "./nativeProjectRestore";
+import { resolveProjectCompositionMember } from "../components/ProjectCompositionView";
+import { resolveLinkedCoordinateProbe } from "./projectLinkedCoordinateProbe";
+import { createProjectComparisonNote, inspectProjectComparisonNote } from "./projectComparisonNotes";
 
 const savedSurfaceFixture = () => {
   const f = additionalRepresentationFixture(), surface = f.docs.find(d => d.format === "math3d.surface-document" && d.source.representation === "weierstrass")!;
@@ -17,6 +21,48 @@ const savedSurfaceFixture = () => {
   return { surface, workspace, context, session: new AdditionalProjectSession(entry, surface, () => context) };
 };
 describe("saved Surface to Mesh", () => {
+  it("carries a declared frame into an exact saved Mesh snapshot and coordinate Note", () => {
+    const frame = { format: "math3d.coordinate-frame/v1", frame: "local", unit: "m",
+      axes: ["x", "y", "z"], handedness: "right" };
+    const surface = createSurfaceDocument({ stableKey: "declared-surface-snapshot", metadata: { title: "Declared patch" }, source: {
+      representation: "parametric", definition: { familyId: "custom", expressions: { x: "u", y: "v", z: "u*v" } },
+      domain: { kind: "parameter", u: { min: 0, max: 1, periodic: false }, v: { min: 0, max: 1, periodic: false } },
+      parameters: {}, units: { length: "m" }, orientation: { math3dCoordinateFrame: frame }, branchPolicy: null,
+    } });
+    const initial = createMixedWorkspaceDocument({ entries: [{ module: "surface", checkpoint: surface,
+      expected: surface.identity, replay: null }], activeDocumentIds: [surface.identity.id], relations: [],
+      results: [], artifacts: [], constructions: [], committedSelection: null });
+    const snapshot = createSavedSurfaceMesh(initial, surface, { documents: new Map([[surface.identity.id, surface]]) });
+    const mesh = snapshot.adapter.document();
+    expect(readProjectCoordinateFrame(mesh).value).toEqual(frame);
+    expect(snapshot.workspace.relations.at(-1)?.sources[0].structuralHash).toBe(surface.identity.structuralHash);
+    let project = createMath3DProject(snapshot.workspace, { stableKey: "declared-surface-snapshot-project" });
+    project = upsertMath3DProjectComposition(project, { id: "declared-surface-mesh", title: "Surface and saved Mesh",
+      mode: "side-by-side", members: [surface, mesh].map((document, index) => ({
+        documentId: document.identity.id, expected: document.identity, visible: true,
+        color: index ? "#e8793a" : "#3976d7", opacity: 1 })) as never });
+    const resources = captureProjectResources(project, item => snapshot.adapter.resources.bytes(item.reference as never));
+    const imported = parseProjectPackage(exportProjectPackage(project, resources));
+    const members = imported.project.compositions![0]!.members.map((member, slot) => ({
+      ...resolveProjectCompositionMember(imported.project, member, item => imported.resources.bytes(item)), slot: slot as 0 | 1 }));
+    const probe = resolveLinkedCoordinateProbe(members, { memberId: members[0]!.id, revision: members[0]!.revision,
+      hash: members[0]!.hash, point: { x: 0.25, y: 0.25, z: 0.0625 } })!;
+    expect(probe.target.id).toBe(mesh.identity.id);
+    const note = createProjectComparisonNote(imported.project, imported.project.compositions![0]!,
+      item => imported.resources.bytes(item), "Derived coordinate", "Source frame carried into the Mesh snapshot.",
+      1, "derived-surface-coordinate", probe);
+    expect(inspectProjectComparisonNote({ ...imported.project, notes: [note] }, note,
+      item => imported.resources.bytes(item)).status).toBe("current");
+    const invalidSource = { ...surface.source, orientation: { math3dCoordinateFrame: { ...frame, unit: "cm" } } };
+    const invalidSurface = createSurfaceDocument({ stableKey: "invalid-declared-surface-snapshot", source: invalidSource });
+    const invalidWorkspace = createMixedWorkspaceDocument({ ...initial, entries: [{ module: "surface",
+      checkpoint: invalidSurface, expected: invalidSurface.identity, replay: null }],
+      activeDocumentIds: [invalidSurface.identity.id] });
+    const invalidSnapshot = createSavedSurfaceMesh(invalidWorkspace, invalidSurface,
+      { documents: new Map([[invalidSurface.identity.id, invalidSurface]]) });
+    expect(readProjectCoordinateFrame(invalidSurface).status).toBe("invalid");
+    expect(readProjectCoordinateFrame(invalidSnapshot.adapter.document()).status).toBe("missing");
+  });
   it("retains the exact native custom source, ranges and units when creating and refreshing portable meshes", () => {
     const surface = createSurfaceDocument({ stableKey: "native-custom-mesh", metadata: { title: "Custom saddle" }, source: {
       representation: "parametric", definition: { familyId: "custom", expressions: { x: "u", y: "v", z: "u*v" } },

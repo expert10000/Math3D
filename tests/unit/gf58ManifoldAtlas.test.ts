@@ -5,6 +5,10 @@ import { buildMobileProjectExplorer } from
 import { computeVectorField3DExtendedManifold,
   computeVectorField3DLocalManifoldPatch, computeVectorField3DManifoldAtlas,
   computeProjectManifoldSurfaceCoverage,
+  computeProjectAtlasSeams, encodeMeshBuffers, measureAtlasSeams,
+  splitSavedAtlasCharts, projectAtlasSeamsStatus, upsertProjectAtlasSeams,
+  computeProjectAtlasRefinement, projectAtlasRefinementStatus,
+  upsertProjectAtlasRefinement,
   createMixedWorkspaceDocument, parseMath3DProject,
   promoteProjectExtendedManifold, promoteProjectManifoldAtlas,
   projectManifoldAtlasMeshStatus, projectManifoldAtlasStatus,
@@ -163,6 +167,50 @@ describe("GF-60 bounded atlas coverage refinement", () => {
     const withCoverage = parseMath3DProject(serializeMath3DProject(
       upsertProjectManifoldSurfaceCoverage(promoted.project, coverage,
         basePromoted.bytes, promoted.bytes)));
+    const seams = computeProjectAtlasSeams(withCoverage, coverage.publication!,
+      basePromoted.bytes, promoted.bytes);
+    expect(seams.status, seams.reason ?? "").toBe("measured");
+    const seamMeasurement = seams.publication!.summary.measurement as
+      { projectedOverlaps: number; hiddenGapEdges: number;
+        openBoundaryEdges: number; workTests: number };
+    expect(seamMeasurement.projectedOverlaps).toBeGreaterThan(0);
+    expect(seamMeasurement.workTests).toBeLessThanOrEqual(1_000_000);
+    expect(seams.publication!.summary.globalClaim).toBe("withheld");
+    const withSeams = parseMath3DProject(serializeMath3DProject(
+      upsertProjectAtlasSeams(withCoverage, seams,
+        basePromoted.bytes, promoted.bytes)));
+    const savedSeams = withSeams.workspace.results.find(item =>
+      item.resultId === seams.publication!.resultId)!;
+    expect(projectAtlasSeamsStatus(withSeams, savedSeams).status).toBe("withheld");
+    expect(projectAtlasSeamsStatus(withSeams, savedSeams,
+      basePromoted.bytes, promoted.bytes).status).toBe("current");
+    const refinement = computeProjectAtlasRefinement(withSeams, savedSeams,
+      basePromoted.bytes, promoted.bytes);
+    expect(refinement.status, refinement.reason ?? "").toBe("measured");
+    expect(refinement.publication!.summary.globalClaim).toBe("withheld");
+    const refinements = refinement.publication!.summary.attempts as
+      { refinedRecipe: { seedCount: number; rings: number;
+        solver: { absoluteTolerance: number } }; baseRecipe: {
+        seedCount: number; rings: number; solver: { absoluteTolerance: number } };
+        status: string; evaluations: number }[];
+    expect(refinements).toHaveLength(3);
+    expect(refinements.every(item => item.refinedRecipe.rings >
+      item.baseRecipe.rings && item.refinedRecipe.solver.absoluteTolerance <
+        item.baseRecipe.solver.absoluteTolerance)).toBe(true);
+    expect(refinements.some(item => item.refinedRecipe.seedCount >
+      item.baseRecipe.seedCount)).toBe(true);
+    expect(Number(refinement.publication!.summary.evaluations)).toBeLessThanOrEqual(1_000_000);
+    const withRefinement = parseMath3DProject(serializeMath3DProject(
+      upsertProjectAtlasRefinement(withSeams, refinement,
+        basePromoted.bytes, promoted.bytes)));
+    const savedRefinement = withRefinement.workspace.results.find(item =>
+      item.resultId === refinement.publication!.resultId)!;
+    expect(projectAtlasRefinementStatus(withRefinement, savedRefinement).status)
+      .toBe("withheld");
+    expect(projectAtlasRefinementStatus(withRefinement, savedRefinement,
+      basePromoted.bytes, promoted.bytes).status).toBe("current");
+    expect(() => computeProjectAtlasRefinement(withSeams, savedSeams,
+      basePromoted.bytes, promoted.bytes, () => true)).toThrow(/cancelled/);
     const coverageResult = withCoverage.workspace.results.find(item =>
       item.resultId === coverage.publication!.resultId)!;
     expect(projectManifoldSurfaceCoverageStatus(withCoverage, coverageResult).status)
@@ -202,6 +250,20 @@ describe("GF-60 bounded atlas coverage refinement", () => {
             checkpoint: changed, expected: changed.identity } : entry) }));
     expect(projectManifoldSurfaceCoverageStatus(staleCoverage, coverageResult,
       basePromoted.bytes, promoted.bytes).status).toBe("withheld");
+    const staleSeams = replaceMath3DProjectWorkspace(withSeams,
+      createMixedWorkspaceDocument({ ...withSeams.workspace,
+        entries: withSeams.workspace.entries.map(entry =>
+          entry.expected.id === changed.identity.id ? { ...entry,
+            checkpoint: changed, expected: changed.identity } : entry) }));
+    expect(projectAtlasSeamsStatus(staleSeams, savedSeams,
+      basePromoted.bytes, promoted.bytes).status).toBe("withheld");
+    const staleRefinement = replaceMath3DProjectWorkspace(withRefinement,
+      createMixedWorkspaceDocument({ ...withRefinement.workspace,
+        entries: withRefinement.workspace.entries.map(entry =>
+          entry.expected.id === changed.identity.id ? { ...entry,
+            checkpoint: changed, expected: changed.identity } : entry) }));
+    expect(projectAtlasRefinementStatus(staleRefinement, savedRefinement,
+      basePromoted.bytes, promoted.bytes).status).toBe("withheld");
     expect(computeVectorField3DManifoldAtlas(project, document, studies,
       { domain, overlapTolerance: .25, maxEvaluations: 1,
         baseAtlasResultId: base.publication!.resultId }).reason)
@@ -211,5 +273,28 @@ describe("GF-60 bounded atlas coverage refinement", () => {
       { domain, overlapTolerance: .25, maxEvaluations: 1_000_000,
         baseAtlasResultId: base.publication!.resultId });
     expect(noGain.reason).toBe("distinct-saved-charts-required");
+  });
+  it("detects separate 3D sheets hidden by identical projections", () => {
+    const positions = new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 0,
+      0, 0, 1, 1, 0, 1, 0, 1, 1 ]);
+    const bytes = encodeMeshBuffers({ positions,
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]) });
+    const charts = splitSavedAtlasCharts(bytes, [
+      { vertices: 3, faces: 1 }, { vertices: 3, faces: 1 }]);
+    const measured = measureAtlasSeams(charts, [0, 1], .1);
+    expect(measured.projectedOverlaps).toBe(6);
+    expect(measured.hiddenGapEdges).toBe(6);
+    expect(measured.classification).toBe("inconclusive");
+    const reversed = splitSavedAtlasCharts(encodeMeshBuffers({ positions:
+      new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 2, 3, 5, 4]) }), [
+      { vertices: 3, faces: 1 }, { vertices: 3, faces: 1 }]);
+    const orientation = measureAtlasSeams(reversed, [0, 1], .1);
+    expect(orientation.hiddenGapEdges).toBe(0);
+    expect(orientation.orientationConflicts).toBe(6);
+    expect(() => measureAtlasSeams(charts, [0, 1], .1, () => true))
+      .toThrow(/cancelled/);
   });
 });

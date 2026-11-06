@@ -50,6 +50,11 @@ export const readProjectCoordinateFrame = (document: KernelWorkspaceDocument): P
     new Set(marker.axes).size !== 3 || !["right", "left"].includes(String(marker.handedness))) return { status: "invalid" };
   if (document.format === "math3d.surface-document" && marker.unit !== (document.source.units as { length: string }).length)
     return { status: "invalid" };
+  if (document.format === "math3d.mesh-document" && record(document.source.origin) &&
+    document.source.origin.units !== undefined) {
+    const units = document.source.origin.units;
+    if (!record(units) || !label(units.length, 40) || marker.unit !== units.length) return { status: "invalid" };
+  }
   return { status: "declared", value: marker as ProjectCoordinateFrame };
 };
 export const sameProjectCoordinateFrame = (a: ProjectCoordinateFrame, b: ProjectCoordinateFrame): boolean =>

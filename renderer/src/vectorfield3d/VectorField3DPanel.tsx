@@ -156,10 +156,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
   onSaveTemporalSpectrum, onSaveTemporalFtLeField,
   onSaveTemporalSurfaceEvents, onSaveTemporalSurfaceLinkage, onSaveTemporalSurfaceTransport,
+  onSaveTemporalSurfaceIdentity,
   onPromoteManifoldContinuation,
   onPromoteExtendedManifold,
   onPromoteManifoldAtlas,
   onValidateAtlasCoverage,
+  onValidateAtlasSeams,
+  onValidateAtlasRefinement,
   onSaveTemporalFtleProfile, onOpenTemporalFtleProfile,
   onRebaseDerivedSource,
   onOpenTemporalSpectrum,
@@ -235,6 +238,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onPromoteExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
   onPromoteManifoldAtlas?: (study: import("@math3d/core").ManifoldAtlasStudy) => void;
   onValidateAtlasCoverage?: (baseResultId: string, refinedResultId: string) => Promise<import("@math3d/core").ManifoldSurfaceCoverageStudy>;
+  onValidateAtlasSeams?: (coverageResultId: string) => Promise<import("@math3d/core").AtlasSeamEvidence>;
+  onValidateAtlasRefinement?: (seamsResultId: string) => Promise<import("@math3d/core").AtlasRefinementEvidence>;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -250,6 +255,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveTemporalSurfaceLinkage?: (study: import("@math3d/core").TemporalSurfaceLinkageStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalSurfaceTransport?: (study: import("@math3d/core").TemporalSurfaceTransportStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSurfaceIdentity?: (study: import("@math3d/core").TemporalSurfaceIdentityStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
@@ -2836,7 +2843,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onPromoteContinuation={onPromoteManifoldContinuation}
         onPromoteExtended={onPromoteExtendedManifold}
         onPromoteAtlas={onPromoteManifoldAtlas}
-        onValidateAtlasCoverage={onValidateAtlasCoverage} />
+        onValidateAtlasCoverage={onValidateAtlasCoverage}
+        onValidateAtlasSeams={onValidateAtlasSeams}
+        onValidateAtlasRefinement={onValidateAtlasRefinement} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
@@ -2848,6 +2857,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSaveSurfaceEvents={onSaveTemporalSurfaceEvents}
         onSaveSurfaceLinkage={onSaveTemporalSurfaceLinkage}
         onSaveSurfaceTransport={onSaveTemporalSurfaceTransport}
+        onSaveSurfaceIdentity={onSaveTemporalSurfaceIdentity}
         onSaveFtleProfile={onSaveTemporalFtleProfile}
         onOpenFtleProfile={onOpenTemporalFtleProfile}
         onOpenSpectrum={onOpenTemporalSpectrum}

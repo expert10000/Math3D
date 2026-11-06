@@ -5,19 +5,22 @@ import { computeVectorField3DPoincareReturnMap, computeVectorField3DLyapunov,
   computeVectorField3DExtendedManifold, projectExtendedManifoldStatus,
   computeVectorField3DManifoldAtlas, projectManifoldAtlasStatus,
   projectManifoldSurfaceCoverageStatus,
+  projectAtlasSeamsStatus, projectAtlasRefinementStatus,
   structuralHash,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
   projectVectorField3DTopologyStatus, type AnalysisResultEnvelope,
   type LocalManifoldPatch, type ManifoldContinuationStudy,
   type ExtendedManifoldStudy, type ManifoldAtlasStudy,
   type ManifoldSurfaceCoverageStudy,
+  type AtlasSeamEvidence, type AtlasRefinementEvidence,
   type LyapunovStudy, type Math3DProject,
   type PoincareReturnStudy, type VectorField3DDocument } from "@math3d/core";
 
 export function VectorField3DAdvancedTopologyPanel({ document, project,
   onSaveReturn, onOpenReturn, onSaveLyapunov, onPromoteManifold,
   onPromoteContinuation, onPromoteExtended, onPromoteAtlas,
-  onValidateAtlasCoverage }: {
+  onValidateAtlasCoverage, onValidateAtlasSeams,
+  onValidateAtlasRefinement }: {
   document: VectorField3DDocument; project?: Math3DProject | null;
   onSaveReturn?: (study: PoincareReturnStudy) => void;
   onOpenReturn?: (result: AnalysisResultEnvelope) => void;
@@ -27,6 +30,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   onPromoteExtended?: (study: ExtendedManifoldStudy) => void;
   onPromoteAtlas?: (study: ManifoldAtlasStudy) => void;
   onValidateAtlasCoverage?: (baseResultId: string, refinedResultId: string) => Promise<ManifoldSurfaceCoverageStudy>;
+  onValidateAtlasSeams?: (coverageResultId: string) => Promise<AtlasSeamEvidence>;
+  onValidateAtlasRefinement?: (seamsResultId: string) => Promise<AtlasRefinementEvidence>;
 }) {
   const axes = document.source.axes;
   const center = axes.map(axis => (axis.min + axis.max) / 2);
@@ -51,6 +56,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   const [extended, setExtended] = useState<ExtendedManifoldStudy | null>(null);
   const [atlas, setAtlas] = useState<ManifoldAtlasStudy | null>(null);
   const [surfaceCoverage, setSurfaceCoverage] = useState<ManifoldSurfaceCoverageStudy | null>(null);
+  const [seamEvidence, setSeamEvidence] = useState<AtlasSeamEvidence | null>(null);
+  const [refinementEvidence, setRefinementEvidence] = useState<AtlasRefinementEvidence | null>(null);
   const [atlasDomainFraction, setAtlasDomainFraction] = useState(1);
   const [atlasOverlapTolerance, setAtlasOverlapTolerance] = useState(.1);
   const [extraTime, setExtraTime] = useState(.5);
@@ -67,7 +74,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
     ["vector3d.poincare-return-map", "vector3d.lyapunov-finite-time",
       "vector3d.local-manifold-patch", "vector3d.manifold-continuation",
       "vector3d.extended-manifold", "vector3d.manifold-atlas",
-      "vector3d.manifold-surface-coverage"]
+      "vector3d.manifold-surface-coverage", "vector3d.atlas-seams",
+      "vector3d.atlas-refinement"]
       .includes(result.provenance.operation.type) &&
     result.provenance.source.documentId === document.identity.id) ?? [];
   const constructions = document.workspace?.equilibriumConstructions ?? [];
@@ -83,6 +91,12 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
     (item.summary.memberResultIds as unknown[] | undefined)?.length === 3 &&
     item.summary.baseAtlasResultId === savedBaseAtlas?.resultId &&
     projectManifoldAtlasStatus(project!, item).status === "current");
+  const savedCoverage = saved.find(item => item.provenance.operation.type ===
+    "vector3d.manifold-surface-coverage" &&
+    item.summary.refinedResultId === savedRefinedAtlas?.resultId);
+  const savedSeams = saved.find(item => item.provenance.operation.type ===
+    "vector3d.atlas-seams" &&
+    item.summary.coverageResultId === savedCoverage?.resultId);
   const replayExtended = (results: readonly AnalysisResultEnvelope[]) => {
     const pinned = project!.workspace.entries.find(item => item.module === "vector3d" &&
       item.expected.id === results[0]?.provenance.source.documentId)?.checkpoint;
@@ -342,6 +356,29 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
           `fine boundary gap cells. Global claim withheld.` :
           `Surface coverage unavailable: ${surfaceCoverage.reason}. Global claim withheld.`}
       </p>}
+      {savedCoverage && <button type="button" disabled={!onValidateAtlasSeams}
+        onClick={async () => {
+          try { setMessage("");
+            setSeamEvidence(await onValidateAtlasSeams!(savedCoverage.resultId)); }
+          catch (cause) { setMessage(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Measure saved atlas seams in 3D</button>}
+      {seamEvidence && <p role="status" data-testid="gf63-seam-status">
+        {seamEvidence.status === "measured" ?
+          `Saved 3D seam evidence: ${String((seamEvidence.publication!.summary.measurement as
+            { hiddenGapEdges: number }).hiddenGapEdges)} hidden gap edges. ` +
+          "Global claim withheld." : `Seams unavailable: ${seamEvidence.reason}.`}
+      </p>}
+      {savedSeams && <button type="button" disabled={!onValidateAtlasRefinement}
+        onClick={async () => {
+          try { setMessage("");
+            setRefinementEvidence(await onValidateAtlasRefinement!(savedSeams.resultId)); }
+          catch (cause) { setMessage(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Refine saved atlas charts</button>}
+      {refinementEvidence && <p role="status" data-testid="gf64-refinement-status">
+        {refinementEvidence.status === "measured" ?
+          `Saved atlas refinement: ${String(refinementEvidence.publication!.summary.classification)}; ` +
+          "global claim withheld." : `Refinement unavailable: ${refinementEvidence.reason}.`}
+      </p>}
     </div>
     {!!message && <p role="status">{message}</p>}
     {saved.map(result => {
@@ -358,6 +395,10 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
             projectManifoldAtlasStatus(project!, result) :
           type === "vector3d.manifold-surface-coverage" ?
             projectManifoldSurfaceCoverageStatus(project!, result) :
+          type === "vector3d.atlas-seams" ?
+            projectAtlasSeamsStatus(project!, result) :
+          type === "vector3d.atlas-refinement" ?
+            projectAtlasRefinementStatus(project!, result) :
           projectLocalManifoldPatchStatus(project!, result);
       return <div key={result.resultId} data-testid="gf44-gf46-saved-result">
         {type} · {status.status === "current" ? "current" :

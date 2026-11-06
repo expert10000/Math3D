@@ -14,14 +14,15 @@ import type { MeshReplayBundle } from "../mesh/meshReplay";
 import type { SurfaceMeshSource } from "../mesh/surfaceMesh";
 import { MIXED_REPLAY_FORMATS, verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { projectResourceInventory, type ProjectResourceReader } from "./projectResources";
+import { resolveExactProjectCompositionSource } from "./projectCompositionSource";
 
 /** Adds an authored frame to one owning Geometry source and pins a new comparison to its exact revision. */
 export function declareLegacyGeometryCoordinateFrame(project: Math3DProject, composition: ProjectComposition,
   slot: 0 | 1, frame: ProjectCoordinateFrame): { project: Math3DProject; comparison: ProjectComposition } {
   const saved = project.compositions?.find(item => item.id === composition.id);
-  if (!saved || structuralHash(saved) !== structuralHash(composition) || composition.mode !== "overlay" ||
-    composition.alignment?.frame !== frame.frame || composition.alignment.unit !== frame.unit)
-    throw new TypeError("Save and reopen the exact overlay before declaring its source frame.");
+  if (!saved || structuralHash(saved) !== structuralHash(composition) ||
+    composition.mode === "overlay" && (composition.alignment?.frame !== frame.frame || composition.alignment.unit !== frame.unit))
+    throw new TypeError("Save and reopen the exact comparison before declaring its source frame.");
   const member = composition.members[slot];
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
   if (!entry || entry.module !== "geometry" || entry.checkpoint.format !== "math3d.geometry-document" ||
@@ -41,8 +42,7 @@ export function declareLegacyGeometryCoordinateFrame(project: Math3DProject, com
   const source = { ...verified.source, extensions: { ...verified.source.extensions, math3dCoordinateFrame: frame } };
   if (readProjectCoordinateFrame({ ...verified, source } as GeometryDocument).status !== "declared")
     throw new TypeError("The coordinate-frame declaration is invalid.");
-  const other = replayed.get(composition.members[slot === 0 ? 1 : 0].documentId);
-  if (!other) throw new TypeError("The other comparison source is unavailable.");
+  const other = resolveExactProjectCompositionSource(project, composition.members[slot === 0 ? 1 : 0], replayed);
   const otherFrame = readProjectCoordinateFrame(other);
   if (otherFrame.status === "invalid" || otherFrame.value && !sameProjectCoordinateFrame(frame, otherFrame.value))
     throw new TypeError("The proposed axes or handedness disagree with the other source declaration.");
@@ -97,8 +97,7 @@ export function declareLegacySurfaceCoordinateFrame(project: Math3DProject, comp
   const source = { ...verified.source, orientation: { ...verified.source.orientation, math3dCoordinateFrame: frame } };
   if (readProjectCoordinateFrame({ ...verified, source } as SurfaceDocument).status !== "declared")
     throw new TypeError("The coordinate-frame declaration is invalid.");
-  const other = replayed.get(composition.members[slot === 0 ? 1 : 0].documentId);
-  if (!other) throw new TypeError("The other comparison source is unavailable.");
+  const other = resolveExactProjectCompositionSource(project, composition.members[slot === 0 ? 1 : 0], replayed);
   const otherFrame = readProjectCoordinateFrame(other);
   if (otherFrame.status === "invalid" || otherFrame.value && !sameProjectCoordinateFrame(frame, otherFrame.value))
     throw new TypeError("The proposed frame, axes, or handedness disagree with the other source declaration.");
@@ -128,9 +127,9 @@ export function declareLegacyMeshCoordinateFrame(project: Math3DProject, composi
   slot: 0 | 1, frame: ProjectCoordinateFrame, read: ProjectResourceReader):
   { project: Math3DProject; comparison: ProjectComposition } {
   const saved = project.compositions?.find(item => item.id === composition.id);
-  if (!saved || structuralHash(saved) !== structuralHash(composition) || composition.mode !== "overlay" ||
-    composition.alignment?.frame !== frame.frame || composition.alignment.unit !== frame.unit)
-    throw new TypeError("Save and reopen the exact overlay before declaring its source frame.");
+  if (!saved || structuralHash(saved) !== structuralHash(composition) ||
+    composition.mode === "overlay" && (composition.alignment?.frame !== frame.frame || composition.alignment.unit !== frame.unit))
+    throw new TypeError("Save and reopen the exact comparison before declaring its source frame.");
   const member = composition.members[slot];
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
   if (!entry || entry.module !== "mesh" || entry.checkpoint.format !== "math3d.mesh-document" ||
@@ -153,8 +152,7 @@ export function declareLegacyMeshCoordinateFrame(project: Math3DProject, composi
   const source = { ...verified.source, origin: { ...origin, math3dCoordinateFrame: frame } };
   if (readProjectCoordinateFrame({ ...verified, source } as MeshDocument).status !== "declared")
     throw new TypeError("The coordinate-frame declaration is invalid.");
-  const other = replayed.get(composition.members[slot === 0 ? 1 : 0].documentId);
-  if (!other) throw new TypeError("The other comparison source is unavailable.");
+  const other = resolveExactProjectCompositionSource(project, composition.members[slot === 0 ? 1 : 0], replayed);
   const otherFrame = readProjectCoordinateFrame(other);
   if (otherFrame.status === "invalid" || otherFrame.value && !sameProjectCoordinateFrame(frame, otherFrame.value))
     throw new TypeError("The proposed axes or handedness disagree with the other source declaration.");
