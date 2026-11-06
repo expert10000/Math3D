@@ -51,4 +51,25 @@ describe("native Geometry project restore", () => {
     expect(compatibility.reasons).toContain("Saved construction/script state has preview support; the active editor adapters do not restore it.");
     expect(projectConstructionsEditable({ ...withPromotion, constructions: [] })).toBe(true);
   });
+  it("restores a bounded independent quantum primitive copy beside procedural constructions", () => {
+    const original = fixture(), points = Array.from({ length: 600 }, (_, index) =>
+      ({ id: `p${index}`, x: index / 100, y: 0, z: 0 }));
+    const source = { ...original.source, objects: [], geometry: { points },
+      extensions: { "quantum.promotion/v1": { conversion: "geometry",
+        sceneFingerprint: "a".repeat(64), runId: "run", resultSha256: "b".repeat(64) } } };
+    const promoted = createGeometryDocument({ source });
+    const base = workspace(original);
+    const withPromotion = createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: promoted,
+        expected: promoted.identity, replay: null }] });
+    expect(projectConstructionsEditable(withPromotion)).toBe(true);
+    expect(inspectProjectCompatibility(createMath3DProject(withPromotion,
+      { stableKey: "quantum-primitive-copy" })).canOpenWorkspace).toBe(true);
+    const unqualified = createGeometryDocument({ source: { ...source, extensions: {} } });
+    const withoutProvenance = createMixedWorkspaceDocument({ ...base,
+      entries: [...base.entries, { module: "geometry", checkpoint: unqualified,
+        expected: unqualified.identity, replay: null }] });
+    expect(inspectProjectCompatibility(createMath3DProject(withoutProvenance,
+      { stableKey: "unqualified-primitive-copy" })).canOpenWorkspace).toBe(false);
+  });
 });

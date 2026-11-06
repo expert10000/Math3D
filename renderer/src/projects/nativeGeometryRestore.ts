@@ -37,9 +37,20 @@ export const geometrySourceFromEditor = (saved: GeometryDocument, live: Geometry
   return { ...saved.source, objects: live.source.objects, extensions };
 };
 export const geometryDisplayFromEditor = (saved: GeometryDocument, live: GeometryDocument) => ({ ...saved.display, objects: live.display.objects, constructions: live.display.constructions });
+export const independentQuantumPrimitiveCopy = (document: GeometryDocument) => {
+  const provenance = document.source.extensions["quantum.promotion/v1"];
+  return record(provenance) && provenance.conversion === "geometry" &&
+    typeof provenance.sceneFingerprint === "string" && /^[a-f0-9]{64}$/.test(provenance.sceneFingerprint) &&
+    !!document.source.geometry && !document.source.objects.length && !document.source.surfaces.length &&
+    !document.source.constructions.length && !document.source.relationships.length;
+};
 export const projectConstructionsEditable = (workspace: MixedWorkspaceDocument) => {
   if (!workspace.constructions.length) return true;
-  if (workspace.entries.filter((entry) => entry.module === "geometry").length !== 1) return false;
+  // A standalone quantum primitive copy has no procedural targets for the
+  // legacy global construction state. Keep exactly one procedural Geometry.
+  if (workspace.entries.filter(entry => entry.module === "geometry" &&
+    !(entry.checkpoint.format === "math3d.geometry-document" &&
+      independentQuantumPrimitiveCopy(entry.checkpoint))).length !== 1) return false;
   const seed = (value: unknown) => record(value) && Array.isArray(value.nodes) && value.nodes.length > 0 && value.nodes.every((node: unknown) => record(node) && typeof node.id === "string") && Array.isArray(value.checkDefs) && value.checkDefs.every((check: unknown) => record(check) && typeof check.id === "string");
   const counts = new Map<string, number>();
   return workspace.constructions.every((entry) => {
