@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments, sameProjectCoordinateFrame,
+  inspectProjectCompositionAvailability, readProjectCoordinateFrame, qualifyProjectOverlayCoordinates, retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments,
+  retainedSurfaceGenerationDocuments, sameProjectCoordinateFrame,
   type ProjectCoordinateFrame, type ProjectCoordinateFrameRead, type GeometryDocument, type GeometryScene, type Math3DProject,
   type MeshDocument, type SurfaceDocument, type ProjectComposition, type ProjectCompositionMember, type MixedWorkspaceEntry,
   SAGE_LOCUS_SAMPLE_EXTENSION, parseSampledAlgebraicLocusGeometryDocument,
@@ -55,6 +56,13 @@ const generationChoices = (entry: MixedWorkspaceEntry): GenerationChoice[] => {
         expected: document.identity, label: `Retained snapshot r${document.identity.revision}` });
     }
   }
+  if (entry.module === "surface") {
+    for (const document of retainedSurfaceGenerationDocuments(entry)) {
+      const isCheckpoint = sameGeneration(document.identity, entry.checkpoint.identity);
+      if (!isCheckpoint) choices.push({ value: `retained:${document.identity.revision}:${document.identity.structuralHash}`,
+        expected: document.identity, label: `Retained snapshot r${document.identity.revision}` });
+    }
+  }
   return choices;
 };
 const titleOf = (project: Math3DProject, id: string): string => {
@@ -78,6 +86,8 @@ export const resolveProjectCompositionMember = (project: Math3DProject, member: 
     entry.module === "mesh" ? retainedMeshGenerationDocuments(entry).find(document =>
       sameGeneration(document.identity, member.expected)) :
     entry.module === "geometry" ? retainedGeometryGenerationDocuments(entry).find(document =>
+      sameGeneration(document.identity, member.expected)) :
+    entry.module === "surface" ? retainedSurfaceGenerationDocuments(entry).find(document =>
       sameGeneration(document.identity, member.expected)) : undefined;
   if (!currentSelected && !retainedDocument)
     throw new TypeError("The selected source has a different saved revision and no matching retained checkpoint or snapshot.");
@@ -302,7 +312,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
   const resolved = useMemo(() => {
     if (!composition) return { members: [] as RenderMember[], error: "Choose two different saved documents, or two retained generations of one document. Overlay also requires a declared frame and unit." };
     const statuses = inspectProjectCompositionAvailability(composition, project.workspace);
-    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry"))
+    if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry" && status !== "retained-surface"))
       return { members: [] as RenderMember[], error: `Source status: ${statuses.join(" / ")}. Unavailable historical bytes are not reconstructed.` };
     if (composition.mode === "overlay" && composition.members.some(member => project.workspace.entries.find(entry => entry.expected.id === member.documentId)?.module === "surface"))
       return { members: [] as RenderMember[], error: "Overlay currently accepts Mesh and Geometry sources only. Use side-by-side for a Surface." };
@@ -342,8 +352,6 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
       entry.module === "geometry" ? "math3d.geometry-replay.v1" : "math3d.surface-replay.v1")) &&
       entry.expected.revision === member.expected.revision && entry.expected.structuralHash === member.expected.structuralHash &&
       resolved.members[slot]?.coordinates.status === "missing" &&
-      (entry.module !== "surface" || entry.checkpoint.identity.revision === member.expected.revision &&
-        entry.checkpoint.identity.structuralHash === member.expected.structuralHash) &&
       (entry.module !== "mesh" || entry.checkpoint.format === "math3d.mesh-document" &&
         !!entry.checkpoint.source.origin && typeof entry.checkpoint.source.origin === "object" &&
         !Array.isArray(entry.checkpoint.source.origin));
@@ -441,8 +449,7 @@ export const ProjectCompositionView: React.FC<{ project: Math3DProject; readReso
         data-testid={`project-composition-declare-frame-${slot}`} disabled={declaringFrame || !declarationValid || mode === "side-by-side" && !frame.trim()}
         onClick={() => { setDeclaringFrame(true); setMessage("");
           const sourceEntry = project.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
-          const sourceUnit = sourceEntry?.module === "surface" && sourceEntry.checkpoint.format === "math3d.surface-document" ?
-            (sourceEntry.checkpoint.source.units as { length: string }).length : unit.trim();
+          const sourceUnit = sourceEntry?.module === "surface" ? resolved.members.find(item => item.slot === slot)?.param?.unit ?? "" : unit.trim();
           const declaration: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: frame.trim(), unit: sourceUnit,
             axes: declaredAxes, handedness: declaredHandedness };
           void onDeclareCoordinateFrame(composition, slot, declaration).then(id => {

@@ -43,10 +43,12 @@ frame. The Surface orientation receives the authored declaration in a new
 replay-backed revision. The original comparison keeps its exact checkpoint,
 and a new comparison pins the declared revision. Reopen either after restart.
 
-This path requires the current Surface revision to equal its retained replay
-checkpoint. It cannot recover an unretained Surface revision. The declaration
-records the author's coordinate claim; it does not independently verify the
-Surface's physical alignment.
+If the current Surface revision is beyond its replay checkpoint, the frame
+edit explicitly retains that exact pre-declaration revision as a selectable
+snapshot, within an eight-generation budget. The original comparison then
+reopens against the retained snapshot. Earlier unmarked revisions stay
+unavailable. The declaration records the author's coordinate claim; it does
+not independently verify the Surface's physical alignment.
 
 ## PC24 linked coordinate probe
 

@@ -286,13 +286,19 @@ test("PC05 records a legacy Surface frame in its owner and reopens both exact co
         definition: { familyId: "literal", expressions: { x: "u", y: "v", z: "0.3*(u*u+v*v)" } } } });
     const declared = surface("Declared Surface", { math3dCoordinateFrame: frame });
     const legacy = surface("Legacy Surface", {});
-    const workspace = core.createMixedWorkspaceDocument({ entries: [declared, legacy].map(document =>
-      ({ module: "surface", checkpoint: document, expected: document.identity, replay: null })),
+    const edited = new SurfaceDocumentAdapter(legacy);
+    const current = edited.commitSource({ ...legacy.source, definition: { ...legacy.source.definition,
+      expressions: { x: "u", y: "v", z: "0.4*(u*u+v*v)" } } });
+    const replay = edited.replayBundle();
+    const workspace = core.createMixedWorkspaceDocument({ entries: [
+      { module: "surface", checkpoint: declared, expected: declared.identity, replay: null },
+      { module: "surface", checkpoint: replay.checkpoint, expected: current.identity,
+        replay: { format: "math3d.surface-replay.v1", payload: replay } }],
       activeDocumentIds: [declared.identity.id, legacy.identity.id], constructions: [], relations: [], results: [],
       artifacts: [], committedSelection: null });
     let project = core.createMath3DProject(workspace, { stableKey: "pc05-surface-frame", title: "Legacy Surface frame" });
     project = core.upsertMath3DProjectComposition(project, { id: "pc05-surface-frame-pair", title: "Legacy Surface pair",
-      mode: "side-by-side", members: [declared, legacy].map((document, index) => ({
+      mode: "side-by-side", members: [declared, current].map((document, index) => ({
         documentId: document.identity.id, expected: document.identity, visible: true,
         color: index ? "#e8793a" : "#3976d7", opacity: 1 })) });
     ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
@@ -316,17 +322,19 @@ test("PC05 records a legacy Surface frame in its owner and reopens both exact co
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.compositions).toHaveLength(2);
     expect(saved.workspace.entries[1].checkpoint.identity).toEqual(legacy.identity);
-    expect(saved.workspace.entries[1].expected.revision).toBe(legacy.identity.revision + 1);
+    expect(saved.workspace.entries[1].expected.revision).toBe(current.identity.revision + 1);
     await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
-    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained checkpoint r1");
-    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r2" });
-    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r2");
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained snapshot r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r3" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r3");
     await view.getByRole("button", { name: "Close" }).click();
     await page.reload();
     await page.getByTestId("projects-toggle").click();
     await panel.getByTestId("project-open-composition").click();
-    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r2" });
-    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("retained snapshot r2");
+    await view.getByLabel("Saved composition").selectOption({ label: "Legacy Surface pair · source frame r3" });
+    await expect(view.getByRole("region", { name: /B: Legacy Surface/ })).toContainText("current r3");
   } finally { await closeSurfaceApp(ctx); }
 });
 

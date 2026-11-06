@@ -1,6 +1,8 @@
 import {
-  createMixedWorkspaceDocument, MAX_RETAINED_GEOMETRY_GENERATIONS, MAX_RETAINED_MESH_GENERATIONS, readProjectCoordinateFrame, replaceMath3DProjectWorkspace,
-  retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments, sameProjectCoordinateFrame, structuralHash,
+  createMixedWorkspaceDocument, MAX_RETAINED_GEOMETRY_GENERATIONS, MAX_RETAINED_MESH_GENERATIONS, MAX_RETAINED_SURFACE_GENERATIONS,
+  readProjectCoordinateFrame, replaceMath3DProjectWorkspace,
+  retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments, retainedSurfaceGenerationDocuments,
+  sameProjectCoordinateFrame, structuralHash,
   upsertMath3DProjectComposition, type GeometryDocument, type Math3DProject, type MeshDocument,
   type MeshResourceReference, type ProjectComposition, type ProjectCoordinateFrame, type SurfaceDocument,
 } from "@math3d/core";
@@ -76,10 +78,12 @@ export function declareLegacySurfaceCoordinateFrame(project: Math3DProject, comp
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
   if (!entry || entry.module !== "surface" || entry.checkpoint.format !== "math3d.surface-document" ||
     entry.replay && entry.replay.format !== MIXED_REPLAY_FORMATS.surface ||
-    entry.checkpoint.identity.revision !== member.expected.revision ||
-    entry.checkpoint.identity.structuralHash !== member.expected.structuralHash ||
     entry.expected.revision !== member.expected.revision || entry.expected.structuralHash !== member.expected.structuralHash)
-    throw new TypeError("Only a current Surface source retained as its exact replay checkpoint can receive this frame declaration.");
+    throw new TypeError("Only a current replay-verified Surface source can receive this frame declaration.");
+  const retainCurrent = entry.checkpoint.identity.revision !== member.expected.revision ||
+    entry.checkpoint.identity.structuralHash !== member.expected.structuralHash;
+  if (retainCurrent && (!entry.replay || retainedSurfaceGenerationDocuments(entry).length >= MAX_RETAINED_SURFACE_GENERATIONS))
+    throw new TypeError("The current Surface cannot be retained before this frame declaration.");
   const replayed = verifyMixedWorkspaceReplay(project.workspace);
   const verified = replayed.get(member.documentId);
   if (!verified || verified.format !== "math3d.surface-document" ||
@@ -100,13 +104,17 @@ export function declareLegacySurfaceCoordinateFrame(project: Math3DProject, comp
     throw new TypeError("The proposed frame, axes, or handedness disagree with the other source declaration.");
   const adapter = entry.replay ? SurfaceDocumentAdapter.fromReplayBundle(entry.replay.payload as unknown as SurfaceReplayBundle) :
     new SurfaceDocumentAdapter(verified);
-  const updated = adapter.commitSource(source);
+  const updated = adapter.commitSource(source, retainCurrent ? verified.identity.structuralHash : undefined);
   const replay = adapter.replayBundle();
   const workspace = createMixedWorkspaceDocument({ ...project.workspace, entries: project.workspace.entries.map(item =>
     item === entry ? { ...item, checkpoint: replay.checkpoint, expected: updated.identity,
       replay: { format: MIXED_REPLAY_FORMATS.surface, payload: replay as never } } : item) });
   const revised = replaceMath3DProjectWorkspace(project, workspace);
   verifyMixedWorkspaceReplay(revised.workspace);
+  if (retainCurrent && !retainedSurfaceGenerationDocuments(workspace.entries.find(item => item.expected.id === member.documentId)!)
+    .some(document => document.identity.revision === member.expected.revision &&
+      document.identity.structuralHash === member.expected.structuralHash))
+    throw new TypeError("The prior Surface revision was not retained.");
   const comparison: ProjectComposition = { ...composition,
     id: `composition:frame:${structuralHash([composition.id, member.expected, updated.identity]).slice(7, 39)}`,
     title: `${composition.title.slice(0, 135)} · source frame r${updated.identity.revision}`,
