@@ -3,6 +3,8 @@ import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNot
 import { projectVectorField3DTopologyStatus, projectPoincareReturnStatus,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
   projectLocalManifoldMeshStatus, projectTensorGlyphStatus,
+  projectTemporalLyapunovFieldStatus, projectTemporalSurfaceEventsStatus,
+  projectManifoldContinuationStatus,
   reviewProjectDerivedField } from "@math3d/core";
 import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
@@ -187,6 +189,29 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
             (state.reason ? `Values withheld: ${state.reason}.` :
               "Values are not recomputed on mobile.") };
       }),
+    ...project.workspace.results.filter(item => ["vector3d.temporal-ftle-field",
+      "vector3d.temporal-surface-events", "vector3d.manifold-continuation"]
+      .includes(item.provenance.operation.type)).map(item => {
+        const operation = item.provenance.operation.type;
+        const state = operation === "vector3d.temporal-ftle-field" ?
+          projectTemporalLyapunovFieldStatus(project, item) :
+          operation === "vector3d.temporal-surface-events" ?
+            projectTemporalSurfaceEventsStatus(project, item) :
+            projectManifoldContinuationStatus(project, item);
+        return { id: item.resultId,
+          title: operation === "vector3d.temporal-ftle-field" ?
+            "Finite-time Lyapunov field" :
+            operation === "vector3d.temporal-surface-events" ?
+              "Exact-frame topology events" : "Local manifold continuation",
+          kind: "Saved scientific result", sourceId: item.provenance.source.documentId,
+          status: state.status === "current" ? "recipe retained" : "withheld",
+          detail: `Source revision ${item.provenance.source.revision}, ` +
+            `hash ${item.provenance.source.structuralHash}; ` +
+            `unit ${String(item.summary.exponentUnit ?? item.summary.coordinateUnit ??
+              item.summary.timeUnit ?? "unavailable")}. ` +
+            (state.reason ? `Values withheld: ${state.reason}.` :
+              "Saved summary only; source values are not recomputed on mobile.") };
+      }),
     ...project.workspace.entries.flatMap(entry => entry.module === "mesh" &&
       entry.checkpoint.format === "math3d.mesh-document" &&
       (entry.checkpoint.source.origin as { kind?: string }).kind ===
@@ -226,7 +251,14 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
       sourceHash: result.provenance.source.structuralHash,
       unit: String(result.summary.unit ?? result.summary.tensorUnit ?? result.summary.valueUnit ??
         result.summary.coordinateUnit ?? "unit unavailable"),
-      authority: result.status, freshness: !sources.has(result.provenance.source.documentId) || result.artifacts.length ? "unavailable" :
+      authority: result.status, freshness: result.provenance.operation.type ===
+        "vector3d.temporal-ftle-field" ?
+          projectTemporalLyapunovFieldStatus(project, result).status === "current" ?
+            "current" : "unavailable" :
+        result.provenance.operation.type === "vector3d.temporal-surface-events" ?
+          projectTemporalSurfaceEventsStatus(project, result).status === "current" ?
+            "current" : "unavailable" :
+        !sources.has(result.provenance.source.documentId) || result.artifacts.length ? "unavailable" :
         resolved.get(result.provenance.source.documentId)?.format === "math3d.vector-field3d-document" &&
         (resolved.get(result.provenance.source.documentId) as import("@math3d/core").VectorField3DDocument).source.field.kind === "scientific-bundle" ? "unverified" :
         isAnalysisResultCurrent(result, sources.get(result.provenance.source.documentId)!) && !relations.some(relation => relation.freshness !== "current" &&
