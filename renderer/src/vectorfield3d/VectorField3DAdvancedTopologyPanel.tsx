@@ -2,21 +2,24 @@ import { useState } from "react";
 import { computeVectorField3DPoincareReturnMap, computeVectorField3DLyapunov,
   computeVectorField3DLocalManifoldPatch, projectPoincareReturnStatus,
   computeVectorField3DManifoldContinuation, projectManifoldContinuationStatus,
+  computeVectorField3DExtendedManifold, projectExtendedManifoldStatus,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
   projectVectorField3DTopologyStatus, type AnalysisResultEnvelope,
   type LocalManifoldPatch, type ManifoldContinuationStudy,
+  type ExtendedManifoldStudy,
   type LyapunovStudy, type Math3DProject,
   type PoincareReturnStudy, type VectorField3DDocument } from "@math3d/core";
 
 export function VectorField3DAdvancedTopologyPanel({ document, project,
   onSaveReturn, onOpenReturn, onSaveLyapunov, onPromoteManifold,
-  onPromoteContinuation }: {
+  onPromoteContinuation, onPromoteExtended }: {
   document: VectorField3DDocument; project?: Math3DProject | null;
   onSaveReturn?: (study: PoincareReturnStudy) => void;
   onOpenReturn?: (result: AnalysisResultEnvelope) => void;
   onSaveLyapunov?: (study: LyapunovStudy) => void;
   onPromoteManifold?: (patch: LocalManifoldPatch) => void;
   onPromoteContinuation?: (study: ManifoldContinuationStudy) => void;
+  onPromoteExtended?: (study: ExtendedManifoldStudy) => void;
 }) {
   const axes = document.source.axes;
   const center = axes.map(axis => (axis.min + axis.max) / 2);
@@ -33,6 +36,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   const [manifold, setManifold] = useState<LocalManifoldPatch | null>(null);
   const [savedPatchId, setSavedPatchId] = useState("");
   const [continuation, setContinuation] = useState<ManifoldContinuationStudy | null>(null);
+  const [extended, setExtended] = useState<ExtendedManifoldStudy | null>(null);
+  const [extraTime, setExtraTime] = useState(.5);
   const [message, setMessage] = useState("");
   const run = (task: () => void) => {
     try { setMessage(""); task(); }
@@ -44,7 +49,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
     projectVectorField3DTopologyStatus(project, result).status === "current") ?? [];
   const saved = project?.workspace.results.filter(result =>
     ["vector3d.poincare-return-map", "vector3d.lyapunov-finite-time",
-      "vector3d.local-manifold-patch", "vector3d.manifold-continuation"]
+      "vector3d.local-manifold-patch", "vector3d.manifold-continuation",
+      "vector3d.extended-manifold"]
       .includes(result.provenance.operation.type) &&
     result.provenance.source.documentId === document.identity.id) ?? [];
   const constructions = document.workspace?.equilibriumConstructions ?? [];
@@ -146,7 +152,7 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
         if (patch.status !== "resolved" || patch.publication?.resultId !== result.resultId ||
             patch.publication.summary.geometryHash !== result.summary.geometryHash)
           throw new TypeError("Saved patch geometry cannot be verified.");
-        setManifold(patch); setContinuation(null);
+        setManifold(patch); setContinuation(null); setExtended(null);
         setMessage("Saved local patch verified for bounded continuation.");
       })}>Verify saved patch for continuation</button>
       {manifold?.status === "resolved" && project?.workspace.results.some(item =>
@@ -170,6 +176,35 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
           onPromoteContinuation?.(continuation);
           setMessage("Validated continuation saved as a local source-linked Mesh.");
         })}>Save validated continuation Mesh</button>}
+      {manifold?.status === "resolved" && project?.workspace.results.some(item =>
+        item.resultId === manifold.publication?.resultId) && <div data-testid="gf55-controls">
+        <label>Additional time ({document.source.timeUnit})
+          <input type="number" step="0.25" min="0.25" max="2" value={extraTime}
+            onChange={event => setExtraTime(Number(event.target.value))} /></label>
+        <p>Declared domain: {axes.map(axis => `${axis.min}…${axis.max} ${axis.unit}`).join(" × ")}.
+          Work cap: 5 attempts, 1,000,000 evaluations.</p>
+        <button type="button" onClick={() => run(() => setExtended(
+          computeVectorField3DExtendedManifold(project, document, manifold,
+            { domain: axes.map(axis => [axis.min, axis.max]) as unknown as
+                import("@math3d/core").ExtendedManifoldRecipe["domain"],
+              targetExtraTime: extraTime, maxAttempts: 5,
+              maxEvaluations: 1_000_000 })))}>
+          Validate adaptive local continuation</button>
+        {extended && <p role="status" data-testid="gf55-extended-status">
+          {extended.status === "validated" ?
+            `Local geometry validated: ${extended.attempts.length} attempts; ` +
+              `${extended.publication!.summary.vertexCount} vertices; ` +
+              `coverage ${Number(extended.publication!.summary.coordinateCoverage).toPrecision(3)} ` +
+              `of declared bounds; stop ${extended.stopReason}. Global claim withheld.` :
+            `Extended geometry unavailable: ${extended.reason}; ` +
+              `${extended.attempts.length} attempts. Global claim withheld.`}
+        </p>}
+        {extended?.status === "validated" && <button type="button"
+          disabled={!onPromoteExtended} onClick={() => run(() => {
+            onPromoteExtended?.(extended);
+            setMessage("Validated extended local Mesh saved with bounded evidence.");
+          })}>Save extended local Mesh</button>}
+      </div>}
     </div>
     {!!message && <p role="status">{message}</p>}
     {saved.map(result => {
@@ -180,6 +215,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
           projectLyapunovStatus(project!, result) :
           type === "vector3d.manifold-continuation" ?
             projectManifoldContinuationStatus(project!, result) :
+          type === "vector3d.extended-manifold" ?
+            projectExtendedManifoldStatus(project!, result) :
           projectLocalManifoldPatchStatus(project!, result);
       return <div key={result.resultId} data-testid="gf44-gf46-saved-result">
         {type} · {status.status === "current" ? "current" :

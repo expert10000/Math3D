@@ -146,6 +146,39 @@ describe("GF-30 bounded pinned-frame isosurfaces", () => {
         wait: async () => {} });
     expect(reason).toMatch(/topology changed/);
   });
+  it("GF-54 validates a remeshed closed surface and withholds ambiguous or changed topology", () => {
+    const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    const normals = new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]);
+    const base = { complete: true, triangleCount: 4, level: 1, unit: "m/s",
+      clipBounds: [[-2, 2], [-2, 2], [-2, 2]], coordinateAxes: [],
+      topology: { connectedComponents: 1, boundaryEdgeCount: 0,
+        clipBoundaryEdgeCount: 0, nonManifoldEdgeCount: 0, watertight: true },
+      positions, normals, indices: new Uint32Array([0, 2, 1, 0, 1, 3,
+        0, 3, 2, 1, 2, 3]) } as unknown as VectorField3DIsosurface;
+    const remeshed = { ...base, triangleCount: 6,
+      positions: new Float32Array([...positions, .5, 0, 0]),
+      normals: new Float32Array([...normals, 0, 0, 1]),
+      indices: new Uint32Array([0, 2, 4, 4, 2, 1, 0, 4, 3,
+        4, 1, 3, 0, 3, 2, 1, 2, 3]) };
+    expect(validateTemporalSurfacePair(base, remeshed)).toMatchObject({
+      status: "compatible", correspondence: "remeshed", maxDisplacement: 0 });
+    expect(interpolateTemporalSurfacePair(base, remeshed, .5).positions.length)
+      .toBe(base.positions.length);
+    const moved = { ...remeshed, positions: Float32Array.from(remeshed.positions,
+      (value, index) => index % 3 === 2 ? value + .02 : value) };
+    const measured = validateTemporalSurfacePair(base, moved);
+    expect(measured.status).toBe("compatible");
+    expect(measured.maxDisplacement).toBeGreaterThan(0);
+    expect(measured.rmsDisplacement).toBeGreaterThan(0);
+    expect(validateTemporalSurfacePair(base, { ...remeshed,
+      gridShape: [4, 4, 4] }).reason).toMatch(/grid/);
+    const flipped = { ...remeshed, normals: Float32Array.from(remeshed.normals,
+      value => -value) };
+    expect(validateTemporalSurfacePair(base, flipped).reason).toMatch(/orientation/);
+    const split = { ...remeshed, topology: { ...remeshed.topology,
+      connectedComponents: 2 } };
+    expect(validateTemporalSurfacePair(base, split).reason).toMatch(/topology/);
+  });
   it("GF-33 plays exact verified frames, enforces memory and withholds a changed frame", async () => {
     let { project, first, second } = fixture();
     const transfers = new Map([[first.identity.id, gf23Transfer()],

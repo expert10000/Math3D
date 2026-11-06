@@ -53,6 +53,13 @@ test("GF-50 saves a bounded finite-time Lyapunov field in a Project", async () =
     await panel.getByRole("button", { name: "Compute and save bounded FTLE field" }).click();
     await expect(panel.getByTestId("gf50-ftle-field"))
       .toContainText("4 finite-time estimates saved");
+    await panel.getByRole("button", { name: "Refine and save physical FTLE profile" }).click();
+    await expect(panel.getByTestId("gf53-profile-status"))
+      .toContainText("converged cells");
+    await panel.getByRole("button", {
+      name: "Open refined FTLE profile in Graphs" }).click();
+    await expect(page.getByTestId("gf53-graph-profile-status").first())
+      .toContainText("current");
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await page.reload();
@@ -63,5 +70,14 @@ test("GF-50 saves a bounded finite-time Lyapunov field in a Project", async () =
       item.provenance.operation.type === "vector3d.temporal-ftle-field");
     expect(result.summary.cellCount).toBe(4);
     expect(result.summary.exponentUnit).toBe("1/s");
+    expect(results.some((item: { provenance: { operation: { type: string } } }) =>
+      item.provenance.operation.type === "vector3d.temporal-ftle-profile"))
+      .toBe(true);
+    const graphRows = await page.evaluate(() => JSON.parse(
+      localStorage.getItem("math3d.project.v1")!).workspace.entries.flatMap(
+        (entry: { module: string; checkpoint: { source?: { objects?: unknown[] } } }) =>
+          entry.module === "graph2d" ? entry.checkpoint.source?.objects ?? [] : []));
+    expect(graphRows.some((item: { temporalFtleOrigin?: unknown }) =>
+      !!item.temporalFtleOrigin)).toBe(true);
   } finally { await closeSurfaceApp(app); }
 });

@@ -156,6 +156,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
   onSaveTemporalSpectrum, onSaveTemporalFtLeField,
   onSaveTemporalSurfaceEvents, onPromoteManifoldContinuation,
+  onPromoteExtendedManifold,
+  onSaveTemporalFtleProfile, onOpenTemporalFtleProfile,
   onRebaseDerivedSource,
   onOpenTemporalSpectrum,
   onAppendDerivedOperation, onPromoteDerivedIsosurface,
@@ -227,6 +229,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveLyapunov?: (study: import("@math3d/core").LyapunovStudy) => void;
   onPromoteManifoldPatch?: (patch: import("@math3d/core").LocalManifoldPatch) => void;
   onPromoteManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
+  onPromoteExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
   onSaveTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -239,6 +242,9 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalSurfaceEvents?: (study: import("@math3d/core").TemporalSurfaceEventStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onOpenTemporalFtleProfile?: (result: AnalysisResultEnvelope) => void;
   onOpenTemporalSpectrum?: (result: AnalysisResultEnvelope) => void;
   onRebaseDerivedSource?: (replacement: VectorField3DDocument,
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
@@ -2818,7 +2824,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSaveReturn={onSavePoincareReturn} onOpenReturn={onOpenPoincareReturn}
         onSaveLyapunov={onSaveLyapunov}
         onPromoteManifold={onPromoteManifoldPatch}
-        onPromoteContinuation={onPromoteManifoldContinuation} />
+        onPromoteContinuation={onPromoteManifoldContinuation}
+        onPromoteExtended={onPromoteExtendedManifold} />
       <VectorField3DComparisonPanel document={document} project={project}
         onSave={onSaveComparisonResult} onOpenProfile={onOpenComparisonProfile} />
       <VectorField3DFrameUnitPanel document={document} />
@@ -2828,6 +2835,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSaveSpectrum={onSaveTemporalSpectrum}
         onSaveFtLeField={onSaveTemporalFtLeField}
         onSaveSurfaceEvents={onSaveTemporalSurfaceEvents}
+        onSaveFtleProfile={onSaveTemporalFtleProfile}
+        onOpenFtleProfile={onOpenTemporalFtleProfile}
         onOpenSpectrum={onOpenTemporalSpectrum}
         onPreviewMovingIsosurface={setIsosurface}
         onPromoteMovingIsosurface={onPromoteIsosurface} />

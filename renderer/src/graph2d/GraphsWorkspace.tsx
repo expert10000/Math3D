@@ -73,6 +73,8 @@ import {
   computeTemporalSpectrum, createTemporalSpectrumGraphOrigin,
   projectTemporalSpectrumGraphStatus, projectTemporalSpectrumStatus,
   temporalSpectrumGraphRows,
+  computeTemporalFtleProfile, createTemporalFtleGraphOrigin,
+  projectTemporalFtleGraphStatus, temporalFtleGraphRows,
   computeVectorField3DPoincareSection, createPoincareGraphOrigin,
   poincareGraphRows, projectPoincareGraphStatus,
   computeVectorField3DPoincareReturnMap, createPoincareReturnGraphOrigin,
@@ -279,6 +281,7 @@ type Props = {
   onSaveVectorField3DLyapunov?: (study: import("@math3d/core").LyapunovStudy) => void;
   onPromoteVectorField3DManifoldPatch?: (patch: import("@math3d/core").LocalManifoldPatch) => void;
   onPromoteVectorField3DManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
+  onPromoteVectorField3DExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -290,6 +293,8 @@ type Props = {
   onSaveVectorField3DTemporalFtLeField?: (study: import("@math3d/core").TemporalLyapunovFieldStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalSurfaceEvents?: (study: import("@math3d/core").TemporalSurfaceEventStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onRebaseVectorField3DDerivedSource?: (replacement: VectorField3DDocument,
     transfer: import("@math3d/core").VerifiedVectorFieldTransfer) => void;
@@ -336,7 +341,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DTemporalSpectrum,
   onSaveVectorField3DTemporalFtLeField,
   onSaveVectorField3DTemporalSurfaceEvents,
+  onSaveVectorField3DTemporalFtleProfile,
   onPromoteVectorField3DManifoldContinuation,
+  onPromoteVectorField3DExtendedManifold,
   onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onSaveVectorField3DTensorGlyphs,
@@ -375,8 +382,10 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   const [profileActionError, setProfileActionError] = useState("");
   const [spectrumVerified, setSpectrumVerified] = useState<Record<string,
     VerifiedTemporalTransfers>>({});
+  const [ftleVerified, setFtleVerified] = useState<Record<string,
+    VerifiedTemporalTransfers>>({});
   useEffect(() => {
-    const withhold = () => setSpectrumVerified({});
+    const withhold = () => { setSpectrumVerified({}); setFtleVerified({}); };
     window.addEventListener("focus", withhold);
     return () => window.removeEventListener("focus", withhold);
   }, []);
@@ -498,6 +507,62 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           color: SCIENTIFIC_GRID_LINE_COLORS[1], lineWidth: 2,
           lineStyle: "solid", visible: true })] });
       setSpectrumVerified(previous => ({ ...previous, [result.resultId]: transfers }));
+      setVectorField3DOpen(false);
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const verifiedFtleProfile = async (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    if (!project || !project.workspace.results.some(item => item.resultId === result.resultId))
+      throw new TypeError("The saved FTLE profile is missing.");
+    const parameters = result.provenance.operation.parameters;
+    const temporal = project.workspace.timeSources?.find(item =>
+      item.identity.id === parameters.temporalId);
+    if (!temporal) throw new TypeError("The pinned temporal source is missing.");
+    const load = async (): Promise<VerifiedTemporalTransfers> => {
+      const transfers = new Map();
+      for (const frame of temporal.source.frames) {
+        const source = projectProfileRef.current?.workspace.entries.find(item =>
+          item.expected.id === frame.documentId)?.checkpoint;
+        if (source?.format !== "math3d.vector-field3d-document")
+          throw new TypeError("An FTLE frame is missing.");
+        if (source.source.field.kind === "scientific-bundle")
+          transfers.set(frame.documentId, await loadVerifiedVectorFieldTransfer(source));
+      }
+      return transfers;
+    };
+    const transfers = await load();
+    const recipe = parameters.recipe as { baseResultId: string;
+      convergenceTolerance: number; profileRow: 0 | 1 };
+    const computed = await computeTemporalFtleProfile(project, recipe,
+      { transfers, currentProject: () => projectProfileRef.current!,
+        verifyBeforePublish: load });
+    if (!computed.publication || computed.publication.resultId !== result.resultId ||
+        structuralHash(computed.publication.summary) !== structuralHash(result.summary) ||
+        projectProfileRef.current?.identity.structuralHash !== project.identity.structuralHash)
+      throw new TypeError("Saved FTLE profile changed; recompute it in Field Explorer.");
+    return { computed, transfers };
+  };
+  const ftleDraft = (computed: import("@math3d/core").TemporalFtleProfileStudy,
+    transfers: VerifiedTemporalTransfers, style: Pick<import("@math3d/core").Graph2DObjectDisplay,
+      "color" | "lineWidth" | "lineStyle" | "visible">): Graph2DPointSeriesDraft => {
+    const origin = createTemporalFtleGraphOrigin(project!, computed, transfers);
+    const rows = temporalFtleGraphRows(computed);
+    return { label: "Finite-time Lyapunov profile", table: pointTableStore.publish(rows),
+      mode: "line", domain: { min: rows[0]!.x, max: rows.at(-1)!.x,
+        includeMin: true, includeMax: true }, temporalFtleOrigin: origin, style };
+  };
+  const openTemporalFtleProfile = async (result: import("@math3d/core").AnalysisResultEnvelope) => {
+    try {
+      setProfileActionError("");
+      if (!project || !onAuthoringCommit) throw new TypeError("Open a saved Project and Graph editor first.");
+      const existing = document.source.objects.find(item => item.kind === "point-series" &&
+        item.temporalFtleOrigin?.resultId === result.resultId);
+      if (existing) { onSelectionCommit?.({ objectId: existing.id, probe: null });
+        setVectorField3DOpen(false); return; }
+      const { computed, transfers } = await verifiedFtleProfile(result);
+      onAuthoringCommit({ type: "create-point-series", draft: ftleDraft(computed,
+        transfers, { color: SCIENTIFIC_GRID_LINE_COLORS[0], lineWidth: 2,
+          lineStyle: "solid", visible: true }) });
+      setFtleVerified(previous => ({ ...previous, [result.resultId]: transfers }));
       setVectorField3DOpen(false);
     } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
   };
@@ -1657,6 +1722,12 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         pointTableStore.resolve(object.table),
         spectrumVerified[object.temporalSpectrumOrigin.resultId])]] : [])),
     [document, project, spectrumVerified]);
+  const ftleStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
+    object.kind === "point-series" && object.temporalFtleOrigin ? [[object.id,
+      projectTemporalFtleGraphStatus(project, object.temporalFtleOrigin,
+        pointTableStore.resolve(object.table),
+        ftleVerified[object.temporalFtleOrigin.resultId])]] : [])),
+    [document, project, ftleVerified]);
   const poincareStates = useMemo(() => Object.fromEntries(document.source.objects.flatMap(object =>
     object.kind === "point-series" && object.poincareOrigin ? [[object.id,
       projectPoincareGraphStatus(project, object.poincareOrigin,
@@ -1679,6 +1750,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
               return !rows || structuralHash(rows) !==
                 object.comparisonProfileOrigin.rowsSha256; })()) ||
         object.temporalSpectrumOrigin && spectrumStates[object.id]?.status !== "current" ||
+        object.temporalFtleOrigin && ftleStates[object.id]?.status !== "current" ||
         object.poincareOrigin && poincareStates[object.id]?.status !== "current" ||
         object.parameterStudyOrigin && parameterStudyStates[object.id]?.status !== "current" ||
         object.linkedOrigin && (linkedPairVerification.document !== document ||
@@ -1686,7 +1758,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
             linkedVerified(object.linkedOrigin)) ?
           null : pointTableStore.resolve(object.table)]] : [])),
   }), [sampledDocument, size, viewport, previewViewport, phaseSeedPreview, linkedPairVerification,
-    projectProfileStates, comparisonProfileStates, spectrumStates, poincareStates,
+    projectProfileStates, comparisonProfileStates, spectrumStates, ftleStates, poincareStates,
     parameterStudyStates]);
   const sampling = useGraph2DSampling(samplingRequest, parameterPreviewActive || phaseSeedPreview ? document.identity : undefined);
   const pointPreviewDocument = useMemo(() => {
@@ -1911,6 +1983,8 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
     selectedObject.comparisonProfileOrigin : undefined;
   const selectedSpectrum = selectedObject?.kind === "point-series" ?
     selectedObject.temporalSpectrumOrigin : undefined;
+  const selectedFtle = selectedObject?.kind === "point-series" ?
+    selectedObject.temporalFtleOrigin : undefined;
   const selectedPoincare = selectedObject?.kind === "point-series" ?
     selectedObject.poincareOrigin : undefined;
   const selectedProjectProfileState = selectedProjectProfile && selectedObject ?
@@ -2044,6 +2118,54 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       disabled={!onAuthoringCommit} onClick={() => void refreshTemporalSpectrum()}>
       Verify and refresh spectral rows</button>
   </section>;
+  const refreshTemporalFtleProfile = async () => {
+    if (!project || !selectedFtle || !onAuthoringCommit ||
+        selectedObject?.kind !== "point-series") return;
+    try {
+      setProfileActionError("");
+      const original = project.workspace.results.find(item => item.resultId === selectedFtle.resultId);
+      if (!original) throw new TypeError("The saved FTLE profile is missing.");
+      const candidates = [...project.workspace.results].reverse().filter(item =>
+        item.provenance.operation.type === "vector3d.temporal-ftle-profile" &&
+        (item.provenance.operation.parameters.recipe as
+          { profileRow?: number; convergenceTolerance?: number } | undefined)?.profileRow ===
+          selectedFtle.profileRow &&
+        (item.provenance.operation.parameters.recipe as
+          { convergenceTolerance?: number } | undefined)?.convergenceTolerance ===
+          selectedFtle.convergenceTolerance &&
+        item.provenance.operation.parameters.temporalId ===
+          original.provenance.operation.parameters.temporalId);
+      let verified: Awaited<ReturnType<typeof verifiedFtleProfile>> | null = null;
+      for (const candidate of candidates) {
+        try { verified = await verifiedFtleProfile(candidate); break; }
+        catch { /* A stale generation cannot supply this row. */ }
+      }
+      if (!verified) throw new TypeError("Recompute this profile from the verified " +
+        "replacement time source in Field Explorer before refreshing Graphs.");
+      const { computed, transfers } = verified;
+      const display = document.display.objects.find(item => item.objectId === selectedObject.id)!;
+      onAuthoringCommit({ type: "edit-point-series", objectId: selectedObject.id,
+        draft: ftleDraft(computed, transfers, { color: display.color,
+          lineWidth: display.lineWidth, lineStyle: display.lineStyle,
+          visible: display.visible }) });
+      setFtleVerified(previous => ({ ...previous,
+        [computed.publication!.resultId]: transfers }));
+    } catch (cause) { setProfileActionError(String((cause as Error).message ?? cause)); }
+  };
+  const ftleGraphInspector = selectedFtle && selectedObject && <section
+    aria-label="Saved finite-time Lyapunov profile" data-testid="gf53-graph-profile-status">
+    <h3>Finite-time Lyapunov profile · {ftleStates[selectedObject.id]?.status === "current" ?
+      "current" : "values withheld"}</h3>
+    {ftleStates[selectedObject.id]?.reason && <p role="status">Values withheld: {
+      ftleStates[selectedObject.id]?.reason}. Verify the pinned frames and explicitly refresh.</p>}
+    <p>Project result {selectedFtle.resultId} · {String(project?.workspace.results.find(item =>
+      item.resultId === selectedFtle.resultId)?.summary.convergedCount ?? "unknown")} converged
+      {" "}samples · {selectedFtle.axisUnit} → {selectedFtle.valueUnit} · tolerance {
+      selectedFtle.convergenceTolerance}</p>
+    <button type="button" data-testid="gf53-refresh-profile"
+      disabled={!onAuthoringCommit} onClick={() => void refreshTemporalFtleProfile()}>
+      Verify and refresh FTLE profile</button>
+  </section>;
   const poincareGraphInspector = selectedPoincare && selectedObject && <section
     aria-label="Saved Poincaré series" data-testid="gf42-graph-section-status">
     <h3>{selectedPoincare.kind === "project-poincare-return/v1" ?
@@ -2083,6 +2205,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
         return !!rows && structuralHash(rows) ===
           selectedObject.comparisonProfileOrigin.rowsSha256; })()) &&
     (!selectedObject.temporalSpectrumOrigin || spectrumStates[selectedObject.id]?.status === "current") &&
+    (!selectedObject.temporalFtleOrigin || ftleStates[selectedObject.id]?.status === "current") &&
     (!selectedObject.poincareOrigin || poincareStates[selectedObject.id]?.status === "current") &&
     (!selectedObject.linkedOrigin ||
     linkedPairVerification.document === document &&
@@ -4278,12 +4401,15 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveLyapunov={onSaveVectorField3DLyapunov}
           onPromoteManifoldPatch={onPromoteVectorField3DManifoldPatch}
           onPromoteManifoldContinuation={onPromoteVectorField3DManifoldContinuation}
+          onPromoteExtendedManifold={onPromoteVectorField3DExtendedManifold}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
           onSaveTemporalSpectrum={onSaveVectorField3DTemporalSpectrum}
           onSaveTemporalFtLeField={onSaveVectorField3DTemporalFtLeField}
           onSaveTemporalSurfaceEvents={onSaveVectorField3DTemporalSurfaceEvents}
+          onSaveTemporalFtleProfile={onSaveVectorField3DTemporalFtleProfile}
+          onOpenTemporalFtleProfile={result => void openTemporalFtleProfile(result)}
           onOpenTemporalSpectrum={result => void openTemporalSpectrum(result)}
           onRebaseDerivedSource={onRebaseVectorField3DDerivedSource}
           onAppendDerivedOperation={onAppendVectorField3DDerivedOperation}
@@ -4706,7 +4832,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {showRight && <details><summary>Inspector</summary>
             {sageRecord && <SageSymbolicAnalysisCard record={sageRecord} sourceStatus={sageSourceStatus}
               onSaveWorkbook={onSaveSageResult ? () => onSaveSageResult(sageRecord) : undefined} />}
-            {inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{poincareGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+            {inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{ftleGraphInspector}{poincareGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
             {profileCards}{studyPanel}{savedFields}</details>}
         </div>
         {status === "ready" && <Graph2DPlot display={renderedDisplay} size={size} series={phaseSeries}
@@ -4759,7 +4885,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           {guided.state === "stale" && <p role="status">Source or marker changed. These steps describe the original example; request fresh analysis before drawing conclusions.</p>}
           <ol>{guided.concept.steps.map(step => <li key={step.heading}><strong>{step.heading}</strong><p>{step.explanation}</p><p>Try this: {step.tryThis}</p></li>)}</ol>
           <small>Markers are saved probes. Numerical results are computed only when requested, with their stated limits.</small>
-        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{poincareGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
+        </details>}{inspector}{profileGraphInspector}{comparisonGraphInspector}{spectrumGraphInspector}{ftleGraphInspector}{poincareGraphInspector}{profileActionError && <p role="alert">{profileActionError}</p>}
         {profileCards}{studyPanel}{savedFields}
       </aside>}
       {galleryOpen && <GraphGalleryDialog activeId={document.identity.id} activeTitle={document.metadata.title} error={galleryError} onClose={closeGallery} initialCategory={galleryStartCategory}
