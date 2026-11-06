@@ -24,13 +24,14 @@ try {
   const page = await app.firstWindow();
   await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
   const autosaveAblation = process.env.MATH3D_STRESS_AUTOSAVE_ABLATION === "1";
+  // Both control and ablation start after the same clean reload.
+  await page.evaluate(() => {
+    localStorage.removeItem("math3d.workbook.autosave.v1");
+    localStorage.removeItem("math3d.workbook.autosaveJournal.v1");
+  });
   if (autosaveAblation) {
     // Isolate workbook autosave storage writes in a disposable E2E profile.
     // The app still builds its workbook payload and runs the same scene cycle.
-    await page.evaluate(() => {
-      localStorage.removeItem("math3d.workbook.autosave.v1");
-      localStorage.removeItem("math3d.workbook.autosaveJournal.v1");
-    });
     await page.addInitScript(() => {
       const original = Storage.prototype.setItem;
       Storage.prototype.setItem = function (key, value) {
@@ -39,9 +40,9 @@ try {
         return original.call(this, key, value);
       };
     });
-    await page.reload();
-    await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
   }
+  await page.reload();
+  await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
   const cdp = await page.context().newCDPSession(page);
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");

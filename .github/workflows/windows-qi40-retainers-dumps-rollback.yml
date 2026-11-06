@@ -66,6 +66,15 @@ jobs:
           MATH3D_HEAP_DIAGNOSTIC: '1'
           MATH3D_STRESS_AUTOSAVE_ABLATION: ${{ inputs.focus == 'autosave' && '1' || '0' }}
         run: |
+          if ('${{ inputs.focus }}' -eq 'autosave') {
+            $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '0'
+            node scripts/measure-quantum-scene-stress.mjs test-results/qi40-autosave-control-80.json 80 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Autosave control scene stress failed' }
+            node scripts/evaluate-quantum-scene-memory-budget.mjs `
+              test-results/qi40-autosave-control-80.json test-results/qi40-autosave-control-budget.json
+            if ($LASTEXITCODE -ne 0) { throw 'Autosave control budget evaluation failed' }
+            $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '1'
+          }
           node scripts/measure-quantum-scene-stress.mjs test-results/qi40-source-cleanup-80.json 80 | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Scene stress failed' }
           $report = Get-Content test-results/qi40-source-cleanup-80.json -Raw | ConvertFrom-Json
@@ -88,6 +97,8 @@ jobs:
           path: |
             test-results/qi40-source-cleanup-80.json
             test-results/qi40-source-memory-budget.json
+            test-results/qi40-autosave-control-80.json
+            test-results/qi40-autosave-control-budget.json
 
   mixed-project-rollback:
     if: ${{ inputs.focus == 'all' || inputs.focus == 'rollback' }}
