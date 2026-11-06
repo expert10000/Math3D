@@ -4,7 +4,9 @@ param(
   [string]$EvidencePath = "",
   [switch]$Math3DOnly,
   [switch]$TheoryLabOnly,
-  [switch]$CaptureCrashDump
+  [switch]$CaptureCrashDump,
+  [string]$ExpectedBuildRunId = '',
+  [string]$ExpectedMath3DCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,7 +65,8 @@ function Get-SanitizedDumpStack([string]$dump) {
   if (-not $cdb) { return [ordered]@{ status = 'cdb unavailable'; frames = @() } }
   $stdout = Join-Path $root 'cdb-stdout.txt'
   $stderr = Join-Path $root 'cdb-stderr.txt'
-  $arguments = "-z `"$dump`" -c `".exr -1; .ecxr; kb; q`""
+  # k omits the argument columns emitted by kb, leaving a stable Call Site.
+  $arguments = "-z `"$dump`" -c `".exr -1; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; q`""
   $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   if (-not $process.WaitForExit(90000)) {
@@ -71,14 +74,26 @@ function Get-SanitizedDumpStack([string]$dump) {
     return [ordered]@{ status = 'cdb timeout'; frames = @() }
   }
   $raw = Get-Content -LiteralPath $stdout -Raw -ErrorAction SilentlyContinue
-  $frames = @($raw -split '\r?\n' | ForEach-Object {
-    if ($_ -match '^\s*\d{1,2}\s+[0-9a-f`]+\s+[0-9a-f`]+\s+([A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+0x[0-9a-f]+))') {
+  $stackLines = @($raw -split '\r?\n' | Where-Object { $_ -match '^\s*\d{1,2}\s+' })
+  $frames = @($stackLines | ForEach-Object {
+    if ($_ -match '([A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+(?:0x)?[0-9a-f]+))') {
       $Matches[1]
     }
   } | Select-Object -First 20)
   $exceptionCode = if ($raw -match 'ExceptionCode:\s*([0-9a-fA-F]{8})') { $Matches[1].ToLowerInvariant() } else { $null }
+  $stderrText = Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue
+  $moduleTokens = @([regex]::Matches($raw, '\b[A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+(?:0x)?[0-9a-f]{3,})') |
+    ForEach-Object { $_.Value } | Select-Object -Unique -First 20)
+  $diagnosticTags = @('Unable to', 'Failed to', 'No stack', 'Stack unwind', 'Unable to get',
+    'Symbol search path') | Where-Object { $raw -match [regex]::Escape($_) }
   return [ordered]@{ status = if ($frames.Count) { 'stack summarized' } else { 'no stack frames parsed' };
-    exceptionCode = $exceptionCode; frames = $frames; debuggerExitCode = $process.ExitCode }
+    exceptionCode = $exceptionCode; frames = $frames; stackLineCount = $stackLines.Count;
+    moduleTokens = $moduleTokens; commandMarkers = [ordered]@{
+      begin = [bool]($raw -match '(?m)^QI40_STACK_BEGIN\r?$');
+      end = [bool]($raw -match '(?m)^QI40_STACK_END\r?$') };
+    diagnosticTags = $diagnosticTags; stdoutChars = ([string]$raw).Length;
+    stderrChars = ([string]$stderrText).Length;
+    debuggerExitCode = $process.ExitCode }
 }
 
 function Get-ApplicationErrors([string]$installerName, [datetime]$startedAt) {
@@ -138,14 +153,24 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
 }
 
 try {
-  if ($manifest.schema -ne 'math3d/two-app-candidate/v1' -or
-      $manifest.buildRunId -ne '42123298884' -or
-      $manifest.math3d.commit -ne '49485e816fcfc7b46d5da1634c6746a631343f8e' -or
-      $manifest.theoryLab.commit -ne '38842c8ca927720e9a0f39bd6a04f0e366073996' -or
+  $usingNewCandidate = -not [string]::IsNullOrWhiteSpace($ExpectedBuildRunId)
+  if ($usingNewCandidate -and [string]::IsNullOrWhiteSpace($ExpectedMath3DCommit)) {
+    throw 'ExpectedMath3DCommit is required with ExpectedBuildRunId'
+  }
+  $identityMismatch = if ($usingNewCandidate) {
+    [string]$manifest.buildRunId -ne $ExpectedBuildRunId -or
+    [string]$manifest.math3d.commit -ne $ExpectedMath3DCommit -or
+    [string]::IsNullOrWhiteSpace([string]$manifest.theoryLab.commit)
+  } else {
+    [string]$manifest.buildRunId -ne '42123298884' -or
+    $manifest.math3d.commit -ne '49485e816fcfc7b46d5da1634c6746a631343f8e' -or
+    $manifest.theoryLab.commit -ne '38842c8ca927720e9a0f39bd6a04f0e366073996' -or
+    $mathSha -ne '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' -or
+    $labSha -ne '18bfd9bd243b101a2ba2b6a3586e3e080b6e3223866af57853e32024b9fc3d81'
+  }
+  if ($manifest.schema -ne 'math3d/two-app-candidate/v1' -or $identityMismatch -or
       $mathSha -ne $manifest.math3d.installerSha256 -or
-      $labSha -ne $manifest.theoryLab.installerSha256 -or
-      $mathSha -ne '63442950be85edb6f90f0321a37781650bde2c16cf4b32923aa64a3ae2cb6535' -or
-      $labSha -ne '18bfd9bd243b101a2ba2b6a3586e3e080b6e3223866af57853e32024b9fc3d81') {
+      $labSha -ne $manifest.theoryLab.installerSha256) {
     throw 'Downloaded candidate identity differs from pinned source and installer hashes'
   }
   $evidence.checks.exactBytes = 'passed'

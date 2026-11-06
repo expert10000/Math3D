@@ -75,6 +75,7 @@ import { createNotebookReference } from "@math3d/workbook";
 import { addWorkbookDependency, createNoteDependencySource, type Workbook, type WorkbookStageId } from "@math3d/workbook";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { createProjectComparisonNote, inspectProjectComparisonNote } from "../projects/projectComparisonNotes";
+import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame } from "../projects/projectLegacyCoordinateFrame";
 import { bindProjectNoteDrafts, createProjectNoteDraft, type NoteCaptureKind, type ProjectNoteDraft } from "../projects/projectNoteDrafts";
 import { createProjectNoteSelectionAnchor, type NoteSelectionDescriptor } from "../projects/projectNoteTargets";
 import { resolveProjectNoteValues } from "../projects/projectNoteValues";
@@ -2187,6 +2188,42 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           }, `Saved composition “${composition.title}”.`);
           if (!ok) setMessage("Composition save failed. Save this Project first, then retry.");
           return ok;
+        }} onDeclareCoordinateFrame={async (composition, slot, frame) => {
+          if (busy || preview || managed || !onRestoreWorkspace) throw new Error("Open and save this Project before editing its source frame.");
+          setBusy(true);
+          try {
+            const before = localStorage.getItem(PROJECT_STORAGE_KEY);
+            if (!before) throw new Error("Save a named Project first.");
+            const saved = parseMath3DProject(before);
+            if (saved.identity.id !== project.identity.id ||
+              !projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before ||
+              !parseProjectLibrary(localStorage.getItem(PROJECT_LIBRARY_KEY)).entries.some(item => item.id === saved.identity.id))
+              throw new Error("The open Project differs from the saved copy. Reopen it first.");
+            const live = capture();
+            const comparable = (workspace: MixedWorkspaceDocument) => canonicalJsonStringify({
+              ...workspace, scientificScenes: workspace.scientificScenes ?? [],
+            });
+            if (comparable(live) !== comparable(saved.workspace))
+              throw new Error("Save current document edits before declaring a frame.");
+            const previousResources = await loadProjectResources(saved);
+            const selectedEntry = saved.workspace.entries.find(item => item.expected.id === composition.members[slot].documentId);
+            const { project: next, comparison: pinned } = selectedEntry?.module === "mesh" ?
+              declareLegacyMeshCoordinateFrame(saved, composition, slot, frame, item => previousResources.bytes(item)) :
+              declareLegacyGeometryCoordinateFrame(saved, composition, slot, frame);
+            const resources = captureProjectResources(next, item => previousResources.bytes(item));
+            if (projectStateRef.current?.identity.id !== saved.identity.id ||
+              canonicalJsonStringify(capture()) !== canonicalJsonStringify(live))
+              throw new Error("The Project changed while preparing the declaration. Retry.");
+            let hostRestored = false;
+            setLibrary(await commitProjectResources(next, resources, () => saveLibraryProject(localStorage, next, Date.now(), undefined,
+              { expectedBytes: before, afterWrite: () => {
+                hostRestored = true;
+                onRestoreWorkspace(next.workspace, resources, next);
+              } }), () => { if (hostRestored) onRestoreWorkspace(live, previousResources, saved); }));
+            resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+            display(next, false); setNotesProject(next);
+            return pinned.id;
+          } finally { setBusy(false); }
         }} onSaveObservation={async (composition, title, body, probe) => {
           const ok = await commitNotes(saved => {
             if (saved.identity.id !== project.identity.id) throw new Error("The open Project changed. Reopen this comparison.");

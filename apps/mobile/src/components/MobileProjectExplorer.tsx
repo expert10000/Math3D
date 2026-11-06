@@ -5,6 +5,7 @@ import { buildMobileProjectExplorer } from "../models/mobileProjectExplorer";
 import type { MobileProjectNoteInput } from "../models/mobileProjectNotes";
 import type { ProjectResourceSidecar } from "@math3d/core";
 import { MobileVectorField3DViewer } from "./MobileVectorField3DViewer";
+import { speakScientificUnit } from "../models/mobileScientificSpeech";
 
 export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly ProjectResourceSidecar[]; onOpenGraph?: (id: string) => void;
   onOpenSurface?: (id: string) => void; onOpenCurve?: (id: string) => void; onRefresh?: (relationId: string) => Promise<boolean>;
@@ -91,7 +92,7 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
     <Text accessibilityRole="header" style={styles.itemTitle}>Scientific recipes ({state.explorer.scientificContracts.length})</Text>
     {state.explorer.scientificContracts.map(item => <View key={item.id}>
       <Pressable testID={`mobile-scientific-contract-${item.id}`} accessibilityRole="button"
-        accessibilityLabel={item.spoken}
+        accessibilityLabel={item.spokenSummary}
         accessibilityHint={scientificId === item.id ? "Collapse scientific details" : "Expand scientific details"}
         accessibilityState={{ expanded: scientificId === item.id }}
         onPress={() => setScientificId(scientificId === item.id ? null : item.id)}
@@ -180,11 +181,12 @@ export const MobileProjectExplorer: React.FC<{ raw: string; resources?: readonly
         accessibilityRole="button" focusable
         accessibilityState={{ expanded: resultId === result.id }}
         accessibilityHint={resultId === result.id ? "Collapse result provenance" : "Expand result provenance"}
-        accessibilityLabel={`${result.operation}. ${result.authority}. ${result.freshness}. ` +
-          `Unit ${result.unit}. Source ${result.sourceDocumentId}, revision ${result.sourceRevision}, ` +
-          `hash ${result.sourceHash}. ${result.freshness === "current" ?
-            "Saved summary only; scientific values require verification before display." :
-            `Values withheld: ${result.freshness}.`}`}
+        accessibilityLabel={`${result.operation}. Unit ${speakScientificUnit(result.unit)}. ` +
+          `Source revision ${result.sourceRevision}. ` +
+          (result.freshness === "current" ?
+            "Saved summary only. Scientific values require verification before display." :
+            `Values withheld because ${result.freshness.replaceAll("-", " ")}.`) +
+          " Expand for full source provenance."}
         style={styles.secondaryBtn} onPress={() => setResultId(resultId === result.id ? null : result.id)}>
         <Text style={styles.secondaryBtnText}>{result.operation} · {result.freshness}</Text>
       </Pressable>

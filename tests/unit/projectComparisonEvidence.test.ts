@@ -41,6 +41,10 @@ describe("PC08 checked comparison evidence", () => {
     expect(() => createProjectComparisonEvidence(missing, verified!, () => null)).toThrow(/missing/i);
     const mismatch = upsertMath3DProjectComposition(project, { ...verified!, alignment: { frame: "laboratory xyz", unit: "cm" } });
     expect(() => createProjectComparisonEvidence(mismatch, mismatch.compositions!.find(item => item.id === verified!.id)!, () => null)).toThrow(/mismatched/i);
+    const contradictedAssertion = upsertMath3DProjectComposition(project, { ...asserted,
+      alignment: { frame: "laboratory xyz", unit: "cm" } });
+    expect(() => createProjectComparisonEvidence(contradictedAssertion,
+      contradictedAssertion.compositions!.find(item => item.id === asserted.id)!, () => null)).toThrow(/mismatched/i);
   });
 
   it("refuses unsaved changes, tampered source generations, invalid selection and missing captures", () => {

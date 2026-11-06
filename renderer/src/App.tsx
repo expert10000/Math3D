@@ -835,6 +835,7 @@ import {
   upsertProjectTemporalLyapunovField,
   upsertProjectTemporalSurfaceEvents,
   upsertProjectTemporalSurfaceLinkage,
+  upsertProjectTemporalSurfaceTransport,
   upsertProjectTemporalFtleProfile,
   promoteProjectManifoldContinuation,
   promoteProjectExtendedManifold,
@@ -91065,6 +91066,14 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTemporalSurfaceLinkage(active, study, transfers);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceTransport={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceTransport(active, study, transfers);
               activeNotebookProjectRef.current = updated;
               restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);

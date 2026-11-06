@@ -297,6 +297,8 @@ type Props = {
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalSurfaceLinkage?: (study: import("@math3d/core").TemporalSurfaceLinkageStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalSurfaceTransport?: (study: import("@math3d/core").TemporalSurfaceTransportStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onRebaseVectorField3DDerivedSource?: (replacement: VectorField3DDocument,
@@ -345,6 +347,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DTemporalFtLeField,
   onSaveVectorField3DTemporalSurfaceEvents,
   onSaveVectorField3DTemporalSurfaceLinkage,
+  onSaveVectorField3DTemporalSurfaceTransport,
   onSaveVectorField3DTemporalFtleProfile,
   onPromoteVectorField3DManifoldContinuation,
   onPromoteVectorField3DExtendedManifold,
@@ -4415,6 +4418,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveTemporalFtLeField={onSaveVectorField3DTemporalFtLeField}
           onSaveTemporalSurfaceEvents={onSaveVectorField3DTemporalSurfaceEvents}
           onSaveTemporalSurfaceLinkage={onSaveVectorField3DTemporalSurfaceLinkage}
+          onSaveTemporalSurfaceTransport={onSaveVectorField3DTemporalSurfaceTransport}
           onSaveTemporalFtleProfile={onSaveVectorField3DTemporalFtleProfile}
           onOpenTemporalFtleProfile={result => void openTemporalFtleProfile(result)}
           onOpenTemporalSpectrum={result => void openTemporalSpectrum(result)}

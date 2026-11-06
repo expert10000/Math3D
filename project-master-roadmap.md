@@ -1567,6 +1567,20 @@ names the exact covered paths. PC29 does not add a new comparison adapter.
 PC03 remains **Partial** for legacy sources without declared coordinate
 frames. PC05 remains **Partial** for generations never explicitly retained
 and unsupported cross-model selection mapping.
+The PC03 overlay qualifier now also refuses an operator-entered frame or unit
+that contradicts either source's available declaration, even when the other
+source has no declaration. This prevents a legacy member from masking known
+incompatibility; it does not establish the missing member's frame.
+The next bounded PC03 continuation lets an author record a frame in a legacy
+Geometry source whose current revision is its retained checkpoint. It commits
+a new replay-backed source revision and a separate exact saved composition;
+the old comparison still resolves its undeclared checkpoint. The declaration
+is authored metadata, not independent proof of physical alignment. Legacy
+Mesh sources now use the same bounded source-owner declaration path with their
+binary sidecar preserved. A current Mesh revision beyond the replay checkpoint
+is explicitly marked as a retained pre-declaration snapshot, so the original
+comparison keeps its exact source. Geometry history outside the retained
+checkpoint remains open.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

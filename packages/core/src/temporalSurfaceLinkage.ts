@@ -23,7 +23,7 @@ export type TemporalSurfaceLinkageStudy = Readonly<{ status: "ready" | "unavaila
   publication: AnalysisResultEnvelope | null }>;
 
 /** Extracts bounded connected component meshes for the shared GF-54 matcher. */
-function components(surface: VectorField3DIsosurface): readonly Readonly<{
+export function temporalSurfaceComponentMeshes(surface: VectorField3DIsosurface): readonly Readonly<{
   mesh: VectorField3DIsosurface; bounds: Bounds; euler: number }>[] {
   measureTemporalSurfaceComponents(surface);
   if (surface.triangleCount > 20_000 || surface.positions.length > 180_000)
@@ -87,8 +87,8 @@ export function computeTemporalSurfaceLinkage(project: Math3DProject,
   const links: TemporalComponentLink[] = [];
   try {
     for (let frame = 0; frame < frames.length - 1; frame++) {
-      const left = components(frames[frame]!.surface);
-      const right = components(frames[frame + 1]!.surface);
+      const left = temporalSurfaceComponentMeshes(frames[frame]!.surface);
+      const right = temporalSurfaceComponentMeshes(frames[frame + 1]!.surface);
       const event = replay.events[frame]!;
       const span = Math.min(...frames[frame]!.surface.coordinateAxes.map(axis =>
         axis.max - axis.min));

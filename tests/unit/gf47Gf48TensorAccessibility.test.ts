@@ -128,6 +128,10 @@ describe("GF-48 mobile scientific accessibility model", () => {
       "Saved tensor display recipe")!;
     expect(glyph.spoken).toContain("Unit m/s/m");
     expect(glyph.spoken).toContain(source.identity.structuralHash);
+    expect(glyph.spokenSummary).toContain("metres per second per metre");
+    expect(glyph.spokenSummary).toContain("Source revision");
+    expect(glyph.spokenSummary).toContain("Values require verification");
+    expect(glyph.spokenSummary).not.toContain(source.identity.structuralHash);
     const result = mobile.results.find(item => item.operation === "vector3d.tensor-glyphs")!;
     expect(result.sourceHash).toBe(source.identity.structuralHash);
     const selection = mobile.scientificContracts.find(item => item.kind ===
@@ -142,6 +146,9 @@ describe("GF-48 mobile scientific accessibility model", () => {
     expect(buildMobileProjectExplorer(serializeMath3DProject(stale)).scientificContracts
       .find(item => item.kind === "Saved tensor display recipe")?.spoken)
       .toContain("Values withheld: source-missing-or-changed");
+    expect(buildMobileProjectExplorer(serializeMath3DProject(stale)).scientificContracts
+      .find(item => item.kind === "Saved tensor display recipe")?.spokenSummary)
+      .toContain("Values withheld because source missing or changed");
     const bundled = buildMobileProjectExplorer(serializeMath3DProject(createGf23Project()));
     expect(bundled.scientificContracts.find(item => item.kind ===
       "Scientific selection")?.spoken).toContain("Status unverified");

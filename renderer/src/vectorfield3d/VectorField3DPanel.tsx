@@ -155,7 +155,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onOpenPoincareReturn, onSaveLyapunov, onPromoteManifoldPatch,
   onSaveTemporalSource, onSaveTemporalPathline, onSaveTemporalStreakline,
   onSaveTemporalSpectrum, onSaveTemporalFtLeField,
-  onSaveTemporalSurfaceEvents, onSaveTemporalSurfaceLinkage, onPromoteManifoldContinuation,
+  onSaveTemporalSurfaceEvents, onSaveTemporalSurfaceLinkage, onSaveTemporalSurfaceTransport,
+  onPromoteManifoldContinuation,
   onPromoteExtendedManifold,
   onPromoteManifoldAtlas,
   onSaveTemporalFtleProfile, onOpenTemporalFtleProfile,
@@ -245,6 +246,8 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
   onSaveTemporalSurfaceEvents?: (study: import("@math3d/core").TemporalSurfaceEventStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalSurfaceLinkage?: (study: import("@math3d/core").TemporalSurfaceLinkageStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveTemporalSurfaceTransport?: (study: import("@math3d/core").TemporalSurfaceTransportStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
@@ -2841,6 +2844,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onSaveFtLeField={onSaveTemporalFtLeField}
         onSaveSurfaceEvents={onSaveTemporalSurfaceEvents}
         onSaveSurfaceLinkage={onSaveTemporalSurfaceLinkage}
+        onSaveSurfaceTransport={onSaveTemporalSurfaceTransport}
         onSaveFtleProfile={onSaveTemporalFtleProfile}
         onOpenFtleProfile={onOpenTemporalFtleProfile}
         onOpenSpectrum={onOpenTemporalSpectrum}

@@ -13,6 +13,26 @@ Projects. Each creates an independent saved copy; **New copy** creates another.
 Then open **Compare saved documents** in the Project navigator and choose the
 named entry under **Saved composition**.
 
+## PC03 legacy Geometry and Mesh frame declarations
+
+For a saved overlay containing a Geometry or Mesh source with no coordinate frame,
+open that comparison and use **Record frame in source A/B**. Enter the source's
+axis labels and handedness. The overlay's frame and unit become part of the
+owning source in a new replay-backed revision. Mesh declarations retain the
+exact verified binary buffer; only source origin metadata changes. An old Mesh
+revision beyond the checkpoint is marked as an explicit retained snapshot
+before the edit. The original composition remains an operator
+assertion. A second saved composition pins the new revision and its exact hash.
+Reopen either composition after restart to check its own source generation.
+
+Geometry requires its current revision to be the retained replay checkpoint.
+Mesh can retain its current pre-declaration revision within the eight-generation
+budget. Save live document edits before using the action. Math3D
+checks the authored declaration against the other source's declaration; it
+cannot independently establish that the authored axes describe the physical
+source correctly. Older Geometry revisions beyond the checkpoint still need a
+source-owner migration path.
+
 ## PC24 linked coordinate probe
 
 Open **Coordinate Overlay Verification → Compare saved documents → Verified A/B
@@ -133,9 +153,11 @@ coordinate declaration was scientifically correct.
 4. For a Mesh–Geometry overlay, choose **Overlay** and enter a common frame and
    unit. When both structural sources contain `math3dCoordinateFrame` metadata,
    the viewer checks frame, unit, axes and handedness independently and refuses
-   a mismatch. Older sources without that metadata remain explicitly labeled
-   as an **unverified operator assertion**; entering matching text does not turn
-   it into scientific evidence. Surface overlays are refused; compare them in
+   a mismatch. If only one source declares a frame, its declared frame and unit
+   must still agree with the entered alignment. Older sources without that
+   metadata remain explicitly labeled as an **unverified operator assertion**;
+   entering matching text does not turn it into scientific evidence. Surface
+   overlays are refused; compare them in
    separate panes instead.
 5. Adjust each member's visibility and opacity. Mesh/Geometry color is
    independent per member; Surface retains its own viewer palette.

@@ -37,6 +37,7 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   const [constructionId, setConstructionId] = useState("");
   const [branch, setBranch] = useState<"stable" | "unstable">("stable");
   const [seedCount, setSeedCount] = useState(8);
+  const [patchOffsetFraction, setPatchOffsetFraction] = useState(.01);
   const [ringCount, setRingCount] = useState(5);
   const [patchTime, setPatchTime] = useState(1);
   const [solverTolerance, setSolverTolerance] = useState(1e-5);
@@ -45,6 +46,8 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
   const [continuation, setContinuation] = useState<ManifoldContinuationStudy | null>(null);
   const [extended, setExtended] = useState<ExtendedManifoldStudy | null>(null);
   const [atlas, setAtlas] = useState<ManifoldAtlasStudy | null>(null);
+  const [atlasDomainFraction, setAtlasDomainFraction] = useState(1);
+  const [atlasOverlapTolerance, setAtlasOverlapTolerance] = useState(.1);
   const [extraTime, setExtraTime] = useState(.5);
   const [message, setMessage] = useState("");
   const run = (task: () => void) => {
@@ -62,6 +65,38 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
       .includes(result.provenance.operation.type) &&
     result.provenance.source.documentId === document.identity.id) ?? [];
   const constructions = document.workspace?.equilibriumConstructions ?? [];
+  const currentExtended = saved.filter(item => item.provenance.operation.type ===
+    "vector3d.extended-manifold" &&
+    projectExtendedManifoldStatus(project!, item).status === "current");
+  const savedBaseAtlas = saved.find(item => item.provenance.operation.type ===
+    "vector3d.manifold-atlas" &&
+    (item.summary.memberResultIds as unknown[] | undefined)?.length === 2 &&
+    projectManifoldAtlasStatus(project!, item).status === "current");
+  const replayExtended = (results: readonly AnalysisResultEnvelope[]) => {
+    const pinned = project!.workspace.entries.find(item => item.module === "vector3d" &&
+      item.expected.id === results[0]?.provenance.source.documentId)?.checkpoint;
+    if (pinned?.format !== "math3d.vector-field3d-document")
+      throw new TypeError("Pinned atlas source is missing.");
+    const studies = results.map(result => {
+      const base = project!.workspace.results.find(item => item.resultId ===
+        result.provenance.operation.parameters.baseResultId);
+      if (!base) throw new TypeError("Atlas base patch is missing.");
+      const patch = computeVectorField3DLocalManifoldPatch(pinned,
+        base.provenance.operation.parameters.recipe as
+          import("@math3d/core").LocalManifoldRecipe);
+      if (patch.publication?.resultId !== base.resultId ||
+          patch.publication.summary.geometryHash !== base.summary.geometryHash)
+        throw new TypeError("Atlas base patch changed.");
+      const recipe = result.provenance.operation.parameters.recipe as
+        import("@math3d/core").ExtendedManifoldRecipe;
+      const study = computeVectorField3DExtendedManifold(project!, pinned, patch, recipe);
+      if (study.publication?.resultId !== result.resultId ||
+          structuralHash(study.publication.summary) !== structuralHash(result.summary))
+        throw new TypeError("Atlas member did not reproduce its saved geometry.");
+      return study;
+    });
+    return { pinned, studies };
+  };
   return <section aria-label="Advanced local topology" data-gf06-section="analyze"
     data-testid="gf44-gf46-advanced-topology">
     <h5>Return maps, finite-time growth and local manifold patches</h5>
@@ -131,6 +166,9 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
       <label>Patch seeds (6–12) <input type="number" min="6" max="12"
         step="1" value={seedCount} onChange={event =>
           setSeedCount(Number(event.target.value))} /></label>
+      <label>Patch offset fraction <input type="number" min="0.0001" max="0.03"
+        step="any" value={patchOffsetFraction} onChange={event =>
+          setPatchOffsetFraction(Number(event.target.value))} /></label>
       <label>Patch rings (3–8) <input type="number" min="3" max="8"
         step="1" value={ringCount} onChange={event =>
           setRingCount(Number(event.target.value))} /></label>
@@ -142,7 +180,7 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
           setSolverTolerance(Number(event.target.value))} /></label>
       <button type="button" disabled={!constructionId} onClick={() => run(() =>
         setManifold(computeVectorField3DLocalManifoldPatch(document, {
-          constructionId, branch, offsetFraction: .01, seedCount,
+          constructionId, branch, offsetFraction: patchOffsetFraction, seedCount,
           rings: ringCount, timeLimit: patchTime,
           solver: { method: "rk4-step-doubling", maxSteps: 256,
             absoluteTolerance: solverTolerance,
@@ -226,44 +264,42 @@ export function VectorField3DAdvancedTopologyPanel({ document, project,
             setMessage("Validated extended local Mesh saved with bounded evidence.");
           })}>Save extended local Mesh</button>}
       </div>}
-      {saved.filter(item => item.provenance.operation.type ===
-        "vector3d.extended-manifold" &&
-        projectExtendedManifoldStatus(project!, item).status === "current").length >= 2 &&
+      {currentExtended.length >= 2 &&
         <div data-testid="gf58-atlas-controls">
-          <p>Two saved source-linked local patches · declared source domain ·
-            10% span overlap tolerance · 1,000,000 evaluation cap.</p>
+          <p>Saved source-linked local patches · bounded domain and overlap ·
+            1,000,000 evaluation cap. Global claim withheld.</p>
+          <label>Atlas domain fraction <input type="number" min="0.1" max="1"
+            step="any" value={atlasDomainFraction} onChange={event =>
+              setAtlasDomainFraction(Number(event.target.value))} /></label>
+          <label>Atlas overlap tolerance <input type="number" min="0.00001" max="0.25"
+            step="any" value={atlasOverlapTolerance} onChange={event =>
+              setAtlasOverlapTolerance(Number(event.target.value))} /></label>
           <button type="button" onClick={() => run(() => {
-            const results = saved.filter(item => item.provenance.operation.type ===
-              "vector3d.extended-manifold" &&
-              projectExtendedManifoldStatus(project!, item).status === "current").slice(0, 2);
-            const pinned = project!.workspace.entries.find(item => item.module === "vector3d" &&
-              item.expected.id === results[0]?.provenance.source.documentId)?.checkpoint;
-            if (pinned?.format !== "math3d.vector-field3d-document")
-              throw new TypeError("Pinned atlas source is missing.");
-            const studies = results.map(result => {
-              const base = project!.workspace.results.find(item => item.resultId ===
-                result.provenance.operation.parameters.baseResultId);
-              if (!base) throw new TypeError("Atlas base patch is missing.");
-              const patch = computeVectorField3DLocalManifoldPatch(pinned,
-                base.provenance.operation.parameters.recipe as
-                  import("@math3d/core").LocalManifoldRecipe);
-              if (patch.publication?.resultId !== base.resultId ||
-                  patch.publication.summary.geometryHash !== base.summary.geometryHash)
-                throw new TypeError("Atlas base patch changed.");
-              const recipe = result.provenance.operation.parameters.recipe as
-                import("@math3d/core").ExtendedManifoldRecipe;
-              const study = computeVectorField3DExtendedManifold(project!, pinned,
-                patch, recipe);
-              if (study.publication?.resultId !== result.resultId ||
-                  structuralHash(study.publication.summary) !== structuralHash(result.summary))
-                throw new TypeError("Atlas member did not reproduce its saved geometry.");
-              return study;
-            });
-            const domain = pinned.source.axes.map(axis => [axis.min, axis.max]) as unknown as
+            const { pinned, studies } = replayExtended(currentExtended.slice(0, 2));
+            const domain = pinned.source.axes.map(axis => {
+              const center = (axis.min + axis.max) / 2;
+              const half = (axis.max - axis.min) * atlasDomainFraction / 2;
+              return [center - half, center + half];
+            }) as unknown as
               import("@math3d/core").ManifoldAtlasRecipe["domain"];
             setAtlas(computeVectorField3DManifoldAtlas(project!, pinned, studies,
-              { domain, overlapTolerance: .1, maxEvaluations: 1_000_000 }));
+              { domain, overlapTolerance: atlasOverlapTolerance,
+                maxEvaluations: 1_000_000 }));
           })}>Validate local patch atlas</button>
+          {savedBaseAtlas && currentExtended.length >= 3 &&
+            <button type="button" onClick={() => run(() => {
+              const baseMembers = savedBaseAtlas.summary.memberResultIds as string[];
+              const third = currentExtended.find(item => !baseMembers.includes(item.resultId));
+              const results = [...baseMembers.map(id => currentExtended.find(item =>
+                item.resultId === id)), third];
+              if (results.some(item => !item))
+                throw new TypeError("Saved atlas charts are missing.");
+              const { pinned, studies } = replayExtended(results as AnalysisResultEnvelope[]);
+              const recipe = savedBaseAtlas.provenance.operation.parameters.recipe as
+                import("@math3d/core").ManifoldAtlasRecipe;
+              setAtlas(computeVectorField3DManifoldAtlas(project!, pinned, studies,
+                { ...recipe, baseAtlasResultId: savedBaseAtlas.resultId }));
+            })}>Refine saved local atlas</button>}
           {atlas && <p role="status" data-testid="gf58-atlas-status">{
             atlas.status === "validated" ?
               `Local atlas validated: ${String(atlas.publication!.summary.overlapSamples)} ` +

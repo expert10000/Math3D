@@ -200,6 +200,7 @@ export * from "./projectTemporalFtleGraph";
 export * from "./temporalSurfaceEvents";
 export * from "./temporalRemeshedSurface";
 export * from "./temporalSurfaceLinkage";
+export * from "./temporalSurfaceTransport";
 export * from "./temporalStreakline";
 export * from "./temporalSpectrum";
 export * from "./projectTemporalSpectrumGraph";

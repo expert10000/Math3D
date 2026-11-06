@@ -79,6 +79,43 @@ test("PC03–PC04 overlays verified Mesh and Geometry without altering their sou
   } finally { await closeSurfaceApp(ctx); }
 });
 
+test("PC03 records a legacy Mesh frame without changing its binary source", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const fixture = projectFreezeFixture();
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const controls = freezeControls(ctx.page);
+    await controls.importOpen(fixture.raw);
+    await controls.save();
+    await controls.panel.getByTestId("project-open-composition").click();
+    const view = ctx.page.getByTestId("project-composition-view");
+    await view.getByTestId("project-composition-source-0").selectOption(fixture.targets.mesh);
+    await view.getByTestId("project-composition-source-1").selectOption(fixture.targets.geometry);
+    await view.getByTestId("project-composition-mode").selectOption("overlay");
+    await view.getByLabel("Shared frame").fill("local xyz");
+    await view.getByLabel("Shared unit").fill("unitless");
+    await view.getByRole("button", { name: "Save composition" }).click();
+    await expect(view.getByText("Composition saved; source documents were not changed.")).toBeVisible();
+    const before = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    await view.getByTestId("project-composition-declare-frame-0").click();
+    await expect.poll(() => ctx!.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).compositions.length))
+      .toBe(before.compositions.length + 1);
+    const after = await ctx.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(after.compositions).toHaveLength(before.compositions.length + 1);
+    const oldMesh = before.workspace.entries.find((entry: any) => entry.expected.id === fixture.targets.mesh);
+    const newMesh = after.workspace.entries.find((entry: any) => entry.expected.id === fixture.targets.mesh);
+    expect(newMesh.expected.revision).toBe(oldMesh.expected.revision + 1);
+    expect(newMesh.checkpoint.identity).toEqual(oldMesh.checkpoint.identity);
+    expect(core.retainedMeshGenerationDocuments(newMesh).some((document: any) =>
+      document.identity.structuralHash === oldMesh.expected.structuralHash)).toBe(true);
+    expect(newMesh.checkpoint.source.resource).toEqual(oldMesh.checkpoint.source.resource);
+    await view.getByRole("button", { name: "Close" }).click();
+    await ctx.page.reload();
+    expect(core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1"))).compositions).toHaveLength(after.compositions.length);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("PC05 compares a retained Surface checkpoint with its current generation", async () => {
   test.setTimeout(180_000);
   let ctx: LaunchedSurfaceApp | null = null;
@@ -148,6 +185,11 @@ test("PC03 starter exposes verified, asserted and refused coordinate overlays", 
     await expect(view.getByTestId("project-composition-probe-status")).toContainText("Linked coordinate unavailable");
     await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
     await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByLabel("Shared unit").fill("cm");
+    await expect(view.getByRole("alert")).toContainText("Source coordinate frames, axes, handedness, or units disagree");
+    await expect(view.getByRole("region", { name: /Overlay/ })).toHaveCount(0);
+    await view.getByLabel("Shared unit").fill("mm");
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
     await view.getByTestId("project-composition-mode").selectOption("side-by-side");
     await expect(view.getByTestId("project-composition-camera-link")).toBeDisabled();
     await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
@@ -160,6 +202,42 @@ test("PC03 starter exposes verified, asserted and refused coordinate overlays", 
     await view.getByRole("button", { name: "Close" }).click();
     await page.reload();
     expect(core.parseMath3DProject(await page.evaluate(() => localStorage.getItem("math3d.project.v1")))).toEqual(project);
+  } finally { await closeSurfaceApp(ctx); }
+});
+
+test("PC03 records a legacy Geometry frame in its owner and reopens the exact new overlay", async () => {
+  test.setTimeout(180_000);
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    const page = ctx.page, panel = page.getByTestId("project-explorer-panel");
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-template-open-coordinate-overlay-study").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Opened supported project");
+    if (!await panel.getByTestId("project-save").isVisible()) await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    await panel.getByTestId("project-open-composition").click();
+    const view = page.getByTestId("project-composition-view");
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByTestId("project-composition-declare-frame-1").click();
+    await expect(view.getByText("Source frame recorded in a new document revision; new exact comparison saved.")).toBeVisible();
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D overlay · source frame r2" });
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    expect(saved.compositions).toHaveLength(3);
+    const updated = saved.workspace.entries.find((entry: any) => entry.expected.id === saved.compositions[1].members[1].documentId);
+    expect(updated.expected.revision).toBe(updated.checkpoint.identity.revision + 1);
+    expect(updated.checkpoint.source.extensions.math3dCoordinateFrame).toBeUndefined();
+    await view.getByRole("button", { name: "Close" }).click();
+    await page.reload();
+    await page.getByTestId("projects-toggle").click();
+    await panel.getByTestId("project-open-composition").click();
+    await view.getByLabel("Saved composition").selectOption({ label: "A/D overlay · source frame r2" });
+    await expect(view.getByText("Source-declared coordinate frames, axes, handedness, and units match this overlay.")).toBeVisible();
   } finally { await closeSurfaceApp(ctx); }
 });
 

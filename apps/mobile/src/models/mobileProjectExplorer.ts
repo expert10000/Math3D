@@ -4,13 +4,15 @@ import { projectVectorField3DTopologyStatus, projectPoincareReturnStatus,
   projectLyapunovStatus, projectLocalManifoldPatchStatus,
   projectLocalManifoldMeshStatus, projectTensorGlyphStatus,
   projectTemporalLyapunovFieldStatus, projectTemporalSurfaceEventsStatus,
-  projectManifoldContinuationStatus,
+  projectTemporalSurfaceLinkageStatus, projectTemporalSurfaceTransportStatus,
+  projectManifoldContinuationStatus, projectManifoldAtlasStatus,
   reviewProjectDerivedField } from "@math3d/core";
 import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 import { mobileProjectRefreshOptions } from "./mobileProjectRefresh";
 import { resolveMobileProjectWorkspace } from "./mobileProjectReplay";
 import { mobileProjectResourceContext } from "./mobileProjectResources";
+import { scientificSpeechSummary } from "./mobileScientificSpeech";
 import { createInMemoryDependencyGraph } from "@math3d/kernel";
 
 const complexContourPreview = (document: import("@math3d/core").KernelWorkspaceDocument | undefined,
@@ -190,19 +192,33 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
               "Values are not recomputed on mobile.") };
       }),
     ...project.workspace.results.filter(item => ["vector3d.temporal-ftle-field",
-      "vector3d.temporal-surface-events", "vector3d.manifold-continuation"]
+      "vector3d.temporal-surface-events", "vector3d.temporal-surface-linkage",
+      "vector3d.temporal-surface-transport", "vector3d.manifold-continuation",
+      "vector3d.manifold-atlas"]
       .includes(item.provenance.operation.type)).map(item => {
         const operation = item.provenance.operation.type;
         const state = operation === "vector3d.temporal-ftle-field" ?
           projectTemporalLyapunovFieldStatus(project, item) :
           operation === "vector3d.temporal-surface-events" ?
             projectTemporalSurfaceEventsStatus(project, item) :
-            projectManifoldContinuationStatus(project, item);
+            operation === "vector3d.temporal-surface-linkage" ?
+              projectTemporalSurfaceLinkageStatus(project, item) :
+              operation === "vector3d.temporal-surface-transport" ?
+                projectTemporalSurfaceTransportStatus(project, item) :
+                operation === "vector3d.manifold-atlas" ?
+                  projectManifoldAtlasStatus(project, item) :
+                  projectManifoldContinuationStatus(project, item);
         return { id: item.resultId,
           title: operation === "vector3d.temporal-ftle-field" ?
             "Finite-time Lyapunov field" :
             operation === "vector3d.temporal-surface-events" ?
-              "Exact-frame topology events" : "Local manifold continuation",
+              "Exact-frame topology events" :
+              operation === "vector3d.temporal-surface-linkage" ?
+                "Exact-frame component links" :
+                operation === "vector3d.temporal-surface-transport" ?
+                  "Checked region transport" :
+                  operation === "vector3d.manifold-atlas" ?
+                    "Local manifold atlas" : "Local manifold continuation",
           kind: "Saved scientific result", sourceId: item.provenance.source.documentId,
           status: state.status === "current" ? "recipe retained" : "withheld",
           detail: `Source revision ${item.provenance.source.revision}, ` +
@@ -232,7 +248,8 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
     title: project.metadata.title,
     workbooks, notes,
     scientificContracts: scientificContracts.map(item => ({ ...item,
-      spoken: `${item.kind}: ${item.title}. Status ${item.status}. ${item.detail}` })),
+      spoken: `${item.kind}: ${item.title}. Status ${item.status}. ${item.detail}`,
+      spokenSummary: scientificSpeechSummary(item) })),
     refreshOptions: mobileProjectRefreshOptions({ projectType: "project-preview", id: project.identity.id, title: project.metadata.title,
       serializedProject: raw, projectResources: [...sidecars], updatedAt: 0, lastOpenedAt: 0 }),
     resources: inventory.map(item => ({ id: item.id, kind: item.kind, required: item.required, available: resources.bytes(item) !== null })),

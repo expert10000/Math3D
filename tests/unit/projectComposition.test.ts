@@ -141,6 +141,10 @@ describe("PC01–PC05 non-owning Project composition", () => {
       { frame: "laboratory xyz", unit: "mm" })).toBe("mismatch");
     expect(qualifyProjectOverlayCoordinates(first, second, { frame: "laboratory xyz", unit: "cm" })).toBe("mismatch");
     expect(qualifyProjectOverlayCoordinates(first, { status: "missing" }, { frame: "laboratory xyz", unit: "mm" })).toBe("asserted");
+    expect(qualifyProjectOverlayCoordinates(first, { status: "missing" }, { frame: "laboratory xyz", unit: "cm" })).toBe("mismatch");
+    expect(qualifyProjectOverlayCoordinates({ status: "missing" }, second, { frame: "different laboratory", unit: "mm" })).toBe("mismatch");
+    expect(qualifyProjectOverlayCoordinates({ status: "missing" }, { status: "missing" },
+      { frame: "laboratory xyz", unit: "mm" })).toBe("asserted");
     expect(readProjectCoordinateFrame(mesh).status).toBe("missing");
     expect(readProjectCoordinateFrame({ ...meshWith, source: { ...meshWith.source, origin: { math3dCoordinateFrame: { ...frame, axes: ["x", "x", "z"] } } } }).status).toBe("invalid");
   });
