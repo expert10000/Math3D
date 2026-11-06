@@ -1045,6 +1045,8 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Repeat matrix (2026-11-06):** The [second Windows run](https://github.com/expert10000/Math3D/actions/runs/42214279473) passed all twelve installer probes and rechecked the archived installed renderer's 40-cycle leak. The new source job built but a first-run overlay blocked its Palette click; the rollback test read before an asynchronous save completed. Both harness paths were corrected and a local 80-cycle run with the revised source harness held contexts and textures at baseline. Installed native rollback and Windows source memory confirmation remain pending another run.
 
+**Third matrix (2026-11-06):** The [third Windows run](https://github.com/expert10000/Math3D/actions/runs/42215273423) passed all twelve archived installer probes and the installed retainer check. Candidate Project seeding with a QWZ-promoted native Geometry document passed; after uninstall and pinned pre-QEC install, the older app classified the expanded Project as a compatibility preview and would not open its native Geometry document. This is a real rollback gap beyond the previously passing six scene references. The source job completed 80 cycles but failed to write its report on the fresh runner; the writer is fixed and a targeted rerun remains. QI-40 freeze remains withheld.
+
 ### Cross-repository ownership and evidence for the first cut
 
 | Deliverable | Owning repository | Required predecessor | Evidence to attach |
