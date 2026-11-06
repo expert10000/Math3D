@@ -26,7 +26,7 @@ try {
   const cdp = await page.context().newCDPSession(page);
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
-  const heapComposition = async (traceRetainers = false) => {
+  const heapComposition = async (traceRetainers = false, baselineMaxNodeId = 0) => {
     await cdp.send("HeapProfiler.collectGarbage");
     const chunks = [];
     const collect = ({ chunk }) => chunks.push(chunk);
@@ -39,11 +39,15 @@ try {
     const typeIndex = fields.indexOf("type");
     const nameIndex = fields.indexOf("name");
     const sizeIndex = fields.indexOf("self_size");
-    assert(typeIndex >= 0 && nameIndex >= 0 && sizeIndex >= 0, "Unknown V8 heap snapshot fields");
+    const idIndex = fields.indexOf("id");
+    assert(typeIndex >= 0 && nameIndex >= 0 && sizeIndex >= 0 && idIndex >= 0,
+      "Unknown V8 heap snapshot fields");
     const types = snapshot.snapshot.meta.node_types[typeIndex];
     const byType = {};
     const byConstructor = {};
+    let maxNodeId = 0;
     for (let offset = 0; offset < snapshot.nodes.length; offset += stride) {
+      maxNodeId = Math.max(maxNodeId, snapshot.nodes[offset + idIndex]);
       const type = types[snapshot.nodes[offset + typeIndex]];
       const bytes = snapshot.nodes[offset + sizeIndex];
       const typeRow = byType[type] ??= { count: 0, selfBytes: 0 };
@@ -57,8 +61,8 @@ try {
       row.count++;
       row.selfBytes += bytes;
     }
-    return { byType, byConstructor,
-      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot) } : {}) };
+    return { byType, byConstructor, maxNodeId,
+      ...(traceRetainers ? { retainers: summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId) } : {}) };
   };
   const snapshot = async () => {
     await cdp.send("HeapProfiler.collectGarbage");
@@ -121,7 +125,8 @@ try {
     cycles.push({ model: id, opened, closed, simulatedContextLoss });
   }
   const final = await snapshot();
-  const finalHeapComposition = diagnoseHeap ? await heapComposition(true) : null;
+  const finalHeapComposition = diagnoseHeap ?
+    await heapComposition(true, baselineHeapComposition.maxNodeId) : null;
   const constructorGrowth = diagnoseHeap ? Object.keys({
     ...baselineHeapComposition.byConstructor, ...finalHeapComposition.byConstructor,
   }).map(name => ({ name,
