@@ -18,6 +18,8 @@ jobs:
         run: |
           npm ci
           if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+          npm --prefix renderer ci
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer npm ci failed' }
           npm run build:main
           if ($LASTEXITCODE -ne 0) { throw 'Main build failed' }
           npm run build:renderer
@@ -117,7 +119,7 @@ jobs:
             -CandidateDirectory (Join-Path $PWD 'installers/candidate') `
             -InstallRoot (Join-Path $env:RUNNER_TEMP 'qi40-retainer-install') `
             -EvidencePath (Join-Path $PWD 'test-results/qi40-retainer-installer.json') `
-            -Math3DOnly
+            -Math3DOnly -CaptureCrashDump
       - name: Install harness
         shell: pwsh
         run: |

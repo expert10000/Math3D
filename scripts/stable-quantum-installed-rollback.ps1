@@ -138,6 +138,9 @@ function Invoke-ProfilePhase([string]$phase, [string]$path) {
   $env:MATH3D_ROLLBACK_PROFILE_ROOT = $profile
   $env:MATH3D_ROLLBACK_PROFILE_PHASE = $phase
   $env:MATH3D_ROLLBACK_PROFILE_RESULT_PATH = $path
+  $env:MATH3D_ROLLBACK_PROMOTED_GEOMETRY_ID = if ($phase -eq 'verify') {
+    $evidence.profileSeed.promotedGeometryId
+  } else { '' }
   Push-Location $repo
   try {
     & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test tests/e2e/quantum-installed-rollback-profile.spec.ts --reporter=list | Out-Host
