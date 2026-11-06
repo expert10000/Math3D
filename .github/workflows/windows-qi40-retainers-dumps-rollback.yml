@@ -13,6 +13,11 @@ on:
         description: Source scene cycles for the memory check
         options: ['80', '120']
         default: '80'
+      scene_pair:
+        type: choice
+        description: Alternate the standard stress pair or QWZ curvature and bands
+        options: [standard, qwz]
+        default: standard
       candidate_run_id:
         type: string
         description: Stable two-app candidate build run for fixed-memory or installer checks
@@ -74,6 +79,7 @@ jobs:
         env:
           MATH3D_HEAP_DIAGNOSTIC: '1'
           MATH3D_STRESS_AUTOSAVE_ABLATION: ${{ inputs.focus == 'autosave' && '1' || '0' }}
+          MATH3D_STRESS_SCENE_PAIR: ${{ inputs.scene_pair }}
         run: |
           if ('${{ inputs.focus }}' -eq 'autosave') {
             $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '0'
@@ -92,6 +98,7 @@ jobs:
           $contexts = $report.heapComposition.trackedConstructors.'native:WebGL2RenderingContext'
           $textures = $report.heapComposition.trackedConstructors.'native:WebGLTexture'
           if ($report.cycles -ne $cycles -or $report.installed -or
+              $report.scenePair -ne '${{ inputs.scene_pair }}' -or
               $contexts.final -ne $contexts.baseline -or
               $textures.final -ne $textures.baseline -or
               @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
@@ -266,12 +273,14 @@ jobs:
         shell: pwsh
         env:
           MATH3D_HEAP_DIAGNOSTIC: '1'
+          MATH3D_STRESS_SCENE_PAIR: ${{ inputs.scene_pair }}
         run: |
           $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-fixed-memory-install/Math3D/Math3D.exe'
           node scripts/measure-quantum-scene-stress.mjs test-results/qi40-installed-fixed-memory-80.json 80 | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Installed scene stress failed' }
           $report = Get-Content test-results/qi40-installed-fixed-memory-80.json -Raw | ConvertFrom-Json
           if ($report.cycles -ne 80 -or -not $report.installed -or
+              $report.scenePair -ne '${{ inputs.scene_pair }}' -or
               @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
             throw 'Installed scene cycle or canvas assertions failed'
           }

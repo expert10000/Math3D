@@ -8,6 +8,9 @@ import { summarizeQuantumHeapRetainers } from "./quantum-heap-retainers.mjs";
 const requestedCycles = process.argv[3] === undefined ? 8 : Number(process.argv[3]);
 if (!Number.isInteger(requestedCycles) || requestedCycles < 4 || requestedCycles > 120)
   throw new Error("Choose 4 to 120 quantum scene stress cycles.");
+const scenePair = process.env.MATH3D_STRESS_SCENE_PAIR ?? "standard";
+if (!["standard", "qwz"].includes(scenePair))
+  throw new Error("Choose the standard or qwz quantum scene pair.");
 const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-stress-"));
 const installedExe = process.env.MATH3D_INSTALLED_STRESS_EXE
   ? resolve(process.env.MATH3D_INSTALLED_STRESS_EXE) : null;
@@ -108,7 +111,9 @@ try {
   const baselineHeapComposition = diagnoseHeap ? await heapComposition() : null;
   const cycles = [];
   for (let i = 0; i < requestedCycles; i++) {
-    const id = i % 2 ? "hydrogen-2p" : "rice-mele-bands";
+    const id = scenePair === "qwz"
+      ? (i % 2 ? "qwz-bands" : "qwz-curvature")
+      : (i % 2 ? "hydrogen-2p" : "rice-mele-bands");
     // A first-run coachmark can cover the toolbar on a fresh CI profile. This
     // harness measures scene lifecycle, so dispatch the palette button directly.
     await page.getByRole("button", { name: "Palette", exact: true }).click({ force: true });
@@ -169,7 +174,7 @@ try {
       final: finalHeapComposition.byConstructor[name]?.count ?? 0,
     }])) : null;
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
-    installed: Boolean(installedExe),
+    installed: Boolean(installedExe), scenePair,
     autosaveAblation,
     workbookAutosaveStorage,
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
