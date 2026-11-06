@@ -112,6 +112,30 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.numberTheory.padic": {
+      const entries = result.entries as Record<string, Record<string, unknown>>;
+      facts.push(fact("Domain", `${text(result.domain)}(${text(result.prime)})`),
+        fact("Requested precision digits", text(result.precision)));
+      for (const key of ["a", "b", "sum", "product"]) {
+        const entry = entries[key];
+        facts.push(fact(`${key} display`, text(entry.text)),
+          fact(`${key} valuation`, text(entry.valuation)),
+          fact(`${key} absolute precision`, entry.absolutePrecision === null ? "∞" : text(entry.absolutePrecision)),
+          fact(`${key} relative precision`, text(entry.relativePrecision)),
+          fact(`${key} zero status`, text(entry.zeroStatus)),
+          fact(`${key} unit digits`, list(entry.digits)));
+      }
+      if (result.hensel) {
+        const root = result.hensel as Record<string, unknown>;
+        facts.push(fact("Hensel root residue", text(root.rootResidue)),
+          fact("Hensel modulus", text(root.modulus)),
+          fact("Hensel absolute precision", text(root.absolutePrecision)));
+      }
+      checks.push(check("p-adic precision and congruence", "checked",
+        "Exact rational sources, unit digits, valuations, finite-precision zero labels and any Hensel root congruence are independently checked."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.finiteField.explore": {
       const selected = result.selected as Record<string, unknown>;
       facts.push(fact("Field", `GF(${text(result.characteristic)}^${text(result.degree)})`),

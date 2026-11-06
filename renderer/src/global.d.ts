@@ -529,6 +529,7 @@ declare global {
     | "sage.module.invariantFactors"
     | "sage.chain.homology"
     | "sage.finiteField.explore"
+    | "sage.numberTheory.padic"
     | "sage.groebner.compute"
     | "sage.ideal.groebner"
     | "sage.ideal.eliminate"

@@ -35,13 +35,14 @@ type Props = SageServicesWorkspaceProps & {
   description: string;
   testId: string;
   onOpenConsole?: () => void;
+  topPanel?: ReactNode;
 };
 
 const button = { border: "1px solid #b9cce3", borderRadius: 7, background: "#fff", color: "#183b70", padding: "6px 10px", cursor: "pointer", fontSize: 12 } as const;
 
 /** Shared workspace surface over the Sage catalog, result cards, and runtime registry. */
 export default function SageServicesWorkspace({ context, title, description, testId, record, onResult,
-  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures }: Props) {
+  onSaveWorkbook, onOpenWorkbook, onOpenConsole, onOpenComputeRuntimes, onClose, structures, topPanel }: Props) {
   const [leftTab, setLeftTab] = useState<"structures" | "operations" | "recipes">(structures?.projectId ? "structures" : "operations");
   const [rightTab, setRightTab] = useState<"results" | "structure" | "verification" | "execution" | "runtimes">(structures?.projectId ? "structure" : "results");
   const [resultSource, setResultSource] = useState<"evidence" | "freeform">("evidence");
@@ -71,6 +72,7 @@ export default function SageServicesWorkspace({ context, title, description, tes
     <div style={{ padding: "12px 20px", fontSize: 12, color: "#526477" }}>
       Services use bounded operations. Sage code runs only after explicit trust in the local Console or a Workbook code cell.
     </div>
+    {topPanel && <div style={{ padding: "0 20px" }}>{topPanel}</div>}
     <div className={`sage-workspace-grid${structures ? " sage-workspace-grid-structures" : ""}`}>
       <section aria-label={`${title} ${structures ? "Tools" : "Services"}`} className="sage-workspace-card">
         {structures ? <nav aria-label={`${title} sections`} className="sage-workspace-tabs">

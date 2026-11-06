@@ -11,6 +11,7 @@ import { parseSageFiniteGroupInput, validateSageFiniteGroupSnapshot } from "./sa
 import { parseSageModuleInvariantInput, validateSageModuleInvariantSnapshot } from "./sageModuleInvariantFactors";
 import { parseSageChainHomologyInput, validateSageChainHomologySnapshot } from "./sageChainHomology";
 import { parseSageFiniteFieldInput, validateSageFiniteFieldSnapshot } from "./sageFiniteFieldExplorer";
+import { validateSagePadicSnapshot } from "./sagePadicWorkspace";
 import { createSageExecutionCertificate, parseSageExecutionCertificate,
   type SageExecutionCertificate } from "./sageExecutionCertificate";
 
@@ -93,6 +94,8 @@ export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDoc
     validateSageChainHomologySnapshot(parseSageChainHomologyInput(request.params), projectId, objects);
   if (request.operation === "sage.finiteField.explore")
     validateSageFiniteFieldSnapshot(parseSageFiniteFieldInput(request.params), projectId, objects);
+  if (request.operation === "sage.numberTheory.padic")
+    validateSagePadicSnapshot(request.params, projectId, objects);
   const result = parseAlgebraOperationResult(request, value.result);
   if (structuralHash(result) !== value.resultHash) throw new TypeError("Algebra evidence result hash does not match.");
   if (value.certificate !== undefined)

@@ -362,6 +362,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G01 implementation update (2026-11-06):** The [G01 acceptance record](evidence/sage-g01-finite-field-explorer-2026-11-06.md) adds a bounded explorer for saved `GF(p^n)` objects. It enumerates at most 64 elements, reports the actual Sage defining polynomial, Frobenius orbit, trace, norm, minimal polynomial and primitive elements, and shows a multiplication table up to order 16. Project evidence verifies these values with independent exact polynomial arithmetic and survives export and reopen. The next feature is **SAGE-G02**, the p-adic workspace.
 
+**G02 implementation update (2026-11-06):** The [G02 acceptance record](evidence/sage-g02-padic-workspace-2026-11-06.md) adds Number Theory's precision-explicit `Zp`/`Qp` panel. Each bounded study pins a saved `ZZ` or `QQ` parent, prime, precision, exact operands and optional simple-root Hensel input. Results distinguish exact source fractions from finite p-adic displays and expose valuation, absolute/relative precision, unit digits, precision loss and uncertain zero. Project import independently checks rational arithmetic, digits and Hensel congruence. The next feature is **SAGE-G03**, local extensions.
+
 ---
 
 ## 3. P0 — Algebra object registry

@@ -40,6 +40,7 @@ export type Math3DWorkerOperationId =
   | "module.invariant-factors"
   | "chain.homology"
   | "finite-field.explore"
+  | "number-theory.padic"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -339,6 +340,10 @@ const definitions = [
   },
   {
     id: "finite-field.explore", title: "Pinned bounded finite-field explorer", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "number-theory.padic", title: "Precision-explicit p-adic study", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {
