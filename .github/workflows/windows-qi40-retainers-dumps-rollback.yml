@@ -6,7 +6,7 @@ on:
       focus:
         type: choice
         description: Select a targeted Windows check
-        options: [all, source, autosave, rollback, retainers, fixed-memory, installer, installer-full, installer-allusers, components]
+        options: [all, source, autosave, rollback, retainers, fixed-memory, fixed-memory-e2e-ablation, installer, installer-full, installer-allusers, components]
         default: all
       candidate_run_id:
         type: string
@@ -228,7 +228,7 @@ jobs:
             test-results/qi40-installed-retainers-40.json
 
   installed-fixed-memory:
-    if: ${{ inputs.focus == 'fixed-memory' }}
+    if: ${{ inputs.focus == 'fixed-memory' || inputs.focus == 'fixed-memory-e2e-ablation' }}
     runs-on: windows-latest
     timeout-minutes: 60
     permissions:
@@ -279,6 +279,7 @@ jobs:
         shell: pwsh
         env:
           MATH3D_HEAP_DIAGNOSTIC: '1'
+          MATH3D_STRESS_ABLATE_E2E_HOOKS: ${{ inputs.focus == 'fixed-memory-e2e-ablation' && '1' || '0' }}
         run: |
           $env:MATH3D_INSTALLED_STRESS_EXE = Join-Path $env:RUNNER_TEMP 'qi40-fixed-memory-install/Math3D/Math3D.exe'
           node scripts/measure-quantum-scene-stress.mjs test-results/qi40-installed-fixed-memory-80.json 80 | Out-Null
