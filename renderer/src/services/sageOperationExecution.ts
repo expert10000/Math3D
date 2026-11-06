@@ -15,6 +15,7 @@ import {
   parseSageFiniteFieldInput,
   parseSagePadicInput,
   parseSageLocalExtensionInput,
+  parseSageEllipticCurveInput,
   type CanonicalJsonValue,
   type ScientificSourceGeneration,
 } from "@math3d/core";
@@ -61,6 +62,7 @@ export const SAGE_JOB_OPERATIONS = {
   "sage.finiteField.explore": { type: "finite-field.explore", label: "finite-field explorer", cancelled: "Sage finite-field job cancelled." },
   "sage.numberTheory.padic": { type: "number-theory.padic", label: "p-adic precision study", cancelled: "Sage p-adic job cancelled." },
   "sage.numberField.localExtensions": { type: "number-field.local-extensions", label: "quadratic local extensions", cancelled: "Sage local-field job cancelled." },
+  "sage.ellipticCurve.dossier": { type: "elliptic-curve.dossier", label: "elliptic curve dossier", cancelled: "Sage curve job cancelled." },
   "sage.algebra.reconstruct": { type: "algebra.reconstruct", label: "algebra object reconstruction", cancelled: "Sage algebra reconstruction cancelled." },
   "sage.algebra.inspectDomains": { type: "algebra.domains.inspect", label: "algebra parent inspection", cancelled: "Sage algebra domain inspection cancelled." },
   "sage.ideal.groebner": { type: "ideal.groebner", label: "saved ideal Gröbner basis", cancelled: "Sage ideal job cancelled." },
@@ -217,6 +219,8 @@ const validateSageJob = (request: SageRunRequest & { operation: BrokeredSageOper
       ? request.backend === "docker" && !!parseSagePadicInput(params)
     : request.operation === "sage.numberField.localExtensions"
       ? request.backend === "docker" && !!parseSageLocalExtensionInput(params)
+    : request.operation === "sage.ellipticCurve.dossier"
+      ? request.backend === "docker" && !!parseSageEllipticCurveInput(params)
     : request.operation === "sage.matrix.linear_dossier"
       ? request.backend === "docker" && !!parseSageMatrixDossierInput(params)
     : request.operation === "sage.matrix.integer_forms"

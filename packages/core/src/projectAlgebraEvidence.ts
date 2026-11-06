@@ -13,6 +13,7 @@ import { parseSageChainHomologyInput, validateSageChainHomologySnapshot } from "
 import { parseSageFiniteFieldInput, validateSageFiniteFieldSnapshot } from "./sageFiniteFieldExplorer";
 import { validateSagePadicSnapshot } from "./sagePadicWorkspace";
 import { validateSageLocalExtensionSnapshot } from "./sageLocalExtensions";
+import { validateSageEllipticCurveSnapshot } from "./sageEllipticCurve";
 import { createSageExecutionCertificate, parseSageExecutionCertificate,
   type SageExecutionCertificate } from "./sageExecutionCertificate";
 
@@ -99,6 +100,8 @@ export const parseProjectAlgebraEvidence = (value: unknown, projectId: StableDoc
     validateSagePadicSnapshot(request.params, projectId, objects);
   if (request.operation === "sage.numberField.localExtensions")
     validateSageLocalExtensionSnapshot(request.params, projectId, objects);
+  if (request.operation === "sage.ellipticCurve.dossier")
+    validateSageEllipticCurveSnapshot(request.params, projectId, objects);
   const result = parseAlgebraOperationResult(request, value.result);
   if (structuralHash(result) !== value.resultHash) throw new TypeError("Algebra evidence result hash does not match.");
   if (value.certificate !== undefined)

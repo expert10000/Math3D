@@ -133,6 +133,7 @@ Result shape:
 - `sage.finiteField.explore` (pinned `GF(p^n)` with at most 64 elements; exact Frobenius, trace, norm, minimal polynomial, primitive elements and a table up to order 16)
 - `sage.numberTheory.padic` (pinned `ZZ`/`QQ` parent; bounded `Zp`/`Qp` arithmetic with explicit precision and optional simple-root Hensel lift)
 - `sage.numberField.localExtensions` (pinned quadratic field; odd primes 3–31 away from the power-basis index, precision 2–16, exact prime ideals and finite-precision `Qp` local models)
+- `sage.ellipticCurve.dossier` (pinned nonsingular short Weierstrass curve over `QQ` or prime `GF(p)`, 5 ≤ p ≤ 1009; exact discriminant, `j` and optional sample-point doubling)
 - `sage.polynomial.roots_exact`
 - `sage.polynomial.factor`
 - `sage.polynomial.dossier` (bounded exact `QQ[x]` analysis: factorization, square-free decomposition, derivative, discriminant and rational roots)

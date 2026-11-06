@@ -30,6 +30,8 @@ export * from "./sageChainHomology";
 export * from "./sageFiniteFieldExplorer";
 export * from "./sagePadicWorkspace";
 export * from "./sageLocalExtensions";
+export * from "./ellipticCurve";
+export * from "./sageEllipticCurve";
 export * from "./sageFiniteGroupScenes";
 export * from "./sageAlgebraicLocusScene";
 export * from "./sageAlgebraicLocusSampling";

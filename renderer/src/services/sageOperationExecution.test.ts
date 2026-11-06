@@ -3,6 +3,7 @@ import { buildSageAlgebraDomainInput, buildSageAlgebraReconstructionInput, build
   buildSageFiniteFieldInput,
   buildSagePadicInput,
   buildSageLocalExtensionInput,
+  buildSageEllipticCurveInput,
   createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, createStableDocumentId,
   upsertMath3DProjectAlgebraObject } from "@math3d/core";
@@ -33,6 +34,7 @@ const dockerOnlyOperations = new Set<BrokeredSageOperation>([
   "sage.finiteField.explore",
   "sage.numberTheory.padic",
   "sage.numberField.localExtensions",
+  "sage.ellipticCurve.dossier",
   "sage.matrix.linear_dossier",
   "sage.matrix.integer_forms",
   "sage.ideal.groebner", "sage.ideal.eliminate", "sage.ideal.membership", "sage.ideal.quotientDimension",
@@ -109,6 +111,19 @@ const localExtensionParams = () => {
   project = upsertMath3DProjectAlgebraObject(project, k);
   return buildSageLocalExtensionInput(project, { objectId: k.id, revision: 1 }, 3, 8) as unknown as Record<string, unknown>;
 };
+const ellipticCurveParams = () => {
+  const workspace = createMixedWorkspaceDocument({ entries: [], activeDocumentIds: [], results: [], artifacts: [],
+    relations: [], committedSelection: null, constructions: [] });
+  let project = createMath3DProject(workspace, { stableKey: "sage-g04-broker" });
+  const q = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "Q"),
+    label: "Q", revision: 1, definition: { kind: "rational-field" } });
+  project = upsertMath3DProjectAlgebraObject(project, q);
+  const curve = createAlgebraObjectRecord({ id: createProjectAlgebraObjectId(project.identity.id, "E"),
+    label: "E", revision: 1, definition: { kind: "elliptic-curve",
+      baseField: { objectId: q.id, revision: 1 }, model: "short-weierstrass", a: "-1", b: "1" } });
+  project = upsertMath3DProjectAlgebraObject(project, curve);
+  return buildSageEllipticCurveInput(project, { objectId: curve.id, revision: 1 }, ["0", "1"]) as unknown as Record<string, unknown>;
+};
 const pinnedStructureParams = (operation: "sage.group.dossier" | "sage.module.invariantFactors" | "sage.chain.homology") => {
   const projectId = createStableDocumentId("project", "sage-broker-contract");
   const ref = (key: string) => ({ objectId: createProjectAlgebraObjectId(projectId, key), revision: 1 });
@@ -135,6 +150,7 @@ const paramsFor = (operation: BrokeredSageOperation, backend: "local" | "docker"
     : operation === "sage.finiteField.explore" ? finiteFieldParams()
     : operation === "sage.numberTheory.padic" ? padicParams()
     : operation === "sage.numberField.localExtensions" ? localExtensionParams()
+    : operation === "sage.ellipticCurve.dossier" ? ellipticCurveParams()
     : operation === "sage.group.dossier" || operation === "sage.module.invariantFactors" ||
       operation === "sage.chain.homology" ? pinnedStructureParams(operation)
     : operation === "sage.matrix.linear_dossier" ? { format: "math3d.sage-matrix-dossier", schemaVersion: 1,

@@ -2,6 +2,7 @@ import { parseAlgebraObjectRecord, type AlgebraObjectRecord, type AlgebraObjectR
 import { canonicalJsonStringify, isStableDocumentId, type StableDocumentId } from "./documentIdentity";
 import { analyzeQuadraticNumberField } from "./quadraticNumberField";
 import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTower";
+import { ellipticCurveFacts } from "./ellipticCurve";
 import type { Math3DProject } from "./math3dProject";
 import { validateProjectAlgebraRegistry } from "./projectAlgebraRegistry";
 import { canonicalJsonByteLength } from "./scientificJobs";
@@ -97,6 +98,15 @@ export const parseSageAlgebraReconstructionInput = (value: unknown): SageAlgebra
         throw new TypeError("Sage field tower requires a pinned quadratic number-field parent.");
       analyzeBiquadraticExtensionFromDefinition(parent.definition.definingPolynomial, parent.definition.generator,
         object.definition.radicand, object.definition.generator);
+    }
+    if (object.definition.kind === "elliptic-curve") {
+      const parent = seen.get(keyOf(object.definition.baseField));
+      if (parent?.definition.kind !== "rational-field" && (parent?.definition.kind !== "finite-field" ||
+          parent.definition.degree !== 1 || parent.definition.characteristic < 5 ||
+          parent.definition.characteristic > 1009))
+        throw new TypeError("Elliptic curve requires a pinned QQ or prime GF(p) base field.");
+      ellipticCurveFacts(object.definition.a, object.definition.b,
+        parent.definition.kind === "finite-field" ? parent.definition.characteristic : 0);
     }
     seen.set(key, object);
   }

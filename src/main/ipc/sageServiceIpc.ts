@@ -27,6 +27,7 @@ type SageOperation =
   | "sage.finiteField.explore"
   | "sage.numberTheory.padic"
   | "sage.numberField.localExtensions"
+  | "sage.ellipticCurve.dossier"
   | "sage.numberTheory.gcd"
   | "sage.numberTheory.modInverse"
   | "sage.numberField.elementDossier"

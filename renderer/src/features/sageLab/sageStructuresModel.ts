@@ -73,6 +73,10 @@ export const structureDisplay = (record: AlgebraObjectRecord, project: Math3DPro
     const base = selectedStructure(project, definition.baseField)?.record;
     return `${base?.label ?? definition.baseField.objectId}(${definition.generator}), ${definition.generator}^2=${definition.radicand}`;
   }
+  if (definition.kind === "elliptic-curve") {
+    const base = selectedStructure(project, definition.baseField)?.record;
+    return `y²=x³+(${definition.a})x+(${definition.b}) over ${base?.label ?? definition.baseField.objectId}`;
+  }
   if (definition.kind === "finite-group") {
     const facts = analyzeFiniteGroup(definition);
     return `${facts.presentation}, order ${facts.order}`;
@@ -130,7 +134,7 @@ export const describeStructure = (record: AlgebraObjectRecord, project: Math3DPr
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
   if (definition.kind === "field-extension") return { presentation, characteristic: "0", field: "yes",
     exact: true, cardinality: null, zeroDivisors: "no", coefficientDomain: definition.baseField };
-  if (definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group" ||
+  if (definition.kind === "elliptic-curve" || definition.kind === "ideal" || definition.kind === "quotient-ring" || definition.kind === "finite-group" ||
       definition.kind === "module" || definition.kind === "module-map" || definition.kind === "chain-complex")
     throw new TypeError("Ideal, quotient and finite-group objects need dedicated exact analysis.");
   const parent = selectedStructure(project, definition.coefficientDomain)?.record;

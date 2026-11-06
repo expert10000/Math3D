@@ -21,6 +21,7 @@ if __package__:
     from .finite_field_explorer import explore_finite_field
     from .padic_workspace import run_padic_workspace
     from .local_extensions import run_local_extension
+    from .elliptic_curve import run_elliptic_curve
     from .number_field_operations import run_number_field_operation
     from .galois_analysis import analyze_galois
     from .finite_group_operations import analyze_finite_group, group_capability_available
@@ -29,6 +30,7 @@ else:
     from finite_field_explorer import explore_finite_field
     from padic_workspace import run_padic_workspace
     from local_extensions import run_local_extension
+    from elliptic_curve import run_elliptic_curve
     from number_field_operations import run_number_field_operation
     from galois_analysis import analyze_galois
     from finite_group_operations import analyze_finite_group, group_capability_available
@@ -922,6 +924,7 @@ OPERATIONS = {
     "sage.finiteField.explore": lambda op, params: _success(op, explore_finite_field(params)),
     "sage.numberTheory.padic": lambda op, params: _success(op, run_padic_workspace(params)),
     "sage.numberField.localExtensions": lambda op, params: _success(op, run_local_extension(params)),
+    "sage.ellipticCurve.dossier": lambda op, params: _success(op, run_elliptic_curve(params)),
     "sage.algebra.inspectDomains": lambda op, params: _success(op, inspect_algebra_domains(params)),
     "sage.numberField.elementDossier": lambda op, params: _success(op, run_number_field_operation(op, params)),
     "sage.numberField.primeDecomposition": lambda op, params: _success(op, run_number_field_operation(op, params)),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { analyzeBiquadraticExtensionFromDefinition, analyzeFiniteGroup, analyzeQuadraticNumberField,
+  ellipticCurveFacts,
   createGaloisGroupObject, inspectProjectAlgebraFreshness,
   type AlgebraObjectRecord, type AlgebraObjectRef,
   type AlgebraRecipeGraph, type Math3DProject, type ProjectAlgebraEvidence,
@@ -20,6 +21,7 @@ import SageChainHomologyViewer from "./SageChainHomologyViewer";
 import SageFiniteFieldViewer from "./SageFiniteFieldViewer";
 import SagePadicWorkspace from "./SagePadicWorkspace";
 import SageLocalExtensionWorkspace from "./SageLocalExtensionWorkspace";
+import SageEllipticCurveBuilder from "./SageEllipticCurveBuilder";
 import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -64,7 +66,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
   const [evidenceFocus, setEvidenceFocus] = useState(0);
-  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | "chain" | null>(null);
+  const [builder, setBuilder] = useState<"ring" | "ideal" | "group" | "module" | "chain" | "curve" | null>(null);
   const [quotientName, setQuotientName] = useState("");
   const [quotientError, setQuotientError] = useState("");
   const [groupError, setGroupError] = useState("");
@@ -112,6 +114,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       ? selectedStructure(project, chosen.record.definition.baseField)?.record
     : chosen?.record.definition.kind === "field-extension"
       ? selectedStructure(project, chosen.record.definition.baseField)?.record
+    : chosen?.record.definition.kind === "elliptic-curve"
+      ? selectedStructure(project, chosen.record.definition.baseField)?.record
     : chosen?.record.definition.kind === "ideal"
       ? selectedStructure(project, chosen.record.definition.ambientRing)?.record
       : chosen?.record.definition.kind === "quotient-ring"
@@ -128,7 +132,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     ? selectedStructure(project, chosen.record.definition.targetModule)?.record : null;
   const summary = chosen && project && chosen.record.kind !== "ideal" && chosen.record.kind !== "quotient-ring" &&
     chosen.record.kind !== "finite-group" && chosen.record.kind !== "module" && chosen.record.kind !== "module-map" &&
-    chosen.record.kind !== "chain-complex"
+    chosen.record.kind !== "chain-complex" && chosen.record.kind !== "elliptic-curve"
     ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
@@ -140,6 +144,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("group")}>+ New group</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("module")}>+ New module</button>
         <button type="button" style={action} disabled={!project} onClick={() => setBuilder("chain")}>+ New chain complex</button>
+        <button type="button" style={action} disabled={!project} onClick={() => setBuilder("curve")}>+ New curve</button>
       </div>
     </div>
     {!project && <div role="status" style={{ fontSize: 12 }}>Open or create a Project to save algebra structures.
@@ -172,6 +177,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : builder === "chain" && project ? <SageChainComplexBuilder key={project.identity.id} project={project}
       onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
+    : builder === "curve" && project ? <SageEllipticCurveBuilder key={project.identity.id} project={project}
+      onCreate={onCreateStructure} onCreated={(ref) => { select(ref); setBuilder(null); }} onCancel={() => setBuilder(null)} />
     : chosen && project ? <div data-testid="cas-selected-structure" style={{ display: "grid", gap: 14 }}>
     <div><div style={{ fontSize: 11, color: "#64748b" }}>Structure dossier</div>
       <h2 style={{ margin: "3px 0", fontSize: 21 }}>{chosen.record.label}</h2>
@@ -183,13 +190,21 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       </select>
     </label>
     <dl className="sage-structure-facts">
-      <dt>Kind</dt><dd>{chosen.record.kind === "chain-complex" ? "ZZ chain complex" : chosen.record.kind === "module" ? "Presented module" : chosen.record.kind === "module-map" ? "Module map" : chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
+      <dt>Kind</dt><dd>{chosen.record.kind === "elliptic-curve" ? "Elliptic curve" : chosen.record.kind === "chain-complex" ? "ZZ chain complex" : chosen.record.kind === "module" ? "Presented module" : chosen.record.kind === "module-map" ? "Module map" : chosen.record.kind === "finite-group" ? "Finite group" : chosen.record.kind === "ideal" ? "Polynomial ideal" : chosen.record.kind === "quotient-ring"
         ? "Quotient ring" : kindLabel[chosen.record.kind as StructureStarterKind] ?? chosen.record.kind}</dd>
       <dt>Status</dt><dd>{chosen.entry.archived ? "Archived" : chosen.record.revision !== chosen.entry.revisions.length ? "Historical revision" : status?.status === "stale" ? "Stale parent" : "Current"}</dd>
       {summary && <><dt>Characteristic</dt><dd>{summary.characteristic}</dd>
         <dt>Field</dt><dd>{summary.field}</dd><dt>Cardinality</dt><dd>{summary.cardinality ?? "Infinite"}</dd>
         <dt>Zero divisors</dt><dd>{summary.zeroDivisors}</dd><dt>Exact arithmetic</dt><dd>Yes</dd></>}
-      {parent && <><dt>{chosen.record.kind === "module" ? "Base ring" : chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {parent && <><dt>{chosen.record.kind === "module" ? "Base ring" : chosen.record.kind === "ideal" || chosen.record.kind === "quotient-ring" ? "Ambient ring" : chosen.record.kind === "number-field" || chosen.record.kind === "field-extension" || chosen.record.kind === "elliptic-curve" ? "Base field" : "Coefficient domain"}</dt><dd><button type="button" style={action} onClick={() => select({ objectId: parent.id, revision: parent.revision })}>{parent.label}@{parent.revision} · {structureDisplay(parent, project)}</button></dd></>}
+      {chosen.record.definition.kind === "elliptic-curve" && (() => {
+        const characteristic = parent?.definition.kind === "finite-field" ? parent.definition.characteristic : 0;
+        const facts = ellipticCurveFacts(chosen.record.definition.a, chosen.record.definition.b, characteristic);
+        return <><dt>Model</dt><dd>Short Weierstrass; nonsingular</dd>
+          <dt>Discriminant</dt><dd>{facts.discriminant}</dd>
+          <dt>j-invariant</dt><dd>{facts.jInvariant}</dd>
+          <dt>Characteristic</dt><dd>{facts.characteristic}</dd></>;
+      })()}
       {mapSource && <><dt>Source module</dt><dd><button type="button" style={action} onClick={() => select({ objectId: mapSource.id, revision: mapSource.revision })}>{mapSource.label}@{mapSource.revision}</button></dd></>}
       {mapTarget && <><dt>Target module</dt><dd><button type="button" style={action} onClick={() => select({ objectId: mapTarget.id, revision: mapTarget.revision })}>{mapTarget.label}@{mapTarget.revision}</button></dd></>}
       {idealParent && <><dt>Ideal</dt><dd><button type="button" style={action} onClick={() => select({ objectId: idealParent.id, revision: idealParent.revision })}>{idealParent.label}@{idealParent.revision}</button></dd></>}

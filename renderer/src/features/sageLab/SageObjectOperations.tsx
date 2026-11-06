@@ -18,6 +18,8 @@ const parseArguments = (id: AlgebraOperationId, text: string, other: AlgebraObje
   if (id === "sage.module.invariantFactors") return {};
   if (id === "sage.chain.homology") return {};
   if (id === "sage.finiteField.explore") return { element: text.split(",").map((item) => Number(item.trim())) };
+  if (id === "sage.ellipticCurve.dossier") return { point: text.trim() ?
+    text.split(",").map((item) => item.trim()) as [string, string] : null };
   if (id === "sage.ideal.groebner" || id === "sage.ideal.quotientDimension" ||
       id === "sage.ideal.syzygies" || id === "sage.ideal.hilbertSeries") return { budgetProfile };
   if (id === "sage.ideal.eliminate") return { eliminate: text.split(",").map((item) => item.trim()), budgetProfile };
@@ -181,6 +183,7 @@ export default function SageObjectOperations({ project, target, onSaveEvidence, 
           selected === "sage.numberField.elementDossier" ? "Element coefficients u, v for u + v·a" :
           selected === "sage.numberField.primeDecomposition" ? "Rational prime p (2–97)" :
           selected === "sage.finiteField.explore" ? "Element coefficients (constant first, in base p)" :
+          selected === "sage.ellipticCurve.dossier" ? "Sample point x, y for doubling; leave blank for invariants only" :
           selected === "sage.galois.analyze" ? "Monic irreducible QQ polynomial (degree 2–4; coefficients ≤ 100)" :
           selected?.startsWith("sage.matrix.") ? "Matrix: comma separated rows, one row per line" :
           selected === "sage.groebner.compute" ? "Polynomials, one per line" : "Polynomial"}

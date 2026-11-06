@@ -3,6 +3,7 @@ import { parseIdealGenerator } from "./algebraIdealGenerators";
 import { analyzeBiquadraticExtensionFromDefinition } from "./biquadraticFieldTower";
 import { validateModuleMatrixScalars, type ModuleScalarRing } from "./modulePresentations";
 import { resolveChainComplex } from "./chainComplex";
+import { ellipticCurveFacts } from "./ellipticCurve";
 import { createStableDocumentId, isStableDocumentId, type CanonicalJsonValue, type StableDocumentId } from "./documentIdentity";
 import type { Math3DProject } from "./math3dProject";
 
@@ -105,6 +106,14 @@ export const validateProjectAlgebraRegistry = (input: unknown): readonly Project
       }
       if (record.definition.kind === "number-field" && parent.kind !== "rational-field")
         throw new TypeError(`Number field ${key} requires a pinned QQ base field.`);
+      if (record.definition.kind === "elliptic-curve") {
+        const field = parent.definition;
+        if (field.kind !== "rational-field" && (field.kind !== "finite-field" || field.degree !== 1 ||
+            field.characteristic < 5 || field.characteristic > 1009))
+          throw new TypeError(`Elliptic curve ${key} requires pinned QQ or prime GF(p), 5 ≤ p ≤ 1009.`);
+        ellipticCurveFacts(record.definition.a, record.definition.b,
+          field.kind === "finite-field" ? field.characteristic : 0);
+      }
       if (record.definition.kind === "finite-group" && parent.kind !== "polynomial-ring")
         throw new TypeError(`Finite group ${key} requires a pinned polynomial source ring.`);
       if (record.definition.kind === "field-extension") {

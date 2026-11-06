@@ -42,6 +42,7 @@ export type Math3DWorkerOperationId =
   | "finite-field.explore"
   | "number-theory.padic"
   | "number-field.local-extensions"
+  | "elliptic-curve.dossier"
   | "polynomial.roots.exact"
   | "matrix.eigen.exact"
   | "matrix.charpoly"
@@ -349,6 +350,10 @@ const definitions = [
   },
   {
     id: "number-field.local-extensions", title: "Quadratic Qp local models and ramification", canonicalOwner: "sage",
+    method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
+  },
+  {
+    id: "elliptic-curve.dossier", title: "Exact elliptic curve invariants and point doubling", canonicalOwner: "sage",
     method: "exact", environments: ["browser", "desktop", "server"], legacyRequestKinds: [],
   },
   {

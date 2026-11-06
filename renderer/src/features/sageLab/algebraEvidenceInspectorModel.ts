@@ -78,6 +78,10 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
         fact("Base generator image coordinates", tower.baseGeneratorImage),
         fact("Degree product", "2 × 2 = 4"));
     }
+  } else if (source?.definition.kind === "elliptic-curve") {
+    structure.push(fact("Base field", formatRef(source.definition.baseField)),
+      fact("Model", "Short Weierstrass"), fact("Coefficient a", source.definition.a),
+      fact("Coefficient b", source.definition.b));
   } else if (source?.definition.kind === "ideal") {
     structure.push(fact("Ambient ring", formatRef(source.definition.ambientRing)),
       fact("Generators", source.definition.generators));
@@ -112,6 +116,17 @@ export const algebraEvidenceInspectorModel = (project: Math3DProject,
     mode = "FAILED";
   }
   switch (operation) {
+    case "sage.ellipticCurve.dossier": {
+      facts.push(fact("Discriminant", text(result.discriminant)),
+        fact("j-invariant", text(result.jInvariant)),
+        fact("Characteristic", text(result.characteristic)),
+        fact("Sample point", result.point ? list(result.point) : "None"),
+        fact("Doubled point", result.point ? result.doublePoint ? list(result.doublePoint) : "Point at infinity" : "None"));
+      checks.push(check("Elliptic curve arithmetic", "checked",
+        "The pinned short Weierstrass discriminant is nonzero; exact j and any point doubling are independently checked."));
+      if (mode !== "FAILED") mode = "CHECKED";
+      break;
+    }
     case "sage.numberField.localExtensions": {
       const branches = result.branches as Record<string, unknown>[];
       facts.push(fact("Prime", text(result.prime)), fact("Base precision digits", text(result.precision)),

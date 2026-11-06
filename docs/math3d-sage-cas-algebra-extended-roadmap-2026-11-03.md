@@ -366,6 +366,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **G03 implementation update (2026-11-06):** The [G03 acceptance record](evidence/sage-g03-local-extensions-2026-11-06.md) adds a Number Theory view for saved quadratic fields at odd primes. It combines exact prime ideals with finite-precision `Qp` local models, showing splitting, ramification index, residue degree/order, uniformizer and split-root branches. Project import checks the discriminant classification, degree and norm identities, valuations and split-root congruences. Sage 9.5's `NumberField.completion()` is unimplemented, so these are explicitly labelled models from the pinned polynomial rather than canonical completion maps. The next feature is **SAGE-G04**, elliptic curve objects.
 
+**G04 implementation update (2026-11-06):** The [G04 acceptance record](evidence/sage-g04-elliptic-curves-2026-11-06.md) adds a versioned, pinned short Weierstrass elliptic-curve object over `QQ` or prime `GF(p)` for 5 ≤ p ≤ 1009. Structures validates nonzero discriminant in the base field before save and displays exact `Δ` and `j`. The bounded Docker Sage dossier checks exact invariants and doubles an optional verified integer-coordinate point; Project import recomputes those values independently. The next feature is **SAGE-G05**, separate real and finite-field visualizations.
+
 ---
 
 ## 3. P0 — Algebra object registry

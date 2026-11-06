@@ -13,6 +13,7 @@ import { parseFiniteGroupDefinition, type FiniteGroupDefinition } from "./finite
 import { parseModuleDefinition, parseModuleMapDefinition,
   type ModuleDefinition, type ModuleMapDefinition } from "./modulePresentations";
 import { parseChainComplexDefinition, type ChainComplexDefinition } from "./chainComplex";
+import { ellipticCurveFacts, type EllipticCurveDefinition } from "./ellipticCurve";
 
 export const ALGEBRA_OBJECT_SCHEMA_VERSION = 1 as const;
 
@@ -25,6 +26,7 @@ export type AlgebraObjectDefinition =
   | Readonly<{ kind: "number-field"; baseField: AlgebraObjectRef;
       definingPolynomial: readonly [string, string, "1"]; generator: string }>
   | Readonly<{ kind: "field-extension"; baseField: AlgebraObjectRef; radicand: string; generator: string }>
+  | EllipticCurveDefinition
   | Readonly<{ kind: "polynomial-ring"; coefficientDomain: AlgebraObjectRef; variables: readonly string[]; monomialOrder: AlgebraMonomialOrder }>
   | Readonly<{ kind: "ideal"; ambientRing: AlgebraObjectRef; generators: readonly string[] }>
   | Readonly<{ kind: "quotient-ring"; ambientRing: AlgebraObjectRef; ideal: AlgebraObjectRef }>
@@ -146,6 +148,14 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
       return { kind: "field-extension", baseField: requireRef(definition.baseField, "definition.baseField"),
         radicand: requireBiquadraticRadicand(definition.radicand),
         generator: requireBiquadraticGenerator(definition.generator) };
+    case "elliptic-curve": {
+      requireKeys(definition, ["kind", "baseField", "model", "a", "b"], "definition");
+      if (definition.model !== "short-weierstrass")
+        throw new TypeError("Only the short Weierstrass model is supported.");
+      const facts = ellipticCurveFacts(definition.a, definition.b);
+      return { kind: "elliptic-curve", baseField: requireRef(definition.baseField, "definition.baseField"),
+        model: "short-weierstrass", a: facts.a, b: facts.b };
+    }
     case "polynomial-ring": {
       requireKeys(definition, ["kind", "coefficientDomain", "variables", "monomialOrder"], "definition");
       const coefficientDomain = requireRef(definition.coefficientDomain, "definition.coefficientDomain");
@@ -196,7 +206,8 @@ const requireDefinition = (value: unknown): AlgebraObjectDefinition => {
 
 const dependenciesOf = (definition: AlgebraObjectDefinition): readonly AlgebraObjectRef[] =>
   definition.kind === "polynomial-ring" ? [definition.coefficientDomain]
-    : definition.kind === "number-field" || definition.kind === "field-extension" ? [definition.baseField]
+    : definition.kind === "number-field" || definition.kind === "field-extension" ||
+      definition.kind === "elliptic-curve" ? [definition.baseField]
     : definition.kind === "ideal" ? [definition.ambientRing]
       : definition.kind === "quotient-ring" ? [definition.ambientRing, definition.ideal]
         : definition.kind === "finite-group" && definition.source ? [definition.source.ring]

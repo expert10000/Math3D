@@ -531,6 +531,7 @@ declare global {
     | "sage.finiteField.explore"
     | "sage.numberTheory.padic"
     | "sage.numberField.localExtensions"
+    | "sage.ellipticCurve.dossier"
     | "sage.groebner.compute"
     | "sage.ideal.groebner"
     | "sage.ideal.eliminate"
