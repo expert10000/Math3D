@@ -6,7 +6,7 @@ on:
       focus:
         type: choice
         description: Select a targeted Windows check
-        options: [all, source, rollback, retainers, installer, components]
+        options: [all, source, autosave, rollback, retainers, installer, components]
         default: all
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
           path: test-results/qi40-installer-components.json
 
   source-memory-cleanup:
-    if: ${{ inputs.focus == 'all' || inputs.focus == 'source' }}
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'source' || inputs.focus == 'autosave' }}
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -64,6 +64,7 @@ jobs:
         shell: pwsh
         env:
           MATH3D_HEAP_DIAGNOSTIC: '1'
+          MATH3D_STRESS_AUTOSAVE_ABLATION: ${{ inputs.focus == 'autosave' && '1' || '0' }}
         run: |
           node scripts/measure-quantum-scene-stress.mjs test-results/qi40-source-cleanup-80.json 80 | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Scene stress failed' }

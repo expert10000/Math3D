@@ -121,21 +121,25 @@ export function summarizeQuantumHeapRetainers(snapshot) {
         }
       }
       const path = [];
+      let reachedTarget = false;
       if (towardTarget[0] >= 0) {
         let node = 0;
-        for (let depth = 0; depth < 24; depth++) {
+        // React closure chains can exceed 24 edges; keep the path bounded but
+        // reach far enough to identify what retains large serialized strings.
+        for (let depth = 0; depth < 96; depth++) {
           const edge = viaEdge[node];
           const edgeType = edge < 0 ? null : edgeTypes[edges[edge * edgeStride + edgeTypeAt]];
           const rawEdgeName = edge < 0 ? null : edges[edge * edgeStride + edgeNameAt];
           const edgeName = edge < 0 ? null : ["element", "hidden"].includes(edgeType)
             ? String(rawEdgeName) : safeName(strings[rawEdgeName]);
           path.push({ node: label(node), edgeType, edgeName });
-          if (node === target.node) break;
+          if (node === target.node) { reachedTarget = true; break; }
           node = towardTarget[node];
         }
       }
       return { kind: target.kind, selfBytes: target.bytes,
-        status: towardTarget[0] >= 0 ? "root path found" : "root path not found within limit",
+        status: towardTarget[0] < 0 ? "root path not found within limit" :
+          reachedTarget ? "root path found" : "root path truncated",
         searchedNodes: tail, path };
     }) };
 }

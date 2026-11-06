@@ -23,6 +23,25 @@ try {
     : { args: ["."], cwd: resolve("."), env });
   const page = await app.firstWindow();
   await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
+  const autosaveAblation = process.env.MATH3D_STRESS_AUTOSAVE_ABLATION === "1";
+  if (autosaveAblation) {
+    // Isolate workbook autosave storage writes in a disposable E2E profile.
+    // The app still builds its workbook payload and runs the same scene cycle.
+    await page.evaluate(() => {
+      localStorage.removeItem("math3d.workbook.autosave.v1");
+      localStorage.removeItem("math3d.workbook.autosaveJournal.v1");
+    });
+    await page.addInitScript(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (this === localStorage && (key === "math3d.workbook.autosave.v1" ||
+          key === "math3d.workbook.autosaveJournal.v1")) return;
+        return original.call(this, key, value);
+      };
+    });
+    await page.reload();
+    await page.getByTestId("app-shell").waitFor({ state: "visible", timeout: 30_000 });
+  }
   const cdp = await page.context().newCDPSession(page);
   const diagnoseHeap = process.env.MATH3D_HEAP_DIAGNOSTIC === "1";
   if (diagnoseHeap) await cdp.send("HeapProfiler.enable");
@@ -122,6 +141,14 @@ try {
   }
   const final = await snapshot();
   const finalHeapComposition = diagnoseHeap ? await heapComposition(true) : null;
+  const workbookAutosaveStorage = await page.evaluate(() => ({
+    currentBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosave.v1") ?? "").length,
+    journalBytes: new TextEncoder().encode(localStorage.getItem("math3d.workbook.autosaveJournal.v1") ?? "").length,
+  }));
+  if (autosaveAblation) {
+    assert.equal(workbookAutosaveStorage.currentBytes, 0, "Autosave ablation left current session bytes");
+    assert.equal(workbookAutosaveStorage.journalBytes, 0, "Autosave ablation left journal bytes");
+  }
   const constructorGrowth = diagnoseHeap ? Object.keys({
     ...baselineHeapComposition.byConstructor, ...finalHeapComposition.byConstructor,
   }).map(name => ({ name,
@@ -137,6 +164,8 @@ try {
     }])) : null;
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
     installed: Boolean(installedExe),
+    autosaveAblation,
+    workbookAutosaveStorage,
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
     ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,
       finalByType: finalHeapComposition.byType, topConstructorGrowth: constructorGrowth,
