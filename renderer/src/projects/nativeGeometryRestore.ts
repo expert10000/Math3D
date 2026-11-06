@@ -38,7 +38,7 @@ export const geometrySourceFromEditor = (saved: GeometryDocument, live: Geometry
 };
 export const geometryDisplayFromEditor = (saved: GeometryDocument, live: GeometryDocument) => ({ ...saved.display, objects: live.display.objects, constructions: live.display.constructions });
 export const independentQuantumPrimitiveCopy = (document: GeometryDocument) => {
-  const provenance = document.source.extensions["quantum.promotion/v1"];
+  const provenance: unknown = document.source.extensions["quantum.promotion/v1"];
   return record(provenance) && provenance.conversion === "geometry" &&
     typeof provenance.sceneFingerprint === "string" && /^[a-f0-9]{64}$/.test(provenance.sceneFingerprint) &&
     !!document.source.geometry && !document.source.objects.length && !document.source.surfaces.length &&
