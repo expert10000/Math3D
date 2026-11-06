@@ -744,8 +744,47 @@ jobs:
             test-results/playwright/stable-upgrade-project-settings*/trace.zip
             test-results/playwright/quantum-installed-ui-round*/trace.zip
 
+  installer-reliability-gate:
+    needs: clean-install-gate
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [math-only, both-apps]
+        slot: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tools
+      - uses: actions/download-artifact@v7
+        with:
+          name: final-clean-install-evidence
+          path: clean-evidence
+      - name: Repeat exact final installer probe
+        shell: pwsh
+        run: |
+          $manifest = Get-Content clean-evidence/candidate/candidate-manifest.json -Raw | ConvertFrom-Json
+          $arguments = @{
+            CandidateDirectory = Join-Path $PWD 'clean-evidence/candidate'
+            InstallRoot = Join-Path $env:RUNNER_TEMP 'qi40-release-installer-probe'
+            EvidencePath = Join-Path $PWD 'test-results/qi40-release-installer-probe.json'
+            CaptureCrashDump = $true
+            ExpectedBuildRunId = $env:GITHUB_RUN_ID
+            ExpectedMath3DCommit = $manifest.math3d.commit
+          }
+          if ('${{ matrix.scope }}' -eq 'math-only') { $arguments.Math3DOnly = $true }
+          & ./.release-tools/scripts/probe-quantum-installers.ps1 @arguments
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qi40-release-installer-${{ matrix.scope }}-${{ matrix.slot }}
+          if-no-files-found: ignore
+          path: test-results/qi40-release-installer-probe.json
+
   publish-release:
-    needs: [windows-release, linux-release, theory-lab-installer, clean-install-gate, upgrade-gate]
+    needs: [windows-release, linux-release, theory-lab-installer, clean-install-gate, upgrade-gate, installer-reliability-gate]
     runs-on: ubuntu-22.04
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
