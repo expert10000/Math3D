@@ -64,7 +64,7 @@ function Get-SanitizedDumpStack([string]$dump) {
   $stdout = Join-Path $root 'cdb-stdout.txt'
   $stderr = Join-Path $root 'cdb-stderr.txt'
   # k omits the argument columns emitted by kb, leaving a stable Call Site.
-  $arguments = "-z `"$dump`" -c `".exr -1; .ecxr; k; q`""
+  $arguments = "-z `"$dump`" -c `".exr -1; .echo QI40_STACK_BEGIN; .ecxr; k; .echo QI40_STACK_END; q`""
   $process = Start-Process -FilePath $cdb -ArgumentList $arguments -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   if (-not $process.WaitForExit(90000)) {
@@ -79,8 +79,18 @@ function Get-SanitizedDumpStack([string]$dump) {
     }
   } | Select-Object -First 20)
   $exceptionCode = if ($raw -match 'ExceptionCode:\s*([0-9a-fA-F]{8})') { $Matches[1].ToLowerInvariant() } else { $null }
+  $stderrText = Get-Content -LiteralPath $stderr -Raw -ErrorAction SilentlyContinue
+  $moduleTokens = @([regex]::Matches($raw, '\b[A-Za-z][A-Za-z0-9_.-]*(?:![A-Za-z0-9_?$@<>.+-]+|\+(?:0x)?[0-9a-f]{3,})') |
+    ForEach-Object { $_.Value } | Select-Object -Unique -First 20)
+  $diagnosticTags = @('Unable to', 'Failed to', 'No stack', 'Stack unwind', 'Unable to get',
+    'Symbol search path') | Where-Object { $raw -match [regex]::Escape($_) }
   return [ordered]@{ status = if ($frames.Count) { 'stack summarized' } else { 'no stack frames parsed' };
     exceptionCode = $exceptionCode; frames = $frames; stackLineCount = $stackLines.Count;
+    moduleTokens = $moduleTokens; commandMarkers = [ordered]@{
+      begin = [bool]($raw -match '(?m)^QI40_STACK_BEGIN\r?$');
+      end = [bool]($raw -match '(?m)^QI40_STACK_END\r?$') };
+    diagnosticTags = $diagnosticTags; stdoutChars = ([string]$raw).Length;
+    stderrChars = ([string]$stderrText).Length;
     debuggerExitCode = $process.ExitCode }
 }
 
