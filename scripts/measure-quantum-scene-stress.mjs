@@ -128,11 +128,17 @@ try {
   })).map(row => ({ ...row, deltaCount: row.final.count - row.baseline.count,
     deltaSelfBytes: row.final.selfBytes - row.baseline.selfBytes }))
     .sort((a, b) => b.deltaSelfBytes - a.deltaSelfBytes).slice(0, 30) : null;
+  const trackedConstructors = diagnoseHeap ? Object.fromEntries(
+    ["native:WebGL2RenderingContext", "native:WebGLTexture"].map(name => [name, {
+      baseline: baselineHeapComposition.byConstructor[name]?.count ?? 0,
+      final: finalHeapComposition.byConstructor[name]?.count ?? 0,
+    }])) : null;
   const result = { schema: "math3d.quantum-stress/v1", cycles: cycles.length,
     installed: Boolean(installedExe),
     baseline, samples: cycles, final, contextLoss: cycles[3].simulatedContextLoss,
     ...(diagnoseHeap ? { heapComposition: { baselineByType: baselineHeapComposition.byType,
       finalByType: finalHeapComposition.byType, topConstructorGrowth: constructorGrowth,
+      trackedConstructors,
       retainers: finalHeapComposition.retainers,
       method: "V8 heap snapshot node self sizes after forced GC; shallow bytes, not retained-size attribution" } } : {}) };
   const bytes = JSON.stringify(result, null, 2) + "\n";

@@ -179,6 +179,11 @@ try {
   if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw 'Rolled-back Math3D executable missing' }
   $evidence.checks.rollbackInstall = 'passed'
   $evidence.profileVerify = Invoke-ProfilePhase 'verify' (Join-Path $root 'profile-verify.json')
+  if ($evidence.profileVerify.quantumProjectId -ne $evidence.profileSeed.quantumProjectId -or
+      $evidence.profileVerify.promotedGeometryId -ne $evidence.profileSeed.promotedGeometryId -or
+      -not $evidence.profileVerify.promotedGeometryReopenedAfterRollback) {
+    throw 'Installed rollback changed the saved Project or promoted geometry identity'
+  }
   $evidence.checks.rollbackProfileRetained = 'passed'
   $evidence.rollbackScenes = Invoke-Phase 'rolled-back' (Join-Path $root 'rollback-scenes.json')
   $evidence.checks.v1v2Readers = 'passed'

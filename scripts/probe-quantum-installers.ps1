@@ -70,6 +70,16 @@ function Get-ApplicationErrors([string]$installerName, [datetime]$startedAt) {
     } })
 }
 
+function Get-WerEvents([string]$installerName, [datetime]$startedAt) {
+  @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1001; StartTime = $startedAt.AddSeconds(-5) } `
+    -ErrorAction SilentlyContinue | Where-Object { $_.Message -like "*$installerName*" } |
+    Select-Object -First 3 | ForEach-Object { [ordered]@{
+      timeUtc = $_.TimeCreated.ToUniversalTime().ToString('o')
+      eventRecordId = $_.RecordId
+      provider = $_.ProviderName
+    } })
+}
+
 function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$phase) {
   $name = [IO.Path]::GetFileName($installer)
   $startedAt = Get-Date
@@ -78,15 +88,20 @@ function Invoke-ProbeInstall([string]$installer, [string]$destination, [string]$
     -WindowStyle Hidden -PassThru
   if (-not $process.WaitForExit(180000)) {
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name; reason = 'timeout';
-      applicationErrors = @(Get-ApplicationErrors $name $startedAt) }
+      processId = $process.Id; startedUtc = $startedAt.ToUniversalTime().ToString('o');
+      applicationErrors = @(Get-ApplicationErrors $name $startedAt);
+      werEvents = @(Get-WerEvents $name $startedAt) }
     try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
     throw "$phase installer exceeded 180 seconds"
   }
   if ($process.ExitCode -ne 0) {
     $hexCode = '0x{0:X8}' -f ($process.ExitCode -band 0xffffffffL)
     $evidence.installerFailure = [ordered]@{ phase = $phase; installerName = $name;
+      processId = $process.Id; startedUtc = $startedAt.ToUniversalTime().ToString('o');
+      endedUtc = (Get-Date).ToUniversalTime().ToString('o');
       exitCode = $process.ExitCode; exitCodeHex = $hexCode;
-      applicationErrors = @(Get-ApplicationErrors $name $startedAt) }
+      applicationErrors = @(Get-ApplicationErrors $name $startedAt);
+      werEvents = @(Get-WerEvents $name $startedAt) }
     throw "$phase installer exited with code $($process.ExitCode) ($hexCode)"
   }
   Write-Host "$phase installer exited successfully"

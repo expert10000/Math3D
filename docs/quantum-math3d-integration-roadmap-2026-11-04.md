@@ -1041,6 +1041,8 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Retainer and rollback follow-up (2026-11-06):** A [40-cycle installed V8 trace](evidence/quantum-qi40-retainers-dumps-six-scene-2026-11-06.md) found document event-listener paths to closed WebGL contexts. Six clean-runner Theory Lab installs had per-application WER mini-dump capture enabled; all passed, so the earlier access violation was not reproduced. The pinned pre-QEC installed app reopened a retained six-scene Project, including field, time, QEC and v2 band references. Cleanup repair, installer diagnosis and release memory limits remain open.
 
+**Cleanup and native rollback follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-cleanup-installer-native-rollback-2026-11-06.md) add captured-root OrbitControls cleanup and guarded Three.js renderer texture-listener cleanup. A local 80-cycle source run held WebGL context wrappers at 2 and texture wrappers at 10, with zero leftover canvases; total renderer heap still grew about 11 MB. The Windows matrix now repeats the source stress, probes the pinned Theory Lab installer in Lab-only and both-app sequences with WER correlation, and tests an installed QWZ-to-native-Geometry Project rollback. Release freeze remains withheld pending those Windows results, installed cleanup validation, a complete memory budget, and installer fault diagnosis.
+
 ### Cross-repository ownership and evidence for the first cut
 
 | Deliverable | Owning repository | Required predecessor | Evidence to attach |

@@ -3958,6 +3958,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     updatePerspectiveCameraClipping(camera, new THREE.Vector3(0, 0, 0), radiusRef.current);
 
     const controls = new OrbitControls(camera, renderer.domElement);
+    const controlsRoot = renderer.domElement.getRootNode();
     controls.enableDamping = true;
     controls.target.set(0, 0, 0);
     configureOrbitControlsForTouch(controls);
@@ -6208,6 +6209,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       transformControls.dispose();
       if (transformControlsRef.current === transformControls) transformControlsRef.current = null;
       controls.dispose();
+      // React can detach the portal canvas before this effect cleanup. Three's
+      // disconnect() then queries the detached canvas as its root and misses
+      // the key listeners installed on the original document.
+      const keyHandlers = controls as OrbitControls & {
+        _interceptControlDown: EventListener;
+        _interceptControlUp: EventListener;
+      };
+      controlsRoot.removeEventListener("keydown", keyHandlers._interceptControlDown, true);
+      controlsRoot.removeEventListener("keyup", keyHandlers._interceptControlUp, true);
 
       viewGizmo.traverse(disposeObject3D);
       scene.remove(viewGizmo);
