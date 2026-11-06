@@ -5,8 +5,8 @@ import { join, resolve, sep } from "node:path";
 import { _electron as electron } from "playwright";
 
 const requestedCycles = process.argv[3] === undefined ? 8 : Number(process.argv[3]);
-if (!Number.isInteger(requestedCycles) || requestedCycles < 4 || requestedCycles > 40)
-  throw new Error("Choose 4 to 40 quantum scene stress cycles.");
+if (!Number.isInteger(requestedCycles) || requestedCycles < 4 || requestedCycles > 120)
+  throw new Error("Choose 4 to 120 quantum scene stress cycles.");
 const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-stress-"));
 const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile };
 delete env.ELECTRON_RUN_AS_NODE;
@@ -20,8 +20,14 @@ try {
     await cdp.send("HeapProfiler.collectGarbage");
     const heap = await cdp.send("Runtime.getHeapUsage");
     const metrics = await app.evaluate(({ app }) => app.getAppMetrics());
+    const processes = metrics.map(item => ({ type: item.type, pid: item.pid,
+      workingSetKiB: Number(item.memory?.workingSetSize ?? 0),
+      privateKiB: item.memory?.privateBytes === undefined ? null : Number(item.memory.privateBytes) }));
     return { heapBytes: heap.usedSize,
-      workingSetKiB: metrics.reduce((sum, item) => sum + Number(item.memory?.workingSetSize ?? 0), 0),
+      workingSetKiB: processes.reduce((sum, item) => sum + item.workingSetKiB, 0),
+      privateKiB: processes.every(item => item.privateKiB !== null) ?
+        processes.reduce((sum, item) => sum + item.privateKiB, 0) : null,
+      processes,
       canvasCount: await page.locator("canvas").count() };
   };
   const baseline = await snapshot();
