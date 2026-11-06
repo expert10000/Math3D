@@ -93,6 +93,10 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
       await projects.getByTestId(`quantum-promote-geometry-${qwz.fingerprint}`).click();
       await expect(projects.getByTestId("project-quantum-scene-message")).toContainText("geometry copy staged");
       await projects.getByTestId("project-save").click();
+      await expect.poll(() => page.evaluate(() =>
+        JSON.parse(localStorage.getItem("math3d.project.v1") || "null")?.workspace?.relations?.some(
+          (relation: { operation: string }) => relation.operation === "quantum.promote-geometry")),
+      { timeout: 60_000 }).toBe(true);
       await expect(projects.getByTestId("project-message")).toContainText("Saved", { timeout: 60_000 });
     }
     const project = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1") || "null"));
