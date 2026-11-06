@@ -127,7 +127,12 @@ test("installed QEC rollback retains a saved Graph Project and setting", async (
         throw new Error(`Rolled-back graph-promoted Project is preview-only: ${previewReasons.join(" | ")}`);
       }
       await expect(projects.getByTestId("project-message")).toContainText("Opened supported project");
-      await projects.getByTestId(`project-open-${promoted.expected.id}`).click();
+      // Opening a saved Project switches the panel to its compact document tree.
+      const treeDocument = projects.getByTestId(`project-tree-document-${promoted.expected.id}`);
+      const listDocument = projects.getByTestId(`project-open-${promoted.expected.id}`);
+      const documentButton = await treeDocument.count() ? treeDocument : listDocument;
+      await expect(documentButton).toBeEnabled();
+      await documentButton.click();
       await expect(page.getByTestId("workspace-nav-graphs")).toHaveAttribute("aria-pressed", "true");
       if (!await projects.isVisible()) await page.getByTestId("projects-toggle").click();
     }
