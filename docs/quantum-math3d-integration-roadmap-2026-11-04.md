@@ -1037,6 +1037,8 @@ See [QI-31–33 implementation details](quantum-qi31-33-qec-validation-alignment
 
 **Installed follow-up (2026-11-06):** The [next three checks](evidence/quantum-qi40-rollback-stress-installer-2026-11-06.md) passed a saved Graph Project and changed setting across the pinned QEC-to-pre-QEC installer rollback, then passed 80 installed Math3D scene cycles with every preview close returning to the baseline canvas count. Six additional clean-runner probes installed both apps, while a separate setup attempt reproduced the Theory Lab `0xC0000005` fault in `System.dll` at offset `00001581`. The installed renderer heap continued to rise after forced garbage collection. QI-40 release freeze remains open pending installer root-cause/reliability evidence and memory signoff.
 
+**Further QI-40 evidence (2026-11-06):** A [Lab-only versus both-app installer comparison](evidence/quantum-qi40-installer-heap-project-followup-2026-11-06.md) passed six clean-runner installs but did not reproduce or explain the earlier access violation. Two installed 80-cycle V8 snapshots showed string growth and 80 additional WebGL context wrappers each; zero canvas mismatches are therefore insufficient for memory signoff. The pinned pre-QEC installed app reopened a retained mixed Project with exact QWZ, Rice–Mele and QEC scene references. Investigate the retained-object paths and installer fault before release freeze.
+
 ### Cross-repository ownership and evidence for the first cut
 
 | Deliverable | Owning repository | Required predecessor | Evidence to attach |

@@ -1,0 +1,17 @@
+# QI-40 follow-up: installer scope, heap composition, mixed Project rollback · 2026-11-06
+
+The checks use the same archived QEC candidate and pre-QEC installer hashes pinned in the [previous installed report](quantum-qi40-rollback-stress-installer-2026-11-06.md). They assess those installed binaries; they do not certify a later `main` build.
+
+## 1. Installer scope comparison
+
+The [six-job comparison run](https://github.com/expert10000/Math3D/actions/runs/42205408505) installed the archived Theory Lab package alone on three clean Windows runners, and installed Math3D followed by Theory Lab on three more. All six installations and applicable packaged-worker checks passed. The JSON reports are [Lab-only 1](quantum-qi40-installer-scope-lab-only-1-2026-11-06.json), [2](quantum-qi40-installer-scope-lab-only-2-2026-11-06.json), [3](quantum-qi40-installer-scope-lab-only-3-2026-11-06.json) and [both-app 1](quantum-qi40-installer-scope-both-1-2026-11-06.json), [2](quantum-qi40-installer-scope-both-2-2026-11-06.json), [3](quantum-qi40-installer-scope-both-3-2026-11-06.json). An earlier six-job comparison also passed. Neither run reproduced the prior `0xC0000005` Theory Lab NSIS crash, so these results do not distinguish an app-order interaction from an intermittent installer or runner fault. The earlier Windows Application Error record still identifies `System.dll` at offset `00001581` without establishing a root cause. Reliable installation remains an open release gate.
+
+## 2. Installed heap composition
+
+The [first diagnostic run](https://github.com/expert10000/Math3D/actions/runs/42203923820) and [replication](https://github.com/expert10000/Math3D/actions/runs/42205408505) each completed 80 installed Math3D scene cycles with zero closed-canvas mismatches and an observed simulated WebGL context-loss event. The [full first trace](quantum-qi40-installed-heap-composition-2026-11-06.json) includes baseline and final V8 heap snapshot summaries by node type and constructor. Forced-GC renderer heap rose from 29,195,920 to 51,875,840 bytes; string nodes gained 19,610,932 shallow bytes. The final snapshot showed 80 more `WebGL2RenderingContext` wrappers and 400 more `WebGLTexture` wrappers than baseline. The replication rose from 28,860,228 to 48,484,308 heap bytes, with 16,430,596 more string shallow bytes and the same +80/+400 wrapper counts. These are V8 snapshot objects, not a measurement of live GPU allocation. A retained-object path analysis and a post-fix installed run are required before memory signoff.
+
+## 3. Mixed Project across installed rollback
+
+The [narrow final replay](https://github.com/expert10000/Math3D/actions/runs/42206006325) passed all rollback checks. In the QEC candidate, the isolated profile saved a Graph reusable copy and an off setting, then saved one Project containing QWZ curvature, Rice–Mele bands and the ideal QEC scene. After uninstalling the candidate and installing the pinned pre-QEC 1.7.0 app, the same Project ID and all three exact scene fingerprints remained. Each Project reference opened and passed active-scene verification in the older app. The [rollback JSON](quantum-qi40-mixed-project-rollback-2026-11-06.json) records the seed and verification rows. This covers those three reference adapters and the retained profile; it does not establish rollback for every newer result or Project document type.
+
+QI-40 release freeze remains open for installer reliability, retained-object analysis, a defined memory budget, and the other partial release gates in the certification report.
