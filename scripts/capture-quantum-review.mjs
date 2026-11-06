@@ -1,20 +1,29 @@
+import assert from "node:assert/strict";
 import { _electron as electron } from "playwright";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 const output = resolve(process.argv[2] ?? "output/quantum-review");
 await mkdir(output, { recursive: true });
 const profile = await mkdtemp(join(tmpdir(), "math3d-quantum-review-"));
-const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile };
+const installedExe = process.env.MATH3D_INSTALLED_CAPTURE_EXE
+  ? resolve(process.env.MATH3D_INSTALLED_CAPTURE_EXE) : null;
+if (installedExe) await access(installedExe);
+const matrix = JSON.parse(await readFile(resolve("docs/evidence/quantum-qi40-scene-matrix.json"), "utf8"));
+const env = { ...process.env, MATH3D_E2E_PROFILE_ROOT: profile,
+  ...(installedExe ? { MATH3D_E2E: "1", MATH3D_E2E_USER_DATA_DIR: join(profile, "user-data") } : {}) };
 delete env.ELECTRON_RUN_AS_NODE;
-const app = await electron.launch({ args: ["."], cwd: resolve("."), env });
+const app = await electron.launch(installedExe
+  ? { executablePath: installedExe, args: [`--user-data-dir=${join(profile, "user-data")}`], cwd: dirname(installedExe), env }
+  : { args: ["."], cwd: resolve("."), env });
 const records = [];
 try {
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1600, 1000));
   const examples = await page.evaluate(() => window.quantumScenes.examples());
+  assert.equal(examples.length, 36, "Pinned example count");
   for (const [index, example] of examples.entries()) {
     const record = { number: index + 1, id: example.id, label: example.label, model: example.model };
     try {
@@ -25,6 +34,12 @@ try {
       const chooser = page.getByTestId("quantum-scene-examples");
       await chooser.getByTestId(`quantum-example-${example.id}`).click();
       await page.getByTestId("quantum-scene-preview").waitFor({ state: "visible", timeout: 30000 });
+      const opened = await page.evaluate(() => window.quantumScenes.reopenRecent());
+      const expected = matrix.fixtures.find(item => item.id === example.id);
+      assert(opened.ok && expected && opened.reference.sceneFingerprint === expected.fingerprint,
+        `${example.id}: pinned scene fingerprint`);
+      record.schema = expected.schema;
+      record.fingerprint = expected.fingerprint;
       await page.waitForTimeout(350);
       const filename = `${String(index + 1).padStart(2, "0")}-${example.id}.png`;
       await page.screenshot({ path: join(output, filename), animations: "disabled" });

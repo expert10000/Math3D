@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-05T23:53:48.849Z",
+  "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7",
+  "entries": [
+    {
+      "file": "surfaces-analysis-workspace.png",
+      "module": "Surfaces",
+      "title": "Surfaces analysis workspace",
+      "view": "Analysis",
+      "panel": "Workspace",
+      "runtime": "Desktop",
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "surfaces-analysis-left-full.png",
+      "module": "Surfaces",
+      "title": "Surfaces analysis tools · full height",
+      "view": "Analysis",
+      "panel": "Left tools",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "surfaces-analysis-right-full.png",
+      "module": "Surfaces",
+      "title": "Surfaces analysis inspector · full height",
+      "view": "Analysis",
+      "panel": "Right inspector",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "surfaces-analysis-left-advanced-full.png",
+      "module": "Surfaces",
+      "title": "Surfaces advanced analysis tools · full height",
+      "view": "Analysis",
+      "panel": "Left tools",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "mesh-analysis-workspace.png",
+      "module": "Mesh",
+      "title": "Mesh analysis workspace",
+      "view": "Analysis",
+      "panel": "Workspace",
+      "runtime": "Desktop",
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "mesh-analysis-left-full.png",
+      "module": "Mesh",
+      "title": "Mesh analysis tools · full height",
+      "view": "Analysis",
+      "panel": "Left tools",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "mesh-analysis-right-full.png",
+      "module": "Mesh",
+      "title": "Mesh analysis inspector · full height",
+      "view": "Analysis",
+      "panel": "Right inspector",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "mesh-analysis-left-advanced-full.png",
+      "module": "Mesh",
+      "title": "Mesh advanced analysis tools · full height",
+      "view": "Analysis",
+      "panel": "Left tools",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "mesh-analysis-computations-workspace.png",
+      "module": "Mesh",
+      "title": "Mesh analysis computations",
+      "view": "Analysis",
+      "panel": "Workspace",
+      "runtime": "Desktop",
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "geometry-analysis-workspace.png",
+      "module": "Geometry",
+      "title": "Geometry analysis workspace",
+      "view": "Analysis",
+      "panel": "Workspace",
+      "runtime": "Desktop",
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "geometry-analysis-left-full.png",
+      "module": "Geometry",
+      "title": "Geometry analysis tools · full height",
+      "view": "Analysis",
+      "panel": "Left tools",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "geometry-analysis-right-full.png",
+      "module": "Geometry",
+      "title": "Geometry analysis inspector · full height",
+      "view": "Analysis",
+      "panel": "Right inspector",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    },
+    {
+      "file": "geometry-analysis-right-topology-full.png",
+      "module": "Geometry",
+      "title": "Geometry topology result · full height",
+      "view": "Analysis",
+      "panel": "Right inspector",
+      "runtime": "Desktop",
+      "fullHeight": true,
+      "capturedAt": "2026-11-05T23:53:48.849Z",
+      "sourceCommit": "ede51af86dcc46775399f8a642d301b07451adc7"
+    }
+  ]
+}

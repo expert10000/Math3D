@@ -1,0 +1,367 @@
+[
+  {
+    "number": 1,
+    "id": "qwz-curvature",
+    "label": "QWZ · Berry curvature",
+    "model": "QWZ",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "a0c0e7947516f2f4132b15155096b9711b3c7eae207f805e9a066371035570b3",
+    "file": "01-qwz-curvature.png",
+    "variants": [
+      "01-qwz-curvature-source-run-guidance.png"
+    ]
+  },
+  {
+    "number": 2,
+    "id": "qwz-bands",
+    "label": "QWZ · energy bands",
+    "model": "QWZ",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "06d389b6094b1633a161252bf0bb8c4bba64f0266294578a3b0b0fd8b7c4e061",
+    "file": "02-qwz-bands.png"
+  },
+  {
+    "number": 3,
+    "id": "ssh-chain",
+    "label": "SSH · finite chain",
+    "model": "SSH",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "58c8bd8705e0f3b2bfc694460a38a275187d0bde1df93faf30fd2d5e20afd0b6",
+    "file": "03-ssh-chain.png"
+  },
+  {
+    "number": 4,
+    "id": "ssh-bands",
+    "label": "SSH · energy bands",
+    "model": "SSH",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "57e56d34e2dfe218f70a2c9bcd6068c6b733ac00abbdb8f72d63b57e9370521b",
+    "file": "04-ssh-bands.png"
+  },
+  {
+    "number": 5,
+    "id": "rice-mele-bands",
+    "label": "Rice–Mele · static periodic bands",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v2",
+    "fingerprint": "bddb5db99912697430c34d77518d2703153a4e5d04f6d478402cb27362b3225c",
+    "file": "05-rice-mele-bands.png"
+  },
+  {
+    "number": 6,
+    "id": "rice-mele-finite",
+    "label": "Rice–Mele · finite open chain",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "345c7304d7d7d2ef463817d4792b06aa80697e8c03eb119baba652df783d92b4",
+    "file": "06-rice-mele-finite.png"
+  },
+  {
+    "number": 7,
+    "id": "rice-mele-pump",
+    "label": "Rice–Mele · filled-band pump",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "610caa74bea640225e23459542ac442a828dff3471e0fff08d35b446a8907020",
+    "file": "07-rice-mele-pump.png"
+  },
+  {
+    "number": 8,
+    "id": "rice-mele-finite-pump",
+    "label": "Rice–Mele · finite-speed pump",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "5619b608d5ab385d1d38628b81545a63bc90a70fc45be45e1e91036565a859ee",
+    "file": "08-rice-mele-finite-pump.png"
+  },
+  {
+    "number": 9,
+    "id": "rice-mele-open-chain-pump",
+    "label": "Rice–Mele · finite open-chain motion",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "f25b0f5462c8fa31a178a4c024d0a9f14a7cd3cc2041e3560b6ef7fbaf9bf8f4",
+    "file": "09-rice-mele-open-chain-pump.png"
+  },
+  {
+    "number": 10,
+    "id": "rice-mele-bulk-chain",
+    "label": "Rice–Mele · bulk–chain comparison",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "a9e4761edccc9dd4d90609488ad53b3b229c334e44fe9b096b6632586cd8bb26",
+    "file": "10-rice-mele-bulk-chain.png"
+  },
+  {
+    "number": 11,
+    "id": "rice-mele-convergence",
+    "label": "Rice–Mele · five-run convergence",
+    "model": "Rice–Mele",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "8e8aeb3077923dd3f884c2f0771be05eb2965a32d0df1e806111f2d71d2b7b9d",
+    "file": "11-rice-mele-convergence.png"
+  },
+  {
+    "number": 12,
+    "id": "bhz-bands",
+    "label": "BHZ · paired-block bulk bands",
+    "model": "BHZ",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "83f2d740e1bae2de189a595a660eb948b5af11b6a5735a8d06f7ac8593491684",
+    "file": "12-bhz-bands.png"
+  },
+  {
+    "number": 13,
+    "id": "bhz-general-continuum",
+    "label": "BHZ · Atlas continuum bands",
+    "model": "BHZ",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "dd8f117df5608010b9084822a88a6fb315b51df05f1994f8d7cf41c5457db8a9",
+    "file": "13-bhz-general-continuum.png"
+  },
+  {
+    "number": 14,
+    "id": "bhz-general-lattice",
+    "label": "BHZ · lattice and ribbon",
+    "model": "BHZ",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "da10956e0e91257319d6af296f6cedac55d6597857b9c03e400c9789c1585893",
+    "file": "14-bhz-general-lattice.png"
+  },
+  {
+    "number": 15,
+    "id": "bbh-bands",
+    "label": "BBH · bulk bands",
+    "model": "BBH",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "e9e5c5c1a09ad8c61a042d838c1be418f3d72d4e20352c5f42c057b7b5d999ee",
+    "file": "15-bbh-bands.png"
+  },
+  {
+    "number": 16,
+    "id": "bbh-finite",
+    "label": "BBH · finite corner density",
+    "model": "BBH",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "b3f31f31b4e70ebc93056a19727ae35838cea17485a69e8353cd9908ec706c7b",
+    "file": "16-bbh-finite.png"
+  },
+  {
+    "number": 17,
+    "id": "bbh-wilson",
+    "label": "BBH · nested Wilson quadrupole",
+    "model": "BBH",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "ab7df85c5968426640348da5c502bd09bceacb97fea09fe2268571e30acbeca6",
+    "file": "17-bbh-wilson.png"
+  },
+  {
+    "number": 18,
+    "id": "kitaev-bands",
+    "label": "Kitaev · supplied BdG bands",
+    "model": "Kitaev",
+    "schema": "quantum-scene/v2",
+    "fingerprint": "470c081952dc2f574d2166469e32e801db4b3c1b4269f0d2434c468ca4776a4f",
+    "file": "18-kitaev-bands.png"
+  },
+  {
+    "number": 19,
+    "id": "kitaev-finite",
+    "label": "Kitaev · finite end-site density",
+    "model": "Kitaev",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "a6ae2fc98ab5f19c07452262c829cb3de07b37c4126844a4c749de3680d8356f",
+    "file": "19-kitaev-finite.png"
+  },
+  {
+    "number": 20,
+    "id": "kitaev-invariant",
+    "label": "Kitaev · bulk Pfaffian and winding",
+    "model": "Kitaev",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "aeb6f86c4cce213919d8cbe70a52f95028470999e1136918c03ef848fec92515",
+    "file": "20-kitaev-invariant.png"
+  },
+  {
+    "number": 21,
+    "id": "weyl-local",
+    "label": "Weyl · local enclosed node",
+    "model": "Weyl",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "e9aa57785442e2ddb1d8c8bd4caebdfbdc0caa55bd75955b225af47bae05f80c",
+    "file": "21-weyl-local.png"
+  },
+  {
+    "number": 22,
+    "id": "nodal-ring",
+    "label": "Nodal · continuum ring and Berry loop",
+    "model": "Nodal",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "d36aacadbdce37feb960a1bbda3c41840500a41c50ad79c9d468f77db9a55342",
+    "file": "22-nodal-ring.png"
+  },
+  {
+    "number": 23,
+    "id": "landau-levels",
+    "label": "Landau · continuum level fan",
+    "model": "Landau",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "ecd2fd63ad0fa08012c517d83a7a1289703e4f89e32bddf43a278e4c50a0b416",
+    "file": "23-landau-levels.png"
+  },
+  {
+    "number": 24,
+    "id": "hofstadter-bands",
+    "label": "Hofstadter · Harper magnetic bands",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "d45afe591bae7bfc6bd8fffcc224a01c1dd62a9ebf32825434230da44bf9ec29",
+    "file": "24-hofstadter-bands.png"
+  },
+  {
+    "number": 25,
+    "id": "hofstadter-chern",
+    "label": "Hofstadter · occupied-gap Chern",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "313709c6b8c84a03b01f4ba99b728ad9aabe3f2197f14e4ed1f1b63483f2dac8",
+    "file": "25-hofstadter-chern.png"
+  },
+  {
+    "number": 26,
+    "id": "hofstadter-strip",
+    "label": "Hofstadter · finite open strip",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "b9b0caaae37b36a5e5d0d8f85d98ee9735542c43ede2186538c51a673331d1b2",
+    "file": "26-hofstadter-strip.png"
+  },
+  {
+    "number": 27,
+    "id": "hofstadter-hall",
+    "label": "Hofstadter · filled bulk Hall response",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "ca976485d14a650e81038be85c00a7b2768d87826b519a04a1ef56093a8c14ac",
+    "file": "27-hofstadter-hall.png"
+  },
+  {
+    "number": 28,
+    "id": "hofstadter-butterfly",
+    "label": "Hofstadter · verified flux butterfly",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "6fafae63130a5d21b3b2a1538913c4eeec35e61c07fa4a96fa8745fe11d2ad22",
+    "file": "28-hofstadter-butterfly.png"
+  },
+  {
+    "number": 29,
+    "id": "hofstadter-bulk-edge",
+    "label": "Hofstadter · verified bulk–edge comparison",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "6625329c1ce7ee2693e1bb1781badcd8f7cac97972c74d47198e4dae24030cbc",
+    "file": "29-hofstadter-bulk-edge.png"
+  },
+  {
+    "number": 30,
+    "id": "hofstadter-tracked-edge",
+    "label": "Hofstadter · overlap-validated strip crossings",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "0a76ce88110db94d181a1549172446ce3ade009a16a11d71203e1eaa22cf5b6d",
+    "file": "30-hofstadter-tracked-edge.png"
+  },
+  {
+    "number": 31,
+    "id": "hofstadter-edge-convergence",
+    "label": "Hofstadter · two-grid edge-flow convergence",
+    "model": "Hofstadter",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "bba3321e8ea4b668ec7310c841993a1e89243bfff8f723547305c4442637f5d3",
+    "file": "31-hofstadter-edge-convergence.png"
+  },
+  {
+    "number": 32,
+    "id": "hydrogen-1s",
+    "label": "Hydrogenic · 1s",
+    "model": "Hydrogenic",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "b7b996f012fbd503d9e3a9b87e5b326e6dafb317dc308c69bff174151e96b2a7",
+    "file": "32-hydrogen-1s.png",
+    "variants": [
+      "32-hydrogen-1s-volume.png",
+      "32-hydrogen-1s-density-surface.png"
+    ]
+  },
+  {
+    "number": 33,
+    "id": "hydrogen-2s",
+    "label": "Hydrogenic · 2s",
+    "model": "Hydrogenic",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "3895440f551d204898b49424293019ce01009b13442d750a655f744f324007fc",
+    "file": "33-hydrogen-2s.png",
+    "variants": [
+      "33-hydrogen-2s-volume.png",
+      "33-hydrogen-2s-density-surface.png"
+    ]
+  },
+  {
+    "number": 34,
+    "id": "hydrogen-2p",
+    "label": "Hydrogenic · 2p",
+    "model": "Hydrogenic",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "55379e422fa98bcb6f29ed1ac6380a34b6586face6070a37e1ca2436823526b5",
+    "file": "34-hydrogen-2p.png",
+    "variants": [
+      "34-hydrogen-2p-volume.png",
+      "34-hydrogen-2p-density-surface.png"
+    ]
+  },
+  {
+    "number": 35,
+    "id": "hydrogen-3p",
+    "label": "Hydrogenic · 3p",
+    "model": "Hydrogenic",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "6b9148c8337051a56c0bc49e3027fa6173987582ff28f26cfcbaffd66c665cc8",
+    "file": "35-hydrogen-3p.png",
+    "variants": [
+      "35-hydrogen-3p-volume.png",
+      "35-hydrogen-3p-density-surface.png"
+    ]
+  },
+  {
+    "number": 36,
+    "id": "hydrogen-3d",
+    "label": "Hydrogenic · 3d",
+    "model": "Hydrogenic",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "bba0b0610a809260da3e4b9e9a5f210f54776ffff2b9f821aa2eba9ed882703b",
+    "file": "36-hydrogen-3d.png",
+    "variants": [
+      "36-hydrogen-3d-volume.png",
+      "36-hydrogen-3d-density-surface.png"
+    ]
+  },
+  {
+    "number": 37,
+    "id": "saved-qwz-curvature",
+    "label": "saved-qwz-curvature",
+    "model": "saved-qwz-curvature",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "efdbea1c511bfb35270fe0870406834848cc53d2aee21b2ea5907248017e9747",
+    "file": "37-saved-qwz-curvature.png"
+  },
+  {
+    "number": 38,
+    "id": "saved-qwz-bands",
+    "label": "saved-qwz-bands",
+    "model": "saved-qwz-bands",
+    "schema": "quantum-scene/v1",
+    "fingerprint": "d4c5fa4d12fcf3046584e990621e84e618f182191b2c531e81bc3e09edad1bb8",
+    "file": "38-saved-qwz-bands.png"
+  }
+]

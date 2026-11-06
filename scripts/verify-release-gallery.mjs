@@ -8,10 +8,12 @@ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const assets = join(root, "apps/public-site/src/assets");
 const web = JSON.parse(await readFile(join(assets, "release-current/manifest.json"), "utf8"));
 const field = JSON.parse(await readFile(join(assets, "release-field-current/manifest.json"), "utf8"));
+const analysis = JSON.parse(await readFile(join(assets, "release-analysis-current/manifest.json"), "utf8"));
 const quantum = JSON.parse(await readFile(join(assets, "release-quantum-current/capture-index.json"), "utf8"));
 const images = [
   ...web.entries.map(item => ["release-current", item.file]),
   ...field.entries.map(item => ["release-field-current", item.file]),
+  ...analysis.entries.map(item => ["release-analysis-current", item.file]),
   ...quantum.flatMap(item => [item.file, ...(item.variants || [])].map(file => ["release-quantum-current", file])),
 ];
 const seen = new Set();
@@ -27,7 +29,9 @@ for (const [folder, file] of images) {
   if (header.toString("hex", 0, 8) !== "89504e470d0a1a0a") throw new Error(`Not a PNG: ${key}`);
   const width = header.readUInt32BE(16);
   const height = header.readUInt32BE(20);
-  if (width < 1400 || height < 900) throw new Error(`Screenshot too small: ${key} (${width}x${height})`);
+  const landscape = width >= 1400 && height >= 900;
+  const fullHeightPanel = folder === "release-analysis-current" && width >= 500 && height >= 900;
+  if (!landscape && !fullHeightPanel) throw new Error(`Screenshot too small: ${key} (${width}x${height})`);
 }
 const counts = {
   total: images.length,
@@ -36,5 +40,7 @@ const counts = {
   fieldExplorer: field.entries.length,
   quantum: quantum.reduce((sum, item) => sum + 1 + (item.variants || []).length, 0),
   fieldAnalysis: field.entries.filter(item => item.view === "Analysis").length,
+  moduleAnalysis: Object.fromEntries(["Surfaces", "Mesh", "Geometry"].map(module =>
+    [module, analysis.entries.filter(item => item.module === module).length])),
 };
 process.stdout.write(`[release-gallery] verified ${JSON.stringify(counts)}\n`);

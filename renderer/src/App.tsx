@@ -819,6 +819,10 @@ import {
   upsertProjectLocalSeparatrix,
   upsertProjectVectorField3DComparison,
   upsertProjectVectorField3DTopologyStudy,
+  upsertProjectPoincareReturnMap,
+  upsertProjectLyapunov,
+  promoteProjectLocalManifoldPatch,
+  projectLocalManifoldMeshStatus,
   upsertProjectTemporalFieldSource,
   upsertProjectTemporalPathline,
   projectTemporalPathlineStatus,
@@ -79571,6 +79575,11 @@ case "mobius":
     if (!restored || !mesh) return true;
     if ((mesh.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface")
       return scientificMeshSourceStates[mesh.document().identity.id] === "current";
+    if ((mesh.document().source.origin as { kind?: string })?.kind ===
+        "vector3d.local-manifold-patch")
+      return !!activeNotebookProjectRef.current && projectLocalManifoldMeshStatus(
+        activeNotebookProjectRef.current, mesh.document(),
+        mesh.resources.bytes(mesh.document().source.resource)).status === "current";
     const lineage = restored.workspace.relations.find(relation => relation.operation === "surface.tessellate-saved" && relation.target.type === "document" && relation.target.generation.documentId === mesh.document().identity.id);
     if (!lineage) return true;
     const source = lineage.sources[0], parent = restored.additional.get(source.documentId)?.document() ?? restored.surfaces.get(source.documentId)?.document();
@@ -82905,6 +82914,22 @@ case "mobius":
         onResolutionCompare={runSavedResolutionStudy} onCreate={createMeshFromSavedSurface} onOpen={id => navigateRestoredDocument(id, "mesh")} onAnalyze={saveLinkedMeshAnalysis}
         creationHint="Uses saved formulas and ranges at the selected analysis resolution, independent of display resolution. Earlier Meshes and results remain available. Projects → Save project keeps them."
       />}
+      {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind ===
+        "vector3d.local-manifold-patch" && (() => {
+          const adapter = meshDocumentAdapterRef.current!;
+          const mesh = adapter.document();
+          const project = activeNotebookProjectRef.current;
+          const status = project ? projectLocalManifoldMeshStatus(project, mesh,
+            adapter.resources.bytes(mesh.source.resource)) :
+            { status: "withheld", reason: "project-missing" };
+          return <div role="status" data-testid="gf46-mesh-source-status" style={{
+            margin: "8px 18px", padding: "7px 11px", border: "1px solid #b9cbe0",
+            borderRadius: 8, fontSize: 13 }}>
+            Local manifold patch · {status.status === "current" ?
+              "source and Mesh bytes verified" : `values withheld: ${status.reason}`}.
+            This is a local finite-time patch, not a global manifold.
+          </div>;
+        })()}
       {savedMeshActive && (meshDocumentAdapterRef.current?.document().source.origin as { kind?: string })?.kind === "derivedVectorFieldIsosurface" &&
         <div role="status" data-testid="scientific-mesh-source-status" style={{ margin: "8px 18px",
           padding: "7px 11px", border: "1px solid #b9cbe0", borderRadius: 8,
@@ -90895,6 +90920,35 @@ case "mobius":
               const updated = upsertProjectVectorField3DTopologyStudy(active, result);
               activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DPoincareReturn={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectPoincareReturnMap(active, study);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DLyapunov={study => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectLyapunov(active, study);
+              activeNotebookProjectRef.current = updated; restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onPromoteVectorField3DManifoldPatch={patch => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const promoted = promoteProjectLocalManifoldPatch(active, patch);
+              const adapter = MeshDocumentAdapter.restore({ document: promoted.mesh,
+                resourceBytes: promoted.bytes });
+              activeNotebookProjectRef.current = promoted.project;
+              restored.workspace = promoted.project.workspace;
+              restored.meshes.set(promoted.mesh.identity.id, adapter);
+              meshDocumentAdapterRef.current = adapter;
+              setMeshKernelDocument(promoted.mesh);
+              setNotebookProjectVersion(value => value + 1);
+              setAdditionalVersion(value => value + 1);
+              navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
             }}
             onSaveVectorField3DTemporalSource={(source, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;

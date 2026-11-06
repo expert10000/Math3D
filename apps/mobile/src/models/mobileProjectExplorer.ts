@@ -1,6 +1,8 @@
 import { buildProjectExplorer, evaluateDocumentRelationStatus, inspectProjectNoteAnchor, isAnalysisResultCurrent, matchesScientificSourceGeneration, structuralHash,
   parseMath3DProject, replayMixedWorkspaceDocument, viewerSourceFromDocument, projectResourceInventory, VerifiedProjectResources, type ProjectResourceSidecar } from "@math3d/core";
-import { projectVectorField3DTopologyStatus, reviewProjectDerivedField } from "@math3d/core";
+import { projectVectorField3DTopologyStatus, projectPoincareReturnStatus,
+  projectLyapunovStatus, projectLocalManifoldPatchStatus,
+  projectLocalManifoldMeshStatus, reviewProjectDerivedField } from "@math3d/core";
 import { mobileSurfaceUnavailableReason } from "./mobileProjectSurface";
 import { mobileCurveUnavailableReason } from "./mobileProjectCurve";
 import { mobileProjectRefreshOptions } from "./mobileProjectRefresh";
@@ -98,7 +100,8 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
       item.kind === "point-series" && item.poincareOrigin ? [{ id: item.id,
         title: item.label, kind: "Poincaré Graph row",
         sourceId: item.poincareOrigin.sourceDocumentId, status: "unverified",
-        detail: "Crossing values withheld until the Project source and point table are verified on desktop." }] : [])),
+        detail: `${item.poincareOrigin.kind === "project-poincare-return/v1" ?
+          "Return-map" : "Crossing"} values withheld until the Project source and point table are verified on desktop.` }] : [])),
     ...project.workspace.results.filter(item => ["vector3d.basin-map",
       "vector3d.poincare-section"].includes(item.provenance.operation.type))
       .map(item => ({ id: item.resultId,
@@ -111,6 +114,38 @@ export const buildMobileProjectExplorer = (raw: string, sidecars: readonly Proje
           (projectVectorField3DTopologyStatus(project, item).reason ?
             `Values withheld: ${projectVectorField3DTopologyStatus(project, item).reason}.` :
             "Values are not recomputed on mobile.") })),
+    ...project.workspace.results.filter(item => ["vector3d.poincare-return-map",
+      "vector3d.lyapunov-finite-time", "vector3d.local-manifold-patch"]
+      .includes(item.provenance.operation.type)).map(item => {
+        const type = item.provenance.operation.type;
+        const state = type === "vector3d.poincare-return-map" ?
+          projectPoincareReturnStatus(project, item) :
+          type === "vector3d.lyapunov-finite-time" ?
+            projectLyapunovStatus(project, item) :
+            projectLocalManifoldPatchStatus(project, item);
+        return { id: item.resultId, title: type === "vector3d.poincare-return-map" ?
+          "Poincaré return map" : type === "vector3d.lyapunov-finite-time" ?
+            "Finite-time Lyapunov estimate" : "Local manifold patch",
+        kind: "Saved advanced topology recipe",
+        sourceId: item.provenance.source.documentId,
+        status: state.status === "current" ? "recipe retained" : "withheld",
+        detail: state.reason ? `Values withheld: ${state.reason}.` :
+          "Source-linked recipe retained; values are not recomputed on mobile." };
+      }),
+    ...project.workspace.entries.flatMap(entry => entry.module === "mesh" &&
+      entry.checkpoint.format === "math3d.mesh-document" &&
+      (entry.checkpoint.source.origin as { kind?: string }).kind ===
+        "vector3d.local-manifold-patch" ? (() => {
+          const origin = entry.checkpoint.source.origin as { source: { documentId: string } };
+          const state = projectLocalManifoldMeshStatus(project, entry.checkpoint,
+            resources.bytes({ kind: "mesh-buffers", id: entry.checkpoint.source.resource.id }));
+          return [{ id: entry.checkpoint.identity.id,
+            title: entry.checkpoint.metadata.label, kind: "Local manifold Mesh",
+            sourceId: origin.source.documentId,
+            status: state.status === "current" ? "bytes verified" : "withheld",
+            detail: state.reason ? `Mesh withheld: ${state.reason}.` :
+              "Mesh bytes verified; scientific local classification remains a saved recipe." }];
+        })() : []),
   ];
   return {
     projectId: project.identity.id,
