@@ -45,6 +45,9 @@ export function summarizeQuantumHeapRetainers(snapshot) {
   }
   if (edgeNumber !== edgeCount) throw new Error("V8 heap snapshot edge count mismatch");
   const contextTargets = [];
+  const listenerTargets = [];
+  const domRectTargets = [];
+  const timingTargets = [];
   const stringTargets = [];
   for (let node = 0; node < nodeCount; node++) {
     const at = node * nodeStride;
@@ -53,10 +56,19 @@ export function summarizeQuantumHeapRetainers(snapshot) {
     const bytes = nodes[at + nodeSizeAt];
     if (type === "native" && name === "WebGL2RenderingContext")
       contextTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
+    if (type === "native" && name === "EventListener")
+      listenerTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
+    if (type === "native" && name === "DOMRectReadOnly")
+      domRectTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
+    if (type === "native" && name === "PerformanceEventTiming")
+      timingTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
     if (type === "string" && bytes >= 100_000)
       stringTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
   }
   contextTargets.sort((a, b) => b.id - a.id);
+  listenerTargets.sort((a, b) => b.id - a.id);
+  domRectTargets.sort((a, b) => b.id - a.id);
+  timingTargets.sort((a, b) => b.id - a.id);
   stringTargets.sort((a, b) => b.bytes - a.bytes);
   const stringGroups = new Map();
   for (const target of stringTargets) {
@@ -75,6 +87,9 @@ export function summarizeQuantumHeapRetainers(snapshot) {
     stringGroups.set(prefixSha256, group);
   }
   const targets = [...contextTargets.slice(0, 3).map(row => ({ ...row, kind: "WebGL2RenderingContext" })),
+    ...listenerTargets.slice(0, 3).map(row => ({ ...row, kind: "EventListener" })),
+    ...domRectTargets.slice(0, 2).map(row => ({ ...row, kind: "DOMRectReadOnly" })),
+    ...timingTargets.slice(0, 2).map(row => ({ ...row, kind: "PerformanceEventTiming" })),
     ...stringTargets.slice(0, 3).map(row => ({ ...row, kind: "large string" }))];
   const label = node => {
     const at = node * nodeStride;
