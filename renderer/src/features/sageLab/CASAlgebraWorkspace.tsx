@@ -28,6 +28,7 @@ import SageAlgebraicLocusBuilder from "./SageAlgebraicLocusBuilder";
 import SageSchemeBuilder from "./SageSchemeBuilder";
 import SageSchemeTools from "./SageSchemeTools";
 import SageCommandPalette from "./SageCommandPalette";
+import SageAlgebraComparison from "./SageAlgebraComparison";
 import type { SagePaletteAction } from "./sageCommandPaletteModel";
 import SageObjectOperations from "./SageObjectOperations";
 import SageRecipes from "./SageRecipes";
@@ -397,6 +398,8 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       projectTitle: project?.metadata.title ?? null,
       selectionKey: selection ? `${selection.objectId}@${selection.revision}:${selectionFocus}` : null,
       explorer, dossier, inspector,
+      comparison: <SageAlgebraComparison project={project} selectedEvidenceId={selectedEvidenceId}
+        onInspectEvidence={inspectEvidence} />,
       evidence: evidenceModel && selectedEvidence ? {
         focusKey: `${selectedEvidence.id}:${evidenceFocus}`,
         result: <><SageAlgebraEvidenceInspector model={evidenceModel} section="result" />

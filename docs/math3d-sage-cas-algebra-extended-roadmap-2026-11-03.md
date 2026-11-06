@@ -378,6 +378,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **H01 implementation update (2026-11-06):** The [H01 acceptance record](evidence/sage-h01-command-palette-2026-11-06.md) adds a searchable keyboard palette to CAS and Number Theory. It uses the typed operation registry's object, domain, freshness and Sage-route capability checks, including reasons for unavailable commands. Search opens contextual operation controls, saved recipes, the tangent-cone workflow or runtime Inspector. The next feature is **SAGE-H02**, backend and domain comparison views.
 
+**H02 implementation update (2026-11-06):** The [H02 acceptance record](evidence/sage-h02-backend-domain-comparison-2026-11-06.md) adds an Inspector comparison tab for two saved algebra results. It checks pinned inputs and independently verified exact values across Docker and local Sage for GCD or modular inverse, and compares typed rank invariants for the same integer matrix over `ZZ` and `QQ` while retaining Smith torsion only in the `ZZ` view. Each side shows its source, route, version, result hash, certificate scope and Inspector verification. Unsupported operation pairs and mismatched inputs are explicit. The next feature is **SAGE-H03**, a reproducible algebra export manifest.
+
 ---
 
 ## 3. P0 — Algebra object registry
