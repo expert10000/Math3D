@@ -8,6 +8,11 @@ on:
         description: Select a targeted Windows check
         options: [all, source, autosave, rollback, retainers, fixed-memory, installer, components]
         default: all
+      cycles:
+        type: choice
+        description: Source scene cycles for the memory check
+        options: ['80', '120']
+        default: '80'
       candidate_run_id:
         type: string
         description: Stable two-app candidate build run for fixed-memory or installer checks
@@ -64,7 +69,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Main build failed' }
           npm run build:renderer
           if ($LASTEXITCODE -ne 0) { throw 'Renderer build failed' }
-      - name: Check 80 source scene cycles after cleanup
+      - name: Check source scene cycles after cleanup
         shell: pwsh
         env:
           MATH3D_HEAP_DIAGNOSTIC: '1'
@@ -79,27 +84,29 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Autosave control budget evaluation failed' }
             $env:MATH3D_STRESS_AUTOSAVE_ABLATION = '1'
           }
-          node scripts/measure-quantum-scene-stress.mjs test-results/qi40-source-cleanup-80.json 80 | Out-Null
+          $cycles = [int]'${{ inputs.cycles }}'
+          $reportPath = "test-results/qi40-source-cleanup-$cycles.json"
+          node scripts/measure-quantum-scene-stress.mjs $reportPath $cycles | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Scene stress failed' }
-          $report = Get-Content test-results/qi40-source-cleanup-80.json -Raw | ConvertFrom-Json
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
           $contexts = $report.heapComposition.trackedConstructors.'native:WebGL2RenderingContext'
           $textures = $report.heapComposition.trackedConstructors.'native:WebGLTexture'
-          if ($report.cycles -ne 80 -or $report.installed -or
+          if ($report.cycles -ne $cycles -or $report.installed -or
               $contexts.final -ne $contexts.baseline -or
               $textures.final -ne $textures.baseline -or
               @($report.samples | Where-Object { $_.closed.canvasCount -ne $report.baseline.canvasCount }).Count -ne 0) {
             throw 'Post-cleanup source context or canvas budget failed'
           }
           node scripts/evaluate-quantum-scene-memory-budget.mjs `
-            test-results/qi40-source-cleanup-80.json test-results/qi40-source-memory-budget.json
+            $reportPath test-results/qi40-source-memory-budget.json
           if ($LASTEXITCODE -ne 0) { throw 'Memory budget evaluation failed' }
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: qi40-source-cleanup-80
+          name: qi40-source-cleanup-${{ inputs.cycles }}
           if-no-files-found: ignore
           path: |
-            test-results/qi40-source-cleanup-80.json
+            test-results/qi40-source-cleanup-*.json
             test-results/qi40-source-memory-budget.json
             test-results/qi40-autosave-control-80.json
             test-results/qi40-autosave-control-budget.json
