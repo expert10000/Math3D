@@ -51,8 +51,11 @@ export const sameProjectCoordinateFrame = (a: ProjectCoordinateFrame, b: Project
 export const qualifyProjectOverlayCoordinates = (a: ProjectCoordinateFrameRead, b: ProjectCoordinateFrameRead,
   alignment: Readonly<{ frame: string; unit: string }>): "verified" | "asserted" | "invalid" | "mismatch" => {
   if (a.status === "invalid" || b.status === "invalid") return "invalid";
-  if (a.value && b.value) return sameProjectCoordinateFrame(a.value, b.value) &&
-    a.value.frame === alignment.frame && a.value.unit === alignment.unit ? "verified" : "mismatch";
+  // A missing declaration cannot verify the overlay, but it must not conceal a
+  // contradiction in a declaration that is present on the other source.
+  if ([a, b].some(source => source.value &&
+    (source.value.frame !== alignment.frame || source.value.unit !== alignment.unit))) return "mismatch";
+  if (a.value && b.value) return sameProjectCoordinateFrame(a.value, b.value) ? "verified" : "mismatch";
   return "asserted";
 };
 

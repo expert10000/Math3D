@@ -133,9 +133,11 @@ coordinate declaration was scientifically correct.
 4. For a Mesh–Geometry overlay, choose **Overlay** and enter a common frame and
    unit. When both structural sources contain `math3dCoordinateFrame` metadata,
    the viewer checks frame, unit, axes and handedness independently and refuses
-   a mismatch. Older sources without that metadata remain explicitly labeled
-   as an **unverified operator assertion**; entering matching text does not turn
-   it into scientific evidence. Surface overlays are refused; compare them in
+   a mismatch. If only one source declares a frame, its declared frame and unit
+   must still agree with the entered alignment. Older sources without that
+   metadata remain explicitly labeled as an **unverified operator assertion**;
+   entering matching text does not turn it into scientific evidence. Surface
+   overlays are refused; compare them in
    separate panes instead.
 5. Adjust each member's visibility and opacity. Mesh/Geometry color is
    independent per member; Surface retains its own viewer palette.

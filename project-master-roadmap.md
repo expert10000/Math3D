@@ -1567,6 +1567,10 @@ names the exact covered paths. PC29 does not add a new comparison adapter.
 PC03 remains **Partial** for legacy sources without declared coordinate
 frames. PC05 remains **Partial** for generations never explicitly retained
 and unsupported cross-model selection mapping.
+The PC03 overlay qualifier now also refuses an operator-entered frame or unit
+that contradicts either source's available declaration, even when the other
+source has no declaration. This prevents a legacy member from masking known
+incompatibility; it does not establish the missing member's frame.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

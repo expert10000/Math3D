@@ -148,6 +148,11 @@ test("PC03 starter exposes verified, asserted and refused coordinate overlays", 
     await expect(view.getByTestId("project-composition-probe-status")).toContainText("Linked coordinate unavailable");
     await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
     await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
+    await view.getByLabel("Shared unit").fill("cm");
+    await expect(view.getByRole("alert")).toContainText("Source coordinate frames, axes, handedness, or units disagree");
+    await expect(view.getByRole("region", { name: /Overlay/ })).toHaveCount(0);
+    await view.getByLabel("Shared unit").fill("mm");
+    await expect(view.getByText(/Unverified overlay: at least one source/)).toBeVisible();
     await view.getByTestId("project-composition-mode").selectOption("side-by-side");
     await expect(view.getByTestId("project-composition-camera-link")).toBeDisabled();
     await view.getByLabel("Saved composition").selectOption({ label: "Unverified A/D overlay" });
