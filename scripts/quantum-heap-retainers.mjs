@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 
 const safeName = value => /^[A-Za-z_$][A-Za-z0-9_$ .<>-]{0,79}$/.test(value)
   ? value : "[redacted]";
+const safeNativeName = value => {
+  const direct = safeName(value);
+  if (direct !== "[redacted]") return direct;
+  const match = /^(Detached )?([A-Za-z][A-Za-z0-9]*)/.exec(value);
+  return match ? `${match[1] ?? ""}${match[2]}` : "[redacted]";
+};
 
 export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
   const { nodes, edges, strings } = snapshot;
@@ -130,7 +136,9 @@ export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
   const label = node => {
     const at = node * nodeStride;
     const type = nodeTypes[nodes[at + nodeTypeAt]];
-    const name = type === "string" ? "[string]" : safeName(strings[nodes[at + nodeNameAt]]);
+    const rawName = strings[nodes[at + nodeNameAt]];
+    const name = type === "string" ? "[string]" :
+      type === "native" ? safeNativeName(rawName) : safeName(rawName);
     if (type !== "object") return `${type}:${name}`;
     let materialType = null;
     let marker = null;
