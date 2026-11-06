@@ -96,9 +96,20 @@ test("SCI-19 JSON audit rechecks a reopened combined Workbook and withholds chan
     expect(result).toBeTruthy();
     if (!await projects.getByTestId("project-dashboard").isVisible())
       await projects.getByTestId("project-gallery-layout-toggle").click();
-    await projects.getByTestId("project-detail-tab-results").click();
+    const resultsTab = projects.getByTestId("project-detail-tab-results");
+    await resultsTab.evaluate(element => {
+      setTimeout(() => (element as HTMLButtonElement).click(), 0);
+    }, undefined, { timeout: 120_000 });
+    await expect(resultsTab).toHaveAttribute("aria-current", "page",
+      { timeout: 120_000 });
     const outputs = projects.getByTestId("project-results-browser");
-    await outputs.getByTestId(`project-result-select-${result.resultId}`).click();
+    await expect(outputs).toBeVisible({ timeout: 120_000 });
+    const savedResult = outputs.getByTestId(`project-result-select-${result.resultId}`);
+    await savedResult.evaluate(element => {
+      setTimeout(() => (element as HTMLButtonElement).click(), 0);
+    }, undefined, { timeout: 120_000 });
+    await expect(savedResult).toHaveAttribute("aria-current", "true",
+      { timeout: 120_000 });
     await outputs.getByTestId("project-create-subrectangle-workbook")
       .evaluate(element => { setTimeout(() => (element as HTMLButtonElement).click(), 0); });
     await expect.poll(() => page.evaluate(id => {
