@@ -54952,11 +54952,18 @@ case "mobius":
   );
 
   const workbookSessionHashWithWorkspace = useMemo(
-    () => hashString(JSON.stringify({
-      version: WORKBOOK_PROJECT_FORMAT_VERSION,
-      format: WORKBOOK_PROJECT_FORMAT,
-      payload: workbookSessionPayloadWithWorkspace,
-    }, null, 2)),
+    () =>
+      hashString(
+        JSON.stringify(
+          {
+            version: WORKBOOK_PROJECT_FORMAT_VERSION,
+            format: WORKBOOK_PROJECT_FORMAT,
+            payload: workbookSessionPayloadWithWorkspace,
+          },
+          null,
+          2
+        )
+      ),
     [workbookSessionPayloadWithWorkspace]
   );
   const workbookBundlePayload = useMemo<WorkbookReplayPayload>(
@@ -54969,15 +54976,17 @@ case "mobius":
           },
     [workbookBundleAssetMode, workbookSessionPayloadWithWorkspace]
   );
-  const buildWorkbookBundleJson = useCallback(
-    () =>
-      JSON.stringify(
-        buildWorkbookProjectEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
-        null,
-        2
-      ),
-    [workbookBundlePayload, workbookBundleAssetMode]
-  );
+  // The bundle is needed only for an explicit save/export. Keep the committed
+  // payload in a stable ref so editor callback chains do not retain a full JSON
+  // string from every prior render.
+  const workbookBundleSourceRef = useRef({ payload: workbookBundlePayload, assetMode: workbookBundleAssetMode });
+  useLayoutEffect(() => {
+    workbookBundleSourceRef.current = { payload: workbookBundlePayload, assetMode: workbookBundleAssetMode };
+  }, [workbookBundlePayload, workbookBundleAssetMode]);
+  const serializeWorkbookBundle = useCallback(() => {
+    const { payload, assetMode } = workbookBundleSourceRef.current;
+    return JSON.stringify(buildWorkbookProjectEnvelope(payload, assetMode, Date.now()), null, 2);
+  }, []);
 
   const markWorkbookManualSave = useCallback(
     (hash: string, savedAt: number, fileName?: string) => {
@@ -55815,9 +55824,9 @@ case "mobius":
         ? "math3d-book"
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
-    downloadTextFile(buildWorkbookBundleJson(), fileName, "application/json");
+    downloadTextFile(serializeWorkbookBundle(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
-  }, [buildWorkbookBundleJson, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+  }, [serializeWorkbookBundle, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
 
   const handleSaveWorkbook = useCallback(() => {
     const base =
@@ -55826,10 +55835,10 @@ case "mobius":
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
     const defaultName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
     const fileName = ensureMath3dExtension(workbookManualSaveName || defaultName);
-    downloadTextFile(buildWorkbookBundleJson(), fileName, "application/json");
+    downloadTextFile(serializeWorkbookBundle(), fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
   }, [
-    buildWorkbookBundleJson,
+    serializeWorkbookBundle,
     workbookSessionHash,
     workbookManualSaveName,
     workbooks.length,
@@ -56052,11 +56061,11 @@ case "mobius":
 
   const handleExportWorkbooks = useCallback(() => {
     downloadTextFile(
-      buildWorkbookBundleJson(),
+      serializeWorkbookBundle(),
       `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.math3d`,
       "application/json"
     );
-  }, [buildWorkbookBundleJson]);
+  }, [serializeWorkbookBundle]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
     const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId, getWorkbookDependencyProjectRef.current(), undefined, undefined, readComparisonReportResourceRef.current);

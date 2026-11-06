@@ -70,6 +70,7 @@ test("SAGE-H04/H05 installs an ideal gallery chain and reopens a completed bound
     await cas.getByRole("button", { name: "Run saved recipe" }).click();
     await expect(cas.getByTestId("cas-recipe-status")).toContainText("Recipe complete");
     await expect(cas.getByTestId("cas-gcd-sweep-results")).toContainText("2/2 saved results");
+    await ctx.page.screenshot({ path: test.info().outputPath("gallery-sweep.png") });
     expect(requests).toEqual([["84", "30"], ["35", "15"]]);
     const savedBytes = await ctx.page.evaluate((id) =>
       localStorage.getItem(`math3d.project.v1.payload.${id}`), project.identity.id);

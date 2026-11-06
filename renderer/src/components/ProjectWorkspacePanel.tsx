@@ -772,7 +772,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (promotion.meshBytes) quantumPromotionMeshBytes.current.set(promotion.meshBytes.id, promotion.meshBytes.bytes);
       setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
       setQuantumSceneMessage(`${target} copy staged with exact quantum source relation. Save Project to retain it.` +
-        (target === "geometry" ? " Scene primitives are preserved, but the Geometry editor cannot restore this copy; the saved Project reopens in compatibility preview." : ""));
+        (target === "geometry" ? " This bounded copy opens in the current Project source editor; pinned pre-QEC rollback still shows a compatibility preview." : ""));
     } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); }
     finally { setBusy(false); }
   };
@@ -2182,7 +2182,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         onSave={async (composition: ProjectComposition) => {
           const ok = await commitNotes(saved => {
             const statuses = inspectProjectCompositionAvailability(composition, saved.workspace);
-            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh"))
+            if (statuses.some(status => status !== "current" && status !== "retained-checkpoint" && status !== "retained-mesh" && status !== "retained-geometry"))
               throw new Error("A comparison source generation is unavailable. Reopen the saved Project.");
             return upsertMath3DProjectComposition(saved, composition);
           }, `Saved composition “${composition.title}”.`);

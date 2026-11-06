@@ -1,6 +1,6 @@
 import {
-  createMixedWorkspaceDocument, MAX_RETAINED_MESH_GENERATIONS, readProjectCoordinateFrame, replaceMath3DProjectWorkspace,
-  retainedMeshGenerationDocuments, sameProjectCoordinateFrame, structuralHash,
+  createMixedWorkspaceDocument, MAX_RETAINED_GEOMETRY_GENERATIONS, MAX_RETAINED_MESH_GENERATIONS, readProjectCoordinateFrame, replaceMath3DProjectWorkspace,
+  retainedGeometryGenerationDocuments, retainedMeshGenerationDocuments, sameProjectCoordinateFrame, structuralHash,
   upsertMath3DProjectComposition, type GeometryDocument, type Math3DProject, type MeshDocument,
   type MeshResourceReference, type ProjectComposition, type ProjectCoordinateFrame,
 } from "@math3d/core";
@@ -23,10 +23,12 @@ export function declareLegacyGeometryCoordinateFrame(project: Math3DProject, com
   const entry = project.workspace.entries.find(item => item.expected.id === member.documentId);
   if (!entry || entry.module !== "geometry" || entry.checkpoint.format !== "math3d.geometry-document" ||
     entry.replay && entry.replay.format !== MIXED_REPLAY_FORMATS.geometry ||
-    entry.checkpoint.identity.revision !== member.expected.revision ||
-    entry.checkpoint.identity.structuralHash !== member.expected.structuralHash ||
     entry.expected.revision !== member.expected.revision || entry.expected.structuralHash !== member.expected.structuralHash)
-    throw new TypeError("Only a current Geometry source retained as its exact replay checkpoint can receive this frame declaration.");
+    throw new TypeError("Only a current replay-verified Geometry source can receive this frame declaration.");
+  const retainCurrent = entry.checkpoint.identity.revision !== member.expected.revision ||
+    entry.checkpoint.identity.structuralHash !== member.expected.structuralHash;
+  if (retainCurrent && (!entry.replay || retainedGeometryGenerationDocuments(entry).length >= MAX_RETAINED_GEOMETRY_GENERATIONS))
+    throw new TypeError("The current Geometry cannot be retained before this frame declaration.");
   const replayed = verifyMixedWorkspaceReplay(project.workspace);
   const verified = replayed.get(member.documentId);
   if (!verified || verified.format !== "math3d.geometry-document" ||
@@ -43,13 +45,18 @@ export function declareLegacyGeometryCoordinateFrame(project: Math3DProject, com
     throw new TypeError("The proposed axes or handedness disagree with the other source declaration.");
   const adapter = entry.replay ? GeometryDocumentAdapter.restore(entry.replay.payload as unknown as GeometryReplayBundle) :
     new GeometryDocumentAdapter(verified);
-  const updated = adapter.commitSource(source, { kind: "interactive", sourceId: "project-coordinate-frame-declaration" });
+  const updated = adapter.commitSource(source, { kind: "interactive", sourceId: "project-coordinate-frame-declaration" },
+    retainCurrent ? verified.identity.structuralHash : undefined);
   const replay = adapter.exportReplay();
   const workspace = createMixedWorkspaceDocument({ ...project.workspace, entries: project.workspace.entries.map(item =>
     item === entry ? { ...item, checkpoint: replay.checkpoint.document, expected: updated.identity,
       replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as never } } : item) });
   const revised = replaceMath3DProjectWorkspace(project, workspace);
   verifyMixedWorkspaceReplay(revised.workspace);
+  if (retainCurrent && !retainedGeometryGenerationDocuments(workspace.entries.find(item => item.expected.id === member.documentId)!)
+    .some(document => document.identity.revision === member.expected.revision &&
+      document.identity.structuralHash === member.expected.structuralHash))
+    throw new TypeError("The prior Geometry revision was not retained.");
   const comparison: ProjectComposition = { ...composition,
     id: `composition:frame:${structuralHash([composition.id, member.expected, updated.identity]).slice(7, 39)}`,
     title: `${composition.title.replace(/^Unverified\s+/i, "").slice(0, 135)} · source frame r${updated.identity.revision}`,

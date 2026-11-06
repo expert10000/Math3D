@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, parseProjectAlgebraEvidence, structuralHash,
+import { canonicalJsonStringify, parseProjectAlgebraEvidence, sha256Checksum, structuralHash,
   type Math3DProject } from "@math3d/core";
 import type { Workbook } from "@math3d/workbook";
 
@@ -61,9 +61,16 @@ export const parseAlgebraReproManifest = (value: unknown): AlgebraReproManifest 
   return JSON.parse(canonicalJsonStringify(data)) as AlgebraReproManifest;
 };
 
-export const inspectAlgebraReproManifest = (manifest: AlgebraReproManifest, project: Math3DProject) => {
+export const inspectAlgebraReproManifest = (manifest: AlgebraReproManifest, project: Math3DProject,
+  books?: readonly Workbook[]) => {
   const checked = parseAlgebraReproManifest(manifest);
   if (checked.projectId !== project.identity.id) throw new TypeError("Algebra manifest belongs to another Project.");
+  if (checked.objects.length !== (project.algebraObjects ?? []).length ||
+      checked.operations.length !== (project.algebraEvidence ?? []).length ||
+      new Set(checked.objects.map((item) => item.id)).size !== checked.objects.length ||
+      new Set(checked.operations.map((item) => item.id)).size !== checked.operations.length ||
+      new Set(checked.workbookBlocks.map((item) => `${item.workbookId}\u0000${item.blockId}`)).size !== checked.workbookBlocks.length)
+    throw new TypeError("Algebra manifest has incomplete or duplicate Project records.");
   for (const source of checked.objects) {
     const current = project.algebraObjects?.find((item) => item.id === source.id);
     if (!current || current.archived !== source.archived ||
@@ -85,9 +92,24 @@ export const inspectAlgebraReproManifest = (manifest: AlgebraReproManifest, proj
     if (block.trustedCode !== null && structuralHash(block.trustedCode) !== block.trustedCodeHash)
       throw new TypeError(`Algebra manifest Workbook code hash differs for ${block.blockId}.`);
   }
+  if (books) {
+    const selected = checked.workbookBlocks.map((block) => block.blockId);
+    const rebuilt = createAlgebraReproManifest(project, books, selected, checked.operations.some((item) => item.result !== null));
+    if (canonicalJsonStringify(rebuilt.workbookBlocks) !== canonicalJsonStringify(checked.workbookBlocks))
+      throw new TypeError("Algebra manifest Workbook blocks differ from the supplied Workbook.");
+    for (const book of books.filter((item) => checked.workbookBlocks.some((block) => block.workbookId === item.id))) {
+      const reference = project.workbooks?.find((item) => item.id === book.id);
+      if (project.workbooks?.length && (!reference ||
+          reference.checksum !== sha256Checksum(new TextEncoder().encode(canonicalJsonStringify(book)))))
+        throw new TypeError(`Workbook ${book.id} does not match its Project reference.`);
+    }
+  }
   return { objects: checked.objects.length, operations: checked.operations.length,
     recipes: checked.recipes.length, workbookBlocks: checked.workbookBlocks.length,
-    trustedCodeBlocks: checked.workbookBlocks.filter((item) => item.trustedCode !== null).length };
+    trustedCodeBlocks: checked.workbookBlocks.filter((item) => item.trustedCode !== null).length,
+    workbookVerified: books !== undefined,
+    workbookProjectBound: books !== undefined && checked.workbookBlocks.length > 0 && checked.workbookBlocks.every((block) =>
+      !!project.workbooks?.some((item) => item.id === block.workbookId)) };
 };
 
 export const algebraReproManifestMarkdown = (manifest: AlgebraReproManifest): string => {

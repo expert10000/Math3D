@@ -6,7 +6,7 @@ on:
       focus:
         type: choice
         description: Select a targeted Windows check
-        options: [all, source, autosave, rollback, retainers, fixed-memory, installer, components]
+        options: [all, source, autosave, rollback, retainers, fixed-memory, installer, installer-full, components]
         default: all
       cycles:
         type: choice
@@ -308,14 +308,14 @@ jobs:
             test-results/qi40-installed-fixed-memory-budget.json
 
   lab-crash-dumps:
-    if: ${{ inputs.focus == 'all' || inputs.focus == 'installer' }}
+    if: ${{ inputs.focus == 'all' || inputs.focus == 'installer' || inputs.focus == 'installer-full' }}
     strategy:
       fail-fast: false
       matrix:
         slot: [1, 2, 3, 4, 5, 6]
         scope: [lab-only, both-apps]
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       actions: read
@@ -344,7 +344,7 @@ jobs:
               ($env:CANDIDATE_RUN_ID -and $manifest.math3d.commit -ne $run.headSha)) {
             throw 'Candidate manifest does not match the build run'
           }
-      - name: Install pinned candidate with per-app WER mini dump enabled
+      - name: Install pinned candidate with per-app WER dump enabled
         shell: pwsh
         env:
           CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
@@ -356,6 +356,7 @@ jobs:
             CaptureCrashDump = $true
           }
           if ('${{ matrix.scope }}' -eq 'lab-only') { $arguments.TheoryLabOnly = $true }
+          if ('${{ inputs.focus }}' -eq 'installer-full') { $arguments.FullCrashDump = $true }
           if ($env:CANDIDATE_RUN_ID) {
             $arguments.ExpectedBuildRunId = $env:CANDIDATE_RUN_ID
             $arguments.ExpectedMath3DCommit = $env:EXPECTED_MATH3D_COMMIT

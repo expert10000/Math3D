@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { inspectProjectCompositionAvailability, parseMath3DProject,
-  readProjectCoordinateFrame, serializeMath3DProject, upsertMath3DProjectComposition,
+import { createMixedWorkspaceDocument, inspectProjectCompositionAvailability, parseMath3DProject,
+  readProjectCoordinateFrame, replaceMath3DProjectWorkspace, retainedGeometryGenerationDocuments,
+  serializeMath3DProject, upsertMath3DProjectComposition,
   type MeshDocument, type ProjectComposition, type ProjectCoordinateFrame } from "@math3d/core";
 import { createProjectComparisonTemplate } from "../../../packages/core/src/projectComparisonTemplates";
 import { mobileMixedProjectFixture } from "../../../tests/fixtures/unified-projects/mobileProjects";
@@ -10,6 +11,8 @@ import { declareLegacyGeometryCoordinateFrame, declareLegacyMeshCoordinateFrame 
 import { resolveProjectCompositionMember } from "../components/ProjectCompositionView";
 import { exportProjectPackage, parseProjectPackage } from "./projectResources";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
+import { MIXED_REPLAY_FORMATS } from "../kernel/mixedWorkspaceReplay";
+import { GeometryDocumentAdapter } from "../geometry/geometryDocumentAdapter";
 
 const frame: ProjectCoordinateFrame = { format: "math3d.coordinate-frame/v1", frame: "laboratory xyz",
   unit: "mm", axes: ["x", "y", "z"], handedness: "right" };
@@ -43,7 +46,40 @@ describe("PC03 legacy Geometry frame declaration", () => {
     expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 1, { ...frame, axes: ["x", "x", "z"] })).toThrow(/invalid/i);
     expect(() => declareLegacyGeometryCoordinateFrame(project, asserted, 1, { ...frame, handedness: "left" })).toThrow(/handedness/i);
     const { project: revised } = declareLegacyGeometryCoordinateFrame(project, asserted, 1, frame);
-    expect(() => declareLegacyGeometryCoordinateFrame(revised, asserted, 1, frame)).toThrow(/exact replay checkpoint/i);
+    expect(() => declareLegacyGeometryCoordinateFrame(revised, asserted, 1, frame)).toThrow(/current replay-verified/i);
+  });
+
+  it("retains a current Geometry revision beyond its checkpoint before declaring the frame", () => {
+    const original = createProjectComparisonTemplate("coordinate-overlay-study", "pc03-geometry-r2");
+    const asserted = original.compositions!.find(item => item.title === "Unverified A/D overlay")!;
+    const entry = original.workspace.entries.find(item => item.expected.id === asserted.members[1].documentId)!;
+    const adapter = new GeometryDocumentAdapter(entry.checkpoint as never);
+    const r2 = adapter.commitSource({ ...adapter.document().source,
+      parameters: { ...adapter.document().source.parameters, authoredOffset: 1 } });
+    const replay = adapter.exportReplay();
+    const workspace = createMixedWorkspaceDocument({ ...original.workspace, entries: original.workspace.entries.map(item =>
+      item === entry ? { ...item, expected: r2.identity,
+        replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as never } } : item) });
+    const current = replaceMath3DProjectWorkspace(original, workspace);
+    const comparison: ProjectComposition = { ...asserted, id: "pc03-geometry-r2-comparison",
+      members: [asserted.members[0], { ...asserted.members[1], expected: r2.identity }] };
+    const saved = upsertMath3DProjectComposition(current, comparison);
+    expect(inspectProjectCompositionAvailability(comparison, saved.workspace)[1]).toBe("current");
+    const next = declareLegacyGeometryCoordinateFrame(saved, comparison, 1, frame);
+    const reopened = parseMath3DProject(serializeMath3DProject(next.project));
+    const revisedEntry = reopened.workspace.entries.find(item => item.expected.id === r2.identity.id)!;
+    expect(retainedGeometryGenerationDocuments(revisedEntry).map(document => document.identity)).toContainEqual(r2.identity);
+    expect(inspectProjectCompositionAvailability(comparison, reopened.workspace)[1]).toBe("retained-geometry");
+    expect(inspectProjectCompositionAvailability(next.comparison, reopened.workspace)[1]).toBe("current");
+    expect(resolveProjectCompositionMember(reopened, comparison.members[1], () => null).coordinates.status).toBe("missing");
+    expect(resolveProjectCompositionMember(reopened, next.comparison.members[1], () => null).coordinates.value).toEqual(frame);
+    expect(createProjectComparisonEvidence(reopened, comparison, () => null).alignment).toBe("operator assertion");
+    expect(createProjectComparisonEvidence(reopened, next.comparison, () => null).alignment).toBe("source-declared match");
+    const forged = { ...revisedEntry, replay: { ...revisedEntry.replay!, payload: {
+      ...(revisedEntry.replay!.payload as object), transactions: (revisedEntry.replay!.payload as any).transactions.map((item: any) =>
+        item.retainedBefore ? { ...item, retainedBefore: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" } : item),
+    } } };
+    expect(() => retainedGeometryGenerationDocuments(forged)).toThrow(/marker/i);
   });
 });
 
