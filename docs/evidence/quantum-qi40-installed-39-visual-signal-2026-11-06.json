@@ -1,0 +1,398 @@
+{
+  "schema": "math3d.quantum-visual-review/v1",
+  "fixtureCount": 39,
+  "installed": true,
+  "preQec": false,
+  "rows": [
+    {
+      "id": "qwz-curvature",
+      "file": "01-qwz-curvature.png",
+      "sha256": "44ed4eb52f02ec98f81a2b5cb46735712680f01e41c65f4274448415118ad992",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 82,
+      "saturatedFraction": 0.1381,
+      "needsVisualReview": false
+    },
+    {
+      "id": "qwz-bands",
+      "file": "02-qwz-bands.png",
+      "sha256": "8a5d5c753bfd08ae88cf24b0091066666f62e9f4ba2a7ded68b7351e1d2dc914",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 92,
+      "saturatedFraction": 0.2202,
+      "needsVisualReview": false
+    },
+    {
+      "id": "ssh-chain",
+      "file": "03-ssh-chain.png",
+      "sha256": "55be17e66a75d943535c2b0f58e3505ff891a9b0ce7eb3e87f78e134d37eef8a",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 64,
+      "saturatedFraction": 0.0108,
+      "needsVisualReview": false
+    },
+    {
+      "id": "ssh-bands",
+      "file": "04-ssh-bands.png",
+      "sha256": "7dc3ab35aba738000ab8a84b013040f3795a08e3f60cc11535243f690014d8ec",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 76,
+      "saturatedFraction": 0.0334,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-bands",
+      "file": "05-rice-mele-bands.png",
+      "sha256": "bd015f0666e4115f8598b2be6eb1c9342faca95d33b109afa9e1adf2389ce6e6",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 77,
+      "saturatedFraction": 0.0327,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-finite",
+      "file": "06-rice-mele-finite.png",
+      "sha256": "b4a67d8be8f10db0ada4327b20779593273aabf1443bfeb845770c24cfa320e0",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 59,
+      "saturatedFraction": 0.0098,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-pump",
+      "file": "07-rice-mele-pump.png",
+      "sha256": "68c37dd98a366eeacd264fd204963ecae0e5badedbab01b28fea385caa440263",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 70,
+      "saturatedFraction": 0.2484,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-finite-pump",
+      "file": "08-rice-mele-finite-pump.png",
+      "sha256": "cb30f2c9b649c9519552bd37aecf640e4c198308a8e07d169eaae722ace780a3",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 64,
+      "saturatedFraction": 0.0076,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-open-chain-pump",
+      "file": "09-rice-mele-open-chain-pump.png",
+      "sha256": "801f58e474d7344df151cdfae61a6d333c1729197ecedd6f11544fd55527f25d",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 69,
+      "saturatedFraction": 0.0147,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-bulk-chain",
+      "file": "10-rice-mele-bulk-chain.png",
+      "sha256": "60b21ac003c599d9bf9acd4fdee14ac881d10bb5dc2092809197daaa7741bc66",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 69,
+      "saturatedFraction": 0.0155,
+      "needsVisualReview": false
+    },
+    {
+      "id": "rice-mele-convergence",
+      "file": "11-rice-mele-convergence.png",
+      "sha256": "ab41e9e55edb59335a22a48b68dbaf8e7dd3a9ac03b7366c8e2e96195ee5ac28",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 88,
+      "saturatedFraction": 0.0578,
+      "needsVisualReview": false
+    },
+    {
+      "id": "bhz-bands",
+      "file": "12-bhz-bands.png",
+      "sha256": "673cd616655695a2e609967b986829d338b02f2ac62bcbd8758e6c67589bf6c5",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 78,
+      "saturatedFraction": 0.058,
+      "needsVisualReview": false
+    },
+    {
+      "id": "bhz-general-continuum",
+      "file": "13-bhz-general-continuum.png",
+      "sha256": "5d1b435881aae9cfa46e6fae5cee747a127222556edcc5b9fb95630baf696847",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 76,
+      "saturatedFraction": 0.0794,
+      "needsVisualReview": false
+    },
+    {
+      "id": "bhz-general-lattice",
+      "file": "14-bhz-general-lattice.png",
+      "sha256": "4bdb8cad1df8726fe0cddb22f9f77c28982f897ecb6851e62ee2b48f3ac414a2",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 91,
+      "saturatedFraction": 0.0651,
+      "needsVisualReview": false
+    },
+    {
+      "id": "bbh-bands",
+      "file": "15-bbh-bands.png",
+      "sha256": "8a4e91ededaee1f5a3c4eeb9f39510962e51eb631d6e5761162d50c16ff4bfd9",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 76,
+      "saturatedFraction": 0.1672,
+      "needsVisualReview": false
+    },
+    {
+      "id": "bbh-finite",
+      "file": "16-bbh-finite.png",
+      "sha256": "f1e0796a019693c3852160efcd747811e07681744645f5c16028690e8c17819d",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 72,
+      "saturatedFraction": 0.0143,
+      "needsVisualReview": false
+    },
+    {
+      "id": "bbh-wilson",
+      "file": "17-bbh-wilson.png",
+      "sha256": "9719e0e2bcd254a39eb464c029ba82483e454baca3abfedcfcb40375d4f366c6",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 77,
+      "saturatedFraction": 0.0615,
+      "needsVisualReview": false
+    },
+    {
+      "id": "kitaev-bands",
+      "file": "18-kitaev-bands.png",
+      "sha256": "db193d83c4eabbf3e9f4295c2bf0fb59de56a9c26feff33ec35acd0d83cd78a0",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 75,
+      "saturatedFraction": 0.0325,
+      "needsVisualReview": false
+    },
+    {
+      "id": "kitaev-finite",
+      "file": "19-kitaev-finite.png",
+      "sha256": "469c3f189ab8e91927eabd7d384f3cd6b4daf8d5f188b796ad4baf08d42e4634",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 57,
+      "saturatedFraction": 0.0101,
+      "needsVisualReview": false
+    },
+    {
+      "id": "kitaev-invariant",
+      "file": "20-kitaev-invariant.png",
+      "sha256": "1ef9c31a5a7325f1d1a81cb602f8de1b3ef8407265e81085f392c51b5ecfc774",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 59,
+      "saturatedFraction": 0.0473,
+      "needsVisualReview": false
+    },
+    {
+      "id": "weyl-local",
+      "file": "21-weyl-local.png",
+      "sha256": "2261e2683fd07c77d6bf7eef7d9169fc65a4ba4cf16f54fc95b551953b000232",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 73,
+      "saturatedFraction": 0.0192,
+      "needsVisualReview": false
+    },
+    {
+      "id": "nodal-ring",
+      "file": "22-nodal-ring.png",
+      "sha256": "389c87606fd050e5fe68dec1cba3fa514a257836ac0c9638b0970e56af2bcab0",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 78,
+      "saturatedFraction": 0.0268,
+      "needsVisualReview": false
+    },
+    {
+      "id": "landau-levels",
+      "file": "23-landau-levels.png",
+      "sha256": "c26797460750676b9b167247bd9a9f9a4cc1642e9a284f9117e277def2d8a45e",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 67,
+      "saturatedFraction": 0.0185,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-bands",
+      "file": "24-hofstadter-bands.png",
+      "sha256": "addad8680447440c9f5ffb6c76416b8f63e547fc95f525566a7162d57e6dea45",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 76,
+      "saturatedFraction": 0.1917,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-chern",
+      "file": "25-hofstadter-chern.png",
+      "sha256": "cf5f6bc5261363693739bc5978e970299b420bb8d1ac7020ac6bef5d04cc98b3",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 77,
+      "saturatedFraction": 0.1919,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-strip",
+      "file": "26-hofstadter-strip.png",
+      "sha256": "d0c51320387328103cfa5b2369ea154ebb497e4d8ecae4f5a148c358d31fa9b3",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 77,
+      "saturatedFraction": 0.0742,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-hall",
+      "file": "27-hofstadter-hall.png",
+      "sha256": "8a6e9429751162530c0ae25480b4acffaec6662d1bcd1561f447f884e56dfe26",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 77,
+      "saturatedFraction": 0.1919,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-butterfly",
+      "file": "28-hofstadter-butterfly.png",
+      "sha256": "0048c2f183083fe2b6009ee962843f64007eb32ad0135d3867944f0d5eca12ed",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 76,
+      "saturatedFraction": 0.0131,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-bulk-edge",
+      "file": "29-hofstadter-bulk-edge.png",
+      "sha256": "d75110741442ab4291f86c1d137c9e8f47e34931404e97164e3aa45d3eaaad00",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 75,
+      "saturatedFraction": 0.0441,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-tracked-edge",
+      "file": "30-hofstadter-tracked-edge.png",
+      "sha256": "cf8fa74cf8a067b9f7b1659a263a38c32cdf27a734b1633622f2f1f0f31b14ce",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 79,
+      "saturatedFraction": 0.0653,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hofstadter-edge-convergence",
+      "file": "31-hofstadter-edge-convergence.png",
+      "sha256": "5bcd4aa2d1765058c857b8eba2bdf92c0f442adeb8eb00dedf4743fa9c01736d",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 88,
+      "saturatedFraction": 0.0528,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hydrogen-1s",
+      "file": "32-hydrogen-1s.png",
+      "sha256": "27269b27371e610884fca025ebae4359d96dbead1af96dd45a55ab5d54d22e96",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 35,
+      "saturatedFraction": 0.3074,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hydrogen-2s",
+      "file": "33-hydrogen-2s.png",
+      "sha256": "9db272c44e82004c9d465569fd89ad06fbf6de35ceaf5650e1d455cf8af78062",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 34,
+      "saturatedFraction": 0.3074,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hydrogen-2p",
+      "file": "34-hydrogen-2p.png",
+      "sha256": "d6fd0ef4704b40ca02a076c37cc7030dd465c1aeefe5c294c1b84385f9253d29",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 40,
+      "saturatedFraction": 0.3074,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hydrogen-3p",
+      "file": "35-hydrogen-3p.png",
+      "sha256": "df96c66344059a332eb3035a41da8066ffc356f2eb81dbef6091510ade740697",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 38,
+      "saturatedFraction": 0.2585,
+      "needsVisualReview": false
+    },
+    {
+      "id": "hydrogen-3d",
+      "file": "36-hydrogen-3d.png",
+      "sha256": "b32ec7ca3b72190d7bfa1950037940a7031d8c8ec32dea75dd5a6991fa3168fd",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 44,
+      "saturatedFraction": 0.3074,
+      "needsVisualReview": false
+    },
+    {
+      "id": "saved-qwz-curvature",
+      "file": "37-saved-qwz-curvature.png",
+      "sha256": "68e50e5ffe180fcda89f6cbd60c3662975b311a1654d942c68e8be5489da11d2",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 82,
+      "saturatedFraction": 0.1381,
+      "needsVisualReview": false
+    },
+    {
+      "id": "saved-qwz-bands",
+      "file": "38-saved-qwz-bands.png",
+      "sha256": "10891f08f51517eb95281c0cfd0d27db1c1340fb0062c2b63c836630b2131824",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 96,
+      "saturatedFraction": 0.1792,
+      "needsVisualReview": false
+    },
+    {
+      "id": "saved-ideal-qec",
+      "file": "39-saved-ideal-qec.png",
+      "sha256": "1ed16d504e21c6bcc763657c7065f5711c8922cbc525a41fb910368c017b9b8e",
+      "width": 1600,
+      "height": 1000,
+      "colorBins": 71,
+      "saturatedFraction": 0.0111,
+      "needsVisualReview": false
+    }
+  ]
+}
