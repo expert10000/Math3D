@@ -50,6 +50,7 @@ export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
   const timingTargets = [];
   const arrayTargets = [];
   const objectTargets = [];
+  const objectSignatureGroups = new Map();
   const stringTargets = [];
   for (let node = 0; node < nodeCount; node++) {
     const at = node * nodeStride;
@@ -69,6 +70,26 @@ export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
       arrayTargets.push({ node, bytes, id });
     if (id > baselineMaxNodeId && type === "object" && bytes >= 512)
       objectTargets.push({ node, bytes, id });
+    if (id > baselineMaxNodeId && type === "object" && name === "Object") {
+      const properties = [];
+      const start = outgoingStart[node];
+      const count = nodes[at + nodeEdgesAt];
+      for (let edge = start; edge < start + count; edge++) {
+        const edgeAt = edge * edgeStride;
+        if (edgeTypes[edges[edgeAt + edgeTypeAt]] !== "property") continue;
+        const property = safeName(strings[edges[edgeAt + edgeNameAt]]);
+        if (property !== "[redacted]" && property !== "__proto__") properties.push(property);
+      }
+      if (properties.length) {
+        const keys = [...new Set(properties)].sort().slice(0, 8);
+        const signature = keys.join(",");
+        const group = objectSignatureGroups.get(signature) ?? { keys, count: 0, selfBytes: 0, exemplar: { node, bytes, id } };
+        group.count++;
+        group.selfBytes += bytes;
+        if (id > group.exemplar.id) group.exemplar = { node, bytes, id };
+        objectSignatureGroups.set(signature, group);
+      }
+    }
     if (type === "string" && bytes >= 100_000)
       stringTargets.push({ node, bytes, id: nodes[at + nodeIdAt] });
   }
@@ -79,6 +100,8 @@ export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
   arrayTargets.sort((a, b) => b.bytes - a.bytes || b.id - a.id);
   objectTargets.sort((a, b) => b.bytes - a.bytes || b.id - a.id);
   stringTargets.sort((a, b) => b.bytes - a.bytes);
+  const topObjectSignatures = [...objectSignatureGroups.values()]
+    .sort((a, b) => b.count - a.count || b.selfBytes - a.selfBytes).slice(0, 12);
   const stringGroups = new Map();
   for (const target of stringTargets) {
     const value = strings[nodes[target.node * nodeStride + nodeNameAt]];
@@ -101,6 +124,8 @@ export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
     ...timingTargets.slice(0, 2).map(row => ({ ...row, kind: "PerformanceEventTiming" })),
     ...arrayTargets.slice(0, 3).map(row => ({ ...row, kind: "new large array" })),
     ...objectTargets.slice(0, 2).map(row => ({ ...row, kind: "new large object" })),
+    ...topObjectSignatures.slice(0, 3).map(row => ({ ...row.exemplar,
+      kind: `new object keys: ${row.keys.join(",")}` })),
     ...stringTargets.slice(0, 3).map(row => ({ ...row, kind: "large string" }))];
   const label = node => {
     const at = node * nodeStride;
@@ -127,6 +152,7 @@ export function summarizeQuantumHeapRetainers(snapshot, baselineMaxNodeId = 0) {
   return { nodeCount, edgeCount, totalWebGLContexts: contextTargets.length,
     baselineMaxNodeId, newLargeArrayCount: arrayTargets.length,
     newLargeObjectCount: objectTargets.length,
+    newObjectSignatures: topObjectSignatures.map(({ keys, count, selfBytes }) => ({ keys, count, selfBytes })),
     largeStringCount: stringTargets.length,
     largeStrings: { totalSelfBytes: stringTargets.reduce((sum, item) => sum + item.bytes, 0),
       groups: [...stringGroups.values()].sort((a, b) => b.selfBytes - a.selfBytes).slice(0, 20) },
