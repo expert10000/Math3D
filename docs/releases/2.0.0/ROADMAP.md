@@ -874,6 +874,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **Progress (2026-11-07):** The shared cursor bus now accepts source-pinned Project points alongside Quantum events, with one sequence and stale-generation refusal. Saved Project point selections can bind to their replayed source without creating a second persistence contract. A projection gate requires an explicit mapping implementation and checks frames, source, operation and host capability before mapping. The Project dashboard exposes a first Vector Field 3D metre-frame cursor inspector with pin/link/unlink controls. Graph/Curve/Surface/Mesh mappings, reciprocal-space integration and multi-view E2E evidence remain open; this milestone is not complete.
 
+**Field slice (2026-11-07):** The Vector Field viewer can publish its physical probe in an explicit Cartesian metre frame and adopt an incoming point from the exact same document source. Draft formula changes block publication; source revisions and incompatible frames block adoption. Adoption leaves the bus sequence untouched. A desktop journey covers publication, stale-source refusal and publication after the source changes. Cross-module executable mappings and the full multi-view E2E matrix remain open.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)

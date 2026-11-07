@@ -16,8 +16,12 @@ describe("M3D20-03 Vector Field cursor mapping", () => {
     const draft = vectorFieldCursorDraft(document, [1, 2, 3], "vector-field3d");
     expect(draft.ok).toBe(true);
     if (!draft.ok) return;
-    const cursor = new ScientificCursorBus().publishProject(draft.value, draft.value.source);
+    const bus = new ScientificCursorBus();
+    const seen: number[] = [];
+    bus.subscribe(event => seen.push(event.sequence));
+    const cursor = bus.publishProject(draft.value, draft.value.source);
     expect(projectVectorFieldCursor(cursor, document)).toEqual({ status: "matched", value: [1, 2, 3] });
+    expect(seen).toEqual([1]);
     const updated = reviseVectorField3DDocument(document, { ...document.source,
       display: { ...document.source.display, maxGlyphs: document.source.display.maxGlyphs + 1 } });
     expect(projectVectorFieldCursor(cursor, updated).status).toBe("incompatible-source");
