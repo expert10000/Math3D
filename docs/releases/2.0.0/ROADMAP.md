@@ -996,6 +996,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **17a source corpus:** `tests/unit/release20MigrationCorpus.test.ts` pins three checked-in Project specimens by SHA-256 and verifies preview, portable export, independent reimport, identity/results/relations, and unchanged compatibility disposition. This covers these source formats only; installed 1.x migration remains an RC2 gate.
 
+**17b independent transfer:** `tests/unit/release20IndependentTransfer.test.ts` checks that Mesh, Graph table, and measured Volume source bytes survive Project package import, export, and reimport with their scientific lineage. It rejects a changed source sidecar and confirms that a JSON-only copy reports required source data as unavailable.
+
 - Fresh-machine installer and upgrade pass.
 - Full migration corpus and independent export/import.
 - Multi-hour representative reliability soak where practical.
