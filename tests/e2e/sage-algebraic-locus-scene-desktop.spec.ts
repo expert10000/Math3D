@@ -132,6 +132,9 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
       entry.checkpoint.format === "math3d.geometry-document" &&
       entry.checkpoint.source?.extensions?.[core.SAGE_LOCUS_GEOMETRY_EXTENSION]);
     expect(checkpoint).toBeTruthy();
+    expect(checkpoint?.expected.id).toBe(core.algebraicLocusGeometryDocument(scene).identity.id);
+    expect(checkpoint?.expected.id).toBe(core.sampledAlgebraicLocusGeometryDocument(sample).identity.id);
+    expect(checkpoint?.replay).toBeNull();
     expect(core.parseSampledAlgebraicLocusGeometryDocument(checkpoint.checkpoint, reopened).sample).toEqual(sample);
     expect(core.sageAlgebraicLocusSceneStatus(scene, reopened)).toBe("current");
   } finally { await closeSurfaceApp(ctx); }

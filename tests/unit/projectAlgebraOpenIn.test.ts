@@ -60,4 +60,30 @@ describe("Project Algebra Open in Geometry", () => {
       .toThrow(/no longer qualified/);
     expect(serializeMath3DProject(project)).toBe(before);
   });
+
+  it("disables an older algebra revision and a sample from another bounded scene", () => {
+    const { project, target, scene } = fixture();
+    const otherScene = buildSageAlgebraicLocusScene(project, target, {
+      polynomial: "x^2+y^2-1", bounds: [{ min: -1, max: 1 }, { min: -1, max: 1 }],
+      tolerance: 0.001, maxSamples: 8000 });
+    const otherSample = sampleSageAlgebraicLocus(otherScene);
+    const actions = projectAlgebraOpenInActions(project, target, scene, otherSample);
+    expect(actions[0]?.enabled).toBe(true);
+    expect(actions[1]).toMatchObject({ enabled: false,
+      disabledReason: "The sample does not match the prepared exact locus." });
+    expect(() => resolveProjectAlgebraOpenIn(project, target, scene, otherSample, actions[1]!))
+      .toThrow(/no longer qualified/);
+
+    const revised = createAlgebraObjectRecord({ id: target.objectId, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: {
+        objectId: project.algebraObjects![0]!.id, revision: 1 }, variables: ["x", "y"],
+        monomialOrder: "lex" } });
+    const changed = upsertMath3DProjectAlgebraObject(project, revised);
+    const stale = projectAlgebraOpenInActions(changed, target, scene, null);
+    expect(stale.map(action => action.enabled)).toEqual([false, false]);
+    expect(stale[0]?.disabledReason).toContain("current unarchived algebra object revision");
+    expect(() => resolveProjectAlgebraOpenIn(changed, target, scene, null,
+      projectAlgebraOpenInActions(project, target, scene, null)[0]!))
+      .toThrow(/no longer qualified/);
+  });
 });
