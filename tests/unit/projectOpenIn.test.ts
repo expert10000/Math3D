@@ -29,25 +29,26 @@ describe("M3D20-02 qualified Open in", () => {
       constructions: [], results: [], artifacts: [], relations: [], committedSelection: null });
     const project = createMath3DProject(workspace, { stableKey: "open-in-pole-project", title: "Pole" });
     const actions = projectOpenInActions(project, graph.identity.id);
-    expect(actions.map(item => item.enabled)).toEqual([true, false, false]);
+    expect(actions.map(item => item.enabled)).toEqual([true, false, false, false]);
     expect(actions[1]?.disabledReason).toMatch(/undefined on its domain/);
     expect(() => deriveProjectOpenIn(project, { ...actions[1]!, enabled: true })).toThrow(/no longer qualified/);
   });
 
-  it("derives Curve, Geometry, and Surface with exact lineage, idempotency, and return after reopen", () => {
+  it("derives Curve, Geometry, revolution and extrusion with exact lineage, idempotency, and return after reopen", () => {
     const { project, graph } = graphOnly();
     const actions = projectOpenInActions(project, graph.expected.id);
-    expect(actions.map(item => item.targetModule)).toEqual(["curve", "geometry", "surface"]);
+    expect(actions.map(item => item.targetModule)).toEqual(["curve", "geometry", "surface", "surface"]);
     expect(actions.every(item => item.enabled && item.sourceObjectId)).toBe(true);
     const first = deriveProjectOpenIn(project, actions[0]!);
     const second = deriveProjectOpenIn(first.project, actions[1]!);
     const third = deriveProjectOpenIn(second.project, actions[2]!);
+    const fourth = deriveProjectOpenIn(third.project, actions[3]!);
     expect(first.existing).toBe(false);
     expect(deriveProjectOpenIn(second.project, actions[0]!).existing).toBe(true);
     expect(deriveProjectOpenIn(third.project, actions[2]!).existing).toBe(true);
-    const reopened = parseMath3DProject(serializeMath3DProject(third.project));
-    expect(reopened.workspace.relations).toHaveLength(3);
-    for (const result of [first, second, third]) {
+    const reopened = parseMath3DProject(serializeMath3DProject(fourth.project));
+    expect(reopened.workspace.relations).toHaveLength(4);
+    for (const result of [first, second, third, fourth]) {
       const returned = projectOpenInReturn(reopened, result.targetDocumentId);
       expect(returned).toMatchObject({ sourceDocumentId: graph.expected.id, exact: true,
         relationId: result.relationId });
@@ -93,7 +94,7 @@ describe("M3D20-02 qualified Open in", () => {
     const legacy = parseMath3DProject(readFileSync(new URL("../fixtures/scientific-selection/gf01-legacy-project.math3d", import.meta.url), "utf8"));
     const field = legacy.workspace.entries.find(item => item.module === "vector3d")!;
     expect(projectOpenInActions(legacy, field.expected.id)).toMatchObject([{ enabled: false,
-      targetModule: "graph2d", disabledReason: expect.stringContaining("qualified") }]);
+      targetModule: "graph2d", disabledReason: expect.stringContaining("linked Field profile") }]);
     const quantum = { ...mixed, workspace: { ...mixed.workspace, entries: [{
       ...mixed.workspace.entries[0]!, module: "quantum" as const,
     }] } } as Math3DProject;

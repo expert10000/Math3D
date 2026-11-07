@@ -1,4 +1,5 @@
-import { promoteGraph2DToCurve, promoteGraph2DToGeometry, revolveGraph2DProfile } from "./graph2dInterop";
+import { extrudeGraph2DProfile, promoteGraph2DToCurve, promoteGraph2DToGeometry,
+  revolveGraph2DProfile } from "./graph2dInterop";
 import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { replaceMath3DProjectWorkspace, type Math3DProject } from "./math3dProject";
 import { projectOpenInActions, type ProjectOpenInAction } from "./projectOpenInActions";
@@ -33,7 +34,10 @@ export const deriveProjectOpenIn = (project: Math3DProject, choice: ProjectOpenI
     promoteGraph2DToCurve(entry.checkpoint, choice.sourceObjectId) :
     choice.id === "graph2d.promote-geometry" ?
       promoteGraph2DToGeometry(entry.checkpoint, choice.sourceObjectId) :
-      revolveGraph2DProfile(entry.checkpoint, choice.sourceObjectId, { axis: "x", orientation: "positive" });
+      choice.id === "graph2d.revolve-surface" ?
+        revolveGraph2DProfile(entry.checkpoint, choice.sourceObjectId, { axis: "x", orientation: "positive" }) :
+        extrudeGraph2DProfile(entry.checkpoint, choice.sourceObjectId,
+          { direction: [0, 0, 1], length: 1, caps: "none" });
   const targetModule = choice.id === "graph2d.promote-curve" ? "curve" :
     choice.id === "graph2d.promote-geometry" ? "geometry" : "surface";
   const target = promotion.document;
@@ -102,7 +106,7 @@ export const projectOpenInReturn = (project: Math3DProject, targetDocumentId: st
     item.target.generation.documentId === targetDocumentId &&
     matchesScientificSourceGeneration(item.target.generation, viewerSourceFromDocument(target.checkpoint)) &&
     (item.operation === "graph2d.promote-curve" || item.operation === "graph2d.promote-geometry" ||
-      item.operation === "graph2d.revolve-surface" ||
+      item.operation === "graph2d.revolve-surface" || item.operation === "graph2d.extrude-surface" ||
       item.operation === "surface.tessellate-saved" || item.operation === "quantum.promote-graph2d" ||
       item.operation === "quantum.promote-curve" ||
       item.operation === "mesh.promote-geometry" || item.operation === "vector3d.open-profile-graph") &&

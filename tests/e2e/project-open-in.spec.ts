@@ -43,6 +43,45 @@ test("Project Open in menu derives a Graph companion and keeps an exact return r
   } finally { await closeSurfaceApp(context); }
 });
 
+test("Project Open in extrudes a Graph profile into a saved Surface with exact return", async () => {
+  test.setTimeout(180_000);
+  let context: LaunchedSurfaceApp | null = null;
+  try {
+    context = await launchSurfaceApp();
+    const page = context.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByTestId("project-template-open-derivative-study").click();
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-documents").click();
+    const graphId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((item: { module: string }) => item.module === "graph2d").expected.id as string);
+    const menu = projects.getByTestId(`project-open-in-${graphId}`);
+    await menu.locator("summary").click();
+    const extrude = menu.getByRole("button", { name: /Extrude .* into Surfaces/ });
+    await expect(extrude).toBeEnabled();
+    await extrude.click();
+    await expect(projects.getByTestId("project-message")).toContainText("source-linked companion");
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved “");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const relation = saved.workspace.relations.find((item: { operation: string }) =>
+      item.operation === "graph2d.extrude-surface");
+    expect(relation.sources[0].documentId).toBe(graphId);
+    const surfaceId = relation.target.generation.documentId as string;
+    expect(saved.workspace.entries.find((item: { expected: { id: string } }) =>
+      item.expected.id === surfaceId).module).toBe("surface");
+    await projects.getByTestId("project-detail-tab-documents").click();
+    const back = projects.getByTestId(`project-open-in-return-${surfaceId}`)
+      .getByRole("button", { name: "Return to source Graph" });
+    await expect(back).toBeEnabled();
+    await back.click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", graphId);
+  } finally { await closeSurfaceApp(context); }
+});
+
 test("Project Open in menu samples a Surface into a saved Mesh with source return", async () => {
   test.setTimeout(180_000);
   let context: LaunchedSurfaceApp | null = null;

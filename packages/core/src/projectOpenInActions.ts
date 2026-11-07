@@ -3,13 +3,14 @@ import type { KernelWorkspaceModule } from "./mixedWorkspace";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import { matchesScientificSourceGeneration } from "./scientificJobs";
-import { previewGraph2DRevolution } from "./graph2dInterop";
+import { previewGraph2DExtrusion, previewGraph2DRevolution } from "./graph2dInterop";
 import { MAX_OPEN_IN_GEOMETRY_TRIANGLES } from "./projectMeshGeometry";
 import { structuralHash } from "./documentIdentity";
 
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
 export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
-  "graph2d.revolve-surface" | "surface.tessellate-saved" | "quantum.promote-graph2d" |
+  "graph2d.revolve-surface" | "graph2d.extrude-surface" |
+  "surface.tessellate-saved" | "quantum.promote-graph2d" |
   "mesh.promote-geometry" | "quantum.promote-curve" | "vector3d.open-profile-graph";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
@@ -132,6 +133,9 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
     let samplingReason: string | null = null;
     try { previewGraph2DRevolution(graph, object.id, { axis: "x", orientation: "positive" }); }
     catch (error) { samplingReason = (error as Error).message; }
+    let extrusionReason: string | null = null;
+    try { previewGraph2DExtrusion(graph, object.id, { direction: [0, 0, 1], length: 1, caps: "none" }); }
+    catch (error) { extrusionReason = (error as Error).message; }
     return ([
     { id: "graph2d.promote-curve" as const, targetModule: "curve" as const,
       label: `Open “${object.label}” in Curves`,
@@ -142,10 +146,15 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
     { id: "graph2d.revolve-surface" as const, targetModule: "surface" as const,
       label: `Revolve “${object.label}” into Surfaces`,
       preview: "Revolves the profile around the x-axis through a full turn, creating an editable Surface with exact expression lineage. Coordinates are unitless." },
+    { id: "graph2d.extrude-surface" as const, targetModule: "surface" as const,
+      label: `Extrude “${object.label}” into Surfaces`,
+      preview: "Extrudes the profile one unit along +z without caps, creating an editable Surface with exact expression lineage. Coordinates are unitless." },
   ]).map(action => ({ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, ...action,
     source, sourceModule: "graph2d" as const, sourceObjectId: object.id,
-    enabled: !archived && (action.id === "graph2d.promote-curve" || !samplingReason),
+    enabled: !archived && (action.id === "graph2d.promote-curve" ||
+      !(action.id === "graph2d.extrude-surface" ? extrusionReason : samplingReason)),
     disabledReason: archived ? "Restore this archived source first." :
-      action.id === "graph2d.promote-curve" ? null : samplingReason }));
+      action.id === "graph2d.promote-curve" ? null :
+      action.id === "graph2d.extrude-surface" ? extrusionReason : samplingReason }));
   });
 };
