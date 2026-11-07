@@ -27,6 +27,7 @@ describe("M3D20-02 qualified Open in", () => {
     const third = deriveProjectOpenIn(second.project, actions[2]!);
     expect(first.existing).toBe(false);
     expect(deriveProjectOpenIn(second.project, actions[0]!).existing).toBe(true);
+    expect(deriveProjectOpenIn(third.project, actions[2]!).existing).toBe(true);
     const reopened = parseMath3DProject(serializeMath3DProject(third.project));
     expect(reopened.workspace.relations).toHaveLength(3);
     for (const result of [first, second, third]) {
@@ -105,5 +106,12 @@ describe("M3D20-02 qualified Open in", () => {
     const unlinked = { ...project, quantumScenes: [] } as Math3DProject;
     expect(projectOpenInActions(unlinked, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
       .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("not linked") }]);
+    const noPolyline = { ...project, workspace: { ...project.workspace,
+      entries: project.workspace.entries.map(entry => entry.module === "quantum" ? {
+        ...entry, checkpoint: { ...entry.checkpoint, source: { ...entry.checkpoint.source,
+          objects: [] } },
+      } : entry) } } as Math3DProject;
+    expect(projectOpenInActions(noPolyline, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
+      .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("no polyline") }]);
   });
 });

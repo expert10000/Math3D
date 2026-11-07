@@ -125,7 +125,21 @@ test("Project Open in chains a Graph revolution into a sampled Mesh", async () =
     const mesh = final.workspace.relations.find((item: { operation: string }) => item.operation === "surface.tessellate-saved" &&
       item.sources[0].documentId === surfaceId);
     expect(mesh).toBeTruthy();
+    const meshId = mesh.target.generation.documentId as string;
     expect(final.workspace.entries.find((item: { expected: { id: string } }) =>
-      item.expected.id === mesh.target.generation.documentId).module).toBe("mesh");
+      item.expected.id === meshId).module).toBe("mesh");
+    await projects.getByTestId("project-detail-tab-documents").click();
+    const toSurface = projects.getByTestId(`project-open-in-return-${meshId}`)
+      .getByRole("button", { name: "Return to source Surface" });
+    await expect(toSurface).toBeEnabled();
+    await toSurface.click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", surfaceId);
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-documents").click();
+    const toGraph = projects.getByTestId(`project-open-in-return-${surfaceId}`)
+      .getByRole("button", { name: "Return to source Graph" });
+    await expect(toGraph).toBeEnabled();
+    await toGraph.click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", graphId);
   } finally { await closeSurfaceApp(context); }
 });
