@@ -4,7 +4,8 @@ import { advanceDocumentIdentity, applyGraph2DAuthoring, createGraph2DDocument,
   createMixedWorkspaceDocument, findProjectProfileSelection, Graph2DPointTableStore,
   linkProjectFieldProfileGraph, matchesScientificSourceGeneration, parseMath3DProject,
   projectOpenInActions, projectOpenInReturn, replaceMath3DProjectWorkspace,
-  serializeMath3DProject, structuralHash, viewerSourceFromDocument,
+  reviseVectorField3DDocument, serializeMath3DProject, structuralHash, vectorField3DExpression,
+  viewerSourceFromDocument,
   type Graph2DProjectProfileOrigin } from "@math3d/core";
 
 const fixture = () => {
@@ -67,5 +68,38 @@ describe("Project Field profile Open in Graphs", () => {
       source: { ...action.source, generation: action.source.generation + 1 } })).toThrow(/changed/);
     expect(() => linkProjectFieldProfileGraph(project, { ...action, sourceObjectId: "wrong" })).toThrow(/qualified/);
     expect(serializeMath3DProject(project)).toBe(before);
+  });
+
+  it("disables a historical Field generation and withholds exact return after the source changes", () => {
+    const { project, fieldId, graphId } = fixture();
+    const action = projectOpenInActions(project, fieldId,
+      { fieldGraph: { available: true, reason: null } })[0]!;
+    const linked = linkProjectFieldProfileGraph(project, action).project;
+    const changedWorkspace = createMixedWorkspaceDocument({ ...linked.workspace,
+      entries: linked.workspace.entries.map(entry => {
+        if (entry.expected.id !== fieldId || entry.checkpoint.format !== "math3d.vector-field3d-document")
+          return entry;
+        const field = entry.checkpoint.source.field;
+        if (field.kind !== "expressions") throw new Error("Expected analytic Field fixture.");
+        const changed = reviseVectorField3DDocument(entry.checkpoint, { ...entry.checkpoint.source,
+          field: { ...field, components: [vectorField3DExpression("2*x", "m/s"),
+            field.components[1], field.components[2]] } });
+        return { ...entry, checkpoint: changed, expected: changed.identity };
+      }) });
+    const changed = replaceMath3DProjectWorkspace(linked, changedWorkspace);
+    expect(projectOpenInActions(changed, fieldId,
+      { fieldGraph: { available: true, reason: null } })).toMatchObject([{
+        enabled: false, disabledReason: expect.stringContaining("historical Field generation") }]);
+    expect(projectOpenInReturn(changed, graphId)).toMatchObject({ exact: false,
+      reason: expect.stringContaining("historical") });
+  });
+
+  it("disables a linked Graph row when its physical selection is removed", () => {
+    const { project, fieldId } = fixture();
+    const withoutSelections = replaceMath3DProjectWorkspace(project, createMixedWorkspaceDocument({
+      ...project.workspace, scientificSelections: [] }));
+    expect(projectOpenInActions(withoutSelections, fieldId,
+      { fieldGraph: { available: true, reason: null } })).toMatchObject([{
+        enabled: false, disabledReason: expect.stringContaining("line selection") }]);
   });
 });
