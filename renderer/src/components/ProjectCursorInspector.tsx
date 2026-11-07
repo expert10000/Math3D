@@ -1,18 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { listProjectScientificSelections, matchesScientificSourceGeneration,
-  viewerSourceFromDocument, type AdapterFrame, type Math3DProject,
+  viewerSourceFromDocument, type Math3DProject,
   type ScientificSelection } from "@math3d/core";
 import { projectCursorFromSavedPoint } from "./projectCursorAdapter";
 import { scientificCursorBus, type ProjectScientificCursor } from "./scientificCursor";
-
-/** First declared Project frame: Vector Field 3D Cartesian positions in metres. */
-export const VECTOR3D_CURSOR_FRAME: AdapterFrame = {
-  kind: "cartesian", frameId: "field-meters", axes: [
-    { name: "x", dimension: "length", unit: "m" },
-    { name: "y", dimension: "length", unit: "m" },
-    { name: "z", dimension: "length", unit: "m" },
-  ],
-};
+import { VECTOR3D_CURSOR_FRAME } from "../vectorfield3d/vectorFieldCursor";
 
 export function vectorPointCursorAvailability(project: Math3DProject, selection: ScientificSelection): string | null {
   if (selection.identity.kind !== "authored" || selection.geometry.kind !== "point") return "Point selection required.";
