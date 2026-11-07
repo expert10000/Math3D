@@ -41979,6 +41979,9 @@ const App: React.FC = () => {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [computeCenterOpen, setComputeCenterOpen] = useState(false);
   const [casWorkspaceOpen, setCasWorkspaceOpen] = useState(false);
+  const [casSourceRequest, setCasSourceRequest] = useState<{
+    projectId: string; target: import("@math3d/core").AlgebraObjectRef;
+    contentHash: string; token: number } | null>(null);
   const [casAnalysisRecord, setCasAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
   const [numberTheoryWorkspaceOpen, setNumberTheoryWorkspaceOpen] = useState(false);
   const [numberTheoryAnalysisRecord, setNumberTheoryAnalysisRecord] = useState<SymbolicResultRecord | null>(null);
@@ -80536,6 +80539,19 @@ case "mobius":
             else { setDatasetKind("surface"); setSurfaceViewerKind("param"); }
           }
         }}
+        onOpenAlgebra={(projectId, target, contentHash) => {
+          const current = projectForNotePins;
+          const entry = current?.algebraObjects?.find(item => item.id === target.objectId);
+          if (!current || current.identity.id !== projectId || entry?.archived ||
+              entry?.revisions.length !== target.revision ||
+              entry.revisions[target.revision - 1]?.contentHash !== contentHash)
+            throw new TypeError("The selected algebra source is unavailable in the active Project.");
+          setCasSourceRequest(previous => ({ projectId, target, contentHash,
+            token: (previous?.token ?? 0) + 1 }));
+          setNumberTheoryWorkspaceOpen(false);
+          setProjectsOpen(false);
+          setCasWorkspaceOpen(true);
+        }}
         onOpenAnalysis={(id, module, route, workspace, resources) => {
           if (["surface", "surface-mesh", "mesh", "volume"].includes(route) && mode !== "surfaces") skipSurfacesAutoBrowseOnModeChangeRef.current = true;
           setDisplayMode("workspace"); setShowRightPanel(true);
@@ -111911,6 +111927,7 @@ case "mobius":
       )}
       {computeCenterOpen && <ComputeCenterPanel initialTab={computeCenterInitialTab} onClose={() => { setComputeCenterOpen(false); setComputeCenterInitialTab("overview"); }} />}
       {casWorkspaceOpen && <CASAlgebraWorkspace record={casAnalysisRecord} project={projectForNotePins}
+        requestedSelection={casSourceRequest}
         onInstallGalleryExample={(id) => {
           const current = projectForNotePins;
           if (!current) throw new TypeError("Open and save a Project before adding a gallery example.");

@@ -47,6 +47,8 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveLocusScene?: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveLocusSample?: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
   onOpenLocusGeometry?: (documentId: string) => void | Promise<void>;
+  requestedSelection?: { projectId: string; target: AlgebraObjectRef;
+    contentHash: string; token: number } | null;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
@@ -70,9 +72,11 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
   onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
-  onInstallGalleryExample, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
+  onInstallGalleryExample, requestedSelection, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
-    resolveStructureSelection(project, readSavedSelection(project)));
+    resolveStructureSelection(project, requestedSelection && requestedSelection.projectId === project?.identity.id
+      ? requestedSelection.target : readSavedSelection(project)));
+  const [handoffError, setHandoffError] = useState("");
   const [selectionFocus, setSelectionFocus] = useState(0);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
@@ -107,6 +111,21 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     if (project) try { localStorage.setItem(structureSelectionKey(project.identity.id), JSON.stringify(ref)); }
     catch { /* Selection still works when local storage is unavailable. */ }
   };
+  useEffect(() => {
+    if (!requestedSelection) return;
+    const checked = requestedSelection.projectId === project?.identity.id
+      ? resolveStructureSelection(project, requestedSelection.target) : null;
+    const record = checked ? project?.algebraObjects?.find(entry => entry.id === checked.objectId)
+      ?.revisions[checked.revision - 1] : null;
+    if (!checked || checked.objectId !== requestedSelection.target.objectId ||
+        checked.revision !== requestedSelection.target.revision ||
+        record?.contentHash !== requestedSelection.contentHash) {
+      setHandoffError("The requested Project algebra source is unavailable. Reopen it from the Project list.");
+      return;
+    }
+    setHandoffError("");
+    select(checked);
+  }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
   const chooseCommand = (command: SagePaletteAction) => {
     const token = ++commandSequence.current;
@@ -173,6 +192,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     ? describeStructure(chosen.record, project) : null;
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
+    {handoffError && <div role="alert">{handoffError}</div>}
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
