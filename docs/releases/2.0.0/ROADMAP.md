@@ -1015,6 +1015,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **18a release-path guard:** The existing 1.x build/publish workflows now reject `v2.0.0` before building or publishing. Their upgrade and cross-app gates cannot stand in for the 2.0 RC2 sign-off.
 
+**18b sign-off gate:** The [GA sign-off identity check](GA_SIGNOFF_GATE.md) requires a reviewed, zero-blocker receipt outside the source checkout, bound by SHA-256 to the exact candidate, RC2 report, and final 2.0 release notes.
+
 - Tag exact signed-off commit `v2.0.0`.
 - Produce signed builds and immutable hashes.
 - Publish GitHub release notes, changes, compatibility matrix, known limitations, migration guidance and SBOM/attributions.
