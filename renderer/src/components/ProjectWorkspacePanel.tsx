@@ -27,6 +27,9 @@ import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
 import { ProjectAlgebraOpenInMenu } from "./ProjectAlgebraOpenInMenu";
+import { ProjectAlgebraReturnButton } from "./ProjectAlgebraReturnButton";
+import { projectAlgebraLocusReturn, resolveProjectAlgebraLocusReturn,
+  type ProjectAlgebraLocusReturn } from "@math3d/core";
 import { projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
   type ProjectSavedAlgebraOpenInAction } from "@math3d/core";
 import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
@@ -234,6 +237,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target),
       casAction: projectAlgebraCasHandoff(project, target) };
   }) ?? [], [project]);
+  const algebraReturns = useMemo(() => new Map<string, ProjectAlgebraLocusReturn>((project?.workspace.entries ?? [])
+    .map(entry => project ? projectAlgebraLocusReturn(project, entry.expected.id) : null)
+    .filter((action): action is ProjectAlgebraLocusReturn => action !== null)
+    .map(action => [action.documentId, action] as const)), [project]);
   const studyLaunchRequest = useRef<Promise<StudyLaunchResponse> | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -1671,6 +1678,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       onOpenChange(false);
     } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
   };
+  const returnToAlgebraInCas = (choice: ProjectAlgebraLocusReturn) => {
+    if (busy || preview || managed || !project) return;
+    try {
+      const source = resolveProjectAlgebraLocusReturn(liveProject(), choice);
+      if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
+      onOpenAlgebra(source.projectId, source.target, source.contentHash);
+      onOpenChange(false);
+    } catch (error) { setMessage(`Return to CAS refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -2281,6 +2297,13 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               canReturn={!preview && !!canNavigateDocument?.(projectOpenInReturn(project, document.id)?.sourceDocumentId ?? "",
                 projectOpenInReturn(project, document.id)?.sourceModule ?? "graph2d")}
               onReturn={(sourceId, module) => viewBesideProject(sourceId, module)} />}
+            {algebraReturns.has(document.id) && <ProjectAlgebraReturnButton
+              action={algebraReturns.get(document.id)!}
+              canReturn={!busy && !preview && !managed && !!onOpenAlgebra}
+              unavailableReason={preview ? "Open the saved Project first." : managed ?
+                "Open the Project workspace to return to CAS." : busy ? "Project is busy." :
+                !onOpenAlgebra ? "CAS navigation is unavailable on this host." : null}
+              onReturn={returnToAlgebraInCas} />}
             {document.module === "vector3d" && <button type="button"
               data-testid={`project-open-field-explorer-${document.id}`}
               disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}
