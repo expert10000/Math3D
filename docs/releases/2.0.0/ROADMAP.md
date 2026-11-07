@@ -835,6 +835,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-02c feat(project): persist lineage and exact return navigation`.
 - `M3D20-02d test(e2e): graph-surface-mesh-field-quantum handoff matrix`.
 
+**02a–c bounded implementation, 02d partial evidence:** The Project document menu offers Graph explicit/parametric object → Curve or sampled Geometry. It rechecks the exact source generation before creating a companion, stores the existing `DocumentRelation`, and resolves return navigation from that relation. A focused matrix exercises Graph derivation/reopen and explicit disabled reasons for Surface, Mesh, Field, and Quantum in this shared menu; a desktop test covers Graph → Geometry → save → return. Existing module-specific handoffs for those other domains are not yet routed through the shared action pattern. The M3D20-02 exit criterion remains open.
+
 **Exit:** at least the three flagship journeys use the same action pattern; missing/incompatible capability never silently executes.
 
 ### M3D20-03 — Scientific Cursor (P0)
