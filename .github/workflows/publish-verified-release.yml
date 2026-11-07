@@ -39,6 +39,7 @@ jobs:
       - name: Require completed source build and successful signoff jobs
         shell: bash
         run: |
+          node scripts/legacy-release-tag-policy.mjs "$RELEASE_TAG"
           if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || ! "$VERIFIED_BUILD_RUN_ID" =~ ^[0-9]+$ ]]; then
             echo 'Stable tag and numeric build run ID are required' >&2
             exit 1

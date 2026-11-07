@@ -19,7 +19,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-tag-policy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Keep 2.0 off the legacy release path
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: node scripts/legacy-release-tag-policy.mjs
+
   mobile-release-gate:
+    needs: release-tag-policy
     # The 1.7.0 desktop release does not publish a new Android artifact.
     # Keep Android build/emulator regression coverage; physical-device signoff
     # remains required for a separately distributed Android build.

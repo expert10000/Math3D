@@ -1013,6 +1013,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 ### M3D20-18 — 2.0.0 GA (P0)
 
+**18a release-path guard:** The existing 1.x build/publish workflows now reject `v2.0.0` before building or publishing. Their upgrade and cross-app gates cannot stand in for the 2.0 RC2 sign-off.
+
 - Tag exact signed-off commit `v2.0.0`.
 - Produce signed builds and immutable hashes.
 - Publish GitHub release notes, changes, compatibility matrix, known limitations, migration guidance and SBOM/attributions.
