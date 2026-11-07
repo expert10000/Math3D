@@ -839,6 +839,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **CAS locus update:** The CAS algebraic locus builder now offers qualified `Open in Geometry` actions for an uncomputed exact contract and a bounded numerical sample. Each action displays a preview or disabled reason, pins the algebra object revision and prepared scene/sample hash, and rechecks qualification before saving. The saved Geometry document opens directly. The sampled checkpoint replaces the exact contract under the same document identity while retaining the exact equations and source revision; Project export/import reopens it without replay or silent recomputation. This is a CAS builder handoff, not a Project document-menu adapter. The broader Algebra journey and the M3D20-02 flagship exit criterion remain open.
 
+**Integration evidence (2026-11-07):** The CAS locus handoff reached `main` in PR #33. Focused core checks passed (9 tests across the Open-in, locus-scene and sampling suites), and the locus and singularity desktop journeys passed (2 tests). After merging remote `main` into the local checkout, `npm run build:core` completed the main TypeScript build, renderer bundle and build-identity step. That build ran with pre-existing local working-tree changes, so it is development evidence rather than a clean release-candidate gate.
+
 **Exit:** at least the three flagship journeys use the same action pattern; missing/incompatible capability never silently executes.
 
 ### M3D20-03 — Scientific Cursor (P0)
