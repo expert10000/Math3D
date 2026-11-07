@@ -1,4 +1,4 @@
-import { promoteGraph2DToCurve, promoteGraph2DToGeometry } from "./graph2dInterop";
+import { promoteGraph2DToCurve, promoteGraph2DToGeometry, revolveGraph2DProfile } from "./graph2dInterop";
 import { createMixedWorkspaceDocument } from "./mixedWorkspace";
 import { replaceMath3DProjectWorkspace, type Math3DProject } from "./math3dProject";
 import { projectOpenInActions, type ProjectOpenInAction } from "./projectOpenInActions";
@@ -11,7 +11,7 @@ export type ProjectOpenInDerivation = Readonly<{
   project: Math3DProject;
   sourceDocumentId: string;
   targetDocumentId: string;
-  targetModule: "curve" | "geometry";
+  targetModule: "curve" | "geometry" | "surface";
   relationId: DocumentRelationId;
   existing: boolean;
 }>;
@@ -30,8 +30,11 @@ export const deriveProjectOpenIn = (project: Math3DProject, choice: ProjectOpenI
   if (!qualified) throw new TypeError("This Open in action is no longer qualified.");
   const promotion = choice.id === "graph2d.promote-curve" ?
     promoteGraph2DToCurve(entry.checkpoint, choice.sourceObjectId) :
-    promoteGraph2DToGeometry(entry.checkpoint, choice.sourceObjectId);
-  const targetModule = choice.id === "graph2d.promote-curve" ? "curve" : "geometry";
+    choice.id === "graph2d.promote-geometry" ?
+      promoteGraph2DToGeometry(entry.checkpoint, choice.sourceObjectId) :
+      revolveGraph2DProfile(entry.checkpoint, choice.sourceObjectId, { axis: "x", orientation: "positive" });
+  const targetModule = choice.id === "graph2d.promote-curve" ? "curve" :
+    choice.id === "graph2d.promote-geometry" ? "geometry" : "surface";
   const target = promotion.document;
   const existing = project.workspace.entries.find(item => item.expected.id === target.identity.id);
   if (existing) {
@@ -70,6 +73,7 @@ export const projectOpenInReturn = (project: Math3DProject, targetDocumentId: st
     item.target.generation.documentId === targetDocumentId &&
     matchesScientificSourceGeneration(item.target.generation, viewerSourceFromDocument(target.checkpoint)) &&
     (item.operation === "graph2d.promote-curve" || item.operation === "graph2d.promote-geometry" ||
+      item.operation === "graph2d.revolve-surface" ||
       item.operation === "surface.tessellate-saved" || item.operation === "quantum.promote-graph2d") &&
     item.sources.length === 1);
   if (!relation) return null;

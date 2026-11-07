@@ -17,18 +17,19 @@ const graphOnly = () => {
 };
 
 describe("M3D20-02 qualified Open in", () => {
-  it("derives Curve and Geometry with exact lineage, idempotency, and return after reopen", () => {
+  it("derives Curve, Geometry, and Surface with exact lineage, idempotency, and return after reopen", () => {
     const { project, graph } = graphOnly();
     const actions = projectOpenInActions(project, graph.expected.id);
-    expect(actions.map(item => item.targetModule)).toEqual(["curve", "geometry"]);
+    expect(actions.map(item => item.targetModule)).toEqual(["curve", "geometry", "surface"]);
     expect(actions.every(item => item.enabled && item.sourceObjectId)).toBe(true);
     const first = deriveProjectOpenIn(project, actions[0]!);
     const second = deriveProjectOpenIn(first.project, actions[1]!);
+    const third = deriveProjectOpenIn(second.project, actions[2]!);
     expect(first.existing).toBe(false);
     expect(deriveProjectOpenIn(second.project, actions[0]!).existing).toBe(true);
-    const reopened = parseMath3DProject(serializeMath3DProject(second.project));
-    expect(reopened.workspace.relations).toHaveLength(2);
-    for (const result of [first, second]) {
+    const reopened = parseMath3DProject(serializeMath3DProject(third.project));
+    expect(reopened.workspace.relations).toHaveLength(3);
+    for (const result of [first, second, third]) {
       const returned = projectOpenInReturn(reopened, result.targetDocumentId);
       expect(returned).toMatchObject({ sourceDocumentId: graph.expected.id, exact: true,
         relationId: result.relationId });

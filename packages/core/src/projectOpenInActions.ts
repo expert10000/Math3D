@@ -2,10 +2,11 @@ import type { Math3DProject } from "./math3dProject";
 import type { KernelWorkspaceModule } from "./mixedWorkspace";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { ScientificSourceGeneration } from "./scientificJobs";
+import { previewGraph2DRevolution } from "./graph2dInterop";
 
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
 export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
-  "surface.tessellate-saved" | "quantum.promote-graph2d";
+  "graph2d.revolve-surface" | "surface.tessellate-saved" | "quantum.promote-graph2d";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
   id: ProjectOpenInActionId | "unavailable";
@@ -66,18 +67,29 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
     return [unavailable(source, entry.module, target, archived ? "Restore this archived source first." :
       "This destination needs a qualified source adapter in its module. Use the existing module action until one is registered here.")];
   }
-  const objects = entry.checkpoint.source.objects.filter(object =>
+  const graph = entry.checkpoint;
+  const objects = graph.source.objects.filter(object =>
     object.kind === "explicit-cartesian" || object.kind === "parametric");
   if (!objects.length) return [unavailable(source, "graph2d", "curve",
     archived ? "Restore this archived source first." : "No explicit or parametric Graph object can be promoted.")];
-  return objects.flatMap(object => ([
+  return objects.flatMap(object => {
+    let revolutionReason: string | null = null;
+    try { previewGraph2DRevolution(graph, object.id, { axis: "x", orientation: "positive" }); }
+    catch (error) { revolutionReason = (error as Error).message; }
+    return ([
     { id: "graph2d.promote-curve" as const, targetModule: "curve" as const,
       label: `Open “${object.label}” in Curves`,
       preview: "Creates an editable Curve from the current expression and domain; records a promoted-from relation. Coordinates remain unitless." },
     { id: "graph2d.promote-geometry" as const, targetModule: "geometry" as const,
       label: `Open “${object.label}” in Geometry`,
       preview: "Creates bounded z=0 line segments from the current profile; records a promoted-from relation. Sampling is approximate and unitless." },
+    { id: "graph2d.revolve-surface" as const, targetModule: "surface" as const,
+      label: `Revolve “${object.label}” into Surfaces`,
+      preview: "Revolves the profile around the x-axis through a full turn, creating an editable Surface with exact expression lineage. Coordinates are unitless." },
   ]).map(action => ({ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, ...action,
     source, sourceModule: "graph2d" as const, sourceObjectId: object.id,
-    enabled: !archived, disabledReason: archived ? "Restore this archived source first." : null })));
+    enabled: !archived && (action.id !== "graph2d.revolve-surface" || !revolutionReason),
+    disabledReason: archived ? "Restore this archived source first." :
+      action.id === "graph2d.revolve-surface" ? revolutionReason : null }));
+  });
 };
