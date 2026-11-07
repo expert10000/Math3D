@@ -97,6 +97,8 @@ test("SAGE-G02 shows finite precision and reopens Zp/Qp evidence", async () => {
     expect(imported.algebraObjects.find((item: { id: string }) => item.id === zz.id).revisions[0]).toEqual(zz);
     expect(imported.algebraObjects.find((item: { id: string }) => item.id === qq.id).revisions[0]).toEqual(qq);
     expect(imported.algebraEvidence).toHaveLength(2);
-    expect(imported.algebraEvidence[1].result.entries.sum.zeroStatus).toBe("undetermined");
+    const qpEvidence = imported.algebraEvidence.find((item: { request: { params: { domain: string } } }) =>
+      item.request.params.domain === "Qp");
+    expect(qpEvidence?.result.entries.sum.zeroStatus).toBe("undetermined");
   } finally { await closeSurfaceApp(ctx); await new Promise<void>((done) => server.close(() => done())); }
 });

@@ -12,7 +12,7 @@ The [reproducibility tutorial](../tutorials/sage-algebra-gallery-and-reproducibi
 
 The [machine-readable release matrix](sage-algebra-release-matrix-2026-11-06.json) maps M0–M6 to existing evidence and test files. `npm run check:sage:release` checks every path and the SHA-256 of the [B08 recorded result](sage-b08-live-2026-11-05.json), then verifies 16 successful Sage 9.5 and 16 successful Docker Sage 10.10 cases with zero recorded differences. Negative tests reject a missing milestone, invalid path and changed B08 digest.
 
-This audit reports **historical evidence verified** and **current live gate not run**. B08's bounded 16-case comparison was completed on 2026-11-05; Docker Desktop is not running during this H08 session, so no new Docker parity claim is made. A release reviewer can start both routes and rerun `npm run test:sage:f08` plus `sage -python scripts/check-sage-algebra-b08-matrix.py --require-docker` for a current live gate.
+The initial H08 audit reported **historical evidence verified** and **current live gate not run**. The later [current M0–M6 live gate](sage-m0-m6-live-release-2026-11-06.md) started Docker Desktop, rebuilt the worker, reran B08, F08 and the M1–M6 backend and desktop cohorts, and passed. The audit now reports that dated run as **recorded-passed** while preserving `liveExecutionNow: not-run` for audit-only invocations.
 
 Acceptance on this checkout: 16 focused algebra Vitest cases, two H08 negative/positive Node tests, the desktop fresh-profile gallery/sweep gate, the real WSL Sage 9.5 tutorial fact check, `npm run check:sage:release`, `npm run typecheck:noemit` and `npm run build:core` passed. The final type check was rerun after the Project-bound Workbook fixture was corrected.
 

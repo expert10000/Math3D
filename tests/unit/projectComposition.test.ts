@@ -107,6 +107,13 @@ describe("PC01–PC05 non-owning Project composition", () => {
     expect(currentView.param?.z).toBe("u*v");
     expect(compatibleCompositionParameterChart([oldView, currentView])).toBe(true);
     expect(qualifyProjectCameraPair([oldView, currentView])).toBe("shared-surface-axes");
+    const declaredFrame = { format: "math3d.coordinate-frame/v1" as const, frame: "local", unit: "unitless",
+      axes: ["x", "y", "z"] as const, handedness: "right" as const };
+    expect(qualifyProjectCameraPair([
+      { ...oldView, coordinates: { status: "declared", value: declaredFrame } },
+      { ...currentView, coordinates: { status: "declared", value: { ...declaredFrame, frame: "other" } } },
+    ])).toBeNull();
+    expect(qualifyProjectCameraPair([{ ...oldView, coordinates: { status: "invalid" } }, currentView])).toBeNull();
     expect(compatibleCompositionParameterChart([oldView, { ...currentView, id: "unrelated-surface" }])).toBe(false);
     expect(qualifyProjectCameraPair([oldView, { ...currentView, param: { ...currentView.param!, x: "u+1" } }])).toBeNull();
     expect(compatibleCompositionParameterChart([oldView, { ...currentView, param: { ...currentView.param!, domain: { ...currentView.param!.domain!, uMax: 2 } } }])).toBe(false);
@@ -147,5 +154,9 @@ describe("PC01–PC05 non-owning Project composition", () => {
       { frame: "laboratory xyz", unit: "mm" })).toBe("asserted");
     expect(readProjectCoordinateFrame(mesh).status).toBe("missing");
     expect(readProjectCoordinateFrame({ ...meshWith, source: { ...meshWith.source, origin: { math3dCoordinateFrame: { ...frame, axes: ["x", "x", "z"] } } } }).status).toBe("invalid");
+    expect(readProjectCoordinateFrame({ ...meshWith, source: { ...meshWith.source, origin: {
+      math3dCoordinateFrame: frame, units: { length: "cm" } } } }).status).toBe("invalid");
+    expect(readProjectCoordinateFrame({ ...meshWith, source: { ...meshWith.source, origin: {
+      math3dCoordinateFrame: frame, units: { length: "mm" } } } }).status).toBe("declared");
   });
 });

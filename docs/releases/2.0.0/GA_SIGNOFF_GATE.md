@@ -1,0 +1,5 @@
+# M3D20-18b — GA sign-off identity
+
+The current 1.7 checkout has no approved 2.0 release sign-off. After RC2 passes, keep a reviewed `math3d/release20-ga-signoff/v1` JSON receipt **outside** the source checkout. It must contain `status: "approved"`, `tag: "v2.0.0"`, the exact `sourceCommit` and `installerSha256`, SHA-256 values for the candidate manifest, RC2 rehearsal report, and final release notes, a reviewer and review timestamp, an empty `blockers` array, an explicit `knownLimitations` array, and `publishedPlatforms` listing Windows plus Linux only if qualified.
+
+Run `node scripts/verify-release20-ga-signoff.mjs <signoff> <candidate> <rc2-report> <release-notes>` against the reviewed commit. The verifier refuses mixed source/artifact identities, changed notes or receipts, outstanding blockers, and notes missing changes, compatibility, limitations, migration, or release evidence sections. It does not perform review itself or infer approval from passing tests. Reissue the sign-off after any changed candidate, report, notes, or source commit.

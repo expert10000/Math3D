@@ -44,6 +44,7 @@ import { promoteScientificIsosurfaceMesh, rebuildScientificIsosurfaceMesh,
 import { promoteDerivedScalarIsosurfaceMesh } from "./projects/derivedScalarIsosurfaceMesh";
 import { runVerifiedIsosurface } from "./vectorfield3d/runVerifiedIsosurface";
 import { loadVerifiedVectorFieldTransfer } from "./vectorfield3d/loadVerifiedVectorFieldTransfer";
+import { loadSavedAtlasBytes } from "./vectorfield3d/loadSavedAtlasBytes";
 import { checkSavedRegionResultSources, type SavedRegionSourceStatus } from
   "./vectorfield3d/checkSavedRegionResultSources";
 import { WorkbookPublication, type PublicationKind } from "./components/WorkbookPublication";
@@ -811,6 +812,7 @@ import {
   createMixedWorkspaceDocument,
   replaceMath3DProjectWorkspace,
   upsertMath3DProjectAlgebraicLocusScene,
+  SAGE_LOCUS_GEOMETRY_EXTENSION,
   upsertMath3DProjectAlgebraicLocusSample,
   upsertMath3DProjectAlgebraicSingularityScene,
   upsertProjectScientificSelection,
@@ -840,6 +842,13 @@ import {
   promoteProjectManifoldContinuation,
   promoteProjectExtendedManifold,
   promoteProjectManifoldAtlas,
+  computeProjectManifoldSurfaceCoverage,
+  upsertProjectManifoldSurfaceCoverage,
+  computeProjectAtlasSeams,
+  upsertProjectAtlasSeams,
+  computeProjectAtlasRefinement,
+  upsertProjectAtlasRefinement,
+  upsertProjectTemporalSurfaceIdentity,
   rebaseProjectDerivedSource,
   verifiedVectorFieldSampler,
   appendProjectDerivedField,
@@ -77625,7 +77634,8 @@ case "mobius":
       if (activeCurveKernelAdapter === restoredCurveAdapter) activeCurveKernelAdapter.commitSource(curveSourceFromEditor(activeCurveKernelAdapter.document().source, activeCurveFormulas, activeCurveDomain));
       if (restoredSurfaceAdapter && surfaceViewerKind === "param" && paramSurfaceId === "custom") restoredSurfaceAdapter.commitSource(surfaceSourceFromEditor(restoredSurfaceAdapter.document().source, { x: paramXExpr, y: paramYExpr, z: paramZExpr }, activeParamDomain));
       const activeGeometry = geometryKernelAdapterRef.current!;
-      if (restored.geometries.has(activeGeometry.document().identity.id)) {
+      if (restored.geometries.has(activeGeometry.document().identity.id) &&
+          !(SAGE_LOCUS_GEOMETRY_EXTENSION in activeGeometry.document().source.extensions)) {
         activeGeometry.commitSource(geometrySourceFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
         activeGeometry.commitDisplay(geometryDisplayFromEditor(activeGeometry.document(), geometryKernelSceneSnapshot));
       }
@@ -77649,7 +77659,14 @@ case "mobius":
         const scientific = restored.topologies.get(entry.expected.id) ?? restored.complexes.get(entry.expected.id);
         if (scientific) { const document = scientific.document(), replay = scientific.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: entry.module === "topology" ? MIXED_REPLAY_FORMATS.topology : MIXED_REPLAY_FORMATS.complex, payload: replay as unknown as CanonicalJsonValue } }; }
         const geometry = restored.geometries.get(entry.expected.id);
-        if (geometry) { const document = geometry.document(), replay = geometry.exportReplay(); return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity, replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as unknown as CanonicalJsonValue } }; }
+        if (geometry) {
+          const document = geometry.document();
+          if (SAGE_LOCUS_GEOMETRY_EXTENSION in document.source.extensions)
+            return { ...entry, checkpoint: document, expected: document.identity, replay: null };
+          const replay = geometry.exportReplay();
+          return { ...entry, checkpoint: replay.checkpoint.document, expected: document.identity,
+            replay: { format: MIXED_REPLAY_FORMATS.geometry, payload: replay as unknown as CanonicalJsonValue } };
+        }
         const curve = restored.curves.get(entry.expected.id), surface = restored.surfaces.get(entry.expected.id);
         const adapter = curve ?? surface;
         if (adapter) { const document = adapter.document(), replay = adapter.replayBundle(); return { ...entry, checkpoint: replay.checkpoint, expected: document.identity, replay: { format: curve ? MIXED_REPLAY_FORMATS.curve : MIXED_REPLAY_FORMATS.surface, payload: replay as unknown as CanonicalJsonValue } }; }
@@ -91020,6 +91037,64 @@ case "mobius":
               setAdditionalVersion(value => value + 1);
               navigateRestoredDocument(promoted.mesh.identity.id, "mesh");
             }}
+            onValidateVectorField3DManifoldCoverage={async (baseId, refinedId) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored, baseId);
+              const refinedBytes = await loadSavedAtlasBytes(active, restored, refinedId);
+              const study = computeProjectManifoldSurfaceCoverage(active, baseId, refinedId,
+                baseBytes, refinedBytes);
+              if (study.status !== "validated")
+                throw new TypeError(`Atlas surface coverage unavailable: ${study.reason}.`);
+              const updated = upsertProjectManifoldSurfaceCoverage(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
+            onValidateVectorField3DAtlasSeams={async coverageId => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const coverage = active.workspace.results.find(item => item.resultId === coverageId);
+              if (!coverage) throw new TypeError("Save GF-62 coverage first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.baseResultId));
+              const refinedBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.refinedResultId));
+              const study = computeProjectAtlasSeams(active, coverage,
+                baseBytes, refinedBytes);
+              if (study.status !== "measured")
+                throw new TypeError(`Atlas seam evidence unavailable: ${study.reason}.`);
+              const updated = upsertProjectAtlasSeams(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
+            onValidateVectorField3DAtlasRefinement={async seamsId => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const seams = active.workspace.results.find(item => item.resultId === seamsId);
+              const coverage = active.workspace.results.find(item =>
+                item.resultId === seams?.summary.coverageResultId);
+              if (!seams || !coverage) throw new TypeError("Save GF-63 seam evidence first.");
+              const baseBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.baseResultId));
+              const refinedBytes = await loadSavedAtlasBytes(active, restored,
+                String(coverage.summary.refinedResultId));
+              const study = computeProjectAtlasRefinement(active, seams,
+                baseBytes, refinedBytes);
+              if (study.status !== "measured")
+                throw new TypeError(`Atlas refinement unavailable: ${study.reason}.`);
+              const updated = upsertProjectAtlasRefinement(active, study,
+                baseBytes!, refinedBytes!);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+              return study;
+            }}
             onSaveVectorField3DTemporalSource={(source, transfers) => {
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
@@ -91074,6 +91149,14 @@ case "mobius":
               const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
               if (!active || !restored) throw new TypeError("Open a saved Project first.");
               const updated = upsertProjectTemporalSurfaceTransport(active, study, transfers);
+              activeNotebookProjectRef.current = updated;
+              restored.workspace = updated.workspace;
+              setNotebookProjectVersion(value => value + 1);
+            }}
+            onSaveVectorField3DTemporalSurfaceIdentity={(study, transfers) => {
+              const active = activeNotebookProjectRef.current, restored = restoredProjectRef.current;
+              if (!active || !restored) throw new TypeError("Open a saved Project first.");
+              const updated = upsertProjectTemporalSurfaceIdentity(active, study, transfers);
               activeNotebookProjectRef.current = updated;
               restored.workspace = updated.workspace;
               setNotebookProjectVersion(value => value + 1);
@@ -111881,6 +111964,16 @@ case "mobius":
           activeNotebookProjectRef.current = next;
           setNotebookProjectVersion((version) => version + 1);
           window.dispatchEvent(new Event("math3d:project-saved-externally"));
+        }}
+        onOpenLocusGeometry={(documentId) => {
+          const current = activeNotebookProjectRef.current;
+          const entry = current?.workspace.entries.find(item => item.expected.id === documentId &&
+            item.module === "geometry" && item.checkpoint.format === "math3d.geometry-document");
+          if (!current || !entry) throw new TypeError("The saved locus Geometry document is unavailable.");
+          reopenProjectWorkspace(current.workspace, restoredProjectRef.current?.resources, current);
+          if (!navigateRestoredDocument(documentId, "geometry"))
+            throw new TypeError("The saved locus Geometry document could not be opened.");
+          setCasWorkspaceOpen(false); setProjectsOpen(false);
         }}
         onSaveRecipe={(recipe) => {
           const current = projectForNotePins;

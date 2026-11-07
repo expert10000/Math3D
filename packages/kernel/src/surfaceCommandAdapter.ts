@@ -1,7 +1,7 @@
 import {
   SURFACE_COMMAND_TYPES, projectCommandTransaction, canonicalJsonStringify, createDocumentIdentity, createCommandEnvelope, createSurfaceCommandState,
   createSurfaceDocument, parseSurfaceDocument, serializeSurfaceDocument, surfaceCommandDefinitions,
-  type CanonicalJsonValue, type CommandEnvelope, type SurfaceDocument, type SurfaceDocumentSource,
+  type CanonicalJsonValue, type CommandEnvelope, type StructuralHash, type SurfaceDocument, type SurfaceDocumentSource,
 } from "@math3d/core";
 import { createInMemoryDocumentKernel } from "./inMemoryDocumentKernel";
 const legacyJson = <T>(value: T): T => {
@@ -13,9 +13,10 @@ const legacyJson = <T>(value: T): T => {
   return JSON.parse(canonicalJsonStringify(omitUndefined(value))) as T;
 };
 
+export type SurfaceReplayTransaction = Readonly<{ forward: CommandEnvelope; inverse: CommandEnvelope; retainedBefore?: StructuralHash }>;
 export type SurfaceReplayBundle = Readonly<{
   checkpoint: SurfaceDocument;
-  transactions: readonly { forward: CommandEnvelope; inverse: CommandEnvelope }[];
+  transactions: readonly SurfaceReplayTransaction[];
   cursor: number;
 }>;
 
@@ -29,7 +30,7 @@ const requireInverse = (document: SurfaceDocument, forward: CommandEnvelope, inv
 export class SurfaceCommandAdapter {
   #checkpoint: SurfaceDocument;
   #kernel;
-  #transactions: { forward: CommandEnvelope; inverse: CommandEnvelope }[] = [];
+  #transactions: SurfaceReplayTransaction[] = [];
   #cursor = 0;
   #sequence = 0;
 
@@ -44,8 +45,11 @@ export class SurfaceCommandAdapter {
   serialize(): string { return serializeSurfaceDocument(this.document()); }
   static parse<T extends SurfaceCommandAdapter>(this: new (document: SurfaceDocument) => T, serialized: string): T { return new this(parseSurfaceDocument(serialized)); }
 
-  commitSource(source: SurfaceDocumentSource): SurfaceDocument {
-    return this.#commit(SURFACE_COMMAND_TYPES.replaceSource, source as CanonicalJsonValue, this.document().source as CanonicalJsonValue);
+  commitSource(source: SurfaceDocumentSource, retainedBefore?: StructuralHash): SurfaceDocument {
+    if (retainedBefore !== undefined && retainedBefore !== this.document().identity.structuralHash)
+      throw new TypeError("Retained Surface marker does not match the current source.");
+    return this.#commit(SURFACE_COMMAND_TYPES.replaceSource, source as CanonicalJsonValue,
+      this.document().source as CanonicalJsonValue, retainedBefore);
   }
   setAnalysisSettings(settings: CanonicalJsonValue): SurfaceDocument {
     return this.#commit(SURFACE_COMMAND_TYPES.setAnalysisSettings, settings, this.document().metadata.analysisSettings);
@@ -67,7 +71,7 @@ export class SurfaceCommandAdapter {
   replayBundle(): SurfaceReplayBundle {
     // Undo/redo advances scientific generations. Rebase the history's starting
     // generation so replay reproduces the current identity as well as its source.
-    const edits = (entries: { forward: CommandEnvelope; inverse: CommandEnvelope }[]) => entries.filter((entry) => entry.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
+    const edits = (entries: readonly SurfaceReplayTransaction[]) => entries.filter((entry) => entry.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
     const sourceEdits = edits(this.#transactions) + edits(this.#transactions.slice(this.#cursor));
     const revision = this.document().identity.revision - sourceEdits;
     const checkpoint = { ...this.#checkpoint, identity: createDocumentIdentity(this.#checkpoint.identity.id, this.#checkpoint.source, revision) };
@@ -87,28 +91,31 @@ export class SurfaceCommandAdapter {
     const offset = 2 * bundle.transactions.slice(end).filter((t) => t.forward.command.type === SURFACE_COMMAND_TYPES.replaceSource).length;
     if (offset) checkpoint = { ...checkpoint, identity: createDocumentIdentity(checkpoint.identity.id, checkpoint.source, checkpoint.identity.revision + offset) };
     const adapter = new this(checkpoint);
-    for (const transaction of bundle.transactions.slice(start, end)) adapter.#execute(transaction.forward, transaction.inverse);
+    for (const transaction of bundle.transactions.slice(start, end)) adapter.#execute(transaction.forward, transaction.inverse, transaction.retainedBefore);
     while (adapter.#cursor > bundle.cursor - start) adapter.undo();
     adapter.#sequence = Math.max(adapter.#sequence, ...bundle.transactions.map((t) => Number(t.forward.commandId.match(/\/(\d+)\/forward$/)?.[1] ?? 0)));
     return adapter;
   }
 
-  #commit(type: string, next: CanonicalJsonValue, previous: CanonicalJsonValue): SurfaceDocument {
+  #commit(type: string, next: CanonicalJsonValue, previous: CanonicalJsonValue, retainedBefore?: StructuralHash): SurfaceDocument {
     if (canonicalJsonStringify(next) === canonicalJsonStringify(previous)) return this.document();
     this.#sequence += 1;
     const origin = { kind: "interactive" as const, sourceId: "surface-workspace" };
     const forward = createCommandEnvelope({ commandId: `surface/edit/${this.#sequence}/forward`, origin, command: { type, payload: next } });
     const inverse = createCommandEnvelope({ commandId: `surface/edit/${this.#sequence}/inverse`, origin: { kind: "system", sourceId: "surface-undo" }, command: { type, payload: previous } });
-    this.#execute(forward, inverse);
+    this.#execute(forward, inverse, retainedBefore);
     return this.document();
   }
-  #execute(forward: CommandEnvelope, inverse: CommandEnvelope): void {
+  #execute(forward: CommandEnvelope, inverse: CommandEnvelope, retainedBefore?: StructuralHash): void {
     requireInverse(this.document(), forward, inverse);
+    if (retainedBefore !== undefined && (forward.command.type !== SURFACE_COMMAND_TYPES.replaceSource ||
+      retainedBefore !== this.document().identity.structuralHash))
+      throw new TypeError("Retained Surface marker does not match the exact pre-edit source.");
     const transactionId = `surface/transaction/${this.#transactions.length + 1}`;
     const result = this.#kernel.transact({ transactionId, commands: [forward], history: { kind: "reversible", inverseCommands: [inverse] } });
     if (!result.ok) throw new TypeError(result.errors.map((entry) => entry.message).join(" "));
     this.#transactions.splice(this.#cursor);
-    this.#transactions.push({ forward, inverse });
+    this.#transactions.push({ forward, inverse, ...(retainedBefore ? { retainedBefore } : {}) });
     this.#cursor += 1;
     this.#sequence = Math.max(this.#sequence, Number(forward.commandId.match(/\/(\d+)\/forward$/)?.[1] ?? 0));
     while (this.#transactions.length > 100) {

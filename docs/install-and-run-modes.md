@@ -64,7 +64,7 @@ Environment variable notes:
 conda create -n math3d-cgal python=3.11 -y
 conda activate math3d-cgal
 python -m pip install --upgrade pip
-python -m pip install pyinstaller -r python/worker/requirements.freeze.txt
+python -m pip install -r python/worker/build-requirements.freeze.txt -r python/worker/requirements.freeze.txt
 $env:MATH3D_PYTHON = (Get-Command python).Source
 ```
 

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "mesh.tetrahedral",
+  "documentFormat": "math3d.tetrahedral-mesh-document",
+  "preservesCells": true,
+  "resourceEncoding": "math3d.tetmesh-buffers.v1",
+  "resourceMagic": "M3DT",
+  "resourceVersion": 1,
+  "adapter": "renderer/src/volume/tetrahedralMeshDocumentAdapter.ts",
+  "viewer": "renderer/src/volume/TetrahedralMeshViewport.tsx",
+  "boundaryPreview": "derived from saved tetrahedral cells"
+}

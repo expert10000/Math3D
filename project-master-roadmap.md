@@ -1589,6 +1589,23 @@ agree with its length unit. A pick marks the same 3D coordinate in the other
 pane and may be saved in an exact comparison Note; it does not infer a target
 element or value. Unretained generations and unrelated-model element mapping
 remain **Partial**.
+An existing legacy Surface can now record an authored frame from a saved
+side-by-side comparison. The source length unit is fixed, the other available
+declaration is checked, and a new exact comparison pins the replay-backed
+revision. A current Surface beyond its checkpoint is explicitly retained as a
+pre-declaration snapshot, so the old comparison still reopens against its exact
+source. Unmarked and never-retained history stays unavailable.
+Frame declaration now checks the other member's exact saved generation, not a
+newer current revision. Saved side-by-side Geometry/Mesh comparisons can also
+record an owning source frame and unit, then reopen the old and new exact pairs.
+The Surface/Geometry starter exercises both declared-frame directions, exact
+coordinate Notes, and restart; neither viewer infers a matching target element.
+Camera synchronization now refuses invalid or contradictory declared frames
+even when two Surface generations share parameter axes. Mesh frame metadata
+must agree with an available `origin.units.length`. Saving a Mesh snapshot from
+a Surface with a valid declared frame carries that claim into the owning Mesh
+source and retains the exact Surface-to-Mesh relation, enabling a bounded
+Surface/Mesh coordinate Note without inventing an element correspondence.
 Composition parsing, source-revision and sidecar-checksum refusal, saved-view
 reopening, two-Surface comparison, and Mesh/Geometry overlay have focused unit
 and Electron acceptance tests. Do not interpret a saved view as a scientific

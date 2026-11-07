@@ -283,6 +283,9 @@ type Props = {
   onPromoteVectorField3DManifoldContinuation?: (study: import("@math3d/core").ManifoldContinuationStudy) => void;
   onPromoteVectorField3DExtendedManifold?: (study: import("@math3d/core").ExtendedManifoldStudy) => void;
   onPromoteVectorField3DManifoldAtlas?: (study: import("@math3d/core").ManifoldAtlasStudy) => void;
+  onValidateVectorField3DManifoldCoverage?: (baseResultId: string, refinedResultId: string) => Promise<import("@math3d/core").ManifoldSurfaceCoverageStudy>;
+  onValidateVectorField3DAtlasSeams?: (coverageResultId: string) => Promise<import("@math3d/core").AtlasSeamEvidence>;
+  onValidateVectorField3DAtlasRefinement?: (seamsResultId: string) => Promise<import("@math3d/core").AtlasRefinementEvidence>;
   onSaveVectorField3DTemporalSource?: (source: import("@math3d/core").TemporalFieldSourceDocument,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalPathline?: (curve: import("@math3d/core").CurveDocument,
@@ -298,6 +301,8 @@ type Props = {
   onSaveVectorField3DTemporalSurfaceLinkage?: (study: import("@math3d/core").TemporalSurfaceLinkageStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalSurfaceTransport?: (study: import("@math3d/core").TemporalSurfaceTransportStudy,
+    transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
+  onSaveVectorField3DTemporalSurfaceIdentity?: (study: import("@math3d/core").TemporalSurfaceIdentityStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
   onSaveVectorField3DTemporalFtleProfile?: (study: import("@math3d/core").TemporalFtleProfileStudy,
     transfers?: import("@math3d/core").VerifiedTemporalTransfers) => void;
@@ -348,10 +353,14 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   onSaveVectorField3DTemporalSurfaceEvents,
   onSaveVectorField3DTemporalSurfaceLinkage,
   onSaveVectorField3DTemporalSurfaceTransport,
+  onSaveVectorField3DTemporalSurfaceIdentity,
   onSaveVectorField3DTemporalFtleProfile,
   onPromoteVectorField3DManifoldContinuation,
   onPromoteVectorField3DExtendedManifold,
   onPromoteVectorField3DManifoldAtlas,
+  onValidateVectorField3DManifoldCoverage,
+  onValidateVectorField3DAtlasSeams,
+  onValidateVectorField3DAtlasRefinement,
   onRebaseVectorField3DDerivedSource,
   onAppendVectorField3DDerivedOperation, onPromoteVectorField3DDerivedIsosurface,
   onSaveVectorField3DTensorGlyphs,
@@ -4411,6 +4420,9 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onPromoteManifoldContinuation={onPromoteVectorField3DManifoldContinuation}
           onPromoteExtendedManifold={onPromoteVectorField3DExtendedManifold}
           onPromoteManifoldAtlas={onPromoteVectorField3DManifoldAtlas}
+          onValidateAtlasCoverage={onValidateVectorField3DManifoldCoverage}
+          onValidateAtlasSeams={onValidateVectorField3DAtlasSeams}
+          onValidateAtlasRefinement={onValidateVectorField3DAtlasRefinement}
           onSaveTemporalSource={onSaveVectorField3DTemporalSource}
           onSaveTemporalPathline={onSaveVectorField3DTemporalPathline}
           onSaveTemporalStreakline={onSaveVectorField3DTemporalStreakline}
@@ -4419,6 +4431,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
           onSaveTemporalSurfaceEvents={onSaveVectorField3DTemporalSurfaceEvents}
           onSaveTemporalSurfaceLinkage={onSaveVectorField3DTemporalSurfaceLinkage}
           onSaveTemporalSurfaceTransport={onSaveVectorField3DTemporalSurfaceTransport}
+          onSaveTemporalSurfaceIdentity={onSaveVectorField3DTemporalSurfaceIdentity}
           onSaveTemporalFtleProfile={onSaveVectorField3DTemporalFtleProfile}
           onOpenTemporalFtleProfile={result => void openTemporalFtleProfile(result)}
           onOpenTemporalSpectrum={result => void openTemporalSpectrum(result)}

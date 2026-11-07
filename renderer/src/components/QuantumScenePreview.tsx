@@ -439,12 +439,16 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
       ["chain-current",comparisonTime*(sites-1)+Math.min(comparisonSite,sites-2)],
       ["chain-charge",comparisonTime],["chain-left-edge",comparisonTime],["chain-right-edge",comparisonTime],
     ];
-    void Promise.all(requests.map(async ([objectId,sampleIndex])=>{
-      const sample=await window.quantumScenes!.scalarSample({fingerprint:opened.reference.sceneFingerprint,objectId,sampleIndex});
-      if(sample.fingerprint!==opened.reference.sceneFingerprint||sample.runId!==scene.provenance.runId||
-         sample.resultSha256!==scene.provenance.resultSha256)throw new Error("Comparison source identity changed");
-      return [objectId,sample] as const;
-    })).then(samples=>{
+    void (async()=>{
+      const samples: (readonly [string, PickedScalarSample])[]=[];
+      for(const [objectId,sampleIndex] of requests){
+        const sample=await window.quantumScenes!.scalarSample({fingerprint:opened.reference.sceneFingerprint,objectId,sampleIndex});
+        if(sample.fingerprint!==opened.reference.sceneFingerprint||sample.runId!==scene.provenance.runId||
+           sample.resultSha256!==scene.provenance.resultSha256)throw new Error("Comparison source identity changed");
+        samples.push([objectId,sample]);
+      }
+      return samples;
+    })().then(samples=>{
       if(samples.some(([,sample])=>sample.position[0]!==samples[0][1].position[0]))throw new Error("Saved time samples are not aligned");
       if(generation===comparisonGeneration.current)setComparisonSamples(Object.fromEntries(samples));
     }).catch(error=>{

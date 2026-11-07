@@ -2,11 +2,30 @@
 
 **Product roadmap · Architecture / UX / Scientific interoperability / Release engineering**<br>
 **Prepared:** 2026-11-05<br>
+**Updated:** 2026-11-07<br>
 **Target:** Math3D 2.0.0 General Availability (GA)<br>
-**Status:** Proposed consolidation and release plan; implementation state must be verified against the release candidate<br>
+**Status:** Architecture, workflow, documentation, and release-gate work is merged to `main`; RC1, RC2, and GA are not declared. Root and renderer packages still report 1.7.0, and no `v2.0.0` tag exists.<br>
 **Primary product claim:** *Construct, compute, analyze, compare, document, and publish connected mathematical objects in one scientific workspace.*
 
 > **Release principle.** Version 2.0.0 is not another sequence of independent scientific-module expansions. It is the release that makes the already substantial Geometry, Curves, Surfaces, Mesh, Volume, Graphs, Field Explorer, Topology, CAS/Sage, Projects, Workbooks, and Quantum capabilities behave as **one integrated, reproducible scientific application**.
+
+---
+
+## Delivery snapshot — 2026-11-07
+
+| Milestone | On `main` | Still required for 2.0 acceptance |
+|---|---|---|
+| 01–02 · Contracts and handoffs | Adapter registry, compatibility fixtures, bounded `Open in…` actions, and saved return navigation | Architecture approval and all three complete flagship journeys |
+| 03–10 · Integrated product | Existing module, selection, Project, Workbook, runtime, and gallery capabilities described below | General shared cursor and Study model, coherent result/runtime UI, flagship evidence, and performance acceptance where advertised |
+| 11–12 · Migration and hosts | Source-format migration/transfer fixtures and scoped Windows, local-browser, and mobile-model tests | Published 1.x corpus and installed/hosted/device/package evidence for each claimed host |
+| 13–15 · Distribution and communication | Pinning and integrity checks, clean-install/upgrade scripts, user guides, capability page, and source gallery provenance | Exact signed 2.0 candidate, installed tests, candidate captures, and matching public claims |
+| 16 · RC1 | Freeze verifier, repeatable source acceptance runner, and blocker register | Reviewed 2.0 integration commit, clean freeze manifest, full CI and defect disposition |
+| 17 · RC2 | Pinned source migration corpus, independent resource transfers, timed soak runner, and exact-candidate rehearsal verifier | Two-hour soak, exact-artifact install/upgrade, host-specific receipts, and written sign-off for one commit and manifest |
+| 18 · GA | Legacy 1.x publish-path guard, reviewed sign-off verifier, immutable asset staging, and uploaded-download audit | Approved zero-blocker receipt, `v2.0.0` tag, publication, final downloaded install, and remote-byte audit |
+
+The gate scripts and source tests are **preparation**, not evidence that a 2.0 installer or release has passed. The local source checkout remains version 1.7.0. Keep installer execution at the final qualification stage; only promote a capability or checklist item after evidence names the exact candidate commit and artifact hash.
+
+**Next release path:** close or explicitly limit the shared cursor/Study and three flagship journeys; resolve the native CGAL source-bundle blocker; choose and review a 2.0 integration baseline; run the RC1 freeze and acceptance matrix; then qualify the signed candidate, migration, soak, gallery, and host claims. GA sign-off, tagging, staging, publication, and verification of downloaded bytes follow that evidence.
 
 ---
 
@@ -822,6 +841,10 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-01c test(core): add canonical compatibility fixtures` — old/current serializer and invalid-input corpus.
 - `M3D20-01d docs(architecture): freeze 2.0 ownership and extension rules` — no parallel registries/jobs.
 
+**01a complete (inventory):** [Existing contract inventory](CONTRACT_INVENTORY.md) maps the current owners, enforced invariants, and overlapping models at baseline `372b367d`. It does not close 01b–d or approve the architecture freeze.
+
+**01b–d prepared for review:** Core now has a versioned declarative [cross-module adapter registry](../../../packages/core/src/crossModuleAdapterRegistry.ts) with source/target frame and unit metadata, exact-generation qualification, host/operation/mapping availability checks, and explicit disabled reasons. Selection adapters bind pinned v1 scientific selections and committed viewer entities. [Compatibility fixtures and focused tests](../../../tests/unit/crossModuleAdapterRegistry.test.ts) cover current/legacy Project reopen and invalid inputs. The [architecture freeze proposal](ARCHITECTURE_FREEZE.md) records ownership, migration, and extension rules. Architecture approval and release-candidate acceptance evidence remain open.
+
 **Exit:** contract document approved, schema compatibility tests pass, known partial areas explicitly listed.
 
 ### M3D20-02 — Cross-module `Open in…` (P0)
@@ -830,6 +853,12 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-02b feat(ui): add context Open in menu with destination previews`.
 - `M3D20-02c feat(project): persist lineage and exact return navigation`.
 - `M3D20-02d test(e2e): graph-surface-mesh-field-quantum handoff matrix`.
+
+**02a–c expanded bounded implementation, 02d partial evidence:** The Project document menu offers Graph explicit/parametric object → Curve, sampled Geometry, x-axis revolution Surface, or uncapped +z extrusion Surface; Surface → saved sampled Mesh; verified Mesh → bounded Geometry triangle copy; linked Quantum scene polyline → saved Graph or Curve; and an existing saved Field profile row → its Graph document. Actions show a destination preview or a specific disabled reason. Sampled Graph destinations preflight the profile, while exact Curve promotion remains available for an expression with a pole. Graph derivations recheck the exact source generation; Surface sampling rechecks the source and host sampler; Mesh copying verifies buffer checksum, layout, finite coordinates, indices and a 4096 triangle limit; Quantum promotion reopens and verifies the scene against the selected generation. The Field route checks the saved row's exact source, derived recipe and physical line selection, links its existing Graph without computing values, and leaves Graphs responsible for source verification before displaying values. Saved `DocumentRelation` records resolve exact return navigation after reopen. Focused tests cover idempotency, stale choice refusal, missing host capability, malformed Mesh buffers, historical Field sources and missing selections. Electron tests cover Graph → Geometry/Surface, Surface → Mesh, Mesh → Geometry, Quantum → Graph/Curve and Field → existing Graph, with save and return. Creating a new Field Graph profile still starts in the existing Graphs/Explorer flow. CAS algebraic locus does not yet have a qualified Project-menu adapter. The Surface curvature/Curve/Workbook, Quantum Study evidence, and Algebra journeys remain broader work, so the M3D20-02 flagship exit criterion remains open.
+
+**CAS locus update:** The CAS algebraic locus builder now offers qualified `Open in Geometry` actions for an uncomputed exact contract and a bounded numerical sample. Each action displays a preview or disabled reason, pins the algebra object revision and prepared scene/sample hash, and rechecks qualification before saving. The saved Geometry document opens directly. The sampled checkpoint replaces the exact contract under the same document identity while retaining the exact equations and source revision; Project export/import reopens it without replay or silent recomputation. This is a CAS builder handoff, not a Project document-menu adapter. The broader Algebra journey and the M3D20-02 flagship exit criterion remain open.
+
+**Integration evidence (2026-11-07):** The CAS locus handoff reached `main` in PR #33. Focused core checks passed (9 tests across the Open-in, locus-scene and sampling suites), and the locus and singularity desktop journeys passed (2 tests). After merging remote `main` into the local checkout, `npm run build:core` completed the main TypeScript build, renderer bundle and build-identity step. That build ran with pre-existing local working-tree changes, so it is development evidence rather than a clean release-candidate gate.
 
 **Exit:** at least the three flagship journeys use the same action pattern; missing/incompatible capability never silently executes.
 
@@ -923,6 +952,10 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-12b test(platform): run exact representative journeys per supported host`.
 - `M3D20-12c fix(ui): truthful offline/limited-capability controls`.
 
+**12a matrix drafted:** [Platform capabilities](PLATFORM_CAPABILITIES.md) records journey-level support and explicit unverified deployment/device/package gates. Subsequent 12b–c work must attach representative evidence before promoting a claim.
+
+**12b–c prepared for review:** source-build Windows and local-browser Project package reopen tests, mobile model preview tests, and a browser blocked-storage control test are present. Hosted deployment, physical Android and installed Linux evidence remain open; the matrix does not claim those gates passed.
+
 **Exit:** advertised parity exactly matches tested capabilities, including view-only fallbacks.
 
 ### M3D20-13 — Install, upgrade and binary integrity (P0)
@@ -931,6 +964,14 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-13b test(installer): fresh Windows install and first-use scientific study`.
 - `M3D20-13c test(upgrade): 1.7→2.0 with preserved data and settings`.
 - `M3D20-13d build(security): SBOM, attributions, signatures and SHA-256 manifest`.
+
+**13a prepared for review:** Electron, electron-builder and better-sqlite3 resolve to exact package versions; the frozen worker checks installed runtime and PyInstaller pins before packaging. The existing native CGAL distribution gate remains blocked pending public source-bundle integration. Installer and upgrade qualification remain 13b–d work.
+
+**13b test prepared:** [Installed candidate gate](INSTALL_UPGRADE_GATE.md) requires exact signed 2.0.0 bytes, a clean Windows VM, worker smoke without Python, and a first-use scientific starter reopened after restart. The source-build UI journey passes; no 2.0 installed-candidate signoff is claimed.
+
+**13c test prepared:** The [upgrade gate](INSTALL_UPGRADE_GATE.md) pins the published 1.7.0 installer by digest, seeds a Graph Project and setting in 1.7, backs up the profile, and checks exact saved bytes and reopen behavior in 2.0. Execution awaits a signed 2.0 candidate.
+
+**13d build gate prepared:** The [release integrity gate](RELEASE_INTEGRITY_GATE.md) signs the frozen worker before packaging and rejects a 2.0 Windows release with unexpected signer, incomplete attribution, mismatched asset checksums or SBOM file coverage. Exact candidate signoff awaits a 2.0 build and signing identity.
 
 **Exit:** distributable tested without source checkout; all required resource identities recorded for exact release assets.
 
@@ -941,6 +982,14 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-14c docs(runtime): runtime troubleshooting and supported platform differences`.
 - `M3D20-14d docs(migration): migration guide and known limitations`.
 
+**14a guide prepared:** The [first-run Project/Study guide](FIRST_RUN_PROJECT_STUDY.md) walks through the built-in Graph/Curve/Surface starter, recorded evidence, save/reopen, and the distinction between a study workflow and the planned persistent StudyDocument. Installed 2.0 steps await the exact candidate gate.
+
+**14b guide prepared:** The [scientific result guide](SCIENCE_CONVENTIONS.md) separates method status from source freshness, explains units and numerical/statistical qualifications, and gives a five-question check for evidence-backed Project results.
+
+**14c guide prepared:** The [runtime guide](RUNTIME_AND_PLATFORMS.md) maps installed desktop, source, browser, mobile, and Linux routes to concrete storage, graphics, worker, Sage, and resource diagnostics without extending unsupported host claims.
+
+**14d guide prepared:** The [1.x migration guide](MIGRATION_1X_TO_2X.md) covers backup, compatibility preview, source packages, recovery, and explicit remaining artifact and host limits. It does not claim an unrun 2.0 upgrade passed.
+
 **Exit:** a new user can complete flagship journeys without reading source-code architecture documents.
 
 ### M3D20-15 — Release Gallery and communication (P0)
@@ -949,9 +998,19 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-15b docs(site): accurate platform and runtime capability claims`.
 - `M3D20-15c test(site): screenshots tied to release build and scene evidence`.
 
+**15a source prepared:** The public-site home page now presents the Surface, Quantum, and Algebra flagship journeys with existing-source imagery or an explicit diagram and labels the unfinished 2.0 release gates. It does not publish a 2.0 download or claim candidate screenshots.
+
+**15b source prepared:** The public site's capability page scopes journeys by host and operation, separates source-build tests from installer qualification, and removes broad desktop/browser parity claims from the home-page feature panel.
+
+**15c gate prepared:** The [screenshot provenance gate](GALLERY_EVIDENCE_GATE.md) exposes missing commit attribution in the current gallery and requires exact installed-candidate, source, scene, and PNG hashes before 2.0 images enter the site. Actual 2.0 captures await candidate artifacts.
+
 **Exit:** gallery, docs and real distribution all describe the same capabilities/build.
 
 ### M3D20-16 — RC1 feature freeze (P0)
+
+**16a preparation:** The [freeze gate](RC1_FREEZE_GATE.md) pins the reviewed 2.0 source commit, lockfile bytes, resolved native desktop dependencies, and existing Project/workspace/result schema contracts. It intentionally rejects the current 1.7 checkout; RC1 is not declared.
+
+**16b preparation:** The [RC1 acceptance runner and blocker register](RC1_ACCEPTANCE_GATE.md) define a reproducible source-check sequence and explicit outstanding 2.0 gates. The current checkout cannot run it as RC1 because it still reports 1.7.0.
 
 - Branch from reviewed 2.0 integration baseline, lock dependency versions and schema contracts.
 - Run full CI + mathematical fixtures + release smoke suite.
@@ -961,6 +1020,14 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 **Exit:** signed/identifiable candidate with a complete defect list and repeatable acceptance script.
 
 ### M3D20-17 — RC2 release qualification (P0)
+
+**17a source corpus:** `tests/unit/release20MigrationCorpus.test.ts` pins three checked-in Project specimens by SHA-256 and verifies preview, portable export, independent reimport, identity/results/relations, and unchanged compatibility disposition. This covers these source formats only; installed 1.x migration remains an RC2 gate.
+
+**17b independent transfer:** `tests/unit/release20IndependentTransfer.test.ts` checks that Mesh, Graph table, and measured Volume source bytes survive Project package import, export, and reimport with their scientific lineage. It rejects a changed source sidecar and confirms that a JSON-only copy reports required source data as unavailable.
+
+**17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) describes a repeatable run covering Projects, scientific results, quantum, and a desktop first-use Study restart. `--run` requires a matching 2.0 freeze manifest and at least 120 minutes, records every cycle and stops on a failed check. It has not run on the current 1.7 checkout and does not qualify an installed candidate.
+
+**17d release rehearsal:** The [exact-candidate rehearsal gate](RC2_REHEARSAL_GATE.md) checks that the source freeze, signed Windows install and upgrade receipts, source soak, verified assets, three gallery captures, public license metadata, and locally staged site all refer to one 2.0 commit and installer hash. It remains pending real candidate artifacts and installed evidence.
 
 - Fresh-machine installer and upgrade pass.
 - Full migration corpus and independent export/import.
@@ -972,6 +1039,14 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 **Exit:** written release sign-off references **one exact commit SHA and one exact artifact manifest**.
 
 ### M3D20-18 — 2.0.0 GA (P0)
+
+**18a release-path guard:** The existing 1.x build/publish workflows now reject `v2.0.0` before building or publishing. Their upgrade and cross-app gates cannot stand in for the 2.0 RC2 sign-off.
+
+**18b sign-off gate:** The [GA sign-off identity check](GA_SIGNOFF_GATE.md) requires a reviewed, zero-blocker receipt outside the source checkout, bound by SHA-256 to the exact candidate, RC2 report, and final 2.0 release notes.
+
+**18c staging gate:** The [GA asset staging check](GA_STAGING_GATE.md) requires the exact signed-off tag and copies verified Windows assets, optional approved Linux assets, and review receipts without changing bytes. Its asset map supports later uploaded-download verification.
+
+**18d uploaded audit:** The [publication audit and recovery procedure](GA_PUBLICATION_AUDIT.md) compares the remote tag, release notes, full asset set, and every downloaded byte to the approved staging map. It remains pending actual publication; final downloaded installation is reserved for the end stage.
 
 - Tag exact signed-off commit `v2.0.0`.
 - Produce signed builds and immutable hashes.

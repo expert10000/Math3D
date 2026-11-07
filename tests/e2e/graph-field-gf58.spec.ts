@@ -10,7 +10,7 @@ import { createMath3DProject,
 import { closeSurfaceApp, launchSurfaceApp, openLastSavedProject,
   resetSurfaceAppState } from "./helpers/surfaceAppHarness";
 
-test("GF-58/60 saves and refines a guarded local manifold atlas Mesh", async () => {
+test("GF-58/60/62–64 saves guarded atlas coverage, seams and refinement", async () => {
   test.setTimeout(180_000);
   const fixture = parseMath3DProject(readFileSync(resolve(
     "tests/fixtures/derived-field/gf03-magnitude-slice-profile.math3d"), "utf8"));
@@ -103,6 +103,16 @@ test("GF-58/60 saves and refines a guarded local manifold atlas Mesh", async () 
     await advanced.getByRole("button", { name: "Save local atlas Mesh" }).click();
     await expect(page.getByTestId("app-status-bar"))
       .toContainText("Local manifold patch atlas");
+    await openAnalyze();
+    await advanced.getByRole("button", { name: "Verify saved atlas surface coverage" }).click();
+    await expect(advanced.getByTestId("gf62-surface-coverage-status"))
+      .toContainText("Global claim withheld");
+    await advanced.getByRole("button", { name: "Measure saved atlas seams in 3D" }).click();
+    await expect(advanced.getByTestId("gf63-seam-status"))
+      .toContainText("Global claim withheld");
+    await advanced.getByRole("button", { name: "Refine saved atlas charts" }).click();
+    await expect(advanced.getByTestId("gf64-refinement-status"))
+      .toContainText("global claim withheld");
     await page.getByTestId("projects-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message"))
@@ -119,5 +129,24 @@ test("GF-58/60 saves and refines a guarded local manifold atlas Mesh", async () 
         item.summary.memberResultIds?.length === 3 &&
         item.summary.uncoveredCells! < item.summary.baseUncoveredCells!))
       .toBe(true);
+    expect(results.some((item: { provenance: { operation: { type: string } };
+      summary: { globalClaim?: string; gain16?: number; gain32?: number;
+        refined32?: { boundaryGapCells: number } } }) =>
+      item.provenance.operation.type === "vector3d.manifold-surface-coverage" &&
+        item.summary.globalClaim === "withheld" &&
+        item.summary.gain16! > 0 && item.summary.gain32! > 0 &&
+        Number.isFinite(item.summary.refined32?.boundaryGapCells)))
+      .toBe(true);
+    expect(results.some((item: { provenance: { operation: { type: string } };
+      summary: { globalClaim?: string; measurement?: { projectedOverlaps: number } } }) =>
+      item.provenance.operation.type === "vector3d.atlas-seams" &&
+        item.summary.globalClaim === "withheld" &&
+        item.summary.measurement!.projectedOverlaps > 0)).toBe(true);
+    expect(results.some((item: { provenance: { operation: { type: string } };
+      summary: { globalClaim?: string; attempts?: unknown[]; evaluations?: number } }) =>
+      item.provenance.operation.type === "vector3d.atlas-refinement" &&
+        item.summary.globalClaim === "withheld" &&
+        item.summary.attempts?.length === 3 &&
+        item.summary.evaluations! <= 1_000_000)).toBe(true);
   } finally { await closeSurfaceApp(app); }
 });

@@ -384,6 +384,8 @@ The present navigation is in `renderer/src/App.tsx`; `renderer/src/features/sage
 
 **H06–H08 implementation update (2026-11-06):** The [acceptance record](evidence/sage-h06-h08-tutorial-verifier-release-audit-2026-11-06.md) adds a worked algebra tutorial with a real Sage 9.5 mathematical check, a standalone inert manifest verifier for independent Project/Workbook files, and a machine-readable M0–M6 evidence audit. H07 and H08 extend Track H with reproducibility and release review gates. The recorded B08 16-case parity is closed; a new live Docker run was not made in this session.
 
+**M0–M6 live release update (2026-11-06):** The [current gate record](evidence/sage-m0-m6-live-release-2026-11-06.md) reports B08 16/16 on each route with zero differences, F08 6/6 real-route desktop cases, 78/78 Sage service tests on each route, and a clean 28/28 M1–M6 desktop cohort after updating four stale test assertions. The machine-readable H08 audit records this dated pass separately from a future live rerun.
+
 ---
 
 ## 3. P0 — Algebra object registry

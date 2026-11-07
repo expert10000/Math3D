@@ -1,4 +1,5 @@
-import { createMeshDocument, createDocumentRelation, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, type CanonicalJsonValue, type MixedWorkspaceDocument, type SurfaceDocument } from "@math3d/core";
+import { createMeshDocument, createDocumentRelation, createMixedWorkspaceDocument, matchesScientificSourceGeneration,
+  readProjectCoordinateFrame, viewerSourceFromDocument, type CanonicalJsonValue, type MixedWorkspaceDocument, type SurfaceDocument } from "@math3d/core";
 import { MeshDocumentAdapter } from "../mesh/meshDocumentAdapter";
 import { additionalRepresentationView, type RepresentationContext } from "./additionalProjectRepresentations";
 import { supportsSavedSurfaceResolution, validateSurfaceStudyResolution } from "./surfaceStudyResolution";
@@ -16,12 +17,14 @@ export const createSavedSurfaceMesh = (workspace: MixedWorkspaceDocument, surfac
   if (view.meshes.length !== 1 || !view.meshes[0].indices?.length) throw new TypeError("This saved Surface has no single triangle mesh to promote.");
   const source = viewerSourceFromDocument(surface), mesh = view.meshes[0], units = surface.source.units;
   const length = units && typeof units === "object" && !Array.isArray(units) && "length" in units && typeof units.length === "string" ? units.length : "unitless";
+  const coordinateFrame = readProjectCoordinateFrame(surface);
   const meshId = `saved-surface:${surface.identity.id}:${surface.identity.revision}${resolution === 33 ? "" : `:grid${resolution}`}`;
   let adapter = MeshDocumentAdapter.fromMesh({ ...mesh, label: studyName?.trim() ?? `${surface.metadata.title.slice(0, 120)} Mesh r${surface.identity.revision}${resolution === 33 ? "" : ` · ${resolution}/axis`}`, source: {
     kind: "derivedSurface", role: "snapshot", state: "frozen-snapshot", meshId, meshRevision: 1,
     sourceSurfaceId: surface.identity.id, sourceSurfaceRevision: surface.identity.revision, sourceSurfaceLabel: surface.metadata.title,
     sourceRepresentation: surface.source.representation, tessellationMethod: "saved-source-native-preview-v1", backendId: "Math3D",
     correspondenceId: meshId, createdAt: 0, units: { length, area: `${length}^2`, gaussianCurvature: `${length}^-2`, meanCurvature: `${length}^-1` },
+    ...(coordinateFrame.status === "declared" && coordinateFrame.value ? { math3dCoordinateFrame: coordinateFrame.value } : {}),
   } });
   let document = adapter.document();
   const reusable = workspace.relations.find(relation => relation.operation === SAVED_SURFACE_MESH_OPERATION && (samplingParameters(relation.parameters).samplingSize ?? 33) === resolution && relation.sources.length === 1 && matchesScientificSourceGeneration(relation.sources[0], source) && relation.target.type === "document" && workspace.entries.some(entry =>

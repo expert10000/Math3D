@@ -90,12 +90,16 @@ test("SAGE-G03 saves inert, ramified and split local models and independently re
     await install(exported);
     const reopened = ctx.page.getByTestId("number-theory-local-extensions");
     await reopened.locator("summary").click();
+    const imported = core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1")));
+    const splitStudy = imported.algebraEvidence.find((item: { request: { params: { prime: number } } }) =>
+      item.request.params.prime === 11);
+    if (!splitStudy) throw new Error("The split p=11 study is missing after import.");
+    await reopened.getByLabel("Saved local studies").selectOption(splitStudy.id);
     await expect(reopened.getByTestId("local-extension-saved-result")).toContainText("split");
     await expect(reopened.getByTestId("local-extension-saved-result")).toContainText("Prime ideal P2");
-    const imported = core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1")));
     expect(imported.algebraObjects.find((entry: { id: string }) => entry.id === k.id).revisions[0]).toEqual(k);
     expect(imported.algebraEvidence).toHaveLength(3);
-    expect(imported.algebraEvidence.map((item: { result: { splitting: string } }) => item.result.splitting))
-      .toEqual(["inert", "ramified", "split"]);
+    expect(imported.algebraEvidence.map((item: { result: { splitting: string } }) => item.result.splitting).sort())
+      .toEqual(["inert", "ramified", "split"].sort());
   } finally { await closeSurfaceApp(ctx); await new Promise<void>((done) => server.close(() => done())); }
 });

@@ -8,6 +8,9 @@ import os
 import subprocess
 import sys
 from typing import List
+from pathlib import Path
+
+from version_pins import verify_installed
 
 
 def has_module(name: str) -> bool:
@@ -87,6 +90,10 @@ def main() -> int:
     if not os.path.exists(entrypoint):
         print(f"[freeze] missing entrypoint: {entrypoint}", file=sys.stderr)
         return 2
+
+    # Packaging an unpinned local wheel can silently change numerical/native
+    # behavior even when the repository's requirements file has exact pins.
+    verify_installed(Path(root) / "python" / "worker")
 
     cmd: List[str] = [
         sys.executable,

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene, canonicalJsonStringify,
   sampleSageAlgebraicLocus, sampledAlgebraicLocusGeometryDocument,
   analyzeSageAlgebraicSingularity, algebraicSingularityGeometryDocument,
+  projectAlgebraOpenInActions, resolveProjectAlgebraOpenIn, type ProjectAlgebraOpenInAction,
   type AlgebraObjectRef, type Math3DProject, type SageAlgebraicLocusScene,
   type SageAlgebraicLocusSample, type SageAlgebraicSingularityScene } from "@math3d/core";
 import SageAlgebraicLocusPlot from "./SageAlgebraicLocusPlot";
@@ -10,6 +11,7 @@ import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
 type Props = { project: Math3DProject; target: AlgebraObjectRef;
   onSave: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveSample: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
+  onOpenGeometry?: (documentId: string) => void | Promise<void>;
   onSaveSingularity: (analysis: SageAlgebraicSingularityScene) => void | Promise<void> };
 const axisNames = ["x", "y", "z"];
 const download = (name: string, body: string) => {
@@ -19,7 +21,8 @@ const download = (name: string, body: string) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample, onSaveSingularity }: Props) {
+export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample,
+  onOpenGeometry, onSaveSingularity }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
   const ambientRef = record?.definition.kind === "ideal" ? record.definition.ambientRing : null;
   const ambient = ambientRef
@@ -43,6 +46,7 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
   const sample = sampled?.signature === signature ? sampled.sample : null;
   const analysisSignature = `${signature}/${JSON.stringify(point.slice(0, variables.length))}`;
   const analysis = inspected?.signature === analysisSignature ? inspected.analysis : null;
+  const openInActions = projectAlgebraOpenInActions(project, target, scene, sample);
   const prepare = (event: FormEvent) => {
     event.preventDefault(); setMessage(""); setPreview(null); setSampled(null); setInspected(null);
     try {
@@ -53,10 +57,21 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
       setPreview({ signature, scene: prepared });
     } catch (error) { setMessage(String((error as Error).message ?? error)); }
   };
-  const save = async () => {
-    if (!scene || busy) return;
+  const openInGeometry = async (choice: ProjectAlgebraOpenInAction) => {
+    if (busy) return;
     setBusy(true); setMessage("");
-    try { await onSave(scene); setMessage("Saved uncomputed real-locus Geometry contract to Project."); }
+    try {
+      const qualified = resolveProjectAlgebraOpenIn(project, target, scene, sample, choice);
+      if (qualified.format === "math3d.sage-algebraic-locus-scene") {
+        await onSave(qualified);
+        setMessage("Saved uncomputed real-locus Geometry contract to Project.");
+        await onOpenGeometry?.(algebraicLocusGeometryDocument(qualified).identity.id);
+      } else {
+        await onSaveSample(qualified);
+        setMessage("Saved bounded real-locus sample to Project Geometry.");
+        await onOpenGeometry?.(sampledAlgebraicLocusGeometryDocument(qualified).identity.id);
+      }
+    }
     catch (error) { setMessage(String((error as Error).message ?? error)); }
     finally { setBusy(false); }
   };
@@ -65,13 +80,6 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
     setMessage("");
     try { setSampled({ signature, sample: sampleSageAlgebraicLocus(scene) }); }
     catch (error) { setMessage(String((error as Error).message ?? error)); }
-  };
-  const saveSample = async () => {
-    if (!sample || busy) return;
-    setBusy(true); setMessage("");
-    try { await onSaveSample(sample); setMessage("Saved bounded real-locus sample to Project Geometry."); }
-    catch (error) { setMessage(String((error as Error).message ?? error)); }
-    finally { setBusy(false); }
   };
   const inspect = () => {
     if (!scene || busy) return;
@@ -110,6 +118,15 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
         value={maxSamples} onChange={(event) => setMaxSamples(event.target.value)} required /></label>
       <button type="submit" disabled={busy}>Validate & preview locus</button>
     </form>
+    <div data-testid="cas-open-in-geometry" role="group" aria-label="Open in Geometry destinations"
+      style={{ display: "grid", gap: 5, border: "1px solid #dbe2ea", borderRadius: 6, padding: 8 }}>
+      <strong>Open in…</strong>
+      {openInActions.map(action => <div key={action.id}>
+        <button type="button" disabled={busy || !action.enabled} title={action.disabledReason ?? action.preview}
+          onClick={() => { void openInGeometry(action); }}>{action.label}</button>
+        <small style={{ display: "block" }}>{action.disabledReason ?? action.preview}</small>
+      </div>)}
+    </div>
     {message && <div role={message.startsWith("Saved") ? "status" : "alert"}>{message}</div>}
     {scene && <div data-testid="cas-locus-preview" style={{ display: "grid", gap: 5,
       borderTop: "1px solid #dbe2ea", paddingTop: 8, fontSize: 12 }}>
@@ -120,7 +137,6 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
       <div><strong>Precision:</strong> tolerance {scene.precision.tolerance}; sample cap {scene.precision.maxSamples}</div>
       <div><strong>Rendering:</strong> uncomputed · completeness unknown</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button type="button" disabled={busy} onClick={() => { void save(); }}>Save Geometry contract to Project</button>
         <button type="button" disabled={busy} onClick={render}>Render bounded real locus</button>
         <button type="button" onClick={() => download(`math3d-locus-${scene.source.target.revision}.json`,
           canonicalJsonStringify(scene))}>Export scene JSON</button>
@@ -132,7 +148,6 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
         <div>Exact source: {sample.scene.source.target.label}@{sample.scene.source.target.revision} · {sample.scene.sceneHash}</div>
         <div>{sample.warnings.join(" ")}</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button type="button" disabled={busy} onClick={() => { void saveSample(); }}>Save sampled Geometry to Project</button>
           <button type="button" onClick={() => download(`math3d-locus-sample-${scene.source.target.revision}.json`,
             canonicalJsonStringify(sample))}>Export sample JSON</button>
           <button type="button" onClick={() => download(`math3d-locus-sampled-geometry-${scene.source.target.revision}.json`,

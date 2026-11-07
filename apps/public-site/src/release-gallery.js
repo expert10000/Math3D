@@ -37,7 +37,7 @@ function makeCard(item, index) {
   const title = document.createElement("strong");
   title.textContent = item.title;
   const detail = document.createElement("small");
-  detail.textContent = `${item.module} · ${item.view} · ${item.runtime}`;
+  detail.textContent = `${item.module} · ${item.view} · ${item.runtime} · ${item.sourceCommit ? `source ${item.sourceCommit.slice(0, 8)}` : "build unpinned"}`;
   caption.append(title, detail);
   figure.append(link, caption);
   return figure;
@@ -74,6 +74,7 @@ Promise.all([
     module: entry.module,
     view: entry.view,
     runtime: "Public browser app",
+    sourceCommit: entry.sourceCommit || web.sourceCommit || null,
     categories: entry.module === "Graphs" ? ["Graphs", "Features"] : ["Features"],
   }));
   const fieldItems = field.entries.map(entry => ({
@@ -82,6 +83,7 @@ Promise.all([
     module: entry.module,
     view: entry.view,
     runtime: "Desktop",
+    sourceCommit: entry.sourceCommit || field.sourceCommit || null,
     categories: entry.view === "Analysis" ? ["Field Explorer", "Analysis"] : ["Field Explorer"],
   }));
   const analysisItems = analysis.entries.map(entry => ({
@@ -90,6 +92,7 @@ Promise.all([
     module: entry.module,
     view: `${entry.view} · ${entry.panel}${entry.fullHeight ? " · full height" : ""}`,
     runtime: entry.runtime,
+    sourceCommit: entry.sourceCommit || analysis.sourceCommit || null,
     categories: ["Analysis", "Features"],
   }));
   const quantumItems = quantum.flatMap(entry => [entry.file, ...(entry.variants || [])].filter(Boolean).map(file => ({
@@ -98,6 +101,7 @@ Promise.all([
     module: entry.model,
     view: "Verified scene",
     runtime: "Desktop",
+    sourceCommit: entry.sourceCommit || null,
     categories: ["Quantum"],
   })));
   allItems = [...browserItems, ...fieldItems, ...analysisItems, ...quantumItems];
