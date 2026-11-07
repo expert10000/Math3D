@@ -15,7 +15,7 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
-import { deriveProjectOpenIn, projectOpenInActions, projectOpenInReturn,
+import { deriveProjectOpenIn, deriveProjectMeshGeometry, projectOpenInActions, projectOpenInReturn,
   matchesScientificSourceGeneration, type ProjectOpenInAction } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
@@ -1534,10 +1534,41 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setViewerCompanion(true);
     setQuick(true);
   };
+  const meshGeometryAvailability = (id: string) => {
+    const entry = project?.workspace.entries.find(item => item.expected.id === id);
+    if (!project || entry?.module !== "mesh" || entry.checkpoint.format !== "math3d.mesh-document")
+      return { available: false, reason: "The Mesh source is unavailable." };
+    const resourceId = entry.checkpoint.source.resource.id;
+    const requirement = projectResourceInventory(project).find(item => item.kind === "mesh-buffers" &&
+      item.id === resourceId);
+    return { available: !!(requirement && resourceBytes()(requirement)),
+      reason: "The verified Mesh source buffers are unavailable on this host." };
+  };
   const openInDestination = async (choice: ProjectOpenInAction) => {
     if (busy || preview || managed || !project || !onRestoreWorkspace) return;
     try {
       const current = liveProject();
+      if (choice.id === "mesh.promote-geometry") {
+        const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
+        const resourceId = entry?.checkpoint.format === "math3d.mesh-document" ?
+          entry.checkpoint.source.resource.id : null;
+        const requirement = entry?.checkpoint.format === "math3d.mesh-document" ?
+          projectResourceInventory(current).find(item => item.kind === "mesh-buffers" &&
+            item.id === resourceId) : null;
+        const bytes = requirement ? resourceBytes()(requirement) : null;
+        if (!choice.enabled || !bytes) throw new TypeError("The verified Mesh source buffers are unavailable.");
+        const made = deriveProjectMeshGeometry(current, choice.source, bytes);
+        const resources = captureProjectResources(made.project, resourceBytes());
+        if (!made.existing) onRestoreWorkspace(made.project.workspace, resources, made.project);
+        resourceSession.current = resources; resourceSessionId.current = made.project.identity.id;
+        display(made.project, false);
+        setViewingDocumentId(made.targetDocumentId);
+        setViewerCompanion(true); setQuick(true); setDetailView(true);
+        onNavigateDocument?.(made.targetDocumentId, "geometry");
+        setMessage(made.existing ? "Opened the existing exact Mesh Geometry copy." :
+          "Created a source-linked Mesh Geometry copy. Save the Project to retain it.");
+        return;
+      }
       if (choice.id === "quantum.promote-graph2d") {
         const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
         const scene = entry?.checkpoint.format === "math3d.quantum-scene-document" ? entry.checkpoint : null;
@@ -2184,7 +2215,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 available: analyses.get(document.id)?.route === "surface" || analyses.get(document.id)?.route === "surface-mesh",
                 reason: analyses.get(document.id)?.reason ?? "The saved Surface sampler is unavailable on this host.",
               }, quantumGraph: { available: !!window.quantumScenes?.openReference,
-                reason: "Verified Quantum scene opening is unavailable on this host." } })}
+                reason: "Verified Quantum scene opening is unavailable on this host." },
+                meshGeometry: meshGeometryAvailability(document.id) })}
               canDerive={!busy && !preview && !managed && !!onRestoreWorkspace}
               unavailableReason={preview ? "Open the saved Project first." : managed ?
                 "Open the Project workspace before deriving a companion." : !onRestoreWorkspace ?

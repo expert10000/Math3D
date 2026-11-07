@@ -89,7 +89,7 @@ describe("M3D20-02 qualified Open in", () => {
       .toMatchObject([{ id: "surface.tessellate-saved", enabled: true, targetModule: "mesh" }]);
     const mesh = mixed.workspace.entries.find(item => item.module === "mesh")!;
     expect(projectOpenInActions(mixed, mesh.expected.id)).toMatchObject([{ enabled: false,
-      sourceModule: "mesh", disabledReason: expect.stringContaining("qualified") }]);
+      sourceModule: "mesh", disabledReason: expect.stringContaining("buffers") }]);
     const legacy = parseMath3DProject(readFileSync(new URL("../fixtures/scientific-selection/gf01-legacy-project.math3d", import.meta.url), "utf8"));
     const field = legacy.workspace.entries.find(item => item.module === "vector3d")!;
     expect(projectOpenInActions(legacy, field.expected.id)).toMatchObject([{ enabled: false,

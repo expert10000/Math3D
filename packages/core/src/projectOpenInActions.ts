@@ -3,10 +3,12 @@ import type { KernelWorkspaceModule } from "./mixedWorkspace";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { ScientificSourceGeneration } from "./scientificJobs";
 import { previewGraph2DRevolution } from "./graph2dInterop";
+import { MAX_OPEN_IN_GEOMETRY_TRIANGLES } from "./projectMeshGeometry";
 
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
 export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
-  "graph2d.revolve-surface" | "surface.tessellate-saved" | "quantum.promote-graph2d";
+  "graph2d.revolve-surface" | "surface.tessellate-saved" | "quantum.promote-graph2d" |
+  "mesh.promote-geometry";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
   id: ProjectOpenInActionId | "unavailable";
@@ -31,7 +33,8 @@ const unavailable = (source: ScientificSourceGeneration, sourceModule: KernelWor
 /** Lists only bounded transformations whose existing producers retain exact source lineage. */
 export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: string,
   options: { surfaceMesh?: Readonly<{ available: boolean; reason: string | null }>;
-    quantumGraph?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
+    quantumGraph?: Readonly<{ available: boolean; reason: string | null }>;
+    meshGeometry?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
   const entry = project.workspace.entries.find(item => item.expected.id === sourceDocumentId);
   if (!entry) return [];
   const source = viewerSourceFromDocument(entry.checkpoint);
@@ -43,6 +46,19 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
     return [{ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "surface.tessellate-saved",
       source, sourceModule: "surface", sourceObjectId: null, targetModule: "mesh",
       label: "Open in Mesh Analysis", preview: "Creates a saved sampled Mesh snapshot with exact Surface lineage and verified source buffers. Sampling is numerical.",
+      enabled: reason === null, disabledReason: reason }];
+  }
+  if (entry.module === "mesh" && entry.checkpoint.format === "math3d.mesh-document") {
+    const resource = entry.checkpoint.source.resource;
+    const elements = resource.indexCount || resource.vertexCount;
+    const reason = archived ? "Restore this archived source first." :
+      elements < 3 || elements % 3 !== 0 || elements / 3 > MAX_OPEN_IN_GEOMETRY_TRIANGLES ?
+        `Geometry promotion requires 1–${MAX_OPEN_IN_GEOMETRY_TRIANGLES} complete Mesh triangles.` :
+        options.meshGeometry?.available ? null : options.meshGeometry?.reason ??
+          "The verified Mesh source buffers are unavailable on this host.";
+    return [{ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "mesh.promote-geometry",
+      source, sourceModule: "mesh", sourceObjectId: null, targetModule: "geometry",
+      label: "Open in Geometry", preview: "Copies up to 4096 verified Mesh triangles into editable Geometry, preserving exact Mesh lineage and float32 source precision.",
       enabled: reason === null, disabledReason: reason }];
   }
   if (entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document") {

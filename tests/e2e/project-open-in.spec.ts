@@ -143,3 +143,41 @@ test("Project Open in chains a Graph revolution into a sampled Mesh", async () =
     await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", graphId);
   } finally { await closeSurfaceApp(context); }
 });
+
+test("Project Open in copies a verified small Mesh into Geometry with exact return", async () => {
+  test.setTimeout(180_000);
+  let context: LaunchedSurfaceApp | null = null;
+  try {
+    context = await launchSurfaceApp();
+    const page = context.page;
+    await resetSurfaceAppState(page);
+    await page.getByTestId("projects-toggle").click();
+    const projects = page.getByTestId("project-explorer-panel");
+    await projects.getByRole("button", { name: "Starter projects", exact: true }).click();
+    await projects.getByTestId("project-library-search").fill("Mesh and Geometry Coordinate Probe");
+    await projects.getByTestId("project-template-open-mesh-geometry-probe").click();
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-detail-tab-documents").click();
+    const meshId = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!)
+      .workspace.entries.find((item: { module: string }) => item.module === "mesh").expected.id as string);
+    const menu = projects.getByTestId(`project-open-in-${meshId}`);
+    await menu.locator("summary").click();
+    const action = menu.getByRole("button", { name: "Open in Geometry" });
+    await expect(action).toBeEnabled();
+    await action.click();
+    await expect(projects.getByTestId("project-message")).toContainText("source-linked Mesh Geometry copy");
+    await projects.getByTestId("project-gallery-layout-toggle").click();
+    await projects.getByTestId("project-save").click();
+    await expect(projects.getByTestId("project-message")).toContainText("Saved “");
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const relation = saved.workspace.relations.find((item: { operation: string }) => item.operation === "mesh.promote-geometry");
+    expect(relation.sources[0].documentId).toBe(meshId);
+    const targetId = relation.target.generation.documentId as string;
+    await projects.getByTestId("project-detail-tab-documents").click();
+    const back = projects.getByTestId(`project-open-in-return-${targetId}`)
+      .getByRole("button", { name: "Return to source Mesh" });
+    await expect(back).toBeEnabled();
+    await back.click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", meshId);
+  } finally { await closeSurfaceApp(context); }
+});

@@ -171,6 +171,7 @@ export * from "./crossModuleAdapterRegistry";
 export * from "./crossModuleSelectionAdapters";
 export * from "./projectOpenInActions";
 export * from "./projectOpenInDerivation";
+export * from "./projectMeshGeometry";
 export * from "./scientificSelectionLegacy";
 export * from "./projectScientificSelections";
 export * from "./vectorField3DLineIntegral";
