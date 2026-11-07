@@ -994,6 +994,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 ### M3D20-17 — RC2 release qualification (P0)
 
+**17a source corpus:** `tests/unit/release20MigrationCorpus.test.ts` pins three checked-in Project specimens by SHA-256 and verifies preview, portable export, independent reimport, identity/results/relations, and unchanged compatibility disposition. This covers these source formats only; installed 1.x migration remains an RC2 gate.
+
 - Fresh-machine installer and upgrade pass.
 - Full migration corpus and independent export/import.
 - Multi-hour representative reliability soak where practical.
