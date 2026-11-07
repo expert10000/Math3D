@@ -168,6 +168,7 @@ export * from "./graph2dPresets/preview";
 export * from "./scientificJobs";
 export * from "./scientificSelection";
 export * from "./crossModuleAdapterRegistry";
+export * from "./crossModuleSelectionAdapters";
 export * from "./scientificSelectionLegacy";
 export * from "./projectScientificSelections";
 export * from "./vectorField3DLineIntegral";
