@@ -127,6 +127,7 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await fresh.getByTestId("project-import-file").setInputFiles(packagePath);
     await fresh.getByTestId("project-import-save").click();
     await fresh.getByTestId(`project-open-saved-${project.identity.id}`).click();
+    await expect(fresh.getByTestId("project-view-mode")).toContainText("Current workspace");
     const reopened = core.parseMath3DProject(await ctx.page.evaluate(() => localStorage.getItem("math3d.project.v1")));
     const checkpoint = reopened.workspace.entries.find((entry: { checkpoint: { format: string; source?: { extensions?: Record<string, unknown> } } }) =>
       entry.checkpoint.format === "math3d.geometry-document" &&
@@ -137,5 +138,17 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     expect(checkpoint?.replay).toBeNull();
     expect(core.parseSampledAlgebraicLocusGeometryDocument(checkpoint.checkpoint, reopened).sample).toEqual(sample);
     expect(core.sageAlgebraicLocusSceneStatus(scene, reopened)).toBe("current");
+    await fresh.getByTestId("project-gallery-layout-toggle").click();
+    const details = fresh.getByTestId("project-detail-toggle");
+    if (await details.getAttribute("aria-pressed") === "false") await details.click();
+    await fresh.getByTestId("project-detail-tab-documents").click();
+    const savedMenu = fresh.getByTestId(`project-algebra-open-in-${ideal.id}`);
+    await savedMenu.locator("summary").click();
+    const savedAction = savedMenu.getByRole("button", { name: "Open sampled locus in Geometry" });
+    await expect(savedAction).toBeEnabled();
+    await expect(savedMenu).toContainText("exact equations and source remain pinned");
+    await savedAction.click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      core.sampledAlgebraicLocusGeometryDocument(sample).identity.id);
   } finally { await closeSurfaceApp(ctx); }
 });
