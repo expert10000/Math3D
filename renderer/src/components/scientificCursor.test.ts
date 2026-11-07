@@ -5,8 +5,31 @@ import { projectVerifiedQwzCursor } from "../../../src/main/quantumScene/cursorP
 import { fileURLToPath } from "node:url";
 
 const hash = "a".repeat(64);
+const projectSource = { documentId: `math3d:graph2d:${"b".repeat(32)}`,
+  revision: 1, structuralHash: `sha256:${hash}`, generation: 1 } as const;
+const projectFrame = { kind: "cartesian" as const, frameId: "graph-world",
+  axes: [{ name: "x", dimension: "length", unit: "m" },
+    { name: "y", dimension: "length", unit: "m" }] };
 
 describe("Scientific Cursor", () => {
+  it("shares one ordered bus with a source-pinned Project point without republishing it", () => {
+    const bus = new ScientificCursorBus(), seen: string[] = [];
+    bus.subscribe(cursor => seen.push(`${cursor.kind}:${cursor.sequence}`));
+    bus.publish({ runId: "qwz", resultSha256: hash, datasetId: "k-grid",
+      reciprocalPoint: { k: [0, 0], basisId: "qwz:rad/a", sampleIndex: 0 }, originViewId: "bands" });
+    const cursor = bus.publishProject({ source: projectSource, sourceModule: "graph2d", frame: projectFrame,
+      position: [1, 2], resourceSha256: null, mode: "locked", originViewId: "project-graph" }, projectSource);
+    expect(cursor.position).toEqual([1, 2]);
+    expect(seen).toEqual(["quantum:1", "project:2"]);
+    expect(bus.snapshot()).toEqual(cursor);
+    expect(() => bus.publishProject({ source: projectSource, sourceModule: "graph2d", frame: projectFrame,
+      position: [1, 2], resourceSha256: null, mode: "locked", originViewId: "project-graph" },
+    { ...projectSource, generation: 2 })).toThrow(/current source/);
+    expect(() => bus.publishProject({ source: projectSource, sourceModule: "graph2d", frame: projectFrame,
+      position: [Infinity, 2], resourceSha256: null, mode: "locked", originViewId: "project-graph" },
+    projectSource)).toThrow(/finite coordinates/);
+    expect(bus.snapshot()).toEqual(cursor);
+  });
   it("publishes one ordered event and replays it without subscriber feedback", () => {
     const bus = new ScientificCursorBus();
     const seen: number[] = [];

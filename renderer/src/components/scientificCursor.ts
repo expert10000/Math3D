@@ -1,4 +1,8 @@
+import { isScientificSourceGeneration, matchesScientificSourceGeneration, normalizeAdapterFrame, KERNEL_WORKSPACE_MODULES,
+  type AdapterFrame, type KernelWorkspaceModule, type ScientificSourceGeneration } from "@math3d/core";
+
 export type ScientificCursor = Readonly<{
+  kind: "quantum";
   runId: string;
   resultSha256: string;
   datasetId: string;
@@ -9,12 +13,26 @@ export type ScientificCursor = Readonly<{
   sequence: number;
 }>;
 
-type CursorDraft = Omit<ScientificCursor, "sequence">;
-type Listener = (cursor: ScientificCursor) => void;
+/** Project coordinates are transient; saved selections remain owned by the Project contract. */
+export type ProjectScientificCursor = Readonly<{
+  kind: "project";
+  source: ScientificSourceGeneration;
+  sourceModule: KernelWorkspaceModule;
+  frame: AdapterFrame;
+  position: readonly number[];
+  resourceSha256: string | null;
+  mode: "hover" | "locked";
+  originViewId: string;
+  sequence: number;
+}>;
+type CursorDraft = Omit<ScientificCursor, "kind" | "sequence">;
+export type ProjectCursorDraft = Omit<ProjectScientificCursor, "kind" | "sequence">;
+export type ScientificCursorEvent = ScientificCursor | ProjectScientificCursor;
+type Listener = (cursor: ScientificCursorEvent) => void;
 
 /** One owner allocates sequence numbers. Subscribers never republish projected selections. */
 export class ScientificCursorBus {
-  private current: ScientificCursor | null = null;
+  private current: ScientificCursorEvent | null = null;
   private sequence = 0;
   private listeners = new Set<Listener>();
 
@@ -28,7 +46,25 @@ export class ScientificCursorBus {
     if (!coordinates?.every(Number.isFinite) || draft.timePoint &&
         (!draft.timePoint.unit || !draft.timePoint.frameId || !Number.isSafeInteger(draft.timePoint.sampleIndex) || draft.timePoint.sampleIndex < 0))
       throw new TypeError("Scientific cursor coordinates must be finite.");
-    const cursor = { ...draft, sequence: ++this.sequence };
+    const cursor: ScientificCursor = { ...draft, kind: "quantum", sequence: ++this.sequence };
+    this.current = cursor;
+    for (const listener of this.listeners) listener(cursor);
+    return cursor;
+  }
+
+  publishProject(draft: ProjectCursorDraft, currentSource: ScientificSourceGeneration | null): ProjectScientificCursor {
+    if (!isScientificSourceGeneration(draft.source) || !currentSource ||
+        !isScientificSourceGeneration(currentSource) ||
+        !matchesScientificSourceGeneration(draft.source, currentSource) ||
+        !normalizeAdapterFrame(draft.frame).ok ||
+        !Array.isArray(draft.position) || draft.position.length !== draft.frame.axes.length ||
+        !draft.position.every(value => Number.isFinite(value) && Math.abs(value) <= 1e12) ||
+        !/^[A-Za-z0-9._:-]{1,160}$/.test(draft.originViewId) ||
+        !KERNEL_WORKSPACE_MODULES.includes(draft.sourceModule) ||
+        !["hover", "locked"].includes(draft.mode) ||
+        !(draft.resourceSha256 === null || /^[a-f0-9]{64}$/.test(draft.resourceSha256)))
+      throw new TypeError("Project cursor requires a current source, declared frame, and finite coordinates.");
+    const cursor: ProjectScientificCursor = { ...structuredClone(draft), kind: "project", sequence: ++this.sequence };
     this.current = cursor;
     for (const listener of this.listeners) listener(cursor);
     return cursor;
@@ -40,7 +76,7 @@ export class ScientificCursorBus {
     return () => { this.listeners.delete(listener); };
   }
 
-  snapshot(): ScientificCursor | null { return this.current; }
+  snapshot(): ScientificCursorEvent | null { return this.current; }
 }
 
 export const scientificCursorBus = new ScientificCursorBus();

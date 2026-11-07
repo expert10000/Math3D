@@ -102,7 +102,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     void window.quantumScenes.timeFrames(opened.reference)
       .then(frames => { if (active) {
         const cursor = scientificCursorBus.snapshot();
-        if (cursor?.timePoint && cursor.originViewId !== opened.reference.sceneFingerprint) {
+        if (cursor?.kind === "quantum" && cursor.timePoint && cursor.originViewId !== opened.reference.sceneFingerprint) {
           const projected = projectTimeCursor(cursor, { runId: scene.provenance.runId,
             resultSha256: scene.provenance.resultSha256, unit: timeline.unit,
             frameIds: timeline.frameIds, values: frames.map(frame => frame.time) });
@@ -286,7 +286,7 @@ export function QuantumScenePreview({ opened, onClose, onOpenRelated, promotedFi
     let active = true;
     const originViewId = opened.reference.sceneFingerprint;
     const unsubscribe = scientificCursorBus.subscribe(cursor => {
-      if (!active || !cursor.reciprocalPoint || cursor.originViewId === originViewId ||
+      if (!active || cursor.kind !== "quantum" || !cursor.reciprocalPoint || cursor.originViewId === originViewId ||
           cursor.runId !== scene.provenance.runId || cursor.resultSha256 !== scene.provenance.resultSha256) return;
       const quantity = scene.topology?.quantities.find(item => item.object === "berry-curvature");
       if (!window.quantumScenes?.projectQwzCursor || qwzRole === "curvature" && !quantity) return;

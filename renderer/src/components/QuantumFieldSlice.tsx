@@ -36,7 +36,7 @@ export function QuantumFieldSlice({ fingerprint, fields, axes, units, runId, res
   const safeQuantity = field?.kind === "scalar-field" ? "real" : quantity;
 
   useEffect(() => scientificCursorBus.subscribe(cursor => {
-    if (!cursor.spatialPoint || !field) return;
+    if (cursor.kind !== "quantum" || !cursor.spatialPoint || !field) return;
     const projected = projectSpatialCursor(cursor, { runId, resultSha256, coordinateSystemId,
       shape: field.grid.shape, origin: field.grid.origin, spacing: field.grid.spacing });
     if (projected.status === "matched") {
