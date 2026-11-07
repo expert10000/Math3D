@@ -29,6 +29,8 @@ import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
 import { ProjectAlgebraOpenInMenu } from "./ProjectAlgebraOpenInMenu";
 import { projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
   type ProjectSavedAlgebraOpenInAction } from "@math3d/core";
+import { projectAlgebraCasHandoff, resolveProjectAlgebraCasHandoff,
+  type ProjectAlgebraCasHandoff, type AlgebraObjectRef } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
@@ -131,6 +133,7 @@ type Props = {
   capture: () => MixedWorkspaceDocument;
   canNavigateDocument?: (id: string, module: KernelWorkspaceModule) => boolean;
   onNavigateDocument?: (id: string, module: KernelWorkspaceModule) => void;
+  onOpenAlgebra?: (projectId: string, target: AlgebraObjectRef) => void;
   onOpenAnalysis?: (id: string, module: KernelWorkspaceModule, route: ProjectAnalysisRoute, workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources) => void;
   artifactAvailable?: (id: string, hash?: string | null) => boolean;
   resourceReader?: ProjectResourceReader;
@@ -139,7 +142,7 @@ type Props = {
   activeProjectDocumentId?: string | null;
   onRestoreWorkspace?: (workspace: MixedWorkspaceDocument, resources?: VerifiedProjectResources, owner?: Math3DProject) => void;
 };
-export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
+export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open, onOpenChange, onCurrentProjectChange, verifiedQuantumScene, onImportQuantumScene, onImportScientificScene, onOpenQuantumScene, onVerifyQuantumSceneDocument, onRelinkQuantumScene, verifiedScientificScene, onOpenScientificScene, onRelinkScientificScene, captureActiveWorkbook, onOpenWorkbook, onViewProjectWorkbook, onViewProjectDetail, noteRequest, resultRequest, pairRequest, regionResultStatuses = {}, captureNoteSelection, captureProjectThumbnail, capture, canNavigateDocument, onNavigateDocument, onOpenAlgebra, onOpenAnalysis, artifactAvailable, onRestoreWorkspace, resourceReader, activeModule, activeEvidence, activeProjectDocumentId }) => {
 
   const loadedProject = useRef<Math3DProject | null>(null);
   const resourceSession = useRef<VerifiedProjectResources | undefined>(undefined);
@@ -228,7 +231,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   }).map(entry => {
     const record = entry.revisions.at(-1)!;
     const target = { objectId: entry.id, revision: record.revision };
-    return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target) };
+    return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target),
+      casAction: projectAlgebraCasHandoff(project, target) };
   }) ?? [], [project]);
   const studyLaunchRequest = useRef<Promise<StudyLaunchResponse> | null>(null);
   useEffect(() => {
@@ -1657,6 +1661,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       navigate(documentId, "geometry");
     } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
   };
+  const prepareAlgebraInCas = (target: AlgebraObjectRef, choice: ProjectAlgebraCasHandoff) => {
+    if (busy || preview || managed || !project) return;
+    try {
+      const current = liveProject();
+      const checked = resolveProjectAlgebraCasHandoff(current, target, choice);
+      if (!onOpenAlgebra) throw new TypeError("CAS navigation is unavailable on this host.");
+      onOpenAlgebra(current.identity.id, checked);
+      onOpenChange(false);
+    } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -2301,12 +2315,21 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       {algebraLoci.length > 0 && <section data-testid="project-group-algebra" style={{ marginTop: 12 }}>
         <strong>Algebra loci</strong>
         <ul className="project-document-list">
-          {algebraLoci.map(({ entry, record, target, actions }) => {
+          {algebraLoci.map(({ entry, record, target, actions, casAction }) => {
             return <li key={entry.id}>
               <strong>{record.label}</strong><small> · {record.definition.kind} · revision {record.revision}
                 {entry.archived ? " · archived" : ""}</small>
               <ProjectAlgebraOpenInMenu objectId={entry.id}
                 actions={actions}
+                casAction={casAction}
+                canPrepare={!busy && !preview && !managed && !!onOpenAlgebra &&
+                  !!library.entries.some(item => item.id === project?.identity.id)}
+                prepareUnavailableReason={preview ? "Open the saved Project first." : managed ?
+                  "Open the Project workspace before preparing a locus." : busy ? "Project is busy." :
+                  !onOpenAlgebra ? "CAS navigation is unavailable on this host." :
+                  !library.entries.some(item => item.id === project?.identity.id) ?
+                    "Save this Project before preparing a locus in CAS." : null}
+                onPrepare={action => prepareAlgebraInCas(target, action)}
                 canOpen={action => !busy && !preview && !managed && !!onNavigateDocument &&
                   action.enabled && !!action.documentId && !!canNavigateDocument?.(action.documentId, "geometry")}
                 unavailableReason={preview ? "Open the saved Project first." : managed ?
