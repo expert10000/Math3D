@@ -983,6 +983,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **16a preparation:** The [freeze gate](RC1_FREEZE_GATE.md) pins the reviewed 2.0 source commit, lockfile bytes, resolved native desktop dependencies, and existing Project/workspace/result schema contracts. It intentionally rejects the current 1.7 checkout; RC1 is not declared.
 
+**16b preparation:** The [RC1 acceptance runner and blocker register](RC1_ACCEPTANCE_GATE.md) define a reproducible source-check sequence and explicit outstanding 2.0 gates. The current checkout cannot run it as RC1 because it still reports 1.7.0.
+
 - Branch from reviewed 2.0 integration baseline, lock dependency versions and schema contracts.
 - Run full CI + mathematical fixtures + release smoke suite.
 - Triage remaining items into blocking/nonblocking/deferred.
