@@ -955,6 +955,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-14c docs(runtime): runtime troubleshooting and supported platform differences`.
 - `M3D20-14d docs(migration): migration guide and known limitations`.
 
+**14a guide prepared:** The [first-run Project/Study guide](FIRST_RUN_PROJECT_STUDY.md) walks through the built-in Graph/Curve/Surface starter, recorded evidence, save/reopen, and the distinction between a study workflow and the planned persistent StudyDocument. Installed 2.0 steps await the exact candidate gate.
+
 **Exit:** a new user can complete flagship journeys without reading source-code architecture documents.
 
 ### M3D20-15 — Release Gallery and communication (P0)

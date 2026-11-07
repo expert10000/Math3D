@@ -1,5 +1,6 @@
 # Math3D Docs
 
+- [First run with Projects and a scientific study](releases/2.0.0/FIRST_RUN_PROJECT_STUDY.md).
 - [Post-1.6.0 continuation audit and verified backlog](post-1.6.0-continuation-audit.md).
 - [Unified Projects delivery roadmap](unified-projects-roadmap.md).
 - [Unified Projects automated acceptance](unified-projects-acceptance.md).
