@@ -40,6 +40,7 @@ export * from "./ellipticCurveVisualization";
 export * from "./sageFiniteGroupScenes";
 export * from "./sageAlgebraicLocusScene";
 export * from "./sageAlgebraicLocusSampling";
+export * from "./projectAlgebraOpenIn";
 export * from "./sageAlgebraicSingularity";
 export * from "./modulePresentations";
 export * from "./sageNumberFieldOperations";
