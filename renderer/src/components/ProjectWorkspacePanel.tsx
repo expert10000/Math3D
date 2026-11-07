@@ -32,6 +32,7 @@ import { presentProjectFreshness, presentProjectRelationFreshness } from "../pro
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
 import { ProjectDependenciesPanel } from "./ProjectDependenciesPanel";
 import { ProjectRelationshipMap } from "./ProjectRelationshipMap";
+import { ProjectCursorInspector } from "./ProjectCursorInspector";
 const ProjectCompositionView = React.lazy(() => import("./ProjectCompositionView").then(module => ({ default: module.ProjectCompositionView })));
 const QuantumNativeOverlayView = React.lazy(() => import("./QuantumNativeOverlayView").then(module => ({ default: module.QuantumNativeOverlayView })));
 const ProjectSavedMeshResultComparisonView = React.lazy(() => import("./ProjectSavedMeshResultComparisonView").then(module => ({ default: module.ProjectSavedMeshResultComparisonView })));
@@ -1885,6 +1886,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 </div>)}
               </div>}
             </aside>
+            <ProjectCursorInspector project={project} />
           </div>}
           {!quick && detailView && project && <ProjectRelationshipMap project={project} titles={documentTitles}
             preview={preview} inspection={dashboardDependencies} canOpen={(id, module) => !!canNavigateDocument?.(id, module)} onOpen={viewBesideProject} />}

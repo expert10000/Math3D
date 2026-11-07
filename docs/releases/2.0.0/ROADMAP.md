@@ -872,6 +872,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-03d feat(ui): cursor Inspector, pin/link/unlink controls`.
 - `M3D20-03e test(e2e): multi-view synchronization and stale-map refusal`.
 
+**Progress (2026-11-07):** The shared cursor bus now accepts source-pinned Project points alongside Quantum events, with one sequence and stale-generation refusal. Saved Project point selections can bind to their replayed source without creating a second persistence contract. A projection gate requires an explicit mapping implementation and checks frames, source, operation and host capability before mapping. The Project dashboard exposes a first Vector Field 3D metre-frame cursor inspector with pin/link/unlink controls. Graph/Curve/Surface/Mesh mappings, reciprocal-space integration and multi-view E2E evidence remain open; this milestone is not complete.
+
 **Exit:** no feedback loops, qualified coordinate mapping and exact return; local selection works even if linked target is unavailable.
 
 ### M3D20-04 — StudyDocument (P0; bounded flagship)
