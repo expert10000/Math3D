@@ -26,6 +26,9 @@ import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFram
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
 import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
+import { ProjectAlgebraOpenInMenu } from "./ProjectAlgebraOpenInMenu";
+import { projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
+  type ProjectSavedAlgebraOpenInAction } from "@math3d/core";
 import { createSavedSurfaceMesh } from "../projects/savedSurfaceMesh";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
@@ -219,6 +222,14 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
   const [scientificSceneMessage, setScientificSceneMessage] = useState("");
   const [analysisError, setAnalysisError] = useState<{ id: string; message: string } | null>(null);
   const [project, setProject] = useState<Math3DProject | null>(null);
+  const algebraLoci = useMemo(() => project?.algebraObjects?.filter(entry => {
+    const kind = entry.revisions.at(-1)?.definition.kind;
+    return kind === "polynomial-ring" || kind === "ideal";
+  }).map(entry => {
+    const record = entry.revisions.at(-1)!;
+    const target = { objectId: entry.id, revision: record.revision };
+    return { entry, record, target, actions: projectSavedAlgebraOpenInActions(project, target) };
+  }) ?? [], [project]);
   const studyLaunchRequest = useRef<Promise<StudyLaunchResponse> | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -1636,6 +1647,16 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         "Created a source-linked companion. Save the Project to retain it.");
     } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
   };
+  const openSavedAlgebraDestination = (target: { objectId: StableDocumentId; revision: number },
+    choice: ProjectSavedAlgebraOpenInAction) => {
+    if (busy || preview || managed || !project) return;
+    try {
+      const documentId = resolveProjectSavedAlgebraOpenIn(liveProject(), target, choice);
+      if (!onNavigateDocument || !canNavigateDocument?.(documentId, "geometry"))
+        throw new TypeError("The saved locus Geometry is unavailable in this workspace.");
+      navigate(documentId, "geometry");
+    } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -2277,6 +2298,25 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           </li>)}
         </ul>
       </section>)}
+      {algebraLoci.length > 0 && <section data-testid="project-group-algebra" style={{ marginTop: 12 }}>
+        <strong>Algebra loci</strong>
+        <ul className="project-document-list">
+          {algebraLoci.map(({ entry, record, target, actions }) => {
+            return <li key={entry.id}>
+              <strong>{record.label}</strong><small> · {record.definition.kind} · revision {record.revision}
+                {entry.archived ? " · archived" : ""}</small>
+              <ProjectAlgebraOpenInMenu objectId={entry.id}
+                actions={actions}
+                canOpen={action => !busy && !preview && !managed && !!onNavigateDocument &&
+                  action.enabled && !!action.documentId && !!canNavigateDocument?.(action.documentId, "geometry")}
+                unavailableReason={preview ? "Open the saved Project first." : managed ?
+                  "Open the Project workspace to view its saved locus." : busy ? "Project is busy." :
+                  !onNavigateDocument ? "Geometry navigation is unavailable on this host." : null}
+                onChoose={action => openSavedAlgebraDestination(target, action)} />
+            </li>;
+          })}
+        </ul>
+      </section>}
       {explorer && <section data-testid="project-group-analysis" style={{ marginTop: 12 }}>
         <strong>Analysis ({explorer.analysis.length})</strong>
         <ul style={{ paddingLeft: 20 }}>{explorer.analysis.map((result) => <li key={result.id}>
