@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseMath3DProject, parseVectorField3DDocument, sampleVectorField3DAnalyticLine } from "@math3d/core";
+import { parseMath3DProject, parseVectorField3DDocument, reviseVectorField3DDocument,
+  sampleVectorField3DAnalyticLine } from "@math3d/core";
 import { ScientificCursorBus } from "../components/scientificCursor";
 import { vectorFieldCursorDraft } from "../vectorfield3d/vectorFieldCursor";
-import { projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
+import { graphAnalyticRowCursorDraft, projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
 
 const raw = readFileSync(new URL("../../../tests/fixtures/scientific-selection/gf01-legacy-project.math3d", import.meta.url), "utf8");
 const entry = parseMath3DProject(raw).workspace.entries.find(item => item.module === "vector3d");
@@ -35,5 +36,22 @@ describe("M3D20-03 exact Field-to-Graphs cursor projection", () => {
     expect(map(cursor, line.rows.map(row => row.x === 1 ? { ...row, y: null } : row)).status)
       .toBe("mismatched-grid");
     expect(map(cursor, null).status).toBe("mismatched-grid");
+  });
+  it("returns a selected Graph row only after recalculating the complete current Field line", () => {
+    const row = line.rows[80]!;
+    const probe = { objectId: "speed-line", x: row.x, y: row.y!, rowId: row.id };
+    const result = graphAnalyticRowCursorDraft(probe, "speed-line", line.origin, line.rows, document);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const returned = new ScientificCursorBus().publishProject(result.value, result.value.source);
+    expect(returned.position).toEqual([1, 2, 3]);
+    expect(map(returned).status).toBe("matched");
+    expect(graphAnalyticRowCursorDraft({ ...probe, y: probe.y + 1 }, "speed-line", line.origin, line.rows, document).ok).toBe(false);
+    expect(graphAnalyticRowCursorDraft({ ...probe, rowId: undefined }, "speed-line", line.origin, line.rows, document).ok).toBe(false);
+    expect(graphAnalyticRowCursorDraft(probe, "speed-line", line.origin,
+      line.rows.map(item => item.id === row.id ? { ...item, y: item.y! + 1 } : item), document).ok).toBe(false);
+    const changed = reviseVectorField3DDocument(document, { ...document.source,
+      display: { ...document.source.display, maxGlyphs: document.source.display.maxGlyphs + 1 } });
+    expect(graphAnalyticRowCursorDraft(probe, "speed-line", line.origin, line.rows, changed).ok).toBe(false);
   });
 });

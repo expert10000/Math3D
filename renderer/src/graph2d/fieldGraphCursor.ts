@@ -1,6 +1,8 @@
-import type { Graph2DAnalyticFieldOrigin, Graph2DPointRow, Graph2DProbe } from "@math3d/core";
-import type { CursorProjection, ProjectScientificCursor } from "../components/scientificCursor";
-import { VECTOR3D_CURSOR_FRAME } from "../vectorfield3d/vectorFieldCursor";
+import { canonicalJsonStringify, sampleVectorField3DAnalyticLine,
+  type Graph2DAnalyticFieldOrigin, type Graph2DPointRow, type Graph2DProbe,
+  type ValidationResult, type VectorField3DDocument } from "@math3d/core";
+import type { CursorProjection, ProjectCursorDraft, ProjectScientificCursor } from "../components/scientificCursor";
+import { VECTOR3D_CURSOR_FRAME, vectorFieldCursorDraft } from "../vectorfield3d/vectorFieldCursor";
 
 const sameFrame = (cursor: ProjectScientificCursor): boolean =>
   cursor.frame.kind === VECTOR3D_CURSOR_FRAME.kind &&
@@ -34,4 +36,31 @@ export function projectFieldCursorToAnalyticLine(cursor: ProjectScientificCursor
   if (!row || row.y === null || !Number.isFinite(row.y))
     return { status: "mismatched-grid", reason: "No finite exact saved Graph row exists at this coordinate." };
   return { status: "matched", value: { objectId, x: row.x, y: row.y, rowId: row.id } };
+}
+
+/** Re-sample the current Field source before returning an exact selected Graph row. */
+export function graphAnalyticRowCursorDraft(probe: Graph2DProbe, objectId: string,
+  origin: Graph2DAnalyticFieldOrigin, rows: readonly Graph2DPointRow[] | null,
+  currentField: VectorField3DDocument): ValidationResult<ProjectCursorDraft> {
+  if (!probe.rowId || probe.objectId !== objectId || !rows)
+    return { ok: false, errors: ["Select a saved Graph row on the analytic Field line."] };
+  const row = rows.find(item => item.id === probe.rowId);
+  if (!row || row.y === null || !near(probe.x, row.x) || !near(probe.y, row.y))
+    return { ok: false, errors: ["Selected Graph point is not an exact finite saved row."] };
+  if (origin.documentId !== currentField.identity.id || origin.revision !== currentField.identity.revision ||
+      origin.structuralHash !== currentField.identity.structuralHash)
+    return { ok: false, errors: ["Analytic Field source has changed since this Graph line was saved."] };
+  if (origin.fixedCoordinates.length !== 3 || origin.fixedCoordinates[origin.varyingAxis] !== null ||
+      origin.fixedCoordinates.some((value, axis) => axis !== origin.varyingAxis &&
+        (value === null || !Number.isFinite(value))))
+    return { ok: false, errors: ["Graph line has invalid fixed coordinates."] };
+  const point = origin.fixedCoordinates.map((value, axis) => axis === origin.varyingAxis ? row.x : value) as
+    [number, number, number];
+  try {
+    const fresh = sampleVectorField3DAnalyticLine(currentField, origin.component, origin.varyingAxis, point);
+    if (canonicalJsonStringify(fresh.origin) !== canonicalJsonStringify(origin) ||
+        canonicalJsonStringify(fresh.rows) !== canonicalJsonStringify(rows))
+      return { ok: false, errors: ["Saved Graph line differs from the current Field calculation."] };
+  } catch (cause) { return { ok: false, errors: [cause instanceof Error ? cause.message : String(cause)] }; }
+  return vectorFieldCursorDraft(currentField, point, "graphs-analytic-line");
 }

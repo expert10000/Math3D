@@ -92,7 +92,7 @@ import type { SymbolicResultRecord } from "../features/sageLab/SageSymbolicPanel
 import { graphSageSource } from "../features/sageLab/graphSageSource";
 import { Graph2DPlot } from "./Graph2DPlot";
 import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
-import { projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
+import { graphAnalyticRowCursorDraft, projectFieldCursorToAnalyticLine } from "./fieldGraphCursor";
 import { ScientificFieldPlane } from "./ScientificFieldPlane";
 import { ScientificFieldVectorPlane } from "./ScientificFieldVectorPlane";
 import { ScientificFieldVolume } from "./ScientificFieldVolume";
@@ -400,6 +400,7 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
   projectProfileRef.current = project;
   const [profileActionError, setProfileActionError] = useState("");
   const [fieldCursor, setFieldCursor] = useState<ProjectScientificCursor | null>(null);
+  const [graphCursorError, setGraphCursorError] = useState("");
   useEffect(() => scientificCursorBus.subscribe(event =>
     setFieldCursor(event.kind === "project" && event.sourceModule === "vector3d" ? event : null)), []);
   const [spectrumVerified, setSpectrumVerified] = useState<Record<string,
@@ -3395,6 +3396,21 @@ export function GraphsWorkspace({ dockLayout, document, project, analysisRequest
       <button type="button" disabled={!selectedObject || !onAuthoringCommit} onClick={() => {
         if (selectedObject) setEditRequest(previous => ({ objectId: selectedObject.id, sequence: (previous?.sequence ?? 0) + 1 }));
       }}>Edit graph</button>
+      {selectedObject?.kind === "point-series" && selectedObject.analyticOrigin && <button type="button"
+        data-testid="graph2d-return-field-cursor" disabled={!document.selection.probe?.rowId ||
+          !(vectorField3DDocument ?? savedVectorField3D)} onClick={() => {
+          if (selectedObject.kind !== "point-series" || !selectedObject.analyticOrigin || !document.selection.probe) return;
+          const currentField = readFieldExplorerSession() ?? vectorField3DDocument ?? savedVectorField3D;
+          if (!currentField) { setGraphCursorError("Open the current Field source before returning this point."); return; }
+          const draft = graphAnalyticRowCursorDraft(document.selection.probe, selectedObject.id,
+            selectedObject.analyticOrigin, pointTableStore.resolve(selectedObject.table), currentField);
+          if (!draft.ok) { setGraphCursorError(draft.errors.join(" ")); return; }
+          try {
+            scientificCursorBus.publishProject(draft.value, draft.value.source);
+            setGraphCursorError(""); setVectorField3DDocument(currentField); setVectorField3DOpen(true);
+          } catch (cause) { setGraphCursorError(cause instanceof Error ? cause.message : String(cause)); }
+        }}>Return row to Field probe</button>}
+      {graphCursorError && <span role="alert" data-testid="graph2d-return-field-cursor-error">{graphCursorError}</span>}
       {selectedObject?.kind === "point-series" && selectedObject.derivedOrigin &&
         <><button type="button" data-testid="graph2d-reverify-derived-line"
           onClick={() => { const selected = selectedObject;
