@@ -2,11 +2,21 @@ import { describe, expect, it } from "vitest";
 import { adoptMixedWorkspaceProject, createEmptyGraph2DDocument, createGraph2DWorkspaceProject,
   createMath3DProject, normalizeMath3DProject, parseMath3DProject, renameMath3DProject,
   replaceMath3DProjectWorkspace, serializeMath3DProject, structuralHash,
-  createMixedWorkspaceDocument, promoteGraph2DToCurve, updateMath3DProjectMetadata } from "@math3d/core";
+  createMixedWorkspaceDocument, promoteGraph2DToCurve, updateMath3DProjectMetadata,
+  prepareProjectMigration } from "@math3d/core";
 import fixture from "../../../tests/fixtures/post-1.6.0/graph-gallery-upgrade-storage.json";
 
 const workspace = () => createGraph2DWorkspaceProject(createEmptyGraph2DDocument("project-contract"));
 describe("PRJ01 named project container", () => {
+  it("prepares a deterministic versioned migration while retaining exact source bytes", () => {
+    const raw = fixture.storage["math3d.mixed-workspace.v1"];
+    const first = prepareProjectMigration(raw, "Imported workspace");
+    expect(first).toMatchObject({ sourceFormat: "math3d.mixed-workspace", sourceVersion: 1,
+      targetFormat: "math3d.project", targetVersion: 1, originalBytes: raw });
+    expect(first.project.workspace).toEqual(JSON.parse(raw));
+    expect(prepareProjectMigration(raw, "Imported workspace").project).toEqual(first.project);
+    expect(() => prepareProjectMigration(JSON.stringify({ ...JSON.parse(raw), schemaVersion: 2 }))).toThrow();
+  });
   it("round-trips a named container without changing document identities or legacy bytes", () => {
     const bytes = fixture.storage["math3d.mixed-workspace.v1"];
     const legacy = JSON.parse(bytes), project = adoptMixedWorkspaceProject(legacy, "Minimal Surface Study");

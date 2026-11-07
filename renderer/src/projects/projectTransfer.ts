@@ -8,8 +8,8 @@ import { nativeDocumentEditable } from "./nativeProjectRestore";
 import { scientificDocumentEditable } from "./nativeScientificRestore";
 import { volumeDocumentEditable, volumePayloadRequired, validateNativeVolumeReplay } from "./nativeVolumeRestore";
 import type { VolumeReplayBundle } from "../volume/volumeDocumentAdapter";
-import { adoptMixedWorkspaceProject, canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
-  parseMixedWorkspaceDocument, parseWorkspaceProjectHandoff, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
+import { canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientificSourceGeneration, viewerSourceFromDocument, MAX_MATH3D_PROJECT_BYTES, parseMath3DProject,
+  prepareProjectMigration, serializeMath3DProject, replaceMath3DProjectWorkspace, type Graph2DPointTableReference,
   mergeGraph2DHandoffCheckpoint,
   PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY,
   PROJECT_DERIVED_FIELDS_CAPABILITY,
@@ -108,19 +108,20 @@ export const previewProjectImport = (raw: string, options: ProjectCompatibilityO
     throw new TypeError("This is a standalone Workbook session. Import it from the Workbook controls, then use Save active Workbook to Project.");
   if (value.format === "math3d.project-package") {
     const { project, resources } = parseProjectPackage(raw);
-    return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources" };
+    return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources", migration: undefined as ReturnType<typeof prepareProjectMigration> | undefined };
   }
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_IMPORT_BYTES) throw new TypeError("Project import exceeds its size limit.");
   let project: Math3DProject, inputKind: string;
+  let migration: ReturnType<typeof prepareProjectMigration> | undefined;
   if (value.format === "math3d.project") { project = parseMath3DProject(raw); inputKind = "Named project"; }
-  else if (value.format === "math3d.mixed-workspace") { project = adoptMixedWorkspaceProject(parseMixedWorkspaceDocument(raw), "Imported workspace"); inputKind = "Legacy mixed workspace (explicit adoption)"; }
+  else if (value.format === "math3d.mixed-workspace") { migration = prepareProjectMigration(raw); project = migration.project; inputKind = "Legacy mixed workspace (explicit adoption)"; }
   else if (value.format === "math3d.project-handoff" && value.version === 2) {
-    const handoff = parseWorkspaceProjectHandoff(raw); project = adoptMixedWorkspaceProject(handoff.project, "Imported Graph workspace"); inputKind = "Graph workspace handoff (explicit adoption)";
+    migration = prepareProjectMigration(raw, "Imported Graph workspace"); project = migration.project; inputKind = "Graph workspace handoff (explicit adoption)";
   } else throw new TypeError("Unsupported project format or future version.");
   // Host caches may belong to another project. Rebuild only this project's
   // descriptors/owners; unrelated source bytes never enter its staged archive.
   const resources = options.resources ? captureProjectResources(project, (item) => options.resources!.bytes(item), true) : undefined;
-  return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind };
+  return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind, migration };
 };
 export const exportProjectFile = (project: Math3DProject): string => {
   const bytes = serializeMath3DProject(project); verifyMixedWorkspaceReplay(project.workspace); return bytes;

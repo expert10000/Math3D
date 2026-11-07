@@ -1,8 +1,9 @@
 import { advanceDocumentIdentity, canonicalJsonStringify, createDocumentIdentity, createStableDocumentId,
   isDocumentIdentity, isStableDocumentId, isStructuralHash, structuralHash,
   type CanonicalJsonValue, type DocumentIdentity, type StableDocumentId, type StructuralHash } from "./documentIdentity";
-import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, createMixedWorkspaceDocument, normalizeMixedWorkspaceDocument,
+import { MAX_MIXED_WORKSPACE_BYTES, MIXED_WORKSPACE_FORMAT, createMixedWorkspaceDocument, normalizeMixedWorkspaceDocument, parseMixedWorkspaceDocument,
   type MixedWorkspaceDocument } from "./mixedWorkspace";
+import { parseWorkspaceProjectHandoff } from "./workspaceProjectHandoff";
 import { canonicalJsonByteLength } from "./scientificJobs";
 import { quantumSceneRole, relocateQuantumSceneDocument } from "./quantumSceneDocument";
 import { relocateQuantumFieldDocument } from "./quantumFieldDocument";
@@ -514,4 +515,38 @@ export const adoptMixedWorkspaceProject = (workspace: MixedWorkspaceDocument, ti
   return requireProject({ format: MATH3D_PROJECT_FORMAT, schemaVersion: MATH3D_PROJECT_SCHEMA_VERSION,
     identity: createDocumentIdentity(createStableDocumentId("project", stableKey), projectContent(normalized.value, undefined, undefined, quantumScenes)),
     metadata: { title }, workspace: normalized.value, ...(quantumScenes.length ? { quantumScenes } : {}) });
+};
+
+/** A 2.x application still writes the canonical Project v1 envelope. Migration is
+ * an explicit, versioned import operation; opening source bytes never rewrites them. */
+export type ProjectMigration = Readonly<{
+  sourceFormat: "math3d.mixed-workspace" | "math3d.project-handoff";
+  sourceVersion: 1 | 2;
+  targetFormat: typeof MATH3D_PROJECT_FORMAT;
+  targetVersion: typeof MATH3D_PROJECT_SCHEMA_VERSION;
+  originalBytes: string;
+  project: Math3DProject;
+}>;
+export const prepareProjectMigration = (raw: string, title = "Imported workspace"): ProjectMigration => {
+  if (new TextEncoder().encode(raw).length > MAX_MIXED_WORKSPACE_BYTES + 64 * 1024)
+    throw new TypeError("Project migration source exceeds its size limit.");
+  const envelope: unknown = JSON.parse(raw);
+  if (!record(envelope)) throw new TypeError("Unsupported Project migration source.");
+  let workspace: MixedWorkspaceDocument;
+  let sourceFormat: ProjectMigration["sourceFormat"];
+  let sourceVersion: ProjectMigration["sourceVersion"];
+  if (envelope.format === MIXED_WORKSPACE_FORMAT) {
+    workspace = parseMixedWorkspaceDocument(raw);
+    sourceFormat = MIXED_WORKSPACE_FORMAT;
+    sourceVersion = 1;
+  } else if (envelope.format === "math3d.project-handoff" && envelope.version === 2) {
+    workspace = parseWorkspaceProjectHandoff(raw).project;
+    sourceFormat = "math3d.project-handoff";
+    sourceVersion = 2;
+  } else throw new TypeError("Unsupported or future Project migration format/version.");
+  const project = adoptMixedWorkspaceProject(workspace, title);
+  if (project.workspace !== workspace && canonicalJsonStringify(project.workspace) !== canonicalJsonStringify(workspace))
+    throw new TypeError("Project migration changed source workspace content.");
+  return { sourceFormat, sourceVersion, targetFormat: MATH3D_PROJECT_FORMAT,
+    targetVersion: MATH3D_PROJECT_SCHEMA_VERSION, originalBytes: raw, project };
 };
