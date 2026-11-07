@@ -43,4 +43,32 @@ describe("Project Mesh → Geometry Open in", () => {
     expect(() => deriveProjectMeshGeometry(project, source, bytes.slice(0, -1))).toThrow(/checksum/);
     expect(serializeMath3DProject(project)).toBe(original);
   });
+
+  it("disables oversized copies and refuses in-range checksums with out-of-range triangle indices", () => {
+    const { bytes, mesh, project } = fixture();
+    const oversized = createMeshDocument({ stableKey: "oversized-open-in-mesh", label: "Oversized",
+      source: { ...mesh.source, resource: { ...mesh.source.resource, indexCount: 4097 * 3 } } });
+    const oversizedWorkspace = createMixedWorkspaceDocument({ ...project.workspace,
+      entries: [{ module: "mesh", checkpoint: oversized, expected: oversized.identity, replay: null }],
+      activeDocumentIds: [oversized.identity.id] });
+    const oversizedProject = createMath3DProject(oversizedWorkspace, { stableKey: "oversized-open-in-project", title: "Oversized" });
+    expect(projectOpenInActions(oversizedProject, oversized.identity.id,
+      { meshGeometry: { available: true, reason: null } })).toMatchObject([{
+        enabled: false, disabledReason: expect.stringContaining("4096") }]);
+
+    const malformed = encodeMeshBuffers({ positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      indices: new Uint32Array([0, 1, 99]) });
+    const bad = createMeshDocument({ stableKey: "invalid-index-open-in-mesh", label: "Bad indices",
+      source: { ...mesh.source, resource: { ...mesh.source.resource,
+        checksum: sha256Checksum(malformed), indexCount: 3 } } });
+    const badWorkspace = createMixedWorkspaceDocument({ ...project.workspace,
+      entries: [{ module: "mesh", checkpoint: bad, expected: bad.identity, replay: null }],
+      activeDocumentIds: [bad.identity.id] });
+    const badProject = createMath3DProject(badWorkspace, { stableKey: "invalid-index-open-in-project", title: "Invalid indices" });
+    const source = projectOpenInActions(badProject, bad.identity.id,
+      { meshGeometry: { available: true, reason: null } })[0]!.source;
+    expect(() => deriveProjectMeshGeometry(badProject, source, malformed)).toThrow(/valid indices/);
+    expect(() => deriveProjectMeshGeometry(badProject, source, bytes)).toThrow(/checksum/);
+    expect(badProject.workspace.relations).toHaveLength(0);
+  });
 });
