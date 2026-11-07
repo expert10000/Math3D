@@ -11,6 +11,7 @@ import SageAlgebraicSingularityView from "./SageAlgebraicSingularityView";
 type Props = { project: Math3DProject; target: AlgebraObjectRef;
   onSave: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveSample: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
+  onOpenGeometry?: (documentId: string) => void | Promise<void>;
   onSaveSingularity: (analysis: SageAlgebraicSingularityScene) => void | Promise<void> };
 const axisNames = ["x", "y", "z"];
 const download = (name: string, body: string) => {
@@ -20,7 +21,8 @@ const download = (name: string, body: string) => {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample, onSaveSingularity }: Props) {
+export default function SageAlgebraicLocusBuilder({ project, target, onSave, onSaveSample,
+  onOpenGeometry, onSaveSingularity }: Props) {
   const record = project.algebraObjects?.find((entry) => entry.id === target.objectId)?.revisions[target.revision - 1];
   const ambientRef = record?.definition.kind === "ideal" ? record.definition.ambientRing : null;
   const ambient = ambientRef
@@ -63,9 +65,11 @@ export default function SageAlgebraicLocusBuilder({ project, target, onSave, onS
       if (qualified.format === "math3d.sage-algebraic-locus-scene") {
         await onSave(qualified);
         setMessage("Saved uncomputed real-locus Geometry contract to Project.");
+        await onOpenGeometry?.(algebraicLocusGeometryDocument(qualified).identity.id);
       } else {
         await onSaveSample(qualified);
         setMessage("Saved bounded real-locus sample to Project Geometry.");
+        await onOpenGeometry?.(sampledAlgebraicLocusGeometryDocument(qualified).identity.id);
       }
     }
     catch (error) { setMessage(String((error as Error).message ?? error)); }

@@ -46,6 +46,7 @@ export type CASAlgebraWorkspaceProps = Omit<SageServicesWorkspaceProps, "structu
   onSaveEvidence: (evidence: ProjectAlgebraEvidence) => void | Promise<void>;
   onSaveLocusScene?: (scene: SageAlgebraicLocusScene) => void | Promise<void>;
   onSaveLocusSample?: (sample: SageAlgebraicLocusSample) => void | Promise<void>;
+  onOpenLocusGeometry?: (documentId: string) => void | Promise<void>;
   onSaveLocusSingularity?: (analysis: SageAlgebraicSingularityScene) => void | Promise<void>;
   onSaveRecipe: (recipe: AlgebraRecipeGraph) => void | Promise<void>;
   onAppendRecipeEvidence: (base: Math3DProject, evidence: ProjectAlgebraEvidence) => Math3DProject | Promise<Math3DProject>;
@@ -68,7 +69,7 @@ const readSavedSelection = (project: Math3DProject | null): unknown => {
 };
 
 export default function CASAlgebraWorkspace({ project, onCreateStructure, onSaveEvidence, onSaveRecipe,
-  onSaveLocusScene, onSaveLocusSample, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
+  onSaveLocusScene, onSaveLocusSample, onOpenLocusGeometry, onSaveLocusSingularity, onAppendRecipeEvidence, onOpenProjects,
   onInstallGalleryExample, workspaceContext = "cas", ...props }: CASAlgebraWorkspaceProps) {
   const [selection, setSelection] = useState<AlgebraObjectRef | null>(() =>
     resolveStructureSelection(project, readSavedSelection(project)));
@@ -330,7 +331,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
       chosen.record.definition.kind === "polynomial-ring") &&
       <SageAlgebraicLocusBuilder key={`${chosen.record.id}@${chosen.record.revision}`}
         project={project} target={{ objectId: chosen.record.id, revision: chosen.record.revision }}
-        onSave={onSaveLocusScene} onSaveSample={onSaveLocusSample}
+        onSave={onSaveLocusScene} onSaveSample={onSaveLocusSample} onOpenGeometry={onOpenLocusGeometry}
         onSaveSingularity={onSaveLocusSingularity} />}
     {chosen.record.kind === "ideal" && <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       <label>Quotient name <input aria-label="Quotient name" value={quotientName}

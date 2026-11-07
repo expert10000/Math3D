@@ -76,7 +76,15 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await expect.poll(() => { try { return readFileSync(geometryPath).length; } catch { return 0; } }).toBeGreaterThan(100);
     expect(core.parseAlgebraicLocusGeometryDocument(JSON.parse(readFileSync(geometryPath, "utf8"))).scene).toEqual(scene);
     await destinations.getByRole("button", { name: "Open exact locus in Geometry" }).click();
-    await expect(builder.getByRole("status")).toContainText("Saved uncomputed real-locus Geometry contract");
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      core.algebraicLocusGeometryDocument(scene).identity.id);
+    await ctx.page.getByTestId("workspace-nav-cas").click();
+    await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /I @1/ }).click();
+    await builder.getByLabel("x bound min").fill("-3");
+    await builder.getByLabel("x bound max").fill("3");
+    await builder.getByLabel("Locus sample cap").fill("8000");
+    await builder.getByRole("button", { name: "Validate & preview locus" }).click();
+    await expect(builder.getByTestId("cas-locus-preview")).toContainText("x^2+y^2+z^2-1=0");
     await builder.getByRole("button", { name: "Render bounded real locus" }).click();
     const sampleView = builder.getByTestId("cas-locus-sample");
     await expect(sampleView.getByTestId("cas-locus-plot")).toBeVisible();
@@ -98,8 +106,8 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await expect.poll(() => { try { return readFileSync(sampledGeometryPath).length; } catch { return 0; } }).toBeGreaterThan(100);
     expect(core.parseSampledAlgebraicLocusGeometryDocument(JSON.parse(readFileSync(sampledGeometryPath, "utf8")), project).sample).toEqual(sample);
     await destinations.getByRole("button", { name: "Open sampled locus in Geometry" }).click();
-    await expect(builder.getByRole("status")).toContainText("Saved bounded real-locus sample");
-    await cas.getByRole("button", { name: "Back to workspace" }).click();
+    await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
+      core.sampledAlgebraicLocusGeometryDocument(sample).identity.id);
     await ctx.page.getByTestId("projects-toggle").click();
     const panel = ctx.page.getByTestId("project-explorer-panel");
     await panel.getByTestId("project-save").click();
