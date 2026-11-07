@@ -15,6 +15,8 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
+import { deriveProjectOpenIn, projectOpenInActions, projectOpenInReturn,
+  type ProjectOpenInAction } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
   PROJECT_STORAGE_KEY, readProjectThumbnail, isAutomaticProjectThumbnail, saveLibraryProject, updateLibraryActivity, type ProjectLibrary } from "../projects/projectLibrary";
@@ -22,6 +24,7 @@ import { ProjectCommandAdapter } from "../projects/projectCommandAdapter";
 import { ProjectGalleryFrame, type ProjectPlacement } from "./ProjectGalleryFrame";
 import { ProjectTemplatesPanel, StarterArtwork } from "./ProjectTemplatesPanel";
 import { ProjectDocumentActions, type ProjectDocumentAction } from "./ProjectDocumentActions";
+import { ProjectOpenInMenu } from "./ProjectOpenInMenu";
 import { inspectProjectDependencies } from "../projects/projectDependencies";
 import { presentProjectFreshness, presentProjectRelationFreshness } from "../projects/projectFreshnessPresentation";
 import { projectDependencyRefreshOptions, refreshProjectDependency, projectAnalysisRefreshOptions, recomputeProjectAnalysis } from "../projects/projectDependencyRefresh";
@@ -1519,6 +1522,20 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setViewerCompanion(true);
     setQuick(true);
   };
+  const openInDestination = (choice: ProjectOpenInAction) => {
+    if (busy || preview || managed || !project || !onRestoreWorkspace) return;
+    try {
+      const current = liveProject();
+      const result = deriveProjectOpenIn(current, choice);
+      if (!result.existing) onRestoreWorkspace(result.project.workspace, resourceSession.current, result.project);
+      display(result.project, false);
+      setViewingDocumentId(result.targetDocumentId);
+      setViewerCompanion(true); setQuick(true); setDetailView(true);
+      onNavigateDocument?.(result.targetDocumentId, result.targetModule);
+      setMessage(result.existing ? "Opened the existing exact companion." :
+        "Created a source-linked companion. Save the Project to retain it.");
+    } catch (error) { setMessage(`Open in refused: ${(error as Error).message}`); }
+  };
   const viewerDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived && canNavigateDocument?.(document.id, document.module)) ?? [];
   const dashboardDocuments = explorer?.groups.flatMap(group => group.documents).filter(document => !document.archived) ?? [];
   const savedProjectEntry = project ? library.entries.find(entry => entry.id === project.identity.id) : undefined;
@@ -2111,6 +2128,15 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               title={document.archived ? "Archived document" : preview ? "Open saved project first" : !canNavigateDocument?.(document.id, document.module) ? "Document unavailable in the active workspace; inspect dependencies or open the saved project" : `Open ${document.title}`} onClick={() => navigate(document.id, document.module)}
               style={{ maxWidth: "100%", overflowWrap: "anywhere", textAlign: "left", opacity: preview || document.archived || !canNavigateDocument?.(document.id, document.module) ? 0.55 : 1 }}>{document.title}</button>
             <button type="button" data-testid={`project-view-${document.id}`} disabled={preview || document.archived || !onNavigateDocument || !canNavigateDocument?.(document.id, document.module)} onClick={() => viewBesideProject(document.id, document.module)}>View with Project</button>
+            {project && <ProjectOpenInMenu documentId={document.id}
+              actions={projectOpenInActions(project, document.id)}
+              canDerive={!busy && !preview && !managed && !!onRestoreWorkspace}
+              unavailableReason={preview ? "Open the saved Project first." : managed ?
+                "Open the Project workspace before deriving a companion." : !onRestoreWorkspace ?
+                  "Project workspace restoration is unavailable on this host." : busy ? "Project is busy." : null}
+              onChoose={openInDestination} returnLink={projectOpenInReturn(project, document.id)}
+              canReturn={!preview && !!canNavigateDocument?.(projectOpenInReturn(project, document.id)?.sourceDocumentId ?? "", "graph2d")}
+              onReturn={sourceId => viewBesideProject(sourceId, "graph2d")} />}
             {document.module === "vector3d" && <button type="button"
               data-testid={`project-open-field-explorer-${document.id}`}
               disabled={busy || document.archived || !onNavigateDocument || !onRestoreWorkspace}
