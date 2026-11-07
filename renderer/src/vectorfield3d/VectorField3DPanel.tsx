@@ -52,8 +52,8 @@ import { captureSeedEdit, restoreSeedEdit, seedGroupStyle,
 import { VectorField3DSliceView, type SliceInspectorAction,
   type SliceInspectorState } from "./VectorField3DSliceView";
 import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
-import { scientificCursorBus } from "../components/scientificCursor";
-import { vectorFieldCursorAvailability, vectorFieldCursorDraft } from "./vectorFieldCursor";
+import { scientificCursorBus, type ProjectScientificCursor } from "../components/scientificCursor";
+import { projectVectorFieldCursor, vectorFieldCursorAvailability, vectorFieldCursorDraft } from "./vectorFieldCursor";
 import { previewVerifiedVectorField3D } from "./previewVerifiedVectorField3D";
 import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerivedLine";
@@ -121,6 +121,7 @@ type OverlaySampleDigest = Readonly<{ name: string; sampleSha256: string }>;
 const hasVisibleSliceOverlay = (view?: VectorField3DWorkspace): view is VectorField3DWorkspace =>
   !!(view?.scalarOverlay?.visible || view?.complexOverlay?.visible);
 export const fieldExplorerSessionKey = "math3d.scientific-field-explorer.session.v1";
+let nextVectorCursorView = 0;
 export function readFieldExplorerSession(): VectorField3DDocument | null {
   try {
     if (typeof window === "undefined") return null;
@@ -326,6 +327,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
   };
   const [document, setDocument] = useState(initialDocument ?? createDefaultVectorField3DDocument);
+  const [cursorViewId] = useState(() => `vector-field3d-${++nextVectorCursorView}`);
+  const [linkedCursor, setLinkedCursor] = useState<ProjectScientificCursor | null>(null);
+  const [cursorStatus, setCursorStatus] = useState("");
+  useEffect(() => scientificCursorBus.subscribe(event => {
+    if (event.kind !== "project" || event.sourceModule !== "vector3d") {
+      setLinkedCursor(null); setCursorStatus(""); return;
+    }
+    const projected = projectVectorFieldCursor(event, document);
+    setLinkedCursor(projected.status === "matched" ? event : null);
+    setCursorStatus(projected.status === "matched" ? "" : projected.reason);
+  }), [document]);
   useEffect(() => {
     try { window.sessionStorage.setItem(fieldExplorerSessionKey, serializeVectorField3DDocument(document)); }
     catch { /* Project save remains available when session storage is unavailable. */ }
@@ -854,7 +866,7 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
     try {
       if (currentDocument().identity.structuralHash !== document.identity.structuralHash)
         throw new Error("Preview the current field formula before linking its probe.");
-      const draft = vectorFieldCursorDraft(document, workspace.probe, "vector-field3d-panel");
+      const draft = vectorFieldCursorDraft(document, workspace.probe, cursorViewId);
       if (!draft.ok) throw new Error(draft.errors.join(" "));
       scientificCursorBus.publishProject(draft.value, draft.value.source);
       setError(""); setRunStatus("Published the physical probe to linked cursors.");
@@ -1307,6 +1319,21 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       if (multiView) await previewLinkedViews(revised);
       else await verifyProbe(revised, position);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+  const adoptLinkedCursor = () => {
+    if (!linkedCursor || linkedCursor.originViewId === cursorViewId) return;
+    const current = scientificCursorBus.snapshot();
+    if (current?.kind !== "project" || current.sequence !== linkedCursor.sequence) {
+      setCursorStatus("Linked cursor changed before it could be adopted."); return;
+    }
+    try {
+      if (currentDocument().identity.structuralHash !== document.identity.structuralHash) {
+        setCursorStatus("Preview the current field formula before adopting a linked cursor."); return;
+      }
+      const projected = projectVectorFieldCursor(linkedCursor, document);
+      if (projected.status !== "matched") { setCursorStatus(projected.reason); return; }
+      void selectProbe(projected.value);
+    } catch (cause) { setCursorStatus(cause instanceof Error ? cause.message : String(cause)); }
   };
   const sendAnalyticLine = (component: "p" | "q" | "r" | "speed", varyingAxis: 0 | 1 | 2,
     point: readonly [number, number, number]) => {
@@ -2545,6 +2572,13 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         onClick={publishProbeCursor}>Publish probe cursor</button>
       {workspace.probe && vectorFieldCursorAvailability(document, workspace.probe) &&
         <small role="status">{vectorFieldCursorAvailability(document, workspace.probe)}</small>}
+      {linkedCursor && <div data-testid="vector-field-linked-cursor">
+        <small>Linked point: {linkedCursor.position.map(value => Number(value.toPrecision(6))).join(", ")} m</small>
+        {linkedCursor.originViewId !== cursorViewId &&
+          <button type="button" data-testid="vector-field-adopt-cursor" disabled={busy || lineBusy || overlayReading}
+            onClick={adoptLinkedCursor}>Use linked point as probe</button>}
+      </div>}
+      {cursorStatus && <small role="status" data-testid="vector-field-cursor-status">{cursorStatus}</small>}
     </section>
     <section aria-label="Cross-layer physical probe" data-gf06-section="probe"
       className="vector-field3d-probe scientific-explorer-linked-inspector"
