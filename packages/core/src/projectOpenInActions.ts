@@ -2,19 +2,22 @@ import type { Math3DProject } from "./math3dProject";
 import type { KernelWorkspaceModule } from "./mixedWorkspace";
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { ScientificSourceGeneration } from "./scientificJobs";
+import { matchesScientificSourceGeneration } from "./scientificJobs";
 import { previewGraph2DRevolution } from "./graph2dInterop";
 import { MAX_OPEN_IN_GEOMETRY_TRIANGLES } from "./projectMeshGeometry";
+import { structuralHash } from "./documentIdentity";
 
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
 export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
   "graph2d.revolve-surface" | "surface.tessellate-saved" | "quantum.promote-graph2d" |
-  "mesh.promote-geometry" | "quantum.promote-curve";
+  "mesh.promote-geometry" | "quantum.promote-curve" | "vector3d.open-profile-graph";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
   id: ProjectOpenInActionId | "unavailable";
   source: ScientificSourceGeneration;
   sourceModule: KernelWorkspaceModule;
   sourceObjectId: string | null;
+  targetDocumentId?: string;
   targetModule: KernelWorkspaceModule;
   label: string;
   preview: string;
@@ -34,7 +37,8 @@ const unavailable = (source: ScientificSourceGeneration, sourceModule: KernelWor
 export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: string,
   options: { surfaceMesh?: Readonly<{ available: boolean; reason: string | null }>;
     quantumGraph?: Readonly<{ available: boolean; reason: string | null }>;
-    meshGeometry?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
+    meshGeometry?: Readonly<{ available: boolean; reason: string | null }>;
+    fieldGraph?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
   const entry = project.workspace.entries.find(item => item.expected.id === sourceDocumentId);
   if (!entry) return [];
   const source = viewerSourceFromDocument(entry.checkpoint);
@@ -79,6 +83,36 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
       source, sourceModule: "quantum", sourceObjectId: null, targetModule: "curve",
       label: "Open in Curves", preview: "Re-verifies the external scene and copies its bounded 3D polyline into an editable Curve with exact scene lineage. The copy is numerical.",
       enabled: reason === null, disabledReason: reason }];
+  }
+  if (entry.module === "vector3d" && entry.checkpoint.format === "math3d.vector-field3d-document") {
+    const profiles = project.workspace.entries.flatMap(target => target.module === "graph2d" &&
+      target.checkpoint.format === "math3d.graph2d-document" ? target.checkpoint.source.objects.flatMap(object =>
+        object.kind === "point-series" && object.projectProfileOrigin?.projectId === project.identity.id &&
+          object.projectProfileOrigin.source.documentId === sourceDocumentId ? [{ target, object,
+            origin: object.projectProfileOrigin }] : []) : []);
+    if (!profiles.length) return [unavailable(source, "vector3d", "graph2d", archived ?
+      "Restore this archived source first." : "Save a linked Field profile in Graphs first.")];
+    return profiles.map(({ target, object, origin }) => {
+      const selection = project.workspace.scientificSelections?.find(item =>
+        item.identity.kind === "authored" && item.identity.id === origin.selection.id);
+      const recipeCurrent = origin.recipe.every(record => project.workspace.derivedFields?.some(item =>
+        item.identity.id === record.documentId && item.identity.revision === record.revision &&
+        item.identity.structuralHash === record.structuralHash));
+      const reason = archived ? "Restore this archived source first." :
+        !matchesScientificSourceGeneration(source, origin.source) ?
+          "The saved Graph profile refers to a historical Field generation." :
+        !recipeCurrent ? "The saved Field profile recipe changed." :
+        !selection || structuralHash(selection) !== origin.selection.structuralHash ?
+          "The saved Field line selection changed or is missing." :
+        options.fieldGraph?.available ? null : options.fieldGraph?.reason ??
+          "Graph document navigation is unavailable on this host.";
+      return { schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "vector3d.open-profile-graph",
+        source, sourceModule: "vector3d", sourceObjectId: object.id,
+        targetModule: "graph2d", targetDocumentId: target.expected.id,
+        label: `Open “${object.label}” in Graphs`,
+        preview: "Opens the existing saved Field profile row in Graphs and records exact Field lineage. Graphs re-verifies source values before display.",
+        enabled: reason === null, disabledReason: reason };
+    });
   }
   if (entry.module !== "graph2d" || entry.checkpoint.format !== "math3d.graph2d-document") {
     const target = entry.module === "surface" ? "mesh" : entry.module === "mesh" ? "geometry" :

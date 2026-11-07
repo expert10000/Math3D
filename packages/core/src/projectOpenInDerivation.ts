@@ -6,6 +6,7 @@ import { matchesScientificSourceGeneration, type ScientificSourceGeneration } fr
 import { viewerSourceFromDocument } from "./viewerProvenance";
 import type { DocumentRelationId } from "./documentRelations";
 import type { KernelWorkspaceModule } from "./mixedWorkspace";
+import { createDocumentRelation } from "./documentRelations";
 
 export type ProjectOpenInDerivation = Readonly<{
   project: Math3DProject;
@@ -56,6 +57,34 @@ export const deriveProjectOpenIn = (project: Math3DProject, choice: ProjectOpenI
     targetModule, relationId: promotion.relation.relationId, existing: false };
 };
 
+/** Link an already saved physical Field profile row to its exact source; no values are computed here. */
+export const linkProjectFieldProfileGraph = (project: Math3DProject, choice: ProjectOpenInAction) => {
+  if (choice.id !== "vector3d.open-profile-graph" || !choice.enabled || !choice.sourceObjectId ||
+      !choice.targetDocumentId)
+    throw new TypeError(choice.disabledReason ?? "Field profile Graph action is unavailable.");
+  const source = project.workspace.entries.find(item => item.expected.id === choice.source.documentId &&
+    item.module === "vector3d");
+  if (!source || !matchesScientificSourceGeneration(viewerSourceFromDocument(source.checkpoint), choice.source))
+    throw new TypeError("The Field source changed; review Open in destinations again.");
+  const qualified = projectOpenInActions(project, source.expected.id, {
+    fieldGraph: { available: true, reason: null } }).find(action => action.id === choice.id &&
+      action.sourceObjectId === choice.sourceObjectId && action.targetDocumentId === choice.targetDocumentId &&
+      action.enabled);
+  if (!qualified) throw new TypeError("This Field profile Graph action is no longer qualified.");
+  const target = project.workspace.entries.find(item => item.expected.id === choice.targetDocumentId &&
+    item.module === "graph2d");
+  if (!target) throw new TypeError("The saved Graph document is unavailable.");
+  const relation = createDocumentRelation({ kind: "derived-from", sources: [choice.source],
+    sourceOrder: "ordered", target: { type: "document", generation: viewerSourceFromDocument(target.checkpoint) },
+    operation: "vector3d.open-profile-graph", parameters: { objectId: choice.sourceObjectId } });
+  const existing = project.workspace.relations.some(item => item.relationId === relation.relationId);
+  if (existing) return { project, targetDocumentId: target.expected.id, existing: true };
+  const workspace = createMixedWorkspaceDocument({ ...project.workspace,
+    relations: [...project.workspace.relations, relation] });
+  return { project: replaceMath3DProjectWorkspace(project, workspace), targetDocumentId: target.expected.id,
+    existing: false };
+};
+
 export type ProjectOpenInReturn = Readonly<{
   sourceDocumentId: string;
   sourceModule: KernelWorkspaceModule;
@@ -76,13 +105,14 @@ export const projectOpenInReturn = (project: Math3DProject, targetDocumentId: st
       item.operation === "graph2d.revolve-surface" ||
       item.operation === "surface.tessellate-saved" || item.operation === "quantum.promote-graph2d" ||
       item.operation === "quantum.promote-curve" ||
-      item.operation === "mesh.promote-geometry") &&
+      item.operation === "mesh.promote-geometry" || item.operation === "vector3d.open-profile-graph") &&
     item.sources.length === 1);
   if (!relation) return null;
   const recordedSource = relation.sources[0]!;
   const sourceModule: KernelWorkspaceModule = relation.operation === "surface.tessellate-saved" ? "surface" :
     relation.operation === "quantum.promote-graph2d" || relation.operation === "quantum.promote-curve" ? "quantum" :
-    relation.operation === "mesh.promote-geometry" ? "mesh" : "graph2d";
+    relation.operation === "mesh.promote-geometry" ? "mesh" :
+    relation.operation === "vector3d.open-profile-graph" ? "vector3d" : "graph2d";
   const source = project.workspace.entries.find(item => item.expected.id === recordedSource.documentId && item.module === sourceModule);
   const exact = !!source && matchesScientificSourceGeneration(viewerSourceFromDocument(source.checkpoint), recordedSource);
   return { sourceDocumentId: recordedSource.documentId, sourceModule, recordedSource,
