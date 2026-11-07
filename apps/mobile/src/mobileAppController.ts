@@ -1775,7 +1775,7 @@ export const useMobileAppController = () => {
         if (format !== "math3d.project") {
           const preserved = preserveMobilePersonalGraphWork(storedProjects, currentGraphWork());
           const project = importMobileProjectPreview(picked.serializedProject, preserved, picked.sourceName, source === "import" ? "imported" : source);
-          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. Explore its Workbooks, Notes and documents; current editors were kept.`, "Could not import project preview");
+          const saved = await persistProjectMutation([project, ...preserved], `Imported ${project.title} as a saved preview. ${project.migrationOriginal ? "Original transfer bytes were preserved. " : ""}Explore its Workbooks, Notes and documents; current editors were kept.`, "Could not import project preview");
           if (saved) { setSceneSearchQuery(project.title); setLibrarySection("all"); setTab("projects"); }
           return saved;
         }

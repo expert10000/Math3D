@@ -917,6 +917,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-11c test(migrate): old-version golden corpus including corrupt/missing inputs`.
 - `M3D20-11d test(portability): desktop/browser/mobile supported-subset round trips`.
 
+**11a–d prepared for review:** the [1.x migration guide](MIGRATION_1X_TO_2X.md) records the explicit v1 workspace/v2 Graph handoff adoption path, original-byte retention, refusal corpus and checkpointed Graph portability subset. The canonical named Project envelope remains schema v1 pending the separate M3D20-01 architecture freeze; this series does not declare the full 2.0 format gate closed.
+
 **Exit:** old Projects cannot be silently corrupted; unsupported/future data receives safe refusal.
 
 ### M3D20-12 — Platform-capability matrix (P0)

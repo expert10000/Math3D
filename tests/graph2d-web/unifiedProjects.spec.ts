@@ -14,6 +14,30 @@ const showProjectTransfer = async (panel: Locator) => {
   await expect(panel.getByTestId("project-export-resources")).toBeVisible();
 };
 
+test("M3D20-11 browser reviews and preserves a 1.x workspace migration", async ({ page }) => {
+  const original = readFileSync("tests/fixtures/migration-1x/workspace-v1.json", "utf8");
+  await page.goto("/");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("math3d.computeEngines.firstLaunchSeen", "1"); });
+  await page.reload();
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "workspace-v1.json", mimeType: "application/json", buffer: Buffer.from(original) });
+  await expect(panel.getByTestId("project-migration-review")).toContainText("math3d.mixed-workspace v1");
+  await expect(panel.getByTestId("project-migration-download-original")).toBeVisible();
+  const download = page.waitForEvent("download");
+  await panel.getByTestId("project-migration-download-original").click();
+  expect(readFileSync((await (await download).path())!, "utf8")).toBe(original);
+  await panel.getByTestId("project-import-save").click();
+  const kept = await page.evaluate(() => {
+    const library = JSON.parse(localStorage.getItem("math3d.project-library.v1")!);
+    const id = library.entries[0].id;
+    return { source: localStorage.getItem(`math3d.project.v1.payload.${id}.migration-source`),
+      project: localStorage.getItem(`math3d.project.v1.payload.${id}`) };
+  });
+  expect(kept.source).toBe(original);
+  expect(JSON.parse(kept.project!).workspace.entries[0].expected.id).toBe("math3d:graph2d:23855f379cf9645dcdd9c438324791de");
+});
+
 test("Project → Workbook → Note opens from the main web workspace", async ({ page }) => {
   const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
   const project = JSON.parse(raw).project;

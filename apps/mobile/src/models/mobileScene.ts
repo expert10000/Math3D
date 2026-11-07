@@ -44,6 +44,8 @@ export type MobileStoredSceneProject = {
   updatedAt: number;
   lastOpenedAt: number;
   serializedProject: string;
+  /** Exact legacy transfer bytes retained alongside the adopted Project preview. */
+  migrationOriginal?: string;
   projectResources?: import("@math3d/core").ProjectResourceSidecar[];
   activeGraphDocumentId?: string;
   activeCurveDocumentId?: string;
