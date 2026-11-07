@@ -21,6 +21,7 @@
 - Mobile named Project previews use `apps/mobile/src/models/mobileProjectPreview.ts` and `mobileProjectExplorer.ts`; document editing support varies by module and source shape. A preview is not a native editor. Mobile package resource checks are in `mobileProjectResources.ts`.
 - Sage availability comes from the operation capability manifest and live backend probes shown in `renderer/src/features/computeCenter/SageRuntimeInspector.tsx`. A successful network probe or an installed binary alone is not a supported Sage operation.
 - Windows source-build desktop and local browser can be exercised in CI. Hosted browser depends on the deployed gateway, credentials and storage. Android requires a rebuilt artifact and device evidence. Linux installer tests require the exact package. Until those checks run, their rows remain limited.
+- The Project import review disables save and open when the persistent-storage probe fails and shows the host reason. It also keeps full open disabled for a Project with missing required source bytes or an unsupported editor while allowing an inspectable preview.
 
 ## Representative gate
 

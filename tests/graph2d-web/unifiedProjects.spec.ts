@@ -33,6 +33,24 @@ test("M3D20-12 local browser reopens a verified Project package", async ({ page 
   await expect(panel.getByTestId("project-workbooks")).toContainText("Graph Derivative Investigation");
 });
 
+test("M3D20-12 unavailable browser storage disables Project import actions", async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "math3d.platform.probe") throw new DOMException("Storage blocked", "SecurityError");
+      return original.call(this, key, value);
+    };
+  });
+  const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
+  await page.goto("/");
+  await page.getByTestId("projects-toggle").click();
+  const panel = page.getByTestId("project-explorer-panel");
+  await panel.getByTestId("project-import-file").setInputFiles({ name: "project.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+  await expect(panel.getByTestId("project-import-open")).toBeDisabled();
+  await expect(panel.getByTestId("project-import-save")).toBeDisabled();
+  await expect(panel.getByTestId("project-import-limit")).toContainText("Local persistent storage is blocked");
+});
+
 test("Project → Workbook → Note opens from the main web workspace", async ({ page }) => {
   const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
   const project = JSON.parse(raw).project;
