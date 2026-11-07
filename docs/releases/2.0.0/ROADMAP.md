@@ -981,6 +981,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 ### M3D20-16 — RC1 feature freeze (P0)
 
+**16a preparation:** The [freeze gate](RC1_FREEZE_GATE.md) pins the reviewed 2.0 source commit, lockfile bytes, resolved native desktop dependencies, and existing Project/workspace/result schema contracts. It intentionally rejects the current 1.7 checkout; RC1 is not declared.
+
 - Branch from reviewed 2.0 integration baseline, lock dependency versions and schema contracts.
 - Run full CI + mathematical fixtures + release smoke suite.
 - Triage remaining items into blocking/nonblocking/deferred.
