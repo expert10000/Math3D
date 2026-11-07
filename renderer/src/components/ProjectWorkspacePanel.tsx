@@ -739,9 +739,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     return () => { window.clearTimeout(timer); backupStageSequence.current++; };
   }, [open]);
   const collectResources = (next: Math3DProject, extra = resourceSession.current, allowMissing = false, workbook?: { id: string; bytes: Uint8Array }) => captureProjectResources(next, resourceBytes(extra, workbook), allowMissing);
-  const promoteQuantumScene = async (reference: ProjectQuantumSceneReference, target: QuantumNativeTarget) => {
+  const promoteQuantumScene = async (reference: ProjectQuantumSceneReference, target: QuantumNativeTarget,
+    expectedSource?: ProjectOpenInAction["source"]): Promise<string | null> => {
     const current = projectStateRef.current;
-    if (!current || busy || !window.quantumScenes?.openReference) return;
+    if (!current || busy || !window.quantumScenes?.openReference) return null;
     const before = serializeMath3DProject(current);
     setBusy(true);
     try {
@@ -751,6 +752,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       if (!projectStateRef.current || serializeMath3DProject(projectStateRef.current) !== before)
         throw new Error("Project changed during quantum promotion");
       const source = quantumSceneDocumentFromVerifiedOpen(opened);
+      if (expectedSource && !matchesScientificSourceGeneration(viewerSourceFromDocument(source), expectedSource))
+        throw new Error("The verified Quantum scene differs from the selected source generation.");
       const promotion = promoteQuantumNative(opened, target, rows => pointTableStore.publish(rows));
       const entries = [...current.workspace.entries];
       if (!entries.some(entry => entry.expected.id === source.identity.id))
@@ -775,10 +778,18 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           ...promotion.documents.map(document => document.identity.id)].filter((id, index, all) => all.indexOf(id) === index) });
       const next = replaceMath3DProjectWorkspace(current, workspace);
       if (promotion.meshBytes) quantumPromotionMeshBytes.current.set(promotion.meshBytes.id, promotion.meshBytes.bytes);
-      setProject(next); setExplorer(buildProjectExplorer(next, verifyMixedWorkspaceReplay(next.workspace)));
+      const resources = collectResources(next);
+      onRestoreWorkspace?.(next.workspace, resources, next);
+      resourceSession.current = resources; resourceSessionId.current = next.identity.id;
+      display(next, false);
+      const primary = promotion.documents.at(-1)!;
+      setViewingDocumentId(primary.identity.id);
+      setViewerCompanion(true); setQuick(true); setDetailView(true);
+      onNavigateDocument?.(primary.identity.id, target);
       setQuantumSceneMessage(`${target} copy staged with exact quantum source relation. Save Project to retain it.` +
         (target === "geometry" ? " This bounded copy opens in the current Project source editor; pinned pre-QEC rollback still shows a compatibility preview." : ""));
-    } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); }
+      return primary.identity.id;
+    } catch (error) { setQuantumSceneMessage(`Native promotion refused: ${String((error as Error).message)}`); return null; }
     finally { setBusy(false); }
   };
   const stageQuantumStudyTemplate = (anchor: QuantumSceneDocument, templateId: QuantumStudyTemplateId) => {
@@ -1523,10 +1534,23 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     setViewerCompanion(true);
     setQuick(true);
   };
-  const openInDestination = (choice: ProjectOpenInAction) => {
+  const openInDestination = async (choice: ProjectOpenInAction) => {
     if (busy || preview || managed || !project || !onRestoreWorkspace) return;
     try {
       const current = liveProject();
+      if (choice.id === "quantum.promote-graph2d") {
+        const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
+        const scene = entry?.checkpoint.format === "math3d.quantum-scene-document" ? entry.checkpoint : null;
+        const reference = scene ? current.quantumScenes?.find(item =>
+          item.sceneFingerprint === scene.source.sceneFingerprint) : null;
+        if (!choice.enabled || !reference || !entry ||
+          !matchesScientificSourceGeneration(viewerSourceFromDocument(entry.checkpoint), choice.source))
+          throw new TypeError("The Quantum source changed or its verified scene link is unavailable.");
+        const targetId = await promoteQuantumScene(reference, "graph2d", choice.source);
+        setMessage(targetId ? "Created a source-linked Quantum Graph. Save the Project to retain it." :
+          "Open in refused. See the Quantum scene status for details.");
+        return;
+      }
       if (choice.id === "surface.tessellate-saved") {
         const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
         if (!choice.enabled || entry?.checkpoint.format !== "math3d.surface-document" ||
@@ -2159,7 +2183,8 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
               actions={projectOpenInActions(project, document.id, { surfaceMesh: {
                 available: analyses.get(document.id)?.route === "surface" || analyses.get(document.id)?.route === "surface-mesh",
                 reason: analyses.get(document.id)?.reason ?? "The saved Surface sampler is unavailable on this host.",
-              } })}
+              }, quantumGraph: { available: !!window.quantumScenes?.openReference,
+                reason: "Verified Quantum scene opening is unavailable on this host." } })}
               canDerive={!busy && !preview && !managed && !!onRestoreWorkspace}
               unavailableReason={preview ? "Open the saved Project first." : managed ?
                 "Open the Project workspace before deriving a companion." : !onRestoreWorkspace ?

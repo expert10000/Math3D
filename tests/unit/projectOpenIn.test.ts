@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createMath3DProject, createMixedWorkspaceDocument, deriveProjectOpenIn,
+  createQuantumSceneDocument, upsertMath3DProjectQuantumScene, replaceMath3DProjectWorkspace,
   instantiateMath3DProjectTemplate, parseMath3DProject, projectOpenInActions,
   projectOpenInReturn, serializeMath3DProject, type Math3DProject,
 } from "@math3d/core";
@@ -79,5 +80,29 @@ describe("M3D20-02 qualified Open in", () => {
     }] } } as Math3DProject;
     expect(projectOpenInActions(quantum, quantum.workspace.entries[0]!.expected.id)).toMatchObject([{ enabled: false,
       targetModule: "graph2d", disabledReason: expect.stringContaining("qualified") }]);
+  });
+
+  it("offers Quantum → Graph only for a linked polyline and verified host", () => {
+    const base = graphOnly().project;
+    const reference = { format: "quantum-scene/v1" as const, title: "Reciprocal path",
+      directory: "C:\\scene.qscene", sceneFingerprint: "a".repeat(64) };
+    const scene = createQuantumSceneDocument({ sceneSchema: "quantum-scene/v1", sceneId: "k-path",
+      sceneFingerprint: reference.sceneFingerprint,
+      provenance: { runId: "run-1", model: "qwz", resultSha256: "b".repeat(64),
+        engine: "QuTiP", engineVersion: "5", adapter: "qvis/1" },
+      coordinates: { axes: ["kx", "ky", "value"], units: ["1", "1", "1"], handedness: "right" },
+      datasets: [{ id: "positions", sha256: "c".repeat(64), count: 2, components: 3, unit: "1", bytes: 48 }],
+      objects: [{ id: "path", kind: "polyline", label: "Path" }] }, reference.directory, reference.title);
+    const linked = upsertMath3DProjectQuantumScene(base, reference);
+    const project = replaceMath3DProjectWorkspace(linked, createMixedWorkspaceDocument({ ...linked.workspace,
+      entries: [...linked.workspace.entries, { module: "quantum", checkpoint: scene, expected: scene.identity, replay: null }],
+      activeDocumentIds: [...linked.workspace.activeDocumentIds, scene.identity.id] }));
+    expect(projectOpenInActions(project, scene.identity.id)).toMatchObject([{ enabled: false,
+      disabledReason: expect.stringContaining("verifier") }]);
+    expect(projectOpenInActions(project, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
+      .toMatchObject([{ id: "quantum.promote-graph2d", enabled: true, targetModule: "graph2d" }]);
+    const unlinked = { ...project, quantumScenes: [] } as Math3DProject;
+    expect(projectOpenInActions(unlinked, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
+      .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("not linked") }]);
   });
 });

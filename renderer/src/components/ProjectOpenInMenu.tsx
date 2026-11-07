@@ -31,7 +31,8 @@ export const ProjectOpenInMenu: React.FC<Props> = ({ documentId, actions, canDer
   {returnLink && <div data-testid={`project-open-in-return-${documentId}`}>
     <button type="button" disabled={!returnLink.exact || !canReturn}
       title={returnLink.reason ?? "Return to the exact source generation"}
-      onClick={() => onReturn(returnLink.sourceDocumentId, returnLink.sourceModule)}>Return to source {returnLink.sourceModule === "graph2d" ? "Graph" : "Surface"}</button>
+      onClick={() => onReturn(returnLink.sourceDocumentId, returnLink.sourceModule)}>Return to source {returnLink.sourceModule === "graph2d" ? "Graph" :
+        returnLink.sourceModule === "quantum" ? "Quantum scene" : "Surface"}</button>
     {returnLink.reason && <small style={{ display: "block" }}>{returnLink.reason}</small>}
   </div>}
 </div>;

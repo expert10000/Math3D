@@ -5,7 +5,7 @@ import type { ScientificSourceGeneration } from "./scientificJobs";
 
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
 export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
-  "surface.tessellate-saved";
+  "surface.tessellate-saved" | "quantum.promote-graph2d";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
   id: ProjectOpenInActionId | "unavailable";
@@ -29,7 +29,8 @@ const unavailable = (source: ScientificSourceGeneration, sourceModule: KernelWor
 
 /** Lists only bounded transformations whose existing producers retain exact source lineage. */
 export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: string,
-  options: { surfaceMesh?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
+  options: { surfaceMesh?: Readonly<{ available: boolean; reason: string | null }>;
+    quantumGraph?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
   const entry = project.workspace.entries.find(item => item.expected.id === sourceDocumentId);
   if (!entry) return [];
   const source = viewerSourceFromDocument(entry.checkpoint);
@@ -41,6 +42,21 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
     return [{ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "surface.tessellate-saved",
       source, sourceModule: "surface", sourceObjectId: null, targetModule: "mesh",
       label: "Open in Mesh Analysis", preview: "Creates a saved sampled Mesh snapshot with exact Surface lineage and verified source buffers. Sampling is numerical.",
+      enabled: reason === null, disabledReason: reason }];
+  }
+  if (entry.module === "quantum" && entry.checkpoint.format === "math3d.quantum-scene-document") {
+    const scene = entry.checkpoint;
+    const linked = project.quantumScenes?.some(item =>
+      item.sceneFingerprint === scene.source.sceneFingerprint);
+    const polyline = scene.source.objects.some(item => item.kind === "polyline");
+    const reason = archived ? "Restore this archived source first." : !linked ?
+      "The exact external scene is not linked to this Project." : !polyline ?
+        "This scene has no polyline that can become a Graph profile." :
+        options.quantumGraph?.available ? null : options.quantumGraph?.reason ??
+          "The scene verifier is unavailable on this host.";
+    return [{ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "quantum.promote-graph2d",
+      source, sourceModule: "quantum", sourceObjectId: null, targetModule: "graph2d",
+      label: "Open in Graphs", preview: "Re-verifies the external scene, copies a bounded polyline into a Graph point table, and records exact scene lineage. The copy is numerical.",
       enabled: reason === null, disabledReason: reason }];
   }
   if (entry.module !== "graph2d" || entry.checkpoint.format !== "math3d.graph2d-document") {
