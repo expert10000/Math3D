@@ -77,6 +77,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
     resolveStructureSelection(project, requestedSelection && requestedSelection.projectId === project?.identity.id
       ? requestedSelection.target : readSavedSelection(project)));
   const [handoffError, setHandoffError] = useState("");
+  const [handoffNotice, setHandoffNotice] = useState("");
   const [selectionFocus, setSelectionFocus] = useState(0);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(() =>
     project?.algebraEvidence?.find((item) => item.request.target.objectId === selection?.objectId)?.id ?? null);
@@ -121,9 +122,16 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
         checked.revision !== requestedSelection.target.revision ||
         record?.contentHash !== requestedSelection.contentHash) {
       setHandoffError("The requested Project algebra source is unavailable. Reopen it from the Project list.");
+      setHandoffNotice("");
       return;
     }
     setHandoffError("");
+    const entry = project?.algebraObjects?.find(item => item.id === checked.objectId);
+    const freshness = inspectProjectAlgebraFreshness(project!).find(item => item.objectId === checked.objectId);
+    setHandoffNotice(entry?.archived || checked.revision !== entry?.revisions.length ||
+      freshness?.status === "stale"
+      ? "Opened the pinned algebra revision for inspection. Prepare a new locus from a current, fresh source."
+      : "");
     select(checked);
   }, [requestedSelection?.token, project?.identity.id]);
   const chosen = selectedStructure(project, selection);
@@ -193,6 +201,7 @@ export default function CASAlgebraWorkspace({ project, onCreateStructure, onSave
 
   const explorer = <div data-testid="cas-structures-explorer" style={{ display: "grid", gap: 12 }}>
     {handoffError && <div role="alert">{handoffError}</div>}
+    {handoffNotice && <div role="status">{handoffNotice}</div>}
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <h2 style={{ fontSize: 16, margin: 0, whiteSpace: "nowrap" }}>Project structures</h2>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>

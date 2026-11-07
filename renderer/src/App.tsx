@@ -80542,9 +80542,8 @@ case "mobius":
         onOpenAlgebra={(projectId, target, contentHash) => {
           const current = projectForNotePins;
           const entry = current?.algebraObjects?.find(item => item.id === target.objectId);
-          if (!current || current.identity.id !== projectId || entry?.archived ||
-              entry?.revisions.length !== target.revision ||
-              entry.revisions[target.revision - 1]?.contentHash !== contentHash)
+          if (!current || current.identity.id !== projectId ||
+              entry?.revisions[target.revision - 1]?.contentHash !== contentHash)
             throw new TypeError("The selected algebra source is unavailable in the active Project.");
           setCasSourceRequest(previous => ({ projectId, target, contentHash,
             token: (previous?.token ?? 0) + 1 }));
