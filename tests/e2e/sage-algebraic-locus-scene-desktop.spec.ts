@@ -46,6 +46,9 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     const cas = ctx.page.getByTestId("cas-algebra-workspace");
     await cas.getByTestId("cas-structures-explorer").getByRole("button", { name: /I @1/ }).click();
     const builder = cas.getByTestId("cas-locus-builder");
+    const destinations = builder.getByTestId("cas-open-in-geometry");
+    await expect(destinations.getByRole("button", { name: "Open exact locus in Geometry" })).toBeDisabled();
+    await expect(destinations).toContainText("Validate a bounded real locus first");
     await builder.getByLabel("x bound min").fill("-3");
     await builder.getByLabel("x bound max").fill("-3");
     await builder.getByRole("button", { name: "Validate & preview locus" }).click();
@@ -55,6 +58,8 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await builder.getByRole("button", { name: "Validate & preview locus" }).click();
     await expect(builder.getByTestId("cas-locus-preview")).toContainText("x^2+y^2+z^2-1=0");
     await expect(builder.getByTestId("cas-locus-preview")).toContainText("uncomputed");
+    await expect(destinations.getByRole("button", { name: "Open exact locus in Geometry" })).toBeEnabled();
+    await expect(destinations.getByRole("button", { name: "Open sampled locus in Geometry" })).toBeDisabled();
     const scenePath = test.info().outputPath("real-locus.scene.json");
     await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), scenePath);
@@ -70,13 +75,14 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await builder.getByRole("button", { name: "Export Geometry JSON" }).click();
     await expect.poll(() => { try { return readFileSync(geometryPath).length; } catch { return 0; } }).toBeGreaterThan(100);
     expect(core.parseAlgebraicLocusGeometryDocument(JSON.parse(readFileSync(geometryPath, "utf8"))).scene).toEqual(scene);
-    await builder.getByRole("button", { name: "Save Geometry contract to Project" }).click();
+    await destinations.getByRole("button", { name: "Open exact locus in Geometry" }).click();
     await expect(builder.getByRole("status")).toContainText("Saved uncomputed real-locus Geometry contract");
     await builder.getByRole("button", { name: "Render bounded real locus" }).click();
     const sampleView = builder.getByTestId("cas-locus-sample");
     await expect(sampleView.getByTestId("cas-locus-plot")).toBeVisible();
     await expect(sampleView).toContainText("plane-section-v1");
     await expect(sampleView).toContainText("potentially incomplete");
+    await expect(destinations.getByRole("button", { name: "Open sampled locus in Geometry" })).toBeEnabled();
     const samplePath = test.info().outputPath("real-locus.sample.json");
     await ctx.app.evaluate(({ session }, target) => session.defaultSession.once("will-download",
       (_event, item) => item.setSavePath(target)), samplePath);
@@ -91,7 +97,7 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await builder.getByRole("button", { name: "Export sampled Geometry JSON" }).click();
     await expect.poll(() => { try { return readFileSync(sampledGeometryPath).length; } catch { return 0; } }).toBeGreaterThan(100);
     expect(core.parseSampledAlgebraicLocusGeometryDocument(JSON.parse(readFileSync(sampledGeometryPath, "utf8")), project).sample).toEqual(sample);
-    await builder.getByRole("button", { name: "Save sampled Geometry to Project" }).click();
+    await destinations.getByRole("button", { name: "Open sampled locus in Geometry" }).click();
     await expect(builder.getByRole("status")).toContainText("Saved bounded real-locus sample");
     await cas.getByRole("button", { name: "Back to workspace" }).click();
     await ctx.page.getByTestId("projects-toggle").click();
