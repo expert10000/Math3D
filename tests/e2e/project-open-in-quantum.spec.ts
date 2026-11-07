@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { launchRepoElectron } from "./helpers/electronLauncher";
 
-test("verified Quantum polyline opens as a saved Graph with exact source return", async () => {
+for (const target of [
+  { label: "Graphs", name: "Graph", module: "graph2d", operation: "quantum.promote-graph2d" },
+  { label: "Curves", name: "Curve", module: "curve", operation: "quantum.promote-curve" },
+] as const) test(`verified Quantum polyline opens as a saved ${target.name} with exact source return`, async () => {
   test.setTimeout(180_000);
   const root = await mkdtemp(join(tmpdir(), "m3d-open-in-quantum-"));
   const scene = resolve(__dirname, "..", "fixtures", "quantum-qi01",
@@ -37,21 +40,21 @@ test("verified Quantum polyline opens as a saved Graph with exact source return"
     const quantumMenu = projects.getByTestId(`project-open-in-${quantumId}`);
     await expect(quantumMenu).toBeVisible();
     await quantumMenu.locator("summary").click();
-    const action = quantumMenu.getByRole("button", { name: "Open in Graphs" });
+    const action = quantumMenu.getByRole("button", { name: `Open in ${target.label}` });
     await expect(action).toBeEnabled();
     await action.click();
-    await expect(projects.getByTestId("project-message")).toContainText("source-linked Quantum Graph", { timeout: 60_000 });
+    await expect(projects.getByTestId("project-message")).toContainText(`source-linked Quantum ${target.name}`, { timeout: 60_000 });
     await projects.getByTestId("project-gallery-layout-toggle").click();
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved “", { timeout: 60_000 });
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     const relation = saved.workspace.relations.find((item: { operation: string }) =>
-      item.operation === "quantum.promote-graph2d");
+      item.operation === target.operation);
     expect(relation).toBeTruthy();
     expect(relation.sources[0].documentId).toBe(quantumId);
     const targetId = relation.target.generation.documentId;
     expect(saved.workspace.entries.find((item: { expected: { id: string } }) =>
-      item.expected.id === targetId).module).toBe("graph2d");
+      item.expected.id === targetId).module).toBe(target.module);
     await projects.getByTestId("project-detail-tab-documents").click();
     const returnButton = projects.getByTestId(`project-open-in-return-${targetId}`)
       .getByRole("button", { name: "Return to source Quantum scene" });

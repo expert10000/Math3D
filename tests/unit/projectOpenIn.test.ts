@@ -116,19 +116,23 @@ describe("M3D20-02 qualified Open in", () => {
     const project = replaceMath3DProjectWorkspace(linked, createMixedWorkspaceDocument({ ...linked.workspace,
       entries: [...linked.workspace.entries, { module: "quantum", checkpoint: scene, expected: scene.identity, replay: null }],
       activeDocumentIds: [...linked.workspace.activeDocumentIds, scene.identity.id] }));
-    expect(projectOpenInActions(project, scene.identity.id)).toMatchObject([{ enabled: false,
-      disabledReason: expect.stringContaining("verifier") }]);
+    expect(projectOpenInActions(project, scene.identity.id)).toMatchObject([
+      { enabled: false, disabledReason: expect.stringContaining("verifier") },
+      { enabled: false, disabledReason: expect.stringContaining("verifier") }]);
     expect(projectOpenInActions(project, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
-      .toMatchObject([{ id: "quantum.promote-graph2d", enabled: true, targetModule: "graph2d" }]);
+      .toMatchObject([{ id: "quantum.promote-graph2d", enabled: true, targetModule: "graph2d" },
+        { id: "quantum.promote-curve", enabled: true, targetModule: "curve" }]);
     const unlinked = { ...project, quantumScenes: [] } as Math3DProject;
     expect(projectOpenInActions(unlinked, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
-      .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("not linked") }]);
+      .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("not linked") },
+        { enabled: false, disabledReason: expect.stringContaining("not linked") }]);
     const noPolyline = { ...project, workspace: { ...project.workspace,
       entries: project.workspace.entries.map(entry => entry.module === "quantum" ? {
         ...entry, checkpoint: { ...entry.checkpoint, source: { ...entry.checkpoint.source,
           objects: [] } },
       } : entry) } } as Math3DProject;
     expect(projectOpenInActions(noPolyline, scene.identity.id, { quantumGraph: { available: true, reason: null } }))
-      .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("no polyline") }]);
+      .toMatchObject([{ enabled: false, disabledReason: expect.stringContaining("no polyline") },
+        { enabled: false, disabledReason: expect.stringContaining("no polyline") }]);
   });
 });

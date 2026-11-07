@@ -75,12 +75,13 @@ export const projectOpenInReturn = (project: Math3DProject, targetDocumentId: st
     (item.operation === "graph2d.promote-curve" || item.operation === "graph2d.promote-geometry" ||
       item.operation === "graph2d.revolve-surface" ||
       item.operation === "surface.tessellate-saved" || item.operation === "quantum.promote-graph2d" ||
+      item.operation === "quantum.promote-curve" ||
       item.operation === "mesh.promote-geometry") &&
     item.sources.length === 1);
   if (!relation) return null;
   const recordedSource = relation.sources[0]!;
   const sourceModule: KernelWorkspaceModule = relation.operation === "surface.tessellate-saved" ? "surface" :
-    relation.operation === "quantum.promote-graph2d" ? "quantum" :
+    relation.operation === "quantum.promote-graph2d" || relation.operation === "quantum.promote-curve" ? "quantum" :
     relation.operation === "mesh.promote-geometry" ? "mesh" : "graph2d";
   const source = project.workspace.entries.find(item => item.expected.id === recordedSource.documentId && item.module === sourceModule);
   const exact = !!source && matchesScientificSourceGeneration(viewerSourceFromDocument(source.checkpoint), recordedSource);

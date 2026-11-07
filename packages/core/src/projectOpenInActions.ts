@@ -8,7 +8,7 @@ import { MAX_OPEN_IN_GEOMETRY_TRIANGLES } from "./projectMeshGeometry";
 export const PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION = 1 as const;
 export type ProjectOpenInActionId = "graph2d.promote-curve" | "graph2d.promote-geometry" |
   "graph2d.revolve-surface" | "surface.tessellate-saved" | "quantum.promote-graph2d" |
-  "mesh.promote-geometry";
+  "mesh.promote-geometry" | "quantum.promote-curve";
 export type ProjectOpenInAction = Readonly<{
   schemaVersion: typeof PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION;
   id: ProjectOpenInActionId | "unavailable";
@@ -74,6 +74,10 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
     return [{ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "quantum.promote-graph2d",
       source, sourceModule: "quantum", sourceObjectId: null, targetModule: "graph2d",
       label: "Open in Graphs", preview: "Re-verifies the external scene, copies a bounded polyline into a Graph point table, and records exact scene lineage. The copy is numerical.",
+      enabled: reason === null, disabledReason: reason },
+    { schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "quantum.promote-curve",
+      source, sourceModule: "quantum", sourceObjectId: null, targetModule: "curve",
+      label: "Open in Curves", preview: "Re-verifies the external scene and copies its bounded 3D polyline into an editable Curve with exact scene lineage. The copy is numerical.",
       enabled: reason === null, disabledReason: reason }];
   }
   if (entry.module !== "graph2d" || entry.checkpoint.format !== "math3d.graph2d-document") {

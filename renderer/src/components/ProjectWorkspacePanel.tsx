@@ -1569,7 +1569,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
           "Created a source-linked Mesh Geometry copy. Save the Project to retain it.");
         return;
       }
-      if (choice.id === "quantum.promote-graph2d") {
+      if (choice.id === "quantum.promote-graph2d" || choice.id === "quantum.promote-curve") {
         const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
         const scene = entry?.checkpoint.format === "math3d.quantum-scene-document" ? entry.checkpoint : null;
         const reference = scene ? current.quantumScenes?.find(item =>
@@ -1577,8 +1577,9 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
         if (!choice.enabled || !reference || !entry ||
           !matchesScientificSourceGeneration(viewerSourceFromDocument(entry.checkpoint), choice.source))
           throw new TypeError("The Quantum source changed or its verified scene link is unavailable.");
-        const targetId = await promoteQuantumScene(reference, "graph2d", choice.source);
-        setMessage(targetId ? "Created a source-linked Quantum Graph. Save the Project to retain it." :
+        const target = choice.id === "quantum.promote-graph2d" ? "graph2d" : "curve";
+        const targetId = await promoteQuantumScene(reference, target, choice.source);
+        setMessage(targetId ? `Created a source-linked Quantum ${target === "curve" ? "Curve" : "Graph"}. Save the Project to retain it.` :
           "Open in refused. See the Quantum scene status for details.");
         return;
       }
