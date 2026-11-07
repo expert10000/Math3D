@@ -160,5 +160,13 @@ test("SAGE-F01/F02 saves exact-source contract and bounded sphere/plane plot, th
     await savedAction.click();
     await expect(ctx.page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id",
       core.sampledAlgebraicLocusGeometryDocument(sample).identity.id);
+    await ctx.page.getByTestId("projects-toggle").click();
+    const returnButton = ctx.page.getByTestId(`project-algebra-return-${checkpoint!.expected.id}`)
+      .getByRole("button", { name: "Return to algebra source in CAS" });
+    await expect(returnButton).toBeEnabled();
+    await returnButton.click();
+    const returnedCas = ctx.page.getByTestId("cas-algebra-workspace");
+    await expect(returnedCas.getByTestId("cas-structures-explorer")
+      .getByRole("button", { name: /I @1/ })).toHaveAttribute("aria-current", "true");
   } finally { await closeSurfaceApp(ctx); }
 });
