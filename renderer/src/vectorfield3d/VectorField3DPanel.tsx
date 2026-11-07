@@ -52,6 +52,8 @@ import { captureSeedEdit, restoreSeedEdit, seedGroupStyle,
 import { VectorField3DSliceView, type SliceInspectorAction,
   type SliceInspectorState } from "./VectorField3DSliceView";
 import { VectorField3DGraphLinePanel } from "./VectorField3DGraphLinePanel";
+import { scientificCursorBus } from "../components/scientificCursor";
+import { vectorFieldCursorAvailability, vectorFieldCursorDraft } from "./vectorFieldCursor";
 import { previewVerifiedVectorField3D } from "./previewVerifiedVectorField3D";
 import type { VectorField3DGraphLineSelection } from "./reverifyVectorField3DGraphLine";
 import { reverifyVectorField3DDerivedLine } from "./reverifyVectorField3DDerivedLine";
@@ -847,6 +849,17 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
       components: expressions.map((source, index) => vectorField3DExpression(source,
         document.source.field.kind === "expressions" ? document.source.field.components[index]!.unit : "m/s")) as
         [VectorField3DExpression, VectorField3DExpression, VectorField3DExpression] } }) : document;
+  const publishProbeCursor = () => {
+    if (!workspace.probe || busy || lineBusy) return;
+    try {
+      if (currentDocument().identity.structuralHash !== document.identity.structuralHash)
+        throw new Error("Preview the current field formula before linking its probe.");
+      const draft = vectorFieldCursorDraft(document, workspace.probe, "vector-field3d-panel");
+      if (!draft.ok) throw new Error(draft.errors.join(" "));
+      scientificCursorBus.publishProject(draft.value, draft.value.source);
+      setError(""); setRunStatus("Published the physical probe to linked cursors.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
   const sampleSelectedSlice = (next: VectorField3DDocument, axis: 0 | 1 | 2,
     coordinate: number, scientific?: Parameters<typeof sampleVectorField3DSlice>[3]) => {
     const channel = next.workspace?.sliceChannel ?? "component";
@@ -2527,6 +2540,11 @@ export function VectorField3DPanel({ initialDocument, savedDocument, project, fo
         <button type="button" onClick={() => dialogRef.current?.querySelector(
           '[aria-label="Linked field probe"]')?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           Edit probe coordinates</button>}
+      <button type="button" data-testid="vector-field-publish-cursor"
+        disabled={!workspace.probe || busy || lineBusy || !!vectorFieldCursorAvailability(document, workspace.probe ?? [])}
+        onClick={publishProbeCursor}>Publish probe cursor</button>
+      {workspace.probe && vectorFieldCursorAvailability(document, workspace.probe) &&
+        <small role="status">{vectorFieldCursorAvailability(document, workspace.probe)}</small>}
     </section>
     <section aria-label="Cross-layer physical probe" data-gf06-section="probe"
       className="vector-field3d-probe scientific-explorer-linked-inspector"
