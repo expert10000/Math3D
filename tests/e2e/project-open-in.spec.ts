@@ -161,8 +161,8 @@ test("Project Open in chains a Graph revolution into a sampled Mesh", async () =
     await projects.getByTestId("project-save").click();
     await expect(projects.getByTestId("project-message")).toContainText("Saved “");
     const final = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
-    const mesh = final.workspace.relations.find((item: { operation: string }) => item.operation === "surface.tessellate-saved" &&
-      item.sources[0].documentId === surfaceId);
+    const mesh = final.workspace.relations.find((item: { operation: string; sources: { documentId: string }[] }) =>
+      item.operation === "surface.tessellate-saved" && item.sources[0]?.documentId === surfaceId);
     expect(mesh).toBeTruthy();
     const meshId = mesh.target.generation.documentId as string;
     expect(final.workspace.entries.find((item: { expected: { id: string } }) =>
