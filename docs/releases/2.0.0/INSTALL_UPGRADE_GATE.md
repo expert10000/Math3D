@@ -10,8 +10,12 @@ The same first-use UI test can run against the source build with `npx playwright
 
 ## Upgrade (13c)
 
-Pending an exact signed 2.0.0 candidate and the published v1.7.0 installer. The upgrade gate must preserve the original Project bytes and setting, verify the candidate in place, and keep a recoverable original. A migration preview is not authorization to rewrite the old profile.
+On a clean Windows VM, download the [published v1.7.0 installer](https://github.com/expert10000/Math3D/releases/download/v1.7.0/Math3D-Setup-1.7.0.exe) and run `scripts/release20-upgrade.ps1 -OldInstaller <Math3D-Setup-1.7.0.exe> -CandidateInstaller <Math3D-Setup-2.0.0.exe> -CandidateManifest <manifest>`. The runner accepts the old installer only when its SHA-256 is `eacffc903e988a15636f556b36d12621b9918f4cec69e5c8b19e7daa512222db`. It verifies the exact signed stable 2.0.0 candidate against the manifest before installing either app.
+
+The 1.7 phase creates a Graph Project using the published app's My Graphs interface and disables command preview overlays. It records the exact saved Graph workspace bytes and a SHA-256 digest. The runner copies the original profile to `profile-before-2.0`, installs 2.0 over the same application directory, then launches 2.0 against the same profile. The 2.0 phase checks the setting, compares the original Graph workspace bytes, and reopens the saved Project through My Graphs. JSON evidence records both versions, hashes, phase results, backup path, and any failure. Failure leaves the work root and backup in place for inspection. A skipped UI test cannot pass because the runner requires each phase's evidence file.
+
+This gate is ready to execute but remains **pending** an exact signed 2.0.0 candidate. It does not claim that a 1.7 Graph Project has already survived a 2.0 upgrade.
 
 ## Evidence rule
 
-Record the candidate commit, installer hash and signature, run environment, old installer hash for upgrades, and separate results for byte identity, install, worker, UI, data preservation and rollback. A missing artifact or skipped test cannot be reported as passed.
+Record the candidate commit, installer hash and signature, old installer hash for upgrades, and separate results for byte identity, install, worker, UI, data preservation and backup. A missing artifact or skipped test cannot be reported as passed.
