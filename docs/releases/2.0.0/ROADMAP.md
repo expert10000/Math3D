@@ -822,6 +822,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 - `M3D20-01c test(core): add canonical compatibility fixtures` — old/current serializer and invalid-input corpus.
 - `M3D20-01d docs(architecture): freeze 2.0 ownership and extension rules` — no parallel registries/jobs.
 
+**01a complete (inventory):** [Existing contract inventory](CONTRACT_INVENTORY.md) maps the current owners, enforced invariants, and overlapping models at baseline `372b367d`. It does not close 01b–d or approve the architecture freeze.
+
 **Exit:** contract document approved, schema compatibility tests pass, known partial areas explicitly listed.
 
 ### M3D20-02 — Cross-module `Open in…` (P0)
