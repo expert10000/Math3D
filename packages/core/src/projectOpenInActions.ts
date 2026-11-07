@@ -73,9 +73,9 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
   if (!objects.length) return [unavailable(source, "graph2d", "curve",
     archived ? "Restore this archived source first." : "No explicit or parametric Graph object can be promoted.")];
   return objects.flatMap(object => {
-    let revolutionReason: string | null = null;
+    let samplingReason: string | null = null;
     try { previewGraph2DRevolution(graph, object.id, { axis: "x", orientation: "positive" }); }
-    catch (error) { revolutionReason = (error as Error).message; }
+    catch (error) { samplingReason = (error as Error).message; }
     return ([
     { id: "graph2d.promote-curve" as const, targetModule: "curve" as const,
       label: `Open “${object.label}” in Curves`,
@@ -88,8 +88,8 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
       preview: "Revolves the profile around the x-axis through a full turn, creating an editable Surface with exact expression lineage. Coordinates are unitless." },
   ]).map(action => ({ schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, ...action,
     source, sourceModule: "graph2d" as const, sourceObjectId: object.id,
-    enabled: !archived && (action.id !== "graph2d.revolve-surface" || !revolutionReason),
+    enabled: !archived && (action.id === "graph2d.promote-curve" || !samplingReason),
     disabledReason: archived ? "Restore this archived source first." :
-      action.id === "graph2d.revolve-surface" ? revolutionReason : null }));
+      action.id === "graph2d.promote-curve" ? null : samplingReason }));
   });
 };

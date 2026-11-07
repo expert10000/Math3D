@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  createMath3DProject, createMixedWorkspaceDocument, deriveProjectOpenIn,
+  createMath3DProject, createMixedWorkspaceDocument, createGraph2DDocument, parseGraph2DExpression, deriveProjectOpenIn,
   createQuantumSceneDocument, upsertMath3DProjectQuantumScene, replaceMath3DProjectWorkspace,
   instantiateMath3DProjectTemplate, parseMath3DProject, projectOpenInActions,
   projectOpenInReturn, serializeMath3DProject, type Math3DProject,
@@ -17,6 +17,23 @@ const graphOnly = () => {
 };
 
 describe("M3D20-02 qualified Open in", () => {
+  it("disables sampled destinations for an undefined Graph profile while retaining exact Curve promotion", () => {
+    const parsed = parseGraph2DExpression("1/x");
+    if (!parsed.ok) throw new Error("Fixture expression did not parse.");
+    const graph = createGraph2DDocument({ stableKey: "open-in-pole", title: "Pole", source: {
+      objects: [{ id: "pole", label: "Pole", kind: "explicit-cartesian",
+        expression: { source: "1/x", variable: "x", ast: parsed.ast },
+        domain: { min: -1, max: 1, includeMin: true, includeMax: true } }], variables: [], assumptions: [] } });
+    const workspace = createMixedWorkspaceDocument({ entries: [{ module: "graph2d", checkpoint: graph,
+      expected: graph.identity, replay: null }], activeDocumentIds: [graph.identity.id],
+      constructions: [], results: [], artifacts: [], relations: [], committedSelection: null });
+    const project = createMath3DProject(workspace, { stableKey: "open-in-pole-project", title: "Pole" });
+    const actions = projectOpenInActions(project, graph.identity.id);
+    expect(actions.map(item => item.enabled)).toEqual([true, false, false]);
+    expect(actions[1]?.disabledReason).toMatch(/undefined on its domain/);
+    expect(() => deriveProjectOpenIn(project, { ...actions[1]!, enabled: true })).toThrow(/no longer qualified/);
+  });
+
   it("derives Curve, Geometry, and Surface with exact lineage, idempotency, and return after reopen", () => {
     const { project, graph } = graphOnly();
     const actions = projectOpenInActions(project, graph.expected.id);
