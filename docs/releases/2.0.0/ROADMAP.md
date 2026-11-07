@@ -973,6 +973,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **15a source prepared:** The public-site home page now presents the Surface, Quantum, and Algebra flagship journeys with existing-source imagery or an explicit diagram and labels the unfinished 2.0 release gates. It does not publish a 2.0 download or claim candidate screenshots.
 
+**15b source prepared:** The public site's capability page scopes journeys by host and operation, separates source-build tests from installer qualification, and removes broad desktop/browser parity claims from the home-page feature panel.
+
 **Exit:** gallery, docs and real distribution all describe the same capabilities/build.
 
 ### M3D20-16 — RC1 feature freeze (P0)

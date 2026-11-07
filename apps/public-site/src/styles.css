@@ -459,6 +459,20 @@ h1 {
 .release20-diagram span:nth-child(odd) { width: min(100%, 17rem); padding: 0.6rem; text-align: center; border-radius: 9px; background: #fff; border: 1px solid #b8d2ef; font-weight: 700; color: var(--brand-strong); }
 .release20-diagram span:nth-child(even) { color: var(--accent); font-weight: 700; }
 
+.capability-page { padding-bottom: 2rem; }
+.capability-intro { max-width: 75ch; }
+.capability-table-wrap { margin-top: 1rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.capability-table { width: 100%; min-width: 850px; border-collapse: collapse; font-size: 0.9rem; }
+.capability-table th, .capability-table td { padding: 0.85rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.capability-table thead th { background: #eaf3ff; color: var(--brand-strong); }
+.capability-table tbody th { min-width: 12rem; color: var(--ink); }
+.capability-table tbody tr:last-child th, .capability-table tbody tr:last-child td { border-bottom: 0; }
+.capability-note { color: var(--ink-soft); max-width: 78ch; }
+.capability-routes .feature-grid { margin-bottom: 0.5rem; }
+.capability-next { border-top: 1px solid var(--line); }
+.capability-next p { max-width: 74ch; color: var(--ink-soft); }
+.capability-next a, .callout p a { color: var(--brand-strong); font-weight: 700; }
+
 .shot-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
