@@ -1,14 +1,21 @@
 import React from "react";
 import type { ProjectCompatibility } from "../projects/projectTransfer";
+import type { ProjectMigration } from "@math3d/core";
 
-export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string }; onCancel: () => void; onImport: () => void; onOpen: () => void; canOpen: boolean; busy?: boolean }> =
+export const ProjectCompatibilityPanel: React.FC<{ preview: ProjectCompatibility & { inputKind: string; migration?: ProjectMigration }; onCancel: () => void; onImport: () => void; onOpen: () => void; canOpen: boolean; busy?: boolean }> =
   ({ preview, onCancel, onImport, onOpen, canOpen, busy = false }) => <section data-testid="project-import-preview" style={{ marginTop: 12, padding: 8, border: "1px solid #64748b", borderRadius: 6, overflowWrap: "anywhere" }}>
     <strong>{preview.inputKind === "Independent starter project" ? "Starter project ready" : "Import preview"}: {preview.project.metadata.title}</strong>
     <p>{preview.inputKind} · project revision {preview.project.identity.revision}. Nothing has been opened or saved yet. Open project saves it and switches the workspace; saving to the library keeps the current workspace open.</p>
+    {preview.migration && <p data-testid="project-migration-review">Migration: {preview.migration.sourceFormat} v{preview.migration.sourceVersion} → {preview.migration.targetFormat} v{preview.migration.targetVersion}. The original file will be saved byte for byte with this library copy. Review the document and resource list before continuing.</p>}
     <div style={{ display: "flex", flexWrap: "wrap", gap: 5, margin: "8px 0 12px" }}>
       <button type="button" data-testid="project-import-open" disabled={!canOpen || !preview.canOpenWorkspace} onClick={onOpen}>Open project</button>
       <button type="button" data-testid="project-import-save" disabled={busy} onClick={onImport}>Save to library</button>
       <button type="button" data-testid="project-import-cancel" disabled={busy} onClick={onCancel}>Cancel</button>
+      {preview.migration && <button type="button" data-testid="project-migration-download-original" onClick={() => {
+        const url = URL.createObjectURL(new Blob([preview.migration!.originalBytes], { type: "application/json" }));
+        const link = document.createElement("a"); link.href = url; link.download = "math3d-original-project.json";
+        link.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
+      }}>Download original</button>}
     </div>
     <strong>Document compatibility</strong>
     {preview.documents.map((document) => <div key={document.id}>{document.module} · revision {document.revision} · replay verified · {document.readOnly ? "read-only document; external source re-verified before open" : document.editable ? "editor supported" : "preview only"}</div>)}

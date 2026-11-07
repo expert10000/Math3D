@@ -1348,6 +1348,7 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
       setLibrary(await commitProjectResources(prepared.project, resources, () => {
         const writeStart = performance.now();
         const saved = importLibraryProject(localStorage, prepared.project, Date.now(), { activate: openWorkspace, backup,
+        ...(candidate.migration ? { migrationOriginal: candidate.migration.originalBytes } : {}),
         ...(openWorkspace && previous && onRestoreWorkspace ? { afterWrite: () => {
           const restoreStart = performance.now();
           if (activationToken !== importSequence.current || inputToken !== workspaceInputSequence.current || canonicalJsonStringify(currentCapture.current()) !== canonicalJsonStringify(previous)) throw new Error("Project opening was superseded or the workspace changed. Retry opening the Project.");

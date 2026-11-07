@@ -1,4 +1,4 @@
-import { canonicalJsonStringify, parseMath3DProject, serializeMath3DProject, structuralHash, type Math3DProject } from "@math3d/core";
+import { canonicalJsonStringify, parseMath3DProject, prepareProjectMigration, serializeMath3DProject, structuralHash, type Math3DProject } from "@math3d/core";
 
 export const PROJECT_STORAGE_KEY = "math3d.project.v1";
 export const PROJECT_LIBRARY_KEY = "math3d.project-library.v1";
@@ -14,6 +14,8 @@ export const projectPayloadKey = (id: string): string => {
   if (!validId(id)) throw new Error("Invalid library project ID.");
   return `${PROJECT_STORAGE_KEY}.payload.${id}`;
 };
+export const projectMigrationSourceKey = (id: string): string => `${projectPayloadKey(id)}.migration-source`;
+export const readProjectMigrationSource = (store: Store, id: string): string | null => store.getItem(projectMigrationSourceKey(id));
 export const projectThumbnailKey = (id: string): string => `${projectPayloadKey(id)}.thumbnail`;
 const exact = (value: object, keys: readonly string[]) => Object.keys(value).sort().join("|") === [...keys].sort().join("|");
 const timestamp = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 8_640_000_000_000_000;
@@ -81,8 +83,10 @@ const write = (store: Store, changes: readonly (readonly [string, string])[], af
   }
 };
 export const saveLibraryProject = (store: Store, project: Math3DProject, now: number, thumbnail?: string,
-  options: { activate?: boolean; expectedBytes?: string; afterWrite?: () => void; backup?: string; thumbnailMode?: "automatic" | "manual" } = {}): ProjectLibrary => {
+  options: { activate?: boolean; expectedBytes?: string; afterWrite?: () => void; backup?: string; thumbnailMode?: "automatic" | "manual"; migrationOriginal?: string } = {}): ProjectLibrary => {
   const bytes = serializeMath3DProject(project), library = parseProjectLibrary(store.getItem(PROJECT_LIBRARY_KEY));
+  if (options.migrationOriginal !== undefined && serializeMath3DProject(prepareProjectMigration(options.migrationOriginal, project.metadata.title).project) !== bytes)
+    throw new Error("Migration source does not match the Project being saved.");
   const payloadKey = projectPayloadKey(project.identity.id), existing = store.getItem(payloadKey);
   if (options.expectedBytes !== undefined && existing !== options.expectedBytes) throw new Error("Saved project changed. Reopen it before saving your changes.");
   const active = store.getItem(PROJECT_STORAGE_KEY);
@@ -96,6 +100,8 @@ export const saveLibraryProject = (store: Store, project: Math3DProject, now: nu
   const next = parseProjectLibrary(canonicalJsonStringify({ ...library, entries: [...library.entries.filter((item) => item.id !== entry.id), entry] }));
   const changes: [string, string][] = [];
   if (options.backup !== undefined) changes.push([`${PROJECT_STORAGE_KEY}.before-open`, serializeMath3DProject(parseMath3DProject(options.backup))]);
+  if (options.migrationOriginal !== undefined && store.getItem(projectMigrationSourceKey(project.identity.id)) === null)
+    changes.push([projectMigrationSourceKey(project.identity.id), options.migrationOriginal]);
   changes.push([payloadKey, bytes]);
   if (options.activate !== false) changes.push([PROJECT_STORAGE_KEY, bytes]);
   if (thumbnail) {
@@ -114,7 +120,7 @@ export const saveLibraryProject = (store: Store, project: Math3DProject, now: nu
   return next;
 };
 export const importLibraryProject = (store: Store, project: Math3DProject, now: number,
-  options: { activate?: boolean; afterWrite?: () => void; backup?: string } = {}): ProjectLibrary => {
+  options: { activate?: boolean; afterWrite?: () => void; backup?: string; migrationOriginal?: string } = {}): ProjectLibrary => {
   const bytes = serializeMath3DProject(project), existing = store.getItem(projectPayloadKey(project.identity.id));
   if (existing !== null && serializeMath3DProject(parseMath3DProject(existing)) !== bytes) throw new Error("A different saved version has this project ID. Existing work was kept; resolve that conflict before importing.");
   return saveLibraryProject(store, project, now, undefined, { ...options, activate: options.activate ?? false, ...(existing !== null ? { expectedBytes: existing } : {}) });

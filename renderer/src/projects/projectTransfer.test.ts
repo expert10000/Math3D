@@ -5,7 +5,7 @@ import { analyzeGraph2DDerivative, createGraph2DWorkspaceProject, createMath3DPr
 import { Graph2DCommandAdapter } from "@math3d/kernel";
 import { VolumeDocumentAdapter } from "../volume/volumeDocumentAdapter";
 import { exportProjectFile, exportProjectCheckpointFile, inspectProjectCompatibility, MAX_PROJECT_IMPORT_BYTES, mergeProjectLiveWorkspace, previewProjectImport } from "./projectTransfer";
-import { importLibraryProject, PROJECT_STORAGE_KEY, saveLibraryProject } from "./projectLibrary";
+import { importLibraryProject, PROJECT_STORAGE_KEY, readProjectMigrationSource, saveLibraryProject } from "./projectLibrary";
 
 const fixture = () => {
   const graph = instantiateGraph2DPreset(getGraph2DPresetCatalog().get("parabola-tangent")!, "transfer").document;
@@ -19,6 +19,19 @@ const store = () => {
   return { values, getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
 };
 describe("PRJ06 project transfer and compatibility", () => {
+  it("reviews legacy adoption and preserves exact source bytes with the imported copy", () => {
+    const { project } = fixture();
+    const original = `\n${serializeMixedWorkspaceDocument(project.workspace)}\n`;
+    const preview = previewProjectImport(original);
+    expect(preview.migration).toMatchObject({ sourceVersion: 1, targetVersion: 1, originalBytes: original });
+    const storage = store();
+    importLibraryProject(storage, preview.project, 10, { migrationOriginal: preview.migration!.originalBytes });
+    expect(readProjectMigrationSource(storage, preview.project.identity.id)).toBe(original);
+    expect(storage.getItem(PROJECT_STORAGE_KEY)).toBeNull();
+    const before = [...storage.values];
+    expect(() => importLibraryProject(storage, preview.project, 11, { migrationOriginal: "{}" })).toThrow();
+    expect([...storage.values]).toEqual(before);
+  });
   it("retains GF-03 derived chains through partial live Project capture", () => {
     const fixtureUrl = new URL("../../../tests/fixtures/derived-field/gf03-magnitude-slice-profile.math3d", import.meta.url);
     const project = parseMath3DProject(readFileSync(fixtureUrl, "utf8"));

@@ -13,7 +13,7 @@ import { canonicalJsonStringify, createMixedWorkspaceDocument, matchesScientific
   mergeGraph2DHandoffCheckpoint,
   PROJECT_SCIENTIFIC_SELECTIONS_CAPABILITY,
   PROJECT_DERIVED_FIELDS_CAPABILITY,
-  type Math3DProject, type MixedWorkspaceDocument } from "@math3d/core";
+  type Math3DProject, type MixedWorkspaceDocument, type ProjectMigration } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 
 export const MAX_PROJECT_IMPORT_BYTES = MAX_MATH3D_PROJECT_BYTES + 64 * 1024;
@@ -100,7 +100,8 @@ export const inspectProjectCompatibility = (project: Math3DProject, options: Pro
 };
 export type ProjectCompatibility = ReturnType<typeof inspectProjectCompatibility>;
 
-export const previewProjectImport = (raw: string, options: ProjectCompatibilityOptions = {}) => {
+export const previewProjectImport = (raw: string, options: ProjectCompatibilityOptions = {}): ProjectCompatibility &
+  { resources?: VerifiedProjectResources; inputKind: string; migration?: ProjectMigration } => {
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_PACKAGE_BYTES) throw new TypeError("Project import exceeds its size limit.");
   const value = JSON.parse(raw);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError("Unsupported project file.");
@@ -108,7 +109,7 @@ export const previewProjectImport = (raw: string, options: ProjectCompatibilityO
     throw new TypeError("This is a standalone Workbook session. Import it from the Workbook controls, then use Save active Workbook to Project.");
   if (value.format === "math3d.project-package") {
     const { project, resources } = parseProjectPackage(raw);
-    return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources", migration: undefined as ReturnType<typeof prepareProjectMigration> | undefined };
+    return { ...inspectProjectCompatibility(project, { ...options, resources }), resources, inputKind: "Project with verified source resources" };
   }
   if (new TextEncoder().encode(raw).length > MAX_PROJECT_IMPORT_BYTES) throw new TypeError("Project import exceeds its size limit.");
   let project: Math3DProject, inputKind: string;
