@@ -1019,6 +1019,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **18c staging gate:** The [GA asset staging check](GA_STAGING_GATE.md) requires the exact signed-off tag and copies verified Windows assets, optional approved Linux assets, and review receipts without changing bytes. Its asset map supports later uploaded-download verification.
 
+**18d uploaded audit:** The [publication audit and recovery procedure](GA_PUBLICATION_AUDIT.md) compares the remote tag, release notes, full asset set, and every downloaded byte to the approved staging map. It remains pending actual publication; final downloaded installation is reserved for the end stage.
+
 - Tag exact signed-off commit `v2.0.0`.
 - Produce signed builds and immutable hashes.
 - Publish GitHub release notes, changes, compatibility matrix, known limitations, migration guidance and SBOM/attributions.
