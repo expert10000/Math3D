@@ -1,0 +1,41 @@
+{
+  "schema": "math3d/stable-two-app-signoff/v1",
+  "checkedAtUtc": "2026-11-06T14:38:03.8451961Z",
+  "environment": "clean Windows runner",
+  "status": "failed",
+  "math3d": {
+    "version": "1.7.0",
+    "commit": "ffc4f4a6832cd765947c0786f9b3f025c512cc19",
+    "channel": "stable",
+    "installerName": "Math3D Setup 1.7.0.exe",
+    "installerSha256": "c157d9aeeabe141290f5c7420efed86c0dd4b5b0ae9a3eff78057c61e1b06bf0"
+  },
+  "theoryLab": {
+    "version": "0.1.0",
+    "commit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "installerSha256": "800005a71d993e45d49cd6b36ed032c7464c65620d7ecca372700457365f8154"
+  },
+  "checks": {
+    "candidateBytes": "passed",
+    "install": "pending",
+    "installedUiRoundtrip": "pending",
+    "installedQecRoundtrip": "pending"
+  },
+  "failure": "Installer exited with code -1073741819 (0xC0000005): D:\\a\\Math3D\\Math3D\\candidate\\Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+  "candidateBuildRunId": "42232023714",
+  "candidateManifestSha256": "b75d1e5644c2d1532e059e235f45d0c325d6a4caa5e6c56f111883ecbd873f35",
+  "installerFailure": {
+    "installerName": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+    "exitCode": -1073741819,
+    "exitCodeHex": "0xC0000005",
+    "applicationErrors": [
+      {
+        "timeUtc": "2026-11-06T14:39:08.7126226Z",
+        "faultingApplication": "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe",
+        "faultingModule": "System.dll",
+        "exceptionCode": "c0000005"
+      }
+    ]
+  }
+}

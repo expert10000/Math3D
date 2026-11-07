@@ -1,0 +1,71 @@
+{
+  "schema": "math3d/qi40-installer-probe/v1",
+  "checkedAtUtc": "2026-11-06T17:06:49.9537513Z",
+  "environment": "clean Windows runner",
+  "scope": "both apps",
+  "installMode": "CurrentUser",
+  "imageVersion": "20261103.298.1",
+  "osVersion": "10.0.26100",
+  "status": "failed",
+  "candidate": {
+    "buildRunId": "42253990747",
+    "manifestSha256": "dcc32dcf8090f5e183eaa44c6daf83dafe5833edba63fa022829448d2bc20669",
+    "math3dCommit": "f18bf74a86114f4f8b7f6f398bcf889b74d8cb12",
+    "theoryLabCommit": "38842c8ca927720e9a0f39bd6a04f0e366073996",
+    "math3dInstallerSha256": "3dc117566f27c217fa6d4067bfbdb9d1f3ebd767daa7ae2c48fc56985f87efbc",
+    "theoryLabInstallerSha256": "cd258057fadb0009dbcbaa225663553a2cff86dd090b6cdad239c0d41bebea79"
+  },
+  "checks": {
+    "exactBytes": "passed",
+    "math3dInstall": "pending",
+    "theoryLabInstall": "pending",
+    "packagedWorkers": "pending"
+  },
+  "failure": "Math3D installer exited with code -1073741819 (0xC0000005)",
+  "debugger": {
+    "cdbAvailable": true,
+    "dumpAnalysis": "cdb timeout"
+  },
+  "crashDump": {
+    "configured": true,
+    "dumpType": "full",
+    "configuredFor": [
+      "Math3D Setup 1.7.0.exe",
+      "Quantum-Hamiltonian-Lab-Setup-0.1.0.exe"
+    ],
+    "files": [
+      {
+        "name": "Math3D Setup 1.7.0.exe.1280.dmp",
+        "bytes": 58954326,
+        "sha256": "9b7260c7561882797f82cf773986d55419fc7c6e2e082c537aa657b5838c6ca1"
+      }
+    ],
+    "stackSummary": {
+      "status": "cdb timeout",
+      "frames": []
+    }
+  },
+  "installerFailure": {
+    "phase": "Math3D",
+    "installerName": "Math3D Setup 1.7.0.exe",
+    "processId": 1280,
+    "startedUtc": "2026-11-06T17:06:50.2352723Z",
+    "endedUtc": "2026-11-06T17:06:56.2704618Z",
+    "exitCode": -1073741819,
+    "exitCodeHex": "0xC0000005",
+    "applicationErrors": [
+      {
+        "timeUtc": "2026-11-06T17:06:54.3640336Z",
+        "faultingApplication": "Math3D Setup 1.7.0.exe",
+        "applicationVersion": "1.7.0.0",
+        "faultingModule": "System.dll",
+        "moduleVersion": "0.0.0.0",
+        "exceptionCode": "c0000005",
+        "faultOffset": "00001581",
+        "modulePathName": "System.dll",
+        "eventRecordId": 3862
+      }
+    ],
+    "werEvents": []
+  }
+}
