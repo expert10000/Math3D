@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DProject,
+import { algebraicLocusGeometryDocument, buildSageAlgebraicLocusScene,
+  createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
-  projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
+  projectAlgebraLocusReturn, projectSavedAlgebraOpenInActions,
+  resolveProjectAlgebraLocusReturn, resolveProjectSavedAlgebraOpenIn,
   sampleSageAlgebraicLocus, serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
   upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
@@ -25,6 +27,36 @@ const fixture = () => {
 };
 
 describe("saved Project algebra locus Open in", () => {
+  it("returns from exact and sampled Geometry to the pinned algebra revision", () => {
+    const { project, qq, ring, target, scene } = fixture();
+    const exactProject = upsertMath3DProjectAlgebraicLocusScene(project, scene);
+    const documentId = algebraicLocusGeometryDocument(scene).identity.id;
+    const exact = projectAlgebraLocusReturn(exactProject, documentId)!;
+    expect(exact).toMatchObject({ enabled: true, sourceStatus: "current", sampleHash: null });
+    expect(resolveProjectAlgebraLocusReturn(exactProject, exact).target).toEqual(target);
+    const sample = sampleSageAlgebraicLocus(scene);
+    const sampledProject = upsertMath3DProjectAlgebraicLocusSample(exactProject, sample);
+    const sampled = projectAlgebraLocusReturn(sampledProject, documentId)!;
+    expect(sampled).toMatchObject({ enabled: true, sampleHash: sample.resultHash,
+      documentId, sourceStatus: "current" });
+    expect(() => resolveProjectAlgebraLocusReturn(sampledProject, exact)).toThrow(/changed/);
+    expect(resolveProjectAlgebraLocusReturn(sampledProject, sampled)).toMatchObject({
+      projectId: project.identity.id, target, contentHash: ring.contentHash });
+    expect(projectAlgebraLocusReturn(sampledProject, qq.id)).toBeNull();
+
+    const revised = createAlgebraObjectRecord({ id: ring.id, revision: 2, label: "R revised",
+      definition: { kind: "polynomial-ring", coefficientDomain: { objectId: qq.id, revision: 1 },
+        variables: ["x", "y"], monomialOrder: "lex" } });
+    const changed = upsertMath3DProjectAlgebraObject(sampledProject, revised);
+    const historical = projectAlgebraLocusReturn(changed, documentId)!;
+    expect(historical).toMatchObject({ enabled: true, sourceStatus: "historical",
+      reason: expect.stringContaining("exact revision") });
+    expect(resolveProjectAlgebraLocusReturn(changed, historical).target).toEqual(target);
+    expect(() => resolveProjectAlgebraLocusReturn(changed, sampled)).toThrow(/changed/);
+    const archived = setMath3DProjectAlgebraObjectArchived(changed, ring.id, true);
+    expect(projectAlgebraLocusReturn(archived, documentId)).toMatchObject({ enabled: true,
+      sourceStatus: "archived" });
+  });
   it("discovers only saved checkpoints and requalifies a changed checkpoint", () => {
     const { project, target, scene } = fixture();
     expect(projectSavedAlgebraOpenInActions(project, target)).toMatchObject([
