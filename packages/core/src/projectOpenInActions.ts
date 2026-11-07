@@ -38,7 +38,8 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
   options: { surfaceMesh?: Readonly<{ available: boolean; reason: string | null }>;
     quantumGraph?: Readonly<{ available: boolean; reason: string | null }>;
     meshGeometry?: Readonly<{ available: boolean; reason: string | null }>;
-    fieldGraph?: Readonly<{ available: boolean; reason: string | null }> } = {}): readonly ProjectOpenInAction[] => {
+    fieldGraph?: Readonly<{ available: boolean; reason: string | null;
+      canOpen?: (documentId: string) => boolean }> } = {}): readonly ProjectOpenInAction[] => {
   const entry = project.workspace.entries.find(item => item.expected.id === sourceDocumentId);
   if (!entry) return [];
   const source = viewerSourceFromDocument(entry.checkpoint);
@@ -104,7 +105,8 @@ export const projectOpenInActions = (project: Math3DProject, sourceDocumentId: s
         !recipeCurrent ? "The saved Field profile recipe changed." :
         !selection || structuralHash(selection) !== origin.selection.structuralHash ?
           "The saved Field line selection changed or is missing." :
-        options.fieldGraph?.available ? null : options.fieldGraph?.reason ??
+        options.fieldGraph?.available && (options.fieldGraph.canOpen?.(target.expected.id) ?? true) ?
+          null : options.fieldGraph?.reason ??
           "Graph document navigation is unavailable on this host.";
       return { schemaVersion: PROJECT_OPEN_IN_ACTION_SCHEMA_VERSION, id: "vector3d.open-profile-graph",
         source, sourceModule: "vector3d", sourceObjectId: object.id,

@@ -53,6 +53,27 @@ test("GF-07 opens a saved profile in Graphs and locates its physical line in Exp
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
     expect(saved.workspace.entries.some((entry: any) => entry.module === "graph2d" &&
       JSON.stringify(entry).includes("project-derived-profile/v1"))).toBe(true);
+    await panel.getByTestId("project-detail-toggle").click();
+    await panel.getByTestId("project-detail-tab-documents").click();
+    const fieldMenu = panel.getByTestId(`project-open-in-${vectorEntry.expected.id}`);
+    await fieldMenu.locator("summary").click();
+    const openLinked = fieldMenu.getByRole("button", { name: /Open .* in Graphs/ });
+    await expect(openLinked).toBeEnabled();
+    await openLinked.click();
+    await expect(panel.getByTestId("project-message")).toContainText("Linked the saved Field profile Graph");
+    await panel.getByTestId("project-gallery-layout-toggle").click();
+    await panel.getByTestId("project-save").click();
+    await expect(panel.getByTestId("project-message")).toContainText("Saved");
+    const linked = await page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!));
+    const relation = linked.workspace.relations.find((item: { operation: string }) =>
+      item.operation === "vector3d.open-profile-graph");
+    expect(relation.sources[0].documentId).toBe(vectorEntry.expected.id);
+    await panel.getByTestId("project-detail-tab-documents").click();
+    const back = panel.getByTestId(`project-open-in-return-${relation.target.generation.documentId}`)
+      .getByRole("button", { name: "Return to source Field" });
+    await expect(back).toBeEnabled();
+    await back.click();
+    await expect(page.getByTestId("app-shell")).toHaveAttribute("data-project-document-id", vectorEntry.expected.id);
     await page.reload();
     await openLastSavedProject(page);
     await page.getByTestId("workspace-nav-graphs").click();

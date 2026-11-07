@@ -15,7 +15,8 @@ import { adoptMixedWorkspaceProject, buildProjectExplorer, createMath3DProject, 
   type ProjectComposition, type ProjectSavedMeshComparison,
   type ProjectNote,
   type Math3DProject, type MixedWorkspaceDocument, type KernelWorkspaceModule, type QuantumSceneDocument, type ViewerProvenanceEvidence } from "@math3d/core";
-import { deriveProjectOpenIn, deriveProjectMeshGeometry, projectOpenInActions, projectOpenInReturn,
+import { deriveProjectOpenIn, deriveProjectMeshGeometry, linkProjectFieldProfileGraph,
+  projectOpenInActions, projectOpenInReturn,
   matchesScientificSourceGeneration, type ProjectOpenInAction } from "@math3d/core";
 import { verifyMixedWorkspaceReplay } from "../kernel/mixedWorkspaceReplay";
 import { findProjectStarterCopy, importLibraryProject, loadLibraryProject, MAX_PROJECT_THUMBNAIL_BYTES, orderProjectLibrary, parseProjectLibrary, PROJECT_LIBRARY_KEY,
@@ -1548,6 +1549,22 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
     if (busy || preview || managed || !project || !onRestoreWorkspace) return;
     try {
       const current = liveProject();
+      if (choice.id === "vector3d.open-profile-graph") {
+        if (!choice.enabled || !choice.targetDocumentId ||
+            !canNavigateDocument?.(choice.targetDocumentId, "graph2d"))
+          throw new TypeError("The saved Graph profile is unavailable on this host.");
+        const linked = linkProjectFieldProfileGraph(current, choice);
+        const resources = collectResources(linked.project);
+        if (!linked.existing) onRestoreWorkspace(linked.project.workspace, resources, linked.project);
+        resourceSession.current = resources; resourceSessionId.current = linked.project.identity.id;
+        display(linked.project, false);
+        setViewingDocumentId(linked.targetDocumentId);
+        setViewerCompanion(true); setQuick(true); setDetailView(true);
+        onNavigateDocument?.(linked.targetDocumentId, "graph2d");
+        setMessage(linked.existing ? "Opened the existing exact Field profile Graph." :
+          "Linked the saved Field profile Graph. Save the Project to retain its return path.");
+        return;
+      }
       if (choice.id === "mesh.promote-geometry") {
         const entry = current.workspace.entries.find(item => item.expected.id === choice.source.documentId);
         const resourceId = entry?.checkpoint.format === "math3d.mesh-document" ?
@@ -2217,7 +2234,10 @@ export const ProjectWorkspacePanel: React.FC<Props> = ({ projectNavigation, open
                 reason: analyses.get(document.id)?.reason ?? "The saved Surface sampler is unavailable on this host.",
               }, quantumGraph: { available: !!window.quantumScenes?.openReference,
                 reason: "Verified Quantum scene opening is unavailable on this host." },
-                meshGeometry: meshGeometryAvailability(document.id) })}
+                meshGeometry: meshGeometryAvailability(document.id),
+                fieldGraph: { available: !!onNavigateDocument,
+                  reason: "The saved Graph profile is unavailable on this host.",
+                  canOpen: id => !!canNavigateDocument?.(id, "graph2d") } })}
               canDerive={!busy && !preview && !managed && !!onRestoreWorkspace}
               unavailableReason={preview ? "Open the saved Project first." : managed ?
                 "Open the Project workspace before deriving a companion." : !onRestoreWorkspace ?
