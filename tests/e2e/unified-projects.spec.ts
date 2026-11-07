@@ -24,6 +24,26 @@ const showProjectGallery = async (page: import("@playwright/test").Page) => {
   return panel;
 };
 
+test("M3D20-12 Windows source-build Project journey reopens verified resources", async () => {
+  let ctx: LaunchedSurfaceApp | null = null;
+  try {
+    const raw = readFileSync("tests/fixtures/project-workbook-note-journey.json", "utf8");
+    const id = JSON.parse(raw).project.identity.id;
+    ctx = await launchSurfaceApp(); await resetSurfaceAppState(ctx.page);
+    let panel = await showProjectGallery(ctx.page);
+    await panel.getByTestId("project-import-file").setInputFiles({ name: "project.resources.json", mimeType: "application/json", buffer: Buffer.from(raw) });
+    await expect(panel.getByTestId("project-import-open")).toBeEnabled();
+    await panel.getByTestId("project-import-open").click();
+    await expect.poll(() => ctx!.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(id);
+    const profile = ctx.profileDir;
+    await ctx.app.close(); ctx = await launchSurfaceApp({}, profile);
+    panel = await showProjectGallery(ctx.page);
+    await panel.getByTestId(`project-open-saved-${id}`).click();
+    await expect.poll(() => ctx!.page.evaluate(() => JSON.parse(localStorage.getItem("math3d.project.v1")!).identity.id)).toBe(id);
+    await expect(ctx.page.getByTestId("project-workbooks")).toContainText("Graph Derivative Investigation");
+  } finally { await closeSurfaceApp(ctx); }
+});
+
 test("saved project cards open supported surfaces directly and explain preview-only projects", async () => {
   let ctx: LaunchedSurfaceApp | null = null;
   try {
