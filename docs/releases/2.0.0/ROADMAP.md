@@ -975,6 +975,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **15b source prepared:** The public site's capability page scopes journeys by host and operation, separates source-build tests from installer qualification, and removes broad desktop/browser parity claims from the home-page feature panel.
 
+**15c gate prepared:** The [screenshot provenance gate](GALLERY_EVIDENCE_GATE.md) exposes missing commit attribution in the current gallery and requires exact installed-candidate, source, scene, and PNG hashes before 2.0 images enter the site. Actual 2.0 captures await candidate artifacts.
+
 **Exit:** gallery, docs and real distribution all describe the same capabilities/build.
 
 ### M3D20-16 — RC1 feature freeze (P0)

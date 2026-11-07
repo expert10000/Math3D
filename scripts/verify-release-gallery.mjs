@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 
 import { readFile, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyRelease20Gallery } from "./verify-release20-gallery.mjs";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const assets = join(root, "apps/public-site/src/assets");
+const release20Dir = join(assets, "release-2.0.0");
+const html = (await Promise.all(["index.html", "release-gallery.html", "modules.html", "capabilities.html"]
+  .map(file => readFile(join(root, "apps/public-site/src", file), "utf8")))).join("\n");
+if (html.includes("assets/release-2.0.0") && !existsSync(release20Dir))
+  throw new Error("2.0 screenshot references require a release-2.0.0 gallery and exact artifact evidence.");
+if (existsSync(release20Dir)) {
+  const candidatePath = process.env.MATH3D_RELEASE20_CANDIDATE_MANIFEST;
+  const installerPath = process.env.MATH3D_RELEASE20_INSTALLER;
+  const installEvidencePath = process.env.MATH3D_RELEASE20_FRESH_EVIDENCE;
+  if (!candidatePath || !installerPath || !installEvidencePath)
+    throw new Error("2.0 gallery requires candidate, installer, and fresh-install evidence paths.");
+  await verifyRelease20Gallery({ candidatePath, installerPath, installEvidencePath, galleryDir: release20Dir });
+}
 const web = JSON.parse(await readFile(join(assets, "release-current/manifest.json"), "utf8"));
 const field = JSON.parse(await readFile(join(assets, "release-field-current/manifest.json"), "utf8"));
 const analysis = JSON.parse(await readFile(join(assets, "release-analysis-current/manifest.json"), "utf8"));
