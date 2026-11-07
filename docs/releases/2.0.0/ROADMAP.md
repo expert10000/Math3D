@@ -998,6 +998,8 @@ The following are **proposed small, reviewable commit series**. IDs identify wor
 
 **17b independent transfer:** `tests/unit/release20IndependentTransfer.test.ts` checks that Mesh, Graph table, and measured Volume source bytes survive Project package import, export, and reimport with their scientific lineage. It rejects a changed source sidecar and confirms that a JSON-only copy reports required source data as unavailable.
 
+**17c reliability preparation:** The [source reliability soak](RC2_SOAK_GATE.md) describes a repeatable run covering Projects, scientific results, quantum, and a desktop first-use Study restart. `--run` requires a matching 2.0 freeze manifest and at least 120 minutes, records every cycle and stops on a failed check. It has not run on the current 1.7 checkout and does not qualify an installed candidate.
+
 - Fresh-machine installer and upgrade pass.
 - Full migration corpus and independent export/import.
 - Multi-hour representative reliability soak where practical.
