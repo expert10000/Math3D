@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildSageAlgebraicLocusScene, createAlgebraObjectRecord, createMath3DProject,
   createMixedWorkspaceDocument, createProjectAlgebraObjectId, parseMath3DProject,
   projectSavedAlgebraOpenInActions, resolveProjectSavedAlgebraOpenIn,
-  sampleSageAlgebraicLocus, serializeMath3DProject, upsertMath3DProjectAlgebraObject,
+  sampleSageAlgebraicLocus, serializeMath3DProject, setMath3DProjectAlgebraObjectArchived,
+  upsertMath3DProjectAlgebraObject,
   upsertMath3DProjectAlgebraicLocusSample, upsertMath3DProjectAlgebraicLocusScene } from "@math3d/core";
 
 const fixture = () => {
@@ -60,5 +61,25 @@ describe("saved Project algebra locus Open in", () => {
     expect(historical.disabledReason).toContain("current unarchived algebra object revision");
     expect(() => resolveProjectSavedAlgebraOpenIn(changed, target,
       projectSavedAlgebraOpenInActions(saved, target)[0]!)).toThrow(/destination changed/);
+  });
+
+  it("keeps distinct saved bounds separate and refuses archived sources", () => {
+    const { project, target, scene } = fixture();
+    const other = buildSageAlgebraicLocusScene(project, target, { polynomial: "x^2+y^2-1",
+      bounds: [{ min: -1, max: 1 }, { min: -1, max: 1 }], tolerance: 0.001,
+      maxSamples: 8000 });
+    const saved = upsertMath3DProjectAlgebraicLocusScene(
+      upsertMath3DProjectAlgebraicLocusScene(project, scene), other);
+    const choices = projectSavedAlgebraOpenInActions(saved, target);
+    expect(choices).toHaveLength(2);
+    expect(new Set(choices.map(action => action.documentId)).size).toBe(2);
+    expect(choices.every(action => action.enabled)).toBe(true);
+    expect(resolveProjectSavedAlgebraOpenIn(saved, target, choices[0]!)).toBe(choices[0]?.documentId);
+    expect(resolveProjectSavedAlgebraOpenIn(saved, target, choices[1]!)).toBe(choices[1]?.documentId);
+    const archived = setMath3DProjectAlgebraObjectArchived(saved, target.objectId, true);
+    expect(projectSavedAlgebraOpenInActions(archived, target).every(action =>
+      !action.enabled && action.disabledReason?.includes("unarchived"))).toBe(true);
+    expect(() => resolveProjectSavedAlgebraOpenIn(archived, target, choices[0]!))
+      .toThrow(/destination changed/);
   });
 });
